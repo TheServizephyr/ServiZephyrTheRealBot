@@ -5,6 +5,24 @@ import admin from 'firebase-admin';
 // In a real production app, this would be handled by environment variables.
 // For Firebase App Hosting, this setup works because it automatically provides credentials.
 function getServiceAccount() {
+  // VERCEL DEPLOYMENT LOGIC: Read from environment variables
+  if (process.env.FIREBASE_PRIVATE_KEY && process.env.FIREBASE_CLIENT_EMAIL) {
+    console.log("Found Vercel environment variables for Firebase Admin.");
+    return {
+      "type": "service_account",
+      "project_id": "studio-6552995429-8bffe",
+      "private_key_id": "d135b90208c5c76c125d56221c97b819f390ec96",
+      "private_key": process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, '\n'),
+      "client_email": process.env.FIREBASE_CLIENT_EMAIL,
+      "client_id": "116524443994344445839",
+      "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+      "token_uri": "https://oauth2.googleapis.com/token",
+      "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
+      "client_x509_cert_url": `https://www.googleapis.com/robot/v1/metadata/x509/${process.env.FIREBASE_CLIENT_EMAIL.replace('@', '%40')}`
+    };
+  }
+
+  // LOCAL DEVELOPMENT LOGIC: Fallback to local file
   try {
     // This will only work in local development if the file exists.
     return require('./serviceAccountKey').serviceAccount;
@@ -21,22 +39,18 @@ let app;
 if (!admin.apps.length) {
   const serviceAccount = getServiceAccount();
   try {
-    // This is the correct way for App Hosting. It uses the ADC (Application Default Credentials)
-    // provided by the environment, so no config object is needed.
-    app = admin.initializeApp();
-    console.log("Firebase Admin SDK initialized automatically for PRODUCTION (App Hosting).");
-  } catch (error) {
-    console.warn("Automatic Admin SDK initialization failed. Error:", error.message);
-    // This fallback is primarily for LOCAL development.
     if (serviceAccount) {
-      console.log("Falling back to local service account key for DEVELOPMENT.");
+      console.log("Initializing Firebase Admin with provided service account.");
       app = admin.initializeApp({
         credential: admin.credential.cert(serviceAccount),
         projectId: 'studio-6552995429-8bffe',
       });
     } else {
-       console.error("CRITICAL: Firebase Admin SDK initialization failed. No credentials found for production or development.");
+      console.log("Attempting to initialize Firebase Admin automatically (App Hosting/GCP).");
+      app = admin.initializeApp();
     }
+  } catch (error) {
+     console.error("CRITICAL: Firebase Admin SDK initialization failed.", error);
   }
 } else {
   // If already initialized, get the existing app.
