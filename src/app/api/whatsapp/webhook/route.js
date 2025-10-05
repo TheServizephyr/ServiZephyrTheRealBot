@@ -3,7 +3,7 @@
 import { NextResponse } from 'next/server';
 
 // This is your secret token. In production, use environment variables.
-const VERIFY_TOKEN = "123";
+const VERIFY_TOKEN = process.env.WHATSAPP_VERIFY_TOKEN;
 
 // Handles GET requests for webhook verification
 export async function GET(request) {
