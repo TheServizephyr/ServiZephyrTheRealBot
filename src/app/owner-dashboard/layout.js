@@ -10,6 +10,7 @@ import Script from "next/script";
 import { ThemeProvider } from "@/components/ThemeProvider";
 import "../globals.css";
 
+export const dynamic = 'force-dynamic';
 
 export default function OwnerDashboardLayout({ children }) {
   const [isSidebarOpen, setSidebarOpen] = useState(false);
