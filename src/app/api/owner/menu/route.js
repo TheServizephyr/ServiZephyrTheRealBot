@@ -1,0 +1,213 @@
+
+import { NextResponse } from 'next/server';
+import { firestore as adminFirestore } from 'firebase-admin';
+import { getAuth, getFirestore } from '@/lib/firebase-admin';
+
+// Helper to verify owner and get their first restaurant ID
+async function verifyOwnerAndGetRestaurant(req, auth, firestore) {
+    const authHeader = req.headers.get('authorization');
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+        throw { message: 'Authorization token not found or invalid.', status: 401 };
+    }
+    const token = authHeader.split('Bearer ')[1];
+    const decodedToken = await auth.verifyIdToken(token);
+    const uid = decodedToken.uid;
+    
+    const userDoc = await firestore.collection('users').doc(uid).get();
+    if (!userDoc.exists || userDoc.data().role !== 'owner') {
+        throw { message: 'Access Denied: You do not have owner privileges.', status: 403 };
+    }
+    
+    const restaurantsQuery = await firestore.collection('restaurants').where('ownerId', '==', uid).limit(1).get();
+    if (restaurantsQuery.empty) {
+        throw { message: 'No restaurant associated with this owner.', status: 404 };
+    }
+    const restaurantId = restaurantsQuery.docs[0].id;
+    
+    return { uid, restaurantId };
+}
+
+async function seedInitialMenu(firestore, restaurantId) {
+    const menuRef = firestore.collection('restaurants').doc(restaurantId).collection('menu');
+    const batch = firestore.batch();
+
+    const initialItems = [
+        { name: 'Paneer Tikka', description: 'Tandoor-cooked cottage cheese', halfPrice: 180, fullPrice: 280, isVeg: true, isAvailable: true, categoryId: 'starters', order: 1, imageUrl: `https://picsum.photos/seed/paneertikka/100/100` },
+        { name: 'Chilli Chicken', description: 'Spicy diced chicken', halfPrice: 200, fullPrice: 320, isVeg: false, isAvailable: true, categoryId: 'starters', order: 2, imageUrl: `https://picsum.photos/seed/chillichicken/100/100` },
+        { name: 'Dal Makhani', description: 'Creamy black lentils', halfPrice: null, fullPrice: 250, isVeg: true, isAvailable: true, categoryId: 'main-course', order: 1, imageUrl: `https://picsum.photos/seed/dalmakhani/100/100` },
+        { name: 'Veg Steamed Momos', description: '8 Pcs, served with chutney', halfPrice: null, fullPrice: 120, isVeg: true, isAvailable: true, categoryId: 'momos', order: 1, imageUrl: `https://picsum.photos/seed/vegmomos/100/100` },
+    ];
+    
+    initialItems.forEach(itemData => {
+        const docRef = menuRef.doc();
+        const newItem = {
+            id: docRef.id,
+            createdAt: adminFirestore.FieldValue.serverTimestamp(),
+            ...itemData
+        };
+        batch.set(docRef, newItem);
+    });
+
+    await batch.commit();
+    
+    const seededMenuSnap = await menuRef.get();
+    const menuData = {};
+    const categoryKeys = ["momos", "burgers", "rolls", "soup", "tandoori-item", "starters", "main-course", "tandoori-khajana", "rice", "noodles", "pasta", "raita", "desserts", "beverages"];
+    categoryKeys.forEach(key => { menuData[key] = []; });
+
+    seededMenuSnap.docs.forEach(doc => {
+        const item = { id: doc.id, ...doc.data() };
+        if (item.categoryId && menuData[item.categoryId]) {
+            menuData[item.categoryId].push(item);
+        }
+    });
+
+    Object.keys(menuData).forEach(key => {
+        menuData[key].sort((a, b) => a.order - b.order);
+    });
+
+    return menuData;
+}
+
+
+export async function GET(req) {
+    try {
+        const auth = await getAuth();
+        const firestore = await getFirestore();
+        const { restaurantId } = await verifyOwnerAndGetRestaurant(req, auth, firestore);
+
+        const menuRef = firestore.collection('restaurants').doc(restaurantId).collection('menu');
+        const menuSnap = await menuRef.get();
+
+        let menuData = {};
+
+        if (menuSnap.empty) {
+            menuData = await seedInitialMenu(firestore, restaurantId);
+        } else {
+            const categoryKeys = ["momos", "burgers", "rolls", "soup", "tandoori-item", "starters", "main-course", "tandoori-khajana", "rice", "noodles", "pasta", "raita", "desserts", "beverages"];
+            categoryKeys.forEach(key => {
+                menuData[key] = [];
+            });
+
+            menuSnap.docs.forEach(doc => {
+                const item = doc.data();
+                if (item.categoryId && menuData.hasOwnProperty(item.categoryId)) {
+                    menuData[item.categoryId].push({ id: doc.id, ...item });
+                } else if (item.categoryId) {
+                    menuData[item.categoryId] = [{ id: doc.id, ...item }];
+                }
+            });
+
+            Object.keys(menuData).forEach(key => {
+                menuData[key].sort((a, b) => (a.order || 0) - (b.order || 0));
+            });
+        }
+
+        return NextResponse.json({ menu: menuData }, { status: 200 });
+
+    } catch (error) {
+        console.error("GET MENU ERROR:", error);
+        return NextResponse.json({ message: `Backend Error: ${error.message}` }, { status: error.status || 500 });
+    }
+}
+
+
+export async function POST(req) {
+    try {
+        const auth = await getAuth();
+        const firestore = await getFirestore();
+        const { restaurantId } = await verifyOwnerAndGetRestaurant(req, auth, firestore);
+        const { item, categoryId, isEditing } = await req.json();
+
+        if (!item || !item.name || item.fullPrice === undefined || !categoryId) {
+            return NextResponse.json({ message: 'Missing required item data.' }, { status: 400 });
+        }
+
+        const menuRef = firestore.collection('restaurants').doc(restaurantId).collection('menu');
+        
+        if (isEditing) {
+            if (!item.id) return NextResponse.json({ message: 'Item ID is required for editing.' }, { status: 400 });
+            const itemRef = menuRef.doc(item.id);
+            const { id, categoryId: ignoredCategoryId, order, createdAt, ...updateData } = item;
+            await itemRef.update(updateData);
+            return NextResponse.json({ message: 'Item updated successfully!', id: item.id }, { status: 200 });
+        } else {
+            const categoryQuery = await menuRef.where('categoryId', '==', categoryId).orderBy('order', 'desc').limit(1).get();
+            const maxOrder = categoryQuery.empty ? 0 : (categoryQuery.docs[0].data().order || 0);
+            const newItemRef = menuRef.doc();
+            await newItemRef.set({
+                ...item,
+                id: newItemRef.id,
+                categoryId: categoryId,
+                order: maxOrder + 1,
+                createdAt: adminFirestore.FieldValue.serverTimestamp(),
+            });
+            return NextResponse.json({ message: 'Item added successfully!', id: newItemRef.id }, { status: 201 });
+        }
+
+    } catch (error) {
+        console.error("POST MENU ERROR:", error);
+        return NextResponse.json({ message: `Backend Error: ${error.message}` }, { status: error.status || 500 });
+    }
+}
+
+
+export async function DELETE(req) {
+    try {
+        const auth = await getAuth();
+        const firestore = await getFirestore();
+        const { restaurantId } = await verifyOwnerAndGetRestaurant(req, auth, firestore);
+        const { itemId } = await req.json();
+
+        if (!itemId) {
+            return NextResponse.json({ message: 'Item ID is required.' }, { status: 400 });
+        }
+
+        const itemRef = firestore.collection('restaurants').doc(restaurantId).collection('menu').doc(itemId);
+        await itemRef.delete();
+
+        return NextResponse.json({ message: 'Item deleted successfully.' }, { status: 200 });
+    } catch (error) {
+        console.error("DELETE MENU ERROR:", error);
+        return NextResponse.json({ message: `Backend Error: ${error.message}` }, { status: error.status || 500 });
+    }
+}
+
+
+export async function PATCH(req) {
+    try {
+        const auth = await getAuth();
+        const firestore = await getFirestore();
+        const { restaurantId } = await verifyOwnerAndGetRestaurant(req, auth, firestore);
+        const { itemIds, action, updates } = await req.json();
+        
+        const menuRef = firestore.collection('restaurants').doc(restaurantId).collection('menu');
+
+        if (updates && updates.id) {
+            const itemRef = menuRef.doc(updates.id);
+            await itemRef.update({ isAvailable: updates.isAvailable });
+            return NextResponse.json({ message: 'Item availability updated.' }, { status: 200 });
+        }
+
+        if (!itemIds || !Array.isArray(itemIds) || itemIds.length === 0 || !action) {
+            return NextResponse.json({ message: 'Item IDs array and action are required for bulk updates.' }, { status: 400 });
+        }
+
+        const batch = firestore.batch();
+        itemIds.forEach(itemId => {
+            const itemRef = menuRef.doc(itemId);
+            if (action === 'delete') {
+                batch.delete(itemRef);
+            } else if (action === 'outOfStock') {
+                batch.update(itemRef, { isAvailable: false });
+            }
+        });
+
+        await batch.commit();
+
+        return NextResponse.json({ message: `Bulk action '${action}' completed successfully.` }, { status: 200 });
+    } catch (error) {
+        console.error("PATCH MENU ERROR:", error);
+        return NextResponse.json({ message: `Backend Error: ${error.message}` }, { status: error.status || 500 });
+    }
+}

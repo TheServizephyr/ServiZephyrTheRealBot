@@ -1,0 +1,520 @@
+'use client'
+
+import { motion, useInView, animate } from 'framer-motion'
+import { CheckCircle, Bot, Zap, Rocket, Users, ArrowRight, Star, ShoppingCart, BarChart2, MessageSquare, Briefcase, Store, Soup, Pizza } from 'lucide-react'
+import Image from 'next/image'
+import Link from 'next/link'
+import React, { useEffect, useRef, useState } from 'react'
+import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from "@/components/ui/accordion"
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card"
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table"
+import {
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
+} from "@/components/ui/tabs"
+import placeholderData from './lib/placeholder-images.json'
+import AuthModal from '@/components/AuthModal'
+
+
+const MotionLink = motion(Link);
+
+const sectionVariants = {
+  hidden: { opacity: 0, y: 50 },
+  visible: { opacity: 1, y: 0, transition: { duration: 0.6, ease: "easeOut" } }
+};
+
+const cardVariants = {
+  hidden: { opacity: 0, y: 20 },
+  visible: (i) => ({
+    opacity: 1,
+    y: 0,
+    transition: {
+      delay: i * 0.1,
+      duration: 0.5,
+      ease: 'easeOut',
+    },
+  }),
+};
+
+const AnimatedNumber = ({ value, suffix = '', prefix = '' }) => {
+  const ref = useRef(null);
+  const isInView = useInView(ref, { once: true, amount: 0.5 });
+  const [displayValue, setDisplayValue] = useState(0);
+
+  useEffect(() => {
+    if (isInView) {
+      const controls = animate(0, value, {
+        duration: 2,
+        ease: "easeOut",
+        onUpdate: (latest) => {
+          setDisplayValue(Math.floor(latest));
+        },
+      });
+      return () => controls.stop();
+    }
+  }, [isInView, value]);
+
+  return (
+    <span ref={ref}>
+      {prefix}{displayValue}{suffix}
+    </span>
+  );
+};
+
+
+export default function Home() {
+  const [isModalOpen, setIsModalOpen] = useState(false);
+
+  const testimonials = [
+    {
+      name: "Rohan Sharma",
+      title: "Owner, Curry Cloud",
+      quote: "ServiZephyr has been a game-changer for my cloud kitchen. We've saved over ₹50,000 in commissions in just 3 months! The best part is, we now own our customer data.",
+      image: placeholderData.testimonials[0],
+      rating: 5,
+    },
+    {
+      name: "Priya Desai",
+      title: "Manager, The Daily Grind Cafe",
+      quote: "Our regulars love the WhatsApp ordering system. It's so much faster and more convenient for them. Our repeat orders have gone up by 40% since we switched.",
+      image: placeholderData.testimonials[1],
+      rating: 5,
+    },
+    {
+      name: "Amit Patel",
+      title: "Founder, Pizza on Wheels",
+      quote: "I was skeptical at first, but the owner dashboard is incredibly powerful. I can see my sales in real-time and make decisions on the fly. This is the control I've always wanted.",
+      image: placeholderData.testimonials[2],
+      rating: 5,
+    },
+     {
+      name: "Sunita Verma",
+      title: "Co-founder, Healthy Bites",
+      quote: "The best investment we've made. It's simple, powerful, and has given us a direct line to our customers. Our marketing is so much more effective now.",
+      image: placeholderData.testimonials[0],
+      rating: 5,
+    },
+    {
+      name: "Rajesh Kumar",
+      title: "Head Chef, Tandoori Nights",
+      quote: "Finally, a system that understands restaurant owners. The dashboard is brilliant, and not paying high commissions means more profit in our pocket.",
+      image: placeholderData.testimonials[1],
+      rating: 5,
+    },
+  ];
+
+
+  return (
+    <>
+    <div className="flex flex-col min-h-screen overflow-x-hidden">
+      <main className="flex-grow">
+        {/* Hero Section */}
+        <section className="container mx-auto flex flex-col items-center px-4 py-20 text-center lg:py-28 lg:text-left">
+          <div className="flex flex-col items-center lg:flex-row lg:gap-12">
+            <div className="lg:w-1/2">
+                <motion.h1 
+                    className="text-4xl font-bold tracking-tighter sm:text-5xl md:text-6xl lg:text-5xl xl:text-6xl"
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.7, ease: 'easeOut' }}
+                >
+                    Apna Restaurant, Apne Rules.
+                    <br /> 
+                    <span className="bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">30% Commission ko Good Bye Kahein.</span>
+                </motion.h1>
+                <motion.p 
+                    className="mt-6 max-w-xl text-lg text-muted-foreground md:text-xl"
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.7, delay: 0.2, ease: 'easeOut' }}
+                >
+                    ServiZephyr aapke WhatsApp ko ek powerful profit machine mein badal deta hai. Paayein apna personal bot, smart dashboard, aur marketing tools.
+                </motion.p>
+                <motion.div
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.7, delay: 0.4, ease: 'easeOut' }}
+                >
+                    <button
+                        onClick={() => setIsModalOpen(true)}
+                        className="btn-shine mt-8 inline-flex h-12 items-center justify-center rounded-full bg-gradient-to-r from-primary to-accent px-8 text-lg font-bold text-primary-foreground shadow-lg shadow-accent/50 transition-transform duration-300 hover:scale-105 hover:-translate-y-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                    >
+                        Get Started & Save Money
+                    </button>
+                    <p className="mt-4 text-sm text-muted-foreground">Join 100+ Restaurants Already Saving! No credit card required.</p>
+                </motion.div>
+            </div>
+            <motion.div 
+                className="mt-12 w-full max-w-2xl lg:mt-0 lg:w-1/2"
+                initial={{ opacity: 0, y: 50, scale: 0.9 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                transition={{ duration: 0.8, delay: 0.3 }}
+            >
+                <div className="relative rounded-xl border bg-card p-2 shadow-2xl shadow-primary/10">
+                    <div className="aspect-video w-full overflow-hidden rounded-lg">
+                        <Image 
+                            src={placeholderData.heroMockup.src}
+                            alt="ServiZephyr Dashboard Animated Mockup"
+                            width={placeholderData.heroMockup.width}
+                            height={placeholderData.heroMockup.height}
+                            className="h-full w-full object-cover"
+                            data-ai-hint={placeholderData.heroMockup.hint}
+                            priority
+                        />
+                    </div>
+                </div>
+            </motion.div>
+          </div>
+        </section>
+        
+        {/* Animated Stats Section */}
+        <motion.section
+          className="container mx-auto py-12"
+          initial="hidden"
+          whileInView="visible"
+          viewport={{ once: true, amount: 0.5 }}
+          variants={sectionVariants}
+        >
+          <div className="grid grid-cols-1 gap-8 text-center md:grid-cols-3">
+            <div className="rounded-lg border bg-card p-8">
+              <h3 className="text-5xl font-bold text-primary">
+                <AnimatedNumber value={30} suffix="%" />+
+              </h3>
+              <p className="mt-2 text-muted-foreground">Commission Saved</p>
+            </div>
+            <div className="rounded-lg border bg-card p-8">
+              <h3 className="text-5xl font-bold text-accent">
+                <AnimatedNumber value={40} suffix="%" />+
+              </h3>
+              <p className="mt-2 text-muted-foreground">Increase in Repeat Orders</p>
+            </div>
+            <div className="rounded-lg border bg-card p-8">
+              <h3 className="text-5xl font-bold text-primary">
+                <AnimatedNumber value={100} suffix="%" />
+              </h3>
+              <p className="mt-2 text-muted-foreground">Customer Data Ownership</p>
+            </div>
+          </div>
+        </motion.section>
+
+        {/* Product Showcase Section */}
+        <motion.section
+          id="product"
+          className="bg-card py-20 sm:py-28"
+          initial="hidden"
+          whileInView="visible"
+          viewport={{ once: true, amount: 0.3 }}
+          variants={sectionVariants}
+        >
+            <div className="container mx-auto px-4">
+                <h2 className="mb-4 text-center text-3xl font-bold tracking-tighter sm:text-4xl md:text-5xl">The Command Center You've Always Wanted</h2>
+                <p className="mx-auto mb-16 max-w-3xl text-center text-lg text-muted-foreground md:text-xl">
+                    Stop guessing, start growing. Our dashboard gives you a bird's-eye view of your entire operation, with actionable insights to boost your bottom line.
+                </p>
+
+                <div className="grid gap-16">
+                    <div className="grid items-center gap-8 md:grid-cols-2">
+                        <motion.div initial={{opacity: 0, x: -50}} whileInView={{opacity: 1, x: 0, transition:{duration: 0.7}}} viewport={{ once: true, amount: 0.5 }}>
+                            <h3 className="text-2xl font-bold text-primary">Live Order Dashboard</h3>
+                            <p className="mt-4 text-muted-foreground">Never miss an order. Get a real-time stream of incoming WhatsApp orders on a clean, intuitive interface. Manage status, accept, and dispatch with a single click.</p>
+                             <div className="mt-4 rounded-lg border bg-background p-1.5 shadow-lg">
+                                <p className="text-center text-sm text-muted-foreground">[Animated GIF/Video Placeholder]</p>
+                                <Image 
+                                    src={placeholderData.productShowcase2.src}
+                                    alt="Live Order Dashboard Mockup"
+                                    width={placeholderData.productShowcase2.width}
+                                    height={placeholderData.productShowcase2.height}
+                                    className="rounded-md"
+                                    data-ai-hint={placeholderData.productShowcase2.hint}
+                                />
+                            </div>
+                        </motion.div>
+                         <motion.div className="md:order-first" initial={{opacity: 0, x: 50}} whileInView={{opacity: 1, x: 0, transition:{duration: 0.7}}} viewport={{ once: true, amount: 0.5 }}>
+                            <div className="rounded-lg border bg-background p-1.5 shadow-lg">
+                               <p className="text-center text-sm text-muted-foreground">[Animated GIF/Video Placeholder]</p>
+                                <Image 
+                                    src={placeholderData.productShowcase1.src}
+                                    alt="Analytics Chart Mockup"
+                                    width={placeholderData.productShowcase1.width}
+                                    height={placeholderData.productShowcase1.height}
+                                    className="rounded-md"
+                                    data-ai-hint={placeholderData.productShowcase1.hint}
+                                />
+                            </div>
+                        </motion.div>
+                    </div>
+                </div>
+            </div>
+        </motion.section>
+
+        {/* Feature Breakdown Section */}
+        <motion.section 
+          id="features"
+          initial="hidden"
+          whileInView="visible"
+          viewport={{ once: true, amount: 0.3 }}
+          variants={sectionVariants}
+          className="container mx-auto px-4 py-20 sm:py-28"
+        >
+          <h2 className="mb-4 text-center text-3xl font-bold tracking-tighter sm:text-4xl md:text-5xl">Your All-in-One Growth Engine</h2>
+          <p className="mx-auto mb-12 max-w-2xl text-center text-lg text-muted-foreground md:text-xl">
+            From seamless ordering to powerful analytics and marketing, ServiZephyr is packed with features designed to help you succeed.
+          </p>
+          <Tabs defaultValue="ordering" className="w-full">
+            <TabsList className="grid w-full grid-cols-1 md:grid-cols-3">
+              <TabsTrigger value="ordering"><ShoppingCart className="mr-2 h-4 w-4" /> WhatsApp Ordering</TabsTrigger>
+              <TabsTrigger value="dashboard"><BarChart2 className="mr-2 h-4 w-4" /> Owner Command Center</TabsTrigger>
+              <TabsTrigger value="growth"><Rocket className="mr-2 h-4 w-4" /> Growth Toolkit</TabsTrigger>
+            </TabsList>
+            <TabsContent value="ordering" className="mt-8">
+               <Card>
+                <CardHeader>
+                  <CardTitle>Commission-Free Direct Orders</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4 text-muted-foreground">
+                  <p>Let customers order from a beautiful, interactive menu directly on WhatsApp. No apps, no logins, no friction.</p>
+                  <ul className="list-disc pl-5 space-y-2">
+                    <li><span className="font-semibold text-foreground">Live Interactive Menu:</span> Customers browse and add items to cart within WhatsApp.</li>
+                    <li><span className="font-semibold text-foreground">Integrated Payments:</span> Accept UPI, Cards, and Netbanking payments right in the chat.</li>
+                    <li><span className="font-semibold text-foreground">Automated Order Confirmations:</span> Keep customers updated without lifting a finger.</li>
+                  </ul>
+                </CardContent>
+              </Card>
+            </TabsContent>
+            <TabsContent value="dashboard" className="mt-8">
+              <Card>
+                <CardHeader>
+                  <CardTitle>Your Business at Your Fingertips</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4 text-muted-foreground">
+                  <p>Make data-driven decisions with a powerful dashboard that gives you a 360-degree view of your restaurant's performance.</p>
+                  <ul className="list-disc pl-5 space-y-2">
+                    <li><span className="font-semibold text-foreground">Real-time Sales Analytics:</span> Track your revenue, top-selling items, and busiest hours.</li>
+                    <li><span className="font-semibold text-foreground">Menu & Inventory Management:</span> Update your menu, change prices, or mark items "out of stock" instantly.</li>
+                    <li><span className="font-semibold text-foreground">Customer Hub (CRM):</span> See who your most loyal customers are and understand their ordering habits.</li>
+                  </ul>
+                </CardContent>
+              </Card>
+            </TabsContent>
+            <TabsContent value="growth" className="mt-8">
+              <Card>
+                <CardHeader>
+                  <CardTitle>Tools to Grow Your Brand</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4 text-muted-foreground">
+                  <p>Stop relying on aggregators for discovery. Use our built-in marketing tools to build your own brand and drive repeat business.</p>
+                  <ul className="list-disc pl-5 space-y-2">
+                    <li><span className="font-semibold text-foreground">WhatsApp Marketing:</span> Send promotions, new menu alerts, and festival offers to your customers (with their consent!).</li>
+                    <li><span className="font-semibold text-foreground">Customer Feedback & Reviews:</span> Automatically collect feedback after every order to improve your service.</li>
+                    <li><span className="font-semibold text-foreground">QR Code Generator:</span> Create a unique QR code for your tables or flyers that opens your WhatsApp menu.</li>
+                  </ul>
+                </CardContent>
+              </Card>
+            </TabsContent>
+          </Tabs>
+        </motion.section>
+
+        {/* Target Audience Section */}
+        <motion.section 
+          className="bg-card py-20 sm:py-28"
+          initial="hidden"
+          whileInView="visible"
+          viewport={{ once: true, amount: 0.3 }}
+          variants={sectionVariants}
+        >
+          <div className="container mx-auto px-4">
+            <h2 className="mb-12 text-center text-3xl font-bold tracking-tighter sm:text-4xl md:text-5xl">Built for Every Kind of Food Business</h2>
+            <div className="grid grid-cols-2 gap-8 md:grid-cols-4">
+              {[
+                { icon: <Store className="h-10 w-10 text-primary" />, name: 'QSRs' },
+                { icon: <Briefcase className="h-10 w-10 text-primary" />, name: 'Cloud Kitchens' },
+                { icon: <Soup className="h-10 w-10 text-primary" />, name: 'Restaurants' },
+                { icon: <Pizza className="h-10 w-10 text-primary" />, name: 'Cafes & Bakeries' },
+              ].map((item, i) => (
+                <motion.div key={item.name} custom={i} variants={cardVariants} className="flex flex-col items-center text-center">
+                  <div className="flex h-24 w-24 items-center justify-center rounded-full bg-background">
+                    {item.icon}
+                  </div>
+                  <h3 className="mt-4 text-xl font-bold">{item.name}</h3>
+                </motion.div>
+              ))}
+            </div>
+          </div>
+        </motion.section>
+
+        {/* Testimonials Section */}
+        <motion.section
+          className="py-20 sm:py-28"
+          initial="hidden"
+          whileInView="visible"
+          viewport={{ once: true, amount: 0.3 }}
+          variants={sectionVariants}
+        >
+          <h2 className="mb-12 text-center text-3xl font-bold tracking-tighter sm:text-4xl md:text-5xl">Don't Just Take Our Word for It</h2>
+          <div className="relative w-full overflow-hidden">
+            <div className="flex marquee">
+              {[...testimonials, ...testimonials].map((testimonial, index) => (
+                <Card key={index} className="mx-4 flex-shrink-0" style={{width: '350px'}}>
+                  <CardContent className="p-6 flex flex-col flex-grow h-full">
+                    <div className="flex mb-4">
+                      {[...Array(testimonial.rating)].map((_, i) => (
+                        <Star key={i} className="h-5 w-5 text-yellow-400 fill-yellow-400" />
+                      ))}
+                    </div>
+                    <p className="text-muted-foreground italic flex-grow">"{testimonial.quote}"</p>
+                    <div className="flex items-center mt-6">
+                      <Image
+                        src={testimonial.image.src}
+                        width={testimonial.image.width}
+                        height={testimonial.image.height}
+                        alt={testimonial.name}
+                        className="h-12 w-12 rounded-full border-2 border-primary"
+                        data-ai-hint={testimonial.image.hint}
+                      />
+                      <div className="ml-4">
+                        <p className="font-bold text-foreground">{testimonial.name}</p>
+                        <p className="text-sm text-muted-foreground">{testimonial.title}</p>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          </div>
+        </motion.section>
+
+
+        {/* Comparison Table Section */}
+        <motion.section 
+          className="bg-card py-20 sm:py-28"
+          initial="hidden"
+          whileInView="visible"
+          viewport={{ once: true, amount: 0.3 }}
+          variants={sectionVariants}
+        >
+          <div className="container mx-auto px-4">
+            <h2 className="mb-12 text-center text-3xl font-bold tracking-tighter sm:text-4xl md:text-5xl">The Choice is Clear</h2>
+            <div className="mx-auto max-w-4xl">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="w-[40%] text-lg">Feature</TableHead>
+                    <TableHead className="text-center text-lg text-primary font-bold">ServiZephyr</TableHead>
+                    <TableHead className="text-center text-lg">Food Aggregators</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {[
+                    { feature: "Platform Commission", servizephyr: "0%", aggregators: "18% - 30%" },
+                    { feature: "Customer Data Ownership", servizephyr: "You Own It", aggregators: "They Own It" },
+                    { feature: "Direct Marketing", servizephyr: "Yes (WhatsApp)", aggregators: "No" },
+                    { feature: "Menu Control & Pricing", servizephyr: "Full Control", aggregators: "Limited / Conditional" },
+                    { feature: "Payment Gateway Charges", servizephyr: "As per actuals", aggregators: "Included in commission" },
+                    { feature: "Brand Building", servizephyr: "Your Own Brand", aggregators: "On Their Platform" },
+                  ].map(item => (
+                    <TableRow key={item.feature}>
+                      <TableCell className="font-medium text-foreground">{item.feature}</TableCell>
+                      <TableCell className="text-center font-bold text-accent"><CheckCircle className="inline-block mr-2 h-5 w-5" />{item.servizephyr}</TableCell>
+                      <TableCell className="text-center text-muted-foreground">{item.aggregators}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          </div>
+        </motion.section>
+
+        {/* Pricing Section */}
+        <motion.section 
+          id="pricing"
+          initial="hidden"
+          whileInView="visible"
+          viewport={{ once: true, amount: 0.3 }}
+          variants={sectionVariants}
+          className="py-20 sm:py-28"
+        >
+          <div className="container mx-auto flex flex-col items-center px-4">
+            <h2 className="text-center text-3xl font-bold tracking-tighter sm:text-4xl md:text-5xl">Simple & Transparent Pricing</h2>
+            <div className="mt-12 w-full max-w-md rounded-2xl border-2 border-primary bg-card p-8 shadow-2xl shadow-primary/20 transition-transform duration-300 hover:scale-105">
+              <h3 className="text-3xl font-bold text-center">Pro Plan</h3>
+              <p className="mt-4 text-center text-5xl font-bold">₹999 <span className="text-lg font-normal text-muted-foreground">/ month</span></p>
+              <ul className="mt-8 space-y-4">
+                <li className="flex items-center"><CheckCircle className="mr-2 h-5 w-5 text-accent" /> Unlimited Orders</li>
+                <li className="flex items-center"><CheckCircle className="mr-2 h-5 w-5 text-accent" /> WhatsApp Bot</li>
+                <li className="flex items-center"><CheckCircle className="mr-2 h-5 w-5 text-accent" /> Owner Dashboard</li>
+                <li className="flex items-center"><CheckCircle className="mr-2 h-5 w-5 text-accent" /> Menu Management</li>
+                <li className="flex items-center"><CheckCircle className="mr-2 h-5 w-5 text-accent" /> Growth Toolkit</li>
+                 <li className="flex items-center"><CheckCircle className="mr-2 h-5 w-5 text-accent" /> Customer Hub (CRM)</li>
+              </ul>
+              <button className="btn-shine mt-8 inline-flex h-12 w-full items-center justify-center rounded-md bg-gradient-to-r from-primary to-accent text-lg font-bold text-primary-foreground shadow-lg shadow-accent/50 transition-transform duration-300 hover:scale-105">
+                Choose Plan
+              </button>
+            </div>
+          </div>
+        </motion.section>
+
+        {/* FAQ Section */}
+        <motion.section 
+          id="faq"
+          initial="hidden"
+          whileInView="visible"
+          viewport={{ once: true, amount: 0.3 }}
+          variants={sectionVariants}
+          className="container mx-auto px-4 py-20 sm:py-28"
+        >
+          <h2 className="mb-12 text-center text-3xl font-bold tracking-tighter sm:text-4xl md:text-5xl">Frequently Asked Questions</h2>
+          <div className="mx-auto max-w-3xl">
+            <Accordion type="single" collapsible className="w-full">
+              <AccordionItem value="item-1">
+                <AccordionTrigger>Do I need any technical knowledge?</AccordionTrigger>
+                <AccordionContent>
+                  Not at all! ServiZephyr is designed to be extremely easy to use. Our dashboard is completely user-friendly. If you can use WhatsApp, you can use ServiZephyr.
+                </AccordionContent>
+              </AccordionItem>
+              <AccordionItem value="item-2">
+                <AccordionTrigger>How long does the setup take?</AccordionTrigger>
+                <AccordionContent>
+                  The entire setup takes no more than 5-10 minutes. You just need to sign up, scan a QR code to connect your WhatsApp number, and your system will be live.
+                </AccordionContent>
+              </AccordionItem>
+              <AccordionItem value="item-3">
+                <AccordionTrigger>Can I easily change my menu?</AccordionTrigger>
+                <AccordionContent>
+                  Yes, absolutely. From your dashboard, you can add new items, change their prices, or mark an item as "out of stock" anytime, from anywhere. Everything updates in real-time.
+                </AccordionContent>
+              </AccordionItem>
+              <AccordionItem value="item-4">
+                <AccordionTrigger>Will I get customer support?</AccordionTrigger>
+                <AccordionContent>
+                  Yes. We provide dedicated WhatsApp and email support to all our Pro plan users to help you with any issues or questions you might have.
+                </AccordionContent>
+              </AccordionItem>
+            </Accordion>
+          </div>
+        </motion.section>
+
+      </main>
+    </div>
+    <AuthModal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} />
+    </>
+  )
+}
