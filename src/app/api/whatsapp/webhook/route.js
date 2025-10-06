@@ -95,26 +95,19 @@ export async function POST(request) {
         const usersRef = firestore.collection('users');
         const userQuery = await usersRef.where('phone', '==', from).limit(1).get();
 
-        let reply_body = '';
+        let welcomeMessage = '';
 
         if (!userQuery.empty) {
             // User is registered and exists in the master 'users' list
             const user = userQuery.docs[0].data();
-            reply_body = `Welcome back to ${restaurantName}, ${user.name}! 🥳\n\nWhat would you like to order today? You can view our menu here: https://servizephyr.com/order/${restaurantId}`;
+            welcomeMessage = `Welcome back to ${restaurantName}, ${user.name}! 🥳`;
         } else {
-            // User is not in master list, check for an unclaimed profile using the 10-digit number
-            const unclaimedProfileRef = firestore.collection('unclaimed_profiles').doc(from);
-            const unclaimedProfileDoc = await unclaimedProfileRef.get();
-
-            if (unclaimedProfileDoc.exists) {
-                // Unclaimed profile exists, means they registered via a form from another restaurant
-                 reply_body = `Welcome back, ${unclaimedProfileDoc.data().name}! To complete your signup and start ordering from ${restaurantName}, please click here: https://servizephyr.com/complete-profile?phone=${from}`;
-            } else {
-                // Brand new customer, never seen before.
-                const registrationUrl = `https://servizephyr.com/customer-form?restaurantId=${restaurantId}&phone=${from}`;
-                reply_body = `Welcome to ${restaurantName}! 😃\n\nTo get started, please quickly tell us your name and address by clicking the link below:\n\n${registrationUrl}\n\nWe only need this once!`;
-            }
+            // Brand new customer or unclaimed profile.
+            welcomeMessage = `Welcome to ${restaurantName}! 😃`;
         }
+
+        const menuUrl = `https://servizephyr.com/order/${restaurantId}?phone=${from}`;
+        const reply_body = `${welcomeMessage}\n\nWhat would you like to order today? You can view our full menu and place your order by clicking the link below:\n\n${menuUrl}`;
         
         // Send the reply message to the original number with country code
         await sendMessage(fromWithCode, reply_body);

@@ -1,13 +1,14 @@
 
 'use client';
 
-import React, { useState, useEffect, useRef } from 'react';
-import { useParams, useRouter } from 'next/navigation';
+import React, { useState, useEffect, useRef, Suspense } from 'react';
+import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ArrowLeft, LayoutDashboard, MessageCircle, ShoppingCart, Utensils, Pizza, Soup, Drumstick, Salad, CakeSlice, GlassWater } from 'lucide-react';
+import { ArrowLeft, LayoutDashboard, MessageCircle, ShoppingCart, Utensils, Pizza, Soup, Drumstick, Salad, CakeSlice, GlassWater, Plus, Minus, X, Home, User, MapPin } from 'lucide-react';
 import Image from 'next/image';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose } from "@/components/ui/dialog";
 
 // --- MOCK DATA (will be replaced by API call) ---
 const mockMenuData = {
@@ -33,6 +34,13 @@ const mockMenuData = {
     },
 };
 
+const mockExistingUser = {
+  name: 'Ashwani Kumar',
+  addresses: [
+    { id: 'addr1', full: '123, ABC Society, Near Park, Pune' },
+    { id: 'addr2', full: 'Work, Tower 4, Hinjewadi, Pune' },
+  ]
+};
 
 // --- Sub-components for clean structure ---
 
@@ -70,25 +78,183 @@ const MenuItemCard = ({ item, onAddToCart }) => {
 };
 
 
-const OrderPage = () => {
+const CartDrawer = ({ cart, onUpdateCart, onClose }) => {
+    const subtotal = cart.reduce((sum, item) => sum + item.price * item.quantity, 0);
+
+    return (
+        <motion.div 
+            initial={{ y: "100%" }}
+            animate={{ y: 0 }}
+            exit={{ y: "100%" }}
+            transition={{ type: "spring", stiffness: 300, damping: 30 }}
+            className="fixed bottom-0 left-0 right-0 h-[85vh] bg-gray-900 border-t border-gray-700 rounded-t-2xl z-40 flex flex-col"
+        >
+            <div className="p-4 border-b border-gray-700 flex justify-between items-center">
+                <h2 className="text-xl font-bold">Your Order</h2>
+                <Button variant="ghost" size="icon" onClick={onClose}><X /></Button>
+            </div>
+
+            <div className="flex-grow p-4 overflow-y-auto">
+                {cart.length === 0 ? (
+                    <div className="h-full flex items-center justify-center text-gray-500">Your cart is empty</div>
+                ) : (
+                    <div className="space-y-3">
+                        {cart.map(item => (
+                            <div key={item.id} className="flex items-center gap-4 bg-gray-800 p-3 rounded-lg">
+                                <p className="flex-grow font-semibold text-white">{item.name}</p>
+                                <div className="flex items-center gap-2">
+                                    <Button size="icon" variant="outline" className="h-7 w-7" onClick={() => onUpdateCart(item, 'decrement')}>-</Button>
+                                    <span className="font-bold w-5 text-center">{item.quantity}</span>
+                                    <Button size="icon" variant="outline" className="h-7 w-7" onClick={() => onUpdateCart(item, 'increment')}>+</Button>
+                                </div>
+                                <p className="w-20 text-right font-bold">₹{item.price * item.quantity}</p>
+                            </div>
+                        ))}
+                    </div>
+                )}
+            </div>
+
+            {cart.length > 0 && (
+                <div className="p-4 border-t border-gray-700 bg-gray-900">
+                    <div className="flex justify-between items-center mb-4 text-lg">
+                        <span className="font-semibold text-gray-300">Subtotal:</span>
+                        <span className="font-bold text-white">₹{subtotal}</span>
+                    </div>
+                </div>
+            )}
+        </motion.div>
+    )
+};
+
+
+const CheckoutModal = ({ isOpen, onClose, restaurantId, phone, cart }) => {
+    // In a real app, this would be fetched from a backend
+    const [isExistingUser] = useState(false); // mock this for now
+    const [name, setName] = useState('');
+    const [address, setAddress] = useState('');
+    const [selectedAddress, setSelectedAddress] = useState(null);
+    const [error, setError] = useState('');
+    const [loading, setLoading] = useState(false);
+
+    const handlePlaceOrder = async () => {
+        setError('');
+        
+        if (isExistingUser) {
+            if (!selectedAddress) {
+                setError('Please select a delivery address.');
+                return;
+            }
+        } else {
+            if (!name.trim() || !address.trim()) {
+                setError('Please fill in your name and address.');
+                return;
+            }
+        }
+        
+        setLoading(true);
+        // Simulate API call to place order and register user if new
+        try {
+            const payload = {
+                name: isExistingUser ? mockExistingUser.name : name,
+                address: isExistingUser ? selectedAddress.full : address,
+                phone,
+                restaurantId,
+                items: cart
+            };
+
+            const res = await fetch('/api/customer/register', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.message || "Failed to place order.");
+
+            alert("Order Placed Successfully!");
+            onClose(); // Close modal on success
+            window.location.reload(); // Reset state for now
+            
+        } catch (err) {
+            setError(err.message);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    return (
+        <Dialog open={isOpen} onOpenChange={onClose}>
+            <DialogContent className="bg-gray-900 border-gray-700 text-white">
+                <DialogHeader>
+                    <DialogTitle className="text-2xl">Confirm Your Details</DialogTitle>
+                    <DialogDescription>Almost there! Just confirm your details to place the order.</DialogDescription>
+                </DialogHeader>
+
+                <div className="py-4 space-y-4">
+                    {isExistingUser ? (
+                        <div>
+                            <h3 className="font-semibold mb-2">Select a Delivery Address</h3>
+                            <div className="space-y-2">
+                                {mockExistingUser.addresses.map(addr => (
+                                    <div key={addr.id} onClick={() => setSelectedAddress(addr)} className={cn("p-3 rounded-lg border-2 cursor-pointer transition-colors", selectedAddress?.id === addr.id ? 'border-indigo-500 bg-indigo-500/10' : 'border-gray-600 hover:bg-gray-700')}>
+                                        <p>{addr.full}</p>
+                                    </div>
+                                ))}
+                            </div>
+                            <Button variant="link" className="mt-2 p-0 h-auto">+ Add New Address</Button>
+                        </div>
+                    ) : (
+                        <div className="space-y-4">
+                            <div>
+                                <label className="block text-sm font-medium text-gray-300 mb-1">Full Name</label>
+                                <div className="relative">
+                                  <User className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-400" />
+                                  <input type="text" value={name} onChange={(e) => setName(e.target.value)} required className="w-full pl-10 pr-4 py-2 rounded-md bg-gray-800 border border-gray-600" placeholder="Enter your full name" />
+                                </div>
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium text-gray-300 mb-1">Delivery Address</label>
+                                <div className="relative">
+                                  <Home className="absolute left-3 top-3 h-5 w-5 text-gray-400" />
+                                  <textarea value={address} onChange={(e) => setAddress(e.target.value)} required rows={3} className="w-full pl-10 pr-4 py-2 rounded-md bg-gray-800 border border-gray-600" placeholder="Enter your full delivery address" />
+                                </div>
+                            </div>
+                        </div>
+                    )}
+                    {error && <p className="text-red-400 text-sm text-center">{error}</p>}
+                </div>
+
+                <DialogFooter>
+                    <DialogClose asChild><Button variant="secondary" disabled={loading}>Cancel</Button></DialogClose>
+                    <Button onClick={handlePlaceOrder} className="bg-indigo-600 hover:bg-indigo-700" disabled={loading}>
+                        {loading ? 'Placing Order...' : 'Confirm & Place Order'}
+                    </Button>
+                </DialogFooter>
+            </DialogContent>
+        </Dialog>
+    );
+}
+
+const OrderPageInternal = () => {
     const params = useParams();
     const router = useRouter();
+    const searchParams = useSearchParams();
     const { restaurantId } = params;
+    const phone = searchParams.get('phone');
 
     const [menu, setMenu] = useState(null);
     const [loading, setLoading] = useState(true);
+    const [cart, setCart] = useState([]);
+    const [isCartOpen, setIsCartOpen] = useState(false);
+    const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
     const [activeCategory, setActiveCategory] = useState(null);
     const sectionRefs = useRef({});
 
-    // TODO: Fetch real data based on restaurantId
     useEffect(() => {
         setLoading(true);
-        // Simulate API call
         setTimeout(() => {
             setMenu(mockMenuData);
             const firstCategory = Object.keys(mockMenuData.categories)[0];
             setActiveCategory(firstCategory);
-            // Initialize refs for each section
             Object.keys(mockMenuData.categories).forEach(key => {
                 sectionRefs.current[key] = React.createRef();
             });
@@ -97,24 +263,59 @@ const OrderPage = () => {
     }, [restaurantId]);
 
     const handleAddToCart = (item) => {
-        // TODO: Implement cart logic
-        console.log("Added to cart:", item.name);
+        setCart(prevCart => {
+            const existingItem = prevCart.find(cartItem => cartItem.id === item.id);
+            if (existingItem) {
+                return prevCart.map(cartItem =>
+                    cartItem.id === item.id ? { ...cartItem, quantity: cartItem.quantity + 1 } : cartItem
+                );
+            }
+            return [...prevCart, { ...item, quantity: 1 }];
+        });
+    };
+    
+    const handleUpdateCart = (item, action) => {
+        setCart(prevCart => {
+            const existingItem = prevCart.find(cartItem => cartItem.id === item.id);
+            if (!existingItem) return prevCart;
+
+            if (action === 'increment') {
+                 return prevCart.map(cartItem =>
+                    cartItem.id === item.id ? { ...cartItem, quantity: cartItem.quantity + 1 } : cartItem
+                );
+            }
+            if (action === 'decrement') {
+                if (existingItem.quantity === 1) {
+                    return prevCart.filter(cartItem => cartItem.id !== item.id);
+                }
+                return prevCart.map(cartItem =>
+                    cartItem.id === item.id ? { ...cartItem, quantity: cartItem.quantity - 1 } : cartItem
+                );
+            }
+            return prevCart;
+        });
     };
 
     const handleCategoryClick = (key) => {
         setActiveCategory(key);
         const element = document.getElementById(key);
         if (element) {
-            const headerOffset = 80; // height of sticky header
+            const headerOffset = 140; // height of sticky headers
             const elementPosition = element.getBoundingClientRect().top;
             const offsetPosition = elementPosition + window.pageYOffset - headerOffset;
-
-            window.scrollTo({
-                top: offsetPosition,
-                behavior: "smooth"
-            });
+            window.scrollTo({ top: offsetPosition, behavior: "smooth" });
         }
     }
+
+    const totalCartItems = cart.reduce((sum, item) => sum + item.quantity, 0);
+
+    const handleViewCart = () => {
+        if (totalCartItems === 0) {
+            alert("Your cart is empty. Please add items to proceed.");
+            return;
+        }
+        setIsCheckoutOpen(true);
+    };
 
     if (loading) {
         return (
@@ -134,25 +335,17 @@ const OrderPage = () => {
     
     return (
         <div className="min-h-screen bg-gray-900 text-white">
-            {/* Header */}
+            <CheckoutModal isOpen={isCheckoutOpen} onClose={() => setIsCheckoutOpen(false)} restaurantId={restaurantId} phone={phone} cart={cart} />
+
             <header className="sticky top-0 z-20 bg-gray-900/80 backdrop-blur-lg border-b border-gray-700">
                 <div className="container mx-auto px-4 py-3 flex justify-between items-center">
                     <div>
                         <p className="text-xs text-gray-400">Ordering from</p>
                         <h1 className="text-xl font-bold">{menu.restaurantName}</h1>
                     </div>
-                    <div className="flex items-center gap-2">
-                         <Button variant="ghost" size="sm" onClick={() => router.push('/owner-dashboard')}>
-                            <LayoutDashboard className="mr-2 h-4 w-4"/> Dashboard
-                        </Button>
-                        <Button variant="ghost" size="sm" onClick={() => router.push('/')}>
-                            <MessageCircle className="mr-2 h-4 w-4"/> Back to Bot
-                        </Button>
-                    </div>
                 </div>
             </header>
             
-            {/* Category Chips - mobile friendly */}
             <div className="sticky top-[69px] z-20 bg-gray-900/80 backdrop-blur-lg py-2 overflow-x-auto">
                  <div className="container mx-auto px-4 flex gap-2">
                      {Object.entries(menu.categories).map(([key, { title, icon: Icon }]) => (
@@ -175,75 +368,41 @@ const OrderPage = () => {
 
 
             <div className="container mx-auto px-4 mt-6">
-                <div className="grid grid-cols-1 md:grid-cols-12 gap-8">
-                    
-                    {/* Left: Categories (Hidden on mobile, kept for larger screens logic) */}
-                    <aside className="hidden md:block md:col-span-3 lg:col-span-2">
-                        <nav className="sticky top-24">
-                            <h2 className="text-lg font-semibold mb-4">Menu</h2>
-                            <ul className="space-y-2">
-                                {Object.entries(menu.categories).map(([key, { title, icon: Icon }]) => (
-                                    <li key={key}>
-                                        <button 
-                                            onClick={() => handleCategoryClick(key)}
-                                            className={cn(
-                                                "w-full flex items-center gap-3 p-3 rounded-lg text-sm transition-colors text-left",
-                                                activeCategory === key 
-                                                ? "bg-indigo-500/20 text-indigo-300 font-semibold" 
-                                                : "text-gray-300 hover:bg-gray-800"
-                                            )}
-                                        >
-                                            <Icon size={20} />
-                                            {title}
-                                        </button>
-                                    </li>
-                                ))}
-                            </ul>
-                        </nav>
-                    </aside>
-
-                    {/* Middle: Menu Items */}
-                    <main className="md:col-span-9 lg:col-span-7">
-                        <div className="space-y-10">
-                            {Object.entries(menu.categories).map(([key, { title, items }]) => (
-                                <section id={key} key={key} className="pt-2 scroll-mt-20">
-                                    <h3 className="text-2xl font-bold mb-4">{title}</h3>
-                                    <div className="grid grid-cols-1 gap-4">
-                                        {items.map(item => (
-                                            <MenuItemCard key={item.id} item={item} onAddToCart={handleAddToCart} />
-                                        ))}
-                                    </div>
-                                </section>
-                            ))}
-                        </div>
-                    </main>
-
-                    {/* Right: Cart (Placeholder) */}
-                    <aside className="hidden lg:block md:col-span-3">
-                         <div className="sticky top-24 bg-gray-800 rounded-xl p-5 border border-gray-700">
-                             <div className="flex items-center justify-between mb-4">
-                                <h2 className="text-lg font-bold">Your Order</h2>
-                                <ShoppingCart size={20} />
-                             </div>
-                             <div className="h-48 flex items-center justify-center text-gray-500">
-                                 <p>Your cart is empty</p>
-                             </div>
-                             <Button disabled className="w-full mt-4">View Cart</Button>
-                         </div>
-                    </aside>
-                </div>
+                <main>
+                    <div className="space-y-10">
+                        {Object.entries(menu.categories).map(([key, { title, items }]) => (
+                            <section id={key} key={key} className="pt-2 scroll-mt-20">
+                                <h3 className="text-2xl font-bold mb-4">{title}</h3>
+                                <div className="grid grid-cols-1 gap-4">
+                                    {items.map(item => (
+                                        <MenuItemCard key={item.id} item={item} onAddToCart={handleAddToCart} />
+                                    ))}
+                                </div>
+                            </section>
+                        ))}
+                    </div>
+                </main>
             </div>
 
-             {/* Sticky Footer Cart for Mobile */}
-             <footer className="sticky bottom-0 z-20 bg-gray-900/80 backdrop-blur-lg border-t border-gray-700 p-4 lg:hidden">
-                <Button className="w-full bg-indigo-600 hover:bg-indigo-700">
-                    <ShoppingCart className="mr-2 h-5 w-5"/> View Your Cart (0)
+            <AnimatePresence>
+                {isCartOpen && <CartDrawer cart={cart} onUpdateCart={handleUpdateCart} onClose={() => setIsCartOpen(false)} />}
+            </AnimatePresence>
+
+             <footer className="sticky bottom-0 z-30 bg-gray-900/80 backdrop-blur-lg border-t border-gray-700 p-4">
+                <Button onClick={handleViewCart} className="w-full bg-indigo-600 hover:bg-indigo-700 h-12 text-lg font-bold">
+                    <ShoppingCart className="mr-2 h-5 w-5"/> 
+                    {totalCartItems > 0 ? `View Cart (${totalCartItems})` : 'View Cart'}
                 </Button>
             </footer>
         </div>
     );
 };
 
-export default OrderPage;
+// This wrapper component is needed to use useSearchParams
+const OrderPage = () => (
+    <Suspense fallback={<div className="min-h-screen bg-gray-900 flex items-center justify-center"><div className="animate-spin rounded-full h-16 w-16 border-b-2 border-indigo-500"></div></div>}>
+        <OrderPageInternal />
+    </Suspense>
+);
 
-    
+export default OrderPage;
