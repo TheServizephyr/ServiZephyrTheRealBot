@@ -20,7 +20,7 @@ function getServiceAccount() {
   if (process.env.FIREBASE_PRIVATE_KEY && process.env.FIREBASE_CLIENT_EMAIL) {
     console.warn("[firebase-admin] Using individual Firebase environment variables. Base64 method is recommended for production.");
     return {
-      projectId: process.env.FIREBASE_PROJECT_ID || 'studio-6552995429-8bffe',
+      projectId: process.env.FIREBASE_PROJECT_ID || 'firebase-studio-1758486484312',
       privateKey: process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, '\n'),
       clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
     };
