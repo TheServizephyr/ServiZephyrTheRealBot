@@ -1,16 +1,20 @@
 
 'use client';
 
-import React, { useState, useEffect, Suspense, useRef } from 'react';
+import React, { useState, useEffect, Suspense, useMemo } from 'react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Utensils, Plus, Minus, X, Home, User, Edit2, ShoppingCart, Star, CookingPot } from 'lucide-react';
+import { Utensils, Plus, Minus, X, Home, User, Edit2, ShoppingCart, Star, CookingPot, BookOpen, Check, SlidersHorizontal, ArrowUpDown } from 'lucide-react';
 import Image from 'next/image';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose } from "@/components/ui/dialog";
 import { getFirestore, doc, getDoc, collection, query, where, getDocs, limit } from 'firebase/firestore';
 import { auth } from '@/lib/firebase';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Label } from '@/components/ui/label';
+import { Switch } from '@/components/ui/switch';
+
 
 const db = getFirestore(auth.app);
 
@@ -293,41 +297,54 @@ const CheckoutModal = ({ isOpen, onClose, restaurantId, phone, cart, notes }) =>
     );
 }
 
-const CategoryNav = ({ categories, onCategoryClick }) => {
-    return (
-        <div className="sticky top-[65px] z-10 bg-background/95 backdrop-blur-sm py-2">
-             <div className="container mx-auto px-4">
-                <div className="flex gap-3 overflow-x-auto pb-2 -mb-2">
-                    {categories.map(category => (
-                        <Button 
-                            key={category.key} 
-                            variant="outline" 
-                            className="whitespace-nowrap rounded-full bg-card hover:bg-primary/10 hover:text-primary border-border"
-                            onClick={() => onCategoryClick(category.key)}
-                        >
-                            {category.title}
-                        </Button>
-                    ))}
-                </div>
-            </div>
+const MenuBrowserModal = ({ isOpen, onClose, categories, onCategoryClick }) => {
+  return (
+    <Dialog open={isOpen} onOpenChange={onClose}>
+      <DialogContent className="bg-background border-border text-foreground">
+        <DialogHeader>
+          <DialogTitle className="text-2xl">Browse Menu</DialogTitle>
+          <DialogDescription>Quickly jump to any category.</DialogDescription>
+        </DialogHeader>
+        <div className="py-4 grid grid-cols-2 gap-4 max-h-[60vh] overflow-y-auto">
+          {categories.map(category => (
+            <button
+              key={category.key}
+              onClick={() => {
+                onCategoryClick(category.key);
+                onClose();
+              }}
+              className="p-4 rounded-lg text-left bg-card hover:bg-muted border border-border transition-colors"
+            >
+              <h4 className="font-semibold text-foreground">{category.title}</h4>
+              <p className="text-sm text-muted-foreground">{category.count} items</p>
+            </button>
+          ))}
         </div>
-    )
-}
+      </DialogContent>
+    </Dialog>
+  );
+};
+
 
 const OrderPageInternal = () => {
     const params = useParams();
     const searchParams = useSearchParams();
     const { restaurantId } = params;
     const phone = searchParams.get('phone');
-    const mainContainerRef = useRef(null);
 
     const [restaurantName, setRestaurantName] = useState('');
-    const [menu, setMenu] = useState({});
+    const [rawMenu, setRawMenu] = useState({});
     const [loading, setLoading] = useState(true);
     const [cart, setCart] = useState([]);
     const [isCartOpen, setIsCartOpen] = useState(false);
     const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
+    const [isMenuBrowserOpen, setIsMenuBrowserOpen] = useState(false);
     const [notes, setNotes] = useState("");
+    
+    // Filters and Sorting State
+    const [sortBy, setSortBy] = useState('default'); // 'default', 'price-asc', 'price-desc'
+    const [vegOnly, setVegOnly] = useState(false);
+
 
     useEffect(() => {
         const fetchMenuData = async () => {
@@ -341,7 +358,7 @@ const OrderPageInternal = () => {
                 const data = await res.json();
                 
                 setRestaurantName(data.restaurantName);
-                setMenu(data.menu);
+                setRawMenu(data.menu);
             } catch (error) {
                 console.error("Failed to fetch menu:", error);
                 setRestaurantName('');
@@ -351,6 +368,31 @@ const OrderPageInternal = () => {
         };
         fetchMenuData();
     }, [restaurantId]);
+    
+    const processedMenu = useMemo(() => {
+        let newMenu = JSON.parse(JSON.stringify(rawMenu)); // Deep copy
+
+        for (const category in newMenu) {
+            let items = newMenu[category];
+
+            // 1. Filter by Veg/Non-Veg
+            if (vegOnly) {
+                items = items.filter(item => item.isVeg);
+            }
+
+            // 2. Sort items
+            if (sortBy === 'price-asc') {
+                items.sort((a, b) => a.fullPrice - b.fullPrice);
+            } else if (sortBy === 'price-desc') {
+                items.sort((a, b) => b.fullPrice - a.fullPrice);
+            }
+            // 'default' sort is by 'order' property, which is already handled by backend.
+            
+            newMenu[category] = items;
+        }
+        return newMenu;
+    }, [rawMenu, sortBy, vegOnly]);
+
 
     const handleIncrement = (item) => {
         setCart(prevCart => {
@@ -386,12 +428,13 @@ const OrderPageInternal = () => {
     const totalCartItems = cart.reduce((sum, item) => sum + item.quantity, 0);
     const subtotal = cart.reduce((sum, item) => sum + item.fullPrice * item.quantity, 0);
     
-    const menuCategories = Object.keys(menu)
-        .filter(key => menu[key] && menu[key].length > 0)
+    const menuCategories = Object.keys(processedMenu)
         .map(key => ({
             key,
-            title: key.charAt(0).toUpperCase() + key.slice(1).replace(/-/g, ' ')
-        }));
+            title: key.charAt(0).toUpperCase() + key.slice(1).replace(/-/g, ' '),
+            count: (processedMenu[key] || []).length
+        }))
+        .filter(category => category.count > 0);
 
     const handleCategoryClick = (categoryId) => {
         const section = document.getElementById(categoryId);
@@ -401,7 +444,6 @@ const OrderPageInternal = () => {
             window.scrollTo({top: y, behavior: 'smooth'});
         }
     }
-
 
     const handleCheckout = () => {
         setIsCartOpen(false);
@@ -427,8 +469,10 @@ const OrderPageInternal = () => {
     }
     
     return (
-        <div ref={mainContainerRef} className="min-h-screen bg-background text-foreground">
+        <div className="min-h-screen bg-background text-foreground">
             <CheckoutModal isOpen={isCheckoutOpen} onClose={() => setIsCheckoutOpen(false)} restaurantId={restaurantId} phone={phone} cart={cart} notes={notes} />
+            <MenuBrowserModal isOpen={isMenuBrowserOpen} onClose={() => setIsMenuBrowserOpen(false)} categories={menuCategories} onCategoryClick={handleCategoryClick} />
+            
             <AnimatePresence>
                 {isCartOpen && <motion.div initial={{opacity: 0}} animate={{opacity: 1}} exit={{opacity: 0}} className="fixed inset-0 bg-black/60 z-30" onClick={() => setIsCartOpen(false)} />}
                 {isCartOpen && <CartDrawer cart={cart} onUpdateCart={handleCartUpdate} onClose={() => setIsCartOpen(false)} onCheckout={handleCheckout} notes={notes} setNotes={setNotes} />}
@@ -445,8 +489,71 @@ const OrderPageInternal = () => {
                     </div>
                 </div>
             </header>
-            
-            <CategoryNav categories={menuCategories} onCategoryClick={handleCategoryClick} />
+
+            {/* Sort and Filter Bar */}
+            <div className="sticky top-[65px] z-10 bg-background/95 backdrop-blur-sm py-2 border-b border-border">
+                <div className="container mx-auto px-4 flex justify-between items-center">
+                    <Popover>
+                        <PopoverTrigger asChild>
+                           <Button variant="outline" className="flex items-center gap-2">
+                                <ArrowUpDown size={16} /> Sort
+                            </Button>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-56">
+                            <div className="grid gap-4">
+                                <div className="space-y-2">
+                                    <h4 className="font-medium leading-none">Sort by</h4>
+                                    <p className="text-sm text-muted-foreground">Sort dishes by price.</p>
+                                </div>
+                                <div className="grid gap-2">
+                                    <div className="grid grid-cols-3 items-center gap-4">
+                                        <Label htmlFor="sort-default">Default</Label>
+                                        <div className="col-span-2">
+                                            <Switch id="sort-default" checked={sortBy === 'default'} onCheckedChange={() => setSortBy('default')} />
+                                        </div>
+                                    </div>
+                                    <div className="grid grid-cols-3 items-center gap-4">
+                                        <Label htmlFor="sort-asc">Price: Low to High</Label>
+                                        <div className="col-span-2">
+                                            <Switch id="sort-asc" checked={sortBy === 'price-asc'} onCheckedChange={() => setSortBy('price-asc')} />
+                                        </div>
+                                    </div>
+                                    <div className="grid grid-cols-3 items-center gap-4">
+                                        <Label htmlFor="sort-desc">Price: High to Low</Label>
+                                        <div className="col-span-2">
+                                            <Switch id="sort-desc" checked={sortBy === 'price-desc'} onCheckedChange={() => setSortBy('price-desc')} />
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </PopoverContent>
+                    </Popover>
+
+                    <Popover>
+                        <PopoverTrigger asChild>
+                            <Button variant="outline" className="flex items-center gap-2">
+                                <SlidersHorizontal size={16} /> Filter
+                            </Button>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-56">
+                            <div className="grid gap-4">
+                                <div className="space-y-2">
+                                    <h4 className="font-medium leading-none">Filter</h4>
+                                    <p className="text-sm text-muted-foreground">Filter by dietary preference.</p>
+                                </div>
+                                <div className="grid gap-2">
+                                    <div className="grid grid-cols-3 items-center gap-4">
+                                        <Label htmlFor="veg-only">Veg Only</Label>
+                                        <div className="col-span-2">
+                                            <Switch id="veg-only" checked={vegOnly} onCheckedChange={setVegOnly} />
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </PopoverContent>
+                    </Popover>
+                </div>
+            </div>
 
             <div className="container mx-auto px-4 mt-6 pb-32">
                 <main>
@@ -456,7 +563,7 @@ const OrderPageInternal = () => {
                                 <section id={key} key={key} className="scroll-mt-24">
                                     <h3 className="text-2xl font-bold mb-4 flex items-center gap-3"><Utensils /> {title}</h3>
                                     <div className="grid grid-cols-1 gap-4">
-                                        {menu[key].map(item => {
+                                        {processedMenu[key].map(item => {
                                             const cartItem = cart.find(ci => ci.id === item.id);
                                             return (
                                                 <MenuItemCard 
@@ -477,23 +584,30 @@ const OrderPageInternal = () => {
             </div>
 
             <AnimatePresence>
-              {totalCartItems > 0 && (
-                <motion.footer 
-                    className="fixed bottom-0 z-30 w-full p-4"
-                    initial={{ y: 100 }}
-                    animate={{ y: 0 }}
-                    exit={{ y: 100 }}
-                    transition={{ type: "spring", stiffness: 300, damping: 30 }}
-                >
-                    <Button onClick={() => setIsCartOpen(true)} className="w-full bg-gradient-to-r from-primary to-accent h-14 text-lg font-bold rounded-xl shadow-lg shadow-primary/30 flex justify-between items-center text-primary-foreground">
-                        <div className="flex items-center gap-2">
-                           <ShoppingCart className="h-6 w-6"/> 
-                           <span>{totalCartItems} {totalCartItems > 1 ? 'Items' : 'Item'}</span>
-                        </div>
-                        <span>View Cart | ₹{subtotal}</span>
-                    </Button>
-                </motion.footer>
-              )}
+                {totalCartItems > 0 && (
+                    <motion.footer 
+                        className="fixed bottom-0 z-30 w-full p-4 flex justify-between items-center"
+                        initial={{ y: 100 }}
+                        animate={{ y: 0 }}
+                        exit={{ y: 100 }}
+                        transition={{ type: "spring", stiffness: 300, damping: 30 }}
+                    >
+                         <Button
+                            onClick={() => setIsMenuBrowserOpen(true)}
+                            className="bg-card text-foreground h-14 rounded-xl shadow-lg flex items-center gap-2 border border-border"
+                        >
+                            <BookOpen size={20} />
+                            Browse Menu
+                        </Button>
+                        <Button onClick={() => setIsCartOpen(true)} className="bg-gradient-to-r from-primary to-accent h-14 text-lg font-bold rounded-xl shadow-lg shadow-primary/30 flex justify-between items-center text-primary-foreground flex-grow ml-4">
+                            <div className="flex items-center gap-2">
+                               <ShoppingCart className="h-6 w-6"/> 
+                               <span>{totalCartItems} {totalCartItems > 1 ? 'Items' : 'Item'}</span>
+                            </div>
+                            <span>View Cart | ₹{subtotal}</span>
+                        </Button>
+                    </motion.footer>
+                )}
             </AnimatePresence>
         </div>
     );
@@ -506,3 +620,5 @@ const OrderPage = () => (
 );
 
 export default OrderPage;
+
+    
