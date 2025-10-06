@@ -4,7 +4,7 @@
 
 import { useState, useMemo, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Tag, PlusCircle, Filter, ArrowDownUp, Edit, Trash2, Calendar as CalendarIcon, Wand2, Ticket, IndianRupee, Percent, CheckCircle, XCircle } from 'lucide-react';
+import { Tag, PlusCircle, Filter, ArrowDownUp, Edit, Trash2, Calendar as CalendarIcon, Wand2, Ticket, IndianRupee, Percent, CheckCircle, XCircle, Truck } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose } from "@/components/ui/dialog";
 import { Label } from '@/components/ui/label';
@@ -56,7 +56,14 @@ const CouponModal = ({ isOpen, setIsOpen, onSave, editingCoupon }) => {
     }, [isOpen, editingCoupon]);
 
     const handleChange = (field, value) => {
-        setCoupon(prev => ({ ...prev, [field]: value }));
+        const newCoupon = { ...coupon, [field]: value };
+
+        // If type is changed to free_delivery, clear the value
+        if (field === 'type' && value === 'free_delivery') {
+            newCoupon.value = 0; // or null
+        }
+
+        setCoupon(newCoupon);
     };
     
     const generateRandomCode = () => {
@@ -66,10 +73,17 @@ const CouponModal = ({ isOpen, setIsOpen, onSave, editingCoupon }) => {
 
     const handleSubmit = async (e) => {
         e.preventDefault();
-        if (!coupon.code || !coupon.value || !coupon.minOrder) {
-            alert('Please fill all required fields: Code, Value, and Minimum Order.');
+        
+        let requiredFieldsMet = coupon.code && coupon.minOrder !== '';
+        if (coupon.type !== 'free_delivery') {
+            requiredFieldsMet = requiredFieldsMet && coupon.value;
+        }
+
+        if (!requiredFieldsMet) {
+            alert('Please fill all required fields.');
             return;
         }
+
         setIsSaving(true);
         try {
             await onSave(coupon);
@@ -109,12 +123,15 @@ const CouponModal = ({ isOpen, setIsOpen, onSave, editingCoupon }) => {
                             </div>
                              <div>
                                 <Label>Discount Type</Label>
-                                <div className="flex gap-4 mt-2">
-                                     <div onClick={() => handleChange('type', 'flat')} className={cn('flex-1 p-4 border-2 rounded-lg cursor-pointer flex items-center justify-center gap-3', coupon.type === 'flat' ? 'border-indigo-500 bg-indigo-500/10' : 'border-gray-600')}>
-                                        <IndianRupee /> Flat Amount
+                                <div className="grid grid-cols-3 gap-2 mt-2">
+                                     <div onClick={() => handleChange('type', 'flat')} className={cn('p-3 border-2 rounded-lg cursor-pointer flex items-center justify-center gap-2 text-sm', coupon.type === 'flat' ? 'border-indigo-500 bg-indigo-500/10' : 'border-gray-600')}>
+                                        <IndianRupee size={16}/> Flat Amount
                                      </div>
-                                     <div onClick={() => handleChange('type', 'percentage')} className={cn('flex-1 p-4 border-2 rounded-lg cursor-pointer flex items-center justify-center gap-3', coupon.type === 'percentage' ? 'border-indigo-500 bg-indigo-500/10' : 'border-gray-600')}>
-                                        <Percent /> Percentage
+                                     <div onClick={() => handleChange('type', 'percentage')} className={cn('p-3 border-2 rounded-lg cursor-pointer flex items-center justify-center gap-2 text-sm', coupon.type === 'percentage' ? 'border-indigo-500 bg-indigo-500/10' : 'border-gray-600')}>
+                                        <Percent size={16}/> Percentage
+                                     </div>
+                                      <div onClick={() => handleChange('type', 'free_delivery')} className={cn('p-3 border-2 rounded-lg cursor-pointer flex items-center justify-center gap-2 text-sm', coupon.type === 'free_delivery' ? 'border-indigo-500 bg-indigo-500/10' : 'border-gray-600')}>
+                                        <Truck size={16}/> Free Delivery
                                      </div>
                                 </div>
                             </div>
@@ -124,7 +141,14 @@ const CouponModal = ({ isOpen, setIsOpen, onSave, editingCoupon }) => {
                             <div className="grid grid-cols-2 gap-4">
                                 <div>
                                     <Label htmlFor="value">Discount Value</Label>
-                                    <input id="value" type="number" value={coupon.value} onChange={e => handleChange('value', e.target.value)} placeholder={coupon.type === 'flat' ? 'e.g., 100' : 'e.g., 20'} className="mt-1 p-2 border rounded-md bg-gray-800 border-gray-600 w-full" />
+                                    <input 
+                                        id="value" 
+                                        type="number" 
+                                        value={coupon.value} 
+                                        onChange={e => handleChange('value', e.target.value)} 
+                                        placeholder={coupon.type === 'flat' ? 'e.g., 100' : 'e.g., 20'}
+                                        disabled={coupon.type === 'free_delivery'}
+                                        className="mt-1 p-2 border rounded-md bg-gray-800 border-gray-600 w-full disabled:opacity-50 disabled:cursor-not-allowed" />
                                 </div>
                                 <div>
                                     <Label htmlFor="minOrder">Minimum Order (₹)</Label>
@@ -208,7 +232,7 @@ const CouponCard = ({ coupon, onStatusToggle, onEdit, onDelete }) => {
                     </div>
                 </div>
                 <p className="text-3xl font-bold text-indigo-400 mt-4">
-                    {coupon.type === 'flat' ? `₹${coupon.value} OFF` : `${coupon.value}% OFF`}
+                    {coupon.type === 'free_delivery' ? 'Free Delivery' : (coupon.type === 'flat' ? `₹${coupon.value} OFF` : `${coupon.value}% OFF`)}
                 </p>
             </div>
             
@@ -443,3 +467,5 @@ export default function CouponsPage() {
         </div>
     );
 }
+
+    

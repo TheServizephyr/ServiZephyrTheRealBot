@@ -78,7 +78,7 @@ const CartDrawer = ({ cart, onUpdateCart, onClose, onCheckout, notes, setNotes, 
         return 0;
     }, [appliedCoupon, subtotal]);
 
-    const finalDeliveryCharge = (appliedCoupon?.type === 'free_delivery' || appliedCoupon?.code === 'FREEDEL') ? 0 : deliveryCharge;
+    const finalDeliveryCharge = appliedCoupon?.type === 'free_delivery' ? 0 : deliveryCharge;
 
     const taxRate = 0.05;
     const taxableAmount = subtotal - couponDiscount - loyaltyDiscount;
@@ -238,8 +238,6 @@ const CheckoutModal = ({ isOpen, onClose, restaurantId, phone, cart, notes }) =>
     useEffect(() => {
         const fetchUser = async () => {
             if (!phone) {
-                // If there's no phone number, we can't look up a user.
-                // Treat as a new user and force them to enter details.
                 setIsExistingUser(false);
                 setIsAddingNew(true);
                 setLoading(false);
@@ -249,7 +247,6 @@ const CheckoutModal = ({ isOpen, onClose, restaurantId, phone, cart, notes }) =>
             setLoading(true);
             setError('');
             try {
-                // Use the lookup API to securely check for user data
                 const res = await fetch('/api/customer/lookup', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -257,23 +254,20 @@ const CheckoutModal = ({ isOpen, onClose, restaurantId, phone, cart, notes }) =>
                 });
 
                 if (res.status === 404) {
-                    // User not found, treat as new user
                     setIsExistingUser(false);
                     setIsAddingNew(true);
                 } else if (!res.ok) {
                    const data = await res.json();
                    throw new Error(data.message || "Failed to look up user.");
                 } else {
-                    // User found
                     const data = await res.json();
                     setIsExistingUser(true);
                     setName(data.name);
                     setSavedAddresses(data.addresses || []);
                     if (data.addresses && data.addresses.length > 0) {
-                        setSelectedAddress(data.addresses[0].full); // Default to first address
+                        setSelectedAddress(data.addresses[0].full);
                         setIsAddingNew(false);
                     } else {
-                        // Existing user with no saved addresses
                         setIsAddingNew(true);
                     }
                 }
@@ -289,7 +283,6 @@ const CheckoutModal = ({ isOpen, onClose, restaurantId, phone, cart, notes }) =>
         if (isOpen) {
             fetchUser();
         } else {
-            // Reset state on close
             setName(''); setAddress(''); setError(''); setSavedAddresses([]); setSelectedAddress(null); setIsAddingNew(false); setIsExistingUser(false);
         }
     }, [isOpen, phone]);
@@ -760,3 +753,5 @@ const OrderPage = () => (
 );
 
 export default OrderPage;
+
+    
