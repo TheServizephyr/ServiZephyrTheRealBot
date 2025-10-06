@@ -58,34 +58,61 @@ const MenuItemCard = ({ item, quantity, onIncrement, onDecrement }) => {
 };
 
 
-const CartDrawer = ({ cart, onUpdateCart, onClose, onCheckout, notes, setNotes }) => {
+const CartDrawer = ({ cart, onUpdateCart, onClose, onCheckout, notes, setNotes, coupons, loyaltyPointsData }) => {
     const [couponCode, setCouponCode] = useState("");
     const [couponDiscount, setCouponDiscount] = useState(0);
-    const [loyaltyPoints, setLoyaltyPoints] = useState(250); // Dummy points
+    const [appliedCoupon, setAppliedCoupon] = useState(null);
+    const [loyaltyPoints, setLoyaltyPoints] = useState(0);
     const [loyaltyDiscount, setLoyaltyDiscount] = useState(0);
+
+    useEffect(() => {
+        if(loyaltyPointsData){
+            setLoyaltyPoints(loyaltyPointsData);
+        }
+    }, [loyaltyPointsData]);
     
     const subtotal = cart.reduce((sum, item) => sum + item.fullPrice * item.quantity, 0);
     const deliveryCharge = 30;
     const taxRate = 0.05;
-    const cgst = (subtotal - couponDiscount - loyaltyDiscount) * taxRate;
-    const sgst = (subtotal - couponDiscount - loyaltyDiscount) * taxRate;
-    const grandTotal = subtotal - couponDiscount - loyaltyDiscount + deliveryCharge + cgst + sgst;
+    const taxableAmount = subtotal - couponDiscount - loyaltyDiscount;
+    const cgst = taxableAmount > 0 ? taxableAmount * taxRate : 0;
+    const sgst = taxableAmount > 0 ? taxableAmount * taxRate : 0;
+    const grandTotal = taxableAmount + deliveryCharge + cgst + sgst;
 
 
     const handleApplyCoupon = () => {
-        if(couponCode.toUpperCase() === 'SAVE100') {
-            setCouponDiscount(100);
-            alert("Coupon applied! You get ₹100 off.");
+        const foundCoupon = coupons.find(c => c.code.toUpperCase() === couponCode.toUpperCase() && c.status === 'Active');
+
+        if (appliedCoupon) {
+            alert("Only one coupon can be applied at a time.");
+            return;
+        }
+
+        if(foundCoupon) {
+            if (subtotal >= foundCoupon.minOrder) {
+                let discount = 0;
+                if (foundCoupon.type === 'flat') {
+                    discount = foundCoupon.value;
+                } else if (foundCoupon.type === 'percentage') {
+                    discount = (subtotal * foundCoupon.value) / 100;
+                }
+                setCouponDiscount(discount);
+                setAppliedCoupon(foundCoupon);
+                alert(`Coupon "${foundCoupon.code}" applied! You get a discount of ₹${discount.toFixed(2)}.`);
+            } else {
+                 alert(`You need to spend at least ₹${foundCoupon.minOrder} to use this coupon.`);
+            }
         } else {
-            alert("Invalid coupon code.");
+            alert("Invalid or inactive coupon code.");
         }
     };
     
     const handleRedeemPoints = () => {
         if(loyaltyPoints >= 100) {
-            const redeemableAmount = Math.floor(loyaltyPoints / 10) * 5; // e.g., 250 points -> 25 * 5 = 125 discount
+            // Simple logic: 1 point = ₹0.5 discount
+            const redeemableAmount = loyaltyPoints * 0.5;
             setLoyaltyDiscount(redeemableAmount);
-            setLoyaltyPoints(0);
+            setLoyaltyPoints(0); // Points are used up
             alert(`You've redeemed your points for a discount of ₹${redeemableAmount}!`);
         } else {
             alert("You need at least 100 points to redeem.");
@@ -142,7 +169,9 @@ const CartDrawer = ({ cart, onUpdateCart, onClose, onCheckout, notes, setNotes }
                             <h4 className="font-semibold mb-2 flex items-center gap-2"><Ticket/> Apply Coupon</h4>
                             <div className="flex gap-2">
                                 <input type="text" value={couponCode} onChange={(e) => setCouponCode(e.target.value.toUpperCase())} placeholder="Enter coupon code" className="flex-grow p-2 rounded-md bg-input border border-border"/>
-                                <Button onClick={handleApplyCoupon}>Apply</Button>
+                                <Button onClick={handleApplyCoupon} disabled={!!appliedCoupon}>
+                                    {appliedCoupon ? "Applied!" : "Apply"}
+                                </Button>
                             </div>
                         </div>
 
@@ -209,19 +238,24 @@ const CheckoutModal = ({ isOpen, onClose, restaurantId, phone, cart, notes }) =>
                     body: JSON.stringify({ phone })
                 });
 
-                const data = await res.json();
-
-                if (res.status === 404) {
-                    setIsExistingUser(false);
-                } else if (res.ok) {
+                if (!res.ok) {
+                    const data = await res.json();
+                     // If 404, it's a new user, which is not an error state.
+                    if (res.status === 404) {
+                        setIsExistingUser(false);
+                        console.log("New user detected.");
+                    } else {
+                       throw new Error(data.message || "Failed to look up user.");
+                    }
+                } else {
+                    const data = await res.json();
                     setIsExistingUser(true);
                     setName(data.name);
                     setSavedAddresses(data.addresses || []);
                     if (data.addresses && data.addresses.length > 0) {
                         setSelectedAddress(data.addresses[0].full);
                     }
-                } else {
-                    throw new Error(data.message || "Failed to look up user.");
+                    console.log("Existing user found:", data);
                 }
 
             } catch (err) {
@@ -288,8 +322,8 @@ const CheckoutModal = ({ isOpen, onClose, restaurantId, phone, cart, notes }) =>
         if (loading) {
             return <div className="flex items-center justify-center h-48"><div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div></div>;
         }
-        if (error) {
-            return <p className="text-red-500 text-sm text-center">{error}</p>;
+        if (error && !isExistingUser && phone) { // Only show major error if lookup fails completely
+             return <p className="text-red-500 text-sm text-center">{error}</p>;
         }
         if (isExistingUser) {
             return (
@@ -347,6 +381,7 @@ const CheckoutModal = ({ isOpen, onClose, restaurantId, phone, cart, notes }) =>
 
                 <div className="py-4">
                     {renderContent()}
+                    {error && <p className="text-red-500 text-sm text-center mt-4">{error}</p>}
                 </div>
 
                 <DialogFooter>
@@ -408,29 +443,63 @@ const OrderPageInternal = () => {
     const [sortBy, setSortBy] = useState('default'); // 'default', 'price-asc', 'price-desc'
     const [vegOnly, setVegOnly] = useState(false);
 
+    // New state for coupons and loyalty
+    const [coupons, setCoupons] = useState([]);
+    const [loyaltyPoints, setLoyaltyPoints] = useState(0);
+
 
     useEffect(() => {
-        const fetchMenuData = async () => {
+        const fetchInitialData = async () => {
             if (!restaurantId) return;
             setLoading(true);
             try {
-                const res = await fetch(`/api/menu/${restaurantId}`);
-                if (!res.ok) {
-                    throw new Error('Failed to fetch menu data');
-                }
-                const data = await res.json();
+                // We can fetch menu, coupons, and loyalty points together if the API supports it.
+                // For now, we'll do it in separate calls for clarity.
                 
-                setRestaurantName(data.restaurantName);
-                setRawMenu(data.menu);
+                // Fetch Menu
+                const menuRes = await fetch(`/api/menu/${restaurantId}`);
+                if (!menuRes.ok) throw new Error('Failed to fetch menu data');
+                const menuData = await menuRes.json();
+                setRestaurantName(menuData.restaurantName);
+                setRawMenu(menuData.menu);
+
+                // In a real app, you would have separate APIs for coupons and loyalty points.
+                // For this example, we'll simulate fetching them.
+                // This logic should be replaced with actual API calls.
+
+                // Fetch Public Coupons for the restaurant
+                // This is a placeholder. You'd create a public API like `/api/coupons/[restaurantId]`
+                const couponRes = await fetch(`/api/owner/coupons?restaurantId=${restaurantId}`); // This is not ideal as it might need auth
+                if(couponRes.ok) {
+                    const couponData = await couponRes.json();
+                    setCoupons(couponData.coupons.filter(c => c.status === 'Active'));
+                }
+
+                // Fetch user's loyalty points
+                // This is also a placeholder.
+                if(phone) {
+                    const loyaltyRes = await fetch(`/api/customer/lookup`, {
+                         method: 'POST',
+                         headers: { 'Content-Type': 'application/json' },
+                         body: JSON.stringify({ phone })
+                    });
+                     if (loyaltyRes.ok) {
+                         const userData = await loyaltyRes.json();
+                         // Assuming the lookup returns loyalty points directly on the user object
+                         setLoyaltyPoints(userData.loyaltyPoints || 0);
+                     }
+                }
+
+
             } catch (error) {
-                console.error("Failed to fetch menu:", error);
-                setRestaurantName('');
+                console.error("Failed to fetch initial data:", error);
+                setRestaurantName(''); // Show error state
             } finally {
                 setLoading(false);
             }
         };
-        fetchMenuData();
-    }, [restaurantId]);
+        fetchInitialData();
+    }, [restaurantId, phone]);
     
     const processedMenu = useMemo(() => {
         let newMenu = JSON.parse(JSON.stringify(rawMenu)); // Deep copy
@@ -538,7 +607,7 @@ const OrderPageInternal = () => {
             
             <AnimatePresence>
                 {isCartOpen && <motion.div initial={{opacity: 0}} animate={{opacity: 1}} exit={{opacity: 0}} className="fixed inset-0 bg-black/60 z-30" onClick={() => setIsCartOpen(false)} />}
-                {isCartOpen && <CartDrawer cart={cart} onUpdateCart={handleCartUpdate} onClose={() => setIsCartOpen(false)} onCheckout={handleCheckout} notes={notes} setNotes={setNotes} />}
+                {isCartOpen && <CartDrawer cart={cart} onUpdateCart={handleCartUpdate} onClose={() => setIsCartOpen(false)} onCheckout={handleCheckout} notes={notes} setNotes={setNotes} coupons={coupons} loyaltyPointsData={loyaltyPoints} />}
             </AnimatePresence>
 
             <header className="sticky top-0 z-20 bg-background/80 backdrop-blur-lg border-b border-border">
@@ -685,3 +754,5 @@ const OrderPage = () => (
 );
 
 export default OrderPage;
+
+    
