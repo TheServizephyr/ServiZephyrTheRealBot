@@ -232,7 +232,11 @@ const CheckoutModal = ({ isOpen, onClose, restaurantId, phone, cart, notes }) =>
     useEffect(() => {
         const fetchUser = async () => {
             if (!phone) {
-                setError("Could not verify your details. Phone number is missing from URL.");
+                // This is not an error, just a new user without a phone in URL.
+                // The form will be for a new user.
+                setIsExistingUser(false);
+                setIsAddingNew(true); // Force new address entry
+                console.log("No phone in URL, assuming new user.");
                 setLoading(false);
                 return;
             }
@@ -248,12 +252,13 @@ const CheckoutModal = ({ isOpen, onClose, restaurantId, phone, cart, notes }) =>
                 });
 
                 if (!res.ok) {
-                    const data = await res.json();
-                     // If 404, it's a new user, which is not an error state.
+                    // If 404, it's a new user, which is not an error state.
                     if (res.status === 404) {
                         setIsExistingUser(false);
-                        console.log("New user detected.");
+                        setIsAddingNew(true);
+                        console.log("New user detected via API.");
                     } else {
+                       const data = await res.json();
                        throw new Error(data.message || "Failed to look up user.");
                     }
                 } else {
@@ -263,6 +268,9 @@ const CheckoutModal = ({ isOpen, onClose, restaurantId, phone, cart, notes }) =>
                     setSavedAddresses(data.addresses || []);
                     if (data.addresses && data.addresses.length > 0) {
                         setSelectedAddress(data.addresses[0].full);
+                        setIsAddingNew(false);
+                    } else {
+                        setIsAddingNew(true); // No saved addresses, force new entry
                     }
                     console.log("Existing user found:", data);
                 }
@@ -291,7 +299,7 @@ const CheckoutModal = ({ isOpen, onClose, restaurantId, phone, cart, notes }) =>
             setError('Please select or add a delivery address.');
             return;
         }
-        if (!isExistingUser && !name.trim()) {
+        if (!name.trim()) {
             setError('Please enter your name.');
             return;
         }
@@ -331,48 +339,47 @@ const CheckoutModal = ({ isOpen, onClose, restaurantId, phone, cart, notes }) =>
         if (loading) {
             return <div className="flex items-center justify-center h-48"><div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div></div>;
         }
-        if (isExistingUser) {
-            return (
-                <div className="space-y-4">
-                    <h3 className="font-semibold">Welcome back, {name}! Select an address:</h3>
-                    <div className="space-y-2 max-h-48 overflow-y-auto pr-2">
-                        {savedAddresses.map((addr) => (
-                            <div key={addr.id} onClick={() => { setSelectedAddress(addr.full); setIsAddingNew(false); }}
-                                 className={cn("p-3 rounded-lg border cursor-pointer", selectedAddress === addr.full && !isAddingNew ? "border-primary bg-primary/10" : "border-border")}>
-                                {addr.full}
-                            </div>
-                        ))}
-                    </div>
-                    {isAddingNew ? (
-                         <div className="relative pt-4">
-                            <Home className="absolute left-3 top-7 h-5 w-5 text-muted-foreground" />
-                            <textarea id="checkout-address" value={address} onChange={(e) => setAddress(e.target.value)} required rows={3} className="w-full pl-10 pr-4 py-2 rounded-md bg-input border border-border" placeholder="Enter your new delivery address" />
-                        </div>
-                    ) : (
-                         <Button variant="outline" className="w-full" onClick={() => { setIsAddingNew(true); setSelectedAddress(null); }}>
-                            <PlusCircle className="mr-2 h-4 w-4"/> Add New Address
-                        </Button>
-                    )}
-                </div>
-            );
-        }
-        // New user form
+        
         return (
             <div className="space-y-4">
-                <div>
-                    <Label htmlFor="checkout-name">Full Name</Label>
-                    <div className="relative">
-                        <User className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
-                        <input id="checkout-name" type="text" value={name} onChange={(e) => setName(e.target.value)} required className="w-full pl-10 pr-4 py-2 rounded-md bg-input border border-border" placeholder="Enter your full name" />
+                {(isExistingUser && savedAddresses.length > 0) && (
+                     <div className="space-y-4">
+                        <h3 className="font-semibold">Welcome back, {name}! Select an address:</h3>
+                        <div className="space-y-2 max-h-48 overflow-y-auto pr-2">
+                            {savedAddresses.map((addr) => (
+                                <div key={addr.id} onClick={() => { setSelectedAddress(addr.full); setIsAddingNew(false); }}
+                                     className={cn("p-3 rounded-lg border cursor-pointer", selectedAddress === addr.full && !isAddingNew ? "border-primary bg-primary/10" : "border-border")}>
+                                    {addr.full}
+                                </div>
+                            ))}
+                        </div>
                     </div>
-                </div>
-                <div>
-                    <Label htmlFor="checkout-address">Delivery Address</Label>
-                    <div className="relative">
-                        <Home className="absolute left-3 top-3 h-5 w-5 text-muted-foreground" />
-                        <textarea id="checkout-address" value={address} onChange={(e) => setAddress(e.target.value)} required rows={3} className="w-full pl-10 pr-4 py-2 rounded-md bg-input border border-border" placeholder="Enter your full delivery address" />
+                )}
+
+                {isAddingNew ? (
+                     <div className="space-y-4 pt-2">
+                         {!isExistingUser && (
+                            <div>
+                                <Label htmlFor="checkout-name">Full Name</Label>
+                                <div className="relative">
+                                    <User className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
+                                    <input id="checkout-name" type="text" value={name} onChange={(e) => setName(e.target.value)} required className="w-full pl-10 pr-4 py-2 rounded-md bg-input border border-border" placeholder="Enter your full name" />
+                                </div>
+                            </div>
+                         )}
+                        <div>
+                            <Label htmlFor="checkout-address">Delivery Address</Label>
+                            <div className="relative">
+                                <Home className="absolute left-3 top-3 h-5 w-5 text-muted-foreground" />
+                                <textarea id="checkout-address" value={address} onChange={(e) => setAddress(e.target.value)} required rows={3} className="w-full pl-10 pr-4 py-2 rounded-md bg-input border border-border" placeholder="Enter your full delivery address" />
+                            </div>
+                        </div>
                     </div>
-                </div>
+                ) : (
+                    <Button variant="outline" className="w-full" onClick={() => { setIsAddingNew(true); setSelectedAddress(null); }}>
+                        <PlusCircle className="mr-2 h-4 w-4"/> Add New Address
+                    </Button>
+                )}
             </div>
         );
     }
@@ -467,28 +474,38 @@ const OrderPageInternal = () => {
                 setRawMenu(menuData.menu);
 
                 // Fetch Public Coupons for the restaurant
-                const couponRes = await fetch(`/api/owner/coupons?restaurantId=${restaurantId}`); // This is not ideal as it might need auth, but works for demo
-                if(couponRes.ok) {
-                    const couponData = await couponRes.json();
-                    setCoupons(couponData.coupons.filter(c => c.status === 'Active'));
-                } else {
-                    console.warn("Could not fetch coupons. This might be due to auth requirements on the API.");
+                // Note: The coupons API might need to be public or use a different auth method for this to work without user login
+                try {
+                  const couponRes = await fetch(`/api/owner/coupons?restaurantId=${restaurantId}`);
+                  if(couponRes.ok) {
+                      const couponData = await couponRes.json();
+                      setCoupons(couponData.coupons.filter(c => c.status === 'Active'));
+                  } else {
+                      console.warn("Could not fetch coupons. This might be due to auth requirements on the API.");
+                  }
+                } catch (e) {
+                  console.warn("Coupon fetching failed:", e);
                 }
 
                 // Fetch user's loyalty points
                 if(phone) {
-                    const loyaltyRes = await fetch(`/api/customer/lookup`, {
-                         method: 'POST',
-                         headers: { 'Content-Type': 'application/json' },
-                         body: JSON.stringify({ phone })
-                    });
-                     if (loyaltyRes.ok) {
-                         const userData = await loyaltyRes.json();
-                         // The customer sub-collection in restaurants holds loyalty points. 
-                         // The lookup on 'users' collection won't have it directly. This logic needs adjustment.
-                         // For now, we'll simulate it. In a real app, the lookup would need to be more complex.
-                         setLoyaltyPoints(userData.loyaltyPoints || 250); // Using dummy value for now
-                     }
+                    try {
+                        const loyaltyRes = await fetch(`/api/customer/lookup`, {
+                             method: 'POST',
+                             headers: { 'Content-Type': 'application/json' },
+                             body: JSON.stringify({ phone })
+                        });
+                         if (loyaltyRes.ok) {
+                             const userData = await loyaltyRes.json();
+                             // The customer sub-collection in restaurants holds loyalty points. 
+                             // The lookup on 'users' collection won't have it directly.
+                             // THIS NEEDS A NEW API or modification to lookup API to get loyalty points for a specific restaurant
+                             // For now, we'll simulate it.
+                             setLoyaltyPoints(userData.loyaltyPoints || 250); // Using dummy value for now
+                         }
+                    } catch(e) {
+                        console.warn("Could not fetch loyalty points:", e);
+                    }
                 }
 
 
