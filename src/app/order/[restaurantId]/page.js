@@ -31,8 +31,8 @@ const MenuItemCard = ({ item, quantity, onIncrement, onDecrement }) => {
       </div>
       <div className="flex-grow">
         <div className="flex items-center gap-2 mb-1">
-          <div className={`w-3 h-3 border-2 ${item.isVeg ? 'border-green-500' : 'border-red-500'} rounded-sm flex items-center justify-center`}>
-            <div className={`w-1.5 h-1.5 ${item.isVeg ? 'bg-green-500' : 'bg-red-500'} rounded-full`}></div>
+          <div className={`w-4 h-4 border ${item.isVeg ? 'border-green-500' : 'border-red-500'} rounded-sm flex items-center justify-center`}>
+            <div className={`w-2 h-2 ${item.isVeg ? 'bg-green-500' : 'bg-red-500'} rounded-full`}></div>
           </div>
           <h4 className="font-semibold text-foreground">{item.name}</h4>
         </div>
@@ -621,4 +621,5 @@ const OrderPage = () => (
 
 export default OrderPage;
 
+    
     
