@@ -75,15 +75,14 @@ const CartDrawer = ({ cart, onUpdateCart, onClose, onCheckout, notes, setNotes, 
         if (!appliedCoupon) return 0;
         if (appliedCoupon.type === 'flat') return appliedCoupon.value;
         if (appliedCoupon.type === 'percentage') return (subtotal * appliedCoupon.value) / 100;
-        if (appliedCoupon.code === 'FREEDEL') return 30; // Hardcoded delivery fee for now
         return 0;
     }, [appliedCoupon, subtotal]);
 
-    const deliveryCharge = 30; // Let's keep this constant for now
-    const finalDeliveryCharge = appliedCoupon?.code === 'FREEDEL' ? 0 : deliveryCharge;
+    const deliveryCharge = 30; // This can be made dynamic later from restaurant settings
+    const finalDeliveryCharge = (appliedCoupon?.type === 'free_delivery' || appliedCoupon?.code === 'FREEDEL') ? 0 : deliveryCharge;
 
     const taxRate = 0.05;
-    const taxableAmount = subtotal - (appliedCoupon?.code === 'FREEDEL' ? 0 : couponDiscount) - loyaltyDiscount;
+    const taxableAmount = subtotal - couponDiscount - loyaltyDiscount;
     const cgst = taxableAmount > 0 ? taxableAmount * taxRate : 0;
     const sgst = taxableAmount > 0 ? taxableAmount * taxRate : 0;
     const grandTotal = taxableAmount + finalDeliveryCharge + cgst + sgst;
@@ -208,9 +207,9 @@ const CartDrawer = ({ cart, onUpdateCart, onClose, onCheckout, notes, setNotes, 
                 <div className="p-4 border-t-2 border-primary bg-background flex-shrink-0 shadow-lg">
                     <div className="space-y-1 text-sm mb-4">
                          <div className="flex justify-between"><span>Subtotal:</span> <span className="font-medium">₹{subtotal.toFixed(2)}</span></div>
-                         {couponDiscount > 0 && appliedCoupon?.code !== 'FREEDEL' && <div className="flex justify-between text-green-400"><span>Coupon Discount:</span> <span className="font-medium">- ₹{couponDiscount.toFixed(2)}</span></div>}
+                         {couponDiscount > 0 && <div className="flex justify-between text-green-400"><span>Coupon Discount:</span> <span className="font-medium">- ₹{couponDiscount.toFixed(2)}</span></div>}
                          {loyaltyDiscount > 0 && <div className="flex justify-between text-green-400"><span>Loyalty Discount:</span> <span className="font-medium">- ₹{loyaltyDiscount.toFixed(2)}</span></div>}
-                         <div className="flex justify-between"><span>Delivery Fee:</span> {finalDeliveryCharge > 0 ? <span>₹{finalDeliveryCharge.toFixed(2)}</span> : <span className="text-green-400">FREE</span>}</div>
+                         <div className="flex justify-between"><span>Delivery Fee:</span> {finalDeliveryCharge > 0 ? <span>₹{finalDeliveryCharge.toFixed(2)}</span> : <span className="text-green-400 font-bold">FREE</span>}</div>
                          <div className="flex justify-between"><span>CGST ({taxRate*100}%):</span> <span className="font-medium">₹{cgst.toFixed(2)}</span></div>
                          <div className="flex justify-between"><span>SGST ({taxRate*100}%):</span> <span className="font-medium">₹{sgst.toFixed(2)}</span></div>
                          <div className="border-t border-dashed border-border my-2"></div>
@@ -240,7 +239,7 @@ const CheckoutModal = ({ isOpen, onClose, restaurantId, phone, cart, notes }) =>
     useEffect(() => {
         const fetchUser = async () => {
             if (!phone) {
-                // If phone is not in URL, it's a new user for sure.
+                // It's a new user for sure if no phone in URL
                 setIsExistingUser(false);
                 setIsAddingNew(true);
                 setLoading(false);
@@ -472,7 +471,7 @@ const OrderPageInternal = () => {
             if (!restaurantId) return;
             setLoading(true);
             try {
-                // Fetch Menu and Coupons together
+                // Fetch Menu and Coupons together from the public endpoint
                 const publicDataRes = await fetch(`/api/menu/${restaurantId}`);
                 if (!publicDataRes.ok) throw new Error('Failed to fetch restaurant data');
                 const publicData = await publicDataRes.json();
@@ -481,7 +480,7 @@ const OrderPageInternal = () => {
                 setRawMenu(publicData.menu);
                 setCoupons(publicData.coupons || []);
 
-                // Fetch user's loyalty points
+                // Fetch user's loyalty points using the secure lookup
                 if(phone) {
                     try {
                         const loyaltyRes = await fetch(`/api/customer/lookup`, {
