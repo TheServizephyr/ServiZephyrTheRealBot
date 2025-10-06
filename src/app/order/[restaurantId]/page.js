@@ -9,14 +9,12 @@ import Image from 'next/image';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose } from "@/components/ui/dialog";
-import { getFirestore, doc, getDoc, collection, query, where, getDocs, limit } from 'firebase/firestore';
-import { auth } from '@/lib/firebase';
+import { collection, query, where, getDocs, limit } from 'firebase/firestore';
+import { db } from '@/lib/firebase';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 
-
-const db = getFirestore(auth.app);
 
 const MenuItemCard = ({ item, quantity, onIncrement, onDecrement }) => {
   return (
@@ -138,6 +136,10 @@ const CheckoutModal = ({ isOpen, onClose, restaurantId, phone, cart, notes }) =>
 
     useEffect(() => {
       const fetchUser = async () => {
+        if (!isOpen) return;
+        setIsUserLoading(true);
+        setError('');
+
         if (!phone) {
             setIsUserLoading(false);
             setIsAddingNewAddress(true);
@@ -145,8 +147,6 @@ const CheckoutModal = ({ isOpen, onClose, restaurantId, phone, cart, notes }) =>
         };
 
         try {
-            setIsUserLoading(true);
-            setError('');
             const usersRef = collection(db, "users");
             const q = query(usersRef, where("phone", "==", phone), limit(1));
             const querySnapshot = await getDocs(q);
@@ -174,7 +174,7 @@ const CheckoutModal = ({ isOpen, onClose, restaurantId, phone, cart, notes }) =>
             setIsUserLoading(false);
         }
       }
-      if(isOpen) fetchUser();
+      fetchUser();
     }, [isOpen, phone]);
 
     const handlePlaceOrder = async () => {
@@ -623,5 +623,4 @@ const OrderPage = () => (
 
 export default OrderPage;
 
-    
     
