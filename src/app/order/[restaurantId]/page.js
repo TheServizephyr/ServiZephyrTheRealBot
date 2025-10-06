@@ -59,54 +59,56 @@ const MenuItemCard = ({ item, quantity, onIncrement, onDecrement }) => {
 
 
 const CartDrawer = ({ cart, onUpdateCart, onClose, onCheckout, notes, setNotes, coupons, loyaltyPointsData }) => {
-    const [couponDiscount, setCouponDiscount] = useState(0);
     const [appliedCoupon, setAppliedCoupon] = useState(null);
-    const [loyaltyPoints, setLoyaltyPoints] = useState(0);
     const [loyaltyDiscount, setLoyaltyDiscount] = useState(0);
+    const [currentLoyaltyPoints, setCurrentLoyaltyPoints] = useState(0);
 
     useEffect(() => {
         if(loyaltyPointsData){
-            setLoyaltyPoints(loyaltyPointsData);
+            setCurrentLoyaltyPoints(loyaltyPointsData);
         }
     }, [loyaltyPointsData]);
-    
+
     const subtotal = cart.reduce((sum, item) => sum + item.fullPrice * item.quantity, 0);
-    const deliveryCharge = 30;
+    
+    const couponDiscount = useMemo(() => {
+        if (!appliedCoupon) return 0;
+        if (appliedCoupon.type === 'flat') return appliedCoupon.value;
+        if (appliedCoupon.type === 'percentage') return (subtotal * appliedCoupon.value) / 100;
+        if (appliedCoupon.code === 'FREEDEL') return 30; // Hardcoded delivery fee for now
+        return 0;
+    }, [appliedCoupon, subtotal]);
+
+    const deliveryCharge = 30; // Let's keep this constant for now
+    const finalDeliveryCharge = appliedCoupon?.code === 'FREEDEL' ? 0 : deliveryCharge;
+
     const taxRate = 0.05;
-    const taxableAmount = subtotal - couponDiscount - loyaltyDiscount;
+    const taxableAmount = subtotal - (appliedCoupon?.code === 'FREEDEL' ? 0 : couponDiscount) - loyaltyDiscount;
     const cgst = taxableAmount > 0 ? taxableAmount * taxRate : 0;
     const sgst = taxableAmount > 0 ? taxableAmount * taxRate : 0;
-    const grandTotal = taxableAmount + deliveryCharge + cgst + sgst;
+    const grandTotal = taxableAmount + finalDeliveryCharge + cgst + sgst;
 
 
     const handleApplyCoupon = (couponToApply) => {
-        if (appliedCoupon) {
-            alert("Only one coupon can be applied at a time.");
-            return;
-        }
-
         if (subtotal >= couponToApply.minOrder) {
-            let discount = 0;
-            if (couponToApply.type === 'flat') {
-                discount = couponToApply.value;
-            } else if (couponToApply.type === 'percentage') {
-                discount = (subtotal * couponToApply.value) / 100;
-            }
-            setCouponDiscount(discount);
             setAppliedCoupon(couponToApply);
-            alert(`Coupon "${couponToApply.code}" applied! You get a discount of ₹${discount.toFixed(2)}.`);
+            alert(`Coupon "${couponToApply.code}" applied!`);
         } else {
              alert(`You need to spend at least ₹${couponToApply.minOrder} to use this coupon.`);
         }
     };
     
+    const handleRemoveCoupon = () => {
+        setAppliedCoupon(null);
+    };
+    
     const handleRedeemPoints = () => {
-        if(loyaltyPoints >= 100) {
+        if(currentLoyaltyPoints >= 100) {
             // Simple logic: 1 point = ₹0.5 discount
-            const redeemableAmount = loyaltyPoints * 0.5;
+            const redeemableAmount = currentLoyaltyPoints * 0.5;
             setLoyaltyDiscount(redeemableAmount);
-            setLoyaltyPoints(0); // Points are used up
-            alert(`You've redeemed your points for a discount of ₹${redeemableAmount}!`);
+            setCurrentLoyaltyPoints(0); // Points are used up
+            alert(`You've redeemed your points for a discount of ₹${redeemableAmount.toFixed(2)}!`);
         } else {
             alert("You need at least 100 points to redeem.");
         }
@@ -167,15 +169,21 @@ const CartDrawer = ({ cart, onUpdateCart, onClose, onCheckout, notes, setNotes, 
                                             <p className="font-bold text-primary">{coupon.code}</p>
                                             <p className="text-xs text-muted-foreground">{coupon.description}</p>
                                         </div>
-                                        <Button 
-                                            variant="outline"
-                                            size="sm"
-                                            onClick={() => handleApplyCoupon(coupon)} 
-                                            disabled={!!appliedCoupon}
-                                            className="text-primary hover:bg-primary hover:text-primary-foreground"
-                                        >
-                                            {appliedCoupon?.id === coupon.id ? "Applied" : "Apply"}
-                                        </Button>
+                                        {appliedCoupon?.id === coupon.id ? (
+                                            <Button variant="outline" size="sm" onClick={handleRemoveCoupon} className="text-red-400 border-red-400 hover:bg-red-400 hover:text-white">
+                                                Remove
+                                            </Button>
+                                        ) : (
+                                            <Button 
+                                                variant="outline"
+                                                size="sm"
+                                                onClick={() => handleApplyCoupon(coupon)} 
+                                                disabled={!!appliedCoupon}
+                                                className="text-primary hover:bg-primary hover:text-primary-foreground disabled:opacity-50"
+                                            >
+                                                Apply
+                                            </Button>
+                                        )}
                                     </div>
                                 )) : (
                                     <p className="text-sm text-muted-foreground text-center py-2">No coupons available at the moment.</p>
@@ -186,8 +194,8 @@ const CartDrawer = ({ cart, onUpdateCart, onClose, onCheckout, notes, setNotes, 
                         <div className="p-4 border-t border-border bg-card/50 flex-shrink-0 mt-4 rounded-lg">
                             <h4 className="font-semibold mb-2 flex items-center gap-2"><Gift/> Loyalty Points</h4>
                             <div className="flex justify-between items-center">
-                                <p className="text-muted-foreground">You have <span className="font-bold text-primary">{loyaltyPoints}</span> points.</p>
-                                <Button variant="outline" onClick={handleRedeemPoints} disabled={loyaltyPoints < 100 || loyaltyDiscount > 0}>
+                                <p className="text-muted-foreground">You have <span className="font-bold text-primary">{loyaltyPointsData || 0}</span> points.</p>
+                                <Button variant="outline" onClick={handleRedeemPoints} disabled={(loyaltyPointsData || 0) < 100 || loyaltyDiscount > 0}>
                                     {loyaltyDiscount > 0 ? "Redeemed!" : "Redeem Now"}
                                 </Button>
                             </div>
@@ -200,13 +208,13 @@ const CartDrawer = ({ cart, onUpdateCart, onClose, onCheckout, notes, setNotes, 
                 <div className="p-4 border-t-2 border-primary bg-background flex-shrink-0 shadow-lg">
                     <div className="space-y-1 text-sm mb-4">
                          <div className="flex justify-between"><span>Subtotal:</span> <span className="font-medium">₹{subtotal.toFixed(2)}</span></div>
-                         {couponDiscount > 0 && <div className="flex justify-between text-green-400"><span>Coupon Discount:</span> <span className="font-medium">- ₹{couponDiscount.toFixed(2)}</span></div>}
+                         {couponDiscount > 0 && appliedCoupon?.code !== 'FREEDEL' && <div className="flex justify-between text-green-400"><span>Coupon Discount:</span> <span className="font-medium">- ₹{couponDiscount.toFixed(2)}</span></div>}
                          {loyaltyDiscount > 0 && <div className="flex justify-between text-green-400"><span>Loyalty Discount:</span> <span className="font-medium">- ₹{loyaltyDiscount.toFixed(2)}</span></div>}
-                         <div className="flex justify-between"><span>Delivery Fee:</span> <span className="font-medium">₹{deliveryCharge.toFixed(2)}</span></div>
+                         <div className="flex justify-between"><span>Delivery Fee:</span> {finalDeliveryCharge > 0 ? <span>₹{finalDeliveryCharge.toFixed(2)}</span> : <span className="text-green-400">FREE</span>}</div>
                          <div className="flex justify-between"><span>CGST ({taxRate*100}%):</span> <span className="font-medium">₹{cgst.toFixed(2)}</span></div>
                          <div className="flex justify-between"><span>SGST ({taxRate*100}%):</span> <span className="font-medium">₹{sgst.toFixed(2)}</span></div>
                          <div className="border-t border-dashed border-border my-2"></div>
-                         <div className="flex justify-between items-center text-lg font-bold"><span>Grand Total:</span> <span>₹{grandTotal.toFixed(2)}</span></div>
+                         <div className="flex justify-between items-center text-lg font-bold"><span>Grand Total:</span> <span>₹{grandTotal > 0 ? grandTotal.toFixed(2) : '0.00'}</span></div>
                     </div>
                      <Button onClick={onCheckout} className="w-full bg-gradient-to-r from-primary to-accent h-12 text-lg font-bold">
                         Proceed to Checkout
@@ -232,6 +240,7 @@ const CheckoutModal = ({ isOpen, onClose, restaurantId, phone, cart, notes }) =>
     useEffect(() => {
         const fetchUser = async () => {
             if (!phone) {
+                // If phone is not in URL, it's a new user for sure.
                 setIsExistingUser(false);
                 setIsAddingNew(true);
                 setLoading(false);
@@ -241,14 +250,16 @@ const CheckoutModal = ({ isOpen, onClose, restaurantId, phone, cart, notes }) =>
             setLoading(true);
             setError('');
             try {
+                // Use the new lookup API
                 const res = await fetch('/api/customer/lookup', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ phone })
+                    body: JSON.stringify({ phone }) // API handles normalization
                 });
 
                 if (!res.ok) {
                     if (res.status === 404) {
+                        // User not found, treat as new user
                         setIsExistingUser(false);
                         setIsAddingNew(true);
                     } else {
@@ -256,14 +267,16 @@ const CheckoutModal = ({ isOpen, onClose, restaurantId, phone, cart, notes }) =>
                        throw new Error(data.message || "Failed to look up user.");
                     }
                 } else {
+                    // User found
                     const data = await res.json();
                     setIsExistingUser(true);
                     setName(data.name);
                     setSavedAddresses(data.addresses || []);
                     if (data.addresses && data.addresses.length > 0) {
-                        setSelectedAddress(data.addresses[0].full);
+                        setSelectedAddress(data.addresses[0].full); // Default to first address
                         setIsAddingNew(false);
                     } else {
+                        // Existing user with no saved addresses
                         setIsAddingNew(true);
                     }
                 }
@@ -279,6 +292,7 @@ const CheckoutModal = ({ isOpen, onClose, restaurantId, phone, cart, notes }) =>
         if (isOpen) {
             fetchUser();
         } else {
+            // Reset state on close
             setName(''); setAddress(''); setError(''); setSavedAddresses([]); setSelectedAddress(null); setIsAddingNew(false); setIsExistingUser(false);
         }
     }, [isOpen, phone]);
@@ -477,10 +491,11 @@ const OrderPageInternal = () => {
                         });
                          if (loyaltyRes.ok) {
                              const userData = await loyaltyRes.json();
-                             setLoyaltyPoints(userData.loyaltyPoints || 250); // Using dummy value for now
+                             setLoyaltyPoints(userData.loyaltyPoints || 0);
                          }
                     } catch(e) {
                         console.warn("Could not fetch loyalty points:", e);
+                        setLoyaltyPoints(0); // Default to 0 on error
                     }
                 }
             } catch (error) {
