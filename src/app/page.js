@@ -139,7 +139,7 @@ export default function Home() {
                 >
                     Apna Restaurant, Apne Rules.
                     <br /> 
-                    <span className="bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">30% Commission ko Good Bye Kahein.</span>
+                    <span className="bg-gradient-to-r from-blue-500 to-green-400 bg-clip-text text-transparent">30% Commission ko Good Bye Kahein.</span>
                 </motion.h1>
                 <motion.p 
                     className="mt-6 max-w-xl text-lg text-muted-foreground md:text-xl"
@@ -156,7 +156,7 @@ export default function Home() {
                 >
                     <button
                         onClick={() => setIsModalOpen(true)}
-                        className="btn-shine mt-8 inline-flex h-12 items-center justify-center rounded-full bg-gradient-to-r from-primary to-accent px-8 text-lg font-bold text-primary-foreground shadow-lg shadow-accent/50 transition-transform duration-300 hover:scale-105 hover:-translate-y-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                        className="btn-shine mt-8 inline-flex h-12 items-center justify-center rounded-full bg-gradient-to-r from-blue-600 to-green-500 px-8 text-lg font-bold text-primary-foreground shadow-lg shadow-green-500/20 transition-transform duration-300 hover:scale-105 hover:-translate-y-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
                     >
                         Get Started & Save Money
                     </button>
