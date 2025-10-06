@@ -10,8 +10,6 @@ import Image from 'next/image';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose } from "@/components/ui/dialog";
-import { collection, query, where, getDocs, limit } from 'firebase/firestore';
-import { db } from '@/lib/firebase';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
@@ -126,84 +124,40 @@ const CartDrawer = ({ cart, onUpdateCart, onClose, onCheckout, notes, setNotes }
 
 
 const CheckoutModal = ({ isOpen, onClose, restaurantId, phone, cart, notes }) => {
-    const [existingUser, setExistingUser] = useState(null);
-    const [isUserLoading, setIsUserLoading] = useState(true);
     const [name, setName] = useState('');
     const [address, setAddress] = useState('');
-    const [selectedAddress, setSelectedAddress] = useState(null);
-    const [isAddingNewAddress, setIsAddingNewAddress] = useState(false);
     const [error, setError] = useState('');
     const [loading, setLoading] = useState(false);
 
     useEffect(() => {
-      const fetchUser = async () => {
-        if (!isOpen) return;
-        setIsUserLoading(true);
-        setError('');
-
-        if (!phone) {
-            setError("Could not verify your details. Phone number is missing from URL.");
-            setIsUserLoading(false);
-            // Don't show new user form if phone is missing, as it's required.
-            return;
-        };
-
-        try {
-            const normalizedPhone = phone.startsWith('91') ? phone.substring(2) : phone;
-
-            const usersRef = collection(db, "users");
-            const q = query(usersRef, where("phone", "==", normalizedPhone), limit(1));
-            const querySnapshot = await getDocs(q);
-            
-            if (!querySnapshot.empty) {
-                const userDoc = querySnapshot.docs[0];
-                const userData = userDoc.data();
-                setExistingUser(userData);
-                setName(userData.name);
-                if (userData.addresses && userData.addresses.length > 0) {
-                    setSelectedAddress(userData.addresses[0]);
-                    setIsAddingNewAddress(false);
-                } else {
-                    setIsAddingNewAddress(true);
-                }
-            } else {
-                setExistingUser(null);
-                setIsAddingNewAddress(true);
-            }
-        } catch(e) {
-            console.error("Error fetching user by phone", e);
-            setError("Could not verify your details. Please try again.");
-            setExistingUser(null);
-        } finally {
-            setIsUserLoading(false);
+        // Reset state when modal opens or phone number changes
+        if (isOpen) {
+            setName('');
+            setAddress('');
+            setError('');
+            setLoading(false);
         }
-      }
-      fetchUser();
     }, [isOpen, phone]);
+
 
     const handlePlaceOrder = async () => {
         setError('');
         
-        let finalAddress = '';
-        if (existingUser && !isAddingNewAddress) {
-            if (!selectedAddress) {
-                setError('Please select a delivery address.');
-                return;
-            }
-            finalAddress = selectedAddress.full;
-        } else {
-            if (!name.trim() || !address.trim()) {
-                setError('Please fill in your name and a valid address.');
-                return;
-            }
-            finalAddress = address;
+        if (!name.trim() || !address.trim()) {
+            setError('Please fill in your name and a valid address.');
+            return;
+        }
+
+        if (!phone) {
+             setError("Could not verify your details. Phone number is missing.");
+             return;
         }
         
         setLoading(true);
         try {
             const payload = {
                 name: name,
-                address: finalAddress,
+                address: address,
                 phone: phone.startsWith('91') ? phone.substring(2) : phone, // Send normalized phone to backend
                 restaurantId,
                 items: cart.map(item => ({ name: item.name, quantity: item.quantity, price: item.fullPrice })),
@@ -228,65 +182,32 @@ const CheckoutModal = ({ isOpen, onClose, restaurantId, phone, cart, notes }) =>
             setLoading(false);
         }
     };
-    
-    if (isUserLoading) {
-        return (
-            <Dialog open={isOpen} onOpenChange={onClose}>
-                 <DialogContent className="bg-background border-border text-foreground">
-                    <div className="flex justify-center items-center h-48">
-                        <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-primary"></div>
-                    </div>
-                 </DialogContent>
-            </Dialog>
-        )
-    }
 
     return (
         <Dialog open={isOpen} onOpenChange={onClose}>
             <DialogContent className="bg-background border-border text-foreground">
                 <DialogHeader>
                     <DialogTitle className="text-2xl">Confirm Your Details</DialogTitle>
-                    <DialogDescription>Almost there! Just confirm your details to place the order.</DialogDescription>
+                    <DialogDescription>Please provide your delivery details to place the order.</DialogDescription>
                 </DialogHeader>
 
                 <div className="py-4 space-y-4">
-                    {existingUser && !isAddingNewAddress ? (
+                    <div className="space-y-4">
                         <div>
-                            <h3 className="font-semibold mb-2">Welcome back, {name}! Select a delivery address:</h3>
-                            <div className="space-y-2 max-h-40 overflow-y-auto">
-                                {(existingUser.addresses || []).map(addr => (
-                                    <div key={addr.id} onClick={() => setSelectedAddress(addr)} className={cn("p-3 rounded-lg border-2 cursor-pointer transition-colors", selectedAddress?.id === addr.id ? 'border-primary bg-primary/10' : 'border-border hover:bg-muted')}>
-                                        <p>{addr.full}</p>
-                                    </div>
-                                ))}
-                            </div>
-                            <Button variant="link" className="mt-2 p-0 h-auto text-primary" onClick={() => setIsAddingNewAddress(true)}>+ Add New Address</Button>
-                        </div>
-                    ) : (
-                        <div className="space-y-4">
-                            {!existingUser && (
-                                <div>
-                                    <label className="block text-sm font-medium text-muted-foreground mb-1">Full Name</label>
-                                    <div className="relative">
-                                      <User className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
-                                      <input type="text" value={name} onChange={(e) => setName(e.target.value)} required className="w-full pl-10 pr-4 py-2 rounded-md bg-input border border-border" placeholder="Enter your full name" />
-                                    </div>
-                                </div>
-                            )}
-                            <div>
-                                <label className="block text-sm font-medium text-muted-foreground mb-1">
-                                    {existingUser ? "New Delivery Address" : "Delivery Address"}
-                                </label>
-                                <div className="relative">
-                                  <Home className="absolute left-3 top-3 h-5 w-5 text-muted-foreground" />
-                                  <textarea value={address} onChange={(e) => setAddress(e.target.value)} required rows={3} className="w-full pl-10 pr-4 py-2 rounded-md bg-input border border-border" placeholder="Enter your full delivery address" />
-                                </div>
-                                {existingUser && existingUser.addresses && existingUser.addresses.length > 0 && (
-                                    <Button variant="link" className="text-sm p-0 h-auto text-muted-foreground mt-2" onClick={() => setIsAddingNewAddress(false)}>← Back to saved addresses</Button>
-                                )}
+                            <Label htmlFor="checkout-name" className="block text-sm font-medium text-muted-foreground mb-1">Full Name</Label>
+                            <div className="relative">
+                                <User className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
+                                <input id="checkout-name" type="text" value={name} onChange={(e) => setName(e.target.value)} required className="w-full pl-10 pr-4 py-2 rounded-md bg-input border border-border" placeholder="Enter your full name" />
                             </div>
                         </div>
-                    )}
+                        <div>
+                            <Label htmlFor="checkout-address" className="block text-sm font-medium text-muted-foreground mb-1">Delivery Address</Label>
+                            <div className="relative">
+                                <Home className="absolute left-3 top-3 h-5 w-5 text-muted-foreground" />
+                                <textarea id="checkout-address" value={address} onChange={(e) => setAddress(e.target.value)} required rows={3} className="w-full pl-10 pr-4 py-2 rounded-md bg-input border border-border" placeholder="Enter your full delivery address" />
+                            </div>
+                        </div>
+                    </div>
                     {error && <p className="text-red-500 text-sm text-center">{error}</p>}
                 </div>
 
@@ -630,5 +551,6 @@ export default OrderPage;
     
 
     
+
 
 
