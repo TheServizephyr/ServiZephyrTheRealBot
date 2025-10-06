@@ -5,7 +5,7 @@
 import React, { useState, useEffect, Suspense, useMemo } from 'react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Utensils, Plus, Minus, X, Home, User, Edit2, ShoppingCart, Star, CookingPot, BookOpen, Check, SlidersHorizontal, ArrowUpDown, PlusCircle } from 'lucide-react';
+import { Utensils, Plus, Minus, X, Home, User, Edit2, ShoppingCart, Star, CookingPot, BookOpen, Check, SlidersHorizontal, ArrowUpDown, PlusCircle, Ticket, Gift } from 'lucide-react';
 import Image from 'next/image';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
@@ -59,7 +59,38 @@ const MenuItemCard = ({ item, quantity, onIncrement, onDecrement }) => {
 
 
 const CartDrawer = ({ cart, onUpdateCart, onClose, onCheckout, notes, setNotes }) => {
+    const [couponCode, setCouponCode] = useState("");
+    const [couponDiscount, setCouponDiscount] = useState(0);
+    const [loyaltyPoints, setLoyaltyPoints] = useState(250); // Dummy points
+    const [loyaltyDiscount, setLoyaltyDiscount] = useState(0);
+    
     const subtotal = cart.reduce((sum, item) => sum + item.fullPrice * item.quantity, 0);
+    const deliveryCharge = 30;
+    const taxRate = 0.05;
+    const cgst = (subtotal - couponDiscount - loyaltyDiscount) * taxRate;
+    const sgst = (subtotal - couponDiscount - loyaltyDiscount) * taxRate;
+    const grandTotal = subtotal - couponDiscount - loyaltyDiscount + deliveryCharge + cgst + sgst;
+
+
+    const handleApplyCoupon = () => {
+        if(couponCode.toUpperCase() === 'SAVE100') {
+            setCouponDiscount(100);
+            alert("Coupon applied! You get ₹100 off.");
+        } else {
+            alert("Invalid coupon code.");
+        }
+    };
+    
+    const handleRedeemPoints = () => {
+        if(loyaltyPoints >= 100) {
+            const redeemableAmount = Math.floor(loyaltyPoints / 10) * 5; // e.g., 250 points -> 25 * 5 = 125 discount
+            setLoyaltyDiscount(redeemableAmount);
+            setLoyaltyPoints(0);
+            alert(`You've redeemed your points for a discount of ₹${redeemableAmount}!`);
+        } else {
+            alert("You need at least 100 points to redeem.");
+        }
+    }
 
     return (
         <motion.div 
@@ -67,10 +98,10 @@ const CartDrawer = ({ cart, onUpdateCart, onClose, onCheckout, notes, setNotes }
             animate={{ y: 0 }}
             exit={{ y: "100%" }}
             transition={{ type: "spring", stiffness: 300, damping: 30 }}
-            className="fixed bottom-0 left-0 right-0 h-[85vh] bg-background border-t border-border rounded-t-2xl z-40 flex flex-col"
+            className="fixed bottom-0 left-0 right-0 h-[90vh] bg-background border-t border-border rounded-t-2xl z-40 flex flex-col"
         >
             <div className="p-4 border-b border-border flex justify-between items-center flex-shrink-0">
-                <h2 className="text-xl font-bold">Your Order</h2>
+                <h2 className="text-xl font-bold">Your Order Summary</h2>
                 <Button variant="ghost" size="icon" onClick={onClose}><X /></Button>
             </div>
 
@@ -92,26 +123,53 @@ const CartDrawer = ({ cart, onUpdateCart, onClose, onCheckout, notes, setNotes }
                         ))}
                     </div>
                 )}
-            </div>
-            
-            <div className="p-4 border-t border-border bg-card/50 flex-shrink-0">
-                <div className="relative">
-                    <CookingPot className="absolute left-3 top-3 h-5 w-5 text-muted-foreground"/>
-                    <textarea 
-                      value={notes}
-                      onChange={(e) => setNotes(e.target.value)}
-                      placeholder="Add cooking instructions... (e.g., make it extra spicy)"
-                      rows={2}
-                      className="w-full pl-10 pr-4 py-2 rounded-md bg-input border border-border text-sm"
-                    />
-                </div>
+                 {cart.length > 0 && (
+                     <>
+                        <div className="p-4 border-t border-border bg-card/50 flex-shrink-0 mt-4 rounded-lg">
+                            <div className="relative">
+                                <CookingPot className="absolute left-3 top-3 h-5 w-5 text-muted-foreground"/>
+                                <textarea 
+                                  value={notes}
+                                  onChange={(e) => setNotes(e.target.value)}
+                                  placeholder="Add cooking instructions... (e.g., make it extra spicy)"
+                                  rows={2}
+                                  className="w-full pl-10 pr-4 py-2 rounded-md bg-input border border-border text-sm"
+                                />
+                            </div>
+                        </div>
+
+                         <div className="p-4 border-t border-border bg-card/50 flex-shrink-0 mt-4 rounded-lg">
+                            <h4 className="font-semibold mb-2 flex items-center gap-2"><Ticket/> Apply Coupon</h4>
+                            <div className="flex gap-2">
+                                <input type="text" value={couponCode} onChange={(e) => setCouponCode(e.target.value.toUpperCase())} placeholder="Enter coupon code" className="flex-grow p-2 rounded-md bg-input border border-border"/>
+                                <Button onClick={handleApplyCoupon}>Apply</Button>
+                            </div>
+                        </div>
+
+                        <div className="p-4 border-t border-border bg-card/50 flex-shrink-0 mt-4 rounded-lg">
+                            <h4 className="font-semibold mb-2 flex items-center gap-2"><Gift/> Loyalty Points</h4>
+                            <div className="flex justify-between items-center">
+                                <p className="text-muted-foreground">You have <span className="font-bold text-primary">{loyaltyPoints}</span> points.</p>
+                                <Button variant="outline" onClick={handleRedeemPoints} disabled={loyaltyPoints < 100 || loyaltyDiscount > 0}>
+                                    {loyaltyDiscount > 0 ? "Redeemed!" : "Redeem Now"}
+                                </Button>
+                            </div>
+                        </div>
+                    </>
+                 )}
             </div>
 
             {cart.length > 0 && (
-                <div className="p-4 border-t border-border bg-background flex-shrink-0">
-                    <div className="flex justify-between items-center mb-4 text-lg">
-                        <span className="font-semibold text-muted-foreground">Subtotal:</span>
-                        <span className="font-bold text-foreground">₹{subtotal}</span>
+                <div className="p-4 border-t-2 border-primary bg-background flex-shrink-0 shadow-lg">
+                    <div className="space-y-1 text-sm mb-4">
+                         <div className="flex justify-between"><span>Subtotal:</span> <span className="font-medium">₹{subtotal.toFixed(2)}</span></div>
+                         {couponDiscount > 0 && <div className="flex justify-between text-green-400"><span>Coupon Discount:</span> <span className="font-medium">- ₹{couponDiscount.toFixed(2)}</span></div>}
+                         {loyaltyDiscount > 0 && <div className="flex justify-between text-green-400"><span>Loyalty Discount:</span> <span className="font-medium">- ₹{loyaltyDiscount.toFixed(2)}</span></div>}
+                         <div className="flex justify-between"><span>Delivery Fee:</span> <span className="font-medium">₹{deliveryCharge.toFixed(2)}</span></div>
+                         <div className="flex justify-between"><span>CGST ({taxRate*100}%):</span> <span className="font-medium">₹{cgst.toFixed(2)}</span></div>
+                         <div className="flex justify-between"><span>SGST ({taxRate*100}%):</span> <span className="font-medium">₹{sgst.toFixed(2)}</span></div>
+                         <div className="border-t border-dashed border-border my-2"></div>
+                         <div className="flex justify-between items-center text-lg font-bold"><span>Grand Total:</span> <span>₹{grandTotal.toFixed(2)}</span></div>
                     </div>
                      <Button onClick={onCheckout} className="w-full bg-gradient-to-r from-primary to-accent h-12 text-lg font-bold">
                         Proceed to Checkout
