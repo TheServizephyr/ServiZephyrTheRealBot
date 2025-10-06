@@ -142,7 +142,7 @@ const CheckoutModal = ({ isOpen, onClose, restaurantId, phone, cart, notes }) =>
         setError('');
 
         if (!phone) {
-            setError("Could not verify your details. Phone number is missing.");
+            setError("Could not verify your details. Phone number is missing from URL.");
             setIsUserLoading(false);
             // Don't show new user form if phone is missing, as it's required.
             return;
@@ -630,4 +630,5 @@ export default OrderPage;
     
 
     
+
 
