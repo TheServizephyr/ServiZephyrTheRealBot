@@ -10,10 +10,10 @@ import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose } from "@/components/ui/dialog";
 import { getFirestore, doc, getDoc, collection, query, where, getDocs, limit } from 'firebase/firestore';
-import { app } from '@/lib/firebase';
+import { auth } from '@/lib/firebase';
 
 // Initialize Firestore
-const db = getFirestore(app);
+const db = getFirestore(auth.app);
 
 // --- Sub-components for clean structure ---
 
