@@ -322,8 +322,7 @@ const OrderPageInternal = () => {
                 setMenu(data.menu);
             } catch (error) {
                 console.error("Failed to fetch menu:", error);
-                // In case of error, we can set a state to show an error message
-                setRestaurantName(''); // This will trigger the "Could not load" message
+                setRestaurantName('');
             } finally {
                 setLoading(false);
             }
@@ -387,7 +386,6 @@ const OrderPageInternal = () => {
         );
     }
     
-    // Mock categories for display order, replace with dynamic from backend if available
     const categoryOrder = ["starters", "main-course", "desserts", "beverages"];
 
     return (
@@ -409,8 +407,7 @@ const OrderPageInternal = () => {
             <div className="container mx-auto px-4 mt-6 pb-24">
                 <main>
                     <div className="space-y-10">
-                        {categoryOrder.map(key => {
-                            if (!menu[key] || menu[key].length === 0) return null;
+                        {Object.keys(menu).filter(key => menu[key] && menu[key].length > 0).map(key => {
                             const categoryTitle = key.charAt(0).toUpperCase() + key.slice(1).replace('-', ' ');
                             return (
                                 <section id={key} key={key} className="pt-2 scroll-mt-20">
@@ -436,12 +433,22 @@ const OrderPageInternal = () => {
                 </main>
             </div>
 
-            <footer className="fixed bottom-0 z-30 w-full bg-gray-900/80 backdrop-blur-lg border-t border-gray-700 p-4">
-                <Button onClick={() => totalCartItems > 0 ? setIsCartOpen(true) : alert("Your cart is empty!")} className="w-full bg-indigo-600 hover:bg-indigo-700 h-12 text-lg font-bold">
-                    <ShoppingCart className="mr-2 h-5 w-5"/> 
-                    {totalCartItems > 0 ? `View Cart (${totalCartItems})` : 'View Cart'}
-                </Button>
-            </footer>
+            <AnimatePresence>
+              {totalCartItems > 0 && (
+                <motion.footer 
+                    className="fixed bottom-0 z-30 w-full p-4"
+                    initial={{ y: 100 }}
+                    animate={{ y: 0 }}
+                    exit={{ y: 100 }}
+                    transition={{ type: "spring", stiffness: 300, damping: 30 }}
+                >
+                    <Button onClick={() => setIsCartOpen(true)} className="w-full bg-indigo-600 hover:bg-indigo-700 h-14 text-lg font-bold rounded-xl shadow-lg shadow-indigo-500/30">
+                        <ShoppingCart className="mr-2 h-6 w-6"/> 
+                        View Cart ({totalCartItems})
+                    </Button>
+                </motion.footer>
+              )}
+            </AnimatePresence>
         </div>
     );
 };
