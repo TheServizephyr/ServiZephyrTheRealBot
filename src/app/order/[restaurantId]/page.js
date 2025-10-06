@@ -1,4 +1,5 @@
 
+
 'use client';
 
 import React, { useState, useEffect, Suspense, useMemo } from 'react';
@@ -147,8 +148,11 @@ const CheckoutModal = ({ isOpen, onClose, restaurantId, phone, cart, notes }) =>
         };
 
         try {
+            // **FIX**: Normalize phone number by removing country code if present
+            const normalizedPhone = phone.startsWith('91') ? phone.substring(2) : phone;
+
             const usersRef = collection(db, "users");
-            const q = query(usersRef, where("phone", "==", phone), limit(1));
+            const q = query(usersRef, where("phone", "==", normalizedPhone), limit(1));
             const querySnapshot = await getDocs(q);
             
             if (!querySnapshot.empty) {
