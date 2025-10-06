@@ -66,7 +66,12 @@ export async function POST(request) {
     // --- Start Processing Logic ---
     if (body.object === 'whatsapp_business_account' && body.entry?.[0]?.changes?.[0]?.value?.messages?.[0]) {
         const message = body.entry[0].changes[0].value.messages[0];
-        const from = message.from; // Customer's phone number
+        const fromWithCode = message.from; // Customer's phone number with country code
+        
+        // --- FIX: Normalize phone number to 10 digits ---
+        const from = fromWithCode.startsWith('91') ? fromWithCode.substring(2) : fromWithCode;
+        console.log(`[Webhook] Normalized phone number from ${fromWithCode} to ${from}`);
+
         const msg_body = message.text?.body || ''; // The message text
         const botPhoneNumberId = body.entry[0].changes[0].value.metadata.phone_number_id;
 
@@ -78,7 +83,7 @@ export async function POST(request) {
 
         if (restaurantQuery.empty) {
             console.error(`[Webhook] No restaurant found for Bot Phone Number ID: ${botPhoneNumberId}`);
-            await sendMessage(from, "We're sorry, we couldn't identify the restaurant you're trying to reach.");
+            await sendMessage(fromWithCode, "We're sorry, we couldn't identify the restaurant you're trying to reach.");
             return NextResponse.json({ message: 'Restaurant not found' }, { status: 404 });
         }
         
@@ -86,7 +91,7 @@ export async function POST(request) {
         const restaurantId = restaurantDoc.id;
         const restaurantName = restaurantDoc.data().name;
 
-        // 2. Check if the user is registered (in 'users' collection)
+        // 2. Check if the user is registered (in 'users' collection) using the 10-digit number
         const usersRef = firestore.collection('users');
         const userQuery = await usersRef.where('phone', '==', from).limit(1).get();
 
@@ -97,7 +102,7 @@ export async function POST(request) {
             const user = userQuery.docs[0].data();
             reply_body = `Welcome back to ${restaurantName}, ${user.name}! 🥳\n\nWhat would you like to order today? You can view our menu here: https://servizephyr.com/order/${restaurantId}`;
         } else {
-            // User is not in master list, check for an unclaimed profile
+            // User is not in master list, check for an unclaimed profile using the 10-digit number
             const unclaimedProfileRef = firestore.collection('unclaimed_profiles').doc(from);
             const unclaimedProfileDoc = await unclaimedProfileRef.get();
 
@@ -111,8 +116,8 @@ export async function POST(request) {
             }
         }
         
-        // Send the reply message
-        await sendMessage(from, reply_body);
+        // Send the reply message to the original number with country code
+        await sendMessage(fromWithCode, reply_body);
     }
     
     return NextResponse.json({ message: 'Event received' }, { status: 200 });
