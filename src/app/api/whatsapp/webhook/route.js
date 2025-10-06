@@ -6,9 +6,9 @@ import { getFirestore } from '@/lib/firebase-admin';
 
 
 // These are your secret tokens and IDs. In production, Vercel will provide these.
-const VERIFY_TOKEN = "Ashwani_is_king"; // Hardcoded for local testing
-const ACCESS_TOKEN = "EAANV7ZCEMs2UBOz08P2K1t0s9ZBAF0Fm3P0W1e5ZBQUZBZC0yZCGZAkYhN835pIqZBZBZAub8fL3M7uJ09xZAdxWv2j5hGvFjL3gO3z9dZAZA68ZC0ZBkYyIZCHJ0ZAZAZAD1oZB0ZCZAxZCk3pIZCR"; // Hardcoded for local testing
-const PHONE_NUMBER_ID = "243085188894179"; // Hardcoded for local testing
+const VERIFY_TOKEN = process.env.WHATSAPP_VERIFY_TOKEN;
+const ACCESS_TOKEN = process.env.WHATSAPP_ACCESS_TOKEN;
+const PHONE_NUMBER_ID = process.env.PHONE_NUMBER_ID;
 
 // Main function to send a message
 const sendMessage = async (phoneNumber, message) => {
