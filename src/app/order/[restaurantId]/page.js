@@ -4,7 +4,7 @@
 import React, { useState, useEffect, Suspense } from 'react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Utensils, Plus, Minus, X, Home, User, Edit2, ShoppingCart, Star } from 'lucide-react';
+import { Utensils, Plus, Minus, X, Home, User, Edit2, ShoppingCart, Star, CookingPot } from 'lucide-react';
 import Image from 'next/image';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
@@ -12,20 +12,17 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { getFirestore, doc, getDoc, collection, query, where, getDocs, limit } from 'firebase/firestore';
 import { auth } from '@/lib/firebase';
 
-// Initialize Firestore
 const db = getFirestore(auth.app);
-
-// --- Sub-components for clean structure ---
 
 const MenuItemCard = ({ item, quantity, onIncrement, onDecrement }) => {
   return (
     <motion.div 
-        className="flex items-start gap-4 p-4 bg-gray-800/50 rounded-lg"
+        className="flex items-start gap-4 p-4 bg-card/60 rounded-lg border border-border"
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.3 }}
     >
-      <div className="relative w-20 h-20 rounded-md overflow-hidden bg-gray-700 flex-shrink-0">
+      <div className="relative w-20 h-20 rounded-md overflow-hidden bg-muted flex-shrink-0">
          <Image src={item.imageUrl} alt={item.name} layout="fill" objectFit="cover" data-ai-hint="food item" />
       </div>
       <div className="flex-grow">
@@ -33,23 +30,23 @@ const MenuItemCard = ({ item, quantity, onIncrement, onDecrement }) => {
           <div className={`w-3 h-3 border-2 ${item.isVeg ? 'border-green-500' : 'border-red-500'} rounded-sm flex items-center justify-center`}>
             <div className={`w-1.5 h-1.5 ${item.isVeg ? 'bg-green-500' : 'bg-red-500'} rounded-full`}></div>
           </div>
-          <h4 className="font-semibold text-white">{item.name}</h4>
+          <h4 className="font-semibold text-foreground">{item.name}</h4>
         </div>
-        <p className="text-xs text-gray-400 mb-2">{item.description}</p>
-        <p className="font-bold text-gray-200">₹{item.fullPrice}</p>
+        <p className="text-xs text-muted-foreground mb-2">{item.description}</p>
+        <p className="font-bold text-foreground">₹{item.fullPrice}</p>
       </div>
       <div className="self-center flex items-center gap-2">
         {quantity > 0 ? (
-          <>
-            <Button size="icon" variant="outline" className="h-8 w-8" onClick={() => onDecrement(item)}>-</Button>
-            <span className="font-bold w-5 text-center">{quantity}</span>
-            <Button size="icon" variant="outline" className="h-8 w-8" onClick={() => onIncrement(item)}>+</Button>
-          </>
+          <div className="flex items-center gap-1 bg-background p-1 rounded-lg border border-border">
+            <Button size="icon" variant="ghost" className="h-7 w-7 text-primary" onClick={() => onDecrement(item)}><Minus size={16}/></Button>
+            <span className="font-bold w-5 text-center text-foreground">{quantity}</span>
+            <Button size="icon" variant="ghost" className="h-7 w-7 text-primary" onClick={() => onIncrement(item)}><Plus size={16}/></Button>
+          </div>
         ) : (
           <Button 
             onClick={() => onIncrement(item)}
-            variant="outline" 
-            className="bg-gray-700 hover:bg-indigo-600 hover:text-white border-gray-600 px-4"
+            variant="outline"
+            className="bg-muted hover:bg-primary hover:text-primary-foreground border-border px-4"
           >
             ADD
           </Button>
@@ -69,21 +66,21 @@ const CartDrawer = ({ cart, onUpdateCart, onClose, onCheckout, notes, setNotes }
             animate={{ y: 0 }}
             exit={{ y: "100%" }}
             transition={{ type: "spring", stiffness: 300, damping: 30 }}
-            className="fixed bottom-0 left-0 right-0 h-[85vh] bg-gray-900 border-t border-gray-700 rounded-t-2xl z-40 flex flex-col"
+            className="fixed bottom-0 left-0 right-0 h-[85vh] bg-background border-t border-border rounded-t-2xl z-40 flex flex-col"
         >
-            <div className="p-4 border-b border-gray-700 flex justify-between items-center">
+            <div className="p-4 border-b border-border flex justify-between items-center flex-shrink-0">
                 <h2 className="text-xl font-bold">Your Order</h2>
                 <Button variant="ghost" size="icon" onClick={onClose}><X /></Button>
             </div>
 
             <div className="flex-grow p-4 overflow-y-auto">
                 {cart.length === 0 ? (
-                    <div className="h-full flex items-center justify-center text-gray-500">Your cart is empty</div>
+                    <div className="h-full flex items-center justify-center text-muted-foreground">Your cart is empty</div>
                 ) : (
                     <div className="space-y-3">
                         {cart.map(item => (
-                            <div key={item.id} className="flex items-center gap-4 bg-gray-800 p-3 rounded-lg">
-                                <p className="flex-grow font-semibold text-white">{item.name}</p>
+                            <div key={item.id} className="flex items-center gap-4 bg-card p-3 rounded-lg">
+                                <p className="flex-grow font-semibold text-foreground">{item.name}</p>
                                 <div className="flex items-center gap-2">
                                     <Button size="icon" variant="outline" className="h-7 w-7" onClick={() => onUpdateCart(item, 'decrement')}>-</Button>
                                     <span className="font-bold w-5 text-center">{item.quantity}</span>
@@ -96,23 +93,26 @@ const CartDrawer = ({ cart, onUpdateCart, onClose, onCheckout, notes, setNotes }
                 )}
             </div>
             
-            <div className="p-4 border-t border-gray-700 bg-gray-800/50">
-                <textarea 
-                  value={notes}
-                  onChange={(e) => setNotes(e.target.value)}
-                  placeholder="Add cooking instructions... (e.g., make it extra spicy)"
-                  rows={2}
-                  className="w-full p-2 rounded-md bg-gray-700 border border-gray-600 text-sm"
-                />
+            <div className="p-4 border-t border-border bg-card/50 flex-shrink-0">
+                <div className="relative">
+                    <CookingPot className="absolute left-3 top-3 h-5 w-5 text-muted-foreground"/>
+                    <textarea 
+                      value={notes}
+                      onChange={(e) => setNotes(e.target.value)}
+                      placeholder="Add cooking instructions... (e.g., make it extra spicy)"
+                      rows={2}
+                      className="w-full pl-10 pr-4 py-2 rounded-md bg-input border border-border text-sm"
+                    />
+                </div>
             </div>
 
             {cart.length > 0 && (
-                <div className="p-4 border-t border-gray-700 bg-gray-900">
+                <div className="p-4 border-t border-border bg-background flex-shrink-0">
                     <div className="flex justify-between items-center mb-4 text-lg">
-                        <span className="font-semibold text-gray-300">Subtotal:</span>
-                        <span className="font-bold text-white">₹{subtotal}</span>
+                        <span className="font-semibold text-muted-foreground">Subtotal:</span>
+                        <span className="font-bold text-foreground">₹{subtotal}</span>
                     </div>
-                     <Button onClick={onCheckout} className="w-full bg-indigo-600 hover:bg-indigo-700 h-12 text-lg font-bold">
+                     <Button onClick={onCheckout} className="w-full bg-primary hover:bg-primary/90 h-12 text-lg font-bold">
                         Proceed to Checkout
                     </Button>
                 </div>
@@ -136,7 +136,7 @@ const CheckoutModal = ({ isOpen, onClose, restaurantId, phone, cart, notes }) =>
       const fetchUser = async () => {
         if (!phone) {
             setIsUserLoading(false);
-            setIsAddingNewAddress(true); // Treat as new user if no phone
+            setIsAddingNewAddress(true);
             return;
         };
 
@@ -151,16 +151,16 @@ const CheckoutModal = ({ isOpen, onClose, restaurantId, phone, cart, notes }) =>
                 const userDoc = querySnapshot.docs[0];
                 const userData = userDoc.data();
                 setExistingUser(userData);
-                setName(userData.name); // Set name for existing user
+                setName(userData.name);
                 if (userData.addresses && userData.addresses.length > 0) {
                     setSelectedAddress(userData.addresses[0]);
                     setIsAddingNewAddress(false);
                 } else {
-                    setIsAddingNewAddress(true); // User exists but has no addresses
+                    setIsAddingNewAddress(true);
                 }
             } else {
                 setExistingUser(null);
-                setIsAddingNewAddress(true); // No user found, force new address form
+                setIsAddingNewAddress(true);
             }
         } catch(e) {
             console.error("Error fetching user by phone", e);
@@ -211,8 +211,8 @@ const CheckoutModal = ({ isOpen, onClose, restaurantId, phone, cart, notes }) =>
             if (!res.ok) throw new Error(data.message || "Failed to place order.");
 
             alert("Order Placed Successfully!");
-            onClose(); // Close modal on success
-            window.location.reload(); // Reset state for now
+            onClose();
+            window.location.reload();
             
         } catch (err) {
             setError(err.message);
@@ -224,9 +224,9 @@ const CheckoutModal = ({ isOpen, onClose, restaurantId, phone, cart, notes }) =>
     if (isUserLoading) {
         return (
             <Dialog open={isOpen} onOpenChange={onClose}>
-                 <DialogContent className="bg-gray-900 border-gray-700 text-white">
+                 <DialogContent className="bg-background border-border text-foreground">
                     <div className="flex justify-center items-center h-48">
-                        <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-indigo-500"></div>
+                        <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-primary"></div>
                     </div>
                  </DialogContent>
             </Dialog>
@@ -235,7 +235,7 @@ const CheckoutModal = ({ isOpen, onClose, restaurantId, phone, cart, notes }) =>
 
     return (
         <Dialog open={isOpen} onOpenChange={onClose}>
-            <DialogContent className="bg-gray-900 border-gray-700 text-white">
+            <DialogContent className="bg-background border-border text-foreground">
                 <DialogHeader>
                     <DialogTitle className="text-2xl">Confirm Your Details</DialogTitle>
                     <DialogDescription>Almost there! Just confirm your details to place the order.</DialogDescription>
@@ -247,44 +247,44 @@ const CheckoutModal = ({ isOpen, onClose, restaurantId, phone, cart, notes }) =>
                             <h3 className="font-semibold mb-2">Welcome back, {name}! Select a delivery address:</h3>
                             <div className="space-y-2 max-h-40 overflow-y-auto">
                                 {(existingUser.addresses || []).map(addr => (
-                                    <div key={addr.id} onClick={() => setSelectedAddress(addr)} className={cn("p-3 rounded-lg border-2 cursor-pointer transition-colors", selectedAddress?.id === addr.id ? 'border-indigo-500 bg-indigo-500/10' : 'border-gray-600 hover:bg-gray-700')}>
+                                    <div key={addr.id} onClick={() => setSelectedAddress(addr)} className={cn("p-3 rounded-lg border-2 cursor-pointer transition-colors", selectedAddress?.id === addr.id ? 'border-primary bg-primary/10' : 'border-border hover:bg-muted')}>
                                         <p>{addr.full}</p>
                                     </div>
                                 ))}
                             </div>
-                            <Button variant="link" className="mt-2 p-0 h-auto text-indigo-400" onClick={() => setIsAddingNewAddress(true)}>+ Add New Address</Button>
+                            <Button variant="link" className="mt-2 p-0 h-auto text-primary" onClick={() => setIsAddingNewAddress(true)}>+ Add New Address</Button>
                         </div>
                     ) : (
                         <div className="space-y-4">
                             {!existingUser && (
                                 <div>
-                                    <label className="block text-sm font-medium text-gray-300 mb-1">Full Name</label>
+                                    <label className="block text-sm font-medium text-muted-foreground mb-1">Full Name</label>
                                     <div className="relative">
-                                      <User className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-400" />
-                                      <input type="text" value={name} onChange={(e) => setName(e.target.value)} required className="w-full pl-10 pr-4 py-2 rounded-md bg-gray-800 border border-gray-600" placeholder="Enter your full name" />
+                                      <User className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
+                                      <input type="text" value={name} onChange={(e) => setName(e.target.value)} required className="w-full pl-10 pr-4 py-2 rounded-md bg-input border border-border" placeholder="Enter your full name" />
                                     </div>
                                 </div>
                             )}
                             <div>
-                                <label className="block text-sm font-medium text-gray-300 mb-1">
+                                <label className="block text-sm font-medium text-muted-foreground mb-1">
                                     {existingUser ? "New Delivery Address" : "Delivery Address"}
                                 </label>
                                 <div className="relative">
-                                  <Home className="absolute left-3 top-3 h-5 w-5 text-gray-400" />
-                                  <textarea value={address} onChange={(e) => setAddress(e.target.value)} required rows={3} className="w-full pl-10 pr-4 py-2 rounded-md bg-gray-800 border border-gray-600" placeholder="Enter your full delivery address" />
+                                  <Home className="absolute left-3 top-3 h-5 w-5 text-muted-foreground" />
+                                  <textarea value={address} onChange={(e) => setAddress(e.target.value)} required rows={3} className="w-full pl-10 pr-4 py-2 rounded-md bg-input border border-border" placeholder="Enter your full delivery address" />
                                 </div>
                                 {existingUser && existingUser.addresses && existingUser.addresses.length > 0 && (
-                                    <Button variant="link" className="text-sm p-0 h-auto text-gray-400 mt-2" onClick={() => setIsAddingNewAddress(false)}>← Back to saved addresses</Button>
+                                    <Button variant="link" className="text-sm p-0 h-auto text-muted-foreground mt-2" onClick={() => setIsAddingNewAddress(false)}>← Back to saved addresses</Button>
                                 )}
                             </div>
                         </div>
                     )}
-                    {error && <p className="text-red-400 text-sm text-center">{error}</p>}
+                    {error && <p className="text-red-500 text-sm text-center">{error}</p>}
                 </div>
 
                 <DialogFooter>
                     <DialogClose asChild><Button variant="secondary" disabled={loading}>Cancel</Button></DialogClose>
-                    <Button onClick={handlePlaceOrder} className="bg-indigo-600 hover:bg-indigo-700" disabled={loading}>
+                    <Button onClick={handlePlaceOrder} className="bg-primary hover:bg-primary/90" disabled={loading}>
                         {loading ? 'Placing Order...' : 'Confirm & Place Order'}
                     </Button>
                 </DialogFooter>
@@ -372,39 +372,37 @@ const OrderPageInternal = () => {
 
     if (loading) {
         return (
-            <div className="min-h-screen bg-gray-900 flex items-center justify-center">
-                <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-indigo-500"></div>
+            <div className="min-h-screen bg-background flex items-center justify-center">
+                <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-primary"></div>
             </div>
         );
     }
 
     if (!restaurantName && !loading) {
         return (
-            <div className="min-h-screen bg-gray-900 flex flex-col gap-4 items-center justify-center text-white text-center">
-                <Utensils size={48} className="text-red-500" />
+            <div className="min-h-screen bg-background flex flex-col gap-4 items-center justify-center text-foreground text-center">
+                <Utensils size={48} className="text-destructive" />
                 <h1 className="text-2xl font-bold">Could not load menu</h1>
-                <p className="text-gray-400">This restaurant might not be available. Please try again later.</p>
+                <p className="text-muted-foreground">This restaurant might not be available. Please try again later.</p>
             </div>
         );
     }
     
-    const categoryOrder = ["starters", "main-course", "desserts", "beverages"];
-
     return (
-        <div className="min-h-screen bg-gray-900 text-white">
+        <div className="min-h-screen bg-background text-foreground">
             <CheckoutModal isOpen={isCheckoutOpen} onClose={() => setIsCheckoutOpen(false)} restaurantId={restaurantId} phone={phone} cart={cart} notes={notes} />
             <AnimatePresence>
-                {isCartOpen && <div className="fixed inset-0 bg-black/60 z-30" onClick={() => setIsCartOpen(false)} />}
+                {isCartOpen && <motion.div initial={{opacity: 0}} animate={{opacity: 1}} exit={{opacity: 0}} className="fixed inset-0 bg-black/60 z-30" onClick={() => setIsCartOpen(false)} />}
                 {isCartOpen && <CartDrawer cart={cart} onUpdateCart={handleCartUpdate} onClose={() => setIsCartOpen(false)} onCheckout={handleCheckout} notes={notes} setNotes={setNotes} />}
             </AnimatePresence>
 
-            <header className="sticky top-0 z-20 bg-gray-900/80 backdrop-blur-lg border-b border-gray-700">
+            <header className="sticky top-0 z-20 bg-background/80 backdrop-blur-lg border-b border-border">
                 <div className="container mx-auto px-4 py-3 flex justify-between items-center">
                     <div>
-                        <p className="text-xs text-gray-400">Ordering from</p>
+                        <p className="text-xs text-muted-foreground">Ordering from</p>
                         <h1 className="text-xl font-bold">{restaurantName}</h1>
                     </div>
-                     <div className="flex items-center gap-1 bg-green-500/20 text-green-300 px-2 py-1 rounded-full text-sm">
+                     <div className="flex items-center gap-1 bg-green-500/10 text-green-300 px-2 py-1 rounded-full text-sm border border-green-500/20">
                         <Star size={14} className="fill-current"/> 4.1
                     </div>
                 </div>
@@ -417,7 +415,7 @@ const OrderPageInternal = () => {
                             const categoryTitle = key.charAt(0).toUpperCase() + key.slice(1).replace('-', ' ');
                             return (
                                 <section id={key} key={key} className="pt-2 scroll-mt-20">
-                                    <h3 className="text-2xl font-bold mb-4 flex items-center gap-2"><Utensils /> {categoryTitle}</h3>
+                                    <h3 className="text-2xl font-bold mb-4 flex items-center gap-3"><Utensils /> {categoryTitle}</h3>
                                     <div className="grid grid-cols-1 gap-4">
                                         {menu[key].map(item => {
                                             const cartItem = cart.find(ci => ci.id === item.id);
@@ -448,7 +446,7 @@ const OrderPageInternal = () => {
                     exit={{ y: 100 }}
                     transition={{ type: "spring", stiffness: 300, damping: 30 }}
                 >
-                    <Button onClick={() => setIsCartOpen(true)} className="w-full bg-indigo-600 hover:bg-indigo-700 h-14 text-lg font-bold rounded-xl shadow-lg shadow-indigo-500/30 flex justify-between items-center">
+                    <Button onClick={() => setIsCartOpen(true)} className="w-full bg-primary hover:bg-primary/90 h-14 text-lg font-bold rounded-xl shadow-lg shadow-primary/30 flex justify-between items-center text-primary-foreground">
                         <div className="flex items-center gap-2">
                            <ShoppingCart className="h-6 w-6"/> 
                            <span>{totalCartItems} {totalCartItems > 1 ? 'Items' : 'Item'}</span>
@@ -462,9 +460,8 @@ const OrderPageInternal = () => {
     );
 };
 
-// This wrapper component is needed to use useSearchParams
 const OrderPage = () => (
-    <Suspense fallback={<div className="min-h-screen bg-gray-900 flex items-center justify-center"><div className="animate-spin rounded-full h-16 w-16 border-b-2 border-indigo-500"></div></div>}>
+    <Suspense fallback={<div className="min-h-screen bg-background flex items-center justify-center"><div className="animate-spin rounded-full h-16 w-16 border-b-2 border-primary"></div></div>}>
         <OrderPageInternal />
     </Suspense>
 );

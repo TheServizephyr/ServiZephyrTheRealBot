@@ -6,48 +6,48 @@
   @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700&family=Poppins:wght@700;800&display=swap');
 
   :root {
-    --background: 240 10% 99%;
+    --background: 0 0% 100%;
     --foreground: 222.2 84% 4.9%;
     --card: 0 0% 100%;
     --card-foreground: 222.2 84% 4.9%;
     --popover: 0 0% 100%;
     --popover-foreground: 222.2 84% 4.9%;
-    --primary: 221 83% 53%; /* Solid Blue */
+    --primary: 250 80% 60%; /* Vibrant Indigo */
     --primary-foreground: 210 40% 98%;
     --secondary: 210 40% 96.1%;
     --secondary-foreground: 222.2 47.4% 11.2%;
     --muted: 210 40% 96.1%;
     --muted-foreground: 215.4 16.3% 46.9%;
-    --accent: 145 74% 36%; /* Solid Green */
+    --accent: 340 82% 52%; /* Vivid Pink/Magenta */
     --accent-foreground: 210 40% 98%;
     --destructive: 0 84.2% 60.2%;
     --destructive-foreground: 210 40% 98%;
     --border: 214.3 31.8% 91.4%;
     --input: 214.3 31.8% 91.4%;
-    --ring: 222.2 84% 4.9%;
+    --ring: 250 80% 60%;
     --radius: 0.75rem;
   }
  
   .dark {
-    --background: 222.2 47.4% 11.2%;
+    --background: 224 71% 4%; /* Deep, rich navy */
     --foreground: 210 40% 98%;
-    --card: 217.2 32.6% 17.5%;
+    --card: 224 33% 12%;
     --card-foreground: 210 40% 98%;
-    --popover: 222.2 47.4% 11.2%;
+    --popover: 224 71% 4%;
     --popover-foreground: 210 40% 98%;
-    --primary: 221 83% 53%;
+    --primary: 250 80% 60%;
     --primary-foreground: 210 40% 98%;
     --secondary: 224 67% 33%;
     --secondary-foreground: 210 40% 98%;
-    --muted: 217.2 32.6% 17.5%;
+    --muted: 224 33% 12%;
     --muted-foreground: 215 20.2% 65.1%;
-    --accent: 145 74% 36%;
+    --accent: 340 82% 52%;
     --accent-foreground: 210 40% 98%;
     --destructive: 0 62.8% 30.6%;
     --destructive-foreground: 210 40% 98%;
-    --border: 217.2 32.6% 17.5%;
-    --input: 217.2 32.6% 17.5%;
-    --ring: 221 83% 53%;
+    --border: 217.2 32.6% 22.5%;
+    --input: 217.2 32.6% 27.5%;
+    --ring: 250 80% 60%;
   }
 
   body {
