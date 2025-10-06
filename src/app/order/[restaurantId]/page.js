@@ -232,11 +232,8 @@ const CheckoutModal = ({ isOpen, onClose, restaurantId, phone, cart, notes }) =>
     useEffect(() => {
         const fetchUser = async () => {
             if (!phone) {
-                // This is not an error, just a new user without a phone in URL.
-                // The form will be for a new user.
                 setIsExistingUser(false);
-                setIsAddingNew(true); // Force new address entry
-                console.log("No phone in URL, assuming new user.");
+                setIsAddingNew(true);
                 setLoading(false);
                 return;
             }
@@ -244,7 +241,6 @@ const CheckoutModal = ({ isOpen, onClose, restaurantId, phone, cart, notes }) =>
             setLoading(true);
             setError('');
             try {
-                // This is a new API route dedicated to user lookup
                 const res = await fetch('/api/customer/lookup', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -252,11 +248,9 @@ const CheckoutModal = ({ isOpen, onClose, restaurantId, phone, cart, notes }) =>
                 });
 
                 if (!res.ok) {
-                    // If 404, it's a new user, which is not an error state.
                     if (res.status === 404) {
                         setIsExistingUser(false);
                         setIsAddingNew(true);
-                        console.log("New user detected via API.");
                     } else {
                        const data = await res.json();
                        throw new Error(data.message || "Failed to look up user.");
@@ -270,9 +264,8 @@ const CheckoutModal = ({ isOpen, onClose, restaurantId, phone, cart, notes }) =>
                         setSelectedAddress(data.addresses[0].full);
                         setIsAddingNew(false);
                     } else {
-                        setIsAddingNew(true); // No saved addresses, force new entry
+                        setIsAddingNew(true);
                     }
-                    console.log("Existing user found:", data);
                 }
 
             } catch (err) {
@@ -286,7 +279,6 @@ const CheckoutModal = ({ isOpen, onClose, restaurantId, phone, cart, notes }) =>
         if (isOpen) {
             fetchUser();
         } else {
-            // Reset state when modal is closed
             setName(''); setAddress(''); setError(''); setSavedAddresses([]); setSelectedAddress(null); setIsAddingNew(false); setIsExistingUser(false);
         }
     }, [isOpen, phone]);
@@ -466,26 +458,14 @@ const OrderPageInternal = () => {
             if (!restaurantId) return;
             setLoading(true);
             try {
-                // Fetch Menu
-                const menuRes = await fetch(`/api/menu/${restaurantId}`);
-                if (!menuRes.ok) throw new Error('Failed to fetch menu data');
-                const menuData = await menuRes.json();
-                setRestaurantName(menuData.restaurantName);
-                setRawMenu(menuData.menu);
-
-                // Fetch Public Coupons for the restaurant
-                // Note: The coupons API might need to be public or use a different auth method for this to work without user login
-                try {
-                  const couponRes = await fetch(`/api/owner/coupons?restaurantId=${restaurantId}`);
-                  if(couponRes.ok) {
-                      const couponData = await couponRes.json();
-                      setCoupons(couponData.coupons.filter(c => c.status === 'Active'));
-                  } else {
-                      console.warn("Could not fetch coupons. This might be due to auth requirements on the API.");
-                  }
-                } catch (e) {
-                  console.warn("Coupon fetching failed:", e);
-                }
+                // Fetch Menu and Coupons together
+                const publicDataRes = await fetch(`/api/menu/${restaurantId}`);
+                if (!publicDataRes.ok) throw new Error('Failed to fetch restaurant data');
+                const publicData = await publicDataRes.json();
+                
+                setRestaurantName(publicData.restaurantName);
+                setRawMenu(publicData.menu);
+                setCoupons(publicData.coupons || []);
 
                 // Fetch user's loyalty points
                 if(phone) {
@@ -497,18 +477,12 @@ const OrderPageInternal = () => {
                         });
                          if (loyaltyRes.ok) {
                              const userData = await loyaltyRes.json();
-                             // The customer sub-collection in restaurants holds loyalty points. 
-                             // The lookup on 'users' collection won't have it directly.
-                             // THIS NEEDS A NEW API or modification to lookup API to get loyalty points for a specific restaurant
-                             // For now, we'll simulate it.
                              setLoyaltyPoints(userData.loyaltyPoints || 250); // Using dummy value for now
                          }
                     } catch(e) {
                         console.warn("Could not fetch loyalty points:", e);
                     }
                 }
-
-
             } catch (error) {
                 console.error("Failed to fetch initial data:", error);
                 setRestaurantName(''); // Show error state
