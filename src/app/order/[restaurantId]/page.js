@@ -31,7 +31,7 @@ const MenuItemCard = ({ item, quantity, onIncrement, onDecrement }) => {
       </div>
       <div className="flex-grow">
         <div className="flex items-center gap-2 mb-1">
-          <div className={`w-4 h-4 border ${item.isVeg ? 'border-green-500' : 'border-red-500'} rounded-sm flex items-center justify-center`}>
+          <div className={`w-4 h-4 border ${item.isVeg ? 'border-green-500' : 'border-red-500'} flex items-center justify-center`}>
             <div className={`w-2 h-2 ${item.isVeg ? 'bg-green-500' : 'bg-red-500'} rounded-full`}></div>
           </div>
           <h4 className="font-semibold text-foreground">{item.name}</h4>
@@ -439,7 +439,7 @@ const OrderPageInternal = () => {
     const handleCategoryClick = (categoryId) => {
         const section = document.getElementById(categoryId);
         if(section) {
-            const yOffset = -80; // height of sticky headers
+            const yOffset = -120; // height of sticky headers
             const y = section.getBoundingClientRect().top + window.pageYOffset + yOffset;
             window.scrollTo({top: y, behavior: 'smooth'});
         }
@@ -506,23 +506,17 @@ const OrderPageInternal = () => {
                                     <p className="text-sm text-muted-foreground">Sort dishes by price.</p>
                                 </div>
                                 <div className="grid gap-2">
-                                    <div className="grid grid-cols-3 items-center gap-4">
+                                    <div className="flex items-center justify-between">
                                         <Label htmlFor="sort-default">Default</Label>
-                                        <div className="col-span-2">
-                                            <Switch id="sort-default" checked={sortBy === 'default'} onCheckedChange={() => setSortBy('default')} />
-                                        </div>
+                                        <Switch id="sort-default" checked={sortBy === 'default'} onCheckedChange={() => setSortBy('default')} />
                                     </div>
-                                    <div className="grid grid-cols-3 items-center gap-4">
+                                    <div className="flex items-center justify-between">
                                         <Label htmlFor="sort-asc">Price: Low to High</Label>
-                                        <div className="col-span-2">
-                                            <Switch id="sort-asc" checked={sortBy === 'price-asc'} onCheckedChange={() => setSortBy('price-asc')} />
-                                        </div>
+                                        <Switch id="sort-asc" checked={sortBy === 'price-asc'} onCheckedChange={() => setSortBy('price-asc')} />
                                     </div>
-                                    <div className="grid grid-cols-3 items-center gap-4">
+                                     <div className="flex items-center justify-between">
                                         <Label htmlFor="sort-desc">Price: High to Low</Label>
-                                        <div className="col-span-2">
-                                            <Switch id="sort-desc" checked={sortBy === 'price-desc'} onCheckedChange={() => setSortBy('price-desc')} />
-                                        </div>
+                                        <Switch id="sort-desc" checked={sortBy === 'price-desc'} onCheckedChange={() => setSortBy('price-desc')} />
                                     </div>
                                 </div>
                             </div>
@@ -542,11 +536,9 @@ const OrderPageInternal = () => {
                                     <p className="text-sm text-muted-foreground">Filter by dietary preference.</p>
                                 </div>
                                 <div className="grid gap-2">
-                                    <div className="grid grid-cols-3 items-center gap-4">
+                                    <div className="flex items-center justify-between">
                                         <Label htmlFor="veg-only">Veg Only</Label>
-                                        <div className="col-span-2">
-                                            <Switch id="veg-only" checked={vegOnly} onCheckedChange={setVegOnly} />
-                                        </div>
+                                        <Switch id="veg-only" checked={vegOnly} onCheckedChange={setVegOnly} />
                                     </div>
                                 </div>
                             </div>
@@ -583,32 +575,42 @@ const OrderPageInternal = () => {
                 </main>
             </div>
 
-            <AnimatePresence>
-                {totalCartItems > 0 && (
-                    <motion.footer 
-                        className="fixed bottom-0 z-30 w-full p-4 flex justify-between items-center"
-                        initial={{ y: 100 }}
-                        animate={{ y: 0 }}
-                        exit={{ y: 100 }}
-                        transition={{ type: "spring", stiffness: 300, damping: 30 }}
+            <footer className="fixed bottom-0 z-30 w-full p-4">
+                <div className="container mx-auto flex justify-between items-center gap-4">
+                    <AnimatePresence>
+                        {totalCartItems > 0 && (
+                            <motion.div
+                                className="flex-grow"
+                                initial={{ y: 100 }}
+                                animate={{ y: 0 }}
+                                exit={{ y: 100 }}
+                                transition={{ type: "spring", stiffness: 300, damping: 30 }}
+                            >
+                                <Button onClick={() => setIsCartOpen(true)} className="bg-gradient-to-r from-primary to-accent h-14 text-lg font-bold rounded-xl shadow-lg shadow-primary/30 flex justify-between items-center text-primary-foreground w-full">
+                                    <div className="flex items-center gap-2">
+                                       <ShoppingCart className="h-6 w-6"/> 
+                                       <span>{totalCartItems} {totalCartItems > 1 ? 'Items' : 'Item'}</span>
+                                    </div>
+                                    <span>View Cart | ₹{subtotal}</span>
+                                </Button>
+                            </motion.div>
+                        )}
+                    </AnimatePresence>
+
+                    <motion.div
+                         initial={{ y: 100 }}
+                         animate={{ y: 0 }}
+                         transition={{ type: "spring", stiffness: 300, damping: 30, delay: 0.1 }}
                     >
-                         <Button
+                        <Button
                             onClick={() => setIsMenuBrowserOpen(true)}
-                            className="bg-card text-foreground h-14 rounded-xl shadow-lg flex items-center gap-2 border border-border"
+                            className="bg-card text-foreground h-14 w-14 rounded-full shadow-lg flex items-center justify-center gap-2 border border-border"
                         >
-                            <BookOpen size={20} />
-                            Browse Menu
+                            <BookOpen size={24} />
                         </Button>
-                        <Button onClick={() => setIsCartOpen(true)} className="bg-gradient-to-r from-primary to-accent h-14 text-lg font-bold rounded-xl shadow-lg shadow-primary/30 flex justify-between items-center text-primary-foreground flex-grow ml-4">
-                            <div className="flex items-center gap-2">
-                               <ShoppingCart className="h-6 w-6"/> 
-                               <span>{totalCartItems} {totalCartItems > 1 ? 'Items' : 'Item'}</span>
-                            </div>
-                            <span>View Cart | ₹{subtotal}</span>
-                        </Button>
-                    </motion.footer>
-                )}
-            </AnimatePresence>
+                    </motion.div>
+                </div>
+            </footer>
         </div>
     );
 };
@@ -621,5 +623,4 @@ const OrderPage = () => (
 
 export default OrderPage;
 
-    
     
