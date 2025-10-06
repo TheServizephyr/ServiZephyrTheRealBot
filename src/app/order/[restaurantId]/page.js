@@ -9,7 +9,7 @@ import Image from 'next/image';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose } from "@/components/ui/dialog";
-import { getFirestore, collection, getDocs, doc, getDoc } from 'firebase/firestore';
+import { getFirestore, doc, getDoc } from 'firebase/firestore';
 import { app } from '@/lib/firebase';
 
 // Initialize Firestore
@@ -301,27 +301,18 @@ const OrderPageInternal = () => {
             if (!restaurantId) return;
             setLoading(true);
             try {
-                const menuRef = collection(db, "restaurants", restaurantId, "menu");
-                const menuSnap = await getDocs(menuRef);
-                const menuData = {};
-                menuSnap.forEach(doc => {
-                    const item = { id: doc.id, ...doc.data() };
-                    if (!menuData[item.categoryId]) {
-                        menuData[item.categoryId] = [];
-                    }
-                    menuData[item.categoryId].push(item);
-                });
-
-                // Fetch restaurant name
-                const restRef = doc(db, "restaurants", restaurantId);
-                const restSnap = await getDoc(restRef);
-                if (restSnap.exists()) {
-                    setRestaurantName(restSnap.data().name);
+                const res = await fetch(`/api/menu/${restaurantId}`);
+                if (!res.ok) {
+                    throw new Error('Failed to fetch menu data');
                 }
+                const data = await res.json();
                 
-                setMenu(menuData);
+                setRestaurantName(data.restaurantName);
+                setMenu(data.menu);
             } catch (error) {
                 console.error("Failed to fetch menu:", error);
+                // In case of error, we can set a state to show an error message
+                setRestaurantName(''); // This will trigger the "Could not load" message
             } finally {
                 setLoading(false);
             }
@@ -377,8 +368,10 @@ const OrderPageInternal = () => {
 
     if (!restaurantName && !loading) {
         return (
-            <div className="min-h-screen bg-gray-900 flex items-center justify-center text-white">
-                <p>Could not load menu for this restaurant.</p>
+            <div className="min-h-screen bg-gray-900 flex flex-col gap-4 items-center justify-center text-white text-center">
+                <Utensils size={48} className="text-red-500" />
+                <h1 className="text-2xl font-bold">Could not load menu</h1>
+                <p className="text-gray-400">This restaurant might not be available. Please try again later.</p>
             </div>
         );
     }
