@@ -24,9 +24,19 @@ export async function POST(req) {
         const userDoc = userQuery.docs[0];
         const userData = userDoc.data();
         
+        // Find the restaurant the user might have points in.
+        // This is a simplification. A real-world scenario might need the restaurantId.
+        const joinedRestaurantsRef = userDoc.ref.collection('joined_restaurants');
+        const restaurantsSnap = await joinedRestaurantsRef.limit(1).get();
+        let loyaltyPoints = 0;
+        if (!restaurantsSnap.empty) {
+            loyaltyPoints = restaurantsSnap.docs[0].data().loyaltyPoints || 0;
+        }
+
         const responseData = {
             name: userData.name,
-            addresses: userData.addresses || [] // Ensure addresses is always an array
+            addresses: userData.addresses || [], // Ensure addresses is always an array
+            loyaltyPoints: loyaltyPoints // Send loyalty points to the frontend
         };
         
         return NextResponse.json(responseData, { status: 200 });

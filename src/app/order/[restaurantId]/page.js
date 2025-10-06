@@ -490,6 +490,9 @@ const OrderPageInternal = () => {
                         });
                          if (loyaltyRes.ok) {
                              const userData = await loyaltyRes.json();
+                             // Assuming the lookup API returns loyalty points for the specific restaurant
+                             // This part might need adjustment based on the actual API response structure.
+                             // For now, let's assume a top-level `loyaltyPoints` field in the user data.
                              setLoyaltyPoints(userData.loyaltyPoints || 0);
                          }
                     } catch(e) {
