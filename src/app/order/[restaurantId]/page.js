@@ -4,7 +4,7 @@
 import React, { useState, useEffect, Suspense } from 'react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Utensils, Plus, Minus, X, Home, User, Edit2, ShoppingCart } from 'lucide-react';
+import { Utensils, Plus, Minus, X, Home, User, Edit2, ShoppingCart, Star } from 'lucide-react';
 import Image from 'next/image';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
@@ -362,6 +362,8 @@ const OrderPageInternal = () => {
     }
 
     const totalCartItems = cart.reduce((sum, item) => sum + item.quantity, 0);
+    const subtotal = cart.reduce((sum, item) => sum + item.fullPrice * item.quantity, 0);
+
 
     const handleCheckout = () => {
         setIsCartOpen(false);
@@ -392,6 +394,7 @@ const OrderPageInternal = () => {
         <div className="min-h-screen bg-gray-900 text-white">
             <CheckoutModal isOpen={isCheckoutOpen} onClose={() => setIsCheckoutOpen(false)} restaurantId={restaurantId} phone={phone} cart={cart} notes={notes} />
             <AnimatePresence>
+                {isCartOpen && <div className="fixed inset-0 bg-black/60 z-30" onClick={() => setIsCartOpen(false)} />}
                 {isCartOpen && <CartDrawer cart={cart} onUpdateCart={handleCartUpdate} onClose={() => setIsCartOpen(false)} onCheckout={handleCheckout} notes={notes} setNotes={setNotes} />}
             </AnimatePresence>
 
@@ -400,6 +403,9 @@ const OrderPageInternal = () => {
                     <div>
                         <p className="text-xs text-gray-400">Ordering from</p>
                         <h1 className="text-xl font-bold">{restaurantName}</h1>
+                    </div>
+                     <div className="flex items-center gap-1 bg-green-500/20 text-green-300 px-2 py-1 rounded-full text-sm">
+                        <Star size={14} className="fill-current"/> 4.1
                     </div>
                 </div>
             </header>
@@ -442,9 +448,12 @@ const OrderPageInternal = () => {
                     exit={{ y: 100 }}
                     transition={{ type: "spring", stiffness: 300, damping: 30 }}
                 >
-                    <Button onClick={() => setIsCartOpen(true)} className="w-full bg-indigo-600 hover:bg-indigo-700 h-14 text-lg font-bold rounded-xl shadow-lg shadow-indigo-500/30">
-                        <ShoppingCart className="mr-2 h-6 w-6"/> 
-                        View Cart ({totalCartItems})
+                    <Button onClick={() => setIsCartOpen(true)} className="w-full bg-indigo-600 hover:bg-indigo-700 h-14 text-lg font-bold rounded-xl shadow-lg shadow-indigo-500/30 flex justify-between items-center">
+                        <div className="flex items-center gap-2">
+                           <ShoppingCart className="h-6 w-6"/> 
+                           <span>{totalCartItems} {totalCartItems > 1 ? 'Items' : 'Item'}</span>
+                        </div>
+                        <span>View Cart | ₹{subtotal}</span>
                     </Button>
                 </motion.footer>
               )}
