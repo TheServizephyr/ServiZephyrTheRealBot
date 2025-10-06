@@ -36,10 +36,9 @@ const BillPage = () => {
             const data = await res.json();
 
             const fetchedOrder = data.order;
-            // Use 'quantity' as it is named in the order creation API
-            const subtotal = fetchedOrder.items.reduce((acc, item) => acc + item.quantity * item.price, 0);
-
-            setOrder({ ...fetchedOrder, subtotal });
+            // Use 'qty' as it is named in the order creation API
+            // Note: The totalAmount is now fetched directly from the saved order data
+            setOrder(fetchedOrder);
             setRestaurant(data.restaurant);
 
         } catch (err) {
@@ -88,12 +87,16 @@ const BillPage = () => {
     );
   }
   
+  // Calculations for display, actual totalAmount is from the order object
+  const subtotal = order.items.reduce((acc, item) => acc + item.qty * item.price, 0);
   const taxRate = 0.05; // 5%
-  const cgst = order.subtotal * taxRate;
-  const sgst = order.subtotal * taxRate;
-  const deliveryCharge = 30; // Can be made dynamic later
-  const grandTotal = order.subtotal + cgst + sgst + deliveryCharge;
-  const orderDate = new Date(order.orderDate.seconds * 1000);
+  const cgst = subtotal * taxRate;
+  const sgst = subtotal * taxRate;
+  const deliveryCharge = 30; // This should be dynamic in a real app, but for display consistency.
+  const grandTotal = order.totalAmount;
+  
+  // Correctly handle date from ISO string
+  const orderDate = new Date(order.orderDate);
 
 
   return (
@@ -119,7 +122,7 @@ const BillPage = () => {
         {/* Customer Details */}
         <div className="mb-4 text-xs">
             <p><strong>Bill To:</strong> {order.customerName}</p>
-            <p>{order.customerAddress}</p>
+            <p><strong>Add:</strong> {order.customerAddress}</p>
             <p><strong>Mobile:</strong> {order.customerPhone}</p>
         </div>
 
@@ -138,9 +141,9 @@ const BillPage = () => {
                 {order.items.map((item, index) => (
                     <tr key={index} className="border-b border-dotted border-black">
                         <td className="py-2">{item.name}</td>
-                        <td className="text-center py-2">{item.quantity}</td>
+                        <td className="text-center py-2">{item.qty}</td>
                         <td className="text-right py-2">{item.price.toFixed(2)}</td>
-                        <td className="text-right py-2">{(item.quantity * item.price).toFixed(2)}</td>
+                        <td className="text-right py-2">{(item.qty * item.price).toFixed(2)}</td>
                     </tr>
                 ))}
             </tbody>
@@ -150,7 +153,7 @@ const BillPage = () => {
         <div className="space-y-1 text-xs">
             <div className="flex justify-between">
                 <span className="font-semibold">SUB TOTAL</span>
-                <span>{order.subtotal.toFixed(2)}</span>
+                <span>{subtotal.toFixed(2)}</span>
             </div>
              <div className="flex justify-between">
                 <span className="font-semibold">CGST ({taxRate*100}%)</span>
@@ -195,3 +198,5 @@ const BillPage = () => {
 };
 
 export default BillPage;
+
+    

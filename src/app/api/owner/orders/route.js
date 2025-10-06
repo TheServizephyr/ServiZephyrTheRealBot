@@ -74,11 +74,17 @@ export async function GET(req) {
                 return NextResponse.json({ message: 'Order not found.' }, { status: 404 });
             }
             
-            const orderData = orderDoc.data();
+            let orderData = orderDoc.data();
             // Security check: ensure the fetched order belongs to the owner's restaurant
             if (orderData.restaurantId !== restaurantId) {
                 return NextResponse.json({ message: 'Access denied to this order.' }, { status: 403 });
             }
+            
+            // CONVERT TIMESTAMP TO ISO STRING FOR CLIENT
+            if (orderData.orderDate && orderData.orderDate.toDate) {
+                orderData = { ...orderData, orderDate: orderData.orderDate.toDate().toISOString() };
+            }
+
 
             const restaurantData = restaurantSnap.data();
 
@@ -100,7 +106,8 @@ export async function GET(req) {
                 return { 
                     id: doc.id, 
                     ...data,
-                    createdAt: data.orderDate.toDate().toISOString(),
+                    // Ensure date is ISO string for client-side processing
+                    orderDate: data.orderDate?.toDate ? data.orderDate.toDate().toISOString() : data.orderDate,
                     customer: data.customerName,
                     amount: data.totalAmount,
                 };
@@ -159,3 +166,5 @@ export async function DELETE(req) {
         return NextResponse.json({ message: `Backend Error: ${error.message}` }, { status: error.status || 500 });
     }
 }
+
+    

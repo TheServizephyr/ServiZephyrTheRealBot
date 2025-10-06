@@ -59,18 +59,23 @@ export async function POST(req) {
             console.log(`[Order API] New user profile created with UID: ${userId}`);
         }
 
-        // --- LOYALTY POINTS LOGIC ---
-        const totalAmount = items.reduce((sum, item) => sum + item.price * item.quantity, 0);
-        // For every ₹100 spent, give 10 points.
-        const pointsEarned = Math.floor(totalAmount / 100) * 10;
+        // --- CORRECT GRAND TOTAL & LOYALTY POINTS LOGIC ---
+        const subtotal = items.reduce((sum, item) => sum + item.price * item.quantity, 0);
+        const taxRate = 0.05; // 5% CGST + 5% SGST
+        const deliveryCharge = 30; // Should be dynamic from restaurant settings in future
+        const totalTaxes = subtotal * taxRate * 2;
+        const grandTotal = subtotal + totalTaxes + deliveryCharge;
 
-        // Add to restaurant's customer sub-collection with loyalty points
+        // For every ₹100 spent on the subtotal, give 10 points.
+        const pointsEarned = Math.floor(subtotal / 100) * 10;
+
+        // Add to restaurant's customer sub-collection with loyalty points and correct totalSpend
         const restaurantCustomerRef = restaurantRef.collection('customers').doc(userId);
         batch.set(restaurantCustomerRef, {
             name: name, // Denormalize for easy lookup in dashboard
             phone: phone,
             status: 'claimed',
-            totalSpend: adminFirestore.FieldValue.increment(totalAmount),
+            totalSpend: adminFirestore.FieldValue.increment(grandTotal), // Increment by GRAND TOTAL
             loyaltyPoints: adminFirestore.FieldValue.increment(pointsEarned),
             lastOrderDate: adminFirestore.FieldValue.serverTimestamp(),
             totalOrders: adminFirestore.FieldValue.increment(1),
@@ -93,15 +98,15 @@ export async function POST(req) {
             customerPhone: phone,
             restaurantId: restaurantId,
             restaurantName: restaurantDoc.data().name,
-            items: items.map(item => ({ name: item.name, quantity: item.quantity, price: item.price })),
-            totalAmount: totalAmount,
+            items: items.map(item => ({ name: item.name, qty: item.quantity, price: item.price })), // Correctly use 'qty'
+            totalAmount: grandTotal, // Save GRAND TOTAL to the order
             status: 'pending',
             priority: Math.floor(Math.random() * 5) + 1, // Random priority for now
             orderDate: adminFirestore.FieldValue.serverTimestamp(),
             notes: notes || null
         });
         
-        console.log(`[Order API] Order ${newOrderRef.id} created for user ${userId}. Earned ${pointsEarned} points.`);
+        console.log(`[Order API] Order ${newOrderRef.id} created for user ${userId}. Earned ${pointsEarned} points. Grand total: ${grandTotal}`);
 
         await batch.commit();
 
@@ -114,3 +119,5 @@ export async function POST(req) {
         return NextResponse.json({ message: `Backend Error: ${error.message}` }, { status: 500 });
     }
 }
+
+    
