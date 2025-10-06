@@ -1,7 +1,7 @@
 
 'use client';
 
-import React, { useState, useEffect, Suspense } from 'react';
+import React, { useState, useEffect, Suspense, useRef } from 'react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Utensils, Plus, Minus, X, Home, User, Edit2, ShoppingCart, Star, CookingPot } from 'lucide-react';
@@ -17,12 +17,12 @@ const db = getFirestore(auth.app);
 const MenuItemCard = ({ item, quantity, onIncrement, onDecrement }) => {
   return (
     <motion.div 
-        className="flex items-start gap-4 p-4 bg-card/60 rounded-lg border border-border"
+        className="flex items-start gap-4 p-4 bg-card rounded-lg border border-border"
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.3 }}
     >
-      <div className="relative w-20 h-20 rounded-md overflow-hidden bg-muted flex-shrink-0">
+      <div className="relative w-24 h-24 rounded-md overflow-hidden bg-muted flex-shrink-0">
          <Image src={item.imageUrl} alt={item.name} layout="fill" objectFit="cover" data-ai-hint="food item" />
       </div>
       <div className="flex-grow">
@@ -32,21 +32,21 @@ const MenuItemCard = ({ item, quantity, onIncrement, onDecrement }) => {
           </div>
           <h4 className="font-semibold text-foreground">{item.name}</h4>
         </div>
-        <p className="text-xs text-muted-foreground mb-2">{item.description}</p>
-        <p className="font-bold text-foreground">₹{item.fullPrice}</p>
+        <p className="text-sm text-muted-foreground mb-2">{item.description}</p>
+        <p className="font-bold text-lg text-foreground">₹{item.fullPrice}</p>
       </div>
-      <div className="self-center flex items-center gap-2">
+      <div className="flex flex-col items-center justify-center h-24">
         {quantity > 0 ? (
           <div className="flex items-center gap-1 bg-background p-1 rounded-lg border border-border">
-            <Button size="icon" variant="ghost" className="h-7 w-7 text-primary" onClick={() => onDecrement(item)}><Minus size={16}/></Button>
-            <span className="font-bold w-5 text-center text-foreground">{quantity}</span>
-            <Button size="icon" variant="ghost" className="h-7 w-7 text-primary" onClick={() => onIncrement(item)}><Plus size={16}/></Button>
+            <Button size="icon" variant="ghost" className="h-8 w-8 text-primary" onClick={() => onDecrement(item)}><Minus size={16}/></Button>
+            <span className="font-bold w-6 text-center text-foreground">{quantity}</span>
+            <Button size="icon" variant="ghost" className="h-8 w-8 text-primary" onClick={() => onIncrement(item)}><Plus size={16}/></Button>
           </div>
         ) : (
           <Button 
             onClick={() => onIncrement(item)}
             variant="outline"
-            className="bg-muted hover:bg-primary hover:text-primary-foreground border-border px-4"
+            className="w-24 bg-muted hover:bg-primary hover:text-primary-foreground border-primary/20 text-primary font-bold"
           >
             ADD
           </Button>
@@ -112,7 +112,7 @@ const CartDrawer = ({ cart, onUpdateCart, onClose, onCheckout, notes, setNotes }
                         <span className="font-semibold text-muted-foreground">Subtotal:</span>
                         <span className="font-bold text-foreground">₹{subtotal}</span>
                     </div>
-                     <Button onClick={onCheckout} className="w-full bg-primary hover:bg-primary/90 h-12 text-lg font-bold">
+                     <Button onClick={onCheckout} className="w-full bg-gradient-to-r from-primary to-accent h-12 text-lg font-bold">
                         Proceed to Checkout
                     </Button>
                 </div>
@@ -284,7 +284,7 @@ const CheckoutModal = ({ isOpen, onClose, restaurantId, phone, cart, notes }) =>
 
                 <DialogFooter>
                     <DialogClose asChild><Button variant="secondary" disabled={loading}>Cancel</Button></DialogClose>
-                    <Button onClick={handlePlaceOrder} className="bg-primary hover:bg-primary/90" disabled={loading}>
+                    <Button onClick={handlePlaceOrder} className="bg-gradient-to-r from-primary to-accent" disabled={loading}>
                         {loading ? 'Placing Order...' : 'Confirm & Place Order'}
                     </Button>
                 </DialogFooter>
@@ -293,11 +293,33 @@ const CheckoutModal = ({ isOpen, onClose, restaurantId, phone, cart, notes }) =>
     );
 }
 
+const CategoryNav = ({ categories, onCategoryClick }) => {
+    return (
+        <div className="sticky top-[65px] z-10 bg-background/95 backdrop-blur-sm py-2">
+             <div className="container mx-auto px-4">
+                <div className="flex gap-3 overflow-x-auto pb-2 -mb-2">
+                    {categories.map(category => (
+                        <Button 
+                            key={category.key} 
+                            variant="outline" 
+                            className="whitespace-nowrap rounded-full bg-card hover:bg-primary/10 hover:text-primary border-border"
+                            onClick={() => onCategoryClick(category.key)}
+                        >
+                            {category.title}
+                        </Button>
+                    ))}
+                </div>
+            </div>
+        </div>
+    )
+}
+
 const OrderPageInternal = () => {
     const params = useParams();
     const searchParams = useSearchParams();
     const { restaurantId } = params;
     const phone = searchParams.get('phone');
+    const mainContainerRef = useRef(null);
 
     const [restaurantName, setRestaurantName] = useState('');
     const [menu, setMenu] = useState({});
@@ -363,6 +385,22 @@ const OrderPageInternal = () => {
 
     const totalCartItems = cart.reduce((sum, item) => sum + item.quantity, 0);
     const subtotal = cart.reduce((sum, item) => sum + item.fullPrice * item.quantity, 0);
+    
+    const menuCategories = Object.keys(menu)
+        .filter(key => menu[key] && menu[key].length > 0)
+        .map(key => ({
+            key,
+            title: key.charAt(0).toUpperCase() + key.slice(1).replace(/-/g, ' ')
+        }));
+
+    const handleCategoryClick = (categoryId) => {
+        const section = document.getElementById(categoryId);
+        if(section) {
+            const yOffset = -80; // height of sticky headers
+            const y = section.getBoundingClientRect().top + window.pageYOffset + yOffset;
+            window.scrollTo({top: y, behavior: 'smooth'});
+        }
+    }
 
 
     const handleCheckout = () => {
@@ -389,7 +427,7 @@ const OrderPageInternal = () => {
     }
     
     return (
-        <div className="min-h-screen bg-background text-foreground">
+        <div ref={mainContainerRef} className="min-h-screen bg-background text-foreground">
             <CheckoutModal isOpen={isCheckoutOpen} onClose={() => setIsCheckoutOpen(false)} restaurantId={restaurantId} phone={phone} cart={cart} notes={notes} />
             <AnimatePresence>
                 {isCartOpen && <motion.div initial={{opacity: 0}} animate={{opacity: 1}} exit={{opacity: 0}} className="fixed inset-0 bg-black/60 z-30" onClick={() => setIsCartOpen(false)} />}
@@ -407,15 +445,16 @@ const OrderPageInternal = () => {
                     </div>
                 </div>
             </header>
+            
+            <CategoryNav categories={menuCategories} onCategoryClick={handleCategoryClick} />
 
-            <div className="container mx-auto px-4 mt-6 pb-24">
+            <div className="container mx-auto px-4 mt-6 pb-32">
                 <main>
                     <div className="space-y-10">
-                        {Object.keys(menu).filter(key => menu[key] && menu[key].length > 0).map(key => {
-                            const categoryTitle = key.charAt(0).toUpperCase() + key.slice(1).replace('-', ' ');
+                        {menuCategories.map(({key, title}) => {
                             return (
-                                <section id={key} key={key} className="pt-2 scroll-mt-20">
-                                    <h3 className="text-2xl font-bold mb-4 flex items-center gap-3"><Utensils /> {categoryTitle}</h3>
+                                <section id={key} key={key} className="scroll-mt-24">
+                                    <h3 className="text-2xl font-bold mb-4 flex items-center gap-3"><Utensils /> {title}</h3>
                                     <div className="grid grid-cols-1 gap-4">
                                         {menu[key].map(item => {
                                             const cartItem = cart.find(ci => ci.id === item.id);
@@ -446,7 +485,7 @@ const OrderPageInternal = () => {
                     exit={{ y: 100 }}
                     transition={{ type: "spring", stiffness: 300, damping: 30 }}
                 >
-                    <Button onClick={() => setIsCartOpen(true)} className="w-full bg-primary hover:bg-primary/90 h-14 text-lg font-bold rounded-xl shadow-lg shadow-primary/30 flex justify-between items-center text-primary-foreground">
+                    <Button onClick={() => setIsCartOpen(true)} className="w-full bg-gradient-to-r from-primary to-accent h-14 text-lg font-bold rounded-xl shadow-lg shadow-primary/30 flex justify-between items-center text-primary-foreground">
                         <div className="flex items-center gap-2">
                            <ShoppingCart className="h-6 w-6"/> 
                            <span>{totalCartItems} {totalCartItems > 1 ? 'Items' : 'Item'}</span>
@@ -467,5 +506,3 @@ const OrderPage = () => (
 );
 
 export default OrderPage;
-
-    
