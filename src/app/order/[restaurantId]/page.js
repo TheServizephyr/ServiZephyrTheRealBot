@@ -9,7 +9,7 @@ import Image from 'next/image';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose } from "@/components/ui/dialog";
-import { getFirestore, doc, getDoc } from 'firebase/firestore';
+import { getFirestore, doc, getDoc, collection, query, where, getDocs, limit } from 'firebase/firestore';
 import { app } from '@/lib/firebase';
 
 // Initialize Firestore
@@ -136,26 +136,35 @@ const CheckoutModal = ({ isOpen, onClose, restaurantId, phone, cart, notes }) =>
       const fetchUser = async () => {
         if (!phone) {
             setIsUserLoading(false);
+            setIsAddingNewAddress(true); // Treat as new user if no phone
             return;
         };
+
         try {
             setIsUserLoading(true);
-            const userRef = doc(db, "users", phone); // Assuming phone is the doc ID for simplicity
-            const userSnap = await getDoc(userRef);
-            if (userSnap.exists()) {
-                const userData = userSnap.data();
+            setError('');
+            const usersRef = collection(db, "users");
+            const q = query(usersRef, where("phone", "==", phone), limit(1));
+            const querySnapshot = await getDocs(q);
+            
+            if (!querySnapshot.empty) {
+                const userDoc = querySnapshot.docs[0];
+                const userData = userDoc.data();
                 setExistingUser(userData);
-                setName(userData.name);
+                setName(userData.name); // Set name for existing user
                 if (userData.addresses && userData.addresses.length > 0) {
                     setSelectedAddress(userData.addresses[0]);
+                    setIsAddingNewAddress(false);
                 } else {
-                    setIsAddingNewAddress(true);
+                    setIsAddingNewAddress(true); // User exists but has no addresses
                 }
             } else {
                 setExistingUser(null);
+                setIsAddingNewAddress(true); // No user found, force new address form
             }
         } catch(e) {
-            console.error("Error fetching user", e);
+            console.error("Error fetching user by phone", e);
+            setError("Could not verify your details. Please try again.");
             setExistingUser(null);
         } finally {
             setIsUserLoading(false);
@@ -235,9 +244,9 @@ const CheckoutModal = ({ isOpen, onClose, restaurantId, phone, cart, notes }) =>
                 <div className="py-4 space-y-4">
                     {existingUser && !isAddingNewAddress ? (
                         <div>
-                            <h3 className="font-semibold mb-2">Select a Delivery Address</h3>
+                            <h3 className="font-semibold mb-2">Welcome back, {name}! Select a delivery address:</h3>
                             <div className="space-y-2 max-h-40 overflow-y-auto">
-                                {existingUser.addresses.map(addr => (
+                                {(existingUser.addresses || []).map(addr => (
                                     <div key={addr.id} onClick={() => setSelectedAddress(addr)} className={cn("p-3 rounded-lg border-2 cursor-pointer transition-colors", selectedAddress?.id === addr.id ? 'border-indigo-500 bg-indigo-500/10' : 'border-gray-600 hover:bg-gray-700')}>
                                         <p>{addr.full}</p>
                                     </div>
@@ -264,7 +273,9 @@ const CheckoutModal = ({ isOpen, onClose, restaurantId, phone, cart, notes }) =>
                                   <Home className="absolute left-3 top-3 h-5 w-5 text-gray-400" />
                                   <textarea value={address} onChange={(e) => setAddress(e.target.value)} required rows={3} className="w-full pl-10 pr-4 py-2 rounded-md bg-gray-800 border border-gray-600" placeholder="Enter your full delivery address" />
                                 </div>
-                                {existingUser && <Button variant="link" className="text-sm p-0 h-auto text-gray-400 mt-2" onClick={() => setIsAddingNewAddress(false)}>← Back to saved addresses</Button>}
+                                {existingUser && existingUser.addresses && existingUser.addresses.length > 0 && (
+                                    <Button variant="link" className="text-sm p-0 h-auto text-gray-400 mt-2" onClick={() => setIsAddingNewAddress(false)}>← Back to saved addresses</Button>
+                                )}
                             </div>
                         </div>
                     )}
