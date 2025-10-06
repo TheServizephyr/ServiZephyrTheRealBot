@@ -59,12 +59,21 @@ export async function POST(req) {
             console.log(`[Order API] New user profile created with UID: ${userId}`);
         }
 
-        // Add to restaurant's customer sub-collection
+        // --- LOYALTY POINTS LOGIC ---
+        const totalAmount = items.reduce((sum, item) => sum + item.price * item.quantity, 0);
+        // For every ₹100 spent, give 10 points.
+        const pointsEarned = Math.floor(totalAmount / 100) * 10;
+
+        // Add to restaurant's customer sub-collection with loyalty points
         const restaurantCustomerRef = restaurantRef.collection('customers').doc(userId);
         batch.set(restaurantCustomerRef, {
             name: name, // Denormalize for easy lookup in dashboard
             phone: phone,
             status: 'claimed',
+            totalSpend: adminFirestore.FieldValue.increment(totalAmount),
+            loyaltyPoints: adminFirestore.FieldValue.increment(pointsEarned),
+            lastOrderDate: adminFirestore.FieldValue.serverTimestamp(),
+            totalOrders: adminFirestore.FieldValue.increment(1),
         }, { merge: true });
 
          // Add to user's joined_restaurants sub-collection
@@ -76,7 +85,6 @@ export async function POST(req) {
 
 
         // Create the actual order
-        const totalAmount = items.reduce((sum, item) => sum + item.price * item.quantity, 0);
         const newOrderRef = firestore.collection('orders').doc();
         batch.set(newOrderRef, {
             customerName: name,
@@ -93,7 +101,7 @@ export async function POST(req) {
             notes: notes || null
         });
         
-        console.log(`[Order API] Order ${newOrderRef.id} created for user ${userId}.`);
+        console.log(`[Order API] Order ${newOrderRef.id} created for user ${userId}. Earned ${pointsEarned} points.`);
 
         await batch.commit();
 
