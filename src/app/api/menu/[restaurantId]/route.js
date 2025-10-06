@@ -25,7 +25,9 @@ export async function GET(request, { params }) {
         if (!restaurantDoc.exists) {
             return NextResponse.json({ message: 'Restaurant not found.' }, { status: 404 });
         }
-        const restaurantName = restaurantDoc.data().name;
+        const restaurantData = restaurantDoc.data();
+        const restaurantName = restaurantData.name;
+        const deliveryCharge = restaurantData.deliveryCharge || 30; // Get delivery charge, default to 30
 
         // Process Menu
         const menuData = {};
@@ -58,6 +60,7 @@ export async function GET(request, { params }) {
         // Return all public data together
         return NextResponse.json({ 
             restaurantName: restaurantName,
+            deliveryCharge: deliveryCharge,
             menu: menuData,
             coupons: coupons
         }, { status: 200 });

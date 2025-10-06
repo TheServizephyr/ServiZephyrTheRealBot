@@ -58,7 +58,7 @@ const MenuItemCard = ({ item, quantity, onIncrement, onDecrement }) => {
 };
 
 
-const CartDrawer = ({ cart, onUpdateCart, onClose, onCheckout, notes, setNotes, coupons, loyaltyPointsData }) => {
+const CartDrawer = ({ cart, onUpdateCart, onClose, onCheckout, notes, setNotes, coupons, loyaltyPointsData, deliveryCharge = 30 }) => {
     const [appliedCoupon, setAppliedCoupon] = useState(null);
     const [loyaltyDiscount, setLoyaltyDiscount] = useState(0);
     const [currentLoyaltyPoints, setCurrentLoyaltyPoints] = useState(0);
@@ -78,7 +78,6 @@ const CartDrawer = ({ cart, onUpdateCart, onClose, onCheckout, notes, setNotes, 
         return 0;
     }, [appliedCoupon, subtotal]);
 
-    const deliveryCharge = 30; // This can be made dynamic later from restaurant settings
     const finalDeliveryCharge = (appliedCoupon?.type === 'free_delivery' || appliedCoupon?.code === 'FREEDEL') ? 0 : deliveryCharge;
 
     const taxRate = 0.05;
@@ -239,7 +238,8 @@ const CheckoutModal = ({ isOpen, onClose, restaurantId, phone, cart, notes }) =>
     useEffect(() => {
         const fetchUser = async () => {
             if (!phone) {
-                // It's a new user for sure if no phone in URL
+                // If there's no phone number, we can't look up a user.
+                // Treat as a new user and force them to enter details.
                 setIsExistingUser(false);
                 setIsAddingNew(true);
                 setLoading(false);
@@ -249,22 +249,20 @@ const CheckoutModal = ({ isOpen, onClose, restaurantId, phone, cart, notes }) =>
             setLoading(true);
             setError('');
             try {
-                // Use the new lookup API
+                // Use the lookup API to securely check for user data
                 const res = await fetch('/api/customer/lookup', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ phone }) // API handles normalization
+                    body: JSON.stringify({ phone })
                 });
 
-                if (!res.ok) {
-                    if (res.status === 404) {
-                        // User not found, treat as new user
-                        setIsExistingUser(false);
-                        setIsAddingNew(true);
-                    } else {
-                       const data = await res.json();
-                       throw new Error(data.message || "Failed to look up user.");
-                    }
+                if (res.status === 404) {
+                    // User not found, treat as new user
+                    setIsExistingUser(false);
+                    setIsAddingNew(true);
+                } else if (!res.ok) {
+                   const data = await res.json();
+                   throw new Error(data.message || "Failed to look up user.");
                 } else {
                     // User found
                     const data = await res.json();
@@ -315,7 +313,7 @@ const CheckoutModal = ({ isOpen, onClose, restaurantId, phone, cart, notes }) =>
             const payload = {
                 name: name,
                 address: finalAddress,
-                phone: phone.startsWith('91') ? phone.substring(2) : phone,
+                phone: phone, // API will normalize it
                 restaurantId,
                 items: cart.map(item => ({ name: item.name, quantity: item.quantity, price: item.fullPrice })),
                 notes
@@ -449,6 +447,7 @@ const OrderPageInternal = () => {
     const phone = searchParams.get('phone');
 
     const [restaurantName, setRestaurantName] = useState('');
+    const [deliveryCharge, setDeliveryCharge] = useState(30);
     const [rawMenu, setRawMenu] = useState({});
     const [loading, setLoading] = useState(true);
     const [cart, setCart] = useState([]);
@@ -471,7 +470,7 @@ const OrderPageInternal = () => {
             if (!restaurantId) return;
             setLoading(true);
             try {
-                // Fetch Menu and Coupons together from the public endpoint
+                // Fetch Menu, Coupons, and Delivery Charge together from the public endpoint
                 const publicDataRes = await fetch(`/api/menu/${restaurantId}`);
                 if (!publicDataRes.ok) throw new Error('Failed to fetch restaurant data');
                 const publicData = await publicDataRes.json();
@@ -479,8 +478,9 @@ const OrderPageInternal = () => {
                 setRestaurantName(publicData.restaurantName);
                 setRawMenu(publicData.menu);
                 setCoupons(publicData.coupons || []);
+                setDeliveryCharge(publicData.deliveryCharge || 30);
 
-                // Fetch user's loyalty points using the secure lookup
+                // Fetch user's loyalty points using the secure lookup if phone exists
                 if(phone) {
                     try {
                         const loyaltyRes = await fetch(`/api/customer/lookup`, {
@@ -490,9 +490,6 @@ const OrderPageInternal = () => {
                         });
                          if (loyaltyRes.ok) {
                              const userData = await loyaltyRes.json();
-                             // Assuming the lookup API returns loyalty points for the specific restaurant
-                             // This part might need adjustment based on the actual API response structure.
-                             // For now, let's assume a top-level `loyaltyPoints` field in the user data.
                              setLoyaltyPoints(userData.loyaltyPoints || 0);
                          }
                     } catch(e) {
@@ -616,7 +613,7 @@ const OrderPageInternal = () => {
             
             <AnimatePresence>
                 {isCartOpen && <motion.div initial={{opacity: 0}} animate={{opacity: 1}} exit={{opacity: 0}} className="fixed inset-0 bg-black/60 z-30" onClick={() => setIsCartOpen(false)} />}
-                {isCartOpen && <CartDrawer cart={cart} onUpdateCart={handleCartUpdate} onClose={() => setIsCartOpen(false)} onCheckout={handleCheckout} notes={notes} setNotes={setNotes} coupons={coupons} loyaltyPointsData={loyaltyPoints} />}
+                {isCartOpen && <CartDrawer cart={cart} onUpdateCart={handleCartUpdate} onClose={() => setIsCartOpen(false)} onCheckout={handleCheckout} notes={notes} setNotes={setNotes} coupons={coupons} loyaltyPointsData={loyaltyPoints} deliveryCharge={deliveryCharge} />}
             </AnimatePresence>
 
             <header className="sticky top-0 z-20 bg-background/80 backdrop-blur-lg border-b border-border">

@@ -53,6 +53,7 @@ export async function GET(req) {
             gstin: restaurantData?.gstin || '',
             fssai: restaurantData?.fssai || '',
             botPhoneNumberId: restaurantData?.botPhoneNumberId || '',
+            deliveryCharge: restaurantData?.deliveryCharge || 30, // Default to 30 if not set
         };
 
         return NextResponse.json(profileData, { status: 200 });
@@ -69,7 +70,7 @@ export async function PATCH(req) {
         const firestore = await getFirestore();
         const { uid, userData } = await verifyUserAndGetData(req, auth, firestore);
         
-        const { name, phone, notifications, gstin, fssai, botPhoneNumberId } = await req.json();
+        const { name, phone, notifications, gstin, fssai, botPhoneNumberId, deliveryCharge } = await req.json();
 
         // --- Update User's Profile in 'users' collection ---
         const userRef = firestore.collection('users').doc(uid);
@@ -92,6 +93,8 @@ export async function PATCH(req) {
                 if (gstin !== undefined) restaurantUpdateData.gstin = gstin;
                 if (fssai !== undefined) restaurantUpdateData.fssai = fssai;
                 if (botPhoneNumberId !== undefined) restaurantUpdateData.botPhoneNumberId = botPhoneNumberId;
+                if (deliveryCharge !== undefined) restaurantUpdateData.deliveryCharge = Number(deliveryCharge);
+
                 
                 if (Object.keys(restaurantUpdateData).length > 0) {
                     await restaurantRef.update(restaurantUpdateData);
@@ -111,6 +114,7 @@ export async function PATCH(req) {
             gstin: finalRestaurantData?.gstin || '',
             fssai: finalRestaurantData?.fssai || '',
             botPhoneNumberId: finalRestaurantData?.botPhoneNumberId || '',
+            deliveryCharge: finalRestaurantData?.deliveryCharge || 30,
         };
 
         return NextResponse.json(responseData, { status: 200 });
