@@ -142,13 +142,13 @@ const CheckoutModal = ({ isOpen, onClose, restaurantId, phone, cart, notes }) =>
         setError('');
 
         if (!phone) {
+            setError("Could not verify your details. Phone number is missing.");
             setIsUserLoading(false);
-            setIsAddingNewAddress(true);
+            // Don't show new user form if phone is missing, as it's required.
             return;
         };
 
         try {
-            // **FIX**: Normalize phone number by removing country code if present
             const normalizedPhone = phone.startsWith('91') ? phone.substring(2) : phone;
 
             const usersRef = collection(db, "users");
@@ -204,7 +204,7 @@ const CheckoutModal = ({ isOpen, onClose, restaurantId, phone, cart, notes }) =>
             const payload = {
                 name: name,
                 address: finalAddress,
-                phone,
+                phone: phone.startsWith('91') ? phone.substring(2) : phone, // Send normalized phone to backend
                 restaurantId,
                 items: cart.map(item => ({ name: item.name, quantity: item.quantity, price: item.fullPrice })),
                 notes
@@ -630,3 +630,4 @@ export default OrderPage;
     
 
     
+
