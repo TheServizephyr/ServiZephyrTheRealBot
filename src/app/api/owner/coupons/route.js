@@ -41,7 +41,7 @@ async function seedInitialCoupons(firestore, restaurantId) {
     
     const initialCoupons = [
         { code: 'SAVE100', description: 'Get flat ₹100 off on orders above ₹599', type: 'flat', value: 100, minOrder: 599, startDate: new Date(), expiryDate: nextMonth, status: 'Active', timesUsed: 5 },
-        { code: 'FREEDEL', description: 'Free delivery on all orders above ₹299', type: 'flat', value: 50, minOrder: 299, startDate: new Date(), expiryDate: nextMonth, status: 'Active', timesUsed: 12 },
+        { code: 'FREEDEL', description: 'Free delivery on all orders above ₹299', type: 'free_delivery', value: 30, minOrder: 299, startDate: new Date(), expiryDate: nextMonth, status: 'Active', timesUsed: 12 },
         { code: 'WEEKEND20', description: '20% off on weekends', type: 'percentage', value: 20, minOrder: 499, startDate: new Date(), expiryDate: tomorrow, status: 'Inactive', timesUsed: 0 },
     ];
     
@@ -97,7 +97,8 @@ export async function POST(req) {
         const { restaurantId } = await verifyOwnerAndGetRestaurant(req, auth, firestore);
         const { coupon } = await req.json();
 
-        if (!coupon || !coupon.code || !coupon.value || !coupon.minOrder) {
+        // Updated Validation: check for value only if it's not a free_delivery coupon
+        if (!coupon || !coupon.code || coupon.value === undefined || coupon.minOrder === undefined) {
             return NextResponse.json({ message: 'Missing required coupon data.' }, { status: 400 });
         }
 

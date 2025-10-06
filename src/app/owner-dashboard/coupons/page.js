@@ -75,8 +75,9 @@ const CouponModal = ({ isOpen, setIsOpen, onSave, editingCoupon }) => {
         e.preventDefault();
         
         let requiredFieldsMet = coupon.code && coupon.minOrder !== '';
+        // Only validate `value` if the coupon type is not 'free_delivery'
         if (coupon.type !== 'free_delivery') {
-            requiredFieldsMet = requiredFieldsMet && coupon.value;
+            requiredFieldsMet = requiredFieldsMet && coupon.value !== '';
         }
 
         if (!requiredFieldsMet) {
