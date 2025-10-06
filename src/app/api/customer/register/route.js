@@ -85,7 +85,7 @@ export async function POST(req) {
             customerPhone: phone,
             restaurantId: restaurantId,
             restaurantName: restaurantDoc.data().name,
-            items: items.map(item => ({ name: item.name, qty: item.quantity, price: item.price })),
+            items: items.map(item => ({ name: item.name, quantity: item.quantity, price: item.price })),
             totalAmount: totalAmount,
             status: 'pending',
             priority: Math.floor(Math.random() * 5) + 1, // Random priority for now

@@ -202,7 +202,7 @@ const CheckoutModal = ({ isOpen, onClose, restaurantId, phone, cart, notes }) =>
                 address: finalAddress,
                 phone,
                 restaurantId,
-                items: cart.map(item => ({ name: item.name, qty: item.quantity, price: item.fullPrice })),
+                items: cart.map(item => ({ name: item.name, quantity: item.quantity, price: item.fullPrice })),
                 notes
             };
             
