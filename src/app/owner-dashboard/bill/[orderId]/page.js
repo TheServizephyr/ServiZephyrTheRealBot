@@ -36,7 +36,8 @@ const BillPage = () => {
             const data = await res.json();
 
             const fetchedOrder = data.order;
-            const subtotal = fetchedOrder.items.reduce((acc, item) => acc + item.qty * item.price, 0);
+            // Use 'quantity' as it is named in the order creation API
+            const subtotal = fetchedOrder.items.reduce((acc, item) => acc + item.quantity * item.price, 0);
 
             setOrder({ ...fetchedOrder, subtotal });
             setRestaurant(data.restaurant);
@@ -92,6 +93,7 @@ const BillPage = () => {
   const sgst = order.subtotal * taxRate;
   const deliveryCharge = 30; // Can be made dynamic later
   const grandTotal = order.subtotal + cgst + sgst + deliveryCharge;
+  const orderDate = new Date(order.orderDate.seconds * 1000);
 
 
   return (
@@ -136,9 +138,9 @@ const BillPage = () => {
                 {order.items.map((item, index) => (
                     <tr key={index} className="border-b border-dotted border-black">
                         <td className="py-2">{item.name}</td>
-                        <td className="text-center py-2">{item.qty}</td>
+                        <td className="text-center py-2">{item.quantity}</td>
                         <td className="text-right py-2">{item.price.toFixed(2)}</td>
-                        <td className="text-right py-2">{(item.qty * item.price).toFixed(2)}</td>
+                        <td className="text-right py-2">{(item.quantity * item.price).toFixed(2)}</td>
                     </tr>
                 ))}
             </tbody>
@@ -171,8 +173,8 @@ const BillPage = () => {
         {/* Transaction Details */}
         <div className="mt-4 pt-4 border-t-2 border-dashed border-black text-xs">
             <p><strong>Transaction ID:</strong> {order.id}</p>
-            <p><strong>Order Date:</strong> {new Date(order.orderDate.seconds * 1000).toLocaleDateString('en-IN')}</p>
-            <p><strong>Order Time:</strong> {new Date(order.orderDate.seconds * 1000).toLocaleTimeString('en-IN')}</p>
+            <p><strong>Order Date:</strong> {orderDate.toLocaleDateString('en-IN')}</p>
+            <p><strong>Order Time:</strong> {orderDate.toLocaleTimeString('en-IN')}</p>
         </div>
 
 
