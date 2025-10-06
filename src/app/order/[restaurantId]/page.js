@@ -1,50 +1,23 @@
 
 'use client';
 
-import React, { useState, useEffect, useRef, Suspense } from 'react';
+import React, { useState, useEffect, Suspense } from 'react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ArrowLeft, LayoutDashboard, MessageCircle, ShoppingCart, Utensils, Pizza, Soup, Drumstick, Salad, CakeSlice, GlassWater, Plus, Minus, X, Home, User, MapPin } from 'lucide-react';
+import { Utensils, Plus, Minus, X, Home, User, Edit2, ShoppingCart } from 'lucide-react';
 import Image from 'next/image';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose } from "@/components/ui/dialog";
+import { getFirestore, collection, getDocs, doc, getDoc } from 'firebase/firestore';
+import { app } from '@/lib/firebase';
 
-// --- MOCK DATA (will be replaced by API call) ---
-const mockMenuData = {
-    restaurantName: "The Curry Cloud",
-    categories: {
-      "starters": { title: "Starters", icon: Utensils, items: [
-        { id: 's1', name: 'Paneer Tikka', description: 'Smoky, grilled cottage cheese cubes.', price: 280, isVeg: true, imageUrl: 'https://picsum.photos/seed/paneertikka/100/100' },
-        { id: 's2', name: 'Chilli Chicken', description: 'Spicy chicken with peppers and onions.', price: 320, isVeg: false, imageUrl: 'https://picsum.photos/seed/chillichicken/100/100' },
-        { id: 's3', name: 'Veg Manchurian Dry', description: 'Fried vegetable balls in a tangy sauce.', price: 240, isVeg: true, imageUrl: 'https://picsum.photos/seed/manchurian/100/100' },
-      ]},
-      "main-course": { title: "Main Course", icon: Soup, items: [
-        { id: 'm1', name: 'Dal Makhani', description: 'Creamy black lentils, a house specialty.', price: 250, isVeg: true, imageUrl: 'https://picsum.photos/seed/dalmakhani/100/100' },
-        { id: 'm2', name: 'Butter Chicken', description: 'Rich tomato and butter gravy with chicken.', price: 450, isVeg: false, imageUrl: 'https://picsum.photos/seed/butterchicken/100/100' },
-        { id: 'm3', name: 'Kadhai Paneer', description: 'Cottage cheese in a spicy tomato-onion gravy.', price: 350, isVeg: true, imageUrl: 'https://picsum.photos/seed/kadhaipaneer/100/100' },
-      ]},
-      "desserts": { title: "Desserts", icon: CakeSlice, items: [
-        { id: 'd1', name: 'Gulab Jamun', description: 'Sweet milk solids dumplings in syrup.', price: 120, isVeg: true, imageUrl: 'https://picsum.photos/seed/gulabjamun/100/100' },
-        { id: 'd2', name: 'Moong Dal Halwa', description: 'A rich, classic Indian dessert.', price: 150, isVeg: true, imageUrl: 'https://picsum.photos/seed/halwa/100/100' },
-      ]},
-       "beverages": { title: "Beverages", icon: GlassWater, items: [
-        { id: 'b1', name: 'Coke', description: '300ml Can', price: 60, isVeg: true, imageUrl: 'https://picsum.photos/seed/coke/100/100' },
-      ]},
-    },
-};
-
-const mockExistingUser = {
-  name: 'Ashwani Kumar',
-  addresses: [
-    { id: 'addr1', full: '123, ABC Society, Near Park, Pune' },
-    { id: 'addr2', full: 'Work, Tower 4, Hinjewadi, Pune' },
-  ]
-};
+// Initialize Firestore
+const db = getFirestore(app);
 
 // --- Sub-components for clean structure ---
 
-const MenuItemCard = ({ item, onAddToCart }) => {
+const MenuItemCard = ({ item, quantity, onIncrement, onDecrement }) => {
   return (
     <motion.div 
         className="flex items-start gap-4 p-4 bg-gray-800/50 rounded-lg"
@@ -63,23 +36,32 @@ const MenuItemCard = ({ item, onAddToCart }) => {
           <h4 className="font-semibold text-white">{item.name}</h4>
         </div>
         <p className="text-xs text-gray-400 mb-2">{item.description}</p>
-        <p className="font-bold text-gray-200">₹{item.price}</p>
+        <p className="font-bold text-gray-200">₹{item.fullPrice}</p>
       </div>
-      <Button 
-        onClick={() => onAddToCart(item)}
-        variant="outline" 
-        size="sm"
-        className="self-center bg-gray-700 hover:bg-indigo-600 hover:text-white border-gray-600"
-      >
-        ADD
-      </Button>
+      <div className="self-center flex items-center gap-2">
+        {quantity > 0 ? (
+          <>
+            <Button size="icon" variant="outline" className="h-8 w-8" onClick={() => onDecrement(item)}>-</Button>
+            <span className="font-bold w-5 text-center">{quantity}</span>
+            <Button size="icon" variant="outline" className="h-8 w-8" onClick={() => onIncrement(item)}>+</Button>
+          </>
+        ) : (
+          <Button 
+            onClick={() => onIncrement(item)}
+            variant="outline" 
+            className="bg-gray-700 hover:bg-indigo-600 hover:text-white border-gray-600 px-4"
+          >
+            ADD
+          </Button>
+        )}
+      </div>
     </motion.div>
   );
 };
 
 
-const CartDrawer = ({ cart, onUpdateCart, onClose }) => {
-    const subtotal = cart.reduce((sum, item) => sum + item.price * item.quantity, 0);
+const CartDrawer = ({ cart, onUpdateCart, onClose, onCheckout, notes, setNotes }) => {
+    const subtotal = cart.reduce((sum, item) => sum + item.fullPrice * item.quantity, 0);
 
     return (
         <motion.div 
@@ -107,11 +89,21 @@ const CartDrawer = ({ cart, onUpdateCart, onClose }) => {
                                     <span className="font-bold w-5 text-center">{item.quantity}</span>
                                     <Button size="icon" variant="outline" className="h-7 w-7" onClick={() => onUpdateCart(item, 'increment')}>+</Button>
                                 </div>
-                                <p className="w-20 text-right font-bold">₹{item.price * item.quantity}</p>
+                                <p className="w-20 text-right font-bold">₹{item.fullPrice * item.quantity}</p>
                             </div>
                         ))}
                     </div>
                 )}
+            </div>
+            
+            <div className="p-4 border-t border-gray-700 bg-gray-800/50">
+                <textarea 
+                  value={notes}
+                  onChange={(e) => setNotes(e.target.value)}
+                  placeholder="Add cooking instructions... (e.g., make it extra spicy)"
+                  rows={2}
+                  className="w-full p-2 rounded-md bg-gray-700 border border-gray-600 text-sm"
+                />
             </div>
 
             {cart.length > 0 && (
@@ -120,6 +112,9 @@ const CartDrawer = ({ cart, onUpdateCart, onClose }) => {
                         <span className="font-semibold text-gray-300">Subtotal:</span>
                         <span className="font-bold text-white">₹{subtotal}</span>
                     </div>
+                     <Button onClick={onCheckout} className="w-full bg-indigo-600 hover:bg-indigo-700 h-12 text-lg font-bold">
+                        Proceed to Checkout
+                    </Button>
                 </div>
             )}
         </motion.div>
@@ -127,41 +122,77 @@ const CartDrawer = ({ cart, onUpdateCart, onClose }) => {
 };
 
 
-const CheckoutModal = ({ isOpen, onClose, restaurantId, phone, cart }) => {
-    // In a real app, this would be fetched from a backend
-    const [isExistingUser] = useState(false); // mock this for now
+const CheckoutModal = ({ isOpen, onClose, restaurantId, phone, cart, notes }) => {
+    const [existingUser, setExistingUser] = useState(null);
+    const [isUserLoading, setIsUserLoading] = useState(true);
     const [name, setName] = useState('');
     const [address, setAddress] = useState('');
     const [selectedAddress, setSelectedAddress] = useState(null);
+    const [isAddingNewAddress, setIsAddingNewAddress] = useState(false);
     const [error, setError] = useState('');
     const [loading, setLoading] = useState(false);
+
+    useEffect(() => {
+      const fetchUser = async () => {
+        if (!phone) {
+            setIsUserLoading(false);
+            return;
+        };
+        try {
+            setIsUserLoading(true);
+            const userRef = doc(db, "users", phone); // Assuming phone is the doc ID for simplicity
+            const userSnap = await getDoc(userRef);
+            if (userSnap.exists()) {
+                const userData = userSnap.data();
+                setExistingUser(userData);
+                setName(userData.name);
+                if (userData.addresses && userData.addresses.length > 0) {
+                    setSelectedAddress(userData.addresses[0]);
+                } else {
+                    setIsAddingNewAddress(true);
+                }
+            } else {
+                setExistingUser(null);
+            }
+        } catch(e) {
+            console.error("Error fetching user", e);
+            setExistingUser(null);
+        } finally {
+            setIsUserLoading(false);
+        }
+      }
+      if(isOpen) fetchUser();
+    }, [isOpen, phone]);
 
     const handlePlaceOrder = async () => {
         setError('');
         
-        if (isExistingUser) {
+        let finalAddress = '';
+        if (existingUser && !isAddingNewAddress) {
             if (!selectedAddress) {
                 setError('Please select a delivery address.');
                 return;
             }
+            finalAddress = selectedAddress.full;
         } else {
             if (!name.trim() || !address.trim()) {
-                setError('Please fill in your name and address.');
+                setError('Please fill in your name and a valid address.');
                 return;
             }
+            finalAddress = address;
         }
         
         setLoading(true);
-        // Simulate API call to place order and register user if new
         try {
             const payload = {
-                name: isExistingUser ? mockExistingUser.name : name,
-                address: isExistingUser ? selectedAddress.full : address,
+                name: name,
+                address: finalAddress,
                 phone,
                 restaurantId,
-                items: cart
+                items: cart.map(item => ({ name: item.name, qty: item.quantity, price: item.fullPrice })),
+                notes
             };
-
+            
             const res = await fetch('/api/customer/register', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -180,6 +211,18 @@ const CheckoutModal = ({ isOpen, onClose, restaurantId, phone, cart }) => {
             setLoading(false);
         }
     };
+    
+    if (isUserLoading) {
+        return (
+            <Dialog open={isOpen} onOpenChange={onClose}>
+                 <DialogContent className="bg-gray-900 border-gray-700 text-white">
+                    <div className="flex justify-center items-center h-48">
+                        <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-indigo-500"></div>
+                    </div>
+                 </DialogContent>
+            </Dialog>
+        )
+    }
 
     return (
         <Dialog open={isOpen} onOpenChange={onClose}>
@@ -190,33 +233,38 @@ const CheckoutModal = ({ isOpen, onClose, restaurantId, phone, cart }) => {
                 </DialogHeader>
 
                 <div className="py-4 space-y-4">
-                    {isExistingUser ? (
+                    {existingUser && !isAddingNewAddress ? (
                         <div>
                             <h3 className="font-semibold mb-2">Select a Delivery Address</h3>
-                            <div className="space-y-2">
-                                {mockExistingUser.addresses.map(addr => (
+                            <div className="space-y-2 max-h-40 overflow-y-auto">
+                                {existingUser.addresses.map(addr => (
                                     <div key={addr.id} onClick={() => setSelectedAddress(addr)} className={cn("p-3 rounded-lg border-2 cursor-pointer transition-colors", selectedAddress?.id === addr.id ? 'border-indigo-500 bg-indigo-500/10' : 'border-gray-600 hover:bg-gray-700')}>
                                         <p>{addr.full}</p>
                                     </div>
                                 ))}
                             </div>
-                            <Button variant="link" className="mt-2 p-0 h-auto">+ Add New Address</Button>
+                            <Button variant="link" className="mt-2 p-0 h-auto text-indigo-400" onClick={() => setIsAddingNewAddress(true)}>+ Add New Address</Button>
                         </div>
                     ) : (
                         <div className="space-y-4">
-                            <div>
-                                <label className="block text-sm font-medium text-gray-300 mb-1">Full Name</label>
-                                <div className="relative">
-                                  <User className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-400" />
-                                  <input type="text" value={name} onChange={(e) => setName(e.target.value)} required className="w-full pl-10 pr-4 py-2 rounded-md bg-gray-800 border border-gray-600" placeholder="Enter your full name" />
+                            {!existingUser && (
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-300 mb-1">Full Name</label>
+                                    <div className="relative">
+                                      <User className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-400" />
+                                      <input type="text" value={name} onChange={(e) => setName(e.target.value)} required className="w-full pl-10 pr-4 py-2 rounded-md bg-gray-800 border border-gray-600" placeholder="Enter your full name" />
+                                    </div>
                                 </div>
-                            </div>
+                            )}
                             <div>
-                                <label className="block text-sm font-medium text-gray-300 mb-1">Delivery Address</label>
+                                <label className="block text-sm font-medium text-gray-300 mb-1">
+                                    {existingUser ? "New Delivery Address" : "Delivery Address"}
+                                </label>
                                 <div className="relative">
                                   <Home className="absolute left-3 top-3 h-5 w-5 text-gray-400" />
                                   <textarea value={address} onChange={(e) => setAddress(e.target.value)} required rows={3} className="w-full pl-10 pr-4 py-2 rounded-md bg-gray-800 border border-gray-600" placeholder="Enter your full delivery address" />
                                 </div>
+                                {existingUser && <Button variant="link" className="text-sm p-0 h-auto text-gray-400 mt-2" onClick={() => setIsAddingNewAddress(false)}>← Back to saved addresses</Button>}
                             </div>
                         </div>
                     )}
@@ -236,33 +284,52 @@ const CheckoutModal = ({ isOpen, onClose, restaurantId, phone, cart }) => {
 
 const OrderPageInternal = () => {
     const params = useParams();
-    const router = useRouter();
     const searchParams = useSearchParams();
     const { restaurantId } = params;
     const phone = searchParams.get('phone');
 
-    const [menu, setMenu] = useState(null);
+    const [restaurantName, setRestaurantName] = useState('');
+    const [menu, setMenu] = useState({});
     const [loading, setLoading] = useState(true);
     const [cart, setCart] = useState([]);
     const [isCartOpen, setIsCartOpen] = useState(false);
     const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
-    const [activeCategory, setActiveCategory] = useState(null);
-    const sectionRefs = useRef({});
+    const [notes, setNotes] = useState("");
 
     useEffect(() => {
-        setLoading(true);
-        setTimeout(() => {
-            setMenu(mockMenuData);
-            const firstCategory = Object.keys(mockMenuData.categories)[0];
-            setActiveCategory(firstCategory);
-            Object.keys(mockMenuData.categories).forEach(key => {
-                sectionRefs.current[key] = React.createRef();
-            });
-            setLoading(false);
-        }, 1000);
+        const fetchMenuData = async () => {
+            if (!restaurantId) return;
+            setLoading(true);
+            try {
+                const menuRef = collection(db, "restaurants", restaurantId, "menu");
+                const menuSnap = await getDocs(menuRef);
+                const menuData = {};
+                menuSnap.forEach(doc => {
+                    const item = { id: doc.id, ...doc.data() };
+                    if (!menuData[item.categoryId]) {
+                        menuData[item.categoryId] = [];
+                    }
+                    menuData[item.categoryId].push(item);
+                });
+
+                // Fetch restaurant name
+                const restRef = doc(db, "restaurants", restaurantId);
+                const restSnap = await getDoc(restRef);
+                if (restSnap.exists()) {
+                    setRestaurantName(restSnap.data().name);
+                }
+                
+                setMenu(menuData);
+            } catch (error) {
+                console.error("Failed to fetch menu:", error);
+            } finally {
+                setLoading(false);
+            }
+        };
+        fetchMenuData();
     }, [restaurantId]);
 
-    const handleAddToCart = (item) => {
+    const handleIncrement = (item) => {
         setCart(prevCart => {
             const existingItem = prevCart.find(cartItem => cartItem.id === item.id);
             if (existingItem) {
@@ -274,46 +341,29 @@ const OrderPageInternal = () => {
         });
     };
     
-    const handleUpdateCart = (item, action) => {
+    const handleDecrement = (item) => {
         setCart(prevCart => {
             const existingItem = prevCart.find(cartItem => cartItem.id === item.id);
             if (!existingItem) return prevCart;
 
-            if (action === 'increment') {
-                 return prevCart.map(cartItem =>
-                    cartItem.id === item.id ? { ...cartItem, quantity: cartItem.quantity + 1 } : cartItem
-                );
+            if (existingItem.quantity === 1) {
+                return prevCart.filter(cartItem => cartItem.id !== item.id);
             }
-            if (action === 'decrement') {
-                if (existingItem.quantity === 1) {
-                    return prevCart.filter(cartItem => cartItem.id !== item.id);
-                }
-                return prevCart.map(cartItem =>
-                    cartItem.id === item.id ? { ...cartItem, quantity: cartItem.quantity - 1 } : cartItem
-                );
-            }
-            return prevCart;
+            return prevCart.map(cartItem =>
+                cartItem.id === item.id ? { ...cartItem, quantity: cartItem.quantity - 1 } : cartItem
+            );
         });
     };
-
-    const handleCategoryClick = (key) => {
-        setActiveCategory(key);
-        const element = document.getElementById(key);
-        if (element) {
-            const headerOffset = 140; // height of sticky headers
-            const elementPosition = element.getBoundingClientRect().top;
-            const offsetPosition = elementPosition + window.pageYOffset - headerOffset;
-            window.scrollTo({ top: offsetPosition, behavior: "smooth" });
-        }
+    
+    const handleCartUpdate = (item, action) => {
+        if(action === 'increment') handleIncrement(item);
+        if(action === 'decrement') handleDecrement(item);
     }
 
     const totalCartItems = cart.reduce((sum, item) => sum + item.quantity, 0);
 
-    const handleViewCart = () => {
-        if (totalCartItems === 0) {
-            alert("Your cart is empty. Please add items to proceed.");
-            return;
-        }
+    const handleCheckout = () => {
+        setIsCartOpen(false);
         setIsCheckoutOpen(true);
     };
 
@@ -325,7 +375,7 @@ const OrderPageInternal = () => {
         );
     }
 
-    if (!menu) {
+    if (!restaurantName && !loading) {
         return (
             <div className="min-h-screen bg-gray-900 flex items-center justify-center text-white">
                 <p>Could not load menu for this restaurant.</p>
@@ -333,63 +383,57 @@ const OrderPageInternal = () => {
         );
     }
     
+    // Mock categories for display order, replace with dynamic from backend if available
+    const categoryOrder = ["starters", "main-course", "desserts", "beverages"];
+
     return (
         <div className="min-h-screen bg-gray-900 text-white">
-            <CheckoutModal isOpen={isCheckoutOpen} onClose={() => setIsCheckoutOpen(false)} restaurantId={restaurantId} phone={phone} cart={cart} />
+            <CheckoutModal isOpen={isCheckoutOpen} onClose={() => setIsCheckoutOpen(false)} restaurantId={restaurantId} phone={phone} cart={cart} notes={notes} />
+            <AnimatePresence>
+                {isCartOpen && <CartDrawer cart={cart} onUpdateCart={handleCartUpdate} onClose={() => setIsCartOpen(false)} onCheckout={handleCheckout} notes={notes} setNotes={setNotes} />}
+            </AnimatePresence>
 
             <header className="sticky top-0 z-20 bg-gray-900/80 backdrop-blur-lg border-b border-gray-700">
                 <div className="container mx-auto px-4 py-3 flex justify-between items-center">
                     <div>
                         <p className="text-xs text-gray-400">Ordering from</p>
-                        <h1 className="text-xl font-bold">{menu.restaurantName}</h1>
+                        <h1 className="text-xl font-bold">{restaurantName}</h1>
                     </div>
                 </div>
             </header>
-            
-            <div className="sticky top-[69px] z-20 bg-gray-900/80 backdrop-blur-lg py-2 overflow-x-auto">
-                 <div className="container mx-auto px-4 flex gap-2">
-                     {Object.entries(menu.categories).map(([key, { title, icon: Icon }]) => (
-                         <button 
-                            key={key}
-                            onClick={() => handleCategoryClick(key)}
-                            className={cn(
-                                "flex-shrink-0 flex items-center gap-2 px-4 py-2 rounded-full text-sm font-semibold transition-colors",
-                                activeCategory === key 
-                                ? "bg-indigo-500 text-white" 
-                                : "bg-gray-700 text-gray-300 hover:bg-gray-600"
-                            )}
-                         >
-                            <Icon size={16} />
-                            {title}
-                         </button>
-                     ))}
-                 </div>
-            </div>
 
-
-            <div className="container mx-auto px-4 mt-6">
+            <div className="container mx-auto px-4 mt-6 pb-24">
                 <main>
                     <div className="space-y-10">
-                        {Object.entries(menu.categories).map(([key, { title, items }]) => (
-                            <section id={key} key={key} className="pt-2 scroll-mt-20">
-                                <h3 className="text-2xl font-bold mb-4">{title}</h3>
-                                <div className="grid grid-cols-1 gap-4">
-                                    {items.map(item => (
-                                        <MenuItemCard key={item.id} item={item} onAddToCart={handleAddToCart} />
-                                    ))}
-                                </div>
-                            </section>
-                        ))}
+                        {categoryOrder.map(key => {
+                            if (!menu[key] || menu[key].length === 0) return null;
+                            const categoryTitle = key.charAt(0).toUpperCase() + key.slice(1).replace('-', ' ');
+                            return (
+                                <section id={key} key={key} className="pt-2 scroll-mt-20">
+                                    <h3 className="text-2xl font-bold mb-4 flex items-center gap-2"><Utensils /> {categoryTitle}</h3>
+                                    <div className="grid grid-cols-1 gap-4">
+                                        {menu[key].map(item => {
+                                            const cartItem = cart.find(ci => ci.id === item.id);
+                                            return (
+                                                <MenuItemCard 
+                                                    key={item.id} 
+                                                    item={item} 
+                                                    quantity={cartItem ? cartItem.quantity : 0}
+                                                    onIncrement={handleIncrement}
+                                                    onDecrement={handleDecrement}
+                                                />
+                                            )
+                                        })}
+                                    </div>
+                                </section>
+                            );
+                        })}
                     </div>
                 </main>
             </div>
 
-            <AnimatePresence>
-                {isCartOpen && <CartDrawer cart={cart} onUpdateCart={handleUpdateCart} onClose={() => setIsCartOpen(false)} />}
-            </AnimatePresence>
-
-             <footer className="sticky bottom-0 z-30 bg-gray-900/80 backdrop-blur-lg border-t border-gray-700 p-4">
-                <Button onClick={handleViewCart} className="w-full bg-indigo-600 hover:bg-indigo-700 h-12 text-lg font-bold">
+            <footer className="fixed bottom-0 z-30 w-full bg-gray-900/80 backdrop-blur-lg border-t border-gray-700 p-4">
+                <Button onClick={() => totalCartItems > 0 ? setIsCartOpen(true) : alert("Your cart is empty!")} className="w-full bg-indigo-600 hover:bg-indigo-700 h-12 text-lg font-bold">
                     <ShoppingCart className="mr-2 h-5 w-5"/> 
                     {totalCartItems > 0 ? `View Cart (${totalCartItems})` : 'View Cart'}
                 </Button>

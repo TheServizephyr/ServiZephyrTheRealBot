@@ -6,7 +6,7 @@ import { NextResponse } from 'next/server';
 export async function POST(req) {
     try {
         const firestore = getFirestore();
-        const { name, address, phone, restaurantId, items } = await req.json();
+        const { name, address, phone, restaurantId, items, notes } = await req.json();
 
         if (!name || !address || !phone || !restaurantId || !items) {
             return NextResponse.json({ message: 'Missing required fields.' }, { status: 400 });
@@ -28,16 +28,21 @@ export async function POST(req) {
         const existingUserQuery = await usersRef.where('phone', '==', phone).limit(1).get();
 
         let userId;
+        let userData;
 
         if (!existingUserQuery.empty) {
             const existingUserDoc = existingUserQuery.docs[0];
             userId = existingUserDoc.id;
+            userData = existingUserDoc.data();
             console.log(`[Order API] Existing user found with UID: ${userId} for phone: ${phone}.`);
             
-            // Just update their address if it's new
-             batch.update(existingUserDoc.ref, {
-                addresses: adminFirestore.FieldValue.arrayUnion({ id: `addr_${Date.now()}`, full: address })
-            }, { merge: true });
+            // Check if address already exists, if not, add it
+            const userAddresses = userData.addresses || [];
+            if (!userAddresses.some(a => a.full === address)) {
+                 batch.update(existingUserDoc.ref, {
+                    addresses: adminFirestore.FieldValue.arrayUnion({ id: `addr_${Date.now()}`, full: address })
+                }, { merge: true });
+            }
 
         } else {
             console.log(`[Order API] No existing user found for phone: ${phone}. Creating new user profile.`);
@@ -60,7 +65,6 @@ export async function POST(req) {
             name: name, // Denormalize for easy lookup in dashboard
             phone: phone,
             status: 'claimed',
-            notes: 'Customer profile created/updated via order page.',
         }, { merge: true });
 
          // Add to user's joined_restaurants sub-collection
@@ -86,6 +90,7 @@ export async function POST(req) {
             status: 'pending',
             priority: Math.floor(Math.random() * 5) + 1, // Random priority for now
             orderDate: adminFirestore.FieldValue.serverTimestamp(),
+            notes: notes || null
         });
         
         console.log(`[Order API] Order ${newOrderRef.id} created for user ${userId}.`);
