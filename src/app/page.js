@@ -129,61 +129,27 @@ export default function Home() {
     <div className="flex flex-col min-h-screen overflow-x-hidden bg-background">
       <main className="flex-grow">
         {/* Hero Section */}
-        <section className="container mx-auto flex flex-col items-center px-4 py-20 text-center lg:py-28 lg:text-left">
-          <div className="flex flex-col items-center lg:flex-row lg:gap-12">
-            <div className="lg:w-1/2">
-                <motion.h1 
-                    className="text-4xl font-bold tracking-tighter sm:text-5xl md:text-6xl lg:text-5xl xl:text-6xl text-foreground"
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ duration: 0.7, ease: 'easeOut' }}
+        <section className="w-full py-20 md:py-32">
+          <div className="container px-4 md:px-6 text-center">
+            <div className="max-w-4xl mx-auto">
+              <h1 className="font-headline text-5xl md:text-7xl font-extrabold tracking-tighter leading-tight text-foreground">
+                Apna Restaurant, Apne Rules.
+              </h1>
+              <h2 className="font-headline text-5xl md:text-7xl font-extrabold tracking-tighter leading-tight text-primary mt-2">
+                30% Commission ko Good Bye Kahein.
+              </h2>
+              <p className="max-w-2xl mx-auto mt-6 text-lg text-muted-foreground font-body">
+                ServiZephyr aapke WhatsApp ko ek powerful profit machine mein badal deta hai. Paayein apna personal bot, smart dashboard, aur marketing tools.
+              </p>
+              <div className="mt-8">
+                <button 
+                    onClick={() => setIsModalOpen(true)}
+                    className="bg-primary text-primary-foreground font-bold py-3 px-8 rounded-lg text-lg hover:bg-primary/90 transition-transform transform hover:scale-105"
                 >
-                    Apna Restaurant, Apne Rules.
-                    <br /> 
-                    <span className="text-primary">30% Commission ko Good Bye Kahein.</span>
-                </motion.h1>
-                <motion.p 
-                    className="mt-6 max-w-xl text-lg text-muted-foreground md:text-xl"
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ duration: 0.7, delay: 0.2, ease: 'easeOut' }}
-                >
-                    ServiZephyr aapke WhatsApp ko ek powerful profit machine mein badal deta hai. Paayein apna personal bot, smart dashboard, aur marketing tools.
-                </motion.p>
-                <motion.div
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ duration: 0.7, delay: 0.4, ease: 'easeOut' }}
-                >
-                    <button
-                        onClick={() => setIsModalOpen(true)}
-                        className="btn-shine mt-8 inline-flex h-12 items-center justify-center rounded-full bg-primary px-8 text-lg font-bold text-primary-foreground shadow-lg shadow-primary/20 transition-transform duration-300 hover:scale-105 hover:-translate-y-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-                    >
-                        Get Started & Save Money
-                    </button>
-                    <p className="mt-4 text-sm text-muted-foreground">Join 100+ Restaurants Already Saving! No credit card required.</p>
-                </motion.div>
+                  Get Started & Save Money
+                </button>
+              </div>
             </div>
-            <motion.div 
-                className="mt-12 w-full max-w-2xl lg:mt-0 lg:w-1/2"
-                initial={{ opacity: 0, y: 50, scale: 0.9 }}
-                animate={{ opacity: 1, y: 0, scale: 1 }}
-                transition={{ duration: 0.8, delay: 0.3 }}
-            >
-                <div className="relative rounded-xl border bg-card p-2 shadow-2xl shadow-primary/10">
-                    <div className="aspect-video w-full overflow-hidden rounded-lg">
-                        <Image 
-                            src={placeholderData.heroMockup.src}
-                            alt="ServiZephyr Dashboard Animated Mockup"
-                            width={placeholderData.heroMockup.width}
-                            height={placeholderData.heroMockup.height}
-                            className="h-full w-full object-cover"
-                            data-ai-hint={placeholderData.heroMockup.hint}
-                            priority
-                        />
-                    </div>
-                </div>
-            </motion.div>
           </div>
         </section>
         
