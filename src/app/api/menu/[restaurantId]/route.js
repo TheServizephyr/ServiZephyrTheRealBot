@@ -7,19 +7,33 @@ export async function GET(request, { params }) {
     try {
         const firestore = getFirestore();
         const { restaurantId } = params;
+        const { searchParams } = new URL(request.url);
+        const customerId = searchParams.get('customerId');
 
         if (!restaurantId) {
             return NextResponse.json({ message: 'Restaurant ID is missing.' }, { status: 400 });
         }
         
         const restaurantRef = firestore.collection('restaurants').doc(restaurantId);
+        const couponsRef = restaurantRef.collection('coupons');
         
-        // Use Promise.all to fetch everything concurrently
-        const [restaurantDoc, menuSnap, couponsSnap] = await Promise.all([
+        // Base query for general, active coupons
+        const generalCouponsQuery = couponsRef.where('status', '==', 'Active').where('customerId', '==', null);
+
+        // Fetch everything concurrently
+        const promises = [
             restaurantRef.get(),
             restaurantRef.collection('menu').where('isAvailable', '==', true).orderBy('order', 'asc').get(),
-            restaurantRef.collection('coupons').where('status', '==', 'Active').get()
-        ]);
+            generalCouponsQuery.get()
+        ];
+        
+        // If a customer ID is provided, also fetch their specific coupons
+        if (customerId) {
+            const customerCouponsQuery = couponsRef.where('status', '==', 'Active').where('customerId', '==', customerId);
+            promises.push(customerCouponsQuery.get());
+        }
+
+        const [restaurantDoc, menuSnap, generalCouponsSnap, customerCouponsSnap] = await Promise.all(promises);
 
 
         if (!restaurantDoc.exists) {
@@ -27,7 +41,7 @@ export async function GET(request, { params }) {
         }
         const restaurantData = restaurantDoc.data();
         const restaurantName = restaurantData.name;
-        const deliveryCharge = restaurantData.deliveryCharge || 30; // Get delivery charge, default to 30
+        const deliveryCharge = restaurantData.deliveryCharge || 30;
 
         // Process Menu
         const menuData = {};
@@ -45,24 +59,31 @@ export async function GET(request, { params }) {
         });
         
         // Process Coupons
-        const coupons = couponsSnap.docs.map(doc => {
-            const data = doc.data();
-            return {
-                id: doc.id,
-                ...data,
-                // Ensure dates are sent in a client-friendly format (ISO string)
-                startDate: data.startDate?.toDate ? data.startDate.toDate().toISOString() : data.startDate,
-                expiryDate: data.expiryDate?.toDate ? data.expiryDate.toDate().toISOString() : data.expiryDate,
-            };
-        });
+        let allCoupons = [];
 
+        const processCouponSnap = (snap) => {
+             return snap.docs.map(doc => {
+                const data = doc.data();
+                return {
+                    id: doc.id,
+                    ...data,
+                    startDate: data.startDate?.toDate ? data.startDate.toDate().toISOString() : data.startDate,
+                    expiryDate: data.expiryDate?.toDate ? data.expiryDate.toDate().toISOString() : data.expiryDate,
+                };
+            });
+        }
+        
+        allCoupons = allCoupons.concat(processCouponSnap(generalCouponsSnap));
+        if (customerCouponsSnap) {
+             allCoupons = allCoupons.concat(processCouponSnap(customerCouponsSnap));
+        }
 
         // Return all public data together
         return NextResponse.json({ 
             restaurantName: restaurantName,
             deliveryCharge: deliveryCharge,
             menu: menuData,
-            coupons: coupons
+            coupons: allCoupons
         }, { status: 200 });
 
     } catch (error) {

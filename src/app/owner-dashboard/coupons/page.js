@@ -49,7 +49,7 @@ const CouponModal = ({ isOpen, setIsOpen, onSave, editingCoupon }) => {
                 setCoupon({
                     id: null, code: '', description: '', type: 'flat', value: '',
                     minOrder: '', startDate: new Date(), expiryDate: new Date(new Date().setDate(new Date().getDate() + 30)),
-                    status: 'Active', timesUsed: 0
+                    status: 'Active', timesUsed: 0, customerId: null
                 });
             }
         }
@@ -60,7 +60,7 @@ const CouponModal = ({ isOpen, setIsOpen, onSave, editingCoupon }) => {
 
         // If type is changed to free_delivery, clear the value
         if (field === 'type' && value === 'free_delivery') {
-            newCoupon.value = 0; // or null
+            newCoupon.value = 0;
         }
 
         setCoupon(newCoupon);
@@ -195,7 +195,7 @@ const CouponModal = ({ isOpen, setIsOpen, onSave, editingCoupon }) => {
                     </div>
 
                     <DialogFooter className="pt-6">
-                        <DialogClose asChild><Button type="button" variant="secondary">Cancel</Button></DialogClose>
+                        <DialogClose asChild><Button type="button" variant="secondary" disabled={isSaving}>Cancel</Button></DialogClose>
                         <Button type="submit" className="bg-indigo-600 hover:bg-indigo-700" disabled={isSaving}>
                             {isSaving ? 'Saving...' : (editingCoupon ? 'Save Changes' : 'Create Coupon')}
                         </Button>
@@ -207,7 +207,8 @@ const CouponModal = ({ isOpen, setIsOpen, onSave, editingCoupon }) => {
 };
 
 const CouponCard = ({ coupon, onStatusToggle, onEdit, onDelete }) => {
-    const isExpired = new Date(coupon.expiryDate) < new Date();
+    const expiryDate = coupon.expiryDate?.seconds ? new Date(coupon.expiryDate.seconds * 1000) : new Date(coupon.expiryDate);
+    const isExpired = expiryDate < new Date();
     const status = isExpired ? 'Expired' : coupon.status;
     
     const statusConfig = {
@@ -241,7 +242,7 @@ const CouponCard = ({ coupon, onStatusToggle, onEdit, onDelete }) => {
                  <p className="text-sm text-gray-300 mb-4">{coupon.description}</p>
                  <div className="text-sm space-y-2">
                      <p><span className="font-semibold text-gray-400">Min. Order:</span> ₹{coupon.minOrder}</p>
-                     <p><span className="font-semibold text-gray-400">Expires:</span> {formatDate(coupon.expiryDate)}</p>
+                     <p><span className="font-semibold text-gray-400">Expires:</span> {formatDate(expiryDate)}</p>
                      <p><span className="font-semibold text-gray-400">Times Used:</span> {coupon.timesUsed}</p>
                  </div>
             </div>
@@ -378,7 +379,10 @@ export default function CouponsPage() {
     };
 
     const filteredAndSortedCoupons = useMemo(() => {
-        let items = [...coupons].map(c => ({...c, isExpired: new Date(c.expiryDate) < new Date()}));
+        let items = [...coupons].map(c => {
+            const expiryDate = c.expiryDate?.seconds ? new Date(c.expiryDate.seconds * 1000) : new Date(c.expiryDate);
+            return {...c, isExpired: expiryDate < new Date()};
+        });
 
         if (filter !== 'All') {
             items = items.filter(c => (c.isExpired ? 'Expired' : c.status) === filter);
@@ -389,8 +393,8 @@ export default function CouponsPage() {
             let valA = a[sortKey];
             let valB = b[sortKey];
             if (sortKey.includes('Date')) {
-                valA = new Date(valA);
-                valB = new Date(valB);
+                valA = a[sortKey]?.seconds ? new Date(a[sortKey].seconds * 1000) : new Date(a[sortKey]);
+                valB = b[sortKey]?.seconds ? new Date(b[sortKey].seconds * 1000) : new Date(b[sortKey]);
             }
             if (valA < valB) return sortDir === 'asc' ? -1 : 1;
             if (valA > valB) return sortDir === 'asc' ? 1 : -1;

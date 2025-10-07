@@ -32,7 +32,8 @@ const formatCurrency = (value) => `₹${Number(value || 0).toLocaleString('en-IN
 // --- HELPER FUNCTIONS FOR STATUS ---
 const getCustomerStatus = (customer) => {
     if (!customer || !customer.lastOrderDate) return 'New';
-    const daysSinceLastOrder = (new Date() - new Date(customer.lastOrderDate)) / (1000 * 60 * 60 * 24);
+    const lastOrderDate = customer.lastOrderDate.seconds ? new Date(customer.lastOrderDate.seconds * 1000) : new Date(customer.lastOrderDate);
+    const daysSinceLastOrder = (new Date() - lastOrderDate) / (1000 * 60 * 60 * 24);
     
     if (customer.totalOrders > 10) return 'Loyal';
     if (daysSinceLastOrder > 60) return 'At Risk';
@@ -70,18 +71,25 @@ const SortableHeader = ({ children, column, sortConfig, onSort }) => {
   );
 };
 
-const CouponModal = ({ isOpen, setIsOpen, customerName }) => {
+const CouponModal = ({ isOpen, setIsOpen, onSave, customer }) => {
     const [coupon, setCoupon] = useState(null);
+    const [isSaving, setIsSaving] = useState(false);
 
     useEffect(() => {
-        if(isOpen) {
+        if(isOpen && customer) {
             setCoupon({
-                code: '', description: `Special reward for ${customerName}`, type: 'flat', value: '',
-                minOrder: '', startDate: new Date(), expiryDate: new Date(new Date().setDate(new Date().getDate() + 30)),
+                code: '',
+                description: `Special reward for ${customer.name}`,
+                type: 'flat',
+                value: '',
+                minOrder: '',
+                startDate: new Date(),
+                expiryDate: new Date(new Date().setDate(new Date().getDate() + 30)),
                 status: 'Active',
+                customerId: customer.id, // Associate coupon with customer
             });
         }
-    }, [isOpen, customerName]);
+    }, [isOpen, customer]);
     
     if(!coupon) return null;
 
@@ -90,15 +98,21 @@ const CouponModal = ({ isOpen, setIsOpen, customerName }) => {
     };
 
     const generateRandomCode = () => {
-        const code = `VIP-${customerName.split(' ')[0].toUpperCase()}-${Math.random().toString(36).substring(2, 6).toUpperCase()}`;
+        const code = `VIP-${customer.name.split(' ')[0].toUpperCase()}-${Math.random().toString(36).substring(2, 6).toUpperCase()}`;
         handleChange('code', code);
     };
 
     const handleSubmit = async (e) => {
         e.preventDefault();
-        // In a real app, this would be a backend call
-        alert(`Reward coupon "${coupon.code}" created for ${customerName}!`);
-        setIsOpen(false);
+        setIsSaving(true);
+        try {
+            await onSave(coupon);
+            setIsOpen(false);
+        } catch (error) {
+            alert("Failed to save reward: " + error.message);
+        } finally {
+            setIsSaving(false);
+        }
     };
 
     return (
@@ -109,7 +123,7 @@ const CouponModal = ({ isOpen, setIsOpen, customerName }) => {
                         <DialogTitle className="flex items-center gap-2 text-xl">
                             <Ticket /> Create a Reward
                         </DialogTitle>
-                        <DialogDescription>Sending a special reward to {customerName}.</DialogDescription>
+                        <DialogDescription>Sending a special reward to {customer.name}.</DialogDescription>
                     </DialogHeader>
                     
                     <div className="grid gap-y-4 py-6">
@@ -120,10 +134,14 @@ const CouponModal = ({ isOpen, setIsOpen, customerName }) => {
                                 <Button type="button" variant="outline" onClick={generateRandomCode}><Wand2 size={16} className="mr-2"/> Generate</Button>
                             </div>
                         </div>
+                         <div>
+                            <Label htmlFor="description">Description</Label>
+                            <textarea id="description" value={coupon.description} onChange={e => handleChange('description', e.target.value)} rows={2} placeholder="e.g., A special thanks for being a loyal customer." className="mt-1 p-2 border rounded-md bg-gray-800 border-gray-600 w-full" />
+                        </div>
                         <div className="grid grid-cols-2 gap-4">
                             <div>
-                                <Label htmlFor="value">Discount Value (₹)</Label>
-                                <input id="value" type="number" value={coupon.value} onChange={e => handleChange('value', e.target.value)} placeholder="e.g., 100" className="mt-1 p-2 border rounded-md bg-gray-800 border-gray-600 w-full" />
+                                <Label htmlFor="value">Discount Value (₹ or %)</Label>
+                                <input id="value" type="number" value={coupon.value} onChange={e => handleChange('value', e.target.value)} placeholder="e.g., 100 or 20" className="mt-1 p-2 border rounded-md bg-gray-800 border-gray-600 w-full" />
                             </div>
                             <div>
                                 <Label htmlFor="minOrder">Minimum Order (₹)</Label>
@@ -145,8 +163,10 @@ const CouponModal = ({ isOpen, setIsOpen, customerName }) => {
                     </div>
 
                     <DialogFooter className="pt-4">
-                        <DialogClose asChild><Button type="button" variant="secondary">Cancel</Button></DialogClose>
-                        <Button type="submit" className="bg-indigo-600 hover:bg-indigo-700">Send Reward</Button>
+                        <DialogClose asChild><Button type="button" variant="secondary" disabled={isSaving}>Cancel</Button></DialogClose>
+                        <Button type="submit" className="bg-indigo-600 hover:bg-indigo-700" disabled={isSaving}>
+                            {isSaving ? 'Sending...' : 'Send Reward'}
+                        </Button>
                     </DialogFooter>
                 </form>
             </DialogContent>
@@ -155,9 +175,8 @@ const CouponModal = ({ isOpen, setIsOpen, customerName }) => {
 };
 
 
-const CustomerDetailPanel = ({ customer, onClose, onSaveNotes }) => {
+const CustomerDetailPanel = ({ customer, onClose, onSaveNotes, onSendReward }) => {
   const [activeTab, setActiveTab] = useState('history');
-  const [isCouponModalOpen, setCouponModalOpen] = useState(false);
   const [notes, setNotes] = useState(customer.notes || '');
   const [isSaving, setIsSaving] = useState(false);
 
@@ -193,8 +212,6 @@ const CustomerDetailPanel = ({ customer, onClose, onSaveNotes }) => {
       transition={{ type: 'spring', stiffness: 300, damping: 30 }}
       className="fixed top-0 right-0 h-full w-full max-w-lg bg-gray-900 border-l border-gray-700 shadow-2xl z-50 flex flex-col"
     >
-      <CouponModal isOpen={isCouponModalOpen} setIsOpen={setCouponModalOpen} customerName={customer.name} />
-
       {/* Header */}
       <div className="p-6 border-b border-gray-700 flex justify-between items-start">
         <div>
@@ -218,8 +235,8 @@ const CustomerDetailPanel = ({ customer, onClose, onSaveNotes }) => {
             <p className="text-xl font-bold text-white">{customer.totalOrders}</p>
         </div>
         <div className="bg-gray-800 p-4 text-center">
-            <p className="text-xs text-gray-400">Member Since</p>
-            <p className="text-xl font-bold text-white">{formatDate(customer.joinDate)}</p>
+            <p className="text-xs text-gray-400">Last Order</p>
+            <p className="text-xl font-bold text-white">{formatDate(customer.lastOrderDate)}</p>
         </div>
       </div>
 
@@ -272,8 +289,8 @@ const CustomerDetailPanel = ({ customer, onClose, onSaveNotes }) => {
                  <div className="bg-gray-800 p-4 rounded-lg">
                     <h4 className="font-semibold text-indigo-400">Send a Custom Discount</h4>
                     <p className="text-sm text-gray-400 mt-1 mb-3">Reward their loyalty with a special coupon.</p>
-                    <Button onClick={() => setCouponModalOpen(true)} className="w-full bg-indigo-600 hover:bg-indigo-700">
-                        <Gift size={16} className="mr-2"/> Create & Send Coupon
+                    <Button onClick={() => onSendReward(customer)} className="w-full bg-indigo-600 hover:bg-indigo-700">
+                        <Gift size={16} className="mr-2"/> Create & Send Reward
                     </Button>
                  </div>
               </div>
@@ -368,6 +385,20 @@ export default function CustomersPage() {
         });
         return () => unsubscribe();
     }, []);
+    
+    const handleAPICall = async (endpoint, method, body) => {
+        const user = auth.currentUser;
+        if (!user) throw new Error("Authentication required.");
+        const idToken = await user.getIdToken();
+        const res = await fetch(endpoint, {
+            method,
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${idToken}` },
+            body: JSON.stringify(body),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.message || 'API call failed');
+        return data;
+    }
 
     const vipCustomers = useMemo(() => {
         return [...customers].sort((a, b) => b.totalSpend - a.totalSpend).slice(0, 5);
@@ -376,6 +407,16 @@ export default function CustomersPage() {
     const handleSendReward = (customer) => {
         setRewardCustomer(customer);
         setCouponModalOpen(true);
+    };
+    
+    const handleSaveReward = async (couponData) => {
+        const payload = {
+            ...couponData,
+            startDate: couponData.startDate.toISOString(),
+            expiryDate: couponData.expiryDate.toISOString(),
+        };
+        await handleAPICall('/api/owner/coupons', 'POST', { coupon: payload });
+        alert(`Reward coupon "${couponData.code}" created for ${couponData.customerId}!`);
     };
 
     const filteredAndSortedCustomers = useMemo(() => {
@@ -394,9 +435,15 @@ export default function CustomersPage() {
         }
         filteredItems.sort((a, b) => {
             const key = sortConfig.key;
+            let valA = a[key];
+            let valB = b[key];
+             if (key.includes('Date')) {
+                valA = a[key]?.seconds ? new Date(a[key].seconds * 1000) : new Date(a[key]);
+                valB = b[key]?.seconds ? new Date(b[key].seconds * 1000) : new Date(b[key]);
+            }
             const dir = sortConfig.direction === 'asc' ? 1 : -1;
-            if (a[key] < b[key]) return -1 * dir;
-            if (a[key] > b[key]) return 1 * dir;
+            if (valA < valB) return -1 * dir;
+            if (valA > valB) return 1 * dir;
             return 0;
         });
 
@@ -412,22 +459,7 @@ export default function CustomersPage() {
     };
 
     const handleSaveNotes = async (customerId, newNotes) => {
-        const user = auth.currentUser;
-        if (!user) throw new Error("Authentication required.");
-        const idToken = await user.getIdToken();
-        const res = await fetch('/api/owner/customers', {
-            method: 'PATCH',
-            headers: { 
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${idToken}`
-            },
-            body: JSON.stringify({ customerId, notes: newNotes })
-        });
-        if (!res.ok) {
-            const errorData = await res.json();
-            throw new Error(errorData.message || "Failed to save notes.");
-        }
-
+        await handleAPICall('/api/owner/customers', 'PATCH', { customerId, notes: newNotes });
         setCustomers(prev => prev.map(c => c.id === customerId ? { ...c, notes: newNotes } : c));
         if(selectedCustomer && selectedCustomer.id === customerId) {
             setSelectedCustomer(prev => ({...prev, notes: newNotes}));
@@ -452,7 +484,7 @@ export default function CustomersPage() {
 
     return (
         <div className="p-4 md:p-6 text-white relative min-h-screen bg-gray-900">
-             {rewardCustomer && <CouponModal isOpen={isCouponModalOpen} setIsOpen={setCouponModalOpen} customerName={rewardCustomer.name} />}
+             {rewardCustomer && <CouponModal isOpen={isCouponModalOpen} setIsOpen={setCouponModalOpen} customer={rewardCustomer} onSave={handleSaveReward} />}
 
             <div>
                 <h1 className="text-3xl font-bold tracking-tight">Customer Hub</h1>
@@ -599,9 +631,11 @@ export default function CustomersPage() {
                         customer={selectedCustomer} 
                         onClose={() => setSelectedCustomer(null)}
                         onSaveNotes={handleSaveNotes}
+                        onSendReward={handleSendReward}
                     />
                 )}
             </AnimatePresence>
         </div>
     );
 }
+

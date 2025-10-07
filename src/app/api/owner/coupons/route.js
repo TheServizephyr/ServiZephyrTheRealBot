@@ -41,7 +41,7 @@ async function seedInitialCoupons(firestore, restaurantId) {
     
     const initialCoupons = [
         { code: 'SAVE100', description: 'Get flat ₹100 off on orders above ₹599', type: 'flat', value: 100, minOrder: 599, startDate: new Date(), expiryDate: nextMonth, status: 'Active', timesUsed: 5 },
-        { code: 'FREEDEL', description: 'Free delivery on all orders above ₹299', type: 'free_delivery', value: 30, minOrder: 299, startDate: new Date(), expiryDate: nextMonth, status: 'Active', timesUsed: 12 },
+        { code: 'FREEDEL', description: 'Free delivery on all orders above ₹299', type: 'free_delivery', value: 0, minOrder: 299, startDate: new Date(), expiryDate: nextMonth, status: 'Active', timesUsed: 12 },
         { code: 'WEEKEND20', description: '20% off on weekends', type: 'percentage', value: 20, minOrder: 499, startDate: new Date(), expiryDate: tomorrow, status: 'Inactive', timesUsed: 0 },
     ];
     
@@ -97,17 +97,20 @@ export async function POST(req) {
         const { restaurantId } = await verifyOwnerAndGetRestaurant(req, auth, firestore);
         const { coupon } = await req.json();
 
-        // Updated Validation: check for value only if it's not a free_delivery coupon
-        if (!coupon || !coupon.code || coupon.value === undefined || coupon.minOrder === undefined) {
+        // Updated Validation
+        const isFreeDelivery = coupon.type === 'free_delivery';
+        if (!coupon || !coupon.code || coupon.minOrder === undefined || (!isFreeDelivery && coupon.value === undefined)) {
             return NextResponse.json({ message: 'Missing required coupon data.' }, { status: 400 });
         }
 
-        const newCouponRef = firestore.collection('restaurants').doc(restaurantId).collection('coupons').doc();
+        const couponsCollectionRef = firestore.collection('restaurants').doc(restaurantId).collection('coupons');
+        const newCouponRef = couponsCollectionRef.doc();
         
         const newCouponData = {
             ...coupon,
             id: newCouponRef.id,
             timesUsed: 0,
+            value: isFreeDelivery ? 0 : Number(coupon.value), // Ensure value is 0 for free delivery
             createdAt: adminFirestore.FieldValue.serverTimestamp(),
             startDate: adminFirestore.Timestamp.fromDate(new Date(coupon.startDate)),
             expiryDate: adminFirestore.Timestamp.fromDate(new Date(coupon.expiryDate)),
@@ -137,6 +140,12 @@ export async function PATCH(req) {
         const couponRef = firestore.collection('restaurants').doc(restaurantId).collection('coupons').doc(coupon.id);
         
         const { id, timesUsed, createdAt, ...updateData } = coupon;
+
+        if (updateData.type === 'free_delivery') {
+            updateData.value = 0;
+        } else {
+             updateData.value = Number(updateData.value);
+        }
         
         if (updateData.startDate) {
             updateData.startDate = adminFirestore.Timestamp.fromDate(new Date(updateData.startDate));
