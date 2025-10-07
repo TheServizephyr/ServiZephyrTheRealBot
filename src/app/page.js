@@ -125,14 +125,14 @@ export default function Home() {
 
   return (
     <>
-    <div className="flex flex-col min-h-screen overflow-x-hidden">
+    <div className="flex flex-col min-h-screen overflow-x-hidden bg-background">
       <main className="flex-grow">
         {/* Hero Section */}
         <section className="container mx-auto flex flex-col items-center px-4 py-20 text-center lg:py-28 lg:text-left">
           <div className="flex flex-col items-center lg:flex-row lg:gap-12">
             <div className="lg:w-1/2">
                 <motion.h1 
-                    className="text-4xl font-bold tracking-tighter sm:text-5xl md:text-6xl lg:text-5xl xl:text-6xl"
+                    className="text-4xl font-bold tracking-tighter sm:text-5xl md:text-6xl lg:text-5xl xl:text-6xl text-foreground"
                     initial={{ opacity: 0, y: 20 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ duration: 0.7, ease: 'easeOut' }}
@@ -195,19 +195,19 @@ export default function Home() {
           variants={sectionVariants}
         >
           <div className="grid grid-cols-1 gap-8 text-center md:grid-cols-3">
-            <div className="rounded-lg border bg-card p-8">
+            <div className="rounded-lg border bg-card p-8 shadow-sm">
               <h3 className="text-5xl font-bold text-primary">
                 <AnimatedNumber value={30} suffix="%" />+
               </h3>
               <p className="mt-2 text-muted-foreground">Commission Saved</p>
             </div>
-            <div className="rounded-lg border bg-card p-8">
+            <div className="rounded-lg border bg-card p-8 shadow-sm">
               <h3 className="text-5xl font-bold text-primary">
                 <AnimatedNumber value={40} suffix="%" />+
               </h3>
               <p className="mt-2 text-muted-foreground">Increase in Repeat Orders</p>
             </div>
-            <div className="rounded-lg border bg-card p-8">
+            <div className="rounded-lg border bg-card p-8 shadow-sm">
               <h3 className="text-5xl font-bold text-primary">
                 <AnimatedNumber value={100} suffix="%" />
               </h3>
@@ -226,7 +226,7 @@ export default function Home() {
           variants={sectionVariants}
         >
             <div className="container mx-auto px-4">
-                <h2 className="mb-4 text-center text-3xl font-bold tracking-tighter sm:text-4xl md:text-5xl">The Command Center You've Always Wanted</h2>
+                <h2 className="mb-4 text-center text-3xl font-bold tracking-tighter sm:text-4xl md:text-5xl text-foreground">The Command Center You've Always Wanted</h2>
                 <p className="mx-auto mb-16 max-w-3xl text-center text-lg text-muted-foreground md:text-xl">
                     Stop guessing, start growing. Our dashboard gives you a bird's-eye view of your entire operation, with actionable insights to boost your bottom line.
                 </p>
@@ -237,7 +237,6 @@ export default function Home() {
                             <h3 className="text-2xl font-bold text-primary">Live Order Dashboard</h3>
                             <p className="mt-4 text-muted-foreground">Never miss an order. Get a real-time stream of incoming WhatsApp orders on a clean, intuitive interface. Manage status, accept, and dispatch with a single click.</p>
                              <div className="mt-4 rounded-lg border bg-background p-1.5 shadow-lg">
-                                <p className="text-center text-sm text-muted-foreground">[Animated GIF/Video Placeholder]</p>
                                 <Image 
                                     src={placeholderData.productShowcase2.src}
                                     alt="Live Order Dashboard Mockup"
@@ -250,7 +249,6 @@ export default function Home() {
                         </motion.div>
                          <motion.div className="md:order-first" initial={{opacity: 0, x: 50}} whileInView={{opacity: 1, x: 0, transition:{duration: 0.7}}} viewport={{ once: true, amount: 0.5 }}>
                             <div className="rounded-lg border bg-background p-1.5 shadow-lg">
-                               <p className="text-center text-sm text-muted-foreground">[Animated GIF/Video Placeholder]</p>
                                 <Image 
                                     src={placeholderData.productShowcase1.src}
                                     alt="Analytics Chart Mockup"
@@ -275,12 +273,12 @@ export default function Home() {
           variants={sectionVariants}
           className="container mx-auto px-4 py-20 sm:py-28"
         >
-          <h2 className="mb-4 text-center text-3xl font-bold tracking-tighter sm:text-4xl md:text-5xl">Your All-in-One Growth Engine</h2>
+          <h2 className="mb-4 text-center text-3xl font-bold tracking-tighter sm:text-4xl md:text-5xl text-foreground">Your All-in-One Growth Engine</h2>
           <p className="mx-auto mb-12 max-w-2xl text-center text-lg text-muted-foreground md:text-xl">
             From seamless ordering to powerful analytics and marketing, ServiZephyr is packed with features designed to help you succeed.
           </p>
           <Tabs defaultValue="ordering" className="w-full">
-            <TabsList className="grid w-full grid-cols-1 md:grid-cols-3">
+            <TabsList className="grid w-full grid-cols-1 md:grid-cols-3 bg-muted">
               <TabsTrigger value="ordering"><ShoppingCart className="mr-2 h-4 w-4" /> WhatsApp Ordering</TabsTrigger>
               <TabsTrigger value="dashboard"><BarChart2 className="mr-2 h-4 w-4" /> Owner Command Center</TabsTrigger>
               <TabsTrigger value="growth"><Rocket className="mr-2 h-4 w-4" /> Growth Toolkit</TabsTrigger>
@@ -288,7 +286,7 @@ export default function Home() {
             <TabsContent value="ordering" className="mt-8">
                <Card>
                 <CardHeader>
-                  <CardTitle>Commission-Free Direct Orders</CardTitle>
+                  <CardTitle className="text-foreground">Commission-Free Direct Orders</CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-4 text-muted-foreground">
                   <p>Let customers order from a beautiful, interactive menu directly on WhatsApp. No apps, no logins, no friction.</p>
@@ -303,7 +301,7 @@ export default function Home() {
             <TabsContent value="dashboard" className="mt-8">
               <Card>
                 <CardHeader>
-                  <CardTitle>Your Business at Your Fingertips</CardTitle>
+                  <CardTitle className="text-foreground">Your Business at Your Fingertips</CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-4 text-muted-foreground">
                   <p>Make data-driven decisions with a powerful dashboard that gives you a 360-degree view of your restaurant's performance.</p>
@@ -318,7 +316,7 @@ export default function Home() {
             <TabsContent value="growth" className="mt-8">
               <Card>
                 <CardHeader>
-                  <CardTitle>Tools to Grow Your Brand</CardTitle>
+                  <CardTitle className="text-foreground">Tools to Grow Your Brand</CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-4 text-muted-foreground">
                   <p>Stop relying on aggregators for discovery. Use our built-in marketing tools to build your own brand and drive repeat business.</p>
@@ -342,7 +340,7 @@ export default function Home() {
           variants={sectionVariants}
         >
           <div className="container mx-auto px-4">
-            <h2 className="mb-12 text-center text-3xl font-bold tracking-tighter sm:text-4xl md:text-5xl">Built for Every Kind of Food Business</h2>
+            <h2 className="mb-12 text-center text-3xl font-bold tracking-tighter sm:text-4xl md:text-5xl text-foreground">Built for Every Kind of Food Business</h2>
             <div className="grid grid-cols-2 gap-8 md:grid-cols-4">
               {[
                 { icon: <Store className="h-10 w-10 text-primary" />, name: 'QSRs' },
@@ -351,10 +349,10 @@ export default function Home() {
                 { icon: <Pizza className="h-10 w-10 text-primary" />, name: 'Cafes & Bakeries' },
               ].map((item, i) => (
                 <motion.div key={item.name} custom={i} variants={cardVariants} className="flex flex-col items-center text-center">
-                  <div className="flex h-24 w-24 items-center justify-center rounded-full bg-background">
+                  <div className="flex h-24 w-24 items-center justify-center rounded-full bg-background shadow-inner">
                     {item.icon}
                   </div>
-                  <h3 className="mt-4 text-xl font-bold">{item.name}</h3>
+                  <h3 className="mt-4 text-xl font-bold text-foreground">{item.name}</h3>
                 </motion.div>
               ))}
             </div>
@@ -369,7 +367,7 @@ export default function Home() {
           viewport={{ once: true, amount: 0.3 }}
           variants={sectionVariants}
         >
-          <h2 className="mb-12 text-center text-3xl font-bold tracking-tighter sm:text-4xl md:text-5xl">Don't Just Take Our Word for It</h2>
+          <h2 className="mb-12 text-center text-3xl font-bold tracking-tighter sm:text-4xl md:text-5xl text-foreground">Don't Just Take Our Word for It</h2>
           <div className="relative w-full overflow-hidden">
             <div className="flex marquee">
               {[...testimonials, ...testimonials].map((testimonial, index) => (
@@ -412,14 +410,14 @@ export default function Home() {
           variants={sectionVariants}
         >
           <div className="container mx-auto px-4">
-            <h2 className="mb-12 text-center text-3xl font-bold tracking-tighter sm:text-4xl md:text-5xl">The Choice is Clear</h2>
+            <h2 className="mb-12 text-center text-3xl font-bold tracking-tighter sm:text-4xl md:text-5xl text-foreground">The Choice is Clear</h2>
             <div className="mx-auto max-w-4xl">
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead className="w-[40%] text-lg">Feature</TableHead>
+                    <TableHead className="w-[40%] text-lg text-foreground">Feature</TableHead>
                     <TableHead className="text-center text-lg text-primary font-bold">ServiZephyr</TableHead>
-                    <TableHead className="text-center text-lg">Food Aggregators</TableHead>
+                    <TableHead className="text-center text-lg text-muted-foreground">Food Aggregators</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -433,7 +431,7 @@ export default function Home() {
                   ].map(item => (
                     <TableRow key={item.feature}>
                       <TableCell className="font-medium text-foreground">{item.feature}</TableCell>
-                      <TableCell className="text-center font-bold text-accent"><CheckCircle className="inline-block mr-2 h-5 w-5" />{item.servizephyr}</TableCell>
+                      <TableCell className="text-center font-bold text-primary"><CheckCircle className="inline-block mr-2 h-5 w-5" />{item.servizephyr}</TableCell>
                       <TableCell className="text-center text-muted-foreground">{item.aggregators}</TableCell>
                     </TableRow>
                   ))}
@@ -453,19 +451,19 @@ export default function Home() {
           className="py-20 sm:py-28"
         >
           <div className="container mx-auto flex flex-col items-center px-4">
-            <h2 className="text-center text-3xl font-bold tracking-tighter sm:text-4xl md:text-5xl">Simple & Transparent Pricing</h2>
+            <h2 className="text-center text-3xl font-bold tracking-tighter sm:text-4xl md:text-5xl text-foreground">Simple & Transparent Pricing</h2>
             <div className="mt-12 w-full max-w-md rounded-2xl border-2 border-primary bg-card p-8 shadow-2xl shadow-primary/20 transition-transform duration-300 hover:scale-105">
-              <h3 className="text-3xl font-bold text-center">Pro Plan</h3>
-              <p className="mt-4 text-center text-5xl font-bold">₹999 <span className="text-lg font-normal text-muted-foreground">/ month</span></p>
+              <h3 className="text-3xl font-bold text-center text-foreground">Pro Plan</h3>
+              <p className="mt-4 text-center text-5xl font-bold text-foreground">₹999 <span className="text-lg font-normal text-muted-foreground">/ month</span></p>
               <ul className="mt-8 space-y-4">
-                <li className="flex items-center"><CheckCircle className="mr-2 h-5 w-5 text-accent" /> Unlimited Orders</li>
-                <li className="flex items-center"><CheckCircle className="mr-2 h-5 w-5 text-accent" /> WhatsApp Bot</li>
-                <li className="flex items-center"><CheckCircle className="mr-2 h-5 w-5 text-accent" /> Owner Dashboard</li>
-                <li className="flex items-center"><CheckCircle className="mr-2 h-5 w-5 text-accent" /> Menu Management</li>
-                <li className="flex items-center"><CheckCircle className="mr-2 h-5 w-5 text-accent" /> Growth Toolkit</li>
-                 <li className="flex items-center"><CheckCircle className="mr-2 h-5 w-5 text-accent" /> Customer Hub (CRM)</li>
+                <li className="flex items-center"><CheckCircle className="mr-2 h-5 w-5 text-primary" /> Unlimited Orders</li>
+                <li className="flex items-center"><CheckCircle className="mr-2 h-5 w-5 text-primary" /> WhatsApp Bot</li>
+                <li className="flex items-center"><CheckCircle className="mr-2 h-5 w-5 text-primary" /> Owner Dashboard</li>
+                <li className="flex items-center"><CheckCircle className="mr-2 h-5 w-5 text-primary" /> Menu Management</li>
+                <li className="flex items-center"><CheckCircle className="mr-2 h-5 w-5 text-primary" /> Growth Toolkit</li>
+                 <li className="flex items-center"><CheckCircle className="mr-2 h-5 w-5 text-primary" /> Customer Hub (CRM)</li>
               </ul>
-              <button className="btn-shine mt-8 inline-flex h-12 w-full items-center justify-center rounded-md bg-primary text-lg font-bold text-primary-foreground shadow-lg shadow-accent/50 transition-transform duration-300 hover:scale-105">
+              <button onClick={() => setIsModalOpen(true)} className="btn-shine mt-8 inline-flex h-12 w-full items-center justify-center rounded-md bg-primary text-lg font-bold text-primary-foreground shadow-lg shadow-primary/50 transition-transform duration-300 hover:scale-105">
                 Choose Plan
               </button>
             </div>
@@ -481,29 +479,29 @@ export default function Home() {
           variants={sectionVariants}
           className="container mx-auto px-4 py-20 sm:py-28"
         >
-          <h2 className="mb-12 text-center text-3xl font-bold tracking-tighter sm:text-4xl md:text-5xl">Frequently Asked Questions</h2>
+          <h2 className="mb-12 text-center text-3xl font-bold tracking-tighter sm:text-4xl md:text-5xl text-foreground">Frequently Asked Questions</h2>
           <div className="mx-auto max-w-3xl">
             <Accordion type="single" collapsible className="w-full">
               <AccordionItem value="item-1">
-                <AccordionTrigger>Do I need any technical knowledge?</AccordionTrigger>
+                <AccordionTrigger className="text-foreground">Do I need any technical knowledge?</AccordionTrigger>
                 <AccordionContent>
                   Not at all! ServiZephyr is designed to be extremely easy to use. Our dashboard is completely user-friendly. If you can use WhatsApp, you can use ServiZephyr.
                 </AccordionContent>
               </AccordionItem>
               <AccordionItem value="item-2">
-                <AccordionTrigger>How long does the setup take?</AccordionTrigger>
+                <AccordionTrigger className="text-foreground">How long does the setup take?</AccordionTrigger>
                 <AccordionContent>
                   The entire setup takes no more than 5-10 minutes. You just need to sign up, scan a QR code to connect your WhatsApp number, and your system will be live.
                 </AccordionContent>
               </AccordionItem>
               <AccordionItem value="item-3">
-                <AccordionTrigger>Can I easily change my menu?</AccordionTrigger>
+                <AccordionTrigger className="text-foreground">Can I easily change my menu?</AccordionTrigger>
                 <AccordionContent>
                   Yes, absolutely. From your dashboard, you can add new items, change their prices, or mark an item as "out of stock" anytime, from anywhere. Everything updates in real-time.
                 </AccordionContent>
               </AccordionItem>
               <AccordionItem value="item-4">
-                <AccordionTrigger>Will I get customer support?</AccordionTrigger>
+                <AccordionTrigger className="text-foreground">Will I get customer support?</AccordionTrigger>
                 <AccordionContent>
                   Yes. We provide dedicated WhatsApp and email support to all our Pro plan users to help you with any issues or questions you might have.
                 </AccordionContent>
