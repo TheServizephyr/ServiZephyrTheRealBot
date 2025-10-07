@@ -1,27 +1,33 @@
 
-'use client';
-
-import './globals.css'
-import { Belleza, Alegreya } from 'next/font/google'
+import { Alegreya, Belleza } from 'next/font/google';
+import "./globals.css";
 import LayoutWrapper from '@/components/LayoutWrapper';
 import { FirebaseClientProvider } from '@/firebase/client-provider';
 
+// Font configuration
+const alegreya = Alegreya({
+  subsets: ['latin'],
+  weight: ['400', '500', '700', '800'],
+  display: 'swap',
+  variable: '--font-body',
+});
 
 const belleza = Belleza({
   subsets: ['latin'],
   weight: ['400'],
+  display: 'swap',
   variable: '--font-headline',
 });
 
-const alegreya = Alegreya({
-  subsets: ['latin'],
-  variable: '--font-body',
-});
+export const metadata = {
+  title: "ServiZephyr", // You can change this
+  description: "Your restaurant's digital ecosystem.", // You can change this
+};
 
 export default function RootLayout({ children }) {
   return (
-    <html lang="en">
-      <body className={`${belleza.variable} ${alegreya.variable} font-body bg-background text-foreground flex flex-col min-h-screen`}>
+    <html lang="en" className={`${alegreya.variable} ${belleza.variable}`}>
+      <body>
         <FirebaseClientProvider>
           <LayoutWrapper>
             {children}
@@ -29,5 +35,5 @@ export default function RootLayout({ children }) {
         </FirebaseClientProvider>
       </body>
     </html>
-  )
+  );
 }
