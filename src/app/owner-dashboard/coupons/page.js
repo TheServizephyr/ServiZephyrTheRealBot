@@ -100,7 +100,7 @@ const CouponModal = ({ isOpen, setIsOpen, onSave, editingCoupon }) => {
 
     return (
         <Dialog open={isOpen} onOpenChange={setIsOpen}>
-            <DialogContent className="sm:max-w-4xl bg-gray-900 border-gray-700 text-white">
+            <DialogContent className="sm:max-w-4xl bg-card border-border text-card-foreground">
                 <form onSubmit={handleSubmit}>
                     <DialogHeader>
                         <DialogTitle className="flex items-center gap-2 text-2xl">
@@ -114,24 +114,24 @@ const CouponModal = ({ isOpen, setIsOpen, onSave, editingCoupon }) => {
                             <div>
                                 <Label htmlFor="code">Coupon Code</Label>
                                 <div className="flex items-center gap-2 mt-1">
-                                    <input id="code" value={coupon.code} onChange={e => handleChange('code', e.target.value.toUpperCase())} placeholder="e.g., SAVE20" className="p-2 border rounded-md bg-gray-800 border-gray-600 w-full" />
+                                    <input id="code" value={coupon.code} onChange={e => handleChange('code', e.target.value.toUpperCase())} placeholder="e.g., SAVE20" className="p-2 border rounded-md bg-input border-border w-full" />
                                     <Button type="button" variant="outline" onClick={generateRandomCode}><Wand2 size={16} className="mr-2"/> Generate</Button>
                                 </div>
                             </div>
                             <div>
                                 <Label htmlFor="description">Description</Label>
-                                <textarea id="description" value={coupon.description} onChange={e => handleChange('description', e.target.value)} rows={3} placeholder="e.g., Get 20% off on your first order" className="mt-1 p-2 border rounded-md bg-gray-800 border-gray-600 w-full" />
+                                <textarea id="description" value={coupon.description} onChange={e => handleChange('description', e.target.value)} rows={3} placeholder="e.g., Get 20% off on your first order" className="mt-1 p-2 border rounded-md bg-input border-border w-full" />
                             </div>
                              <div>
                                 <Label>Discount Type</Label>
                                 <div className="grid grid-cols-3 gap-2 mt-2">
-                                     <div onClick={() => handleChange('type', 'flat')} className={cn('p-3 border-2 rounded-lg cursor-pointer flex items-center justify-center gap-2 text-sm', coupon.type === 'flat' ? 'border-indigo-500 bg-indigo-500/10' : 'border-gray-600')}>
+                                     <div onClick={() => handleChange('type', 'flat')} className={cn('p-3 border-2 rounded-lg cursor-pointer flex items-center justify-center gap-2 text-sm', coupon.type === 'flat' ? 'border-primary bg-primary/10' : 'border-border')}>
                                         <IndianRupee size={16}/> Flat Amount
                                      </div>
-                                     <div onClick={() => handleChange('type', 'percentage')} className={cn('p-3 border-2 rounded-lg cursor-pointer flex items-center justify-center gap-2 text-sm', coupon.type === 'percentage' ? 'border-indigo-500 bg-indigo-500/10' : 'border-gray-600')}>
+                                     <div onClick={() => handleChange('type', 'percentage')} className={cn('p-3 border-2 rounded-lg cursor-pointer flex items-center justify-center gap-2 text-sm', coupon.type === 'percentage' ? 'border-primary bg-primary/10' : 'border-border')}>
                                         <Percent size={16}/> Percentage
                                      </div>
-                                      <div onClick={() => handleChange('type', 'free_delivery')} className={cn('p-3 border-2 rounded-lg cursor-pointer flex items-center justify-center gap-2 text-sm', coupon.type === 'free_delivery' ? 'border-indigo-500 bg-indigo-500/10' : 'border-gray-600')}>
+                                      <div onClick={() => handleChange('type', 'free_delivery')} className={cn('p-3 border-2 rounded-lg cursor-pointer flex items-center justify-center gap-2 text-sm', coupon.type === 'free_delivery' ? 'border-primary bg-primary/10' : 'border-border')}>
                                         <Truck size={16}/> Free Delivery
                                      </div>
                                 </div>
@@ -149,11 +149,11 @@ const CouponModal = ({ isOpen, setIsOpen, onSave, editingCoupon }) => {
                                         onChange={e => handleChange('value', e.target.value)} 
                                         placeholder={coupon.type === 'flat' ? 'e.g., 100' : 'e.g., 20'}
                                         disabled={coupon.type === 'free_delivery'}
-                                        className="mt-1 p-2 border rounded-md bg-gray-800 border-gray-600 w-full disabled:opacity-50 disabled:cursor-not-allowed" />
+                                        className="mt-1 p-2 border rounded-md bg-input border-border w-full disabled:opacity-50 disabled:cursor-not-allowed" />
                                 </div>
                                 <div>
                                     <Label htmlFor="minOrder">Minimum Order (₹)</Label>
-                                    <input id="minOrder" type="number" value={coupon.minOrder} onChange={e => handleChange('minOrder', e.target.value)} placeholder="e.g., 500" className="mt-1 p-2 border rounded-md bg-gray-800 border-gray-600 w-full" />
+                                    <input id="minOrder" type="number" value={coupon.minOrder} onChange={e => handleChange('minOrder', e.target.value)} placeholder="e.g., 500" className="mt-1 p-2 border rounded-md bg-input border-border w-full" />
                                 </div>
                             </div>
                            <div className="grid grid-cols-2 gap-4">
@@ -184,9 +184,9 @@ const CouponModal = ({ isOpen, setIsOpen, onSave, editingCoupon }) => {
                            </div>
                            <div>
                                 <Label>Status</Label>
-                                <div className="flex items-center gap-4 mt-2 bg-gray-800 p-3 rounded-md">
+                                <div className="flex items-center gap-4 mt-2 bg-input p-3 rounded-md">
                                     <Switch id="status" checked={coupon.status === 'Active'} onCheckedChange={(checked) => handleChange('status', checked ? 'Active' : 'Inactive')} />
-                                    <Label htmlFor="status" className={cn(coupon.status === 'Active' ? 'text-green-400' : 'text-gray-400')}>
+                                    <Label htmlFor="status" className={cn(coupon.status === 'Active' ? 'text-green-400' : 'text-muted-foreground')}>
                                         {coupon.status === 'Active' ? 'Coupon is Active' : 'Coupon is Inactive'}
                                     </Label>
                                 </div>
@@ -196,7 +196,7 @@ const CouponModal = ({ isOpen, setIsOpen, onSave, editingCoupon }) => {
 
                     <DialogFooter className="pt-6">
                         <DialogClose asChild><Button type="button" variant="secondary" disabled={isSaving}>Cancel</Button></DialogClose>
-                        <Button type="submit" className="bg-indigo-600 hover:bg-indigo-700" disabled={isSaving}>
+                        <Button type="submit" className="bg-primary hover:bg-primary/90" disabled={isSaving}>
                             {isSaving ? 'Saving...' : (editingCoupon ? 'Save Changes' : 'Create Coupon')}
                         </Button>
                     </DialogFooter>
@@ -213,7 +213,7 @@ const CouponCard = ({ coupon, onStatusToggle, onEdit, onDelete }) => {
     
     const statusConfig = {
         'Active': { text: 'text-green-400', bg: 'bg-green-500/10', icon: <CheckCircle/> },
-        'Inactive': { text: 'text-gray-400', bg: 'bg-gray-500/10', icon: <XCircle/> },
+        'Inactive': { text: 'text-gray-400', bg: 'bg-muted', icon: <XCircle/> },
         'Expired': { text: 'text-red-400', bg: 'bg-red-500/10', icon: <XCircle/> },
     };
     
@@ -223,31 +223,31 @@ const CouponCard = ({ coupon, onStatusToggle, onEdit, onDelete }) => {
             initial={{ opacity: 0, scale: 0.8 }}
             animate={{ opacity: 1, scale: 1 }}
             exit={{ opacity: 0, scale: 0.8 }}
-            className="bg-gray-800/50 border border-gray-700 rounded-xl flex flex-col overflow-hidden shadow-lg hover:shadow-indigo-500/20 hover:-translate-y-1 transition-all duration-300"
+            className="bg-card border border-border rounded-xl flex flex-col overflow-hidden shadow-lg hover:shadow-primary/20 hover:-translate-y-1 transition-all duration-300"
         >
-            <div className="p-5 bg-gray-800">
+            <div className="p-5 bg-card">
                 <div className="flex justify-between items-start">
-                    <p className="font-mono text-2xl font-bold tracking-widest text-white bg-gray-700 px-4 py-2 rounded-lg border-2 border-dashed border-gray-500">{coupon.code}</p>
+                    <p className="font-mono text-2xl font-bold tracking-widest text-foreground bg-muted px-4 py-2 rounded-lg border-2 border-dashed border-border">{coupon.code}</p>
                     <div className={cn('flex items-center gap-2 text-sm font-semibold px-3 py-1 rounded-full', statusConfig[status].bg, statusConfig[status].text)}>
                         {statusConfig[status].icon}
                         {status}
                     </div>
                 </div>
-                <p className="text-3xl font-bold text-indigo-400 mt-4">
+                <p className="text-3xl font-bold text-primary mt-4">
                     {coupon.type === 'free_delivery' ? 'Free Delivery' : (coupon.type === 'flat' ? `₹${coupon.value} OFF` : `${coupon.value}% OFF`)}
                 </p>
             </div>
             
             <div className="p-5 flex-grow">
-                 <p className="text-sm text-gray-300 mb-4">{coupon.description}</p>
+                 <p className="text-sm text-muted-foreground mb-4">{coupon.description}</p>
                  <div className="text-sm space-y-2">
-                     <p><span className="font-semibold text-gray-400">Min. Order:</span> ₹{coupon.minOrder}</p>
-                     <p><span className="font-semibold text-gray-400">Expires:</span> {formatDate(expiryDate)}</p>
-                     <p><span className="font-semibold text-gray-400">Times Used:</span> {coupon.timesUsed}</p>
+                     <p><span className="font-semibold text-muted-foreground">Min. Order:</span> ₹{coupon.minOrder}</p>
+                     <p><span className="font-semibold text-muted-foreground">Expires:</span> {formatDate(expiryDate)}</p>
+                     <p><span className="font-semibold text-muted-foreground">Times Used:</span> {coupon.timesUsed}</p>
                  </div>
             </div>
 
-            <div className="p-4 bg-gray-900/50 border-t border-gray-700 flex justify-between items-center">
+            <div className="p-4 bg-muted/30 border-t border-border flex justify-between items-center">
                  <div className="flex items-center gap-2">
                      <Switch 
                         checked={status === 'Active'} 
@@ -255,13 +255,13 @@ const CouponCard = ({ coupon, onStatusToggle, onEdit, onDelete }) => {
                         disabled={status === 'Expired'}
                         id={`switch-${coupon.id}`}
                      />
-                     <Label htmlFor={`switch-${coupon.id}`} className="text-sm text-gray-400">
+                     <Label htmlFor={`switch-${coupon.id}`} className="text-sm text-muted-foreground">
                         {status === 'Active' ? 'Active' : 'Inactive'}
                      </Label>
                  </div>
                  <div className="flex items-center gap-1">
                      <Button variant="ghost" size="icon" onClick={() => onEdit(coupon)}><Edit size={16}/></Button>
-                     <Button variant="ghost" size="icon" className="text-red-500 hover:text-red-400 hover:bg-red-500/10" onClick={() => onDelete(coupon.id)}><Trash2 size={16}/></Button>
+                     <Button variant="ghost" size="icon" className="text-destructive hover:text-destructive/80 hover:bg-destructive/10" onClick={() => onDelete(coupon.id)}><Trash2 size={16}/></Button>
                  </div>
             </div>
         </motion.div>
@@ -406,24 +406,24 @@ export default function CouponsPage() {
 
 
     return (
-        <div className="p-4 md:p-6 text-white min-h-screen bg-gray-900">
+        <div className="p-4 md:p-6 text-foreground min-h-screen bg-background">
             <CouponModal isOpen={isModalOpen} setIsOpen={setIsModalOpen} onSave={handleSaveCoupon} editingCoupon={editingCoupon} />
 
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-8">
                 <div>
                     <h1 className="text-3xl font-bold tracking-tight">Coupon & Offer Hub</h1>
-                    <p className="text-gray-400 mt-1">Create, manage, and track your promotional offers.</p>
+                    <p className="text-muted-foreground mt-1">Create, manage, and track your promotional offers.</p>
                 </div>
-                <Button onClick={handleCreateNew} className="bg-indigo-600 hover:bg-indigo-700">
+                <Button onClick={handleCreateNew} className="bg-primary hover:bg-primary/90 text-primary-foreground">
                     <PlusCircle size={20} className="mr-2"/> Create New Coupon
                 </Button>
             </div>
 
-            <div className="flex flex-col md:flex-row justify-end items-center gap-4 mb-6 p-4 bg-gray-800/50 rounded-xl border border-gray-700">
+            <div className="flex flex-col md:flex-row justify-end items-center gap-4 mb-6 p-4 bg-card rounded-xl border border-border">
                 <div className="flex items-center gap-2">
-                    <Filter size={16} className="text-gray-400"/>
+                    <Filter size={16} className="text-muted-foreground"/>
                     <Label htmlFor="filter-status">Filter by Status:</Label>
-                    <select id="filter-status" value={filter} onChange={e => setFilter(e.target.value)} className="p-2 text-sm border rounded-md bg-gray-800 border-gray-600 focus:ring-indigo-500 focus:border-indigo-500">
+                    <select id="filter-status" value={filter} onChange={e => setFilter(e.target.value)} className="p-2 text-sm border rounded-md bg-input border-border focus:ring-primary focus:border-primary">
                         <option value="All">All</option>
                         <option value="Active">Active</option>
                         <option value="Inactive">Inactive</option>
@@ -431,9 +431,9 @@ export default function CouponsPage() {
                     </select>
                 </div>
                  <div className="flex items-center gap-2">
-                    <ArrowDownUp size={16} className="text-gray-400"/>
+                    <ArrowDownUp size={16} className="text-muted-foreground"/>
                     <Label htmlFor="sort-by">Sort by:</Label>
-                    <select id="sort-by" value={sort} onChange={e => setSort(e.target.value)} className="p-2 text-sm border rounded-md bg-gray-800 border-gray-600 focus:ring-indigo-500 focus:border-indigo-500">
+                    <select id="sort-by" value={sort} onChange={e => setSort(e.target.value)} className="p-2 text-sm border rounded-md bg-input border-border focus:ring-primary focus:border-primary">
                         <option value="expiryDate-asc">Expiry Date (Soonest)</option>
                         <option value="expiryDate-desc">Expiry Date (Latest)</option>
                         <option value="timesUsed-desc">Usage (Most First)</option>
@@ -445,7 +445,7 @@ export default function CouponsPage() {
             {loading ? (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 animate-pulse">
                     {[...Array(6)].map((_, i) => (
-                        <div key={i} className="bg-gray-800/50 border border-gray-700 rounded-xl h-80"></div>
+                        <div key={i} className="bg-card border border-border rounded-xl h-80"></div>
                     ))}
                 </div>
             ) : (
@@ -464,7 +464,7 @@ export default function CouponsPage() {
                 </div>
             )}
              {!loading && filteredAndSortedCoupons.length === 0 && (
-                <div className="text-center py-16 text-gray-500">
+                <div className="text-center py-16 text-muted-foreground">
                     <p className="text-lg font-semibold">No coupons found.</p>
                     <p>Try adjusting your filters or create a new coupon!</p>
                 </div>
@@ -472,5 +472,3 @@ export default function CouponsPage() {
         </div>
     );
 }
-
-    

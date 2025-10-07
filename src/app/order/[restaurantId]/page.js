@@ -34,7 +34,7 @@ const MenuItemCard = ({ item, quantity, onIncrement, onDecrement }) => {
           <h4 className="font-semibold text-foreground">{item.name}</h4>
         </div>
         <p className="text-sm text-muted-foreground mb-2">{item.description}</p>
-        <p className="font-bold text-lg text-foreground">₹{item.fullPrice}</p>
+        <p className="font-bold text-lg text-primary">₹{item.fullPrice}</p>
       </div>
       <div className="flex flex-col items-center justify-center h-24">
         {quantity > 0 ? (
@@ -184,7 +184,7 @@ const CartDrawer = ({ cart, onUpdateCart, onClose, onCheckout, notes, setNotes, 
                          <div className="border-t border-dashed border-border my-2"></div>
                          <div className="flex justify-between items-center text-lg font-bold"><span>Grand Total:</span> <span>₹{grandTotal > 0 ? grandTotal.toFixed(2) : '0.00'}</span></div>
                     </div>
-                     <Button onClick={onCheckout} className="w-full bg-gradient-to-r from-primary to-accent h-12 text-lg font-bold">
+                     <Button onClick={onCheckout} className="w-full bg-primary hover:bg-primary/90 h-12 text-lg font-bold">
                         Proceed to Checkout
                     </Button>
                 </div>
@@ -367,7 +367,7 @@ const CheckoutModal = ({ isOpen, onClose, restaurantId, phone, cart, notes, appl
 
                 <DialogFooter>
                     <DialogClose asChild><Button variant="secondary" disabled={loading}>Cancel</Button></DialogClose>
-                    <Button onClick={handlePlaceOrder} className="bg-gradient-to-r from-primary to-accent" disabled={loading}>
+                    <Button onClick={handlePlaceOrder} className="bg-primary hover:bg-primary/90" disabled={loading}>
                         {loading ? 'Placing Order...' : 'Confirm & Place Order'}
                     </Button>
                 </DialogFooter>
@@ -698,7 +698,7 @@ const OrderPageInternal = () => {
                                 exit={{ y: 100 }}
                                 transition={{ type: "spring", stiffness: 300, damping: 30 }}
                             >
-                                <Button onClick={() => setIsCartOpen(true)} className="bg-gradient-to-r from-primary to-accent h-14 text-lg font-bold rounded-xl shadow-lg shadow-primary/30 flex justify-between items-center text-primary-foreground w-full">
+                                <Button onClick={() => setIsCartOpen(true)} className="bg-primary hover:bg-primary/90 h-14 text-lg font-bold rounded-xl shadow-lg shadow-primary/30 flex justify-between items-center text-primary-foreground w-full">
                                     <div className="flex items-center gap-2">
                                        <ShoppingCart className="h-6 w-6"/> 
                                        <span>{totalCartItems} {totalCartItems > 1 ? 'Items' : 'Item'}</span>

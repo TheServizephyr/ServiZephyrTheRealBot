@@ -56,7 +56,7 @@ const ActionButton = ({ status, onNext, onRevert }) => {
             <Button
                 onClick={() => onNext(nextStatus)}
                 size="sm"
-                className="bg-indigo-600 hover:bg-indigo-700 h-9 flex-grow"
+                className="bg-primary hover:bg-primary/90 h-9 flex-grow"
             >
                 <ActionIcon size={16} className="mr-2" />
                 {action.text}
@@ -66,7 +66,7 @@ const ActionButton = ({ status, onNext, onRevert }) => {
                     onClick={() => onRevert(prevStatus)}
                     variant="ghost"
                     size="icon"
-                    className="h-9 w-9 text-gray-400 hover:bg-gray-700 hover:text-white"
+                    className="h-9 w-9 text-muted-foreground hover:bg-muted hover:text-foreground"
                     title={`Revert to ${prevStatus}`}
                  >
                     <Undo size={16} />
@@ -84,7 +84,7 @@ const PriorityStars = ({ score }) => (
         size={16}
         className={cn(
           'transition-colors',
-          i < score ? 'text-yellow-400 fill-yellow-400' : 'text-gray-600'
+          i < score ? 'text-primary fill-primary' : 'text-muted-foreground/50'
         )}
       />
     ))}
@@ -98,7 +98,7 @@ const SortableHeader = ({ children, column, sortConfig, onSort }) => {
   const Icon = direction === 'asc' ? ChevronUp : ChevronDown;
 
   return (
-    <th onClick={() => onSort(column)} className="cursor-pointer p-4 text-left text-sm font-semibold text-gray-400 hover:bg-gray-800 transition-colors">
+    <th onClick={() => onSort(column)} className="cursor-pointer p-4 text-left text-sm font-semibold text-muted-foreground hover:bg-muted transition-colors">
       <div className="flex items-center gap-2">
         {children}
         {isSorted && <Icon size={16} />}
@@ -219,44 +219,44 @@ export default function LiveOrdersPage() {
 
 
   return (
-    <div className="p-4 md:p-6 text-white min-h-screen bg-gray-900">
+    <div className="p-4 md:p-6 text-foreground min-h-screen bg-background">
         <audio id="notification-sound" src="/notification.mp3" preload="auto"></audio>
 
         <div className="flex flex-col md:flex-row justify-between md:items-center mb-6">
             <div>
                 <h1 className="text-2xl md:text-3xl font-bold tracking-tight">Live Order Management</h1>
-                <p className="text-gray-400 mt-1 text-sm md:text-base">A real-time, intelligent view of your kitchen's pulse.</p>
+                <p className="text-muted-foreground mt-1 text-sm md:text-base">A real-time, intelligent view of your kitchen's pulse.</p>
             </div>
-            <Button onClick={() => fetchOrders(true)} variant="outline" className="mt-2 sm:mt-0 bg-gray-800 border-gray-700 hover:bg-gray-700">
+            <Button onClick={() => fetchOrders(true)} variant="outline" className="mt-2 sm:mt-0">
                 <RefreshCw size={16} className={cn(loading && "animate-spin")} />
                 <span className="ml-2">{loading ? 'Loading...' : 'Refresh'}</span>
             </Button>
         </div>
 
-        <div className="bg-gray-800/50 border border-gray-700 rounded-xl overflow-hidden">
+        <div className="bg-card border border-border rounded-xl overflow-hidden">
             <div className="overflow-x-auto">
                 <table className="w-full">
                     <thead>
-                        <tr className="bg-gray-800">
+                        <tr className="bg-muted/30">
                             <SortableHeader column="priority" sortConfig={sortConfig} onSort={handleSort}>Priority</SortableHeader>
                             <SortableHeader column="id" sortConfig={sortConfig} onSort={handleSort}>Order Details</SortableHeader>
-                            <th className="p-4 text-left text-sm font-semibold text-gray-400">Order Items</th>
+                            <th className="p-4 text-left text-sm font-semibold text-muted-foreground">Order Items</th>
                             <SortableHeader column="orderDate" sortConfig={sortConfig} onSort={handleSort}>Time Elapsed</SortableHeader>
                             <SortableHeader column="status" sortConfig={sortConfig} onSort={handleSort}>Status</SortableHeader>
-                            <th className="p-4 text-left text-sm font-semibold text-gray-400">Actions</th>
+                            <th className="p-4 text-left text-sm font-semibold text-muted-foreground">Actions</th>
                         </tr>
                     </thead>
-                    <tbody className="divide-y divide-gray-700/50">
+                    <tbody className="divide-y divide-border">
                         <AnimatePresence>
                            {loading && sortedOrders.length === 0 ? (
                                 Array.from({length: 5}).map((_, i) => (
                                     <tr key={i} className="animate-pulse">
-                                        <td className="p-4"><div className="h-5 bg-gray-700 rounded w-3/4"></div></td>
-                                        <td className="p-4"><div className="h-5 bg-gray-700 rounded w-1/2"></div></td>
-                                        <td className="p-4"><div className="h-5 bg-gray-700 rounded w-full"></div></td>
-                                        <td className="p-4"><div className="h-5 bg-gray-700 rounded w-1/4"></div></td>
-                                        <td className="p-4"><div className="h-5 bg-gray-700 rounded w-1/3"></div></td>
-                                        <td className="p-4"><div className="h-5 bg-gray-700 rounded w-full"></div></td>
+                                        <td className="p-4"><div className="h-5 bg-muted rounded w-3/4"></div></td>
+                                        <td className="p-4"><div className="h-5 bg-muted rounded w-1/2"></div></td>
+                                        <td className="p-4"><div className="h-5 bg-muted rounded w-full"></div></td>
+                                        <td className="p-4"><div className="h-5 bg-muted rounded w-1/4"></div></td>
+                                        <td className="p-4"><div className="h-5 bg-muted rounded w-1/3"></div></td>
+                                        <td className="p-4"><div className="h-5 bg-muted rounded w-full"></div></td>
                                     </tr>
                                 ))
                             ) : sortedOrders.map(order => (
@@ -267,21 +267,21 @@ export default function LiveOrdersPage() {
                                     animate={{ opacity: 1 }}
                                     exit={{ opacity: 0, x: -50 }}
                                     transition={{ duration: 0.3 }}
-                                    className="hover:bg-gray-700/50"
+                                    className="hover:bg-muted/50"
                                 >
                                     <td className="p-4"><PriorityStars score={order.priority} /></td>
                                     <td className="p-4">
-                                        <div className="font-bold text-white">{order.id}</div>
-                                        <div className="text-sm text-gray-400">{order.customer}</div>
+                                        <div className="font-bold text-foreground">{order.id}</div>
+                                        <div className="text-sm text-muted-foreground">{order.customer}</div>
                                     </td>
-                                    <td className="p-4 text-sm text-gray-300">
+                                    <td className="p-4 text-sm text-muted-foreground">
                                         <ul className="space-y-1">
                                             {(order.items || []).map(item => (
                                                 <li key={item.name}>{item.qty}x {item.name}</li>
                                             ))}
                                         </ul>
                                     </td>
-                                    <td className="p-4 text-sm text-gray-300">
+                                    <td className="p-4 text-sm text-muted-foreground">
                                         {formatDistanceToNowStrict(new Date(order.orderDate.seconds ? order.orderDate.seconds * 1000 : order.orderDate))} ago
                                     </td>
                                     <td className="p-4">
@@ -310,7 +310,7 @@ export default function LiveOrdersPage() {
                         </AnimatePresence>
                          { !loading && sortedOrders.length === 0 && (
                             <tr>
-                                <td colSpan="6" className="text-center p-16 text-gray-500">
+                                <td colSpan="6" className="text-center p-16 text-muted-foreground">
                                     <p className="text-lg font-semibold">All caught up!</p>
                                     <p>No live orders right now.</p>
                                 </td>

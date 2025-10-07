@@ -280,7 +280,7 @@ export default function CompleteProfile() {
           <button
             type="submit"
             disabled={loading || !role}
-            className="w-full flex justify-center items-center py-3 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-primary-foreground bg-gradient-to-r from-primary to-accent hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed transition-transform"
+            className="w-full flex justify-center items-center py-3 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-primary-foreground bg-primary hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-transform"
           >
             {loading ? (
                 <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
