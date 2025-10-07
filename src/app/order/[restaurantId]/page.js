@@ -39,15 +39,14 @@ const MenuItemCard = ({ item, quantity, onIncrement, onDecrement }) => {
       <div className="flex flex-col items-center justify-center h-24">
         {quantity > 0 ? (
           <div className="flex items-center gap-1 bg-background p-1 rounded-lg border border-border">
-            <Button size="icon" variant="ghost" className="h-8 w-8 text-primary" onClick={() => onDecrement(item)}><Minus size={16}/></Button>
+            <Button size="icon" variant="ghost" className="h-8 w-8 text-green-500" onClick={() => onDecrement(item)}><Minus size={16}/></Button>
             <span className="font-bold w-6 text-center text-foreground">{quantity}</span>
-            <Button size="icon" variant="ghost" className="h-8 w-8 text-primary" onClick={() => onIncrement(item)}><Plus size={16}/></Button>
+            <Button size="icon" variant="ghost" className="h-8 w-8 text-green-500" onClick={() => onIncrement(item)}><Plus size={16}/></Button>
           </div>
         ) : (
           <Button 
             onClick={() => onIncrement(item)}
-            variant="outline"
-            className="w-24 bg-muted hover:bg-primary hover:text-primary-foreground border-primary/20 text-primary font-bold"
+            className="w-24 bg-green-600 hover:bg-green-700 text-white font-bold"
           >
             ADD
           </Button>
