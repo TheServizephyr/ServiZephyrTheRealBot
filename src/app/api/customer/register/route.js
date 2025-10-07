@@ -75,7 +75,7 @@ export async function POST(req) {
             name: name, // Denormalize for easy lookup in dashboard
             phone: phone,
             status: 'claimed',
-            totalSpend: adminFirestore.FieldValue.increment(subtotal), // REVERTED: Increment by SUBTOTAL only
+            totalSpend: adminFirestore.FieldValue.increment(subtotal), // Increment by SUBTOTAL only
             loyaltyPoints: adminFirestore.FieldValue.increment(pointsEarned),
             lastOrderDate: adminFirestore.FieldValue.serverTimestamp(),
             totalOrders: adminFirestore.FieldValue.increment(1),
@@ -86,6 +86,11 @@ export async function POST(req) {
         batch.set(userRestaurantLinkRef, {
              restaurantName: restaurantDoc.data().name,
              joinedAt: adminFirestore.FieldValue.serverTimestamp(),
+             // --- CRITICAL FIX: Also add and increment analytics here ---
+             totalSpend: adminFirestore.FieldValue.increment(subtotal),
+             loyaltyPoints: adminFirestore.FieldValue.increment(pointsEarned),
+             lastOrderDate: adminFirestore.FieldValue.serverTimestamp(),
+             totalOrders: adminFirestore.FieldValue.increment(1),
         }, { merge: true });
 
 
@@ -98,7 +103,7 @@ export async function POST(req) {
             customerPhone: phone,
             restaurantId: restaurantId,
             restaurantName: restaurantDoc.data().name,
-            items: items.map(item => ({ name: item.name, qty: item.quantity, price: item.price })), // Correctly use 'qty'
+            items: items.map(item => ({ name: item.name, qty: item.quantity, price: item.price })),
             totalAmount: grandTotal, // Save GRAND TOTAL to the order
             status: 'pending',
             priority: Math.floor(Math.random() * 5) + 1, // Random priority for now
