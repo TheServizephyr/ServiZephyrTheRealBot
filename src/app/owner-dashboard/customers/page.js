@@ -1,4 +1,5 @@
 
+
 "use client";
 
 import { useState, useMemo, useEffect } from 'react';
@@ -9,6 +10,11 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { Label } from '@/components/ui/label';
 import { cn } from "@/lib/utils";
 import { auth } from '@/lib/firebase';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Calendar } from '@/components/ui/calendar';
+import { format } from 'date-fns';
+import { Calendar as CalendarIcon, Wand2, Ticket, Percent, Truck } from 'lucide-react';
+
 
 const formatDate = (dateString) => {
     if (!dateString) return 'N/A';
@@ -65,23 +71,89 @@ const SortableHeader = ({ children, column, sortConfig, onSort }) => {
 };
 
 const CouponModal = ({ isOpen, setIsOpen, customerName }) => {
+    const [coupon, setCoupon] = useState(null);
+
+    useEffect(() => {
+        if(isOpen) {
+            setCoupon({
+                code: '', description: `Special reward for ${customerName}`, type: 'flat', value: '',
+                minOrder: '', startDate: new Date(), expiryDate: new Date(new Date().setDate(new Date().getDate() + 30)),
+                status: 'Active',
+            });
+        }
+    }, [isOpen, customerName]);
+    
+    if(!coupon) return null;
+
+    const handleChange = (field, value) => {
+        setCoupon(prev => (prev ? { ...prev, [field]: value } : null));
+    };
+
+    const generateRandomCode = () => {
+        const code = `VIP-${customerName.split(' ')[0].toUpperCase()}-${Math.random().toString(36).substring(2, 6).toUpperCase()}`;
+        handleChange('code', code);
+    };
+
+    const handleSubmit = async (e) => {
+        e.preventDefault();
+        // In a real app, this would be a backend call
+        alert(`Reward coupon "${coupon.code}" created for ${customerName}!`);
+        setIsOpen(false);
+    };
+
     return (
         <Dialog open={isOpen} onOpenChange={setIsOpen}>
-            <DialogContent className="sm:max-w-md bg-gray-900 border-gray-700 text-white">
-                <DialogHeader>
-                    <DialogTitle>Send Custom Coupon</DialogTitle>
-                    <DialogDescription>Create a unique discount for {customerName}.</DialogDescription>
-                </DialogHeader>
-                <div className="grid gap-4 py-4">
-                    <p className="text-center text-gray-400">Coupon creation coming soon!</p>
-                </div>
-                <DialogFooter>
-                     <DialogClose asChild><Button type="button" variant="secondary">Close</Button></DialogClose>
-                </DialogFooter>
+            <DialogContent className="sm:max-w-lg bg-gray-900 border-gray-700 text-white">
+                <form onSubmit={handleSubmit}>
+                    <DialogHeader>
+                        <DialogTitle className="flex items-center gap-2 text-xl">
+                            <Ticket /> Create a Reward
+                        </DialogTitle>
+                        <DialogDescription>Sending a special reward to {customerName}.</DialogDescription>
+                    </DialogHeader>
+                    
+                    <div className="grid gap-y-4 py-6">
+                         <div>
+                            <Label htmlFor="code">Coupon Code</Label>
+                            <div className="flex items-center gap-2 mt-1">
+                                <input id="code" value={coupon.code} onChange={e => handleChange('code', e.target.value.toUpperCase())} placeholder="e.g., SAVE20" className="p-2 border rounded-md bg-gray-800 border-gray-600 w-full" />
+                                <Button type="button" variant="outline" onClick={generateRandomCode}><Wand2 size={16} className="mr-2"/> Generate</Button>
+                            </div>
+                        </div>
+                        <div className="grid grid-cols-2 gap-4">
+                            <div>
+                                <Label htmlFor="value">Discount Value (₹)</Label>
+                                <input id="value" type="number" value={coupon.value} onChange={e => handleChange('value', e.target.value)} placeholder="e.g., 100" className="mt-1 p-2 border rounded-md bg-gray-800 border-gray-600 w-full" />
+                            </div>
+                            <div>
+                                <Label htmlFor="minOrder">Minimum Order (₹)</Label>
+                                <input id="minOrder" type="number" value={coupon.minOrder} onChange={e => handleChange('minOrder', e.target.value)} placeholder="e.g., 500" className="mt-1 p-2 border rounded-md bg-gray-800 border-gray-600 w-full" />
+                            </div>
+                        </div>
+                         <div>
+                            <Label>Expiry Date</Label>
+                            <Popover>
+                                <PopoverTrigger asChild>
+                                   <Button variant={"outline"} className={cn("w-full justify-start text-left font-normal mt-1", !coupon.expiryDate && "text-muted-foreground")}>
+                                      <CalendarIcon className="mr-2 h-4 w-4" />
+                                      {coupon.expiryDate ? format(coupon.expiryDate, 'dd MMM yyyy') : <span>Pick a date</span>}
+                                   </Button>
+                                </PopoverTrigger>
+                                <PopoverContent className="w-auto p-0"><Calendar mode="single" selected={coupon.expiryDate} onSelect={(date) => handleChange('expiryDate', date)} initialFocus /></PopoverContent>
+                            </Popover>
+                        </div>
+                    </div>
+
+                    <DialogFooter className="pt-4">
+                        <DialogClose asChild><Button type="button" variant="secondary">Cancel</Button></DialogClose>
+                        <Button type="submit" className="bg-indigo-600 hover:bg-indigo-700">Send Reward</Button>
+                    </DialogFooter>
+                </form>
             </DialogContent>
         </Dialog>
     );
 };
+
 
 const CustomerDetailPanel = ({ customer, onClose, onSaveNotes }) => {
   const [activeTab, setActiveTab] = useState('history');
@@ -262,6 +334,8 @@ export default function CustomersPage() {
     const [selectedCustomer, setSelectedCustomer] = useState(null);
     const [searchQuery, setSearchQuery] = useState("");
     const [activeFilter, setActiveFilter] = useState("All");
+    const [isCouponModalOpen, setCouponModalOpen] = useState(false);
+    const [rewardCustomer, setRewardCustomer] = useState(null);
 
     useEffect(() => {
         const fetchCustomers = async () => {
@@ -294,6 +368,15 @@ export default function CustomersPage() {
         });
         return () => unsubscribe();
     }, []);
+
+    const vipCustomers = useMemo(() => {
+        return [...customers].sort((a, b) => b.totalSpend - a.totalSpend).slice(0, 5);
+    }, [customers]);
+
+    const handleSendReward = (customer) => {
+        setRewardCustomer(customer);
+        setCouponModalOpen(true);
+    };
 
     const filteredAndSortedCustomers = useMemo(() => {
         if (loading) return [];
@@ -369,6 +452,8 @@ export default function CustomersPage() {
 
     return (
         <div className="p-4 md:p-6 text-white relative min-h-screen bg-gray-900">
+             {rewardCustomer && <CouponModal isOpen={isCouponModalOpen} setIsOpen={setCouponModalOpen} customerName={rewardCustomer.name} />}
+
             <div>
                 <h1 className="text-3xl font-bold tracking-tight">Customer Hub</h1>
                 <p className="text-gray-400 mt-1">Manage, analyze, and engage with your customers.</p>
@@ -380,6 +465,49 @@ export default function CustomersPage() {
                 <StatCard isLoading={loading} icon={Repeat} title="Repeat Customer Rate" value={`${stats.repeatRate || 0}%`} detail="Customers with more than one order" />
                 <StatCard isLoading={loading} icon={Crown} title="Top Spender" value={stats.topSpender?.name || 'N/A'} detail={formatCurrency(stats.topSpender?.totalSpend)} />
             </div>
+
+            <section className="my-8">
+                <h3 className="text-xl font-bold mb-4">❤️ Your VIP Lounge</h3>
+                <div className="bg-gray-800/50 border border-gray-700 rounded-xl overflow-hidden">
+                    <div className="overflow-x-auto">
+                        <table className="w-full text-left">
+                            <thead className="bg-gray-800">
+                                <tr>
+                                    <th className="p-4 text-sm font-semibold text-gray-400">Rank</th>
+                                    <th className="p-4 text-sm font-semibold text-gray-400">Customer</th>
+                                    <th className="p-4 text-sm font-semibold text-gray-400">Total Spend</th>
+                                    <th className="p-4 text-sm font-semibold text-gray-400">Total Orders</th>
+                                    <th className="p-4 text-sm font-semibold text-gray-400 text-center">Action</th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-gray-700">
+                                {loading ? Array.from({length: 5}).map((_, i) => (
+                                    <tr key={i} className="animate-pulse">
+                                        <td className="p-4"><div className="h-5 bg-gray-700 rounded w-1/4"></div></td>
+                                        <td className="p-4"><div className="h-5 bg-gray-700 rounded w-3/4"></div></td>
+                                        <td className="p-4"><div className="h-5 bg-gray-700 rounded w-1/2"></div></td>
+                                        <td className="p-4"><div className="h-5 bg-gray-700 rounded w-1/4"></div></td>
+                                        <td className="p-4 flex justify-center"><div className="h-8 bg-gray-700 rounded w-3/4"></div></td>
+                                    </tr>
+                                )) : vipCustomers.map((cust, i) => (
+                                    <tr key={cust.id} className="hover:bg-gray-700/50 transition-colors">
+                                        <td className="p-4"><span className="font-bold text-lg">{i + 1}</span></td>
+                                        <td className="p-4 font-semibold">{cust.name}</td>
+                                        <td className="p-4 text-green-400 font-bold">{formatCurrency(cust.totalSpend)}</td>
+                                        <td className="p-4 text-center">{cust.totalOrders}</td>
+                                        <td className="p-4 text-center">
+                                            <Button size="sm" className="bg-indigo-600 hover:bg-indigo-500" onClick={() => handleSendReward(cust)}>
+                                                <Gift size={16} className="mr-2"/> Send Reward
+                                            </Button>
+                                        </td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
+
 
             <div className="my-6 p-4 bg-gray-800/50 rounded-xl border border-gray-700 flex flex-col md:flex-row gap-4 justify-between items-center">
                 <div className="relative w-full md:w-auto">
