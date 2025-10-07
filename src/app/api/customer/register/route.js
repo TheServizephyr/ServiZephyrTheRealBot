@@ -75,7 +75,7 @@ export async function POST(req) {
             name: name, // Denormalize for easy lookup in dashboard
             phone: phone,
             status: 'claimed',
-            totalSpend: adminFirestore.FieldValue.increment(grandTotal), // Increment by GRAND TOTAL
+            totalSpend: adminFirestore.FieldValue.increment(subtotal), // REVERTED: Increment by SUBTOTAL only
             loyaltyPoints: adminFirestore.FieldValue.increment(pointsEarned),
             lastOrderDate: adminFirestore.FieldValue.serverTimestamp(),
             totalOrders: adminFirestore.FieldValue.increment(1),
