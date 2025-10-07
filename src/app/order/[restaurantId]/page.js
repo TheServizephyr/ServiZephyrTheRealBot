@@ -63,9 +63,9 @@ const CartDrawer = ({ cart, onUpdateCart, onClose, onCheckout, notes, setNotes, 
     const handleApplyCoupon = (couponToApply) => {
         if (subtotal >= couponToApply.minOrder) {
             setAppliedCoupon(couponToApply);
-            alert(`Coupon "${couponToApply.code}" applied!`);
         } else {
-             alert(`You need to spend at least ₹${couponToApply.minOrder} to use this coupon.`);
+             // Silently fail or show a subtle message, but no alert
+             console.log(`Min order for ${couponToApply.code} not met.`);
         }
     };
     
@@ -75,11 +75,10 @@ const CartDrawer = ({ cart, onUpdateCart, onClose, onCheckout, notes, setNotes, 
     
     const handleRedeemPoints = () => {
         if(loyaltyPointsData >= 100) {
-            const redeemableAmount = loyaltyPointsData * 0.5;
+            const redeemableAmount = Math.floor(loyaltyPointsData * 0.5); // 1 point = 0.5 Rs, floor to avoid paise issues
             setLoyaltyDiscount(redeemableAmount);
-            alert(`You've redeemed your points for a discount of ₹${redeemableAmount.toFixed(2)}!`);
         } else {
-            alert("You need at least 100 points to redeem.");
+            console.log("Not enough points to redeem.");
         }
     }
 
@@ -282,7 +281,7 @@ const CheckoutModal = ({ isOpen, onClose, restaurantId, phone, cart, notes, appl
                 items: cart.map(item => ({ name: item.name, quantity: item.quantity, price: item.fullPrice })),
                 notes,
                 coupon: appliedCoupon ? { code: appliedCoupon.code, discount: couponDiscount } : null,
-                loyaltyDiscount,
+                loyaltyDiscount: loyaltyDiscount > 0 ? loyaltyDiscount : null,
             };
             
             const res = await fetch('/api/customer/register', {

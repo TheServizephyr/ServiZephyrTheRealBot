@@ -61,8 +61,8 @@ export async function POST(req) {
         
         const subtotal = items.reduce((sum, item) => sum + item.price * item.quantity, 0);
         const couponDiscountAmount = coupon?.discount || 0;
-        const loyaltyDiscountAmount = loyaltyDiscount || 0;
-        const finalDiscount = couponDiscountAmount + loyaltyDiscountAmount;
+        const finalLoyaltyDiscount = loyaltyDiscount || 0;
+        const finalDiscount = couponDiscountAmount + finalLoyaltyDiscount;
         
         const taxableAmount = subtotal - finalDiscount;
         const taxRate = 0.05;
@@ -73,7 +73,7 @@ export async function POST(req) {
         const grandTotal = taxableAmount + cgst + sgst + deliveryCharge;
 
         const pointsEarned = Math.floor(subtotal / 100) * 10;
-        const pointsSpent = loyaltyDiscountAmount > 0 ? loyaltyDiscountAmount / 0.5 : 0;
+        const pointsSpent = finalLoyaltyDiscount > 0 ? finalLoyaltyDiscount / 0.5 : 0;
 
         const restaurantCustomerRef = restaurantRef.collection('customers').doc(userId);
         batch.set(restaurantCustomerRef, {
@@ -107,7 +107,7 @@ export async function POST(req) {
             items: items.map(item => ({ name: item.name, qty: item.quantity, price: item.price })),
             subtotal: subtotal,
             coupon: coupon || null,
-            loyaltyDiscount: loyaltyDiscountAmount,
+            loyaltyDiscount: finalLoyaltyDiscount,
             discount: finalDiscount,
             cgst: cgst,
             sgst: sgst,
