@@ -6,7 +6,7 @@ import { NextResponse } from 'next/server';
 export async function POST(req) {
     try {
         const firestore = getFirestore();
-        const { name, address, phone, restaurantId, items, notes } = await req.json();
+        const { name, address, phone, restaurantId, items, notes, coupon, loyaltyDiscount } = await req.json();
 
         if (!name || !address || !phone || !restaurantId || !items) {
             return NextResponse.json({ message: 'Missing required fields.' }, { status: 400 });
@@ -21,6 +21,7 @@ export async function POST(req) {
         if (!restaurantDoc.exists) {
             return NextResponse.json({ message: 'This restaurant does not exist.' }, { status: 404 });
         }
+        const restaurantData = restaurantDoc.data();
 
         const batch = firestore.batch();
         
@@ -36,7 +37,6 @@ export async function POST(req) {
             userData = existingUserDoc.data();
             console.log(`[Order API] Existing user found with UID: ${userId} for phone: ${phone}.`);
             
-            // Check if address already exists, if not, add it
             const userAddresses = userData.addresses || [];
             if (!userAddresses.some(a => a.full === address)) {
                  batch.update(existingUserDoc.ref, {
@@ -46,7 +46,7 @@ export async function POST(req) {
 
         } else {
             console.log(`[Order API] No existing user found for phone: ${phone}. Creating new user profile.`);
-            const newUserRef = usersRef.doc(); // Auto-generate UID
+            const newUserRef = usersRef.doc();
             userId = newUserRef.id;
             
             batch.set(newUserRef, {
@@ -58,43 +58,44 @@ export async function POST(req) {
             });
             console.log(`[Order API] New user profile created with UID: ${userId}`);
         }
-
-        // --- CORRECT GRAND TOTAL & LOYALTY POINTS LOGIC ---
+        
         const subtotal = items.reduce((sum, item) => sum + item.price * item.quantity, 0);
-        const taxRate = 0.05; // 5% CGST + 5% SGST
-        const deliveryCharge = 30; // Should be dynamic from restaurant settings in future
-        const totalTaxes = subtotal * taxRate * 2;
-        const grandTotal = subtotal + totalTaxes + deliveryCharge;
+        const couponDiscountAmount = coupon?.discount || 0;
+        const loyaltyDiscountAmount = loyaltyDiscount || 0;
+        const finalDiscount = couponDiscountAmount + loyaltyDiscountAmount;
+        
+        const taxableAmount = subtotal - finalDiscount;
+        const taxRate = 0.05;
+        const cgst = taxableAmount > 0 ? taxableAmount * taxRate : 0;
+        const sgst = taxableAmount > 0 ? taxableAmount * taxRate : 0;
+        
+        const deliveryCharge = (coupon?.code?.includes('FREE')) ? 0 : (restaurantData.deliveryCharge || 30);
+        const grandTotal = taxableAmount + cgst + sgst + deliveryCharge;
 
-        // For every ₹100 spent on the subtotal, give 10 points.
         const pointsEarned = Math.floor(subtotal / 100) * 10;
+        const pointsSpent = loyaltyDiscountAmount > 0 ? loyaltyDiscountAmount / 0.5 : 0;
 
-        // Add to restaurant's customer sub-collection with loyalty points and correct totalSpend
         const restaurantCustomerRef = restaurantRef.collection('customers').doc(userId);
         batch.set(restaurantCustomerRef, {
-            name: name, // Denormalize for easy lookup in dashboard
+            name: name,
             phone: phone,
             status: 'claimed',
-            totalSpend: adminFirestore.FieldValue.increment(subtotal), // Increment by SUBTOTAL only
-            loyaltyPoints: adminFirestore.FieldValue.increment(pointsEarned),
+            totalSpend: adminFirestore.FieldValue.increment(subtotal),
+            loyaltyPoints: adminFirestore.FieldValue.increment(pointsEarned - pointsSpent),
             lastOrderDate: adminFirestore.FieldValue.serverTimestamp(),
             totalOrders: adminFirestore.FieldValue.increment(1),
         }, { merge: true });
 
-         // Add to user's joined_restaurants sub-collection
         const userRestaurantLinkRef = usersRef.doc(userId).collection('joined_restaurants').doc(restaurantId);
         batch.set(userRestaurantLinkRef, {
-             restaurantName: restaurantDoc.data().name,
+             restaurantName: restaurantData.name,
              joinedAt: adminFirestore.FieldValue.serverTimestamp(),
-             // --- CRITICAL FIX: Also add and increment analytics here ---
              totalSpend: adminFirestore.FieldValue.increment(subtotal),
-             loyaltyPoints: adminFirestore.FieldValue.increment(pointsEarned),
+             loyaltyPoints: adminFirestore.FieldValue.increment(pointsEarned - pointsSpent),
              lastOrderDate: adminFirestore.FieldValue.serverTimestamp(),
              totalOrders: adminFirestore.FieldValue.increment(1),
         }, { merge: true });
 
-
-        // Create the actual order
         const newOrderRef = firestore.collection('orders').doc();
         batch.set(newOrderRef, {
             customerName: name,
@@ -102,11 +103,18 @@ export async function POST(req) {
             customerAddress: address,
             customerPhone: phone,
             restaurantId: restaurantId,
-            restaurantName: restaurantDoc.data().name,
+            restaurantName: restaurantData.name,
             items: items.map(item => ({ name: item.name, qty: item.quantity, price: item.price })),
-            totalAmount: grandTotal, // Save GRAND TOTAL to the order
+            subtotal: subtotal,
+            coupon: coupon,
+            loyaltyDiscount: loyaltyDiscountAmount,
+            discount: finalDiscount,
+            cgst: cgst,
+            sgst: sgst,
+            deliveryCharge: deliveryCharge,
+            totalAmount: grandTotal,
             status: 'pending',
-            priority: Math.floor(Math.random() * 5) + 1, // Random priority for now
+            priority: Math.floor(Math.random() * 5) + 1,
             orderDate: adminFirestore.FieldValue.serverTimestamp(),
             notes: notes || null
         });

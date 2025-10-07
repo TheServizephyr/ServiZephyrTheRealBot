@@ -58,34 +58,7 @@ const MenuItemCard = ({ item, quantity, onIncrement, onDecrement }) => {
 };
 
 
-const CartDrawer = ({ cart, onUpdateCart, onClose, onCheckout, notes, setNotes, coupons, loyaltyPointsData, deliveryCharge = 30 }) => {
-    const [appliedCoupon, setAppliedCoupon] = useState(null);
-    const [loyaltyDiscount, setLoyaltyDiscount] = useState(0);
-    const [currentLoyaltyPoints, setCurrentLoyaltyPoints] = useState(0);
-
-    useEffect(() => {
-        if(loyaltyPointsData){
-            setCurrentLoyaltyPoints(loyaltyPointsData);
-        }
-    }, [loyaltyPointsData]);
-
-    const subtotal = cart.reduce((sum, item) => sum + item.fullPrice * item.quantity, 0);
-    
-    const couponDiscount = useMemo(() => {
-        if (!appliedCoupon) return 0;
-        if (appliedCoupon.type === 'flat') return appliedCoupon.value;
-        if (appliedCoupon.type === 'percentage') return (subtotal * appliedCoupon.value) / 100;
-        return 0;
-    }, [appliedCoupon, subtotal]);
-
-    const finalDeliveryCharge = appliedCoupon?.type === 'free_delivery' ? 0 : deliveryCharge;
-
-    const taxRate = 0.05;
-    const taxableAmount = subtotal - couponDiscount - loyaltyDiscount;
-    const cgst = taxableAmount > 0 ? taxableAmount * taxRate : 0;
-    const sgst = taxableAmount > 0 ? taxableAmount * taxRate : 0;
-    const grandTotal = taxableAmount + finalDeliveryCharge + cgst + sgst;
-
+const CartDrawer = ({ cart, onUpdateCart, onClose, onCheckout, notes, setNotes, coupons, loyaltyPointsData, deliveryCharge, appliedCoupon, setAppliedCoupon, loyaltyDiscount, setLoyaltyDiscount, couponDiscount, finalDeliveryCharge, grandTotal, subtotal, cgst, sgst }) => {
 
     const handleApplyCoupon = (couponToApply) => {
         if (subtotal >= couponToApply.minOrder) {
@@ -101,11 +74,9 @@ const CartDrawer = ({ cart, onUpdateCart, onClose, onCheckout, notes, setNotes, 
     };
     
     const handleRedeemPoints = () => {
-        if(currentLoyaltyPoints >= 100) {
-            // Simple logic: 1 point = ₹0.5 discount
-            const redeemableAmount = currentLoyaltyPoints * 0.5;
+        if(loyaltyPointsData >= 100) {
+            const redeemableAmount = loyaltyPointsData * 0.5;
             setLoyaltyDiscount(redeemableAmount);
-            setCurrentLoyaltyPoints(0); // Points are used up
             alert(`You've redeemed your points for a discount of ₹${redeemableAmount.toFixed(2)}!`);
         } else {
             alert("You need at least 100 points to redeem.");
@@ -209,8 +180,8 @@ const CartDrawer = ({ cart, onUpdateCart, onClose, onCheckout, notes, setNotes, 
                          {couponDiscount > 0 && <div className="flex justify-between text-green-400"><span>Coupon Discount:</span> <span className="font-medium">- ₹{couponDiscount.toFixed(2)}</span></div>}
                          {loyaltyDiscount > 0 && <div className="flex justify-between text-green-400"><span>Loyalty Discount:</span> <span className="font-medium">- ₹{loyaltyDiscount.toFixed(2)}</span></div>}
                          <div className="flex justify-between"><span>Delivery Fee:</span> {finalDeliveryCharge > 0 ? <span>₹{finalDeliveryCharge.toFixed(2)}</span> : <span className="text-green-400 font-bold">FREE</span>}</div>
-                         <div className="flex justify-between"><span>CGST ({taxRate*100}%):</span> <span className="font-medium">₹{cgst.toFixed(2)}</span></div>
-                         <div className="flex justify-between"><span>SGST ({taxRate*100}%):</span> <span className="font-medium">₹{sgst.toFixed(2)}</span></div>
+                         <div className="flex justify-between"><span>CGST ({5}%):</span> <span className="font-medium">₹{cgst.toFixed(2)}</span></div>
+                         <div className="flex justify-between"><span>SGST ({5}%):</span> <span className="font-medium">₹{sgst.toFixed(2)}</span></div>
                          <div className="border-t border-dashed border-border my-2"></div>
                          <div className="flex justify-between items-center text-lg font-bold"><span>Grand Total:</span> <span>₹{grandTotal > 0 ? grandTotal.toFixed(2) : '0.00'}</span></div>
                     </div>
@@ -224,7 +195,7 @@ const CartDrawer = ({ cart, onUpdateCart, onClose, onCheckout, notes, setNotes, 
 };
 
 
-const CheckoutModal = ({ isOpen, onClose, restaurantId, phone, cart, notes }) => {
+const CheckoutModal = ({ isOpen, onClose, restaurantId, phone, cart, notes, appliedCoupon, couponDiscount, loyaltyDiscount }) => {
     const [name, setName] = useState('');
     const [address, setAddress] = useState('');
     const [error, setError] = useState('');
@@ -306,10 +277,12 @@ const CheckoutModal = ({ isOpen, onClose, restaurantId, phone, cart, notes }) =>
             const payload = {
                 name: name,
                 address: finalAddress,
-                phone: phone, // API will normalize it
+                phone: phone,
                 restaurantId,
                 items: cart.map(item => ({ name: item.name, quantity: item.quantity, price: item.fullPrice })),
-                notes
+                notes,
+                coupon: appliedCoupon ? { code: appliedCoupon.code, discount: couponDiscount } : null,
+                loyaltyDiscount,
             };
             
             const res = await fetch('/api/customer/register', {
@@ -453,9 +426,11 @@ const OrderPageInternal = () => {
     const [sortBy, setSortBy] = useState('default'); // 'default', 'price-asc', 'price-desc'
     const [vegOnly, setVegOnly] = useState(false);
 
-    // New state for coupons and loyalty
+    // Coupon and Discount State
     const [coupons, setCoupons] = useState([]);
     const [loyaltyPoints, setLoyaltyPoints] = useState(0);
+    const [appliedCoupon, setAppliedCoupon] = useState(null);
+    const [loyaltyDiscount, setLoyaltyDiscount] = useState(0);
 
 
     useEffect(() => {
@@ -463,7 +438,6 @@ const OrderPageInternal = () => {
             if (!restaurantId) return;
             setLoading(true);
             try {
-                // Fetch Menu, Coupons, and Delivery Charge together from the public endpoint
                 const publicDataRes = await fetch(`/api/menu/${restaurantId}`);
                 if (!publicDataRes.ok) throw new Error('Failed to fetch restaurant data');
                 const publicData = await publicDataRes.json();
@@ -473,7 +447,6 @@ const OrderPageInternal = () => {
                 setCoupons(publicData.coupons || []);
                 setDeliveryCharge(publicData.deliveryCharge || 30);
 
-                // Fetch user's loyalty points using the secure lookup if phone exists
                 if(phone) {
                     try {
                         const loyaltyRes = await fetch(`/api/customer/lookup`, {
@@ -487,12 +460,12 @@ const OrderPageInternal = () => {
                          }
                     } catch(e) {
                         console.warn("Could not fetch loyalty points:", e);
-                        setLoyaltyPoints(0); // Default to 0 on error
+                        setLoyaltyPoints(0);
                     }
                 }
             } catch (error) {
                 console.error("Failed to fetch initial data:", error);
-                setRestaurantName(''); // Show error state
+                setRestaurantName('');
             } finally {
                 setLoading(false);
             }
@@ -501,29 +474,39 @@ const OrderPageInternal = () => {
     }, [restaurantId, phone]);
     
     const processedMenu = useMemo(() => {
-        let newMenu = JSON.parse(JSON.stringify(rawMenu)); // Deep copy
-
+        let newMenu = JSON.parse(JSON.stringify(rawMenu));
         for (const category in newMenu) {
             let items = newMenu[category];
-
-            // 1. Filter by Veg/Non-Veg
-            if (vegOnly) {
-                items = items.filter(item => item.isVeg);
-            }
-
-            // 2. Sort items
-            if (sortBy === 'price-asc') {
-                items.sort((a, b) => a.fullPrice - b.fullPrice);
-            } else if (sortBy === 'price-desc') {
-                items.sort((a, b) => b.fullPrice - a.fullPrice);
-            }
-            // 'default' sort is by 'order' property, which is already handled by backend.
-            
+            if (vegOnly) items = items.filter(item => item.isVeg);
+            if (sortBy === 'price-asc') items.sort((a, b) => a.fullPrice - b.fullPrice);
+            else if (sortBy === 'price-desc') items.sort((a, b) => b.fullPrice - a.fullPrice);
             newMenu[category] = items;
         }
         return newMenu;
     }, [rawMenu, sortBy, vegOnly]);
 
+    const subtotal = useMemo(() => cart.reduce((sum, item) => sum + item.fullPrice * item.quantity, 0), [cart]);
+
+    const couponDiscount = useMemo(() => {
+        if (!appliedCoupon) return 0;
+        if (subtotal < appliedCoupon.minOrder) {
+            // Invalidate coupon if subtotal falls below minOrder
+            setAppliedCoupon(null);
+            return 0;
+        }
+        if (appliedCoupon.type === 'flat') return appliedCoupon.value;
+        if (appliedCoupon.type === 'percentage') return (subtotal * appliedCoupon.value) / 100;
+        return 0;
+    }, [appliedCoupon, subtotal]);
+
+    const finalDeliveryCharge = useMemo(() => appliedCoupon?.type === 'free_delivery' ? 0 : deliveryCharge, [appliedCoupon, deliveryCharge]);
+
+    const { cgst, sgst, grandTotal } = useMemo(() => {
+        const taxableAmount = subtotal - couponDiscount - loyaltyDiscount;
+        const tax = taxableAmount > 0 ? taxableAmount * 0.05 : 0;
+        const total = taxableAmount + finalDeliveryCharge + (tax * 2);
+        return { cgst: tax, sgst: tax, grandTotal: total };
+    }, [subtotal, couponDiscount, loyaltyDiscount, finalDeliveryCharge]);
 
     const handleIncrement = (item) => {
         setCart(prevCart => {
@@ -557,7 +540,6 @@ const OrderPageInternal = () => {
     }
 
     const totalCartItems = cart.reduce((sum, item) => sum + item.quantity, 0);
-    const subtotal = cart.reduce((sum, item) => sum + item.fullPrice * item.quantity, 0);
     
     const menuCategories = Object.keys(processedMenu)
         .map(key => ({
@@ -570,7 +552,7 @@ const OrderPageInternal = () => {
     const handleCategoryClick = (categoryId) => {
         const section = document.getElementById(categoryId);
         if(section) {
-            const yOffset = -120; // height of sticky headers
+            const yOffset = -120;
             const y = section.getBoundingClientRect().top + window.pageYOffset + yOffset;
             window.scrollTo({top: y, behavior: 'smooth'});
         }
@@ -601,12 +583,12 @@ const OrderPageInternal = () => {
     
     return (
         <div className="min-h-screen bg-background text-foreground">
-            <CheckoutModal isOpen={isCheckoutOpen} onClose={() => setIsCheckoutOpen(false)} restaurantId={restaurantId} phone={phone} cart={cart} notes={notes} />
+            <CheckoutModal isOpen={isCheckoutOpen} onClose={() => setIsCheckoutOpen(false)} restaurantId={restaurantId} phone={phone} cart={cart} notes={notes} appliedCoupon={appliedCoupon} couponDiscount={couponDiscount} loyaltyDiscount={loyaltyDiscount} />
             <MenuBrowserModal isOpen={isMenuBrowserOpen} onClose={() => setIsMenuBrowserOpen(false)} categories={menuCategories} onCategoryClick={handleCategoryClick} />
             
             <AnimatePresence>
                 {isCartOpen && <motion.div initial={{opacity: 0}} animate={{opacity: 1}} exit={{opacity: 0}} className="fixed inset-0 bg-black/60 z-30" onClick={() => setIsCartOpen(false)} />}
-                {isCartOpen && <CartDrawer cart={cart} onUpdateCart={handleCartUpdate} onClose={() => setIsCartOpen(false)} onCheckout={handleCheckout} notes={notes} setNotes={setNotes} coupons={coupons} loyaltyPointsData={loyaltyPoints} deliveryCharge={deliveryCharge} />}
+                {isCartOpen && <CartDrawer cart={cart} onUpdateCart={handleCartUpdate} onClose={() => setIsCartOpen(false)} onCheckout={handleCheckout} notes={notes} setNotes={setNotes} coupons={coupons} loyaltyPointsData={loyaltyPoints} deliveryCharge={deliveryCharge} appliedCoupon={appliedCoupon} setAppliedCoupon={setAppliedCoupon} loyaltyDiscount={loyaltyDiscount} setLoyaltyDiscount={setLoyaltyDiscount} couponDiscount={couponDiscount} finalDeliveryCharge={finalDeliveryCharge} grandTotal={grandTotal} subtotal={subtotal} cgst={cgst} sgst={sgst} />}
             </AnimatePresence>
 
             <header className="sticky top-0 z-20 bg-background/80 backdrop-blur-lg border-b border-border">
@@ -753,5 +735,3 @@ const OrderPage = () => (
 );
 
 export default OrderPage;
-
-    

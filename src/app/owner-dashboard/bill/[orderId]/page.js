@@ -35,10 +35,7 @@ const BillPage = () => {
             }
             const data = await res.json();
 
-            const fetchedOrder = data.order;
-            // Use 'qty' as it is named in the order creation API
-            // Note: The totalAmount is now fetched directly from the saved order data
-            setOrder(fetchedOrder);
+            setOrder(data.order);
             setRestaurant(data.restaurant);
 
         } catch (err) {
@@ -87,15 +84,16 @@ const BillPage = () => {
     );
   }
   
-  // Calculations for display, actual totalAmount is from the order object
-  const subtotal = order.items.reduce((acc, item) => acc + item.qty * item.price, 0);
-  const taxRate = 0.05; // 5%
-  const cgst = subtotal * taxRate;
-  const sgst = subtotal * taxRate;
-  const deliveryCharge = 30; // This should be dynamic in a real app, but for display consistency.
+  const subtotal = order.subtotal || order.items.reduce((acc, item) => acc + item.qty * item.price, 0);
+  const couponDiscount = order.coupon?.discount || 0;
+  const loyaltyDiscount = order.loyaltyDiscount || 0;
+  const totalDiscount = couponDiscount + loyaltyDiscount;
+
+  const cgst = order.cgst || 0;
+  const sgst = order.sgst || 0;
+  const deliveryCharge = order.deliveryCharge || 0;
   const grandTotal = order.totalAmount;
   
-  // Correctly handle date from ISO string
   const orderDate = new Date(order.orderDate);
 
 
@@ -155,12 +153,18 @@ const BillPage = () => {
                 <span className="font-semibold">SUB TOTAL</span>
                 <span>{subtotal.toFixed(2)}</span>
             </div>
+            {totalDiscount > 0 && (
+                 <div className="flex justify-between">
+                    <span className="font-semibold">DISCOUNT ({order.coupon?.code || 'Loyalty'})</span>
+                    <span>- {totalDiscount.toFixed(2)}</span>
+                 </div>
+            )}
              <div className="flex justify-between">
-                <span className="font-semibold">CGST ({taxRate*100}%)</span>
+                <span className="font-semibold">CGST (5%)</span>
                 <span>{cgst.toFixed(2)}</span>
             </div>
              <div className="flex justify-between">
-                <span className="font-semibold">SGST ({taxRate*100}%)</span>
+                <span className="font-semibold">SGST (5%)</span>
                 <span>{sgst.toFixed(2)}</span>
             </div>
              <div className="flex justify-between">
@@ -198,5 +202,3 @@ const BillPage = () => {
 };
 
 export default BillPage;
-
-    
