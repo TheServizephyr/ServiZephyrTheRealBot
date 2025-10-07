@@ -106,7 +106,7 @@ export async function POST(req) {
             restaurantName: restaurantData.name,
             items: items.map(item => ({ name: item.name, qty: item.quantity, price: item.price })),
             subtotal: subtotal,
-            coupon: coupon,
+            coupon: coupon || null,
             loyaltyDiscount: loyaltyDiscountAmount,
             discount: finalDiscount,
             cgst: cgst,
