@@ -112,7 +112,7 @@ const SortableHeader = ({ children, column, sortConfig, onSort }) => {
 export default function LiveOrdersPage() {
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [sortConfig, setSortConfig] = useState({ key: 'createdAt', direction: 'desc' });
+  const [sortConfig, setSortConfig] = useState({ key: 'orderDate', direction: 'desc' });
 
   const fetchOrders = async (isManualRefresh = false) => {
     if (!isManualRefresh) setLoading(true); else {
@@ -199,8 +199,7 @@ export default function LiveOrdersPage() {
   const sortedOrders = useMemo(() => {
     let sortableItems = [...orders];
     sortableItems.sort((a, b) => {
-      // Use orderDate for sorting time-based
-      const key = sortConfig.key === 'createdAt' ? 'orderDate' : sortConfig.key;
+      const key = sortConfig.key;
       let valA = a[key];
       let valB = b[key];
       if (key === 'orderDate') {
@@ -242,7 +241,7 @@ export default function LiveOrdersPage() {
                             <SortableHeader column="priority" sortConfig={sortConfig} onSort={handleSort}>Priority</SortableHeader>
                             <SortableHeader column="id" sortConfig={sortConfig} onSort={handleSort}>Order Details</SortableHeader>
                             <th className="p-4 text-left text-sm font-semibold text-gray-400">Order Items</th>
-                            <SortableHeader column="createdAt" sortConfig={sortConfig} onSort={handleSort}>Time Elapsed</SortableHeader>
+                            <SortableHeader column="orderDate" sortConfig={sortConfig} onSort={handleSort}>Time Elapsed</SortableHeader>
                             <SortableHeader column="status" sortConfig={sortConfig} onSort={handleSort}>Status</SortableHeader>
                             <th className="p-4 text-left text-sm font-semibold text-gray-400">Actions</th>
                         </tr>
@@ -283,7 +282,7 @@ export default function LiveOrdersPage() {
                                         </ul>
                                     </td>
                                     <td className="p-4 text-sm text-gray-300">
-                                        {formatDistanceToNowStrict(new Date(order.orderDate.seconds ? order.orderDate.seconds * 1000 : order.createdAt))} ago
+                                        {formatDistanceToNowStrict(new Date(order.orderDate.seconds ? order.orderDate.seconds * 1000 : order.orderDate))} ago
                                     </td>
                                     <td className="p-4">
                                         <span className={cn('px-2 py-1 text-xs font-semibold rounded-full border flex items-center gap-2 w-fit', statusConfig[order.status]?.color)}>
