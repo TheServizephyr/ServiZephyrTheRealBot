@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useState, useMemo, useEffect } from 'react';
@@ -163,7 +164,7 @@ const SalesOverview = ({ activeDateFilter, dateRange }) => {
     }, [activeDateFilter, dateRange]);
 
     if (!salesData) {
-        return <div className="text-center p-10 text-gray-400">Generating report...</div>;
+        return <div className="text-center p-10 text-muted-foreground">Generating report...</div>;
     }
 
     const openModal = (title, data, type) => {
@@ -175,15 +176,15 @@ const SalesOverview = ({ activeDateFilter, dateRange }) => {
         const ChangeIcon = change > 0 ? ArrowUp : ArrowDown;
         return (
             <motion.div 
-                className="bg-gray-800/50 border border-gray-700 p-5 rounded-xl cursor-pointer"
-                whileHover={{ y: -5, boxShadow: "0 4px 15px rgba(79, 70, 229, 0.4)" }}
+                className="bg-card border border-border p-5 rounded-xl cursor-pointer"
+                whileHover={{ y: -5, boxShadow: "0 4px 15px hsla(var(--primary), 0.2)" }}
                 onClick={() => data && openModal(modalTitle, data, modalType)}
             >
                 <div className="flex items-center justify-between">
-                    <p className="text-sm text-gray-400">{title}</p>
-                    <Icon className="text-gray-500" />
+                    <p className="text-sm text-muted-foreground">{title}</p>
+                    <Icon className="text-muted-foreground" />
                 </div>
-                <p className="text-3xl font-bold mt-2">{isCurrency ? formatCurrency(value) : Number(value).toLocaleString('en-IN')}</p>
+                <p className="text-3xl font-bold mt-2 text-foreground">{isCurrency ? formatCurrency(value) : Number(value).toLocaleString('en-IN')}</p>
                 <div className={`flex items-center text-xs mt-1 ${changeColor}`}>
                     <ChangeIcon size={12} className="mr-1" />
                     {Math.abs(change).toFixed(1)}% vs last period
@@ -193,42 +194,42 @@ const SalesOverview = ({ activeDateFilter, dateRange }) => {
     };
 
     const SalesTrendChart = () => (
-        <div className="bg-gray-800/50 border border-gray-700 p-5 rounded-xl h-[400px]">
-            <h3 className="text-lg font-semibold mb-4">Sales Trend</h3>
+        <div className="bg-card border border-border p-5 rounded-xl h-[400px]">
+            <h3 className="text-lg font-semibold mb-4 text-card-foreground">Sales Trend</h3>
             <ResponsiveContainer width="100%" height="90%">
                 <AreaChart data={salesData.salesTrend} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
                     <defs>
                         <linearGradient id="salesGradient" x1="0" y1="0" x2="0" y2="1">
-                            <stop offset="5%" stopColor="#4f46e5" stopOpacity={0.8}/>
-                            <stop offset="95%" stopColor="#4f46e5" stopOpacity={0}/>
+                            <stop offset="5%" stopColor="hsl(var(--primary))" stopOpacity={0.8}/>
+                            <stop offset="95%" stopColor="hsl(var(--primary))" stopOpacity={0}/>
                         </linearGradient>
                     </defs>
-                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(255, 255, 255, 0.1)" />
-                    <XAxis dataKey="day" tick={{ fill: '#9CA3AF', fontSize: 12 }} />
-                    <YAxis tick={{ fill: '#9CA3AF', fontSize: 12 }} tickFormatter={(value) => isNaN(value) ? value : formatCurrency(value)} />
-                    <Tooltip contentStyle={{ backgroundColor: '#1F2937', border: '1px solid #374151' }} formatter={(value) => [formatCurrency(value), 'Sales']}/>
-                    <Area type="monotone" dataKey="sales" stroke="#6366f1" fillOpacity={1} fill="url(#salesGradient)" />
+                    <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border) / 0.5)" />
+                    <XAxis dataKey="day" tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 12 }} />
+                    <YAxis tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 12 }} tickFormatter={(value) => isNaN(value) ? value : formatCurrency(value)} />
+                    <Tooltip contentStyle={{ backgroundColor: 'hsl(var(--popover))', border: '1px solid hsl(var(--border))' }} formatter={(value) => [formatCurrency(value), 'Sales']}/>
+                    <Area type="monotone" dataKey="sales" stroke="hsl(var(--primary))" fillOpacity={1} fill="url(#salesGradient)" />
                 </AreaChart>
             </ResponsiveContainer>
         </div>
     );
     
     const RevenueHeatmap = () => {
-        if(activeDateFilter !== 'This Month' && !(activeDateFilter === 'Custom Range' && dateRange.from && dateRange.to)) return <div className="bg-gray-800/50 border border-gray-700 p-5 rounded-xl flex items-center justify-center text-gray-400 h-[300px]">Heatmap available for 'This Month' or 'Custom Range' view only.</div>;
+        if(activeDateFilter !== 'This Month' && !(activeDateFilter === 'Custom Range' && dateRange.from && dateRange.to)) return <div className="bg-card border border-border p-5 rounded-xl flex items-center justify-center text-muted-foreground h-[300px]">Heatmap available for 'This Month' or 'Custom Range' view only.</div>;
 
         const maxCount = salesData.heatmap.length > 0 ? Math.max(...salesData.heatmap.map(d => d.count)) : 0;
         const getColor = (count) => {
-            if (count === null || count === undefined) return 'rgba(255, 255, 255, 0.05)';
+            if (count === null || count === undefined) return 'hsl(var(--muted) / 0.5)';
             const opacity = count > 0 ? 0.2 + (count / maxCount) * 0.8 : 0.05;
-            return `rgba(34, 197, 94, ${opacity})`;
+            return `hsla(var(--primary), ${opacity})`;
         };
         const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
         
         return (
-            <div className="bg-gray-800/50 border border-gray-700 p-5 rounded-xl h-[300px]">
-                 <h3 className="text-lg font-semibold mb-4">Revenue Heatmap</h3>
+            <div className="bg-card border border-border p-5 rounded-xl h-[300px]">
+                 <h3 className="text-lg font-semibold mb-4 text-card-foreground">Revenue Heatmap</h3>
                  <div className="grid grid-cols-7 gap-2 text-center text-xs">
-                     {days.map(day => <div key={day} className="text-gray-400">{day}</div>)}
+                     {days.map(day => <div key={day} className="text-muted-foreground">{day}</div>)}
                      {salesData.heatmap.map((day, index) => (
                          <div key={index}>
                              {day.date ? (
@@ -249,8 +250,8 @@ const SalesOverview = ({ activeDateFilter, dateRange }) => {
         };
 
         return (
-            <div className="bg-gray-800/50 border border-gray-700 p-5 rounded-xl">
-                 <h3 className="text-lg font-semibold mb-4">Payment Methods</h3>
+            <div className="bg-card border border-border p-5 rounded-xl">
+                 <h3 className="text-lg font-semibold mb-4 text-card-foreground">Payment Methods</h3>
                  <ResponsiveContainer width="100%" height={250}>
                     <PieChart>
                          <Pie
@@ -259,7 +260,7 @@ const SalesOverview = ({ activeDateFilter, dateRange }) => {
                                 const { cx, cy, innerRadius, outerRadius, startAngle, endAngle, fill, payload } = props;
                                 return (
                                     <g>
-                                        <text x={cx} y={cy} dy={8} textAnchor="middle" fill="#fff" className="font-bold">{payload.name}</text>
+                                        <text x={cx} y={cy} dy={8} textAnchor="middle" fill="hsl(var(--card-foreground))" className="font-bold">{payload.name}</text>
                                         <Sector
                                             cx={cx}
                                             cy={cy}
@@ -277,21 +278,21 @@ const SalesOverview = ({ activeDateFilter, dateRange }) => {
                             cy="50%"
                             innerRadius={60}
                             outerRadius={80}
-                            fill="#8884d8"
+                            fill="hsl(var(--primary))"
                             paddingAngle={5}
                             dataKey="value"
                             onMouseEnter={onPieEnter}
                          >
-                            <Cell fill="#4f46e5" />
-                            <Cell fill="#fb923c" />
+                            <Cell fill="hsl(var(--primary))" />
+                            <Cell fill="hsl(var(--secondary))" />
                          </Pie>
                          <Tooltip content={({ active, payload }) => {
                              if (active && payload && payload.length) {
-                                return <div className="bg-gray-900 border border-gray-700 p-2 rounded-lg text-white text-sm">{`${payload[0].name}: ${payload[0].value.toFixed(1)}%`}</div>
+                                return <div className="bg-popover border border-border p-2 rounded-lg text-popover-foreground text-sm">{`${payload[0].name}: ${payload[0].value.toFixed(1)}%`}</div>
                              }
                              return null;
                          }} />
-                         <Legend iconType="circle" formatter={(value, entry) => <span className="text-gray-300">{value}</span>}/>
+                         <Legend iconType="circle" formatter={(value, entry) => <span className="text-muted-foreground">{value}</span>}/>
                     </PieChart>
                  </ResponsiveContainer>
             </div>
@@ -304,7 +305,7 @@ const SalesOverview = ({ activeDateFilter, dateRange }) => {
                 case 'customers':
                     return (
                         <table className="w-full text-sm text-left">
-                            <thead className="text-xs text-gray-400 uppercase bg-gray-800">
+                            <thead className="text-xs text-muted-foreground uppercase bg-muted">
                                 <tr>
                                     <th scope="col" className="px-6 py-3">Customer Name</th>
                                     <th scope="col" className="px-6 py-3">Join Date</th>
@@ -313,8 +314,8 @@ const SalesOverview = ({ activeDateFilter, dateRange }) => {
                             </thead>
                             <tbody>
                                 {modalData.data.map(item => (
-                                    <tr key={item.id} className="border-b border-gray-700">
-                                        <td className="px-6 py-4 font-medium">{item.name}</td>
+                                    <tr key={item.id} className="border-b border-border">
+                                        <td className="px-6 py-4 font-medium text-foreground">{item.name}</td>
                                         <td className="px-6 py-4">{formatDate(item.joinDate)}</td>
                                         <td className="px-6 py-4 text-right">{formatCurrency(item.amount)}</td>
                                     </tr>
@@ -325,7 +326,7 @@ const SalesOverview = ({ activeDateFilter, dateRange }) => {
                 case 'orders':
                      return (
                         <table className="w-full text-sm text-left">
-                            <thead className="text-xs text-gray-400 uppercase bg-gray-800">
+                            <thead className="text-xs text-muted-foreground uppercase bg-muted">
                                 <tr>
                                     <th scope="col" className="px-6 py-3">Transaction ID</th>
                                     <th scope="col" className="px-6 py-3">Customer</th>
@@ -335,8 +336,8 @@ const SalesOverview = ({ activeDateFilter, dateRange }) => {
                             </thead>
                             <tbody>
                                 {modalData.data.map(item => (
-                                    <tr key={item.id} className="border-b border-gray-700">
-                                        <td className="px-6 py-4 font-medium">{item.id}</td>
+                                    <tr key={item.id} className="border-b border-border">
+                                        <td className="px-6 py-4 font-medium text-foreground">{item.id}</td>
                                         <td className="px-6 py-4">{item.customer}</td>
                                         <td className="px-6 py-4">{formatDate(item.date)}</td>
                                         <td className="px-6 py-4 text-right">{formatCurrency(item.amount)}</td>
@@ -349,7 +350,7 @@ const SalesOverview = ({ activeDateFilter, dateRange }) => {
                 default:
                     return (
                         <table className="w-full text-sm text-left">
-                            <thead className="text-xs text-gray-400 uppercase bg-gray-800">
+                            <thead className="text-xs text-muted-foreground uppercase bg-muted">
                                 <tr>
                                     <th scope="col" className="px-6 py-3">Transaction ID</th>
                                     <th scope="col" className="px-6 py-3">Date</th>
@@ -358,8 +359,8 @@ const SalesOverview = ({ activeDateFilter, dateRange }) => {
                             </thead>
                             <tbody>
                                 {modalData.data.map(item => (
-                                    <tr key={item.id} className="border-b border-gray-700">
-                                        <td className="px-6 py-4 font-medium">{item.id}</td>
+                                    <tr key={item.id} className="border-b border-border">
+                                        <td className="px-6 py-4 font-medium text-foreground">{item.id}</td>
                                         <td className="px-6 py-4">{formatDate(item.date)}</td>
                                         <td className="px-6 py-4 text-right">{formatCurrency(item.amount)}</td>
                                     </tr>
@@ -372,7 +373,7 @@ const SalesOverview = ({ activeDateFilter, dateRange }) => {
 
         return (
              <Dialog open={modalData.isOpen} onOpenChange={(isOpen) => setModalData(prev => ({...prev, isOpen}))}>
-                <DialogContent className="max-w-3xl bg-gray-900 border-gray-700 text-white">
+                <DialogContent className="max-w-3xl bg-card border-border text-card-foreground">
                     <DialogHeader>
                         <DialogTitle>{modalData.title}</DialogTitle>
                         <DialogDescription>Detailed view for the selected period.</DialogDescription>
@@ -430,28 +431,28 @@ const PerformanceList = ({ data, metric, ascending = false, title, icon: Icon, i
     };
 
     return (
-        <div className="bg-gray-800/50 border border-gray-700 p-5 rounded-xl h-full">
-            <h3 className="font-semibold text-white mb-4 flex items-center gap-2">
+        <div className="bg-card border border-border p-5 rounded-xl h-full">
+            <h3 className="font-semibold text-card-foreground mb-4 flex items-center gap-2">
                 <Icon className={isProfit ? "text-green-400" : "text-red-400"} />
                 {title}
             </h3>
             <div className="space-y-3">
                 {sortedData.map(item => (
-                     <div key={item.name} className="flex flex-col sm:flex-row items-start gap-3 p-3 rounded-lg bg-gray-700/50">
+                     <div key={item.name} className="flex flex-col sm:flex-row items-start gap-3 p-3 rounded-lg bg-background">
                          <NextImage src={item.imageUrl} alt={item.name} width={48} height={48} className="rounded-md object-cover flex-shrink-0" />
                          <div className="flex-grow w-full">
-                             <p className="font-semibold text-white text-sm">{item.name}</p>
-                             <div className="flex flex-wrap justify-between items-center text-xs mt-2 text-gray-300 gap-2">
+                             <p className="font-semibold text-foreground text-sm">{item.name}</p>
+                             <div className="flex flex-wrap justify-between items-center text-xs mt-2 text-muted-foreground gap-2">
                                  <div className="flex-shrink-0">
-                                     <p className="text-gray-400 text-xs">Units Sold</p>
-                                     <strong className="text-white text-sm">{item.unitsSold}</strong>
+                                     <p className="text-muted-foreground text-xs">Units Sold</p>
+                                     <strong className="text-foreground text-sm">{item.unitsSold}</strong>
                                  </div>
                                  <div className="text-right flex-shrink-0">
-                                    <p className="text-gray-400 text-xs">Total Profit</p>
+                                    <p className="text-muted-foreground text-xs">Total Profit</p>
                                     <span className="font-bold text-base text-green-400">{formatCurrency(item.totalProfit)}</span>
                                  </div>
                                  <div className="text-right flex-shrink-0">
-                                     <p className="text-gray-400 text-xs">vs last period</p>
+                                     <p className="text-muted-foreground text-xs">vs last period</p>
                                      <PerformanceIndicator value={item.performanceChange} />
                                  </div>
                              </div>
@@ -477,17 +478,17 @@ const ItemSalesTrendChart = ({ data }) => {
         });
     }, [top5ByProfit]);
 
-    const colors = ['#8884d8', '#82ca9d', '#ffc658', '#ff8042', '#00C49F'];
+    const colors = ['#F97300', '#82ca9d', '#ffc658', '#ff8042', '#00C49F'];
 
     return (
-        <div className="bg-gray-800/50 border border-gray-700 p-5 rounded-xl">
-             <h3 className="font-semibold text-white mb-4">Top 5 Items Sales Trend (by Profit)</h3>
+        <div className="bg-card border border-border p-5 rounded-xl">
+             <h3 className="font-semibold text-card-foreground mb-4">Top 5 Items Sales Trend (by Profit)</h3>
             <ResponsiveContainer width="100%" height={300}>
                 <LineChart data={chartData}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(255, 255, 255, 0.1)" />
-                    <XAxis dataKey="day" tick={{ fill: '#9CA3AF', fontSize: 12 }} />
-                    <YAxis tick={{ fill: '#9CA3AF', fontSize: 12 }} label={{ value: 'Units Sold', angle: -90, position: 'insideLeft', fill: '#9CA3AF' }}/>
-                    <Tooltip contentStyle={{ backgroundColor: '#1F2937', border: '1px solid #374151' }} />
+                    <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border) / 0.5)" />
+                    <XAxis dataKey="day" tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 12 }} />
+                    <YAxis tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 12 }} label={{ value: 'Units Sold', angle: -90, position: 'insideLeft', fill: 'hsl(var(--muted-foreground))' }}/>
+                    <Tooltip contentStyle={{ backgroundColor: 'hsl(var(--popover))', border: '1px solid hsl(var(--border))' }} />
                     <Legend wrapperStyle={{fontSize: "12px"}}/>
                     {top5ByProfit.map((item, index) => (
                         <Line key={item.name} type="monotone" dataKey={item.name} stroke={colors[index % colors.length]} strokeWidth={2} />
@@ -522,7 +523,7 @@ const CategoryDeepDive = ({ data }) => {
     const onPieEnter = (_, index) => setActiveIndex(index);
     const onPieClick = (data) => setSelectedCategory(data.payload.name);
 
-    const COLORS = ['#4f46e5', '#a78bfa', '#facc15', '#fb923c', '#34d399', '#f87171', '#60a5fa'];
+    const COLORS = ['#F97300', '#a78bfa', '#facc15', '#fb923c', '#34d399', '#f87171', '#60a5fa'];
     
     const itemsInCategory = useMemo(() => {
         if(!selectedCategory) return [];
@@ -530,8 +531,8 @@ const CategoryDeepDive = ({ data }) => {
     }, [data, selectedCategory]);
 
     return (
-        <div className="bg-gray-800/50 border border-gray-700 p-5 rounded-xl lg:col-span-3">
-            <h3 className="font-semibold text-white mb-4">Category Deep Dive</h3>
+        <div className="bg-card border border-border p-5 rounded-xl lg:col-span-3">
+            <h3 className="font-semibold text-card-foreground mb-4">Category Deep Dive</h3>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div className="md:col-span-1 h-[250px]">
                     <ResponsiveContainer width="100%" height="100%">
@@ -542,8 +543,8 @@ const CategoryDeepDive = ({ data }) => {
                                     const { cx, cy, innerRadius, outerRadius, startAngle, endAngle, fill, payload } = props;
                                     return (
                                         <g>
-                                            <text x={cx} y={cy - 10} dy={8} textAnchor="middle" fill="#fff" className="text-sm font-bold">{payload.name}</text>
-                                            <text x={cx} y={cy + 15} dy={8} textAnchor="middle" fill="#9ca3af" className="text-xs">{formatCurrency(payload.revenue)}</text>
+                                            <text x={cx} y={cy - 10} dy={8} textAnchor="middle" fill="hsl(var(--card-foreground))" className="text-sm font-bold">{payload.name}</text>
+                                            <text x={cx} y={cy + 15} dy={8} textAnchor="middle" fill="hsl(var(--muted-foreground))" className="text-xs">{formatCurrency(payload.revenue)}</text>
                                             <Cell {...props} cornerRadius={5} />
                                         </g>
                                     );
@@ -568,10 +569,10 @@ const CategoryDeepDive = ({ data }) => {
                     </ResponsiveContainer>
                 </div>
                 <div className="md:col-span-2">
-                    <h4 className="font-semibold text-white mb-2 text-sm md:text-base">Items in '{selectedCategory}'</h4>
+                    <h4 className="font-semibold text-card-foreground mb-2 text-sm md:text-base">Items in '{selectedCategory}'</h4>
                     <div className="overflow-auto max-h-[220px]">
                         <table className="w-full text-left text-sm">
-                            <thead className="sticky top-0 bg-gray-800">
+                            <thead className="sticky top-0 bg-card">
                                 <tr>
                                     <th className="p-2">Item</th>
                                     <th className="p-2 text-right">Revenue</th>
@@ -579,12 +580,12 @@ const CategoryDeepDive = ({ data }) => {
                                     <th className="p-2 text-right">Profit</th>
                                 </tr>
                             </thead>
-                            <tbody className="divide-y divide-gray-700">
+                            <tbody className="divide-y divide-border">
                                 {itemsInCategory.map(item => (
                                     <tr key={item.name}>
-                                        <td className="p-2 font-medium text-white">{item.name}</td>
-                                        <td className="p-2 text-right text-gray-300">{formatCurrency(item.revenue)}</td>
-                                        <td className="p-2 text-right text-gray-400">{formatCurrency(item.totalCost)}</td>
+                                        <td className="p-2 font-medium text-foreground">{item.name}</td>
+                                        <td className="p-2 text-right text-muted-foreground">{formatCurrency(item.revenue)}</td>
+                                        <td className="p-2 text-right text-muted-foreground">{formatCurrency(item.totalCost)}</td>
                                         <td className="p-2 text-right font-bold text-green-400">{formatCurrency(item.totalProfit)}</td>
                                     </tr>
                                 ))}
@@ -601,10 +602,10 @@ const CustomTooltip = ({ active, payload }) => {
   if (active && payload && payload.length) {
     const data = payload[0].payload;
     return (
-      <div className="bg-gray-900 border border-gray-700 p-3 rounded-lg shadow-lg text-white">
+      <div className="bg-popover border border-border p-3 rounded-lg shadow-lg text-popover-foreground">
         <p className="font-bold text-base mb-2">{data.name}</p>
-        <p className="text-sm"><span className="font-semibold text-gray-400">Popularity:</span> {data.popularity} units</p>
-        <p className="text-sm"><span className="font-semibold text-gray-400">Profitability:</span> {data.profitability.toFixed(1)}%</p>
+        <p className="text-sm"><span className="font-semibold text-muted-foreground">Popularity:</span> {data.popularity} units</p>
+        <p className="text-sm"><span className="font-semibold text-muted-foreground">Profitability:</span> {data.profitability.toFixed(1)}%</p>
       </div>
     );
   }
@@ -639,16 +640,16 @@ const ProfitabilityMatrix = ({ data }) => {
     ];
 
     return (
-         <div className="bg-gray-800/50 border border-gray-700 p-5 rounded-xl lg:col-span-3">
-            <h3 className="font-semibold text-white mb-4">Profitability Matrix</h3>
+         <div className="bg-card border border-border p-5 rounded-xl lg:col-span-3">
+            <h3 className="font-semibold text-card-foreground mb-4">Profitability Matrix</h3>
             <ResponsiveContainer width="100%" height={350}>
                 <ScatterChart margin={{ top: 20, right: 120, bottom: 20, left: 20 }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(255, 255, 255, 0.1)" />
-                    <XAxis type="number" dataKey="popularity" name="Popularity" unit=" units" tick={{ fill: '#9CA3AF', fontSize: 12 }} label={{ value: 'Popularity (Units Sold)', position: 'bottom', fill: '#9CA3AF', dy: 20 }} />
-                    <YAxis type="number" dataKey="profitability" name="Profitability" unit="%" tick={{ fill: '#9CA3AF', fontSize: 12 }} label={{ value: 'Profitability (%)', angle: -90, position: 'insideLeft', fill: '#9CA3AF' }}/>
+                    <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border) / 0.5)" />
+                    <XAxis type="number" dataKey="popularity" name="Popularity" unit=" units" tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 12 }} label={{ value: 'Popularity (Units Sold)', position: 'bottom', fill: 'hsl(var(--muted-foreground))', dy: 20 }} />
+                    <YAxis type="number" dataKey="profitability" name="Profitability" unit="%" tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 12 }} label={{ value: 'Profitability (%)', angle: -90, position: 'insideLeft', fill: 'hsl(var(--muted-foreground))' }}/>
                     <Tooltip cursor={{ strokeDasharray: '3 3' }} content={<CustomTooltip />} />
-                    <ReferenceLine y={avgProfitability} stroke="white" strokeDasharray="3 3" />
-                    <ReferenceLine x={avgPopularity} stroke="white" strokeDasharray="3 3" />
+                    <ReferenceLine y={avgProfitability} stroke="hsl(var(--foreground))" strokeDasharray="3 3" />
+                    <ReferenceLine x={avgPopularity} stroke="hsl(var(--foreground))" strokeDasharray="3 3" />
                     <Legend layout="vertical" verticalAlign="top" align="right" wrapperStyle={{ fontSize: '12px', right: -20, top: 20 }} payload={legendPayload} />
                     {Object.keys(quadrantData).map(quad => (
                        <Scatter key={quad} name={quad} data={quadrantData[quad]} fill={quadrantColors[quad]} />
@@ -701,7 +702,7 @@ const CouponModal = ({ isOpen, setIsOpen, customerName, onSave }) => {
 
     return (
         <Dialog open={isOpen} onOpenChange={setIsOpen}>
-            <DialogContent className="sm:max-w-md bg-gray-900 border-gray-700 text-white">
+            <DialogContent className="sm:max-w-md bg-card border-border text-card-foreground">
                 <form onSubmit={handleSubmit}>
                     <DialogHeader>
                         <DialogTitle className="flex items-center gap-2 text-xl">
@@ -714,18 +715,18 @@ const CouponModal = ({ isOpen, setIsOpen, customerName, onSave }) => {
                          <div>
                             <Label htmlFor="code">Coupon Code</Label>
                             <div className="flex items-center gap-2 mt-1">
-                                <input id="code" value={coupon.code} onChange={e => handleChange('code', e.target.value.toUpperCase())} placeholder="e.g., SAVE20" className="p-2 border rounded-md bg-gray-800 border-gray-600 w-full" />
+                                <input id="code" value={coupon.code} onChange={e => handleChange('code', e.target.value.toUpperCase())} placeholder="e.g., SAVE20" className="p-2 border rounded-md bg-input border-border w-full" />
                                 <Button type="button" variant="outline" onClick={generateRandomCode}><Wand2 size={16} className="mr-2"/> Generate</Button>
                             </div>
                         </div>
                         <div className="grid grid-cols-2 gap-4">
                             <div>
                                 <Label htmlFor="value">Discount Value (₹)</Label>
-                                <input id="value" type="number" value={coupon.value} onChange={e => handleChange('value', e.target.value)} placeholder="e.g., 100" className="mt-1 p-2 border rounded-md bg-gray-800 border-gray-600 w-full" />
+                                <input id="value" type="number" value={coupon.value} onChange={e => handleChange('value', e.target.value)} placeholder="e.g., 100" className="mt-1 p-2 border rounded-md bg-input border-border w-full" />
                             </div>
                             <div>
                                 <Label htmlFor="minOrder">Minimum Order (₹)</Label>
-                                <input id="minOrder" type="number" value={coupon.minOrder} onChange={e => handleChange('minOrder', e.target.value)} placeholder="e.g., 500" className="mt-1 p-2 border rounded-md bg-gray-800 border-gray-600 w-full" />
+                                <input id="minOrder" type="number" value={coupon.minOrder} onChange={e => handleChange('minOrder', e.target.value)} placeholder="e.g., 500" className="mt-1 p-2 border rounded-md bg-input border-border w-full" />
                             </div>
                         </div>
                          <div>
@@ -744,7 +745,7 @@ const CouponModal = ({ isOpen, setIsOpen, customerName, onSave }) => {
 
                     <DialogFooter className="pt-4">
                         <DialogClose asChild><Button type="button" variant="secondary">Cancel</Button></DialogClose>
-                        <Button type="submit" className="bg-indigo-600 hover:bg-indigo-700">Send Reward</Button>
+                        <Button type="submit" className="bg-primary hover:bg-primary/90 text-primary-foreground">Send Reward</Button>
                     </DialogFooter>
                 </form>
             </DialogContent>
@@ -755,15 +756,15 @@ const CouponModal = ({ isOpen, setIsOpen, customerName, onSave }) => {
 
 const CustomerStatCard = ({ title, value, icon: Icon, detail, onClick }) => (
     <div 
-        className={cn("bg-gray-800/50 border border-gray-700 p-5 rounded-xl", onClick && "cursor-pointer hover:bg-gray-700/50")}
+        className={cn("bg-card border border-border p-5 rounded-xl", onClick && "cursor-pointer hover:bg-muted")}
         onClick={onClick}
     >
         <div className="flex items-center justify-between">
-            <p className="text-sm text-gray-400">{title}</p>
-            <Icon className="text-gray-500" />
+            <p className="text-sm text-muted-foreground">{title}</p>
+            <Icon className="text-muted-foreground" />
         </div>
-        <p className="text-3xl font-bold mt-2">{value}</p>
-        {detail && <p className="text-xs text-gray-500 mt-1">{detail}</p>}
+        <p className="text-3xl font-bold mt-2 text-foreground">{value}</p>
+        {detail && <p className="text-xs text-muted-foreground mt-1">{detail}</p>}
     </div>
 );
 
@@ -771,8 +772,8 @@ const ActivePie = (props) => {
     const { cx, cy, innerRadius, outerRadius, startAngle, endAngle, fill, payload } = props;
     return (
         <g>
-            <text x={cx} y={cy-10} dy={8} textAnchor="middle" fill="#fff" className="font-bold text-sm">{payload.name}</text>
-            <text x={cx} y={cy+10} dy={8} textAnchor="middle" fill="#9ca3af" className="text-xs">{`(${(payload.percent * 100).toFixed(0)}%)`}</text>
+            <text x={cx} y={cy-10} dy={8} textAnchor="middle" fill="hsl(var(--foreground))" className="font-bold text-sm">{payload.name}</text>
+            <text x={cx} y={cy+10} dy={8} textAnchor="middle" fill="hsl(var(--muted-foreground))" className="text-xs">{`(${(payload.percent * 100).toFixed(0)}%)`}</text>
             <Sector {...props} cornerRadius={5} />
         </g>
     );
@@ -816,7 +817,7 @@ const CustomerRelationshipHub = () => {
 
     const smartAlerts = [
         { type: 'churn', icon: AlertTriangle, color: 'text-yellow-400', message: "Rohan Sharma hasn't ordered in 10 days.", buttonText: 'Send "We Miss You" Offer' },
-        { type: 'milestone', icon: Sparkles, color: 'text-indigo-400', message: "Priya Singh just completed her 10th order!", buttonText: 'Send "Thank You" Reward' },
+        { type: 'milestone', icon: Sparkles, color: 'text-primary', message: "Priya Singh just completed her 10th order!", buttonText: 'Send "Thank You" Reward' },
         { type: 'high_value', icon: Crown, color: 'text-green-400', message: "Ankit Kumar has spent over ₹5000 this month.", buttonText: 'Make VIP & Send Offer' }
     ];
     
@@ -840,13 +841,13 @@ const CustomerRelationshipHub = () => {
 
     const ListModalContent = () => (
         <Dialog open={listModalData.isOpen} onOpenChange={(isOpen) => setListModalData(prev => ({...prev, isOpen}))}>
-            <DialogContent className="max-w-3xl bg-gray-900 border-gray-700 text-white">
+            <DialogContent className="max-w-3xl bg-card border-border text-card-foreground">
                 <DialogHeader>
                     <DialogTitle>{listModalData.title}</DialogTitle>
                 </DialogHeader>
                 <div className="max-h-[60vh] overflow-y-auto">
                     <table className="w-full text-sm text-left">
-                        <thead className="text-xs text-gray-400 uppercase bg-gray-800">
+                        <thead className="text-xs text-muted-foreground uppercase bg-muted">
                             <tr>
                                 <th scope="col" className="px-6 py-3">Customer Name</th>
                                 <th scope="col" className="px-6 py-3">Total Orders</th>
@@ -855,7 +856,7 @@ const CustomerRelationshipHub = () => {
                         </thead>
                         <tbody>
                             {listModalData.data.map(item => (
-                                <tr key={item.id} className="border-b border-gray-700">
+                                <tr key={item.id} className="border-b border-border">
                                     <td className="px-6 py-4 font-medium">{item.name}</td>
                                     <td className="px-6 py-4">{item.totalOrders}</td>
                                     <td className="px-6 py-4 text-right">{formatCurrency(item.totalSpend)}</td>
@@ -884,16 +885,16 @@ const CustomerRelationshipHub = () => {
                     <CustomerStatCard title="Total Customers" value={customerStats.totalCustomers} icon={Users} onClick={() => openListModal("All Customers", customerData.allCustomers, 'customerList')} />
                     <CustomerStatCard title="New This Month" value={customerStats.newThisMonth} icon={UserPlus} onClick={() => openListModal("New Customers This Month", customerData.newThisMonth, 'customerList')} />
                     <CustomerStatCard title="Repeat Rate" value={`${customerStats.repeatRate}%`} icon={GitCommitHorizontal} onClick={() => openListModal("Repeat Customers", customerData.repeatCustomers, 'customerList')} />
-                    <div className="bg-gray-800/50 border border-gray-700 p-5 rounded-xl flex flex-col justify-center items-center">
-                         <h4 className="font-semibold text-sm text-gray-400 mb-2 text-center">New vs. Returning Orders</h4>
+                    <div className="bg-card border border-border p-5 rounded-xl flex flex-col justify-center items-center">
+                         <h4 className="font-semibold text-sm text-muted-foreground mb-2 text-center">New vs. Returning Orders</h4>
                          <ResponsiveContainer width="100%" height={120}>
                             <PieChart>
                                 <Pie data={customerStats.newVsReturning} dataKey="value" cx="50%" cy="50%" innerRadius={40} outerRadius={60} paddingAngle={5} activeShape={ActivePie} activeIndex={0}>
-                                    <Cell fill="#4f46e5" />
-                                    <Cell fill="#fb923c" />
+                                    <Cell fill="hsl(var(--primary))" />
+                                    <Cell fill="hsl(var(--secondary))" />
                                 </Pie>
                                 <Tooltip content={<div style={{display: 'none'}} />}/>
-                                <Legend iconType="circle" wrapperStyle={{fontSize: '12px'}} formatter={(value) => <span className="text-gray-300">{value}</span>}/>
+                                <Legend iconType="circle" wrapperStyle={{fontSize: '12px'}} formatter={(value) => <span className="text-muted-foreground">{value}</span>}/>
                             </PieChart>
                          </ResponsiveContainer>
                     </div>
@@ -903,26 +904,26 @@ const CustomerRelationshipHub = () => {
             {/* Section 2: VIP Lounge */}
             <section>
                 <h3 className="text-xl font-bold mb-4">❤️ Your VIP Lounge</h3>
-                <div className="bg-gray-800/50 border border-gray-700 rounded-xl overflow-hidden">
+                <div className="bg-card border border-border rounded-xl overflow-hidden">
                     <table className="w-full text-left">
-                        <thead className="bg-gray-800">
+                        <thead className="bg-muted/50">
                             <tr>
-                                <th className="p-4 text-sm font-semibold text-gray-400">Rank</th>
-                                <th className="p-4 text-sm font-semibold text-gray-400">Customer</th>
-                                <th className="p-4 text-sm font-semibold text-gray-400">Total Spend</th>
-                                <th className="p-4 text-sm font-semibold text-gray-400">Total Orders</th>
-                                <th className="p-4 text-sm font-semibold text-gray-400 text-center">Action</th>
+                                <th className="p-4 text-sm font-semibold text-muted-foreground">Rank</th>
+                                <th className="p-4 text-sm font-semibold text-muted-foreground">Customer</th>
+                                <th className="p-4 text-sm font-semibold text-muted-foreground">Total Spend</th>
+                                <th className="p-4 text-sm font-semibold text-muted-foreground">Total Orders</th>
+                                <th className="p-4 text-sm font-semibold text-muted-foreground text-center">Action</th>
                             </tr>
                         </thead>
-                        <tbody className="divide-y divide-gray-700">
+                        <tbody className="divide-y divide-border">
                             {vipCustomers.map((cust, i) => (
-                                <tr key={cust.name} className="hover:bg-gray-700/50 transition-colors">
+                                <tr key={cust.name} className="hover:bg-muted transition-colors">
                                     <td className="p-4"><span className="font-bold text-lg">{i + 1}</span></td>
                                     <td className="p-4 font-semibold">{cust.name}</td>
                                     <td className="p-4 text-green-400 font-bold">{formatCurrency(cust.totalSpend)}</td>
                                     <td className="p-4">{cust.totalOrders}</td>
                                     <td className="p-4 text-center">
-                                        <Button size="sm" className="bg-indigo-600 hover:bg-indigo-500" onClick={() => openCouponModal(cust.name)}>
+                                        <Button size="sm" className="bg-primary hover:bg-primary/90 text-primary-foreground" onClick={() => openCouponModal(cust.name)}>
                                             <Gift size={16} className="mr-2"/> Send Reward
                                         </Button>
                                     </td>
@@ -938,12 +939,12 @@ const CustomerRelationshipHub = () => {
                 <h3 className="text-xl font-bold mb-4">🔔 The Smart Alert System</h3>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                     {smartAlerts.map(alert => (
-                        <div key={alert.type} className="bg-gray-800/50 border border-gray-700 p-5 rounded-xl flex flex-col">
+                        <div key={alert.type} className="bg-card border border-border p-5 rounded-xl flex flex-col">
                             <div className="flex items-center gap-3 mb-3">
                                 <alert.icon size={20} className={alert.color} />
                                 <p className="font-semibold">{alert.message}</p>
                             </div>
-                            <Button size="sm" className="w-full mt-auto bg-gray-700 hover:bg-gray-600">{alert.buttonText}</Button>
+                            <Button size="sm" className="w-full mt-auto" variant="secondary">{alert.buttonText}</Button>
                         </div>
                     ))}
                 </div>
@@ -953,27 +954,27 @@ const CustomerRelationshipHub = () => {
             <section>
                  <h3 className="text-xl font-bold mb-4">📈 Peak Hours & Heatmap</h3>
                  <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
-                     <div className="lg:col-span-3 bg-gray-800/50 border border-gray-700 p-5 rounded-xl">
-                        <h4 className="font-semibold text-sm text-gray-400 mb-4">Peak Order Times</h4>
+                     <div className="lg:col-span-3 bg-card border border-border p-5 rounded-xl">
+                        <h4 className="font-semibold text-sm text-muted-foreground mb-4">Peak Order Times</h4>
                         <ResponsiveContainer width="100%" height={300}>
                             <BarChart data={peakHoursData}>
-                                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255, 255, 255, 0.1)" />
-                                <XAxis dataKey="hour" tick={{ fill: '#9CA3AF', fontSize: 12 }} />
-                                <YAxis tick={{ fill: '#9CA3AF', fontSize: 12 }} />
-                                <Tooltip contentStyle={{ backgroundColor: '#1F2937', border: '1px solid #374151' }} formatter={(value) => [value, 'Orders']}/>
-                                <Bar dataKey="orders" fill="#8884d8" />
+                                <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border) / 0.5)" />
+                                <XAxis dataKey="hour" tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 12 }} />
+                                <YAxis tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 12 }} />
+                                <Tooltip contentStyle={{ backgroundColor: 'hsl(var(--popover))', border: '1px solid hsl(var(--border))' }} formatter={(value) => [value, 'Orders']}/>
+                                <Bar dataKey="orders" fill="hsla(var(--primary), 0.6)" name="Total Deliveries" radius={[4, 4, 0, 0]} />
                             </BarChart>
                         </ResponsiveContainer>
                      </div>
-                     <div className="lg:col-span-2 bg-gray-800/50 border border-gray-700 p-5 rounded-xl">
-                        <h4 className="font-semibold text-sm text-gray-400 mb-4">Weekly Order Heatmap</h4>
+                     <div className="lg:col-span-2 bg-card border border-border p-5 rounded-xl">
+                        <h4 className="font-semibold text-sm text-muted-foreground mb-4">Weekly Order Heatmap</h4>
                         <div className="grid grid-cols-7 gap-1">
-                            {heatmapData.slice(0, 7).map(d => <div key={d.day} className="text-center text-xs text-gray-400">{d.day}</div>)}
+                            {heatmapData.slice(0, 7).map(d => <div key={d.day} className="text-center text-xs text-muted-foreground">{d.day}</div>)}
                             {heatmapData.map((d, i) => (
                                 <div 
                                     key={i} 
                                     className="w-full aspect-square rounded-sm"
-                                    style={{ backgroundColor: `rgba(34, 197, 94, ${d.value / maxHeatmapValue})` }}
+                                    style={{ backgroundColor: `hsla(var(--primary), ${d.value / maxHeatmapValue})` }}
                                     title={`${d.day} at ${d.hour}: ${d.value} orders`}
                                 />
                             ))}
@@ -1037,7 +1038,7 @@ export default function AnalyticsPage() {
             case 'customers':
                 return <CustomerRelationshipHub />;
             case 'inventory':
-                 return <div className="text-center p-10 text-gray-500">Inventory & Profit Coming Soon...</div>;
+                 return <div className="text-center p-10 text-muted-foreground">Inventory & Profit Coming Soon...</div>;
             default:
                 return null;
         }
@@ -1045,13 +1046,13 @@ export default function AnalyticsPage() {
 
 
     return (
-        <div className="p-4 md:p-6 text-white min-h-screen bg-gray-900">
+        <div className="p-4 md:p-6 text-foreground min-h-screen bg-background">
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6">
                 <div>
                     <h1 className="text-2xl md:text-3xl font-bold tracking-tight">Growth Engine: Analytics</h1>
-                    <p className="text-gray-400 mt-1 text-sm md:text-base">Your personal business advisor, now with deeper insights.</p>
+                    <p className="text-muted-foreground mt-1 text-sm md:text-base">Your personal business advisor, now with deeper insights.</p>
                 </div>
-                 <div className="bg-gray-800/80 p-1 rounded-lg flex items-center gap-2 w-full md:w-auto overflow-x-auto">
+                 <div className="bg-card p-1 rounded-lg flex items-center gap-2 w-full md:w-auto overflow-x-auto border border-border">
                      <div className="flex gap-1 whitespace-nowrap">
                         {dateFilters.map(filter => (
                             <Button 
@@ -1060,7 +1061,7 @@ export default function AnalyticsPage() {
                                 onClick={() => setActiveDateFilter(filter)}
                                 className={cn(
                                     'py-2 px-3 text-sm h-auto',
-                                    activeDateFilter === filter ? 'bg-gray-700 text-white' : 'text-gray-400',
+                                    activeDateFilter === filter ? 'bg-muted text-foreground' : 'text-muted-foreground',
                                     'transition-colors'
                                 )}
                             >
@@ -1075,7 +1076,7 @@ export default function AnalyticsPage() {
                                 className={cn(
                                     "w-[260px] justify-start text-left font-normal py-2 px-3 text-sm h-auto",
                                     !date && "text-muted-foreground",
-                                     activeDateFilter === 'Custom Range' ? 'bg-gray-700 text-white' : 'text-gray-400',
+                                     activeDateFilter === 'Custom Range' ? 'bg-muted text-foreground' : 'text-muted-foreground',
                                 )}
                                 onClick={() => {
                                     setActiveDateFilter('Custom Range');
@@ -1112,7 +1113,7 @@ export default function AnalyticsPage() {
                 </div>
             </div>
 
-            <div className="border-b border-gray-700 mb-6">
+            <div className="border-b border-border mb-6">
                 <nav className="flex -mb-px space-x-2 md:space-x-6 overflow-x-auto">
                     {Object.entries(tabs).map(([key, { label }]) => (
                         <button
@@ -1120,8 +1121,8 @@ export default function AnalyticsPage() {
                             onClick={() => setActiveTab(key)}
                             className={`py-4 px-2 md:px-1 border-b-2 text-sm font-medium whitespace-nowrap ${
                                 activeTab === key
-                                ? 'border-indigo-500 text-indigo-400'
-                                : 'border-transparent text-gray-400 hover:text-white hover:border-gray-500'
+                                ? 'border-primary text-primary'
+                                : 'border-transparent text-muted-foreground hover:text-foreground hover:border-gray-500'
                             }`}
                         >
                             {label}

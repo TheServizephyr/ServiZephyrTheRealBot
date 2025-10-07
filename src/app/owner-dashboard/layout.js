@@ -42,7 +42,7 @@ export default function OwnerDashboardLayout({ children }) {
   return (
     <ThemeProvider
       attribute="class"
-      defaultTheme="dark"
+      defaultTheme="system"
       enableSystem
       disableTransitionOnChange
     >

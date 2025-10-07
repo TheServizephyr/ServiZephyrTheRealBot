@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useState } from "react";
@@ -6,10 +7,25 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Search, Bell, User, Sun, Moon, Menu } from "lucide-react";
 import styles from "./OwnerDashboard.module.css";
 import { useTheme } from "next-themes";
+import { auth } from "@/lib/firebase";
+import { useRouter } from "next/navigation";
 
 export default function Navbar({ isSidebarOpen, setSidebarOpen }) {
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const { theme, setTheme } = useTheme();
+  const router = useRouter();
+
+  const handleLogout = async () => {
+    try {
+      await auth.signOut();
+      localStorage.removeItem('role');
+      router.push('/');
+    } catch (error) {
+      console.error("Logout failed:", error);
+      alert("Could not log out. Please try again.");
+    }
+  };
+
 
   return (
     <header className={styles.navbar}>
@@ -70,16 +86,13 @@ export default function Navbar({ isSidebarOpen, setSidebarOpen }) {
                 exit={{ opacity: 0, y: -10, scale: 0.95 }}
                 transition={{ duration: 0.2, ease: "easeInOut" }}
               >
-                <a href="#" className={styles.dropdownItem}>
+                <a href="/owner-dashboard/settings" className={styles.dropdownItem}>
                   <User size={16} /> Profile
                 </a>
-                <a href="#" className={styles.dropdownItem}>
-                  Settings
-                </a>
                 <div className={styles.dropdownDivider}></div>
-                <a href="#" className={styles.dropdownItem}>
+                <button onClick={handleLogout} className={styles.dropdownItem}>
                   Logout
-                </a>
+                </button>
               </motion.div>
             )}
           </AnimatePresence>
