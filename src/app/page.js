@@ -1,4 +1,5 @@
 
+
 'use client'
 
 import { motion, useInView, animate } from 'framer-motion'
@@ -161,7 +162,7 @@ export default function Home() {
           viewport={{ once: true, amount: 0.5 }}
           variants={sectionVariants}
         >
-          <div className="grid grid-cols-2 gap-4 text-center md:grid-cols-3 lg:grid-cols-5 md:gap-8">
+          <div className="grid grid-cols-2 gap-4 text-center sm:grid-cols-3 md:grid-cols-5 md:gap-8">
             <div className="rounded-lg border bg-secondary p-6 md:p-8 shadow-sm transition-all duration-300 hover:shadow-lg hover:-translate-y-2">
               <h3 className="text-4xl sm:text-5xl font-bold text-primary">
                 <AnimatedNumber value={30} suffix="%" />+
@@ -186,7 +187,7 @@ export default function Home() {
               </h3>
               <p className="mt-2 text-muted-foreground text-sm">Happy Restaurants</p>
             </div>
-             <div className="rounded-lg border bg-secondary p-6 md:p-8 shadow-sm transition-all duration-300 hover:shadow-lg hover:-translate-y-2 col-span-2 md:col-span-1">
+             <div className="rounded-lg border bg-secondary p-6 md:p-8 shadow-sm transition-all duration-300 hover:shadow-lg hover:-translate-y-2 col-span-2 sm:col-span-1">
               <h3 className="text-4xl sm:text-5xl font-bold text-primary">
                 <AnimatedNumber value={25000} suffix="+" />
               </h3>
@@ -488,6 +489,16 @@ export default function Home() {
             </Accordion>
           </div>
         </motion.section>
+
+        {process.env.NODE_ENV === 'development' && (
+          <div className="container mx-auto px-4 py-10 text-center">
+            <h3 className="text-xl font-bold text-yellow-500">🚧 Development Only 🚧</h3>
+            <p className="text-muted-foreground mb-4">This link is for testing purposes and will not be visible in production.</p>
+            <Link href="/order/servizephyr-restaurant?phone=1234567890" className="inline-block bg-secondary text-secondary-foreground font-bold py-3 px-8 rounded-lg hover:bg-muted transition-colors">
+                Preview Customer Order Page
+            </Link>
+          </div>
+        )}
 
       </main>
     </div>
