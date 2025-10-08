@@ -5,7 +5,7 @@
 import React, { useState, useEffect, Suspense, useMemo } from 'react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Utensils, Plus, Minus, X, Home, User, Edit2, ShoppingCart, Star, CookingPot, BookOpen, Check, SlidersHorizontal, ArrowUpDown, PlusCircle, Ticket, Gift, Sparkles, Flame, Search, Trash2, ChevronDown } from 'lucide-react';
+import { Utensils, Plus, Minus, X, Home, User, Edit2, ShoppingCart, Star, CookingPot, BookOpen, Check, SlidersHorizontal, ArrowUpDown, PlusCircle, Ticket, Gift, Sparkles, Flame, Search, Trash2, ChevronDown, Tag as TagIcon } from 'lucide-react';
 import Image from 'next/image';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
@@ -22,15 +22,15 @@ const dummyData = {
     rating: 4.1,
     menu: {
         "starters": [
-            { id: 'item-1', name: 'Paneer Tikka', description: 'Tandoor-cooked cottage cheese', fullPrice: 280, isVeg: true, isAvailable: true, categoryId: 'starters', imageUrl: 'https://picsum.photos/seed/paneertikka/100/100', rating: 4.5, isRecommended: true },
-            { id: 'item-2', name: 'Chilli Chicken', description: 'Spicy diced chicken', fullPrice: 320, isVeg: false, isAvailable: true, categoryId: 'starters', imageUrl: 'https://picsum.photos/seed/chillichicken/100/100', rating: 4.7, isRecommended: true },
+            { id: 'item-1', name: 'Paneer Tikka', description: 'Tandoor-cooked cottage cheese', fullPrice: 280, isVeg: true, isAvailable: true, categoryId: 'starters', imageUrl: 'https://picsum.photos/seed/paneertikka/100/100', rating: 4.5, isRecommended: true, tags: ["Bestseller", "Spicy"] },
+            { id: 'item-2', name: 'Chilli Chicken', description: 'Spicy diced chicken', fullPrice: 320, isVeg: false, isAvailable: true, categoryId: 'starters', imageUrl: 'https://picsum.photos/seed/chillichicken/100/100', rating: 4.7, isRecommended: true, tags: ["Most Reordered"] },
         ],
         "main-course": [
             { id: 'item-3', name: 'Dal Makhani', description: 'Creamy black lentils', fullPrice: 250, isVeg: true, isAvailable: true, categoryId: 'main-course', imageUrl: 'https://picsum.photos/seed/dalmakhani/100/100', rating: 4.2, isRecommended: false },
             { id: 'item-4', name: 'Butter Chicken', description: 'Classic creamy chicken curry', fullPrice: 450, isVeg: false, isAvailable: true, categoryId: 'main-course', imageUrl: 'https://picsum.photos/seed/butterchicken/100/100', rating: 3.8, isRecommended: false },
         ],
         "momos": [
-            { id: 'item-5', name: 'Veg Steamed Momos', description: '8 Pcs, served with chutney', fullPrice: 120, isVeg: true, isAvailable: true, categoryId: 'momos', imageUrl: 'https://picsum.photos/seed/vegmomos/100/100', rating: 4.8, isRecommended: true },
+            { id: 'item-5', name: 'Veg Steamed Momos', description: '8 Pcs, served with chutney', fullPrice: 120, isVeg: true, isAvailable: true, categoryId: 'momos', imageUrl: 'https://picsum.photos/seed/vegmomos/100/100', rating: 4.8, isRecommended: true, tags: ["Chef's Special"] },
         ],
          "desserts": [
             { id: 'item-6', name: 'Gulab Jamun', description: '2 Pcs, served hot', fullPrice: 80, isVeg: true, isAvailable: true, categoryId: 'desserts', imageUrl: 'https://picsum.photos/seed/gulabjamun/100/100', rating: 4.0, isRecommended: false },
@@ -81,9 +81,18 @@ const MenuItemCard = ({ item, quantity, onIncrement, onDecrement }) => {
           <h4 className="font-semibold text-foreground">{item.name}</h4>
         </div>
         <p className="text-sm text-muted-foreground mb-2">{item.description}</p>
+        {item.tags && item.tags.length > 0 && (
+            <div className="flex flex-wrap gap-2 mb-3">
+                {item.tags.map(tag => (
+                    <span key={tag} className="px-2 py-1 text-xs font-semibold rounded-full bg-primary/10 text-primary border border-primary/20 flex items-center gap-1">
+                        <TagIcon size={12} /> {tag}
+                    </span>
+                ))}
+            </div>
+        )}
         <p className="font-bold text-lg text-green-600">₹{item.fullPrice}</p>
       </div>
-      <div className="flex flex-col items-center justify-center h-24">
+      <div className="flex flex-col items-center justify-center h-full">
         {quantity > 0 ? (
           <div className="flex items-center gap-1 bg-background p-1 rounded-lg border border-border">
             <Button size="icon" variant="ghost" className="h-8 w-8 text-green-600" onClick={() => onDecrement(item)}><Minus size={16}/></Button>
@@ -412,30 +421,32 @@ const OrderPageInternal = () => {
 
             <footer className="fixed bottom-0 left-0 right-0 z-30 pointer-events-none">
                 <div className="w-full relative">
-                    <div className="container mx-auto px-4 flex justify-between items-center gap-4">
+                    <div className="flex justify-between items-center gap-4">
                         <div className="flex-1">
                             <AnimatePresence>
                                 {totalCartItems > 0 && (
                                     <motion.div
-                                        className="w-full max-w-lg mx-auto"
+                                        className="container mx-auto"
                                         initial={{ y: 100 }}
                                         animate={{ y: 0 }}
                                         exit={{ y: 100 }}
                                         transition={{ type: "spring", stiffness: 300, damping: 30 }}
                                     >
-                                        <Button onClick={handleCheckout} className="bg-green-600 hover:bg-green-700 h-14 text-lg font-bold rounded-lg shadow-green-500/30 flex justify-between items-center text-white w-full pointer-events-auto">
-                                            <div className="flex items-center gap-2">
-                                               <ShoppingCart className="h-6 w-6"/> 
-                                               <span>{totalCartItems} {totalCartItems > 1 ? 'Items' : 'Item'}</span>
-                                            </div>
-                                            <span>View Cart | ₹{subtotal}</span>
-                                        </Button>
+                                        <div className="p-4 w-full">
+                                            <Button onClick={handleCheckout} className="bg-green-600 hover:bg-green-700 h-14 text-lg font-bold rounded-lg shadow-green-500/30 flex justify-between items-center text-white w-full pointer-events-auto">
+                                                <div className="flex items-center gap-2">
+                                                   <ShoppingCart className="h-6 w-6"/> 
+                                                   <span>{totalCartItems} {totalCartItems > 1 ? 'Items' : 'Item'}</span>
+                                                </div>
+                                                <span>View Cart | ₹{subtotal}</span>
+                                            </Button>
+                                        </div>
                                     </motion.div>
                                 )}
                             </AnimatePresence>
                         </div>
                         
-                        <div className="flex-shrink-0">
+                        <div className="flex-shrink-0 absolute right-4 bottom-4">
                              <motion.button
                                 onClick={() => setIsMenuBrowserOpen(true)}
                                 className="bg-black text-white h-16 w-16 rounded-2xl shadow-lg flex flex-col items-center justify-center gap-1 border border-gray-700 pointer-events-auto"
@@ -460,5 +471,3 @@ const OrderPage = () => (
 );
 
 export default OrderPage;
-
-    
