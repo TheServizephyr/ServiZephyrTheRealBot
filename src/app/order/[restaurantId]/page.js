@@ -685,14 +685,15 @@ const OrderPageInternal = () => {
                     <motion.div
                          initial={{ y: 100 }}
                          animate={{ y: 0 }}
-                         transition={{ type: "spring", stiffness: 300, damping: 30, delay: totalCartItems > 0 ? 0 : 0.1 }}
+                         transition={{ type: "spring", stiffness: 300, damping: 30, delay: 0.1 }}
                     >
-                        <Button
+                        <button
                             onClick={() => setIsMenuBrowserOpen(true)}
-                            className="bg-card text-foreground h-14 w-14 rounded-full shadow-lg flex items-center justify-center gap-2 border border-border"
+                            className="bg-black text-white h-16 w-16 rounded-2xl shadow-lg flex flex-col items-center justify-center gap-1 border border-gray-700"
                         >
-                            <BookOpen size={24} />
-                        </Button>
+                            <BookOpen size={24} className="text-primary" />
+                            <span className="text-xs font-bold">Menu</span>
+                        </button>
                     </motion.div>
                 </div>
             </footer>
