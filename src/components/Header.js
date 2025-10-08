@@ -46,7 +46,7 @@ const Header = () => {
           </nav>
           <button 
             onClick={() => setIsModalOpen(true)}
-            className="btn-shine inline-flex h-10 items-center justify-center rounded-full bg-primary px-6 py-2 text-sm font-medium text-primary-foreground shadow-lg shadow-primary/20 transition-transform duration-300 hover:scale-105 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+            className="btn-shine inline-flex h-10 items-center justify-center rounded-lg bg-primary px-6 py-2 text-sm font-medium text-primary-foreground shadow-lg shadow-primary/20 transition-transform duration-300 hover:scale-105 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
           >
             Get Started
           </button>
