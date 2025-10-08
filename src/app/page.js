@@ -158,36 +158,36 @@ export default function Home() {
           viewport={{ once: true, amount: 0.5 }}
           variants={sectionVariants}
         >
-          <div className="grid grid-cols-1 gap-8 text-center sm:grid-cols-2 md:grid-cols-5">
-            <div className="rounded-lg border bg-secondary p-8 shadow-sm transition-all duration-300 hover:shadow-lg hover:-translate-y-2">
-              <h3 className="text-5xl font-bold text-primary">
+          <div className="grid grid-cols-2 gap-4 text-center md:grid-cols-3 lg:grid-cols-5 md:gap-8">
+            <div className="rounded-lg border bg-secondary p-6 md:p-8 shadow-sm transition-all duration-300 hover:shadow-lg hover:-translate-y-2">
+              <h3 className="text-4xl sm:text-5xl font-bold text-primary">
                 <AnimatedNumber value={30} suffix="%" />+
               </h3>
-              <p className="mt-2 text-muted-foreground">Commission Saved</p>
+              <p className="mt-2 text-muted-foreground text-sm">Commission Saved</p>
             </div>
-            <div className="rounded-lg border bg-secondary p-8 shadow-sm transition-all duration-300 hover:shadow-lg hover:-translate-y-2">
-              <h3 className="text-5xl font-bold text-primary">
+            <div className="rounded-lg border bg-secondary p-6 md:p-8 shadow-sm transition-all duration-300 hover:shadow-lg hover:-translate-y-2">
+              <h3 className="text-4xl sm:text-5xl font-bold text-primary">
                 <AnimatedNumber value={40} suffix="%" />+
               </h3>
-              <p className="mt-2 text-muted-foreground">Increase in Repeat Orders</p>
+              <p className="mt-2 text-muted-foreground text-sm">Increase in Repeat Orders</p>
             </div>
-            <div className="rounded-lg border bg-secondary p-8 shadow-sm transition-all duration-300 hover:shadow-lg hover:-translate-y-2">
-              <h3 className="text-5xl font-bold text-primary">
+            <div className="rounded-lg border bg-secondary p-6 md:p-8 shadow-sm transition-all duration-300 hover:shadow-lg hover:-translate-y-2">
+              <h3 className="text-4xl sm:text-5xl font-bold text-primary">
                 <AnimatedNumber value={100} suffix="%" />
               </h3>
-              <p className="mt-2 text-muted-foreground">Customer Data Ownership</p>
+              <p className="mt-2 text-muted-foreground text-sm">Customer Data Ownership</p>
             </div>
-            <div className="rounded-lg border bg-secondary p-8 shadow-sm transition-all duration-300 hover:shadow-lg hover:-translate-y-2">
-              <h3 className="text-5xl font-bold text-primary">
+            <div className="rounded-lg border bg-secondary p-6 md:p-8 shadow-sm transition-all duration-300 hover:shadow-lg hover:-translate-y-2">
+              <h3 className="text-4xl sm:text-5xl font-bold text-primary">
                 <AnimatedNumber value={500} suffix="+" />
               </h3>
-              <p className="mt-2 text-muted-foreground">Happy Restaurants</p>
+              <p className="mt-2 text-muted-foreground text-sm">Happy Restaurants</p>
             </div>
-             <div className="rounded-lg border bg-secondary p-8 shadow-sm transition-all duration-300 hover:shadow-lg hover:-translate-y-2">
-              <h3 className="text-5xl font-bold text-primary">
+             <div className="rounded-lg border bg-secondary p-6 md:p-8 shadow-sm transition-all duration-300 hover:shadow-lg hover:-translate-y-2 col-span-2 md:col-span-1">
+              <h3 className="text-4xl sm:text-5xl font-bold text-primary">
                 <AnimatedNumber value={25000} suffix="+" />
               </h3>
-              <p className="mt-2 text-muted-foreground">Happy Users</p>
+              <p className="mt-2 text-muted-foreground text-sm">Happy Users</p>
             </div>
           </div>
         </motion.section>
