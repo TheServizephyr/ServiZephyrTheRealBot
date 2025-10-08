@@ -441,21 +441,27 @@ const OrderPageInternal = () => {
                     )}
                 </AnimatePresence>
                 
-                <motion.div
-                    className="p-4"
-                    initial={{ y: "100%" }}
-                    animate={{ y: totalCartItems > 0 ? 0 : "100%"}}
-                    exit={{ y: "100%" }}
-                    transition={{ type: "spring", stiffness: 300, damping: 30 }}
-                >
-                    <Button onClick={handleCheckout} className="bg-green-600 hover:bg-green-700 h-14 text-lg font-bold rounded-lg shadow-green-500/30 flex justify-between items-center text-white w-full pointer-events-auto">
-                        <div className="flex items-center gap-2">
-                           <ShoppingCart className="h-6 w-6"/> 
-                           <span>{totalCartItems} {totalCartItems > 1 ? 'Items' : 'Item'}</span>
+                <AnimatePresence>
+                {totalCartItems > 0 && (
+                    <motion.div
+                        className="bg-background/80 backdrop-blur-lg border-t border-border p-4 pointer-events-auto"
+                        initial={{ y: "100%" }}
+                        animate={{ y: 0 }}
+                        exit={{ y: "100%" }}
+                        transition={{ type: "spring", stiffness: 300, damping: 30 }}
+                    >
+                        <div className="container mx-auto">
+                            <Button onClick={handleCheckout} className="bg-green-600 hover:bg-green-700 h-14 text-lg font-bold rounded-lg shadow-green-500/30 flex justify-between items-center text-white w-full">
+                                <div className="flex items-center gap-2">
+                                   <ShoppingCart className="h-6 w-6"/> 
+                                   <span>{totalCartItems} {totalCartItems > 1 ? 'Items' : 'Item'}</span>
+                                </div>
+                                <span>View Cart | ₹{subtotal}</span>
+                            </Button>
                         </div>
-                        <span>View Cart | ₹{subtotal}</span>
-                    </Button>
-                </motion.div>
+                    </motion.div>
+                )}
+                </AnimatePresence>
 
                  <AnimatePresence>
                     {totalCartItems === 0 && (
