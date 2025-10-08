@@ -440,9 +440,8 @@ const OrderPageInternal = () => {
             </div>
 
              <footer className="fixed bottom-0 left-0 right-0 z-30 pointer-events-none">
-                <div className="container mx-auto p-4 w-full relative">
-                    <div className="flex justify-end w-full">
-                        
+                <div className="w-full relative">
+                    <div className="container mx-auto flex justify-end w-full px-4">
                         <div className="flex-grow-0 flex-shrink-0">
                              <motion.button
                                 onClick={() => setIsMenuBrowserOpen(true)}
@@ -459,7 +458,7 @@ const OrderPageInternal = () => {
                     <AnimatePresence>
                         {totalCartItems > 0 && (
                              <motion.div
-                                className="w-full pointer-events-auto absolute bottom-4"
+                                className="w-full pointer-events-auto absolute bottom-4 px-4"
                                 initial={{ y: 100 }}
                                 animate={{ y: 0 }}
                                 exit={{ y: 100 }}
