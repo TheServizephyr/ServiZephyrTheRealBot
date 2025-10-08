@@ -170,7 +170,7 @@ export default function Home() {
               </h3>
               <p className="mt-2 text-muted-foreground">Increase in Repeat Orders</p>
             </div>
-            <div className="rounded-lg border bg-card p-8 shadow-sm">
+            <div className="rounded-lg border bg-secondary p-8 shadow-sm">
               <h3 className="text-5xl font-bold text-primary">
                 <AnimatedNumber value={100} suffix="%" />
               </h3>
