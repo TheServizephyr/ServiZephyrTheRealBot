@@ -93,7 +93,7 @@ const MenuItemCard = ({ item, quantity, onIncrement, onDecrement }) => {
         ) : (
           <Button
             onClick={() => onIncrement(item)}
-            className="w-24 bg-background text-green-600 font-bold border border-green-600 hover:bg-muted shadow-md active:translate-y-px"
+            className="w-24 bg-green-600 text-white font-bold border border-green-600 hover:bg-green-700 shadow-md active:translate-y-px"
           >
             ADD
           </Button>
@@ -412,7 +412,7 @@ const OrderPageInternal = () => {
             </div>
 
             <footer className="fixed bottom-0 z-30 w-full p-4">
-                <div className="container mx-auto flex justify-between items-center gap-4">
+                <div className="mx-auto flex justify-between items-center gap-4">
                     <div className="flex-1 flex items-center gap-4">
                         <AnimatePresence>
                             {totalCartItems > 0 && (
