@@ -661,7 +661,7 @@ const OrderPageInternal = () => {
             </div>
 
             <footer className="fixed bottom-0 z-30 w-full p-4">
-                <div className="container mx-auto flex justify-between items-center gap-4">
+                <div className="container mx-auto flex justify-end items-center gap-4">
                     <AnimatePresence>
                         {totalCartItems > 0 && (
                             <motion.div
@@ -681,11 +681,11 @@ const OrderPageInternal = () => {
                             </motion.div>
                         )}
                     </AnimatePresence>
-
+                    
                     <motion.div
                          initial={{ y: 100 }}
                          animate={{ y: 0 }}
-                         transition={{ type: "spring", stiffness: 300, damping: 30, delay: 0.1 }}
+                         transition={{ type: "spring", stiffness: 300, damping: 30, delay: totalCartItems > 0 ? 0 : 0.1 }}
                     >
                         <Button
                             onClick={() => setIsMenuBrowserOpen(true)}
