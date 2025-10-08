@@ -307,10 +307,6 @@ const CartPageInternal = () => {
                         <div className="bg-card p-4 rounded-lg border border-border">
                             <div className="flex justify-between items-center mb-3">
                                 <h3 className="font-bold text-lg">Your Items</h3>
-                                <Button variant="ghost" size="sm" className="text-destructive hover:text-destructive" onClick={() => setIsClearCartDialogOpen(true)}>
-                                    <Trash2 className="mr-2 h-4 w-4" />
-                                    Clear All
-                                </Button>
                             </div>
                             <div className="space-y-3">
                                 {cart.map(item => (
@@ -409,8 +405,12 @@ const CartPageInternal = () => {
             </main>
 
             <footer className="fixed bottom-0 left-0 w-full bg-background/80 backdrop-blur-lg border-t border-border z-30">
-                <div className="container mx-auto p-4">
-                    <Button onClick={() => setIsCheckoutOpen(true)} className="w-full bg-green-600 hover:bg-green-700 h-12 text-lg font-bold text-white" disabled={cart.length === 0}>
+                <div className="container mx-auto p-4 flex items-center justify-between gap-4">
+                    <Button variant="ghost" size="sm" className="text-destructive hover:text-destructive" onClick={() => setIsClearCartDialogOpen(true)} disabled={cart.length === 0}>
+                        <Trash2 className="mr-2 h-4 w-4" />
+                        Clear Cart
+                    </Button>
+                    <Button onClick={() => setIsCheckoutOpen(true)} className="flex-grow bg-green-600 hover:bg-green-700 h-12 text-lg font-bold text-white" disabled={cart.length === 0}>
                         Proceed to Checkout
                     </Button>
                 </div>
@@ -427,5 +427,3 @@ const CartPage = () => (
 );
 
 export default CartPage;
-
-    
