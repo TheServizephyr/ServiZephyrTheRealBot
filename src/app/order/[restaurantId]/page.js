@@ -600,17 +600,10 @@ const OrderPageInternal = () => {
                             <div className="grid gap-4">
                                <div className="space-y-2">
                                     <h4 className="font-medium leading-none">Sort by</h4>
-                                    <div className="flex items-center justify-between">
-                                        <Label htmlFor="sort-asc">Price: Low to High</Label>
-                                        <Switch id="sort-asc" checked={sortBy === 'price-asc'} onCheckedChange={() => handleSortChange('price-asc')} />
-                                    </div>
-                                     <div className="flex items-center justify-between">
-                                        <Label htmlFor="sort-desc">Price: High to Low</Label>
-                                        <Switch id="sort-desc" checked={sortBy === 'price-desc'} onCheckedChange={() => handleSortChange('price-desc')} />
-                                    </div>
-                                     <div className="flex items-center justify-between">
-                                        <Label htmlFor="sort-rating">Top Rated</Label>
-                                        <Switch id="sort-rating" checked={sortBy === 'rating-desc'} onCheckedChange={() => handleSortChange('rating-desc')} />
+                                    <div className="flex flex-wrap gap-2">
+                                        <Button variant={sortBy === 'price-asc' ? 'default' : 'outline'} size="sm" onClick={() => handleSortChange('price-asc')}>Price: Low to High</Button>
+                                        <Button variant={sortBy === 'price-desc' ? 'default' : 'outline'} size="sm" onClick={() => handleSortChange('price-desc')}>Price: High to Low</Button>
+                                        <Button variant={sortBy === 'rating-desc' ? 'default' : 'outline'} size="sm" onClick={() => handleSortChange('rating-desc')}>Top Rated</Button>
                                     </div>
                                 </div>
 
