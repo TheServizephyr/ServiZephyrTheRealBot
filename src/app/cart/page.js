@@ -4,12 +4,29 @@
 import React, { useState, useEffect, useMemo, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { motion } from 'framer-motion';
-import { Utensils, Plus, Minus, X, Home, User, ShoppingCart, CookingPot, Ticket, Gift, ArrowLeft, Sparkles, Check, PlusCircle } from 'lucide-react';
+import { Utensils, Plus, Minus, X, Home, User, ShoppingCart, CookingPot, Ticket, Gift, ArrowLeft, Sparkles, Check, PlusCircle, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose } from "@/components/ui/dialog";
 import { Label } from '@/components/ui/label';
 import { cn } from '@/lib/utils';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+
+const ClearCartDialog = ({ isOpen, onClose, onConfirm }) => {
+    return (
+        <Dialog open={isOpen} onOpenChange={onClose}>
+            <DialogContent className="bg-background border-border text-foreground">
+                <DialogHeader>
+                    <DialogTitle className="text-2xl flex items-center gap-2"><Trash2 className="text-destructive" /> Clear Cart?</DialogTitle>
+                    <DialogDescription>Are you sure you want to remove all items from your cart? This action cannot be undone.</DialogDescription>
+                </DialogHeader>
+                <DialogFooter>
+                    <DialogClose asChild><Button variant="secondary">Cancel</Button></DialogClose>
+                    <Button variant="destructive" onClick={onConfirm}>Yes, Clear It</Button>
+                </DialogFooter>
+            </DialogContent>
+        </Dialog>
+    );
+};
 
 const CheckoutModal = ({ isOpen, onClose, restaurantId, phone, cart, notes, appliedCoupons }) => {
     const [name, setName] = useState('');
@@ -107,6 +124,7 @@ const CartPageInternal = () => {
     const [notes, setNotes] = useState('');
     const [appliedCoupons, setAppliedCoupons] = useState([]);
     const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
+    const [isClearCartDialogOpen, setIsClearCartDialogOpen] = useState(false);
 
     useEffect(() => {
         if (restaurantId) {
@@ -117,7 +135,7 @@ const CartPageInternal = () => {
                 setCart(parsedData.cart || []);
                 setNotes(parsedData.notes || '');
             } else {
-                // Handle case where cart is empty or not found for this restaurant
+                setCart([]);
             }
         }
     }, [restaurantId]);
@@ -152,6 +170,15 @@ const CartPageInternal = () => {
         setNotes(newNotes);
         updateCartInStorage(cart, newNotes);
     }
+    
+    const handleClearCart = () => {
+        localStorage.removeItem(`cart_${restaurantId}`);
+        setCart([]);
+        setAppliedCoupons([]);
+        setCartData(prev => ({...prev, cart: []}));
+        setIsClearCartDialogOpen(false);
+    };
+
 
     const subtotal = useMemo(() => cart.reduce((sum, item) => sum + item.fullPrice * item.quantity, 0), [cart]);
 
@@ -241,11 +268,16 @@ const CartPageInternal = () => {
         <CheckoutModal 
             isOpen={isCheckoutOpen} 
             onClose={() => setIsCheckoutOpen(false)}
-            restaurantId={cartData.restaurantId}
+            restaurantId={restaurantId}
             phone={cartData.phone}
             cart={cart}
             notes={notes}
             appliedCoupons={appliedCoupons}
+        />
+        <ClearCartDialog 
+            isOpen={isClearCartDialogOpen}
+            onClose={() => setIsClearCartDialogOpen(false)}
+            onConfirm={handleClearCart}
         />
         <div className="min-h-screen bg-background text-foreground flex flex-col">
              <header className="sticky top-0 z-20 bg-background/80 backdrop-blur-lg border-b border-border">
@@ -262,12 +294,24 @@ const CartPageInternal = () => {
 
             <main className="flex-grow p-4 container mx-auto pb-28">
                 {cart.length === 0 ? (
-                    <div className="h-full flex items-center justify-center text-muted-foreground">
-                        Your cart is empty.
+                    <div className="h-full flex flex-col items-center justify-center text-muted-foreground">
+                        <ShoppingCart size={48} className="mb-4" />
+                        <h1 className="text-2xl font-bold">Your Cart is Empty</h1>
+                        <p className="mt-2">Looks like you haven't added anything to your cart yet.</p>
+                         <Button onClick={() => router.push(`/order/${restaurantId}`)} className="mt-6">
+                            <ArrowLeft className="mr-2 h-4 w-4" /> Go Back to Menu
+                        </Button>
                     </div>
                 ) : (
                     <>
                         <div className="bg-card p-4 rounded-lg border border-border">
+                            <div className="flex justify-between items-center mb-3">
+                                <h3 className="font-bold text-lg">Your Items</h3>
+                                <Button variant="ghost" size="sm" className="text-destructive hover:text-destructive" onClick={() => setIsClearCartDialogOpen(true)}>
+                                    <Trash2 className="mr-2 h-4 w-4" />
+                                    Clear All
+                                </Button>
+                            </div>
                             <div className="space-y-3">
                                 {cart.map(item => (
                                     <motion.div 
