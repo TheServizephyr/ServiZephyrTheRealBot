@@ -411,58 +411,42 @@ const OrderPageInternal = () => {
                 </main>
             </div>
 
-            <footer className="fixed bottom-0 z-30 w-full p-4">
-                <div className="flex justify-between items-center gap-4">
-                    <div className="flex-grow flex items-center gap-4">
-                        <AnimatePresence>
-                            {totalCartItems > 0 && (
-                                <motion.div
-                                    initial={{ opacity: 0, scale: 0.5 }}
-                                    animate={{ opacity: 1, scale: 1 }}
-                                    exit={{ opacity: 0, scale: 0.5 }}
-                                    transition={{ type: "spring", stiffness: 500, damping: 30 }}
-                                >
-                                    <Button variant="destructive" size="icon" className="h-14 w-14 rounded-2xl shadow-lg" onClick={() => setIsClearCartDialogOpen(true)}>
+            <footer className="fixed bottom-0 left-0 right-0 p-4 z-30 pointer-events-none">
+                <div className="relative w-full max-w-lg mx-auto">
+                    <AnimatePresence>
+                        {totalCartItems > 0 && (
+                            <motion.div
+                                className="pointer-events-auto"
+                                initial={{ y: 100 }}
+                                animate={{ y: 0 }}
+                                exit={{ y: 100 }}
+                                transition={{ type: "spring", stiffness: 300, damping: 30 }}
+                            >
+                                <div className="bg-background/80 backdrop-blur-lg border border-border rounded-xl shadow-lg flex items-center gap-2 p-2">
+                                     <Button variant="destructive" size="icon" className="h-14 w-14 rounded-lg flex-shrink-0" onClick={() => setIsClearCartDialogOpen(true)}>
                                         <Trash2 />
                                     </Button>
-                                </motion.div>
-                            )}
-                        </AnimatePresence>
-                        <AnimatePresence>
-                            {totalCartItems > 0 && (
-                                <motion.div
-                                    className="flex-grow"
-                                    initial={{ y: 100 }}
-                                    animate={{ y: 0 }}
-                                    exit={{ y: 100 }}
-                                    transition={{ type: "spring", stiffness: 300, damping: 30 }}
-                                >
-                                    <Button onClick={handleCheckout} className="bg-green-600 hover:bg-green-700 h-14 text-lg font-bold rounded-xl shadow-lg shadow-green-500/30 flex justify-between items-center text-white w-full">
+                                    <Button onClick={handleCheckout} className="bg-green-600 hover:bg-green-700 h-14 text-lg font-bold rounded-lg shadow-green-500/30 flex justify-between items-center text-white w-full">
                                         <div className="flex items-center gap-2">
                                            <ShoppingCart className="h-6 w-6"/> 
                                            <span>{totalCartItems} {totalCartItems > 1 ? 'Items' : 'Item'}</span>
                                         </div>
                                         <span>View Cart | ₹{subtotal}</span>
                                     </Button>
-                                </motion.div>
-                            )}
-                        </AnimatePresence>
-                    </div>
-                    
-                    <motion.div
-                        className="flex-shrink-0"
-                         initial={{ y: 100 }}
-                         animate={{ y: 0 }}
-                         transition={{ type: "spring", stiffness: 300, damping: 30, delay: 0.1 }}
+                                </div>
+                            </motion.div>
+                        )}
+                    </AnimatePresence>
+
+                    <motion.button
+                        onClick={() => setIsMenuBrowserOpen(true)}
+                        className="absolute right-0 bg-black text-white h-16 w-16 rounded-2xl shadow-lg flex flex-col items-center justify-center gap-1 border border-gray-700 pointer-events-auto"
+                        animate={{ bottom: totalCartItems > 0 ? 88 : 0 }}
+                        transition={{ type: "spring", stiffness: 400, damping: 30 }}
                     >
-                        <button
-                            onClick={() => setIsMenuBrowserOpen(true)}
-                            className="bg-black text-white h-16 w-16 rounded-2xl shadow-lg flex flex-col items-center justify-center gap-1 border border-gray-700"
-                        >
-                            <BookOpen size={24} className="text-primary" />
-                            <span className="text-xs font-bold">Menu</span>
-                        </button>
-                    </motion.div>
+                        <BookOpen size={24} className="text-primary" />
+                        <span className="text-xs font-bold">Menu</span>
+                    </motion.button>
                 </div>
             </footer>
         </div>
@@ -476,3 +460,5 @@ const OrderPage = () => (
 );
 
 export default OrderPage;
+
+    
