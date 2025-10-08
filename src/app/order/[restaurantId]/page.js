@@ -63,7 +63,7 @@ const MenuItemCard = ({ item, quantity, onIncrement, onDecrement }) => {
           <h4 className="font-semibold text-foreground">{item.name}</h4>
         </div>
         <p className="text-sm text-muted-foreground mb-2">{item.description}</p>
-        <p className="font-bold text-lg text-primary">₹{item.fullPrice}</p>
+        <p className="font-bold text-lg text-green-600">₹{item.fullPrice}</p>
       </div>
       <div className="flex flex-col items-center justify-center h-24">
         {quantity > 0 ? (
