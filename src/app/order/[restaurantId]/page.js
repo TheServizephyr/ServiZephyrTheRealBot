@@ -15,6 +15,35 @@ import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 
 
+// --- START: DUMMY DATA FOR UI DEMO ---
+const dummyData = {
+    restaurantName: 'ServiZephyr Demo Restaurant',
+    deliveryCharge: 30,
+    menu: {
+        "starters": [
+            { id: 'item-1', name: 'Paneer Tikka', description: 'Tandoor-cooked cottage cheese', fullPrice: 280, isVeg: true, isAvailable: true, categoryId: 'starters', imageUrl: 'https://picsum.photos/seed/paneertikka/100/100' },
+            { id: 'item-2', name: 'Chilli Chicken', description: 'Spicy diced chicken', fullPrice: 320, isVeg: false, isAvailable: true, categoryId: 'starters', imageUrl: 'https://picsum.photos/seed/chillichicken/100/100' },
+        ],
+        "main-course": [
+            { id: 'item-3', name: 'Dal Makhani', description: 'Creamy black lentils', fullPrice: 250, isVeg: true, isAvailable: true, categoryId: 'main-course', imageUrl: 'https://picsum.photos/seed/dalmakhani/100/100' },
+            { id: 'item-4', name: 'Butter Chicken', description: 'Classic creamy chicken curry', fullPrice: 450, isVeg: false, isAvailable: true, categoryId: 'main-course', imageUrl: 'https://picsum.photos/seed/butterchicken/100/100' },
+        ],
+        "momos": [
+            { id: 'item-5', name: 'Veg Steamed Momos', description: '8 Pcs, served with chutney', fullPrice: 120, isVeg: true, isAvailable: true, categoryId: 'momos', imageUrl: 'https://picsum.photos/seed/vegmomos/100/100' },
+        ],
+         "desserts": [
+            { id: 'item-6', name: 'Gulab Jamun', description: '2 Pcs, served hot', fullPrice: 80, isVeg: true, isAvailable: true, categoryId: 'desserts', imageUrl: 'https://picsum.photos/seed/gulabjamun/100/100' },
+        ],
+    },
+    coupons: [
+        { id: 'coupon-1', code: 'SAVE100', description: 'Get flat ₹100 off on orders above ₹599', type: 'flat', value: 100, minOrder: 599 },
+        { id: 'coupon-2', code: 'FREEDEL', description: 'Free delivery on all orders above ₹299', type: 'free_delivery', value: 0, minOrder: 299 },
+    ],
+    loyaltyPoints: 250, // Example loyalty points for a logged-in user
+};
+// --- END: DUMMY DATA ---
+
+
 const MenuItemCard = ({ item, quantity, onIncrement, onDecrement }) => {
   return (
     <motion.div 
@@ -201,58 +230,29 @@ const CheckoutModal = ({ isOpen, onClose, restaurantId, phone, cart, notes, appl
     const [isExistingUser, setIsExistingUser] = useState(false);
     const [savedAddresses, setSavedAddresses] = useState([]);
     const [selectedAddress, setSelectedAddress] = useState(null);
-    const [isAddingNew, setIsAddingNew] = useState(false);
-    
+    const [isAddingNew, setIsAddingNew] = useState(true); // Default to adding new for demo
 
+    // Simplified effect for demo: just reset the form on open
     useEffect(() => {
-        const fetchUser = async () => {
-            if (!phone) {
-                setIsExistingUser(false);
-                setIsAddingNew(true);
-                setLoading(false);
-                return;
-            }
-            
-            setLoading(true);
-            setError('');
-            try {
-                const res = await fetch('/api/customer/lookup', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ phone })
-                });
-
-                if (res.status === 404) {
-                    setIsExistingUser(false);
-                    setIsAddingNew(true);
-                } else if (!res.ok) {
-                   const data = await res.json();
-                   throw new Error(data.message || "Failed to look up user.");
-                } else {
-                    const data = await res.json();
-                    setIsExistingUser(true);
-                    setName(data.name);
-                    setSavedAddresses(data.addresses || []);
-                    if (data.addresses && data.addresses.length > 0) {
-                        setSelectedAddress(data.addresses[0].full);
-                        setIsAddingNew(false);
-                    } else {
-                        setIsAddingNew(true);
-                    }
-                }
-
-            } catch (err) {
-                setError("Could not verify your details. Please try again.");
-                console.error(err);
-            } finally {
-                setLoading(false);
-            }
-        };
-
         if (isOpen) {
-            fetchUser();
-        } else {
-            setName(''); setAddress(''); setError(''); setSavedAddresses([]); setSelectedAddress(null); setIsAddingNew(false); setIsExistingUser(false);
+            setLoading(false);
+            setError('');
+            setIsAddingNew(true);
+            // Simulate a returning user with saved addresses for demo purposes
+            if (phone === '9876543210') {
+                setName('Rohan Sharma (Demo)');
+                setSavedAddresses([{ id: 'addr_1', full: '123, Cyber Street, Tech City' }]);
+                setSelectedAddress('123, Cyber Street, Tech City');
+                setIsAddingNew(false);
+                setIsExistingUser(true);
+            } else {
+                 setName('');
+                 setAddress('');
+                 setSavedAddresses([]);
+                 setSelectedAddress(null);
+                 setIsAddingNew(true);
+                 setIsExistingUser(false);
+            }
         }
     }, [isOpen, phone]);
 
@@ -271,42 +271,17 @@ const CheckoutModal = ({ isOpen, onClose, restaurantId, phone, cart, notes, appl
 
         setError('');
         setLoading(true);
-        try {
-            const payload = {
-                name: name,
-                address: finalAddress,
-                phone: phone,
-                restaurantId,
-                items: cart.map(item => ({ name: item.name, quantity: item.quantity, price: item.fullPrice })),
-                notes,
-                coupon: appliedCoupon ? { code: appliedCoupon.code, discount: couponDiscount } : null,
-                loyaltyDiscount: loyaltyDiscount > 0 ? loyaltyDiscount : null,
-            };
-            
-            const res = await fetch('/api/customer/register', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(payload)
-            });
-            const data = await res.json();
-            if (!res.ok) throw new Error(data.message || "Failed to place order.");
-
-            alert("Order Placed Successfully!");
-            onClose();
-            window.location.reload();
-            
-        } catch (err) {
-            setError(err.message);
-        } finally {
+        
+        // Simulate API call
+        setTimeout(() => {
+            alert("Success! (Demo) - Your order has been placed.");
             setLoading(false);
-        }
+            onClose();
+             window.location.reload(); // Simulate page refresh after order
+        }, 1500);
     };
 
     const renderContent = () => {
-        if (loading) {
-            return <div className="flex items-center justify-center h-48"><div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div></div>;
-        }
-        
         return (
             <div className="space-y-4">
                 {(isExistingUser && savedAddresses.length > 0) && (
@@ -410,10 +385,11 @@ const OrderPageInternal = () => {
     const { restaurantId } = params;
     const phone = searchParams.get('phone');
 
-    const [restaurantName, setRestaurantName] = useState('');
-    const [deliveryCharge, setDeliveryCharge] = useState(30);
-    const [rawMenu, setRawMenu] = useState({});
-    const [loading, setLoading] = useState(true);
+    // State now initialized with dummy data
+    const [restaurantName, setRestaurantName] = useState(dummyData.restaurantName);
+    const [deliveryCharge, setDeliveryCharge] = useState(dummyData.deliveryCharge);
+    const [rawMenu, setRawMenu] = useState(dummyData.menu);
+    const [loading, setLoading] = useState(false); // No loading from backend
     const [cart, setCart] = useState([]);
     const [isCartOpen, setIsCartOpen] = useState(false);
     const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
@@ -425,51 +401,12 @@ const OrderPageInternal = () => {
     const [vegOnly, setVegOnly] = useState(false);
 
     // Coupon and Discount State
-    const [coupons, setCoupons] = useState([]);
-    const [loyaltyPoints, setLoyaltyPoints] = useState(0);
+    const [coupons, setCoupons] = useState(dummyData.coupons);
+    const [loyaltyPoints, setLoyaltyPoints] = useState(dummyData.loyaltyPoints);
     const [appliedCoupon, setAppliedCoupon] = useState(null);
     const [loyaltyDiscount, setLoyaltyDiscount] = useState(0);
 
-
-    useEffect(() => {
-        const fetchInitialData = async () => {
-            if (!restaurantId) return;
-            setLoading(true);
-            try {
-                const publicDataRes = await fetch(`/api/menu/${restaurantId}`);
-                if (!publicDataRes.ok) throw new Error('Failed to fetch restaurant data');
-                const publicData = await publicDataRes.json();
-                
-                setRestaurantName(publicData.restaurantName);
-                setRawMenu(publicData.menu);
-                setCoupons(publicData.coupons || []);
-                setDeliveryCharge(publicData.deliveryCharge || 30);
-
-                if(phone) {
-                    try {
-                        const loyaltyRes = await fetch(`/api/customer/lookup`, {
-                             method: 'POST',
-                             headers: { 'Content-Type': 'application/json' },
-                             body: JSON.stringify({ phone })
-                        });
-                         if (loyaltyRes.ok) {
-                             const userData = await loyaltyRes.json();
-                             setLoyaltyPoints(userData.loyaltyPoints || 0);
-                         }
-                    } catch(e) {
-                        console.warn("Could not fetch loyalty points:", e);
-                        setLoyaltyPoints(0);
-                    }
-                }
-            } catch (error) {
-                console.error("Failed to fetch initial data:", error);
-                setRestaurantName('');
-            } finally {
-                setLoading(false);
-            }
-        };
-        fetchInitialData();
-    }, [restaurantId, phone]);
+    // Removed useEffect for fetching data
     
     const processedMenu = useMemo(() => {
         let newMenu = JSON.parse(JSON.stringify(rawMenu));
@@ -488,7 +425,6 @@ const OrderPageInternal = () => {
     const couponDiscount = useMemo(() => {
         if (!appliedCoupon) return 0;
         if (subtotal < appliedCoupon.minOrder) {
-            // Invalidate coupon if subtotal falls below minOrder
             setAppliedCoupon(null);
             return 0;
         }
@@ -565,16 +501,6 @@ const OrderPageInternal = () => {
         return (
             <div className="min-h-screen bg-background flex items-center justify-center">
                 <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-primary"></div>
-            </div>
-        );
-    }
-
-    if (!restaurantName && !loading) {
-        return (
-            <div className="min-h-screen bg-background flex flex-col gap-4 items-center justify-center text-foreground text-center">
-                <Utensils size={48} className="text-destructive" />
-                <h1 className="text-2xl font-bold">Could not load menu</h1>
-                <p className="text-muted-foreground">This restaurant might not be available. Please try again later.</p>
             </div>
         );
     }
