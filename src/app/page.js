@@ -1,4 +1,3 @@
-
 'use client'
 
 import { motion, useInView, animate } from 'framer-motion'
@@ -135,7 +134,7 @@ export default function Home() {
               <h1 className="font-headline text-5xl md:text-7xl font-extrabold tracking-tighter leading-tight text-foreground">
                 Apna Restaurant, Apne Rules.
               </h1>
-              <h2 className="font-headline text-5xl md:text-7xl font-extrabold tracking-tighter leading-tight text-primary mt-2">
+              <h2 className="font-headline text-5xl md:text-7xl font-extrabold tracking-tighter leading-tight text-foreground mt-2">
                 30% Commission ko Good Bye Kahein.
               </h2>
               <p className="max-w-2xl mx-auto mt-6 text-lg text-muted-foreground font-body">
