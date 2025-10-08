@@ -126,16 +126,27 @@ export async function GET(req) {
                 itemCounts[item.name] = (itemCounts[item.name] || 0) + item.qty;
             });
         });
-        const topItems = Object.entries(itemCounts)
+
+        // Add 'Bestseller' logic
+        const menuRef = firestore.collection('restaurants').doc(restaurantId).collection('menu');
+        const menuSnap = await menuRef.get();
+        const menuItems = menuSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+
+        const topSellingNames = Object.entries(itemCounts)
             .sort(([,a],[,b]) => b - a)
-            .slice(0, 5)
-            .map(([name, count], index) => ({
-                name,
-                count,
-                imageUrl: `https://picsum.photos/seed/dish${index+1}/200/200`
+            .slice(0, 3) // Top 3 items
+            .map(([name]) => name);
+
+        const topItems = menuItems
+            .filter(item => topSellingNames.includes(item.name))
+            .map((item, index) => ({
+                name: item.name,
+                count: itemCounts[item.name],
+                imageUrl: item.imageUrl || `https://picsum.photos/seed/dish${index+1}/200/200`
             }));
 
-        return NextResponse.json({ stats, liveOrders, salesChart: topItems }, { status: 200 });
+
+        return NextResponse.json({ stats, liveOrders, salesChart: salesChartData, topItems }, { status: 200 });
 
     } catch (error) {
         console.error("DASHBOARD DATA FETCH ERROR:", error);

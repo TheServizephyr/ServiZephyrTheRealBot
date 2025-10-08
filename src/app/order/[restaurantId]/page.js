@@ -84,7 +84,7 @@ const MenuItemCard = ({ item, quantity, onIncrement, onDecrement }) => {
         {item.tags && item.tags.length > 0 && (
             <div className="flex flex-wrap gap-2 mb-3">
                 {item.tags.map(tag => (
-                    <span key={tag} className="px-2 py-1 text-xs font-semibold rounded-full bg-primary/10 text-primary border border-primary/20 flex items-center gap-1">
+                    <span key={tag} className="px-2 py-1 text-xs font-bold rounded-full bg-primary/10 text-primary-foreground border border-primary/20 flex items-center gap-1">
                         <TagIcon size={12} /> {tag}
                     </span>
                 ))}
@@ -432,7 +432,7 @@ const OrderPageInternal = () => {
                                         exit={{ y: 100 }}
                                         transition={{ type: "spring", stiffness: 300, damping: 30 }}
                                     >
-                                        <div className="p-4 w-full">
+                                        <div className="w-full max-w-lg mx-auto">
                                             <Button onClick={handleCheckout} className="bg-green-600 hover:bg-green-700 h-14 text-lg font-bold rounded-lg shadow-green-500/30 flex justify-between items-center text-white w-full pointer-events-auto">
                                                 <div className="flex items-center gap-2">
                                                    <ShoppingCart className="h-6 w-6"/> 

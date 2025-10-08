@@ -310,7 +310,11 @@ export default function OwnerDashboardPage() {
                 </div>
             ) : (
                 <div className="flex overflow-x-auto pb-4 -mb-4">
-                    {dashboardData?.topItems?.map(item => <TopSellingItem key={item.name} {...item} />)}
+                    {dashboardData?.topItems && dashboardData.topItems.length > 0 ? (
+                        dashboardData.topItems.map(item => <TopSellingItem key={item.name} {...item} />)
+                    ) : (
+                        <div className="w-full text-center text-muted-foreground py-10">No sales data for this period yet.</div>
+                    )}
                 </div>
             )}
         </div>

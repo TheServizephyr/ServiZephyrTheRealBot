@@ -208,7 +208,10 @@ const AddItemModal = ({ isOpen, setIsOpen, onSave, editingItem, allCategories })
         if (isOpen) {
             setIsSaving(false);
             if (editingItem) {
-                setItem({ ...editingItem });
+                setItem({
+                    ...editingItem,
+                    tags: Array.isArray(editingItem.tags) ? editingItem.tags.join(', ') : '',
+                });
             } else {
                 setItem({
                     name: "",
@@ -219,6 +222,7 @@ const AddItemModal = ({ isOpen, setIsOpen, onSave, editingItem, allCategories })
                     isVeg: true,
                     isAvailable: true,
                     imageUrl: "",
+                    tags: "",
                 });
             }
         } else {
@@ -236,6 +240,8 @@ const AddItemModal = ({ isOpen, setIsOpen, onSave, editingItem, allCategories })
 
         setIsSaving(true);
         try {
+            const tagsArray = item.tags ? item.tags.split(',').map(tag => tag.trim()).filter(Boolean) : [];
+
             const newItemData = {
                 id: editingItem ? item.id : undefined,
                 name: item.name,
@@ -245,6 +251,7 @@ const AddItemModal = ({ isOpen, setIsOpen, onSave, editingItem, allCategories })
                 isVeg: item.isVeg,
                 isAvailable: item.isAvailable,
                 imageUrl: item.imageUrl || `https://picsum.photos/seed/${item.name.replace(/\s/g, '')}/100/100`,
+                tags: tagsArray,
             };
 
             if (!newItemData.name || !newItemData.fullPrice) {
@@ -274,7 +281,7 @@ const AddItemModal = ({ isOpen, setIsOpen, onSave, editingItem, allCategories })
                             {editingItem ? 'Update the details for this dish.' : "Fill in the details for the new dish. Click save when you're done."}
                         </DialogDescription>
                     </DialogHeader>
-                    <div className="grid gap-4 py-4">
+                    <div className="grid gap-4 py-4 max-h-[70vh] overflow-y-auto pr-4">
                         <div className="grid grid-cols-4 items-center gap-4">
                             <Label htmlFor="name" className="text-right">Name</Label>
                             <input id="name" value={item.name} onChange={e => handleChange('name', e.target.value)} required placeholder="e.g., Veg Pulao" className="col-span-3 p-2 border rounded-md bg-gray-800 border-gray-600 ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2" />
@@ -298,6 +305,10 @@ const AddItemModal = ({ isOpen, setIsOpen, onSave, editingItem, allCategories })
                                     <option key={key} value={key}>{allCategories[key].title}</option>
                                 ))}
                             </select>
+                        </div>
+                        <div className="grid grid-cols-4 items-center gap-4">
+                            <Label htmlFor="tags" className="text-right">Tags</Label>
+                            <input id="tags" value={item.tags} onChange={e => handleChange('tags', e.target.value)} placeholder="e.g., Spicy, Chef's Special" className="col-span-3 p-2 border rounded-md bg-gray-800 border-gray-600 ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2" />
                         </div>
                         <div className="flex items-center justify-end gap-4 pt-4">
                             <div className="flex items-center space-x-2">
