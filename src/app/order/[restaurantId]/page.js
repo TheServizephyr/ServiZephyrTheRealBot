@@ -5,7 +5,7 @@
 import React, { useState, useEffect, Suspense, useMemo } from 'react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Utensils, Plus, Minus, X, Home, User, Edit2, ShoppingCart, Star, CookingPot, BookOpen, Check, SlidersHorizontal, ArrowUpDown, PlusCircle, Ticket, Gift, Sparkles, Flame, Search, Trash2 } from 'lucide-react';
+import { Utensils, Plus, Minus, X, Home, User, Edit2, ShoppingCart, Star, CookingPot, BookOpen, Check, SlidersHorizontal, ArrowUpDown, PlusCircle, Ticket, Gift, Sparkles, Flame, Search, Trash2, ChevronDown } from 'lucide-react';
 import Image from 'next/image';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
@@ -170,6 +170,8 @@ const OrderPageInternal = () => {
         nonVeg: false,
         recommended: false,
     });
+    
+    const [openCategory, setOpenCategory] = useState(null);
 
     const [coupons, setCoupons] = useState(dummyData.coupons);
     const [loyaltyPoints, setLoyaltyPoints] = useState(dummyData.loyaltyPoints);
@@ -209,6 +211,21 @@ const OrderPageInternal = () => {
         }
         return newMenu;
     }, [rawMenu, sortBy, filters, searchQuery]);
+
+    const menuCategories = useMemo(() => Object.keys(processedMenu)
+        .map(key => ({
+            key,
+            title: key.charAt(0).toUpperCase() + key.slice(1).replace(/-/g, ' '),
+            count: (processedMenu[key] || []).length
+        }))
+        .filter(category => category.count > 0), [processedMenu]);
+
+    useEffect(() => {
+        if(menuCategories.length > 0 && openCategory === null) {
+            setOpenCategory(menuCategories[0].key);
+        }
+    }, [menuCategories, openCategory]);
+
 
     const handleFilterChange = (filterKey) => {
         setFilters(prev => {
@@ -280,13 +297,6 @@ const OrderPageInternal = () => {
 
     const totalCartItems = cart.reduce((sum, item) => sum + item.quantity, 0);
     
-    const menuCategories = Object.keys(processedMenu)
-        .map(key => ({
-            key,
-            title: key.charAt(0).toUpperCase() + key.slice(1).replace(/-/g, ' '),
-            count: (processedMenu[key] || []).length
-        }))
-        .filter(category => category.count > 0);
 
     const handleCategoryClick = (categoryId) => {
         const section = document.getElementById(categoryId);
@@ -380,26 +390,44 @@ const OrderPageInternal = () => {
 
             <div className="container mx-auto px-4 mt-6 pb-32">
                 <main>
-                    <div className="space-y-10">
+                    <div className="space-y-4">
                         {menuCategories.length > 0 ? menuCategories.map(({key, title}) => {
+                             const isExpanded = openCategory === key;
                             return (
-                                <section id={key} key={key} className="scroll-mt-24">
-                                    <h3 className="text-2xl font-bold mb-4 flex items-center gap-3"><Utensils /> {title}</h3>
-                                    <div className="grid grid-cols-1 gap-4">
-                                        {processedMenu[key].map(item => {
-                                            const cartItem = cart.find(ci => ci.id === item.id);
-                                            return (
-                                                <MenuItemCard 
-                                                    key={item.id} 
-                                                    item={item} 
-                                                    quantity={cartItem ? cartItem.quantity : 0}
-                                                    onIncrement={handleIncrement}
-                                                    onDecrement={handleDecrement}
-                                                />
-                                            )
-                                        })}
-                                    </div>
-                                </section>
+                                <motion.section layout id={key} key={key} className="scroll-mt-24 bg-card border border-border rounded-xl overflow-hidden">
+                                     <button className="flex items-center justify-between w-full p-4 hover:bg-muted/50 transition-colors" onClick={() => setOpenCategory(isExpanded ? null : key)}>
+                                        <h3 className="text-2xl font-bold flex items-center gap-3">{title}</h3>
+                                        <motion.div animate={{ rotate: isExpanded ? 180 : 0 }}>
+                                            <ChevronDown size={24}/>
+                                        </motion.div>
+                                    </button>
+                                     <AnimatePresence>
+                                        {isExpanded && (
+                                            <motion.div
+                                                initial={{ height: 0, opacity: 0 }}
+                                                animate={{ height: "auto", opacity: 1 }}
+                                                exit={{ height: 0, opacity: 0 }}
+                                                transition={{ duration: 0.3, ease: "easeInOut" }}
+                                                className="overflow-hidden"
+                                            >
+                                                <div className="grid grid-cols-1 gap-4 p-4 pt-0">
+                                                    {processedMenu[key].map(item => {
+                                                        const cartItem = cart.find(ci => ci.id === item.id);
+                                                        return (
+                                                            <MenuItemCard 
+                                                                key={item.id} 
+                                                                item={item} 
+                                                                quantity={cartItem ? cartItem.quantity : 0}
+                                                                onIncrement={handleIncrement}
+                                                                onDecrement={handleDecrement}
+                                                            />
+                                                        )
+                                                    })}
+                                                </div>
+                                            </motion.div>
+                                        )}
+                                    </AnimatePresence>
+                                </motion.section>
                             );
                         }) : (
                             <div className="text-center py-16 text-muted-foreground">
@@ -411,12 +439,27 @@ const OrderPageInternal = () => {
                 </main>
             </div>
 
-            <footer className="fixed bottom-0 left-0 right-0 p-4 z-30 pointer-events-none">
-                <div className="relative w-full mx-auto">
+             <footer className="fixed bottom-0 left-0 right-0 z-30 pointer-events-none">
+                <div className="container mx-auto p-4 w-full relative">
+                    <div className="flex justify-end w-full">
+                        
+                        <div className="flex-grow-0 flex-shrink-0">
+                             <motion.button
+                                onClick={() => setIsMenuBrowserOpen(true)}
+                                className="absolute right-4 bg-black text-white h-16 w-16 rounded-2xl shadow-lg flex flex-col items-center justify-center gap-1 border border-gray-700 pointer-events-auto"
+                                animate={{ bottom: totalCartItems > 0 ? 96 : 16 }}
+                                transition={{ type: "spring", stiffness: 400, damping: 30 }}
+                             >
+                                <BookOpen size={24} className="text-primary" />
+                                <span className="text-xs font-bold">Menu</span>
+                            </motion.button>
+                        </div>
+                    </div>
+                    
                     <AnimatePresence>
                         {totalCartItems > 0 && (
-                            <motion.div
-                                className="pointer-events-auto"
+                             <motion.div
+                                className="w-full pointer-events-auto absolute bottom-4"
                                 initial={{ y: 100 }}
                                 animate={{ y: 0 }}
                                 exit={{ y: 100 }}
@@ -432,16 +475,6 @@ const OrderPageInternal = () => {
                             </motion.div>
                         )}
                     </AnimatePresence>
-
-                    <motion.button
-                        onClick={() => setIsMenuBrowserOpen(true)}
-                        className="absolute right-0 bg-black text-white h-16 w-16 rounded-2xl shadow-lg flex flex-col items-center justify-center gap-1 border border-gray-700 pointer-events-auto"
-                        animate={{ bottom: totalCartItems > 0 ? 88 : 0 }}
-                        transition={{ type: "spring", stiffness: 400, damping: 30 }}
-                    >
-                        <BookOpen size={24} className="text-primary" />
-                        <span className="text-xs font-bold">Menu</span>
-                    </motion.button>
                 </div>
             </footer>
         </div>
