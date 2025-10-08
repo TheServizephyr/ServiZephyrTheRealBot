@@ -73,28 +73,28 @@ const MenuItemCard = ({ item, quantity, onIncrement, onDecrement }) => {
       <div className="relative w-24 h-24 rounded-md overflow-hidden bg-muted flex-shrink-0">
          <Image src={item.imageUrl} alt={item.name} layout="fill" objectFit="cover" data-ai-hint="food item" />
       </div>
-      <div className="flex-grow">
+      <div className="flex-grow flex flex-col">
         <div className="flex items-center gap-2 mb-1">
           <div className={`w-4 h-4 border ${item.isVeg ? 'border-green-500' : 'border-red-500'} flex items-center justify-center`}>
             <div className={`w-2 h-2 ${item.isVeg ? 'bg-green-500' : 'bg-red-500'} rounded-full`}></div>
           </div>
           <h4 className="font-semibold text-foreground">{item.name}</h4>
         </div>
-        <p className="text-sm text-muted-foreground mb-2">{item.description}</p>
+        <p className="text-sm text-muted-foreground mb-2 flex-grow">{item.description}</p>
         <div className="flex items-center gap-4">
             <p className="font-bold text-lg text-green-600">₹{item.fullPrice}</p>
-            {item.tags && item.tags.length > 0 && (
-                <div className="flex flex-wrap gap-2">
-                    {item.tags.map(tag => (
-                        <span key={tag} className="px-2 py-1 text-xs font-bold rounded-full bg-primary/10 text-primary-foreground border border-primary/20 flex items-center gap-1">
-                            <TagIcon size={12} /> {tag}
-                        </span>
-                    ))}
-                </div>
-            )}
         </div>
+         {item.tags && item.tags.length > 0 && (
+            <div className="flex flex-wrap gap-2 mt-2">
+                {item.tags.map(tag => (
+                    <span key={tag} className="px-2 py-1 text-xs font-bold rounded-full bg-primary/10 text-primary-foreground border border-primary/20 flex items-center gap-1">
+                        <TagIcon size={12} /> {tag}
+                    </span>
+                ))}
+            </div>
+        )}
       </div>
-      <div className="flex flex-col items-center justify-center h-full">
+      <div className="flex flex-col items-center justify-center h-full flex-shrink-0 ml-4">
         {quantity > 0 ? (
           <div className="flex items-center gap-1 bg-background p-1 rounded-lg border border-border">
             <Button size="icon" variant="ghost" className="h-8 w-8 text-green-600" onClick={() => onDecrement(item)}><Minus size={16}/></Button>
@@ -444,13 +444,13 @@ const OrderPageInternal = () => {
                 <AnimatePresence>
                 {totalCartItems > 0 && (
                     <motion.div
-                        className="bg-background/80 backdrop-blur-lg border-t border-border p-4 pointer-events-auto"
+                        className="bg-background/80 backdrop-blur-lg border-t border-border pointer-events-auto"
                         initial={{ y: "100%" }}
                         animate={{ y: 0 }}
                         exit={{ y: "100%" }}
                         transition={{ type: "spring", stiffness: 300, damping: 30 }}
                     >
-                        <div className="container mx-auto">
+                        <div className="container mx-auto px-4 py-4">
                             <Button onClick={handleCheckout} className="bg-green-600 hover:bg-green-700 h-14 text-lg font-bold rounded-lg shadow-green-500/30 flex justify-between items-center text-white w-full">
                                 <div className="flex items-center gap-2">
                                    <ShoppingCart className="h-6 w-6"/> 
