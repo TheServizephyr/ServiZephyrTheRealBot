@@ -132,9 +132,12 @@ export default function Home() {
         <section className="w-full py-20 md:py-32">
           <div className="container px-4 md:px-6 text-center">
             <div className="max-w-4xl mx-auto">
-              <h1 className="font-headline text-5xl md:text-7xl tracking-tight leading-tight text-foreground">
-                Apna Restaurant, Apne Rules. <br/> 30% Commission ko Good Bye Kahein.
+              <h1 className="font-headline text-5xl md:text-7xl tracking-tighter leading-tight text-foreground">
+                Apna Restaurant, Apne Rules.
               </h1>
+              <h2 className="font-headline text-5xl md:text-7xl tracking-tighter leading-tight text-foreground mt-2">
+                30% Commission ko Good Bye Kahein.
+              </h2>
               <p className="max-w-2xl mx-auto mt-6 text-lg text-muted-foreground font-body">
                 ServiZephyr aapke WhatsApp ko ek powerful profit machine mein badal deta hai. Paayein apna personal bot, smart dashboard, aur marketing tools.
               </p>
