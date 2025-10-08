@@ -412,7 +412,7 @@ const OrderPageInternal = () => {
             </div>
 
             <footer className="fixed bottom-0 left-0 right-0 p-4 z-30 pointer-events-none">
-                <div className="relative w-full max-w-lg mx-auto">
+                <div className="relative w-full container mx-auto">
                     <AnimatePresence>
                         {totalCartItems > 0 && (
                             <motion.div
@@ -422,10 +422,7 @@ const OrderPageInternal = () => {
                                 exit={{ y: 100 }}
                                 transition={{ type: "spring", stiffness: 300, damping: 30 }}
                             >
-                                <div className="bg-background/80 backdrop-blur-lg border border-border rounded-xl shadow-lg flex items-center gap-2 p-2">
-                                     <Button variant="destructive" size="icon" className="h-14 w-14 rounded-lg flex-shrink-0" onClick={() => setIsClearCartDialogOpen(true)}>
-                                        <Trash2 />
-                                    </Button>
+                                <div className="bg-background/80 backdrop-blur-lg border border-border rounded-xl shadow-lg p-2">
                                     <Button onClick={handleCheckout} className="bg-green-600 hover:bg-green-700 h-14 text-lg font-bold rounded-lg shadow-green-500/30 flex justify-between items-center text-white w-full">
                                         <div className="flex items-center gap-2">
                                            <ShoppingCart className="h-6 w-6"/> 
@@ -460,5 +457,3 @@ const OrderPage = () => (
 );
 
 export default OrderPage;
-
-    
