@@ -81,16 +81,18 @@ const MenuItemCard = ({ item, quantity, onIncrement, onDecrement }) => {
           <h4 className="font-semibold text-foreground">{item.name}</h4>
         </div>
         <p className="text-sm text-muted-foreground mb-2">{item.description}</p>
-        {item.tags && item.tags.length > 0 && (
-            <div className="flex flex-wrap gap-2 mb-3">
-                {item.tags.map(tag => (
-                    <span key={tag} className="px-2 py-1 text-xs font-bold rounded-full bg-primary/10 text-primary-foreground border border-primary/20 flex items-center gap-1">
-                        <TagIcon size={12} /> {tag}
-                    </span>
-                ))}
-            </div>
-        )}
-        <p className="font-bold text-lg text-green-600">₹{item.fullPrice}</p>
+        <div className="flex items-center gap-4">
+            <p className="font-bold text-lg text-green-600">₹{item.fullPrice}</p>
+            {item.tags && item.tags.length > 0 && (
+                <div className="flex flex-wrap gap-2">
+                    {item.tags.map(tag => (
+                        <span key={tag} className="px-2 py-1 text-xs font-bold rounded-full bg-primary/10 text-primary-foreground border border-primary/20 flex items-center gap-1">
+                            <TagIcon size={12} /> {tag}
+                        </span>
+                    ))}
+                </div>
+            )}
+        </div>
       </div>
       <div className="flex flex-col items-center justify-center h-full">
         {quantity > 0 ? (
@@ -421,6 +423,41 @@ const OrderPageInternal = () => {
 
             <footer className="fixed bottom-0 left-0 right-0 z-30 pointer-events-none">
                 <AnimatePresence>
+                    {totalCartItems > 0 && (
+                         <motion.div
+                            className="absolute bottom-20 right-4"
+                            initial={{ opacity: 0, scale: 0.8 }}
+                            animate={{ opacity: 1, scale: 1 }}
+                            exit={{ opacity: 0, scale: 0.8 }}
+                         >
+                            <button
+                                onClick={() => setIsMenuBrowserOpen(true)}
+                                className="bg-black text-white h-16 w-16 rounded-2xl shadow-lg flex flex-col items-center justify-center gap-1 border border-gray-700 pointer-events-auto"
+                            >
+                                <BookOpen size={24} className="text-primary" />
+                                <span className="text-xs font-bold">Menu</span>
+                            </button>
+                        </motion.div>
+                    )}
+                </AnimatePresence>
+                
+                <motion.div
+                    className="p-4"
+                    initial={{ y: "100%" }}
+                    animate={{ y: totalCartItems > 0 ? 0 : "100%"}}
+                    exit={{ y: "100%" }}
+                    transition={{ type: "spring", stiffness: 300, damping: 30 }}
+                >
+                    <Button onClick={handleCheckout} className="bg-green-600 hover:bg-green-700 h-14 text-lg font-bold rounded-lg shadow-green-500/30 flex justify-between items-center text-white w-full pointer-events-auto">
+                        <div className="flex items-center gap-2">
+                           <ShoppingCart className="h-6 w-6"/> 
+                           <span>{totalCartItems} {totalCartItems > 1 ? 'Items' : 'Item'}</span>
+                        </div>
+                        <span>View Cart | ₹{subtotal}</span>
+                    </Button>
+                </motion.div>
+
+                 <AnimatePresence>
                     {totalCartItems === 0 && (
                         <motion.div
                             className="absolute bottom-4 right-4"
@@ -435,37 +472,6 @@ const OrderPageInternal = () => {
                                 <BookOpen size={24} className="text-primary" />
                                 <span className="text-xs font-bold">Menu</span>
                             </button>
-                        </motion.div>
-                    )}
-                </AnimatePresence>
-                
-                <AnimatePresence>
-                    {totalCartItems > 0 && (
-                        <motion.div
-                            className="p-4"
-                            initial={{ y: "100%" }}
-                            animate={{ y: 0 }}
-                            exit={{ y: "100%" }}
-                            transition={{ type: "spring", stiffness: 300, damping: 30 }}
-                        >
-                           <div className="container mx-auto">
-                             <div className="bg-background/80 backdrop-blur-lg border border-border rounded-xl shadow-lg flex items-center gap-2 p-2 pointer-events-auto">
-                                <Button onClick={handleCheckout} className="bg-green-600 hover:bg-green-700 h-14 text-lg font-bold flex-grow flex justify-between items-center text-white">
-                                    <div className="flex items-center gap-2">
-                                       <ShoppingCart className="h-6 w-6"/> 
-                                       <span>{totalCartItems} {totalCartItems > 1 ? 'Items' : 'Item'}</span>
-                                    </div>
-                                    <span>View Cart | ₹{subtotal}</span>
-                                </Button>
-                                <button
-                                    onClick={() => setIsMenuBrowserOpen(true)}
-                                    className="bg-black text-white h-14 w-14 rounded-lg shadow-lg flex flex-col items-center justify-center gap-1 border border-gray-700 flex-shrink-0"
-                                >
-                                    <BookOpen size={20} className="text-primary" />
-                                    <span className="text-xs font-bold">Menu</span>
-                                </button>
-                            </div>
-                           </div>
                         </motion.div>
                     )}
                 </AnimatePresence>
