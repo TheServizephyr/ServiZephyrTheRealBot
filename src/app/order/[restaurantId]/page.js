@@ -86,271 +86,6 @@ const MenuItemCard = ({ item, quantity, onIncrement, onDecrement }) => {
   );
 };
 
-
-const CartDrawer = ({ cart, onUpdateCart, onClose, onCheckout, notes, setNotes, coupons, loyaltyPointsData, deliveryCharge, appliedCoupon, setAppliedCoupon, loyaltyDiscount, setLoyaltyDiscount, couponDiscount, finalDeliveryCharge, grandTotal, subtotal, cgst, sgst }) => {
-
-    const handleApplyCoupon = (couponToApply) => {
-        if (subtotal >= couponToApply.minOrder) {
-            setAppliedCoupon(couponToApply);
-        } else {
-             // Silently fail or show a subtle message, but no alert
-             console.log(`Min order for ${couponToApply.code} not met.`);
-        }
-    };
-    
-    const handleRemoveCoupon = () => {
-        setAppliedCoupon(null);
-    };
-    
-    const handleRedeemPoints = () => {
-        if(loyaltyPointsData >= 100) {
-            const redeemableAmount = Math.floor(loyaltyPointsData * 0.5); // 1 point = 0.5 Rs, floor to avoid paise issues
-            setLoyaltyDiscount(redeemableAmount);
-        } else {
-            console.log("Not enough points to redeem.");
-        }
-    }
-
-    return (
-        <motion.div 
-            initial={{ y: "100%" }}
-            animate={{ y: 0 }}
-            exit={{ y: "100%" }}
-            transition={{ type: "spring", stiffness: 300, damping: 30 }}
-            className="fixed bottom-0 left-0 right-0 h-[90vh] bg-background border-t border-border rounded-t-2xl z-40 flex flex-col"
-        >
-            <div className="p-4 border-b border-border flex justify-between items-center flex-shrink-0">
-                <h2 className="text-xl font-bold">Your Order Summary</h2>
-                <Button variant="ghost" size="icon" onClick={onClose}><X /></Button>
-            </div>
-
-            <div className="flex-grow p-4 overflow-y-auto">
-                {cart.length === 0 ? (
-                    <div className="h-full flex items-center justify-center text-muted-foreground">Your cart is empty</div>
-                ) : (
-                    <div className="space-y-3">
-                        {cart.map(item => (
-                            <div key={item.id} className="flex items-center gap-4 bg-card p-3 rounded-lg">
-                                <p className="flex-grow font-semibold text-foreground">{item.name}</p>
-                                <div className="flex items-center gap-2">
-                                    <Button size="icon" variant="outline" className="h-7 w-7" onClick={() => onUpdateCart(item, 'decrement')}>-</Button>
-                                    <span className="font-bold w-5 text-center">{item.quantity}</span>
-                                    <Button size="icon" variant="outline" className="h-7 w-7" onClick={() => onUpdateCart(item, 'increment')}>+</Button>
-                                </div>
-                                <p className="w-20 text-right font-bold">₹{item.fullPrice * item.quantity}</p>
-                            </div>
-                        ))}
-                    </div>
-                )}
-                 {cart.length > 0 && (
-                     <>
-                        <div className="p-4 border-t border-border bg-card/50 flex-shrink-0 mt-4 rounded-lg">
-                            <div className="relative">
-                                <CookingPot className="absolute left-3 top-3 h-5 w-5 text-muted-foreground"/>
-                                <textarea 
-                                  value={notes}
-                                  onChange={(e) => setNotes(e.target.value)}
-                                  placeholder="Add cooking instructions... (e.g., make it extra spicy)"
-                                  rows={2}
-                                  className="w-full pl-10 pr-4 py-2 rounded-md bg-input border border-border text-sm"
-                                />
-                            </div>
-                        </div>
-
-                         <div className="p-4 border-t border-border bg-card/50 flex-shrink-0 mt-4 rounded-lg">
-                            <h4 className="font-semibold mb-3 flex items-center gap-2"><Ticket/> Available Coupons</h4>
-                            <div className="space-y-2">
-                                {coupons && coupons.length > 0 ? coupons.map(coupon => (
-                                    <div key={coupon.id} className="flex justify-between items-center bg-background p-3 rounded-md border border-dashed border-green-600/30">
-                                        <div>
-                                            <p className="font-bold text-green-600">{coupon.code}</p>
-                                            <p className="text-xs text-muted-foreground">{coupon.description}</p>
-                                        </div>
-                                        {appliedCoupon?.id === coupon.id ? (
-                                            <Button variant="outline" size="sm" onClick={handleRemoveCoupon} className="text-red-400 border-red-400 hover:bg-red-400 hover:text-white">
-                                                Remove
-                                            </Button>
-                                        ) : (
-                                            <Button 
-                                                variant="outline"
-                                                size="sm"
-                                                onClick={() => handleApplyCoupon(coupon)} 
-                                                disabled={!!appliedCoupon}
-                                                className="text-green-600 border-green-600 hover:bg-green-600 hover:text-white disabled:opacity-50"
-                                            >
-                                                Apply
-                                            </Button>
-                                        )}
-                                    </div>
-                                )) : (
-                                    <p className="text-sm text-muted-foreground text-center py-2">No coupons available at the moment.</p>
-                                )}
-                            </div>
-                        </div>
-
-                        <div className="p-4 border-t border-border bg-card/50 flex-shrink-0 mt-4 rounded-lg">
-                            <h4 className="font-semibold mb-2 flex items-center gap-2"><Gift/> Loyalty Points</h4>
-                            <div className="flex justify-between items-center">
-                                <p className="text-muted-foreground">You have <span className="font-bold text-green-600">{loyaltyPointsData || 0}</span> points.</p>
-                                <Button variant="outline" onClick={handleRedeemPoints} disabled={(loyaltyPointsData || 0) < 100 || loyaltyDiscount > 0}>
-                                    {loyaltyDiscount > 0 ? "Redeemed!" : "Redeem Now"}
-                                </Button>
-                            </div>
-                        </div>
-                    </>
-                 )}
-            </div>
-
-            {cart.length > 0 && (
-                <div className="p-4 border-t-2 border-green-600 bg-background flex-shrink-0 shadow-lg">
-                    <div className="space-y-1 text-sm mb-4">
-                         <div className="flex justify-between"><span>Subtotal:</span> <span className="font-medium">₹{subtotal.toFixed(2)}</span></div>
-                         {couponDiscount > 0 && <div className="flex justify-between text-green-400"><span>Coupon Discount:</span> <span className="font-medium">- ₹{couponDiscount.toFixed(2)}</span></div>}
-                         {loyaltyDiscount > 0 && <div className="flex justify-between text-green-400"><span>Loyalty Discount:</span> <span className="font-medium">- ₹{loyaltyDiscount.toFixed(2)}</span></div>}
-                         <div className="flex justify-between"><span>Delivery Fee:</span> {finalDeliveryCharge > 0 ? <span>₹{finalDeliveryCharge.toFixed(2)}</span> : <span className="text-green-400 font-bold">FREE</span>}</div>
-                         <div className="flex justify-between"><span>CGST ({5}%):</span> <span className="font-medium">₹{cgst.toFixed(2)}</span></div>
-                         <div className="flex justify-between"><span>SGST ({5}%):</span> <span className="font-medium">₹{sgst.toFixed(2)}</span></div>
-                         <div className="border-t border-dashed border-border my-2"></div>
-                         <div className="flex justify-between items-center text-lg font-bold"><span>Grand Total:</span> <span>₹{grandTotal > 0 ? grandTotal.toFixed(2) : '0.00'}</span></div>
-                    </div>
-                     <Button onClick={onCheckout} className="w-full bg-green-600 hover:bg-green-700 h-12 text-lg font-bold text-white">
-                        Proceed to Checkout
-                    </Button>
-                </div>
-            )}
-        </motion.div>
-    )
-};
-
-
-const CheckoutModal = ({ isOpen, onClose, restaurantId, phone, cart, notes, appliedCoupon, couponDiscount, loyaltyDiscount }) => {
-    const [name, setName] = useState('');
-    const [address, setAddress] = useState('');
-    const [error, setError] = useState('');
-    const [loading, setLoading] = useState(false);
-    const [isExistingUser, setIsExistingUser] = useState(false);
-    const [savedAddresses, setSavedAddresses] = useState([]);
-    const [selectedAddress, setSelectedAddress] = useState(null);
-    const [isAddingNew, setIsAddingNew] = useState(true); // Default to adding new for demo
-
-    // Simplified effect for demo: just reset the form on open
-    useEffect(() => {
-        if (isOpen) {
-            setLoading(false);
-            setError('');
-            setIsAddingNew(true);
-            // Simulate a returning user with saved addresses for demo purposes
-            if (phone === '9876543210') {
-                setName('Rohan Sharma (Demo)');
-                setSavedAddresses([{ id: 'addr_1', full: '123, Cyber Street, Tech City' }]);
-                setSelectedAddress('123, Cyber Street, Tech City');
-                setIsAddingNew(false);
-                setIsExistingUser(true);
-            } else {
-                 setName('');
-                 setAddress('');
-                 setSavedAddresses([]);
-                 setSelectedAddress(null);
-                 setIsAddingNew(true);
-                 setIsExistingUser(false);
-            }
-        }
-    }, [isOpen, phone]);
-
-
-    const handlePlaceOrder = async () => {
-        const finalAddress = isAddingNew ? address : selectedAddress;
-
-        if (!finalAddress) {
-            setError('Please select or add a delivery address.');
-            return;
-        }
-        if (!name.trim()) {
-            setError('Please enter your name.');
-            return;
-        }
-
-        setError('');
-        setLoading(true);
-        
-        // Simulate API call
-        setTimeout(() => {
-            alert("Success! (Demo) - Your order has been placed.");
-            setLoading(false);
-            onClose();
-             window.location.reload(); // Simulate page refresh after order
-        }, 1500);
-    };
-
-    const renderContent = () => {
-        return (
-            <div className="space-y-4">
-                {(isExistingUser && savedAddresses.length > 0) && (
-                     <div className="space-y-4">
-                        <h3 className="font-semibold">Welcome back, {name}! Select an address:</h3>
-                        <div className="space-y-2 max-h-48 overflow-y-auto pr-2">
-                            {savedAddresses.map((addr) => (
-                                <div key={addr.id} onClick={() => { setSelectedAddress(addr.full); setIsAddingNew(false); }}
-                                     className={cn("p-3 rounded-lg border cursor-pointer", selectedAddress === addr.full && !isAddingNew ? "border-green-600 bg-green-600/10" : "border-border")}>
-                                    {addr.full}
-                                </div>
-                            ))}
-                        </div>
-                    </div>
-                )}
-
-                {isAddingNew ? (
-                     <div className="space-y-4 pt-2">
-                         {!isExistingUser && (
-                            <div>
-                                <Label htmlFor="checkout-name">Full Name</Label>
-                                <div className="relative">
-                                    <User className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
-                                    <input id="checkout-name" type="text" value={name} onChange={(e) => setName(e.target.value)} required className="w-full pl-10 pr-4 py-2 rounded-md bg-input border border-border" placeholder="Enter your full name" />
-                                </div>
-                            </div>
-                         )}
-                        <div>
-                            <Label htmlFor="checkout-address">Delivery Address</Label>
-                            <div className="relative">
-                                <Home className="absolute left-3 top-3 h-5 w-5 text-muted-foreground" />
-                                <textarea id="checkout-address" value={address} onChange={(e) => setAddress(e.target.value)} required rows={3} className="w-full pl-10 pr-4 py-2 rounded-md bg-input border border-border" placeholder="Enter your full delivery address" />
-                            </div>
-                        </div>
-                    </div>
-                ) : (
-                    <Button variant="outline" className="w-full" onClick={() => { setIsAddingNew(true); setSelectedAddress(null); }}>
-                        <PlusCircle className="mr-2 h-4 w-4"/> Add New Address
-                    </Button>
-                )}
-            </div>
-        );
-    }
-
-    return (
-        <Dialog open={isOpen} onOpenChange={onClose}>
-            <DialogContent className="bg-background border-border text-foreground">
-                <DialogHeader>
-                    <DialogTitle className="text-2xl">Confirm Your Details</DialogTitle>
-                    <DialogDescription>Please provide your delivery details to place the order.</DialogDescription>
-                </DialogHeader>
-
-                <div className="py-4">
-                    {renderContent()}
-                    {error && <p className="text-red-500 text-sm text-center mt-4">{error}</p>}
-                </div>
-
-                <DialogFooter>
-                    <DialogClose asChild><Button variant="secondary" disabled={loading}>Cancel</Button></DialogClose>
-                    <Button onClick={handlePlaceOrder} className="bg-green-600 hover:bg-green-700 text-white" disabled={loading}>
-                        {loading ? 'Placing Order...' : 'Confirm & Place Order'}
-                    </Button>
-                </DialogFooter>
-            </DialogContent>
-        </Dialog>
-    );
-}
-
 const MenuBrowserModal = ({ isOpen, onClose, categories, onCategoryClick }) => {
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
@@ -395,6 +130,7 @@ const RatingBadge = ({ rating }) => {
 
 
 const OrderPageInternal = () => {
+    const router = useRouter();
     const params = useParams();
     const searchParams = useSearchParams();
     const { restaurantId } = params;
@@ -407,8 +143,6 @@ const OrderPageInternal = () => {
     const [rawMenu, setRawMenu] = useState(dummyData.menu);
     const [loading, setLoading] = useState(false); // No loading from backend
     const [cart, setCart] = useState([]);
-    const [isCartOpen, setIsCartOpen] = useState(false);
-    const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
     const [isMenuBrowserOpen, setIsMenuBrowserOpen] = useState(false);
     const [notes, setNotes] = useState("");
     
@@ -424,9 +158,7 @@ const OrderPageInternal = () => {
     // Coupon and Discount State
     const [coupons, setCoupons] = useState(dummyData.coupons);
     const [loyaltyPoints, setLoyaltyPoints] = useState(dummyData.loyaltyPoints);
-    const [appliedCoupon, setAppliedCoupon] = useState(null);
-    const [loyaltyDiscount, setLoyaltyDiscount] = useState(0);
-
+    
     // Removed useEffect for fetching data
     
     const processedMenu = useMemo(() => {
@@ -473,25 +205,6 @@ const OrderPageInternal = () => {
 
     const subtotal = useMemo(() => cart.reduce((sum, item) => sum + item.fullPrice * item.quantity, 0), [cart]);
 
-    const couponDiscount = useMemo(() => {
-        if (!appliedCoupon) return 0;
-        if (subtotal < appliedCoupon.minOrder) {
-            setAppliedCoupon(null);
-            return 0;
-        }
-        if (appliedCoupon.type === 'flat') return appliedCoupon.value;
-        if (appliedCoupon.type === 'percentage') return (subtotal * appliedCoupon.value) / 100;
-        return 0;
-    }, [appliedCoupon, subtotal]);
-
-    const finalDeliveryCharge = useMemo(() => appliedCoupon?.type === 'free_delivery' ? 0 : deliveryCharge, [appliedCoupon, deliveryCharge]);
-
-    const { cgst, sgst, grandTotal } = useMemo(() => {
-        const taxableAmount = subtotal - couponDiscount - loyaltyDiscount;
-        const tax = taxableAmount > 0 ? taxableAmount * 0.05 : 0;
-        const total = taxableAmount + finalDeliveryCharge + (tax * 2);
-        return { cgst: tax, sgst: tax, grandTotal: total };
-    }, [subtotal, couponDiscount, loyaltyDiscount, finalDeliveryCharge]);
 
     const handleIncrement = (item) => {
         setCart(prevCart => {
@@ -519,11 +232,6 @@ const OrderPageInternal = () => {
         });
     };
     
-    const handleCartUpdate = (item, action) => {
-        if(action === 'increment') handleIncrement(item);
-        if(action === 'decrement') handleDecrement(item);
-    }
-
     const totalCartItems = cart.reduce((sum, item) => sum + item.quantity, 0);
     
     const menuCategories = Object.keys(processedMenu)
@@ -544,8 +252,21 @@ const OrderPageInternal = () => {
     }
 
     const handleCheckout = () => {
-        setIsCartOpen(false);
-        setIsCheckoutOpen(true);
+       // 1. Save cart and other necessary info to localStorage
+        const cartData = {
+            cart,
+            notes,
+            restaurantId,
+            restaurantName,
+            phone,
+            coupons,
+            loyaltyPoints,
+            deliveryCharge,
+        };
+        localStorage.setItem('cartData', JSON.stringify(cartData));
+
+        // 2. Navigate to the new cart page
+        router.push('/cart');
     };
 
     if (loading) {
@@ -558,13 +279,7 @@ const OrderPageInternal = () => {
     
     return (
         <div className="min-h-screen bg-background text-foreground">
-            <CheckoutModal isOpen={isCheckoutOpen} onClose={() => setIsCheckoutOpen(false)} restaurantId={restaurantId} phone={phone} cart={cart} notes={notes} appliedCoupon={appliedCoupon} couponDiscount={couponDiscount} loyaltyDiscount={loyaltyDiscount} />
             <MenuBrowserModal isOpen={isMenuBrowserOpen} onClose={() => setIsMenuBrowserOpen(false)} categories={menuCategories} onCategoryClick={handleCategoryClick} />
-            
-            <AnimatePresence>
-                {isCartOpen && <motion.div initial={{opacity: 0}} animate={{opacity: 1}} exit={{opacity: 0}} className="fixed inset-0 bg-black/60 z-30" onClick={() => setIsCartOpen(false)} />}
-                {isCartOpen && <CartDrawer cart={cart} onUpdateCart={handleCartUpdate} onClose={() => setIsCartOpen(false)} onCheckout={handleCheckout} notes={notes} setNotes={setNotes} coupons={coupons} loyaltyPointsData={loyaltyPoints} deliveryCharge={deliveryCharge} appliedCoupon={appliedCoupon} setAppliedCoupon={setAppliedCoupon} loyaltyDiscount={loyaltyDiscount} setLoyaltyDiscount={setLoyaltyDiscount} couponDiscount={couponDiscount} finalDeliveryCharge={finalDeliveryCharge} grandTotal={grandTotal} subtotal={subtotal} cgst={cgst} sgst={sgst} />}
-            </AnimatePresence>
 
             <header className="sticky top-0 z-20 bg-background/80 backdrop-blur-lg border-b border-border">
                 <div className="container mx-auto px-4 py-3 flex justify-between items-center">
@@ -671,7 +386,7 @@ const OrderPageInternal = () => {
                                 exit={{ y: 100 }}
                                 transition={{ type: "spring", stiffness: 300, damping: 30 }}
                             >
-                                <Button onClick={() => setIsCartOpen(true)} className="bg-green-600 hover:bg-green-700 h-14 text-lg font-bold rounded-xl shadow-lg shadow-green-500/30 flex justify-between items-center text-white w-full">
+                                <Button onClick={handleCheckout} className="bg-green-600 hover:bg-green-700 h-14 text-lg font-bold rounded-xl shadow-lg shadow-green-500/30 flex justify-between items-center text-white w-full">
                                     <div className="flex items-center gap-2">
                                        <ShoppingCart className="h-6 w-6"/> 
                                        <span>{totalCartItems} {totalCartItems > 1 ? 'Items' : 'Item'}</span>
@@ -708,5 +423,3 @@ const OrderPage = () => (
 );
 
 export default OrderPage;
-
-    
