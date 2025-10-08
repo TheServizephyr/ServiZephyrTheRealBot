@@ -38,7 +38,7 @@ const Header = () => {
       >
         <div className="container mx-auto flex h-20 items-center justify-between px-4 md:px-6">
           <Link href="/" className="flex items-center justify-center">
-            <Image src="/logo-white.png" alt="ServiZephyr Logo" width={192} height={64} style={{height: 'auto'}} priority />
+            <Image src="/logo.png" alt="ServiZephyr Logo" width={192} height={64} style={{height: 'auto'}} priority />
           </Link>
           <nav className="hidden items-center gap-6 md:flex">
             <Link href="#product" className="group relative text-sm font-medium text-gray-300 transition-colors hover:text-primary">

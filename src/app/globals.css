@@ -83,3 +83,18 @@
     @apply bg-background text-foreground;
   }
 }
+
+@layer components {
+  .marquee {
+    animation: marquee 60s linear infinite;
+  }
+
+  .marquee-container:hover .marquee {
+    animation-play-state: paused;
+  }
+
+  @keyframes marquee {
+    0% { transform: translateX(0); }
+    100% { transform: translateX(-50%); }
+  }
+}

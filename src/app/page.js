@@ -344,7 +344,7 @@ export default function Home() {
           variants={sectionVariants}
         >
           <h2 className="mb-12 text-center text-3xl font-bold tracking-tighter sm:text-4xl md:text-5xl text-foreground">Don't Just Take Our Word for It</h2>
-          <div className="relative w-full overflow-hidden">
+          <div className="relative w-full overflow-hidden marquee-container">
             <div className="flex marquee">
               {[...testimonials, ...testimonials].map((testimonial, index) => (
                 <Card key={index} className="mx-4 flex-shrink-0" style={{width: '350px'}}>
