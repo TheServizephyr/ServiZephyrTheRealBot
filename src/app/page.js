@@ -1,3 +1,4 @@
+
 'use client'
 
 import { motion, useInView, animate } from 'framer-motion'
@@ -157,24 +158,36 @@ export default function Home() {
           viewport={{ once: true, amount: 0.5 }}
           variants={sectionVariants}
         >
-          <div className="grid grid-cols-1 gap-8 text-center md:grid-cols-3">
-            <div className="rounded-lg border bg-card p-8 shadow-sm">
+          <div className="grid grid-cols-1 gap-8 text-center sm:grid-cols-2 md:grid-cols-5">
+            <div className="rounded-lg border bg-secondary p-8 shadow-sm transition-all duration-300 hover:shadow-lg hover:-translate-y-2">
               <h3 className="text-5xl font-bold text-primary">
                 <AnimatedNumber value={30} suffix="%" />+
               </h3>
               <p className="mt-2 text-muted-foreground">Commission Saved</p>
             </div>
-            <div className="rounded-lg border bg-card p-8 shadow-sm">
+            <div className="rounded-lg border bg-secondary p-8 shadow-sm transition-all duration-300 hover:shadow-lg hover:-translate-y-2">
               <h3 className="text-5xl font-bold text-primary">
                 <AnimatedNumber value={40} suffix="%" />+
               </h3>
               <p className="mt-2 text-muted-foreground">Increase in Repeat Orders</p>
             </div>
-            <div className="rounded-lg border bg-secondary p-8 shadow-sm">
+            <div className="rounded-lg border bg-secondary p-8 shadow-sm transition-all duration-300 hover:shadow-lg hover:-translate-y-2">
               <h3 className="text-5xl font-bold text-primary">
                 <AnimatedNumber value={100} suffix="%" />
               </h3>
               <p className="mt-2 text-muted-foreground">Customer Data Ownership</p>
+            </div>
+            <div className="rounded-lg border bg-secondary p-8 shadow-sm transition-all duration-300 hover:shadow-lg hover:-translate-y-2">
+              <h3 className="text-5xl font-bold text-primary">
+                <AnimatedNumber value={500} suffix="+" />
+              </h3>
+              <p className="mt-2 text-muted-foreground">Happy Restaurants</p>
+            </div>
+             <div className="rounded-lg border bg-secondary p-8 shadow-sm transition-all duration-300 hover:shadow-lg hover:-translate-y-2">
+              <h3 className="text-5xl font-bold text-primary">
+                <AnimatedNumber value={25000} suffix="+" />
+              </h3>
+              <p className="mt-2 text-muted-foreground">Happy Users</p>
             </div>
           </div>
         </motion.section>
