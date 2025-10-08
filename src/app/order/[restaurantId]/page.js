@@ -412,7 +412,7 @@ const OrderPageInternal = () => {
             </div>
 
             <footer className="fixed bottom-0 left-0 right-0 p-4 z-30 pointer-events-none">
-                <div className="relative w-full container mx-auto">
+                <div className="relative w-full mx-auto">
                     <AnimatePresence>
                         {totalCartItems > 0 && (
                             <motion.div
