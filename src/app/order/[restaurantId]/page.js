@@ -413,39 +413,41 @@ const OrderPageInternal = () => {
 
             <footer className="fixed bottom-0 z-30 w-full p-4">
                 <div className="container mx-auto flex justify-between items-center gap-4">
-                    <AnimatePresence>
-                        {totalCartItems > 0 && (
-                             <motion.div
-                                initial={{ opacity: 0, scale: 0.5 }}
-                                animate={{ opacity: 1, scale: 1 }}
-                                exit={{ opacity: 0, scale: 0.5 }}
-                                transition={{ type: "spring", stiffness: 500, damping: 30 }}
-                            >
-                                <Button variant="destructive" size="icon" className="h-14 w-14 rounded-2xl shadow-lg" onClick={() => setIsClearCartDialogOpen(true)}>
-                                    <Trash2 />
-                                </Button>
-                            </motion.div>
-                        )}
-                    </AnimatePresence>
-                    <AnimatePresence>
-                        {totalCartItems > 0 && (
-                            <motion.div
-                                className="flex-grow"
-                                initial={{ y: 100 }}
-                                animate={{ y: 0 }}
-                                exit={{ y: 100 }}
-                                transition={{ type: "spring", stiffness: 300, damping: 30 }}
-                            >
-                                <Button onClick={handleCheckout} className="bg-green-600 hover:bg-green-700 h-14 text-lg font-bold rounded-xl shadow-lg shadow-green-500/30 flex justify-between items-center text-white w-full">
-                                    <div className="flex items-center gap-2">
-                                       <ShoppingCart className="h-6 w-6"/> 
-                                       <span>{totalCartItems} {totalCartItems > 1 ? 'Items' : 'Item'}</span>
-                                    </div>
-                                    <span>View Cart | ₹{subtotal}</span>
-                                </Button>
-                            </motion.div>
-                        )}
-                    </AnimatePresence>
+                    <div className="flex-1 flex items-center gap-4">
+                        <AnimatePresence>
+                            {totalCartItems > 0 && (
+                                <motion.div
+                                    initial={{ opacity: 0, scale: 0.5 }}
+                                    animate={{ opacity: 1, scale: 1 }}
+                                    exit={{ opacity: 0, scale: 0.5 }}
+                                    transition={{ type: "spring", stiffness: 500, damping: 30 }}
+                                >
+                                    <Button variant="destructive" size="icon" className="h-14 w-14 rounded-2xl shadow-lg" onClick={() => setIsClearCartDialogOpen(true)}>
+                                        <Trash2 />
+                                    </Button>
+                                </motion.div>
+                            )}
+                        </AnimatePresence>
+                        <AnimatePresence>
+                            {totalCartItems > 0 && (
+                                <motion.div
+                                    className="flex-grow"
+                                    initial={{ y: 100 }}
+                                    animate={{ y: 0 }}
+                                    exit={{ y: 100 }}
+                                    transition={{ type: "spring", stiffness: 300, damping: 30 }}
+                                >
+                                    <Button onClick={handleCheckout} className="bg-green-600 hover:bg-green-700 h-14 text-lg font-bold rounded-xl shadow-lg shadow-green-500/30 flex justify-between items-center text-white w-full">
+                                        <div className="flex items-center gap-2">
+                                           <ShoppingCart className="h-6 w-6"/> 
+                                           <span>{totalCartItems} {totalCartItems > 1 ? 'Items' : 'Item'}</span>
+                                        </div>
+                                        <span>View Cart | ₹{subtotal}</span>
+                                    </Button>
+                                </motion.div>
+                            )}
+                        </AnimatePresence>
+                    </div>
                     
                     <motion.div
                          initial={{ y: 100 }}
