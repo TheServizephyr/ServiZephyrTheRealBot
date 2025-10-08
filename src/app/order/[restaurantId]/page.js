@@ -76,7 +76,7 @@ const MenuItemCard = ({ item, quantity, onIncrement, onDecrement }) => {
         ) : (
           <Button
             onClick={() => onIncrement(item)}
-            className="w-24 bg-background text-primary font-bold border border-primary hover:bg-muted"
+            className="w-24 bg-background text-primary font-bold border border-primary hover:bg-muted shadow-md active:translate-y-px"
           >
             ADD
           </Button>
