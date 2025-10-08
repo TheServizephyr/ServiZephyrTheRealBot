@@ -19,6 +19,7 @@ import { Switch } from '@/components/ui/switch';
 const dummyData = {
     restaurantName: 'ServiZephyr Demo Restaurant',
     deliveryCharge: 30,
+    rating: 4.1,
     menu: {
         "starters": [
             { id: 'item-1', name: 'Paneer Tikka', description: 'Tandoor-cooked cottage cheese', fullPrice: 280, isVeg: true, isAvailable: true, categoryId: 'starters', imageUrl: 'https://picsum.photos/seed/paneertikka/100/100' },
@@ -68,14 +69,14 @@ const MenuItemCard = ({ item, quantity, onIncrement, onDecrement }) => {
       <div className="flex flex-col items-center justify-center h-24">
         {quantity > 0 ? (
           <div className="flex items-center gap-1 bg-background p-1 rounded-lg border border-border">
-            <Button size="icon" variant="ghost" className="h-8 w-8 text-green-500" onClick={() => onDecrement(item)}><Minus size={16}/></Button>
+            <Button size="icon" variant="ghost" className="h-8 w-8 text-primary" onClick={() => onDecrement(item)}><Minus size={16}/></Button>
             <span className="font-bold w-6 text-center text-foreground">{quantity}</span>
-            <Button size="icon" variant="ghost" className="h-8 w-8 text-green-500" onClick={() => onIncrement(item)}><Plus size={16}/></Button>
+            <Button size="icon" variant="ghost" className="h-8 w-8 text-primary" onClick={() => onIncrement(item)}><Plus size={16}/></Button>
           </div>
         ) : (
           <Button 
             onClick={() => onIncrement(item)}
-            className="w-24 bg-green-600 hover:bg-green-700 text-white font-bold"
+            className="w-24 bg-primary hover:bg-primary/90 text-primary-foreground font-bold"
           >
             ADD
           </Button>
@@ -378,6 +379,20 @@ const MenuBrowserModal = ({ isOpen, onClose, categories, onCategoryClick }) => {
   );
 };
 
+const RatingBadge = ({ rating }) => {
+    const getRatingColor = () => {
+        if (rating >= 4) return 'bg-green-500/10 text-green-300 border-green-500/20';
+        if (rating >= 3) return 'bg-yellow-500/10 text-yellow-300 border-yellow-500/20';
+        return 'bg-red-500/10 text-red-300 border-red-500/20';
+    };
+
+    return (
+        <div className={cn("flex items-center gap-1 px-2 py-1 rounded-full text-sm border", getRatingColor())}>
+            <Star size={14} className="fill-current"/> {rating.toFixed(1)}
+        </div>
+    );
+};
+
 
 const OrderPageInternal = () => {
     const params = useParams();
@@ -388,6 +403,7 @@ const OrderPageInternal = () => {
     // State now initialized with dummy data
     const [restaurantName, setRestaurantName] = useState(dummyData.restaurantName);
     const [deliveryCharge, setDeliveryCharge] = useState(dummyData.deliveryCharge);
+    const [rating, setRating] = useState(dummyData.rating);
     const [rawMenu, setRawMenu] = useState(dummyData.menu);
     const [loading, setLoading] = useState(false); // No loading from backend
     const [cart, setCart] = useState([]);
@@ -521,9 +537,7 @@ const OrderPageInternal = () => {
                         <p className="text-xs text-muted-foreground">Ordering from</p>
                         <h1 className="text-xl font-bold">{restaurantName}</h1>
                     </div>
-                     <div className="flex items-center gap-1 bg-green-500/10 text-green-300 px-2 py-1 rounded-full text-sm border border-green-500/20">
-                        <Star size={14} className="fill-current"/> 4.1
-                    </div>
+                     <RatingBadge rating={rating} />
                 </div>
             </header>
 
