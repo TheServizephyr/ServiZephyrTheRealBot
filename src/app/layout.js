@@ -1,4 +1,4 @@
-import { Alegreya, Poppins } from 'next/font/google';
+import { Alegreya, Playfair_Display } from 'next/font/google';
 import "./globals.css";
 import LayoutWrapper from '@/components/LayoutWrapper';
 import { FirebaseClientProvider } from '@/firebase/client-provider';
@@ -12,9 +12,9 @@ const alegreya = Alegreya({
   variable: '--font-body',
 });
 
-const poppins = Poppins({
+const playfairDisplay = Playfair_Display({
   subsets: ['latin'],
-  weight: ['400', '600', '800'], // We need bold weights for headlines
+  weight: ['400', '700'],
   display: 'swap',
   variable: '--font-headline',
 });
@@ -26,7 +26,7 @@ export const metadata = {
 
 export default function RootLayout({ children }) {
   return (
-    <html lang="en" className={`${alegreya.variable} ${poppins.variable}`}>
+    <html lang="en" className={`${alegreya.variable} ${playfairDisplay.variable}`}>
        <body>
         <FirebaseClientProvider>
           <LayoutWrapper>
