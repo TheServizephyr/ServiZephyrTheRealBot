@@ -5,7 +5,7 @@
 import React, { useState, useEffect, Suspense, useMemo } from 'react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Utensils, Plus, Minus, X, Home, User, Edit2, ShoppingCart, Star, CookingPot, BookOpen, Check, SlidersHorizontal, ArrowUpDown, PlusCircle, Ticket, Gift } from 'lucide-react';
+import { Utensils, Plus, Minus, X, Home, User, Edit2, ShoppingCart, Star, CookingPot, BookOpen, Check, SlidersHorizontal, ArrowUpDown, PlusCircle, Ticket, Gift, Sparkles, Flame } from 'lucide-react';
 import Image from 'next/image';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
@@ -22,18 +22,18 @@ const dummyData = {
     rating: 4.1,
     menu: {
         "starters": [
-            { id: 'item-1', name: 'Paneer Tikka', description: 'Tandoor-cooked cottage cheese', fullPrice: 280, isVeg: true, isAvailable: true, categoryId: 'starters', imageUrl: 'https://picsum.photos/seed/paneertikka/100/100' },
-            { id: 'item-2', name: 'Chilli Chicken', description: 'Spicy diced chicken', fullPrice: 320, isVeg: false, isAvailable: true, categoryId: 'starters', imageUrl: 'https://picsum.photos/seed/chillichicken/100/100' },
+            { id: 'item-1', name: 'Paneer Tikka', description: 'Tandoor-cooked cottage cheese', fullPrice: 280, isVeg: true, isAvailable: true, categoryId: 'starters', imageUrl: 'https://picsum.photos/seed/paneertikka/100/100', rating: 4.5, isRecommended: true },
+            { id: 'item-2', name: 'Chilli Chicken', description: 'Spicy diced chicken', fullPrice: 320, isVeg: false, isAvailable: true, categoryId: 'starters', imageUrl: 'https://picsum.photos/seed/chillichicken/100/100', rating: 4.7, isRecommended: true },
         ],
         "main-course": [
-            { id: 'item-3', name: 'Dal Makhani', description: 'Creamy black lentils', fullPrice: 250, isVeg: true, isAvailable: true, categoryId: 'main-course', imageUrl: 'https://picsum.photos/seed/dalmakhani/100/100' },
-            { id: 'item-4', name: 'Butter Chicken', description: 'Classic creamy chicken curry', fullPrice: 450, isVeg: false, isAvailable: true, categoryId: 'main-course', imageUrl: 'https://picsum.photos/seed/butterchicken/100/100' },
+            { id: 'item-3', name: 'Dal Makhani', description: 'Creamy black lentils', fullPrice: 250, isVeg: true, isAvailable: true, categoryId: 'main-course', imageUrl: 'https://picsum.photos/seed/dalmakhani/100/100', rating: 4.2, isRecommended: false },
+            { id: 'item-4', name: 'Butter Chicken', description: 'Classic creamy chicken curry', fullPrice: 450, isVeg: false, isAvailable: true, categoryId: 'main-course', imageUrl: 'https://picsum.photos/seed/butterchicken/100/100', rating: 3.8, isRecommended: false },
         ],
         "momos": [
-            { id: 'item-5', name: 'Veg Steamed Momos', description: '8 Pcs, served with chutney', fullPrice: 120, isVeg: true, isAvailable: true, categoryId: 'momos', imageUrl: 'https://picsum.photos/seed/vegmomos/100/100' },
+            { id: 'item-5', name: 'Veg Steamed Momos', description: '8 Pcs, served with chutney', fullPrice: 120, isVeg: true, isAvailable: true, categoryId: 'momos', imageUrl: 'https://picsum.photos/seed/vegmomos/100/100', rating: 4.8, isRecommended: true },
         ],
          "desserts": [
-            { id: 'item-6', name: 'Gulab Jamun', description: '2 Pcs, served hot', fullPrice: 80, isVeg: true, isAvailable: true, categoryId: 'desserts', imageUrl: 'https://picsum.photos/seed/gulabjamun/100/100' },
+            { id: 'item-6', name: 'Gulab Jamun', description: '2 Pcs, served hot', fullPrice: 80, isVeg: true, isAvailable: true, categoryId: 'desserts', imageUrl: 'https://picsum.photos/seed/gulabjamun/100/100', rating: 4.0, isRecommended: false },
         ],
     },
     coupons: [
@@ -414,7 +414,12 @@ const OrderPageInternal = () => {
     
     // Filters and Sorting State
     const [sortBy, setSortBy] = useState('default'); // 'default', 'price-asc', 'price-desc'
-    const [vegOnly, setVegOnly] = useState(false);
+    const [filters, setFilters] = useState({
+        veg: false,
+        nonVeg: false,
+        recommended: false,
+        topRated: false,
+    });
 
     // Coupon and Discount State
     const [coupons, setCoupons] = useState(dummyData.coupons);
@@ -428,13 +433,31 @@ const OrderPageInternal = () => {
         let newMenu = JSON.parse(JSON.stringify(rawMenu));
         for (const category in newMenu) {
             let items = newMenu[category];
-            if (vegOnly) items = items.filter(item => item.isVeg);
+            
+            // Apply filters
+            if (filters.veg) items = items.filter(item => item.isVeg);
+            if (filters.nonVeg) items = items.filter(item => !item.isVeg);
+            if (filters.recommended) items = items.filter(item => item.isRecommended);
+            if (filters.topRated) items = items.filter(item => item.rating >= 4.5);
+            
+            // Apply sorting
             if (sortBy === 'price-asc') items.sort((a, b) => a.fullPrice - b.fullPrice);
             else if (sortBy === 'price-desc') items.sort((a, b) => b.fullPrice - a.fullPrice);
+            
             newMenu[category] = items;
         }
         return newMenu;
-    }, [rawMenu, sortBy, vegOnly]);
+    }, [rawMenu, sortBy, filters]);
+
+    const handleFilterChange = (filterKey, value) => {
+        setFilters(prev => {
+            const newFilters = { ...prev, [filterKey]: value };
+            // Ensure veg and non-veg are mutually exclusive
+            if (filterKey === 'veg' && value) newFilters.nonVeg = false;
+            if (filterKey === 'nonVeg' && value) newFilters.veg = false;
+            return newFilters;
+        });
+    };
 
     const subtotal = useMemo(() => cart.reduce((sum, item) => sum + item.fullPrice * item.quantity, 0), [cart]);
 
@@ -580,16 +603,28 @@ const OrderPageInternal = () => {
                                 <SlidersHorizontal size={16} /> Filter
                             </Button>
                         </PopoverTrigger>
-                        <PopoverContent className="w-56">
+                        <PopoverContent className="w-64">
                             <div className="grid gap-4">
                                 <div className="space-y-2">
-                                    <h4 className="font-medium leading-none">Filter</h4>
-                                    <p className="text-sm text-muted-foreground">Filter by dietary preference.</p>
+                                    <h4 className="font-medium leading-none">Filter Menu</h4>
+                                    <p className="text-sm text-muted-foreground">Select your preferences.</p>
                                 </div>
-                                <div className="grid gap-2">
-                                    <div className="flex items-center justify-between">
-                                        <Label htmlFor="veg-only">Veg Only</Label>
-                                        <Switch id="veg-only" checked={vegOnly} onCheckedChange={setVegOnly} />
+                                <div className="grid gap-3">
+                                    <div className="flex items-center justify-between p-2 rounded-md bg-muted/50">
+                                        <Label htmlFor="veg-only" className="flex items-center gap-2"><Utensils size={16} className="text-green-500" />Veg Only</Label>
+                                        <Switch id="veg-only" checked={filters.veg} onCheckedChange={(checked) => handleFilterChange('veg', checked)} />
+                                    </div>
+                                     <div className="flex items-center justify-between p-2 rounded-md bg-muted/50">
+                                        <Label htmlFor="non-veg-only" className="flex items-center gap-2"><Flame size={16} className="text-red-500" />Non-Veg Only</Label>
+                                        <Switch id="non-veg-only" checked={filters.nonVeg} onCheckedChange={(checked) => handleFilterChange('nonVeg', checked)} />
+                                    </div>
+                                     <div className="flex items-center justify-between p-2 rounded-md bg-muted/50">
+                                        <Label htmlFor="recommended" className="flex items-center gap-2"><Sparkles size={16} className="text-yellow-500" />Highly Recommended</Label>
+                                        <Switch id="recommended" checked={filters.recommended} onCheckedChange={(checked) => handleFilterChange('recommended', checked)} />
+                                    </div>
+                                     <div className="flex items-center justify-between p-2 rounded-md bg-muted/50">
+                                        <Label htmlFor="top-rated" className="flex items-center gap-2"><Star size={16} className="text-primary" />Top Rated</Label>
+                                        <Switch id="top-rated" checked={filters.topRated} onCheckedChange={(checked) => handleFilterChange('topRated', checked)} />
                                     </div>
                                 </div>
                             </div>
