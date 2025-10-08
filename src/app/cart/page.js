@@ -4,13 +4,14 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
-import { Utensils, Plus, Minus, X, Home, User, ShoppingCart, CookingPot, Ticket, Gift, ArrowLeft } from 'lucide-react';
+import { Utensils, Plus, Minus, X, Home, User, ShoppingCart, CookingPot, Ticket, Gift, ArrowLeft, Sparkles, Check } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose } from "@/components/ui/dialog";
 import { Label } from '@/components/ui/label';
 import { cn } from '@/lib/utils';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 
-const CheckoutModal = ({ isOpen, onClose, restaurantId, phone, cart, notes, appliedCoupon, couponDiscount, loyaltyDiscount }) => {
+const CheckoutModal = ({ isOpen, onClose, restaurantId, phone, cart, notes, appliedCoupons }) => {
     const [name, setName] = useState('');
     const [address, setAddress] = useState('');
     const [error, setError] = useState('');
@@ -101,8 +102,7 @@ export default function CartPage() {
     const [cartData, setCartData] = useState(null);
     const [cart, setCart] = useState([]);
     const [notes, setNotes] = useState('');
-    const [appliedCoupon, setAppliedCoupon] = useState(null);
-    const [loyaltyDiscount, setLoyaltyDiscount] = useState(0);
+    const [appliedCoupons, setAppliedCoupons] = useState([]);
     const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
 
     useEffect(() => {
@@ -113,8 +113,7 @@ export default function CartPage() {
             setCart(parsedData.cart || []);
             setNotes(parsedData.notes || '');
         } else {
-            // Handle case where cart is empty or not found, maybe redirect
-            // For now, just show empty state
+            // Handle case where cart is empty or not found
         }
     }, []);
 
@@ -145,41 +144,78 @@ export default function CartPage() {
 
     const subtotal = useMemo(() => cart.reduce((sum, item) => sum + item.fullPrice * item.quantity, 0), [cart]);
 
-    const couponDiscount = useMemo(() => {
-        if (!appliedCoupon) return 0;
-        if (subtotal < appliedCoupon.minOrder) {
-            setAppliedCoupon(null); // Coupon no longer valid
-            return 0;
-        }
-        if (appliedCoupon.type === 'flat') return appliedCoupon.value;
-        if (appliedCoupon.type === 'percentage') return (subtotal * appliedCoupon.value) / 100;
-        return 0;
-    }, [appliedCoupon, subtotal]);
+    const { totalDiscount, couponDiscount, specialCouponDiscount } = useMemo(() => {
+        let couponDiscount = 0;
+        let specialCouponDiscount = 0;
+
+        appliedCoupons.forEach(coupon => {
+            if (subtotal < coupon.minOrder) return;
+            
+            let currentDiscount = 0;
+            if (coupon.type === 'flat') {
+                currentDiscount = coupon.value;
+            } else if (coupon.type === 'percentage') {
+                currentDiscount = (subtotal * coupon.value) / 100;
+            }
+
+            if (coupon.customerId) { // This is a special coupon
+                specialCouponDiscount += currentDiscount;
+            } else { // Normal coupon
+                couponDiscount += currentDiscount;
+            }
+        });
+
+        return { 
+            totalDiscount: couponDiscount + specialCouponDiscount,
+            couponDiscount,
+            specialCouponDiscount,
+        };
+    }, [appliedCoupons, subtotal]);
 
     const finalDeliveryCharge = useMemo(() => {
         if (!cartData) return 0;
-        return appliedCoupon?.type === 'free_delivery' ? 0 : cartData.deliveryCharge;
-    }, [appliedCoupon, cartData]);
+        const hasFreeDelivery = appliedCoupons.some(c => c.type === 'free_delivery' && subtotal >= c.minOrder);
+        return hasFreeDelivery ? 0 : cartData.deliveryCharge;
+    }, [appliedCoupons, cartData, subtotal]);
 
     const { cgst, sgst, grandTotal } = useMemo(() => {
-        const taxableAmount = subtotal - couponDiscount - loyaltyDiscount;
+        const taxableAmount = subtotal - totalDiscount;
         const tax = taxableAmount > 0 ? taxableAmount * 0.05 : 0;
         const total = taxableAmount + finalDeliveryCharge + (tax * 2);
         return { cgst: tax, sgst: tax, grandTotal: total };
-    }, [subtotal, couponDiscount, loyaltyDiscount, finalDeliveryCharge]);
+    }, [subtotal, totalDiscount, finalDeliveryCharge]);
 
     const handleApplyCoupon = (couponToApply) => {
-        if (subtotal >= couponToApply.minOrder) {
-            setAppliedCoupon(couponToApply);
+        // Check if coupon is already applied
+        if (appliedCoupons.some(c => c.id === couponToApply.id)) {
+            // Remove coupon
+            setAppliedCoupons(prev => prev.filter(c => c.id !== couponToApply.id));
+            return;
         }
-    };
-    
-    const handleRedeemPoints = () => {
-        if(cartData?.loyaltyPoints >= 100) {
-            const redeemableAmount = Math.floor(cartData.loyaltyPoints * 0.5);
-            setLoyaltyDiscount(redeemableAmount);
+
+        // Prevent applying if subtotal is too low
+        if (subtotal < couponToApply.minOrder) {
+            alert(`You need to spend at least ₹${couponToApply.minOrder} to use this coupon.`);
+            return;
         }
+        
+        const isSpecial = !!couponToApply.customerId;
+
+        setAppliedCoupons(prev => {
+            let newCoupons = [...prev];
+            // If it's a normal coupon, remove any other normal coupon first
+            if (!isSpecial) {
+                newCoupons = newCoupons.filter(c => !!c.customerId); // Keep only special coupons
+            }
+            // Add the new coupon
+            return [...newCoupons, couponToApply];
+        });
     };
+
+    const allCoupons = cartData?.coupons || [];
+    const specialCoupons = allCoupons.filter(c => c.customerId);
+    const normalCoupons = allCoupons.filter(c => !c.customerId);
+
 
     if (!cartData) {
         return (
@@ -203,9 +239,7 @@ export default function CartPage() {
             phone={cartData.phone}
             cart={cart}
             notes={notes}
-            appliedCoupon={appliedCoupon}
-            couponDiscount={couponDiscount}
-            loyaltyDiscount={loyaltyDiscount}
+            appliedCoupons={appliedCoupons}
         />
         <div className="min-h-screen bg-background text-foreground flex flex-col">
              <header className="sticky top-0 z-20 bg-background/80 backdrop-blur-lg border-b border-border">
@@ -257,54 +291,58 @@ export default function CartPage() {
                                 />
                             </div>
                         </div>
-
+                        
                         <div className="p-4 mt-4 bg-card rounded-lg border border-border">
-                            <h4 className="font-semibold mb-3 flex items-center gap-2"><Ticket/> Available Coupons</h4>
-                            <div className="space-y-2">
-                                {cartData.coupons && cartData.coupons.length > 0 ? cartData.coupons.map(coupon => (
-                                    <div key={coupon.id} className="flex justify-between items-center bg-background p-3 rounded-md border border-dashed border-green-600/30">
-                                        <div>
-                                            <p className="font-bold text-green-600">{coupon.code}</p>
-                                            <p className="text-xs text-muted-foreground">{coupon.description}</p>
-                                        </div>
-                                        {appliedCoupon?.id === coupon.id ? (
-                                            <Button variant="outline" size="sm" onClick={() => setAppliedCoupon(null)} className="text-red-400 border-red-400 hover:bg-red-400 hover:text-white">
-                                                Remove
-                                            </Button>
-                                        ) : (
-                                            <Button 
-                                                variant="outline"
-                                                size="sm"
-                                                onClick={() => handleApplyCoupon(coupon)} 
-                                                disabled={!!appliedCoupon}
-                                                className="text-green-600 border-green-600 hover:bg-green-600 hover:text-white disabled:opacity-50"
-                                            >
-                                                Apply
-                                            </Button>
-                                        )}
-                                    </div>
-                                )) : (
-                                    <p className="text-sm text-muted-foreground text-center py-2">No coupons available.</p>
-                                )}
-                            </div>
+                             <Popover>
+                                <PopoverTrigger asChild>
+                                  <Button variant="outline" className="w-full justify-start text-left font-normal">
+                                      <Ticket className="mr-2 h-4 w-4" />
+                                      {appliedCoupons.length > 0 ? `${appliedCoupons.length} Coupon(s) Applied` : 'View Available Coupons'}
+                                  </Button>
+                                </PopoverTrigger>
+                                <PopoverContent className="w-80 p-0" align="start">
+                                     <div className="p-4">
+                                        <h4 className="font-medium leading-none">Available Coupons</h4>
+                                     </div>
+                                     <div className="max-h-60 overflow-y-auto space-y-2 p-4 pt-0">
+                                      {specialCoupons.length > 0 && (
+                                          <div className="space-y-2">
+                                              <p className="text-sm font-semibold flex items-center gap-2 text-primary"><Sparkles size={16}/> Special for you</p>
+                                              {specialCoupons.map(coupon => (
+                                                  <div key={coupon.id} onClick={() => handleApplyCoupon(coupon)} className={cn("p-2 rounded-md border-2 cursor-pointer", appliedCoupons.some(c=>c.id === coupon.id) ? "border-green-500 bg-green-500/10" : "border-dashed border-primary/50 bg-background")}>
+                                                      <div className="flex justify-between items-center">
+                                                          <p className="font-bold text-foreground">{coupon.code}</p>
+                                                          {appliedCoupons.some(c=>c.id === coupon.id) && <Check size={16} className="text-green-500" />}
+                                                      </div>
+                                                      <p className="text-xs text-muted-foreground">{coupon.description}</p>
+                                                  </div>
+                                              ))}
+                                              <hr className="my-4 border-border"/>
+                                          </div>
+                                      )}
+                                      
+                                      {normalCoupons.length > 0 ? normalCoupons.map(coupon => (
+                                          <div key={coupon.id} onClick={() => handleApplyCoupon(coupon)} className={cn("p-2 rounded-md border-2 cursor-pointer", appliedCoupons.some(c=>c.id === coupon.id) ? "border-green-500 bg-green-500/10" : "border-border bg-background")}>
+                                              <div className="flex justify-between items-center">
+                                                  <p className="font-bold text-foreground">{coupon.code}</p>
+                                                  {appliedCoupons.some(c=>c.id === coupon.id) && <Check size={16} className="text-green-500" />}
+                                              </div>
+                                              <p className="text-xs text-muted-foreground">{coupon.description}</p>
+                                          </div>
+                                      )) : <p className="text-xs text-muted-foreground text-center">No other coupons available.</p>}
+
+                                     </div>
+                                </PopoverContent>
+                            </Popover>
                         </div>
 
-                        <div className="p-4 mt-4 bg-card rounded-lg border border-border">
-                            <h4 className="font-semibold mb-2 flex items-center gap-2"><Gift/> Loyalty Points</h4>
-                            <div className="flex justify-between items-center">
-                                <p className="text-muted-foreground">You have <span className="font-bold text-green-600">{cartData.loyaltyPoints || 0}</span> points.</p>
-                                <Button variant="outline" onClick={handleRedeemPoints} disabled={(cartData.loyaltyPoints || 0) < 100 || loyaltyDiscount > 0}>
-                                    {loyaltyDiscount > 0 ? "Redeemed!" : "Redeem Now"}
-                                </Button>
-                            </div>
-                        </div>
 
                         <div className="mt-6 p-4 border-t-2 border-primary bg-card rounded-lg shadow-lg">
                             <h3 className="text-xl font-bold mb-4">Bill Summary</h3>
                             <div className="space-y-1 text-sm mb-4">
                                 <div className="flex justify-between"><span>Subtotal:</span> <span className="font-medium">₹{subtotal.toFixed(2)}</span></div>
                                 {couponDiscount > 0 && <div className="flex justify-between text-green-400"><span>Coupon Discount:</span> <span className="font-medium">- ₹{couponDiscount.toFixed(2)}</span></div>}
-                                {loyaltyDiscount > 0 && <div className="flex justify-between text-green-400"><span>Loyalty Discount:</span> <span className="font-medium">- ₹{loyaltyDiscount.toFixed(2)}</span></div>}
+                                {specialCouponDiscount > 0 && <div className="flex justify-between text-green-400"><span>Special Discount:</span> <span className="font-medium">- ₹{specialCouponDiscount.toFixed(2)}</span></div>}
                                 <div className="flex justify-between"><span>Delivery Fee:</span> {finalDeliveryCharge > 0 ? <span>₹{finalDeliveryCharge.toFixed(2)}</span> : <span className="text-green-400 font-bold">FREE</span>}</div>
                                 <div className="flex justify-between"><span>CGST ({5}%):</span> <span className="font-medium">₹{cgst.toFixed(2)}</span></div>
                                 <div className="flex justify-between"><span>SGST ({5}%):</span> <span className="font-medium">₹{sgst.toFixed(2)}</span></div>
@@ -327,5 +365,3 @@ export default function CartPage() {
         </>
     );
 }
-
-    
