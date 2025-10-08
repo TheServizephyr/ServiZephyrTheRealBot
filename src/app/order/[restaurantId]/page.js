@@ -171,8 +171,6 @@ const OrderPageInternal = () => {
         recommended: false,
     });
     
-    const [openCategory, setOpenCategory] = useState(null);
-
     const [coupons, setCoupons] = useState(dummyData.coupons);
     const [loyaltyPoints, setLoyaltyPoints] = useState(dummyData.loyaltyPoints);
     
@@ -219,13 +217,6 @@ const OrderPageInternal = () => {
             count: (processedMenu[key] || []).length
         }))
         .filter(category => category.count > 0), [processedMenu]);
-
-    useEffect(() => {
-        if(menuCategories.length > 0 && openCategory === null) {
-            setOpenCategory(menuCategories[0].key);
-        }
-    }, [menuCategories, openCategory]);
-
 
     const handleFilterChange = (filterKey) => {
         setFilters(prev => {
@@ -390,46 +381,26 @@ const OrderPageInternal = () => {
 
             <div className="container mx-auto px-4 mt-6 pb-32">
                 <main>
-                    <div className="space-y-4">
-                        {menuCategories.length > 0 ? menuCategories.map(({key, title}) => {
-                             const isExpanded = openCategory === key;
-                            return (
-                                <motion.section layout id={key} key={key} className="scroll-mt-24 bg-card border border-border rounded-xl overflow-hidden">
-                                     <button className="flex items-center justify-between w-full p-4 hover:bg-muted/50 transition-colors" onClick={() => setOpenCategory(isExpanded ? null : key)}>
-                                        <h3 className="text-2xl font-bold flex items-center gap-3">{title}</h3>
-                                        <motion.div animate={{ rotate: isExpanded ? 180 : 0 }}>
-                                            <ChevronDown size={24}/>
-                                        </motion.div>
-                                    </button>
-                                     <AnimatePresence>
-                                        {isExpanded && (
-                                            <motion.div
-                                                initial={{ height: 0, opacity: 0 }}
-                                                animate={{ height: "auto", opacity: 1 }}
-                                                exit={{ height: 0, opacity: 0 }}
-                                                transition={{ duration: 0.3, ease: "easeInOut" }}
-                                                className="overflow-hidden"
-                                            >
-                                                <div className="grid grid-cols-1 gap-4 p-4 pt-0">
-                                                    {processedMenu[key].map(item => {
-                                                        const cartItem = cart.find(ci => ci.id === item.id);
-                                                        return (
-                                                            <MenuItemCard 
-                                                                key={item.id} 
-                                                                item={item} 
-                                                                quantity={cartItem ? cartItem.quantity : 0}
-                                                                onIncrement={handleIncrement}
-                                                                onDecrement={handleDecrement}
-                                                            />
-                                                        )
-                                                    })}
-                                                </div>
-                                            </motion.div>
-                                        )}
-                                    </AnimatePresence>
-                                </motion.section>
-                            );
-                        }) : (
+                    <div className="space-y-8">
+                        {menuCategories.length > 0 ? menuCategories.map(({key, title}) => (
+                            <section id={key} key={key} className="scroll-mt-24">
+                                <h3 className="text-2xl font-bold mb-4">{title}</h3>
+                                <div className="grid grid-cols-1 gap-4">
+                                    {processedMenu[key].map(item => {
+                                        const cartItem = cart.find(ci => ci.id === item.id);
+                                        return (
+                                            <MenuItemCard 
+                                                key={item.id} 
+                                                item={item} 
+                                                quantity={cartItem ? cartItem.quantity : 0}
+                                                onIncrement={handleIncrement}
+                                                onDecrement={handleDecrement}
+                                            />
+                                        )
+                                    })}
+                                </div>
+                            </section>
+                        )) : (
                             <div className="text-center py-16 text-muted-foreground">
                                 <p className="text-lg font-semibold">No dishes match your search.</p>
                                 <p>Try clearing the search or filters to see more options.</p>
@@ -439,13 +410,35 @@ const OrderPageInternal = () => {
                 </main>
             </div>
 
-             <footer className="fixed bottom-0 left-0 right-0 z-30 pointer-events-none">
+            <footer className="fixed bottom-0 left-0 right-0 z-30 pointer-events-none">
                 <div className="w-full relative">
-                    <div className="container mx-auto flex justify-end w-full px-4">
-                        <div className="flex-grow-0 flex-shrink-0">
+                    <div className="container mx-auto px-4 flex justify-between items-center gap-4">
+                        <div className="flex-1">
+                            <AnimatePresence>
+                                {totalCartItems > 0 && (
+                                    <motion.div
+                                        className="w-full max-w-lg mx-auto"
+                                        initial={{ y: 100 }}
+                                        animate={{ y: 0 }}
+                                        exit={{ y: 100 }}
+                                        transition={{ type: "spring", stiffness: 300, damping: 30 }}
+                                    >
+                                        <Button onClick={handleCheckout} className="bg-green-600 hover:bg-green-700 h-14 text-lg font-bold rounded-lg shadow-green-500/30 flex justify-between items-center text-white w-full pointer-events-auto">
+                                            <div className="flex items-center gap-2">
+                                               <ShoppingCart className="h-6 w-6"/> 
+                                               <span>{totalCartItems} {totalCartItems > 1 ? 'Items' : 'Item'}</span>
+                                            </div>
+                                            <span>View Cart | ₹{subtotal}</span>
+                                        </Button>
+                                    </motion.div>
+                                )}
+                            </AnimatePresence>
+                        </div>
+                        
+                        <div className="flex-shrink-0">
                              <motion.button
                                 onClick={() => setIsMenuBrowserOpen(true)}
-                                className="absolute right-4 bg-black text-white h-16 w-16 rounded-2xl shadow-lg flex flex-col items-center justify-center gap-1 border border-gray-700 pointer-events-auto"
+                                className="bg-black text-white h-16 w-16 rounded-2xl shadow-lg flex flex-col items-center justify-center gap-1 border border-gray-700 pointer-events-auto"
                                 animate={{ bottom: totalCartItems > 0 ? 96 : 16 }}
                                 transition={{ type: "spring", stiffness: 400, damping: 30 }}
                              >
@@ -454,26 +447,6 @@ const OrderPageInternal = () => {
                             </motion.button>
                         </div>
                     </div>
-                    
-                    <AnimatePresence>
-                        {totalCartItems > 0 && (
-                             <motion.div
-                                className="w-full pointer-events-auto absolute bottom-4 px-4"
-                                initial={{ y: 100 }}
-                                animate={{ y: 0 }}
-                                exit={{ y: 100 }}
-                                transition={{ type: "spring", stiffness: 300, damping: 30 }}
-                            >
-                                <Button onClick={handleCheckout} className="bg-green-600 hover:bg-green-700 h-14 text-lg font-bold rounded-lg shadow-green-500/30 flex justify-between items-center text-white w-full">
-                                    <div className="flex items-center gap-2">
-                                       <ShoppingCart className="h-6 w-6"/> 
-                                       <span>{totalCartItems} {totalCartItems > 1 ? 'Items' : 'Item'}</span>
-                                    </div>
-                                    <span>View Cart | ₹{subtotal}</span>
-                                </Button>
-                            </motion.div>
-                        )}
-                    </AnimatePresence>
                 </div>
             </footer>
         </div>
@@ -487,3 +460,5 @@ const OrderPage = () => (
 );
 
 export default OrderPage;
+
+    
