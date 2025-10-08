@@ -5,7 +5,7 @@
 import React, { useState, useEffect, Suspense, useMemo } from 'react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Utensils, Plus, Minus, X, Home, User, Edit2, ShoppingCart, Star, CookingPot, BookOpen, Check, SlidersHorizontal, ArrowUpDown, PlusCircle, Ticket, Gift, Sparkles, Flame } from 'lucide-react';
+import { Utensils, Plus, Minus, X, Home, User, Edit2, ShoppingCart, Star, CookingPot, BookOpen, Check, SlidersHorizontal, ArrowUpDown, PlusCircle, Ticket, Gift, Sparkles, Flame, Search } from 'lucide-react';
 import Image from 'next/image';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
@@ -413,6 +413,7 @@ const OrderPageInternal = () => {
     const [notes, setNotes] = useState("");
     
     // Filters and Sorting State
+    const [searchQuery, setSearchQuery] = useState('');
     const [sortBy, setSortBy] = useState('default'); // 'default', 'price-asc', 'price-desc'
     const [filters, setFilters] = useState({
         veg: false,
@@ -431,9 +432,16 @@ const OrderPageInternal = () => {
     
     const processedMenu = useMemo(() => {
         let newMenu = JSON.parse(JSON.stringify(rawMenu));
+        const lowercasedQuery = searchQuery.toLowerCase();
+
         for (const category in newMenu) {
             let items = newMenu[category];
             
+            // Apply search first
+            if (lowercasedQuery) {
+                items = items.filter(item => item.name.toLowerCase().includes(lowercasedQuery));
+            }
+
             // Apply filters
             if (filters.veg) items = items.filter(item => item.isVeg);
             if (filters.nonVeg) items = items.filter(item => !item.isVeg);
@@ -447,7 +455,7 @@ const OrderPageInternal = () => {
             newMenu[category] = items;
         }
         return newMenu;
-    }, [rawMenu, sortBy, filters]);
+    }, [rawMenu, sortBy, filters, searchQuery]);
 
     const handleFilterChange = (filterKey) => {
         setFilters(prev => {
@@ -459,6 +467,10 @@ const OrderPageInternal = () => {
             return newFilters;
         });
     };
+    
+    const handleSortChange = (sortValue) => {
+        setSortBy(prev => prev === sortValue ? 'default' : sortValue);
+    }
 
     const subtotal = useMemo(() => cart.reduce((sum, item) => sum + item.fullPrice * item.quantity, 0), [cart]);
 
@@ -565,64 +577,56 @@ const OrderPageInternal = () => {
                 </div>
             </header>
 
-            {/* Sort and Filter Bar */}
+            {/* Search and Filter Bar */}
             <div className="sticky top-[65px] z-10 bg-background/95 backdrop-blur-sm py-2 border-b border-border">
-                <div className="container mx-auto px-4 flex justify-between items-center">
-                    <Popover>
-                        <PopoverTrigger asChild>
-                           <Button variant="outline" className="flex items-center gap-2">
-                                <ArrowUpDown size={16} /> Sort
-                            </Button>
-                        </PopoverTrigger>
-                        <PopoverContent className="w-56">
-                            <div className="grid gap-4">
-                                <div className="space-y-2">
-                                    <h4 className="font-medium leading-none">Sort by</h4>
-                                    <p className="text-sm text-muted-foreground">Sort dishes by price.</p>
-                                </div>
-                                <div className="grid gap-2">
-                                    <div className="flex items-center justify-between">
-                                        <Label htmlFor="sort-default">Default</Label>
-                                        <Switch id="sort-default" checked={sortBy === 'default'} onCheckedChange={() => setSortBy('default')} />
-                                    </div>
-                                    <div className="flex items-center justify-between">
-                                        <Label htmlFor="sort-asc">Price: Low to High</Label>
-                                        <Switch id="sort-asc" checked={sortBy === 'price-asc'} onCheckedChange={() => setSortBy('price-asc')} />
-                                    </div>
-                                     <div className="flex items-center justify-between">
-                                        <Label htmlFor="sort-desc">Price: High to Low</Label>
-                                        <Switch id="sort-desc" checked={sortBy === 'price-desc'} onCheckedChange={() => setSortBy('price-desc')} />
-                                    </div>
-                                </div>
-                            </div>
-                        </PopoverContent>
-                    </Popover>
+                <div className="container mx-auto px-4 flex items-center gap-4">
+                    <div className="relative flex-grow">
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" size={20} />
+                        <input
+                            type="text"
+                            placeholder="Search for dishes..."
+                            value={searchQuery}
+                            onChange={(e) => setSearchQuery(e.target.value)}
+                            className="w-full bg-input border border-border rounded-lg pl-10 pr-4 py-2 h-10 text-sm focus:ring-2 focus:ring-primary focus:border-primary outline-none"
+                        />
+                    </div>
 
                     <Popover>
                         <PopoverTrigger asChild>
-                            <Button variant="outline" className="flex items-center gap-2">
+                            <Button variant="outline" className="flex items-center gap-2 flex-shrink-0">
                                 <SlidersHorizontal size={16} /> Filter
                             </Button>
                         </PopoverTrigger>
                         <PopoverContent className="w-64">
                             <div className="grid gap-4">
-                                <div className="space-y-2">
-                                    <h4 className="font-medium leading-none">Filter Menu</h4>
-                                    <p className="text-sm text-muted-foreground">Select your preferences.</p>
+                               <div className="space-y-2">
+                                    <h4 className="font-medium leading-none">Sort by</h4>
+                                    <div className="flex items-center justify-between">
+                                        <Label htmlFor="sort-asc">Price: Low to High</Label>
+                                        <Switch id="sort-asc" checked={sortBy === 'price-asc'} onCheckedChange={() => handleSortChange('price-asc')} />
+                                    </div>
+                                     <div className="flex items-center justify-between">
+                                        <Label htmlFor="sort-desc">Price: High to Low</Label>
+                                        <Switch id="sort-desc" checked={sortBy === 'price-desc'} onCheckedChange={() => handleSortChange('price-desc')} />
+                                    </div>
                                 </div>
-                                <div className="flex flex-wrap gap-2">
-                                    <Button variant={filters.veg ? 'default' : 'outline'} size="sm" onClick={() => handleFilterChange('veg')} className="flex items-center gap-2">
-                                        <Utensils size={16} className={cn(filters.veg ? '' : 'text-green-500')} />Veg Only
-                                    </Button>
-                                    <Button variant={filters.nonVeg ? 'default' : 'outline'} size="sm" onClick={() => handleFilterChange('nonVeg')} className="flex items-center gap-2">
-                                        <Flame size={16} className={cn(filters.nonVeg ? '' : 'text-red-500')} />Non-Veg Only
-                                    </Button>
-                                    <Button variant={filters.recommended ? 'default' : 'outline'} size="sm" onClick={() => handleFilterChange('recommended')} className="flex items-center gap-2">
-                                        <Sparkles size={16} className={cn(filters.recommended ? '' : 'text-yellow-500')} />Highly reordered
-                                    </Button>
-                                    <Button variant={filters.topRated ? 'default' : 'outline'} size="sm" onClick={() => handleFilterChange('topRated')} className="flex items-center gap-2">
-                                        <Star size={16} className={cn(filters.topRated ? '' : 'text-primary')} />Top Rated
-                                    </Button>
+
+                                <div className="space-y-2">
+                                    <h4 className="font-medium leading-none">Filter By</h4>
+                                    <div className="flex flex-wrap gap-2">
+                                        <Button variant={filters.veg ? 'default' : 'outline'} size="sm" onClick={() => handleFilterChange('veg')} className="flex items-center gap-2">
+                                            <Utensils size={16} className={cn(filters.veg ? '' : 'text-green-500')} />Veg Only
+                                        </Button>
+                                        <Button variant={filters.nonVeg ? 'default' : 'outline'} size="sm" onClick={() => handleFilterChange('nonVeg')} className="flex items-center gap-2">
+                                            <Flame size={16} className={cn(filters.nonVeg ? '' : 'text-red-500')} />Non-Veg Only
+                                        </Button>
+                                        <Button variant={filters.recommended ? 'default' : 'outline'} size="sm" onClick={() => handleFilterChange('recommended')} className="flex items-center gap-2">
+                                            <Sparkles size={16} className={cn(filters.recommended ? '' : 'text-yellow-500')} />Highly reordered
+                                        </Button>
+                                        <Button variant={filters.topRated ? 'default' : 'outline'} size="sm" onClick={() => handleFilterChange('topRated')} className="flex items-center gap-2">
+                                            <Star size={16} className={cn(filters.topRated ? '' : 'text-primary')} />Top Rated
+                                        </Button>
+                                    </div>
                                 </div>
                             </div>
                         </PopoverContent>
@@ -633,7 +637,7 @@ const OrderPageInternal = () => {
             <div className="container mx-auto px-4 mt-6 pb-32">
                 <main>
                     <div className="space-y-10">
-                        {menuCategories.map(({key, title}) => {
+                        {menuCategories.length > 0 ? menuCategories.map(({key, title}) => {
                             return (
                                 <section id={key} key={key} className="scroll-mt-24">
                                     <h3 className="text-2xl font-bold mb-4 flex items-center gap-3"><Utensils /> {title}</h3>
@@ -653,7 +657,12 @@ const OrderPageInternal = () => {
                                     </div>
                                 </section>
                             );
-                        })}
+                        }) : (
+                            <div className="text-center py-16 text-muted-foreground">
+                                <p className="text-lg font-semibold">No dishes match your search.</p>
+                                <p>Try clearing the search or filters to see more options.</p>
+                            </div>
+                        )}
                     </div>
                 </main>
             </div>
