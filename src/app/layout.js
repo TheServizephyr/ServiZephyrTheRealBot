@@ -1,8 +1,6 @@
 import { Alegreya, Playfair_Display } from 'next/font/google';
 import "./globals.css";
 import LayoutWrapper from '@/components/LayoutWrapper';
-import { FirebaseClientProvider } from '@/firebase/client-provider';
-
 
 // Font configuration
 const alegreya = Alegreya({
@@ -28,11 +26,9 @@ export default function RootLayout({ children }) {
   return (
     <html lang="en" className={`${alegreya.variable} ${playfairDisplay.variable}`}>
        <body>
-        <FirebaseClientProvider>
-          <LayoutWrapper>
-            {children}
-          </LayoutWrapper>
-        </FirebaseClientProvider>
+        <LayoutWrapper>
+          {children}
+        </LayoutWrapper>
       </body>
     </html>
   );
