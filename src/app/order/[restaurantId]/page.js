@@ -69,14 +69,14 @@ const MenuItemCard = ({ item, quantity, onIncrement, onDecrement }) => {
       <div className="flex flex-col items-center justify-center h-24">
         {quantity > 0 ? (
           <div className="flex items-center gap-1 bg-background p-1 rounded-lg border border-border">
-            <Button size="icon" variant="ghost" className="h-8 w-8 text-primary" onClick={() => onDecrement(item)}><Minus size={16}/></Button>
+            <Button size="icon" variant="ghost" className="h-8 w-8 text-green-600" onClick={() => onDecrement(item)}><Minus size={16}/></Button>
             <span className="font-bold w-6 text-center text-foreground">{quantity}</span>
-            <Button size="icon" variant="ghost" className="h-8 w-8 text-primary" onClick={() => onIncrement(item)}><Plus size={16}/></Button>
+            <Button size="icon" variant="ghost" className="h-8 w-8 text-green-600" onClick={() => onIncrement(item)}><Plus size={16}/></Button>
           </div>
         ) : (
           <Button
             onClick={() => onIncrement(item)}
-            className="w-24 bg-background text-primary font-bold border border-primary hover:bg-muted shadow-md active:translate-y-px"
+            className="w-24 bg-background text-green-600 font-bold border border-green-600 hover:bg-muted shadow-md active:translate-y-px"
           >
             ADD
           </Button>
@@ -161,9 +161,9 @@ const CartDrawer = ({ cart, onUpdateCart, onClose, onCheckout, notes, setNotes, 
                             <h4 className="font-semibold mb-3 flex items-center gap-2"><Ticket/> Available Coupons</h4>
                             <div className="space-y-2">
                                 {coupons && coupons.length > 0 ? coupons.map(coupon => (
-                                    <div key={coupon.id} className="flex justify-between items-center bg-background p-3 rounded-md border border-dashed border-primary/30">
+                                    <div key={coupon.id} className="flex justify-between items-center bg-background p-3 rounded-md border border-dashed border-green-600/30">
                                         <div>
-                                            <p className="font-bold text-primary">{coupon.code}</p>
+                                            <p className="font-bold text-green-600">{coupon.code}</p>
                                             <p className="text-xs text-muted-foreground">{coupon.description}</p>
                                         </div>
                                         {appliedCoupon?.id === coupon.id ? (
@@ -176,7 +176,7 @@ const CartDrawer = ({ cart, onUpdateCart, onClose, onCheckout, notes, setNotes, 
                                                 size="sm"
                                                 onClick={() => handleApplyCoupon(coupon)} 
                                                 disabled={!!appliedCoupon}
-                                                className="text-primary hover:bg-primary hover:text-primary-foreground disabled:opacity-50"
+                                                className="text-green-600 border-green-600 hover:bg-green-600 hover:text-white disabled:opacity-50"
                                             >
                                                 Apply
                                             </Button>
@@ -191,7 +191,7 @@ const CartDrawer = ({ cart, onUpdateCart, onClose, onCheckout, notes, setNotes, 
                         <div className="p-4 border-t border-border bg-card/50 flex-shrink-0 mt-4 rounded-lg">
                             <h4 className="font-semibold mb-2 flex items-center gap-2"><Gift/> Loyalty Points</h4>
                             <div className="flex justify-between items-center">
-                                <p className="text-muted-foreground">You have <span className="font-bold text-primary">{loyaltyPointsData || 0}</span> points.</p>
+                                <p className="text-muted-foreground">You have <span className="font-bold text-green-600">{loyaltyPointsData || 0}</span> points.</p>
                                 <Button variant="outline" onClick={handleRedeemPoints} disabled={(loyaltyPointsData || 0) < 100 || loyaltyDiscount > 0}>
                                     {loyaltyDiscount > 0 ? "Redeemed!" : "Redeem Now"}
                                 </Button>
@@ -202,7 +202,7 @@ const CartDrawer = ({ cart, onUpdateCart, onClose, onCheckout, notes, setNotes, 
             </div>
 
             {cart.length > 0 && (
-                <div className="p-4 border-t-2 border-primary bg-background flex-shrink-0 shadow-lg">
+                <div className="p-4 border-t-2 border-green-600 bg-background flex-shrink-0 shadow-lg">
                     <div className="space-y-1 text-sm mb-4">
                          <div className="flex justify-between"><span>Subtotal:</span> <span className="font-medium">₹{subtotal.toFixed(2)}</span></div>
                          {couponDiscount > 0 && <div className="flex justify-between text-green-400"><span>Coupon Discount:</span> <span className="font-medium">- ₹{couponDiscount.toFixed(2)}</span></div>}
@@ -213,7 +213,7 @@ const CartDrawer = ({ cart, onUpdateCart, onClose, onCheckout, notes, setNotes, 
                          <div className="border-t border-dashed border-border my-2"></div>
                          <div className="flex justify-between items-center text-lg font-bold"><span>Grand Total:</span> <span>₹{grandTotal > 0 ? grandTotal.toFixed(2) : '0.00'}</span></div>
                     </div>
-                     <Button onClick={onCheckout} className="w-full bg-primary hover:bg-primary/90 h-12 text-lg font-bold">
+                     <Button onClick={onCheckout} className="w-full bg-green-600 hover:bg-green-700 h-12 text-lg font-bold text-white">
                         Proceed to Checkout
                     </Button>
                 </div>
@@ -291,7 +291,7 @@ const CheckoutModal = ({ isOpen, onClose, restaurantId, phone, cart, notes, appl
                         <div className="space-y-2 max-h-48 overflow-y-auto pr-2">
                             {savedAddresses.map((addr) => (
                                 <div key={addr.id} onClick={() => { setSelectedAddress(addr.full); setIsAddingNew(false); }}
-                                     className={cn("p-3 rounded-lg border cursor-pointer", selectedAddress === addr.full && !isAddingNew ? "border-primary bg-primary/10" : "border-border")}>
+                                     className={cn("p-3 rounded-lg border cursor-pointer", selectedAddress === addr.full && !isAddingNew ? "border-green-600 bg-green-600/10" : "border-border")}>
                                     {addr.full}
                                 </div>
                             ))}
@@ -342,7 +342,7 @@ const CheckoutModal = ({ isOpen, onClose, restaurantId, phone, cart, notes, appl
 
                 <DialogFooter>
                     <DialogClose asChild><Button variant="secondary" disabled={loading}>Cancel</Button></DialogClose>
-                    <Button onClick={handlePlaceOrder} className="bg-primary hover:bg-primary/90" disabled={loading}>
+                    <Button onClick={handlePlaceOrder} className="bg-green-600 hover:bg-green-700 text-white" disabled={loading}>
                         {loading ? 'Placing Order...' : 'Confirm & Place Order'}
                     </Button>
                 </DialogFooter>
@@ -551,7 +551,7 @@ const OrderPageInternal = () => {
     if (loading) {
         return (
             <div className="min-h-screen bg-background flex items-center justify-center">
-                <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-primary"></div>
+                <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-green-600"></div>
             </div>
         );
     }
@@ -586,7 +586,7 @@ const OrderPageInternal = () => {
                             placeholder="Search for dishes..."
                             value={searchQuery}
                             onChange={(e) => setSearchQuery(e.target.value)}
-                            className="w-full bg-input border border-border rounded-lg pl-10 pr-4 py-2 h-10 text-sm focus:ring-2 focus:ring-primary focus:border-primary outline-none"
+                            className="w-full bg-input border border-border rounded-lg pl-10 pr-4 py-2 h-10 text-sm focus:ring-2 focus:ring-green-600 focus:border-green-600 outline-none"
                         />
                     </div>
 
@@ -601,22 +601,22 @@ const OrderPageInternal = () => {
                                <div className="space-y-2">
                                     <h4 className="font-medium leading-none">Sort by</h4>
                                     <div className="flex flex-wrap gap-2">
-                                        <Button variant={sortBy === 'price-asc' ? 'default' : 'outline'} size="sm" onClick={() => handleSortChange('price-asc')}>Price: Low to High</Button>
-                                        <Button variant={sortBy === 'price-desc' ? 'default' : 'outline'} size="sm" onClick={() => handleSortChange('price-desc')}>Price: High to Low</Button>
-                                        <Button variant={sortBy === 'rating-desc' ? 'default' : 'outline'} size="sm" onClick={() => handleSortChange('rating-desc')}>Top Rated</Button>
+                                        <Button variant={sortBy === 'price-asc' ? 'default' : 'outline'} size="sm" onClick={() => handleSortChange('price-asc')} className={cn(sortBy === 'price-asc' && 'bg-green-600 hover:bg-green-700 text-white')}>Price: Low to High</Button>
+                                        <Button variant={sortBy === 'price-desc' ? 'default' : 'outline'} size="sm" onClick={() => handleSortChange('price-desc')} className={cn(sortBy === 'price-desc' && 'bg-green-600 hover:bg-green-700 text-white')}>Price: High to Low</Button>
+                                        <Button variant={sortBy === 'rating-desc' ? 'default' : 'outline'} size="sm" onClick={() => handleSortChange('rating-desc')} className={cn(sortBy === 'rating-desc' && 'bg-green-600 hover:bg-green-700 text-white')}>Top Rated</Button>
                                     </div>
                                 </div>
 
                                 <div className="space-y-2">
                                     <h4 className="font-medium leading-none">Filter By</h4>
                                     <div className="flex flex-wrap gap-2">
-                                        <Button variant={filters.veg ? 'default' : 'outline'} size="sm" onClick={() => handleFilterChange('veg')} className="flex items-center gap-2">
+                                        <Button variant={filters.veg ? 'default' : 'outline'} size="sm" onClick={() => handleFilterChange('veg')} className={cn("flex items-center gap-2", filters.veg && 'bg-green-600 hover:bg-green-700 text-white')}>
                                             <Utensils size={16} className={cn(filters.veg ? '' : 'text-green-500')} />Veg Only
                                         </Button>
-                                        <Button variant={filters.nonVeg ? 'default' : 'outline'} size="sm" onClick={() => handleFilterChange('nonVeg')} className="flex items-center gap-2">
+                                        <Button variant={filters.nonVeg ? 'default' : 'outline'} size="sm" onClick={() => handleFilterChange('nonVeg')} className={cn("flex items-center gap-2", filters.nonVeg && 'bg-green-600 hover:bg-green-700 text-white')}>
                                             <Flame size={16} className={cn(filters.nonVeg ? '' : 'text-red-500')} />Non-Veg Only
                                         </Button>
-                                        <Button variant={filters.recommended ? 'default' : 'outline'} size="sm" onClick={() => handleFilterChange('recommended')} className="flex items-center gap-2">
+                                        <Button variant={filters.recommended ? 'default' : 'outline'} size="sm" onClick={() => handleFilterChange('recommended')} className={cn("flex items-center gap-2", filters.recommended && 'bg-green-600 hover:bg-green-700 text-white')}>
                                             <Sparkles size={16} className={cn(filters.recommended ? '' : 'text-yellow-500')} />Highly reordered
                                         </Button>
                                     </div>
@@ -671,7 +671,7 @@ const OrderPageInternal = () => {
                                 exit={{ y: 100 }}
                                 transition={{ type: "spring", stiffness: 300, damping: 30 }}
                             >
-                                <Button onClick={() => setIsCartOpen(true)} className="bg-primary hover:bg-primary/90 h-14 text-lg font-bold rounded-xl shadow-lg shadow-primary/30 flex justify-between items-center text-primary-foreground w-full">
+                                <Button onClick={() => setIsCartOpen(true)} className="bg-green-600 hover:bg-green-700 h-14 text-lg font-bold rounded-xl shadow-lg shadow-green-500/30 flex justify-between items-center text-white w-full">
                                     <div className="flex items-center gap-2">
                                        <ShoppingCart className="h-6 w-6"/> 
                                        <span>{totalCartItems} {totalCartItems > 1 ? 'Items' : 'Item'}</span>
@@ -691,7 +691,7 @@ const OrderPageInternal = () => {
                             onClick={() => setIsMenuBrowserOpen(true)}
                             className="bg-black text-white h-16 w-16 rounded-2xl shadow-lg flex flex-col items-center justify-center gap-1 border border-gray-700"
                         >
-                            <BookOpen size={24} className="text-primary" />
+                            <BookOpen size={24} className="text-green-500" />
                             <span className="text-xs font-bold">Menu</span>
                         </button>
                     </motion.div>
@@ -702,9 +702,11 @@ const OrderPageInternal = () => {
 };
 
 const OrderPage = () => (
-    <Suspense fallback={<div className="min-h-screen bg-background flex items-center justify-center"><div className="animate-spin rounded-full h-16 w-16 border-b-2 border-primary"></div></div>}>
+    <Suspense fallback={<div className="min-h-screen bg-background flex items-center justify-center"><div className="animate-spin rounded-full h-16 w-16 border-b-2 border-green-600"></div></div>}>
         <OrderPageInternal />
     </Suspense>
 );
 
 export default OrderPage;
+
+    
