@@ -414,12 +414,11 @@ const OrderPageInternal = () => {
     
     // Filters and Sorting State
     const [searchQuery, setSearchQuery] = useState('');
-    const [sortBy, setSortBy] = useState('default'); // 'default', 'price-asc', 'price-desc'
+    const [sortBy, setSortBy] = useState('default'); // 'default', 'price-asc', 'price-desc', 'rating-desc'
     const [filters, setFilters] = useState({
         veg: false,
         nonVeg: false,
         recommended: false,
-        topRated: false,
     });
 
     // Coupon and Discount State
@@ -446,11 +445,11 @@ const OrderPageInternal = () => {
             if (filters.veg) items = items.filter(item => item.isVeg);
             if (filters.nonVeg) items = items.filter(item => !item.isVeg);
             if (filters.recommended) items = items.filter(item => item.isRecommended);
-            if (filters.topRated) items = items.filter(item => item.rating >= 4.5);
             
             // Apply sorting
             if (sortBy === 'price-asc') items.sort((a, b) => a.fullPrice - b.fullPrice);
             else if (sortBy === 'price-desc') items.sort((a, b) => b.fullPrice - a.fullPrice);
+            else if (sortBy === 'rating-desc') items.sort((a,b) => (b.rating || 0) - (a.rating || 0));
             
             newMenu[category] = items;
         }
@@ -609,6 +608,10 @@ const OrderPageInternal = () => {
                                         <Label htmlFor="sort-desc">Price: High to Low</Label>
                                         <Switch id="sort-desc" checked={sortBy === 'price-desc'} onCheckedChange={() => handleSortChange('price-desc')} />
                                     </div>
+                                     <div className="flex items-center justify-between">
+                                        <Label htmlFor="sort-rating">Top Rated</Label>
+                                        <Switch id="sort-rating" checked={sortBy === 'rating-desc'} onCheckedChange={() => handleSortChange('rating-desc')} />
+                                    </div>
                                 </div>
 
                                 <div className="space-y-2">
@@ -622,9 +625,6 @@ const OrderPageInternal = () => {
                                         </Button>
                                         <Button variant={filters.recommended ? 'default' : 'outline'} size="sm" onClick={() => handleFilterChange('recommended')} className="flex items-center gap-2">
                                             <Sparkles size={16} className={cn(filters.recommended ? '' : 'text-yellow-500')} />Highly reordered
-                                        </Button>
-                                        <Button variant={filters.topRated ? 'default' : 'outline'} size="sm" onClick={() => handleFilterChange('topRated')} className="flex items-center gap-2">
-                                            <Star size={16} className={cn(filters.topRated ? '' : 'text-primary')} />Top Rated
                                         </Button>
                                     </div>
                                 </div>
