@@ -619,7 +619,7 @@ const OrderPageInternal = () => {
                                         <Switch id="non-veg-only" checked={filters.nonVeg} onCheckedChange={(checked) => handleFilterChange('nonVeg', checked)} />
                                     </div>
                                      <div className="flex items-center justify-between p-2 rounded-md bg-muted/50">
-                                        <Label htmlFor="recommended" className="flex items-center gap-2"><Sparkles size={16} className="text-yellow-500" />Highly Recommended</Label>
+                                        <Label htmlFor="recommended" className="flex items-center gap-2"><Sparkles size={16} className="text-yellow-500" />Highly reordered</Label>
                                         <Switch id="recommended" checked={filters.recommended} onCheckedChange={(checked) => handleFilterChange('recommended', checked)} />
                                     </div>
                                      <div className="flex items-center justify-between p-2 rounded-md bg-muted/50">
