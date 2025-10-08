@@ -420,45 +420,55 @@ const OrderPageInternal = () => {
             </div>
 
             <footer className="fixed bottom-0 left-0 right-0 z-30 pointer-events-none">
-                <div className="w-full relative">
-                    <div className="flex justify-between items-center gap-4">
-                        <div className="flex-1">
-                            <AnimatePresence>
-                                {totalCartItems > 0 && (
-                                    <motion.div
-                                        className="container mx-auto"
-                                        initial={{ y: 100 }}
-                                        animate={{ y: 0 }}
-                                        exit={{ y: 100 }}
-                                        transition={{ type: "spring", stiffness: 300, damping: 30 }}
-                                    >
-                                        <div className="w-full mx-auto">
-                                            <Button onClick={handleCheckout} className="bg-green-600 hover:bg-green-700 h-14 text-lg font-bold rounded-lg shadow-green-500/30 flex justify-between items-center text-white w-full pointer-events-auto">
-                                                <div className="flex items-center gap-2">
-                                                   <ShoppingCart className="h-6 w-6"/> 
-                                                   <span>{totalCartItems} {totalCartItems > 1 ? 'Items' : 'Item'}</span>
-                                                </div>
-                                                <span>View Cart | ₹{subtotal}</span>
-                                            </Button>
-                                        </div>
-                                    </motion.div>
-                                )}
-                            </AnimatePresence>
-                        </div>
-                        
-                        <div className="flex-shrink-0 absolute right-4 bottom-4">
-                             <motion.button
+                <AnimatePresence>
+                    {totalCartItems === 0 && (
+                        <motion.div
+                            className="absolute bottom-4 right-4"
+                            initial={{ opacity: 0, scale: 0.8 }}
+                            animate={{ opacity: 1, scale: 1 }}
+                            exit={{ opacity: 0, scale: 0.8 }}
+                        >
+                            <button
                                 onClick={() => setIsMenuBrowserOpen(true)}
                                 className="bg-black text-white h-16 w-16 rounded-2xl shadow-lg flex flex-col items-center justify-center gap-1 border border-gray-700 pointer-events-auto"
-                                animate={{ bottom: totalCartItems > 0 ? 96 : 16 }}
-                                transition={{ type: "spring", stiffness: 400, damping: 30 }}
-                             >
+                            >
                                 <BookOpen size={24} className="text-primary" />
                                 <span className="text-xs font-bold">Menu</span>
-                            </motion.button>
-                        </div>
-                    </div>
-                </div>
+                            </button>
+                        </motion.div>
+                    )}
+                </AnimatePresence>
+                
+                <AnimatePresence>
+                    {totalCartItems > 0 && (
+                        <motion.div
+                            className="p-4"
+                            initial={{ y: "100%" }}
+                            animate={{ y: 0 }}
+                            exit={{ y: "100%" }}
+                            transition={{ type: "spring", stiffness: 300, damping: 30 }}
+                        >
+                           <div className="container mx-auto">
+                             <div className="bg-background/80 backdrop-blur-lg border border-border rounded-xl shadow-lg flex items-center gap-2 p-2 pointer-events-auto">
+                                <Button onClick={handleCheckout} className="bg-green-600 hover:bg-green-700 h-14 text-lg font-bold flex-grow flex justify-between items-center text-white">
+                                    <div className="flex items-center gap-2">
+                                       <ShoppingCart className="h-6 w-6"/> 
+                                       <span>{totalCartItems} {totalCartItems > 1 ? 'Items' : 'Item'}</span>
+                                    </div>
+                                    <span>View Cart | ₹{subtotal}</span>
+                                </Button>
+                                <button
+                                    onClick={() => setIsMenuBrowserOpen(true)}
+                                    className="bg-black text-white h-14 w-14 rounded-lg shadow-lg flex flex-col items-center justify-center gap-1 border border-gray-700 flex-shrink-0"
+                                >
+                                    <BookOpen size={20} className="text-primary" />
+                                    <span className="text-xs font-bold">Menu</span>
+                                </button>
+                            </div>
+                           </div>
+                        </motion.div>
+                    )}
+                </AnimatePresence>
             </footer>
         </div>
     );
