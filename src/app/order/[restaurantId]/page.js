@@ -432,7 +432,7 @@ const OrderPageInternal = () => {
                                         exit={{ y: 100 }}
                                         transition={{ type: "spring", stiffness: 300, damping: 30 }}
                                     >
-                                        <div className="w-full max-w-lg mx-auto">
+                                        <div className="w-full mx-auto">
                                             <Button onClick={handleCheckout} className="bg-green-600 hover:bg-green-700 h-14 text-lg font-bold rounded-lg shadow-green-500/30 flex justify-between items-center text-white w-full pointer-events-auto">
                                                 <div className="flex items-center gap-2">
                                                    <ShoppingCart className="h-6 w-6"/> 
