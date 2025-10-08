@@ -10,7 +10,7 @@ import Image from 'next/image';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose } from "@/components/ui/dialog";
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 
@@ -412,8 +412,8 @@ const OrderPageInternal = () => {
             </div>
 
             <footer className="fixed bottom-0 z-30 w-full p-4">
-                <div className="mx-auto flex justify-between items-center gap-4">
-                    <div className="flex-1 flex items-center gap-4">
+                <div className="flex justify-between items-center gap-4">
+                    <div className="flex-grow flex items-center gap-4">
                         <AnimatePresence>
                             {totalCartItems > 0 && (
                                 <motion.div
@@ -450,6 +450,7 @@ const OrderPageInternal = () => {
                     </div>
                     
                     <motion.div
+                        className="flex-shrink-0"
                          initial={{ y: 100 }}
                          animate={{ y: 0 }}
                          transition={{ type: "spring", stiffness: 300, damping: 30, delay: 0.1 }}
