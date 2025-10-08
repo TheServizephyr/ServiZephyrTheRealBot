@@ -143,7 +143,7 @@ const MenuItemCard = ({ item, quantity, onIncrement, onDecrement, onOpenPortionM
       <div className="flex flex-col items-center justify-center h-full flex-shrink-0 ml-4">
         {quantity > 0 ? (
           <div className="flex items-center gap-1 bg-background p-1 rounded-lg border border-border">
-            <Button size="icon" variant="ghost" className="h-8 w-8 text-green-600" onClick={() => onDecrement(item)}><Minus size={16}/></Button>
+            <Button size="icon" variant="ghost" className="h-8 w-8 text-green-600" onClick={() => onDecrement(item.id)}><Minus size={16}/></Button>
             <span className="font-bold w-6 text-center text-foreground">{quantity}</span>
             <Button size="icon" variant="ghost" className="h-8 w-8 text-green-600" onClick={handleAddClick}><Plus size={16}/></Button>
           </div>
@@ -329,11 +329,10 @@ const OrderPageInternal = () => {
         updateCart(newCart);
     };
     
-    const handleDecrement = (item) => {
+    const handleDecrement = (itemId) => {
         let newCart;
-        // Since decrementing only happens from the cart, we assume the portion is already set
-        const cartItemId = `${item.id}-${item.portion.name}`;
-        const existingItemIndex = cart.findIndex(ci => `${ci.id}-${ci.portion.name}` === cartItemId);
+        // Since we are decrementing, we can assume we only want to decrement the first found instance in the cart that matches the item id.
+        const existingItemIndex = cart.findIndex(ci => ci.id === itemId);
 
         if (existingItemIndex === -1) return;
 
