@@ -4,7 +4,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
-import { Utensils, Plus, Minus, X, Home, User, ShoppingCart, CookingPot, Ticket, Gift, ArrowLeft, Sparkles, Check } from 'lucide-react';
+import { Utensils, Plus, Minus, X, Home, User, ShoppingCart, CookingPot, Ticket, Gift, ArrowLeft, Sparkles, Check, PlusCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose } from "@/components/ui/dialog";
 import { Label } from '@/components/ui/label';
@@ -117,8 +117,8 @@ export default function CartPage() {
         }
     }, []);
 
-    const updateCartInStorage = (newCart) => {
-        const updatedData = { ...cartData, cart: newCart };
+    const updateCartInStorage = (newCart, newNotes) => {
+        const updatedData = { ...cartData, cart: newCart, notes: newNotes };
         setCartData(updatedData);
         localStorage.setItem('cartData', JSON.stringify(updatedData));
     };
@@ -139,8 +139,14 @@ export default function CartPage() {
             }
         }
         setCart(newCart);
-        updateCartInStorage(newCart);
+        updateCartInStorage(newCart, notes);
     };
+
+    const handleNotesChange = (e) => {
+        const newNotes = e.target.value;
+        setNotes(newNotes);
+        updateCartInStorage(cart, newNotes);
+    }
 
     const subtotal = useMemo(() => cart.reduce((sum, item) => sum + item.fullPrice * item.quantity, 0), [cart]);
 
@@ -261,33 +267,37 @@ export default function CartPage() {
                     </div>
                 ) : (
                     <>
-                        <div className="space-y-3">
-                            {cart.map(item => (
-                                <motion.div 
-                                    layout
-                                    key={item.id} 
-                                    className="flex items-center gap-4 bg-card p-3 rounded-lg border border-border"
-                                >
-                                    <p className="flex-grow font-semibold text-foreground">{item.name}</p>
-                                    <div className="flex items-center gap-2">
-                                        <Button size="icon" variant="outline" className="h-7 w-7" onClick={() => handleUpdateCart(item, 'decrement')}>-</Button>
-                                        <span className="font-bold w-5 text-center">{item.quantity}</span>
-                                        <Button size="icon" variant="outline" className="h-7 w-7" onClick={() => handleUpdateCart(item, 'increment')}>+</Button>
-                                    </div>
-                                    <p className="w-20 text-right font-bold">₹{item.fullPrice * item.quantity}</p>
-                                </motion.div>
-                            ))}
-                        </div>
+                        <div className="bg-card p-4 rounded-lg border border-border">
+                            <div className="space-y-3">
+                                {cart.map(item => (
+                                    <motion.div 
+                                        layout
+                                        key={item.id} 
+                                        className="flex items-center gap-4"
+                                    >
+                                        <p className="flex-grow font-semibold text-foreground">{item.name}</p>
+                                        <div className="flex items-center gap-2">
+                                            <Button size="icon" variant="outline" className="h-7 w-7" onClick={() => handleUpdateCart(item, 'decrement')}>-</Button>
+                                            <span className="font-bold w-5 text-center">{item.quantity}</span>
+                                            <Button size="icon" variant="outline" className="h-7 w-7" onClick={() => handleUpdateCart(item, 'increment')}>+</Button>
+                                        </div>
+                                        <p className="w-20 text-right font-bold">₹{item.fullPrice * item.quantity}</p>
+                                    </motion.div>
+                                ))}
+                            </div>
 
-                        <div className="p-4 mt-4 bg-card rounded-lg border border-border">
-                            <div className="relative">
-                                <CookingPot className="absolute left-3 top-3 h-5 w-5 text-muted-foreground"/>
+                            <Button variant="outline" onClick={() => router.back()} className="w-full mt-4">
+                                <PlusCircle className="mr-2 h-4 w-4" /> Add more items
+                            </Button>
+                            
+                            <div className="relative mt-4 pt-4 border-t border-dashed border-border">
+                                <CookingPot className="absolute left-0 top-7 h-5 w-5 text-muted-foreground"/>
                                 <textarea 
                                   value={notes}
-                                  onChange={(e) => setNotes(e.target.value)}
-                                  placeholder="Add cooking instructions..."
+                                  onChange={handleNotesChange}
+                                  placeholder="Add cooking instructions... (e.g. No onion, less spicy etc.)"
                                   rows={2}
-                                  className="w-full pl-10 pr-4 py-2 rounded-md bg-input border border-border text-sm"
+                                  className="w-full pl-7 pr-4 py-2 rounded-md bg-input border-border text-sm focus:ring-1 focus:ring-primary"
                                 />
                             </div>
                         </div>
@@ -356,7 +366,7 @@ export default function CartPage() {
 
             <footer className="fixed bottom-0 left-0 w-full bg-background/80 backdrop-blur-lg border-t border-border z-30">
                 <div className="container mx-auto p-4">
-                    <Button onClick={() => setIsCheckoutOpen(true)} className="w-full bg-green-600 hover:bg-green-700 h-12 text-lg font-bold text-white">
+                    <Button onClick={() => setIsCheckoutOpen(true)} className="w-full bg-green-600 hover:bg-green-700 h-12 text-lg font-bold text-white" disabled={cart.length === 0}>
                         Proceed to Checkout
                     </Button>
                 </div>
