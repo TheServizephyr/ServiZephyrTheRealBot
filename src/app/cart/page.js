@@ -1,8 +1,8 @@
 
 'use client';
 
-import React, { useState, useEffect, useMemo } from 'react';
-import { useRouter } from 'next/navigation';
+import React, { useState, useEffect, useMemo, Suspense } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { motion } from 'framer-motion';
 import { Utensils, Plus, Minus, X, Home, User, ShoppingCart, CookingPot, Ticket, Gift, ArrowLeft, Sparkles, Check, PlusCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -55,7 +55,7 @@ const CheckoutModal = ({ isOpen, onClose, restaurantId, phone, cart, notes, appl
             alert("Success! (Demo) - Your order has been placed.");
             setLoading(false);
             onClose();
-            localStorage.removeItem('cartData');
+            localStorage.removeItem(`cart_${restaurantId}`);
             window.location.href = `/order/${restaurantId}`;
         }, 1500);
     };
@@ -97,8 +97,11 @@ const CheckoutModal = ({ isOpen, onClose, restaurantId, phone, cart, notes, appl
 };
 
 
-export default function CartPage() {
+const CartPageInternal = () => {
     const router = useRouter();
+    const searchParams = useSearchParams();
+    const restaurantId = searchParams.get('restaurantId');
+    
     const [cartData, setCartData] = useState(null);
     const [cart, setCart] = useState([]);
     const [notes, setNotes] = useState('');
@@ -106,21 +109,23 @@ export default function CartPage() {
     const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
 
     useEffect(() => {
-        const data = localStorage.getItem('cartData');
-        if (data) {
-            const parsedData = JSON.parse(data);
-            setCartData(parsedData);
-            setCart(parsedData.cart || []);
-            setNotes(parsedData.notes || '');
-        } else {
-            // Handle case where cart is empty or not found
+        if (restaurantId) {
+            const data = localStorage.getItem(`cart_${restaurantId}`);
+            if (data) {
+                const parsedData = JSON.parse(data);
+                setCartData(parsedData);
+                setCart(parsedData.cart || []);
+                setNotes(parsedData.notes || '');
+            } else {
+                // Handle case where cart is empty or not found for this restaurant
+            }
         }
-    }, []);
+    }, [restaurantId]);
 
     const updateCartInStorage = (newCart, newNotes) => {
         const updatedData = { ...cartData, cart: newCart, notes: newNotes };
         setCartData(updatedData);
-        localStorage.setItem('cartData', JSON.stringify(updatedData));
+        localStorage.setItem(`cart_${restaurantId}`, JSON.stringify(updatedData));
     };
     
     const handleUpdateCart = (item, action) => {
@@ -164,9 +169,9 @@ export default function CartPage() {
                 currentDiscount = (subtotal * coupon.value) / 100;
             }
 
-            if (coupon.customerId) { // This is a special coupon
+            if (coupon.customerId) {
                 specialCouponDiscount += currentDiscount;
-            } else { // Normal coupon
+            } else {
                 couponDiscount += currentDiscount;
             }
         });
@@ -192,14 +197,11 @@ export default function CartPage() {
     }, [subtotal, totalDiscount, finalDeliveryCharge]);
 
     const handleApplyCoupon = (couponToApply) => {
-        // Check if coupon is already applied
         if (appliedCoupons.some(c => c.id === couponToApply.id)) {
-            // Remove coupon
             setAppliedCoupons(prev => prev.filter(c => c.id !== couponToApply.id));
             return;
         }
 
-        // Prevent applying if subtotal is too low
         if (subtotal < couponToApply.minOrder) {
             alert(`You need to spend at least ₹${couponToApply.minOrder} to use this coupon.`);
             return;
@@ -209,11 +211,9 @@ export default function CartPage() {
 
         setAppliedCoupons(prev => {
             let newCoupons = [...prev];
-            // If it's a normal coupon, remove any other normal coupon first
             if (!isSpecial) {
-                newCoupons = newCoupons.filter(c => !!c.customerId); // Keep only special coupons
+                newCoupons = newCoupons.filter(c => !!c.customerId);
             }
-            // Add the new coupon
             return [...newCoupons, couponToApply];
         });
     };
@@ -223,7 +223,7 @@ export default function CartPage() {
     const normalCoupons = allCoupons.filter(c => !c.customerId);
 
 
-    if (!cartData) {
+    if (!cartData || !restaurantId) {
         return (
             <div className="min-h-screen bg-background flex flex-col items-center justify-center text-muted-foreground p-4">
                 <ShoppingCart size={48} className="mb-4" />
@@ -250,7 +250,7 @@ export default function CartPage() {
         <div className="min-h-screen bg-background text-foreground flex flex-col">
              <header className="sticky top-0 z-20 bg-background/80 backdrop-blur-lg border-b border-border">
                 <div className="container mx-auto px-4 py-3 flex items-center gap-4">
-                     <Button variant="ghost" size="icon" onClick={() => router.back()} className="h-10 w-10">
+                     <Button variant="ghost" size="icon" onClick={() => router.push(`/order/${restaurantId}`)} className="h-10 w-10">
                         <ArrowLeft />
                     </Button>
                     <div>
@@ -286,7 +286,7 @@ export default function CartPage() {
                                 ))}
                             </div>
 
-                            <Button variant="outline" onClick={() => router.back()} className="w-full mt-4">
+                            <Button variant="outline" onClick={() => router.push(`/order/${restaurantId}`)} className="w-full mt-4">
                                 <PlusCircle className="mr-2 h-4 w-4" /> Add more items
                             </Button>
                             
@@ -375,3 +375,13 @@ export default function CartPage() {
         </>
     );
 }
+
+const CartPage = () => (
+    <Suspense fallback={<div className="min-h-screen bg-background flex items-center justify-center"><div className="animate-spin rounded-full h-16 w-16 border-b-2 border-primary"></div></div>}>
+        <CartPageInternal />
+    </Suspense>
+);
+
+export default CartPage;
+
+    

@@ -136,30 +136,37 @@ const OrderPageInternal = () => {
     const { restaurantId } = params;
     const phone = searchParams.get('phone');
 
-    // State now initialized with dummy data
     const [restaurantName, setRestaurantName] = useState(dummyData.restaurantName);
     const [deliveryCharge, setDeliveryCharge] = useState(dummyData.deliveryCharge);
     const [rating, setRating] = useState(dummyData.rating);
     const [rawMenu, setRawMenu] = useState(dummyData.menu);
-    const [loading, setLoading] = useState(false); // No loading from backend
+    const [loading, setLoading] = useState(false);
     const [cart, setCart] = useState([]);
     const [isMenuBrowserOpen, setIsMenuBrowserOpen] = useState(false);
     const [notes, setNotes] = useState("");
     
-    // Filters and Sorting State
     const [searchQuery, setSearchQuery] = useState('');
-    const [sortBy, setSortBy] = useState('default'); // 'default', 'price-asc', 'price-desc', 'rating-desc'
+    const [sortBy, setSortBy] = useState('default');
     const [filters, setFilters] = useState({
         veg: false,
         nonVeg: false,
         recommended: false,
     });
 
-    // Coupon and Discount State
     const [coupons, setCoupons] = useState(dummyData.coupons);
     const [loyaltyPoints, setLoyaltyPoints] = useState(dummyData.loyaltyPoints);
     
-    // Removed useEffect for fetching data
+    // Load cart from localStorage on initial render
+    useEffect(() => {
+        if (restaurantId) {
+            const savedCartData = localStorage.getItem(`cart_${restaurantId}`);
+            if (savedCartData) {
+                const parsedData = JSON.parse(savedCartData);
+                setCart(parsedData.cart || []);
+                setNotes(parsedData.notes || '');
+            }
+        }
+    }, [restaurantId]);
     
     const processedMenu = useMemo(() => {
         let newMenu = JSON.parse(JSON.stringify(rawMenu));
@@ -168,17 +175,14 @@ const OrderPageInternal = () => {
         for (const category in newMenu) {
             let items = newMenu[category];
             
-            // Apply search first
             if (lowercasedQuery) {
                 items = items.filter(item => item.name.toLowerCase().includes(lowercasedQuery));
             }
 
-            // Apply filters
             if (filters.veg) items = items.filter(item => item.isVeg);
             if (filters.nonVeg) items = items.filter(item => !item.isVeg);
             if (filters.recommended) items = items.filter(item => item.isRecommended);
             
-            // Apply sorting
             if (sortBy === 'price-asc') items.sort((a, b) => a.fullPrice - b.fullPrice);
             else if (sortBy === 'price-desc') items.sort((a, b) => b.fullPrice - a.fullPrice);
             else if (sortBy === 'rating-desc') items.sort((a,b) => (b.rating || 0) - (a.rating || 0));
@@ -192,7 +196,6 @@ const OrderPageInternal = () => {
         setFilters(prev => {
             const newValue = !prev[filterKey];
             const newFilters = { ...prev, [filterKey]: newValue };
-            // Ensure veg and non-veg are mutually exclusive
             if (filterKey === 'veg' && newValue) newFilters.nonVeg = false;
             if (filterKey === 'nonVeg' && newValue) newFilters.veg = false;
             return newFilters;
@@ -205,31 +208,50 @@ const OrderPageInternal = () => {
 
     const subtotal = useMemo(() => cart.reduce((sum, item) => sum + item.fullPrice * item.quantity, 0), [cart]);
 
+    const updateCart = (newCart, newNotes) => {
+        setCart(newCart);
+        if (newNotes !== undefined) {
+            setNotes(newNotes);
+        }
+        const cartData = {
+            cart: newCart,
+            notes: newNotes !== undefined ? newNotes : notes,
+            restaurantId,
+            restaurantName,
+            phone,
+            coupons,
+            loyaltyPoints,
+            deliveryCharge,
+        };
+        localStorage.setItem(`cart_${restaurantId}`, JSON.stringify(cartData));
+    };
 
     const handleIncrement = (item) => {
-        setCart(prevCart => {
-            const existingItem = prevCart.find(cartItem => cartItem.id === item.id);
-            if (existingItem) {
-                return prevCart.map(cartItem =>
-                    cartItem.id === item.id ? { ...cartItem, quantity: cartItem.quantity + 1 } : cartItem
-                );
-            }
-            return [...prevCart, { ...item, quantity: 1 }];
-        });
+        let newCart;
+        const existingItem = cart.find(cartItem => cartItem.id === item.id);
+        if (existingItem) {
+            newCart = cart.map(cartItem =>
+                cartItem.id === item.id ? { ...cartItem, quantity: cartItem.quantity + 1 } : cartItem
+            );
+        } else {
+            newCart = [...cart, { ...item, quantity: 1 }];
+        }
+        updateCart(newCart);
     };
     
     const handleDecrement = (item) => {
-        setCart(prevCart => {
-            const existingItem = prevCart.find(cartItem => cartItem.id === item.id);
-            if (!existingItem) return prevCart;
+        let newCart;
+        const existingItem = cart.find(cartItem => cartItem.id === item.id);
+        if (!existingItem) return;
 
-            if (existingItem.quantity === 1) {
-                return prevCart.filter(cartItem => cartItem.id !== item.id);
-            }
-            return prevCart.map(cartItem =>
+        if (existingItem.quantity === 1) {
+            newCart = cart.filter(cartItem => cartItem.id !== item.id);
+        } else {
+            newCart = cart.map(cartItem =>
                 cartItem.id === item.id ? { ...cartItem, quantity: cartItem.quantity - 1 } : cartItem
             );
-        });
+        }
+        updateCart(newCart);
     };
     
     const totalCartItems = cart.reduce((sum, item) => sum + item.quantity, 0);
@@ -252,21 +274,8 @@ const OrderPageInternal = () => {
     }
 
     const handleCheckout = () => {
-       // 1. Save cart and other necessary info to localStorage
-        const cartData = {
-            cart,
-            notes,
-            restaurantId,
-            restaurantName,
-            phone,
-            coupons,
-            loyaltyPoints,
-            deliveryCharge,
-        };
-        localStorage.setItem('cartData', JSON.stringify(cartData));
-
-        // 2. Navigate to the new cart page
-        router.push('/cart');
+        // Just navigate, cart data is already saved on every update
+        router.push(`/cart?restaurantId=${restaurantId}`);
     };
 
     if (loading) {
@@ -291,7 +300,6 @@ const OrderPageInternal = () => {
                 </div>
             </header>
 
-            {/* Search and Filter Bar */}
             <div className="sticky top-[65px] z-10 bg-background/95 backdrop-blur-sm py-2 border-b border-border">
                 <div className="container mx-auto px-4 flex items-center gap-4">
                     <div className="relative flex-grow">
@@ -406,7 +414,7 @@ const OrderPageInternal = () => {
                             onClick={() => setIsMenuBrowserOpen(true)}
                             className="bg-black text-white h-16 w-16 rounded-2xl shadow-lg flex flex-col items-center justify-center gap-1 border border-gray-700"
                         >
-                            <BookOpen size={24} className="text-green-500" />
+                            <BookOpen size={24} className="text-primary" />
                             <span className="text-xs font-bold">Menu</span>
                         </button>
                     </motion.div>
@@ -423,3 +431,5 @@ const OrderPage = () => (
 );
 
 export default OrderPage;
+
+    
