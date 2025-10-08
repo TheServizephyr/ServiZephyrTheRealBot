@@ -220,7 +220,7 @@ export default function CartPage() {
                 </div>
             </header>
 
-            <main className="flex-grow p-4 container mx-auto">
+            <main className="flex-grow p-4 container mx-auto pb-28">
                 {cart.length === 0 ? (
                     <div className="h-full flex items-center justify-center text-muted-foreground">
                         Your cart is empty.
@@ -300,6 +300,7 @@ export default function CartPage() {
                         </div>
 
                         <div className="mt-6 p-4 border-t-2 border-primary bg-card rounded-lg shadow-lg">
+                            <h3 className="text-xl font-bold mb-4">Bill Summary</h3>
                             <div className="space-y-1 text-sm mb-4">
                                 <div className="flex justify-between"><span>Subtotal:</span> <span className="font-medium">₹{subtotal.toFixed(2)}</span></div>
                                 {couponDiscount > 0 && <div className="flex justify-between text-green-400"><span>Coupon Discount:</span> <span className="font-medium">- ₹{couponDiscount.toFixed(2)}</span></div>}
@@ -310,14 +311,21 @@ export default function CartPage() {
                                 <div className="border-t border-dashed border-border my-2"></div>
                                 <div className="flex justify-between items-center text-lg font-bold"><span>Grand Total:</span> <span>₹{grandTotal > 0 ? grandTotal.toFixed(2) : '0.00'}</span></div>
                             </div>
-                            <Button onClick={() => setIsCheckoutOpen(true)} className="w-full bg-green-600 hover:bg-green-700 h-12 text-lg font-bold text-white">
-                                Proceed to Checkout
-                            </Button>
                         </div>
                     </>
                 )}
             </main>
+
+            <footer className="fixed bottom-0 left-0 w-full bg-background/80 backdrop-blur-lg border-t border-border z-30">
+                <div className="container mx-auto p-4">
+                    <Button onClick={() => setIsCheckoutOpen(true)} className="w-full bg-green-600 hover:bg-green-700 h-12 text-lg font-bold text-white">
+                        Proceed to Checkout
+                    </Button>
+                </div>
+            </footer>
         </div>
         </>
     );
 }
+
+    
