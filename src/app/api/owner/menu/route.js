@@ -32,10 +32,10 @@ async function seedInitialMenu(firestore, restaurantId) {
     const batch = firestore.batch();
 
     const initialItems = [
-        { name: 'Paneer Tikka', description: 'Tandoor-cooked cottage cheese', halfPrice: 180, fullPrice: 280, isVeg: true, isAvailable: true, categoryId: 'starters', order: 1, imageUrl: `https://picsum.photos/seed/paneertikka/100/100` },
-        { name: 'Chilli Chicken', description: 'Spicy diced chicken', halfPrice: 200, fullPrice: 320, isVeg: false, isAvailable: true, categoryId: 'starters', order: 2, imageUrl: `https://picsum.photos/seed/chillichicken/100/100` },
-        { name: 'Dal Makhani', description: 'Creamy black lentils', halfPrice: null, fullPrice: 250, isVeg: true, isAvailable: true, categoryId: 'main-course', order: 1, imageUrl: `https://picsum.photos/seed/dalmakhani/100/100` },
-        { name: 'Veg Steamed Momos', description: '8 Pcs, served with chutney', halfPrice: null, fullPrice: 120, isVeg: true, isAvailable: true, categoryId: 'momos', order: 1, imageUrl: `https://picsum.photos/seed/vegmomos/100/100` },
+        { name: 'Paneer Tikka', description: 'Tandoor-cooked cottage cheese', portions: [{name: 'Half', price: 180}, {name: 'Full', price: 280}], isVeg: true, isAvailable: true, categoryId: 'starters', order: 1, imageUrl: `https://picsum.photos/seed/paneertikka/100/100`, tags: ["Bestseller"] },
+        { name: 'Chilli Chicken', description: 'Spicy diced chicken', portions: [{name: 'Half', price: 200}, {name: 'Full', price: 320}], isVeg: false, isAvailable: true, categoryId: 'starters', order: 2, imageUrl: `https://picsum.photos/seed/chillichicken/100/100`, tags: ["Most Reordered"] },
+        { name: 'Dal Makhani', description: 'Creamy black lentils', portions: [{name: 'Full', price: 250}], isVeg: true, isAvailable: true, categoryId: 'main-course', order: 1, imageUrl: `https://picsum.photos/seed/dalmakhani/100/100` },
+        { name: 'Veg Steamed Momos', description: '8 Pcs, served with chutney', portions: [{name: 'Full', price: 120}], isVeg: true, isAvailable: true, categoryId: 'momos', order: 1, imageUrl: `https://picsum.photos/seed/vegmomos/100/100`, tags: ["Chef's Special"] },
     ];
     
     initialItems.forEach(itemData => {
@@ -119,8 +119,8 @@ export async function POST(req) {
         const { restaurantId } = await verifyOwnerAndGetRestaurant(req, auth, firestore);
         const { item, categoryId, isEditing } = await req.json();
 
-        if (!item || !item.name || item.fullPrice === undefined || !categoryId) {
-            return NextResponse.json({ message: 'Missing required item data.' }, { status: 400 });
+        if (!item || !item.name || !item.portions || item.portions.length === 0) {
+            return NextResponse.json({ message: 'Missing required item data. Name and at least one portion are required.' }, { status: 400 });
         }
 
         const menuRef = firestore.collection('restaurants').doc(restaurantId).collection('menu');

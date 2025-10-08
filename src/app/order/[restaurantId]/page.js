@@ -22,18 +22,18 @@ const dummyData = {
     rating: 4.1,
     menu: {
         "starters": [
-            { id: 'item-1', name: 'Paneer Tikka', description: 'Tandoor-cooked cottage cheese', fullPrice: 280, isVeg: true, isAvailable: true, categoryId: 'starters', imageUrl: 'https://picsum.photos/seed/paneertikka/100/100', rating: 4.5, isRecommended: true, tags: ["Bestseller", "Spicy"] },
-            { id: 'item-2', name: 'Chilli Chicken', description: 'Spicy diced chicken', fullPrice: 320, isVeg: false, isAvailable: true, categoryId: 'starters', imageUrl: 'https://picsum.photos/seed/chillichicken/100/100', rating: 4.7, isRecommended: true, tags: ["Most Reordered"] },
+            { id: 'item-1', name: 'Paneer Tikka', description: 'Tandoor-cooked cottage cheese', portions: [{name: 'Half', price: 180}, {name: 'Full', price: 280}], isVeg: true, isAvailable: true, categoryId: 'starters', imageUrl: 'https://picsum.photos/seed/paneertikka/100/100', rating: 4.5, isRecommended: true, tags: ["Bestseller", "Spicy"] },
+            { id: 'item-2', name: 'Chilli Chicken', description: 'Spicy diced chicken', portions: [{name: 'Half', price: 200}, {name: 'Full', price: 320}], isVeg: false, isAvailable: true, categoryId: 'starters', imageUrl: 'https://picsum.photos/seed/chillichicken/100/100', rating: 4.7, isRecommended: true, tags: ["Most Reordered"] },
         ],
         "main-course": [
-            { id: 'item-3', name: 'Dal Makhani', description: 'Creamy black lentils', fullPrice: 250, isVeg: true, isAvailable: true, categoryId: 'main-course', imageUrl: 'https://picsum.photos/seed/dalmakhani/100/100', rating: 4.2, isRecommended: false },
-            { id: 'item-4', name: 'Butter Chicken', description: 'Classic creamy chicken curry', fullPrice: 450, isVeg: false, isAvailable: true, categoryId: 'main-course', imageUrl: 'https://picsum.photos/seed/butterchicken/100/100', rating: 3.8, isRecommended: false },
+            { id: 'item-3', name: 'Dal Makhani', description: 'Creamy black lentils', portions: [{name: 'Full', price: 250}], isVeg: true, isAvailable: true, categoryId: 'main-course', imageUrl: 'https://picsum.photos/seed/dalmakhani/100/100', rating: 4.2, isRecommended: false },
+            { id: 'item-4', name: 'Butter Chicken', description: 'Classic creamy chicken curry', portions: [{name: 'Full', price: 450}], isVeg: false, isAvailable: true, categoryId: 'main-course', imageUrl: 'https://picsum.photos/seed/butterchicken/100/100', rating: 3.8, isRecommended: false },
         ],
         "momos": [
-            { id: 'item-5', name: 'Veg Steamed Momos', description: '8 Pcs, served with chutney', fullPrice: 120, isVeg: true, isAvailable: true, categoryId: 'momos', imageUrl: 'https://picsum.photos/seed/vegmomos/100/100', rating: 4.8, isRecommended: true, tags: ["Chef's Special"] },
+            { id: 'item-5', name: 'Veg Steamed Momos', description: '8 Pcs, served with chutney', portions: [{name: 'Full', price: 120}], isVeg: true, isAvailable: true, categoryId: 'momos', imageUrl: 'https://picsum.photos/seed/vegmomos/100/100', rating: 4.8, isRecommended: true, tags: ["Chef's Special"] },
         ],
          "desserts": [
-            { id: 'item-6', name: 'Gulab Jamun', description: '2 Pcs, served hot', fullPrice: 80, isVeg: true, isAvailable: true, categoryId: 'desserts', imageUrl: 'https://picsum.photos/seed/gulabjamun/100/100', rating: 4.0, isRecommended: false },
+            { id: 'item-6', name: 'Gulab Jamun', description: '2 Pcs, served hot', portions: [{name: 'Full', price: 80}], isVeg: true, isAvailable: true, categoryId: 'desserts', imageUrl: 'https://picsum.photos/seed/gulabjamun/100/100', rating: 4.0, isRecommended: false },
         ],
     },
     coupons: [
@@ -44,17 +44,49 @@ const dummyData = {
 };
 // --- END: DUMMY DATA ---
 
-const ClearCartDialog = ({ isOpen, onClose, onConfirm }) => {
+const PortionSelectionModal = ({ item, isOpen, onClose, onAddToCart }) => {
+    const [selectedPortion, setSelectedPortion] = useState(item.portions[0]);
+
+    useEffect(() => {
+        if (item) {
+            setSelectedPortion(item.portions[0]);
+        }
+    }, [item]);
+    
+    if (!item) return null;
+
+    const handleAddToCart = () => {
+        onAddToCart(item, selectedPortion);
+        onClose();
+    };
+
     return (
         <Dialog open={isOpen} onOpenChange={onClose}>
             <DialogContent className="bg-background border-border text-foreground">
                 <DialogHeader>
-                    <DialogTitle className="text-2xl flex items-center gap-2"><Trash2 className="text-destructive" /> Clear Cart?</DialogTitle>
-                    <DialogDescription>Are you sure you want to remove all items from your cart? This action cannot be undone.</DialogDescription>
+                    <DialogTitle className="text-2xl">{item.name}</DialogTitle>
+                    <DialogDescription>Select your desired portion.</DialogDescription>
                 </DialogHeader>
+                <div className="py-4 space-y-4">
+                    <div className="space-y-2">
+                        {item.portions.map(portion => (
+                            <div
+                                key={portion.name}
+                                onClick={() => setSelectedPortion(portion)}
+                                className={cn(
+                                    "flex justify-between items-center p-4 rounded-lg border-2 cursor-pointer transition-all",
+                                    selectedPortion.name === portion.name ? "border-primary bg-primary/10" : "border-border hover:bg-muted"
+                                )}
+                            >
+                                <span className="font-semibold">{portion.name}</span>
+                                <span className="font-bold text-green-600">₹{portion.price}</span>
+                            </div>
+                        ))}
+                    </div>
+                </div>
                 <DialogFooter>
                     <DialogClose asChild><Button variant="secondary">Cancel</Button></DialogClose>
-                    <Button variant="destructive" onClick={onConfirm}>Yes, Clear It</Button>
+                    <Button onClick={handleAddToCart} className="bg-green-600 hover:bg-green-700 text-white">Add to Cart</Button>
                 </DialogFooter>
             </DialogContent>
         </Dialog>
@@ -62,7 +94,23 @@ const ClearCartDialog = ({ isOpen, onClose, onConfirm }) => {
 };
 
 
-const MenuItemCard = ({ item, quantity, onIncrement, onDecrement }) => {
+const MenuItemCard = ({ item, quantity, onIncrement, onDecrement, onOpenPortionModal }) => {
+    // Find the minimum price to display
+    const minPricePortion = useMemo(() => {
+      if (!item.portions || item.portions.length === 0) {
+        return { price: 0 };
+      }
+      return item.portions.reduce((min, p) => p.price < min.price ? p : min, item.portions[0]);
+    }, [item.portions]);
+
+    const handleAddClick = () => {
+        if (item.portions.length > 1) {
+            onOpenPortionModal(item);
+        } else {
+            onIncrement(item, item.portions[0]);
+        }
+    };
+
   return (
     <motion.div 
         className="flex items-start gap-4 p-4 bg-card rounded-lg border border-border"
@@ -82,28 +130,26 @@ const MenuItemCard = ({ item, quantity, onIncrement, onDecrement }) => {
         </div>
         <p className="text-sm text-muted-foreground mb-2 flex-grow">{item.description}</p>
         <div className="flex items-center gap-4">
-            <p className="font-bold text-lg text-green-600">₹{item.fullPrice}</p>
+            <p className="font-bold text-lg text-green-600">₹{minPricePortion.price}</p>
         </div>
-         {item.tags && item.tags.length > 0 && (
-            <div className="flex flex-wrap gap-2 mt-2">
-                {item.tags.map(tag => (
-                    <span key={tag} className="px-2 py-1 text-xs font-bold rounded-full bg-primary/10 text-primary-foreground border border-primary/20 flex items-center gap-1">
-                        <TagIcon size={12} /> {tag}
-                    </span>
-                ))}
-            </div>
-        )}
+         <div className="flex flex-wrap gap-2 mt-2">
+            {item.tags && item.tags.map(tag => (
+                <span key={tag} className="px-2 py-1 text-xs font-bold rounded-full bg-primary/10 text-primary-foreground border border-primary/20 flex items-center gap-1">
+                    <TagIcon size={12} /> {tag}
+                </span>
+            ))}
+        </div>
       </div>
       <div className="flex flex-col items-center justify-center h-full flex-shrink-0 ml-4">
         {quantity > 0 ? (
           <div className="flex items-center gap-1 bg-background p-1 rounded-lg border border-border">
             <Button size="icon" variant="ghost" className="h-8 w-8 text-green-600" onClick={() => onDecrement(item)}><Minus size={16}/></Button>
             <span className="font-bold w-6 text-center text-foreground">{quantity}</span>
-            <Button size="icon" variant="ghost" className="h-8 w-8 text-green-600" onClick={() => onIncrement(item)}><Plus size={16}/></Button>
+            <Button size="icon" variant="ghost" className="h-8 w-8 text-green-600" onClick={handleAddClick}><Plus size={16}/></Button>
           </div>
         ) : (
           <Button
-            onClick={() => onIncrement(item)}
+            onClick={handleAddClick}
             className="w-24 bg-background text-green-600 font-bold border border-green-600 hover:bg-green-50 shadow-md active:translate-y-px"
           >
             ADD
@@ -172,7 +218,6 @@ const OrderPageInternal = () => {
     const [cart, setCart] = useState([]);
     const [isMenuBrowserOpen, setIsMenuBrowserOpen] = useState(false);
     const [notes, setNotes] = useState("");
-    const [isClearCartDialogOpen, setIsClearCartDialogOpen] = useState(false);
     
     const [searchQuery, setSearchQuery] = useState('');
     const [sortBy, setSortBy] = useState('default');
@@ -184,6 +229,7 @@ const OrderPageInternal = () => {
     
     const [coupons, setCoupons] = useState(dummyData.coupons);
     const [loyaltyPoints, setLoyaltyPoints] = useState(dummyData.loyaltyPoints);
+    const [portionModalItem, setPortionModalItem] = useState(null);
     
     // Load cart from localStorage on initial render
     useEffect(() => {
@@ -212,9 +258,13 @@ const OrderPageInternal = () => {
             if (filters.nonVeg) items = items.filter(item => !item.isVeg);
             if (filters.recommended) items = items.filter(item => item.isRecommended);
             
-            if (sortBy === 'price-asc') items.sort((a, b) => a.fullPrice - b.fullPrice);
-            else if (sortBy === 'price-desc') items.sort((a, b) => b.fullPrice - a.fullPrice);
-            else if (sortBy === 'rating-desc') items.sort((a,b) => (b.rating || 0) - (a.rating || 0));
+            if (sortBy === 'price-asc') {
+              items.sort((a, b) => a.portions[0].price - b.portions[0].price);
+            } else if (sortBy === 'price-desc') {
+              items.sort((a, b) => b.portions[0].price - a.portions[0].price);
+            } else if (sortBy === 'rating-desc') {
+              items.sort((a,b) => (b.rating || 0) - (a.rating || 0));
+            }
             
             newMenu[category] = items;
         }
@@ -243,7 +293,7 @@ const OrderPageInternal = () => {
         setSortBy(prev => prev === sortValue ? 'default' : sortValue);
     }
 
-    const subtotal = useMemo(() => cart.reduce((sum, item) => sum + item.fullPrice * item.quantity, 0), [cart]);
+    const subtotal = useMemo(() => cart.reduce((sum, item) => sum + item.portion.price * item.quantity, 0), [cart]);
 
     const updateCart = (newCart, newNotes) => {
         setCart(newCart);
@@ -263,41 +313,52 @@ const OrderPageInternal = () => {
         localStorage.setItem(`cart_${restaurantId}`, JSON.stringify(cartData));
     };
 
-    const handleIncrement = (item) => {
+    const handleIncrement = (item, portion) => {
         let newCart;
-        const existingItem = cart.find(cartItem => cartItem.id === item.id);
-        if (existingItem) {
-            newCart = cart.map(cartItem =>
-                cartItem.id === item.id ? { ...cartItem, quantity: cartItem.quantity + 1 } : cartItem
+        // Unique identifier for cart item now includes portion
+        const cartItemId = `${item.id}-${portion.name}`;
+        const existingItemIndex = cart.findIndex(cartItem => `${cartItem.id}-${cartItem.portion.name}` === cartItemId);
+        
+        if (existingItemIndex > -1) {
+            newCart = cart.map((cartItem, index) =>
+                index === existingItemIndex ? { ...cartItem, quantity: cartItem.quantity + 1 } : cartItem
             );
         } else {
-            newCart = [...cart, { ...item, quantity: 1 }];
+            newCart = [...cart, { ...item, portion, quantity: 1 }];
         }
         updateCart(newCart);
     };
     
     const handleDecrement = (item) => {
         let newCart;
-        const existingItem = cart.find(cartItem => cartItem.id === item.id);
-        if (!existingItem) return;
+        // Since decrementing only happens from the cart, we assume the portion is already set
+        const cartItemId = `${item.id}-${item.portion.name}`;
+        const existingItemIndex = cart.findIndex(ci => `${ci.id}-${ci.portion.name}` === cartItemId);
 
-        if (existingItem.quantity === 1) {
-            newCart = cart.filter(cartItem => cartItem.id !== item.id);
+        if (existingItemIndex === -1) return;
+
+        if (cart[existingItemIndex].quantity === 1) {
+            newCart = cart.filter((_, index) => index !== existingItemIndex);
         } else {
-            newCart = cart.map(cartItem =>
-                cartItem.id === item.id ? { ...cartItem, quantity: cartItem.quantity - 1 } : cartItem
+            newCart = cart.map((cartItem, index) =>
+                index === existingItemIndex ? { ...cartItem, quantity: cartItem.quantity - 1 } : cartItem
             );
         }
         updateCart(newCart);
     };
-    
-    const handleClearCart = () => {
-        localStorage.removeItem(`cart_${restaurantId}`);
-        setCart([]);
-        setIsClearCartDialogOpen(false);
-    };
 
     const totalCartItems = cart.reduce((sum, item) => sum + item.quantity, 0);
+    
+    const cartItemQuantities = useMemo(() => {
+        const quantities = {};
+        cart.forEach(item => {
+            if (!quantities[item.id]) {
+                quantities[item.id] = 0;
+            }
+            quantities[item.id] += item.quantity;
+        });
+        return quantities;
+    }, [cart]);
     
 
     const handleCategoryClick = (categoryId) => {
@@ -324,11 +385,14 @@ const OrderPageInternal = () => {
     return (
         <div className="min-h-screen bg-background text-foreground">
             <MenuBrowserModal isOpen={isMenuBrowserOpen} onClose={() => setIsMenuBrowserOpen(false)} categories={menuCategories} onCategoryClick={handleCategoryClick} />
-            <ClearCartDialog 
-                isOpen={isClearCartDialogOpen}
-                onClose={() => setIsClearCartDialogOpen(false)}
-                onConfirm={handleClearCart}
-            />
+            {portionModalItem && (
+              <PortionSelectionModal
+                item={portionModalItem}
+                isOpen={!!portionModalItem}
+                onClose={() => setPortionModalItem(null)}
+                onAddToCart={handleIncrement}
+              />
+            )}
 
             <header className="sticky top-0 z-20 bg-background/80 backdrop-blur-lg border-b border-border">
                 <div className="container mx-auto px-4 py-3 flex justify-between items-center">
@@ -393,46 +457,39 @@ const OrderPageInternal = () => {
             <div className="container mx-auto px-4 mt-6 pb-32">
                 <main>
                     <div className="space-y-8">
-                        {menuCategories.length > 0 ? menuCategories.map(({key, title}) => (
+                        {menuCategories.map(({key, title}) => (
                             <section id={key} key={key} className="scroll-mt-24">
                                 <h3 className="text-2xl font-bold mb-4">{title}</h3>
                                 <div className="grid grid-cols-1 gap-4">
-                                    {processedMenu[key].map(item => {
-                                        const cartItem = cart.find(ci => ci.id === item.id);
-                                        return (
-                                            <MenuItemCard 
-                                                key={item.id} 
-                                                item={item} 
-                                                quantity={cartItem ? cartItem.quantity : 0}
-                                                onIncrement={handleIncrement}
-                                                onDecrement={handleDecrement}
-                                            />
-                                        )
-                                    })}
+                                    {processedMenu[key].map(item => (
+                                        <MenuItemCard 
+                                            key={item.id} 
+                                            item={item} 
+                                            quantity={cartItemQuantities[item.id] || 0}
+                                            onIncrement={handleIncrement}
+                                            onDecrement={handleDecrement}
+                                            onOpenPortionModal={setPortionModalItem}
+                                        />
+                                    ))}
                                 </div>
                             </section>
-                        )) : (
-                            <div className="text-center py-16 text-muted-foreground">
-                                <p className="text-lg font-semibold">No dishes match your search.</p>
-                                <p>Try clearing the search or filters to see more options.</p>
-                            </div>
-                        )}
+                        ))}
                     </div>
                 </main>
             </div>
-
+            
             <footer className="fixed bottom-0 left-0 right-0 z-30 pointer-events-none">
                 <AnimatePresence>
                     {totalCartItems > 0 && (
-                         <motion.div
-                            className="absolute bottom-20 right-4"
+                        <motion.div
+                            className="absolute bottom-4 right-4 pointer-events-auto"
                             initial={{ opacity: 0, scale: 0.8 }}
                             animate={{ opacity: 1, scale: 1 }}
                             exit={{ opacity: 0, scale: 0.8 }}
-                         >
+                        >
                             <button
                                 onClick={() => setIsMenuBrowserOpen(true)}
-                                className="bg-black text-white h-16 w-16 rounded-2xl shadow-lg flex flex-col items-center justify-center gap-1 border border-gray-700 pointer-events-auto"
+                                className="bg-black text-white h-16 w-16 rounded-2xl shadow-lg flex flex-col items-center justify-center gap-1 border border-gray-700"
                             >
                                 <BookOpen size={24} className="text-primary" />
                                 <span className="text-xs font-bold">Menu</span>
@@ -440,40 +497,40 @@ const OrderPageInternal = () => {
                         </motion.div>
                     )}
                 </AnimatePresence>
-                
+
                 <AnimatePresence>
-                {totalCartItems > 0 && (
-                    <motion.div
-                        className="bg-background/80 backdrop-blur-lg border-t border-border pointer-events-auto"
-                        initial={{ y: "100%" }}
-                        animate={{ y: 0 }}
-                        exit={{ y: "100%" }}
-                        transition={{ type: "spring", stiffness: 300, damping: 30 }}
-                    >
-                        <div className="container mx-auto px-4 py-4">
-                            <Button onClick={handleCheckout} className="bg-green-600 hover:bg-green-700 h-14 text-lg font-bold rounded-lg shadow-green-500/30 flex justify-between items-center text-white w-full">
-                                <div className="flex items-center gap-2">
-                                   <ShoppingCart className="h-6 w-6"/> 
-                                   <span>{totalCartItems} {totalCartItems > 1 ? 'Items' : 'Item'}</span>
-                                </div>
-                                <span>View Cart | ₹{subtotal}</span>
-                            </Button>
-                        </div>
-                    </motion.div>
-                )}
+                    {totalCartItems > 0 && (
+                        <motion.div
+                            className="bg-background/80 backdrop-blur-lg border-t border-border pointer-events-auto"
+                            initial={{ y: "100%" }}
+                            animate={{ y: 0 }}
+                            exit={{ y: "100%" }}
+                            transition={{ type: "spring", stiffness: 300, damping: 30 }}
+                        >
+                            <div className="container mx-auto px-4 py-4">
+                                <Button onClick={handleCheckout} className="bg-green-600 hover:bg-green-700 h-14 text-lg font-bold rounded-lg shadow-green-500/30 flex justify-between items-center text-white w-full">
+                                    <div className="flex items-center gap-2">
+                                       <ShoppingCart className="h-6 w-6"/> 
+                                       <span>{totalCartItems} {totalCartItems > 1 ? 'Items' : 'Item'}</span>
+                                    </div>
+                                    <span>View Cart | ₹{subtotal}</span>
+                                </Button>
+                            </div>
+                        </motion.div>
+                    )}
                 </AnimatePresence>
 
-                 <AnimatePresence>
+                <AnimatePresence>
                     {totalCartItems === 0 && (
                         <motion.div
-                            className="absolute bottom-4 right-4"
+                            className="absolute bottom-4 right-4 pointer-events-auto"
                             initial={{ opacity: 0, scale: 0.8 }}
                             animate={{ opacity: 1, scale: 1 }}
                             exit={{ opacity: 0, scale: 0.8 }}
                         >
                             <button
                                 onClick={() => setIsMenuBrowserOpen(true)}
-                                className="bg-black text-white h-16 w-16 rounded-2xl shadow-lg flex flex-col items-center justify-center gap-1 border border-gray-700 pointer-events-auto"
+                                className="bg-black text-white h-16 w-16 rounded-2xl shadow-lg flex flex-col items-center justify-center gap-1 border border-gray-700"
                             >
                                 <BookOpen size={24} className="text-primary" />
                                 <span className="text-xs font-bold">Menu</span>

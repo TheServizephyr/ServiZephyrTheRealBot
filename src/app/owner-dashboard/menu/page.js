@@ -4,7 +4,7 @@
 
 import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { PlusCircle, GripVertical, Trash2, Edit, Image as ImageIcon, Search, X, Utensils, Pizza, Soup, Drumstick, Salad, CakeSlice, GlassWater, ChevronDown } from "lucide-react";
+import { PlusCircle, GripVertical, Trash2, Edit, Image as ImageIcon, Search, X, Utensils, Pizza, Soup, Drumstick, Salad, CakeSlice, GlassWater, ChevronDown, IndianRupee } from "lucide-react";
 import Image from "next/image";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose } from "@/components/ui/dialog";
@@ -12,6 +12,8 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { DragDropContext, Droppable, Draggable } from "@hello-pangea/dnd";
 import { auth } from '@/lib/firebase';
+import { cn } from "@/lib/utils";
+
 
 const categoryConfig = {
   "starters": { title: "Starters", icon: Utensils },
@@ -34,82 +36,66 @@ const categoryConfig = {
 // --- COMPONENTS (Single File) ---
 
 const MenuItem = ({ item, index, onDelete, onEdit, onToggleAvailability }) => {
-  const hasOnlyFullPrice = item.halfPrice === null || item.halfPrice === undefined || item.halfPrice === '';
-  return (
-    <Draggable draggableId={item.id} index={index}>
-      {(provided, snapshot) => (
-        <motion.div
-          ref={provided.innerRef}
-          {...provided.draggableProps}
-          className={`flex flex-col md:grid md:grid-cols-12 md:items-center p-3 rounded-lg gap-3 bg-gray-800/60 m-2 border border-gray-700 ${snapshot.isDragging ? 'bg-indigo-500/20 shadow-lg ring-2 ring-indigo-400' : ''}`}
-          whileHover={{ 
-            y: -2,
-            backgroundColor: "hsl(var(--primary) / 0.1)"
-          }}
-          transition={{ type: "spring", stiffness: 300, damping: 20 }}
-        >
-          {/* Column 1: Drag Handle */}
-          <div className="flex items-center md:col-span-1 text-center md:text-left">
-            <div {...provided.dragHandleProps} className="p-2 cursor-grab text-muted-foreground hover:text-white">
-              <GripVertical size={20} />
-            </div>
-          </div>
+    // Determine the price to display. Find the 'Full' price, or the first price if 'Full' doesn't exist.
+    const displayPortion = item.portions.find(p => p.name.toLowerCase() === 'full') || item.portions[0];
 
-          {/* Column 2: Item Image & Name */}
-          <div className="flex md:col-span-4 items-center gap-4">
-              <div className="relative w-16 h-16 rounded-md overflow-hidden bg-muted flex-shrink-0">
-                  {item.imageUrl ? (
-                      <Image src={item.imageUrl} alt={item.name} layout="fill" objectFit="cover" />
-                  ) : (
-                      <div className="w-full h-full flex items-center justify-center text-muted-foreground"><ImageIcon/></div>
-                  )}
-              </div>
-              <div className="flex-grow text-left">
-                <p className="font-semibold text-white">{item.name}</p>
-                {item.description && <p className="text-xs text-muted-foreground">{item.description}</p>}
-              </div>
-          </div>
-          
-          {/* Spacer for Mobile (Price headers) */}
-          <div className="md:hidden font-medium flex justify-around items-center pt-2 border-t border-gray-700 mt-2">
-            <div className="w-1/2 text-center text-xs text-muted-foreground">Half</div>
-            <div className="w-1/2 text-center text-xs text-muted-foreground">Full</div>
-          </div>
-
-          {/* Column 3: Prices */}
-          <div className="md:col-span-2 font-medium flex justify-around items-center -mt-2 md:mt-0 text-white">
-            {hasOnlyFullPrice ? (
-               <span className="w-full text-center">₹{item.fullPrice}</span>
-            ) : (
-              <>
-                <span className="w-1/2 text-center">{item.halfPrice ? `₹${item.halfPrice}`: '-'}</span>
-                <span className="w-1/2 text-center">₹{item.fullPrice}</span>
-              </>
+    return (
+        <Draggable draggableId={item.id} index={index}>
+            {(provided, snapshot) => (
+                <motion.div
+                    ref={provided.innerRef}
+                    {...provided.draggableProps}
+                    className={`flex flex-col md:grid md:grid-cols-12 md:items-center p-3 rounded-lg gap-3 bg-gray-800/60 m-2 border border-gray-700 ${snapshot.isDragging ? 'bg-indigo-500/20 shadow-lg ring-2 ring-indigo-400' : ''}`}
+                    whileHover={{ 
+                        y: -2,
+                        backgroundColor: "hsl(var(--primary) / 0.1)"
+                    }}
+                    transition={{ type: "spring", stiffness: 300, damping: 20 }}
+                >
+                    <div className="flex items-center md:col-span-1 text-center md:text-left">
+                        <div {...provided.dragHandleProps} className="p-2 cursor-grab text-muted-foreground hover:text-white">
+                            <GripVertical size={20} />
+                        </div>
+                    </div>
+                    <div className="flex md:col-span-4 items-center gap-4">
+                        <div className="relative w-16 h-16 rounded-md overflow-hidden bg-muted flex-shrink-0">
+                            {item.imageUrl ? (
+                                <Image src={item.imageUrl} alt={item.name} layout="fill" objectFit="cover" />
+                            ) : (
+                                <div className="w-full h-full flex items-center justify-center text-muted-foreground"><ImageIcon/></div>
+                            )}
+                        </div>
+                        <div className="flex-grow text-left">
+                            <p className="font-semibold text-white">{item.name}</p>
+                            {item.description && <p className="text-xs text-muted-foreground">{item.description}</p>}
+                        </div>
+                    </div>
+                    <div className="md:col-span-2 font-medium flex justify-around items-center text-white">
+                        <span className="text-center">
+                            {displayPortion ? `₹${displayPortion.price}` : 'N/A'}
+                            {item.portions.length > 1 && <span className="text-xs text-muted-foreground"> ({item.portions.length} sizes)</span>}
+                        </span>
+                    </div>
+                    <div className="md:col-span-2 flex justify-center items-center">
+                        <div className="flex items-center justify-between w-full md:w-auto md:justify-center py-2 md:py-0">
+                            <span className="text-xs text-muted-foreground md:hidden mr-2">Available</span>
+                            <Switch checked={item.isAvailable} onCheckedChange={() => onToggleAvailability(item.id, !item.isAvailable)} aria-label="Toggle Availability" />
+                        </div>
+                    </div>
+                    <div className="md:col-span-3 flex justify-center gap-2 pt-2 border-t border-gray-700 md:border-t-0 md:pt-0">
+                        <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-white" onClick={() => onEdit(item)}>
+                            <Edit size={16} />
+                        </Button>
+                        <Button variant="ghost" size="icon" className="text-destructive h-8 w-8 hover:bg-destructive/10 hover:text-destructive" onClick={() => onDelete(item.id)}>
+                            <Trash2 size={16} />
+                        </Button>
+                    </div>
+                </motion.div>
             )}
-          </div>
-          
-          {/* Column 4: Availability */}
-          <div className="md:col-span-2 flex justify-center items-center">
-             <div className="flex items-center justify-between w-full md:w-auto md:justify-center py-2 md:py-0">
-                <span className="text-xs text-muted-foreground md:hidden mr-2">Available</span>
-                <Switch checked={item.isAvailable} onCheckedChange={() => onToggleAvailability(item.id, !item.isAvailable)} aria-label="Toggle Availability" />
-             </div>
-          </div>
-
-          {/* Column 5: Actions */}
-          <div className="md:col-span-3 flex justify-center gap-2 pt-2 border-t border-gray-700 md:border-t-0 md:pt-0">
-            <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-white" onClick={() => onEdit(item)}>
-              <Edit size={16} />
-            </Button>
-            <Button variant="ghost" size="icon" className="text-destructive h-8 w-8 hover:bg-destructive/10 hover:text-destructive" onClick={() => onDelete(item.id)}>
-              <Trash2 size={16} />
-            </Button>
-          </div>
-        </motion.div>
-      )}
-    </Draggable>
-  );
+        </Draggable>
+    );
 };
+
 
 
 const MenuCategory = ({ categoryId, title, icon, items, onDeleteItem, onEditItem, onToggleAvailability, setMenu, open, setOpen }) => {
@@ -163,10 +149,7 @@ const MenuCategory = ({ categoryId, title, icon, items, onDeleteItem, onEditItem
                         <div className="hidden md:grid grid-cols-12 items-center px-3 py-2 text-sm font-semibold text-muted-foreground bg-black/20">
                             <div className="col-span-1"></div>
                             <div className="col-span-4">Item</div>
-                            <div className="col-span-2 flex justify-around">
-                                <span className="w-1/2 text-center">Half</span>
-                                <span className="w-1/2 text-center">Full</span>
-                            </div>
+                            <div className="col-span-2 text-center">Base Price</div>
                             <div className="col-span-2 text-center">Available</div>
                             <div className="col-span-3 text-center pr-4">Actions</div>
                         </div>
@@ -216,8 +199,7 @@ const AddItemModal = ({ isOpen, setIsOpen, onSave, editingItem, allCategories })
                 setItem({
                     name: "",
                     description: "",
-                    halfPrice: "",
-                    fullPrice: "",
+                    portions: [{ name: 'Full', price: '' }],
                     categoryId: "starters",
                     isVeg: true,
                     isAvailable: true,
@@ -233,6 +215,24 @@ const AddItemModal = ({ isOpen, setIsOpen, onSave, editingItem, allCategories })
     const handleChange = (field, value) => {
         setItem(prev => ({ ...prev, [field]: value }));
     };
+    
+    const handlePortionChange = (index, field, value) => {
+        const newPortions = [...item.portions];
+        newPortions[index][field] = value;
+        setItem(prev => ({ ...prev, portions: newPortions }));
+    };
+
+    const addPortion = () => {
+        setItem(prev => ({ ...prev, portions: [...prev.portions, { name: '', price: '' }] }));
+    };
+
+    const removePortion = (index) => {
+        if (item.portions.length > 1) {
+            const newPortions = item.portions.filter((_, i) => i !== index);
+            setItem(prev => ({ ...prev, portions: newPortions }));
+        }
+    };
+
 
     const handleSubmit = async (e) => {
         e.preventDefault();
@@ -241,21 +241,29 @@ const AddItemModal = ({ isOpen, setIsOpen, onSave, editingItem, allCategories })
         setIsSaving(true);
         try {
             const tagsArray = item.tags ? item.tags.split(',').map(tag => tag.trim()).filter(Boolean) : [];
+            const finalPortions = item.portions
+              .filter(p => p.name.trim() && p.price)
+              .map(p => ({ name: p.name.trim(), price: parseFloat(p.price) }));
+            
+            if (finalPortions.length === 0) {
+                alert("Please add at least one valid portion with a name and price.");
+                setIsSaving(false);
+                return;
+            }
 
             const newItemData = {
                 id: editingItem ? item.id : undefined,
                 name: item.name,
                 description: item.description,
-                halfPrice: item.halfPrice ? parseFloat(item.halfPrice) : null,
-                fullPrice: item.fullPrice ? parseFloat(item.fullPrice) : 0,
+                portions: finalPortions,
                 isVeg: item.isVeg,
                 isAvailable: item.isAvailable,
                 imageUrl: item.imageUrl || `https://picsum.photos/seed/${item.name.replace(/\s/g, '')}/100/100`,
                 tags: tagsArray,
             };
 
-            if (!newItemData.name || !newItemData.fullPrice) {
-                alert("Please provide at least a name and a full price.");
+            if (!newItemData.name) {
+                alert("Please provide an item name.");
                 setIsSaving(false);
                 return;
             }
@@ -273,7 +281,7 @@ const AddItemModal = ({ isOpen, setIsOpen, onSave, editingItem, allCategories })
 
     return (
         <Dialog open={isOpen} onOpenChange={setIsOpen}>
-            <DialogContent className="sm:max-w-[520px] bg-gray-900 border-gray-700 text-white">
+            <DialogContent className="sm:max-w-[620px] bg-gray-900 border-gray-700 text-white">
                 <form onSubmit={handleSubmit}>
                     <DialogHeader>
                         <DialogTitle>{editingItem ? 'Edit Menu Item' : 'Add New Menu Item'}</DialogTitle>
@@ -282,6 +290,7 @@ const AddItemModal = ({ isOpen, setIsOpen, onSave, editingItem, allCategories })
                         </DialogDescription>
                     </DialogHeader>
                     <div className="grid gap-4 py-4 max-h-[70vh] overflow-y-auto pr-4">
+                        
                         <div className="grid grid-cols-4 items-center gap-4">
                             <Label htmlFor="name" className="text-right">Name</Label>
                             <input id="name" value={item.name} onChange={e => handleChange('name', e.target.value)} required placeholder="e.g., Veg Pulao" className="col-span-3 p-2 border rounded-md bg-gray-800 border-gray-600 ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2" />
@@ -290,14 +299,27 @@ const AddItemModal = ({ isOpen, setIsOpen, onSave, editingItem, allCategories })
                             <Label htmlFor="description" className="text-right">Description</Label>
                             <input id="description" value={item.description} onChange={e => handleChange('description', e.target.value)} placeholder="e.g., 10 Pcs." className="col-span-3 p-2 border rounded-md bg-gray-800 border-gray-600 ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2" />
                         </div>
-                        <div className="grid grid-cols-4 items-center gap-4">
-                            <Label htmlFor="halfPrice" className="text-right">Half Price (₹)</Label>
-                            <input id="halfPrice" type="number" value={item.halfPrice} onChange={e => handleChange('halfPrice', e.target.value)} placeholder="Leave empty if none" className="col-span-3 p-2 border rounded-md bg-gray-800 border-gray-600 ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2" />
+                        
+                        <div>
+                          <Label className="text-right grid grid-cols-4">Portions</Label>
+                          <div className="col-span-4 mt-2 space-y-3">
+                              {item.portions.map((portion, index) => (
+                                <div key={index} className="flex items-center gap-2">
+                                  <input value={portion.name} onChange={(e) => handlePortionChange(index, 'name', e.target.value)} placeholder="e.g., Half" className="flex-1 p-2 border rounded-md bg-gray-800 border-gray-600"/>
+                                  <IndianRupee className="text-muted-foreground" size={16}/>
+                                  <input type="number" value={portion.price} onChange={(e) => handlePortionChange(index, 'price', e.target.value)} placeholder="Price" className="w-24 p-2 border rounded-md bg-gray-800 border-gray-600"/>
+                                  <Button type="button" variant="ghost" size="icon" className="text-destructive" onClick={() => removePortion(index)} disabled={item.portions.length <= 1}>
+                                    <Trash2 size={16}/>
+                                  </Button>
+                                </div>
+                              ))}
+                              <Button type="button" variant="outline" size="sm" onClick={addPortion}>
+                                <PlusCircle size={16} className="mr-2"/> Add Portion
+                              </Button>
+                          </div>
                         </div>
-                        <div className="grid grid-cols-4 items-center gap-4">
-                            <Label htmlFor="fullPrice" className="text-right">Full Price (₹)</Label>
-                            <input id="fullPrice" type="number" value={item.fullPrice} onChange={e => handleChange('fullPrice', e.target.value)} required placeholder="e.g., 250" className="col-span-3 p-2 border rounded-md bg-gray-800 border-gray-600 ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2" />
-                        </div>
+
+
                         <div className="grid grid-cols-4 items-center gap-4">
                             <Label htmlFor="category" className="text-right">Category</Label>
                             <select id="category" value={item.categoryId} onChange={e => handleChange('categoryId', e.target.value)} disabled={!!editingItem} className="col-span-3 p-2 border rounded-md bg-gray-800 border-gray-600 ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:opacity-70">

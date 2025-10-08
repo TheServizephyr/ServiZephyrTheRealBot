@@ -148,7 +148,9 @@ const CartPageInternal = () => {
     
     const handleUpdateCart = (item, action) => {
         let newCart = [...cart];
-        const existingItemIndex = newCart.findIndex(cartItem => cartItem.id === item.id);
+        // Unique identifier for cart item now includes portion
+        const cartItemId = `${item.id}-${item.portion.name}`;
+        const existingItemIndex = newCart.findIndex(cartItem => `${cartItem.id}-${cartItem.portion.name}` === cartItemId);
 
         if (existingItemIndex > -1) {
             if (action === 'increment') {
@@ -165,6 +167,7 @@ const CartPageInternal = () => {
         updateCartInStorage(newCart, notes);
     };
 
+
     const handleNotesChange = (e) => {
         const newNotes = e.target.value;
         setNotes(newNotes);
@@ -180,7 +183,7 @@ const CartPageInternal = () => {
     };
 
 
-    const subtotal = useMemo(() => cart.reduce((sum, item) => sum + item.fullPrice * item.quantity, 0), [cart]);
+    const subtotal = useMemo(() => cart.reduce((sum, item) => sum + item.portion.price * item.quantity, 0), [cart]);
 
     const { totalDiscount, couponDiscount, specialCouponDiscount } = useMemo(() => {
         let couponDiscount = 0;
@@ -312,16 +315,19 @@ const CartPageInternal = () => {
                                 {cart.map(item => (
                                     <motion.div 
                                         layout
-                                        key={item.id} 
+                                        key={`${item.id}-${item.portion.name}`}
                                         className="flex items-center gap-4"
                                     >
-                                        <p className="flex-grow font-semibold text-foreground">{item.name}</p>
+                                        <div className="flex-grow">
+                                          <p className="font-semibold text-foreground">{item.name}</p>
+                                          <p className="text-xs text-muted-foreground">{item.portion.name}</p>
+                                        </div>
                                         <div className="flex items-center gap-2">
                                             <Button size="icon" variant="outline" className="h-7 w-7" onClick={() => handleUpdateCart(item, 'decrement')}>-</Button>
                                             <span className="font-bold w-5 text-center">{item.quantity}</span>
                                             <Button size="icon" variant="outline" className="h-7 w-7" onClick={() => handleUpdateCart(item, 'increment')}>+</Button>
                                         </div>
-                                        <p className="w-20 text-right font-bold">₹{item.fullPrice * item.quantity}</p>
+                                        <p className="w-20 text-right font-bold">₹{item.portion.price * item.quantity}</p>
                                     </motion.div>
                                 ))}
                             </div>
