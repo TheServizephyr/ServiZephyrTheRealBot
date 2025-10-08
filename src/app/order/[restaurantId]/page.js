@@ -422,15 +422,13 @@ const OrderPageInternal = () => {
                                 exit={{ y: 100 }}
                                 transition={{ type: "spring", stiffness: 300, damping: 30 }}
                             >
-                                <div className="bg-background/80 backdrop-blur-lg rounded-xl shadow-lg p-2">
-                                    <Button onClick={handleCheckout} className="bg-green-600 hover:bg-green-700 h-14 text-lg font-bold rounded-lg shadow-green-500/30 flex justify-between items-center text-white w-full">
-                                        <div className="flex items-center gap-2">
-                                           <ShoppingCart className="h-6 w-6"/> 
-                                           <span>{totalCartItems} {totalCartItems > 1 ? 'Items' : 'Item'}</span>
-                                        </div>
-                                        <span>View Cart | ₹{subtotal}</span>
-                                    </Button>
-                                </div>
+                                <Button onClick={handleCheckout} className="bg-green-600 hover:bg-green-700 h-14 text-lg font-bold rounded-lg shadow-green-500/30 flex justify-between items-center text-white w-full">
+                                    <div className="flex items-center gap-2">
+                                       <ShoppingCart className="h-6 w-6"/> 
+                                       <span>{totalCartItems} {totalCartItems > 1 ? 'Items' : 'Item'}</span>
+                                    </div>
+                                    <span>View Cart | ₹{subtotal}</span>
+                                </Button>
                             </motion.div>
                         )}
                     </AnimatePresence>
