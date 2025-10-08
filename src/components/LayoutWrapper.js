@@ -15,6 +15,7 @@ const LayoutWrapper = ({ children }) => {
     '/customer-dashboard',
     '/complete-profile',
     '/order',
+    '/cart',
     '/customer-form',
     '/bill'
   ];
