@@ -449,12 +449,13 @@ const OrderPageInternal = () => {
         return newMenu;
     }, [rawMenu, sortBy, filters]);
 
-    const handleFilterChange = (filterKey, value) => {
+    const handleFilterChange = (filterKey) => {
         setFilters(prev => {
-            const newFilters = { ...prev, [filterKey]: value };
+            const newValue = !prev[filterKey];
+            const newFilters = { ...prev, [filterKey]: newValue };
             // Ensure veg and non-veg are mutually exclusive
-            if (filterKey === 'veg' && value) newFilters.nonVeg = false;
-            if (filterKey === 'nonVeg' && value) newFilters.veg = false;
+            if (filterKey === 'veg' && newValue) newFilters.nonVeg = false;
+            if (filterKey === 'nonVeg' && newValue) newFilters.veg = false;
             return newFilters;
         });
     };
@@ -609,23 +610,19 @@ const OrderPageInternal = () => {
                                     <h4 className="font-medium leading-none">Filter Menu</h4>
                                     <p className="text-sm text-muted-foreground">Select your preferences.</p>
                                 </div>
-                                <div className="grid gap-3">
-                                    <div className="flex items-center justify-between p-2 rounded-md bg-muted/50">
-                                        <Label htmlFor="veg-only" className="flex items-center gap-2"><Utensils size={16} className="text-green-500" />Veg Only</Label>
-                                        <Switch id="veg-only" checked={filters.veg} onCheckedChange={(checked) => handleFilterChange('veg', checked)} />
-                                    </div>
-                                     <div className="flex items-center justify-between p-2 rounded-md bg-muted/50">
-                                        <Label htmlFor="non-veg-only" className="flex items-center gap-2"><Flame size={16} className="text-red-500" />Non-Veg Only</Label>
-                                        <Switch id="non-veg-only" checked={filters.nonVeg} onCheckedChange={(checked) => handleFilterChange('nonVeg', checked)} />
-                                    </div>
-                                     <div className="flex items-center justify-between p-2 rounded-md bg-muted/50">
-                                        <Label htmlFor="recommended" className="flex items-center gap-2"><Sparkles size={16} className="text-yellow-500" />Highly reordered</Label>
-                                        <Switch id="recommended" checked={filters.recommended} onCheckedChange={(checked) => handleFilterChange('recommended', checked)} />
-                                    </div>
-                                     <div className="flex items-center justify-between p-2 rounded-md bg-muted/50">
-                                        <Label htmlFor="top-rated" className="flex items-center gap-2"><Star size={16} className="text-primary" />Top Rated</Label>
-                                        <Switch id="top-rated" checked={filters.topRated} onCheckedChange={(checked) => handleFilterChange('topRated', checked)} />
-                                    </div>
+                                <div className="flex flex-wrap gap-2">
+                                    <Button variant={filters.veg ? 'default' : 'outline'} size="sm" onClick={() => handleFilterChange('veg')} className="flex items-center gap-2">
+                                        <Utensils size={16} className={cn(filters.veg ? '' : 'text-green-500')} />Veg Only
+                                    </Button>
+                                    <Button variant={filters.nonVeg ? 'default' : 'outline'} size="sm" onClick={() => handleFilterChange('nonVeg')} className="flex items-center gap-2">
+                                        <Flame size={16} className={cn(filters.nonVeg ? '' : 'text-red-500')} />Non-Veg Only
+                                    </Button>
+                                    <Button variant={filters.recommended ? 'default' : 'outline'} size="sm" onClick={() => handleFilterChange('recommended')} className="flex items-center gap-2">
+                                        <Sparkles size={16} className={cn(filters.recommended ? '' : 'text-yellow-500')} />Highly reordered
+                                    </Button>
+                                    <Button variant={filters.topRated ? 'default' : 'outline'} size="sm" onClick={() => handleFilterChange('topRated')} className="flex items-center gap-2">
+                                        <Star size={16} className={cn(filters.topRated ? '' : 'text-primary')} />Top Rated
+                                    </Button>
                                 </div>
                             </div>
                         </PopoverContent>
