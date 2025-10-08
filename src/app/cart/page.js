@@ -226,26 +226,25 @@ export default function CartPage() {
                         Your cart is empty.
                     </div>
                 ) : (
-                    <div className="space-y-3">
-                        {cart.map(item => (
-                            <motion.div 
-                                layout
-                                key={item.id} 
-                                className="flex items-center gap-4 bg-card p-3 rounded-lg border border-border"
-                            >
-                                <p className="flex-grow font-semibold text-foreground">{item.name}</p>
-                                <div className="flex items-center gap-2">
-                                    <Button size="icon" variant="outline" className="h-7 w-7" onClick={() => handleUpdateCart(item, 'decrement')}>-</Button>
-                                    <span className="font-bold w-5 text-center">{item.quantity}</span>
-                                    <Button size="icon" variant="outline" className="h-7 w-7" onClick={() => handleUpdateCart(item, 'increment')}>+</Button>
-                                </div>
-                                <p className="w-20 text-right font-bold">₹{item.fullPrice * item.quantity}</p>
-                            </motion.div>
-                        ))}
-                    </div>
-                )}
-                 {cart.length > 0 && (
-                     <>
+                    <>
+                        <div className="space-y-3">
+                            {cart.map(item => (
+                                <motion.div 
+                                    layout
+                                    key={item.id} 
+                                    className="flex items-center gap-4 bg-card p-3 rounded-lg border border-border"
+                                >
+                                    <p className="flex-grow font-semibold text-foreground">{item.name}</p>
+                                    <div className="flex items-center gap-2">
+                                        <Button size="icon" variant="outline" className="h-7 w-7" onClick={() => handleUpdateCart(item, 'decrement')}>-</Button>
+                                        <span className="font-bold w-5 text-center">{item.quantity}</span>
+                                        <Button size="icon" variant="outline" className="h-7 w-7" onClick={() => handleUpdateCart(item, 'increment')}>+</Button>
+                                    </div>
+                                    <p className="w-20 text-right font-bold">₹{item.fullPrice * item.quantity}</p>
+                                </motion.div>
+                            ))}
+                        </div>
+
                         <div className="p-4 mt-4 bg-card rounded-lg border border-border">
                             <div className="relative">
                                 <CookingPot className="absolute left-3 top-3 h-5 w-5 text-muted-foreground"/>
@@ -259,7 +258,7 @@ export default function CartPage() {
                             </div>
                         </div>
 
-                         <div className="p-4 mt-4 bg-card rounded-lg border border-border">
+                        <div className="p-4 mt-4 bg-card rounded-lg border border-border">
                             <h4 className="font-semibold mb-3 flex items-center gap-2"><Ticket/> Available Coupons</h4>
                             <div className="space-y-2">
                                 {cartData.coupons && cartData.coupons.length > 0 ? cartData.coupons.map(coupon => (
@@ -299,31 +298,26 @@ export default function CartPage() {
                                 </Button>
                             </div>
                         </div>
-                    </>
-                 )}
-            </main>
 
-            {cart.length > 0 && (
-                <footer className="sticky bottom-0 p-4 border-t-2 border-green-600 bg-background shadow-lg">
-                     <div className="container mx-auto">
-                        <div className="space-y-1 text-sm mb-4">
-                            <div className="flex justify-between"><span>Subtotal:</span> <span className="font-medium">₹{subtotal.toFixed(2)}</span></div>
-                            {couponDiscount > 0 && <div className="flex justify-between text-green-400"><span>Coupon Discount:</span> <span className="font-medium">- ₹{couponDiscount.toFixed(2)}</span></div>}
-                            {loyaltyDiscount > 0 && <div className="flex justify-between text-green-400"><span>Loyalty Discount:</span> <span className="font-medium">- ₹{loyaltyDiscount.toFixed(2)}</span></div>}
-                            <div className="flex justify-between"><span>Delivery Fee:</span> {finalDeliveryCharge > 0 ? <span>₹{finalDeliveryCharge.toFixed(2)}</span> : <span className="text-green-400 font-bold">FREE</span>}</div>
-                            <div className="flex justify-between"><span>CGST ({5}%):</span> <span className="font-medium">₹{cgst.toFixed(2)}</span></div>
-                            <div className="flex justify-between"><span>SGST ({5}%):</span> <span className="font-medium">₹{sgst.toFixed(2)}</span></div>
-                            <div className="border-t border-dashed border-border my-2"></div>
-                            <div className="flex justify-between items-center text-lg font-bold"><span>Grand Total:</span> <span>₹{grandTotal > 0 ? grandTotal.toFixed(2) : '0.00'}</span></div>
+                        <div className="mt-6 p-4 border-t-2 border-primary bg-card rounded-lg shadow-lg">
+                            <div className="space-y-1 text-sm mb-4">
+                                <div className="flex justify-between"><span>Subtotal:</span> <span className="font-medium">₹{subtotal.toFixed(2)}</span></div>
+                                {couponDiscount > 0 && <div className="flex justify-between text-green-400"><span>Coupon Discount:</span> <span className="font-medium">- ₹{couponDiscount.toFixed(2)}</span></div>}
+                                {loyaltyDiscount > 0 && <div className="flex justify-between text-green-400"><span>Loyalty Discount:</span> <span className="font-medium">- ₹{loyaltyDiscount.toFixed(2)}</span></div>}
+                                <div className="flex justify-between"><span>Delivery Fee:</span> {finalDeliveryCharge > 0 ? <span>₹{finalDeliveryCharge.toFixed(2)}</span> : <span className="text-green-400 font-bold">FREE</span>}</div>
+                                <div className="flex justify-between"><span>CGST ({5}%):</span> <span className="font-medium">₹{cgst.toFixed(2)}</span></div>
+                                <div className="flex justify-between"><span>SGST ({5}%):</span> <span className="font-medium">₹{sgst.toFixed(2)}</span></div>
+                                <div className="border-t border-dashed border-border my-2"></div>
+                                <div className="flex justify-between items-center text-lg font-bold"><span>Grand Total:</span> <span>₹{grandTotal > 0 ? grandTotal.toFixed(2) : '0.00'}</span></div>
+                            </div>
+                            <Button onClick={() => setIsCheckoutOpen(true)} className="w-full bg-green-600 hover:bg-green-700 h-12 text-lg font-bold text-white">
+                                Proceed to Checkout
+                            </Button>
                         </div>
-                        <Button onClick={() => setIsCheckoutOpen(true)} className="w-full bg-green-600 hover:bg-green-700 h-12 text-lg font-bold text-white">
-                            Proceed to Checkout
-                        </Button>
-                    </div>
-                </footer>
-            )}
+                    </>
+                )}
+            </main>
         </div>
         </>
     );
 }
-
