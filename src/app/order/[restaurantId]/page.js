@@ -5,7 +5,7 @@
 import React, { useState, useEffect, Suspense, useMemo } from 'react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Utensils, Plus, Minus, X, Home, User, Edit2, ShoppingCart, Star, CookingPot, BookOpen, Check, SlidersHorizontal, ArrowUpDown, PlusCircle, Ticket, Gift, Sparkles, Flame, Search } from 'lucide-react';
+import { Utensils, Plus, Minus, X, Home, User, Edit2, ShoppingCart, Star, CookingPot, BookOpen, Check, SlidersHorizontal, ArrowUpDown, PlusCircle, Ticket, Gift, Sparkles, Flame, Search, Trash2 } from 'lucide-react';
 import Image from 'next/image';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
@@ -43,6 +43,23 @@ const dummyData = {
     loyaltyPoints: 250, // Example loyalty points for a logged-in user
 };
 // --- END: DUMMY DATA ---
+
+const ClearCartDialog = ({ isOpen, onClose, onConfirm }) => {
+    return (
+        <Dialog open={isOpen} onOpenChange={onClose}>
+            <DialogContent className="bg-background border-border text-foreground">
+                <DialogHeader>
+                    <DialogTitle className="text-2xl flex items-center gap-2"><Trash2 className="text-destructive" /> Clear Cart?</DialogTitle>
+                    <DialogDescription>Are you sure you want to remove all items from your cart? This action cannot be undone.</DialogDescription>
+                </DialogHeader>
+                <DialogFooter>
+                    <DialogClose asChild><Button variant="secondary">Cancel</Button></DialogClose>
+                    <Button variant="destructive" onClick={onConfirm}>Yes, Clear It</Button>
+                </DialogFooter>
+            </DialogContent>
+        </Dialog>
+    );
+};
 
 
 const MenuItemCard = ({ item, quantity, onIncrement, onDecrement }) => {
@@ -144,6 +161,7 @@ const OrderPageInternal = () => {
     const [cart, setCart] = useState([]);
     const [isMenuBrowserOpen, setIsMenuBrowserOpen] = useState(false);
     const [notes, setNotes] = useState("");
+    const [isClearCartDialogOpen, setIsClearCartDialogOpen] = useState(false);
     
     const [searchQuery, setSearchQuery] = useState('');
     const [sortBy, setSortBy] = useState('default');
@@ -254,6 +272,12 @@ const OrderPageInternal = () => {
         updateCart(newCart);
     };
     
+    const handleClearCart = () => {
+        localStorage.removeItem(`cart_${restaurantId}`);
+        setCart([]);
+        setIsClearCartDialogOpen(false);
+    };
+
     const totalCartItems = cart.reduce((sum, item) => sum + item.quantity, 0);
     
     const menuCategories = Object.keys(processedMenu)
@@ -274,7 +298,6 @@ const OrderPageInternal = () => {
     }
 
     const handleCheckout = () => {
-        // Just navigate, cart data is already saved on every update
         router.push(`/cart?restaurantId=${restaurantId}`);
     };
 
@@ -289,6 +312,11 @@ const OrderPageInternal = () => {
     return (
         <div className="min-h-screen bg-background text-foreground">
             <MenuBrowserModal isOpen={isMenuBrowserOpen} onClose={() => setIsMenuBrowserOpen(false)} categories={menuCategories} onCategoryClick={handleCategoryClick} />
+            <ClearCartDialog 
+                isOpen={isClearCartDialogOpen}
+                onClose={() => setIsClearCartDialogOpen(false)}
+                onConfirm={handleClearCart}
+            />
 
             <header className="sticky top-0 z-20 bg-background/80 backdrop-blur-lg border-b border-border">
                 <div className="container mx-auto px-4 py-3 flex justify-between items-center">
@@ -384,7 +412,21 @@ const OrderPageInternal = () => {
             </div>
 
             <footer className="fixed bottom-0 z-30 w-full p-4">
-                <div className="container mx-auto flex justify-end items-center gap-4">
+                <div className="container mx-auto flex justify-between items-center gap-4">
+                    <AnimatePresence>
+                        {totalCartItems > 0 && (
+                             <motion.div
+                                initial={{ opacity: 0, scale: 0.5 }}
+                                animate={{ opacity: 1, scale: 1 }}
+                                exit={{ opacity: 0, scale: 0.5 }}
+                                transition={{ type: "spring", stiffness: 500, damping: 30 }}
+                            >
+                                <Button variant="destructive" size="icon" className="h-14 w-14 rounded-2xl shadow-lg" onClick={() => setIsClearCartDialogOpen(true)}>
+                                    <Trash2 />
+                                </Button>
+                            </motion.div>
+                        )}
+                    </AnimatePresence>
                     <AnimatePresence>
                         {totalCartItems > 0 && (
                             <motion.div
@@ -431,5 +473,3 @@ const OrderPage = () => (
 );
 
 export default OrderPage;
-
-    
