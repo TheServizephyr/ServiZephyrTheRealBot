@@ -29,7 +29,7 @@ function getServiceAccount() {
     };
   }
 
-  console.error("[firebase-admin] FATAL: No Firebase service account credentials found. Set FIREBASE_SERVICE_ACCOUNT_BASE64 env variable.");
+  console.error("[firebase-admin] FATAL: No Firebase service account credentials found. Set FIREBASE_SERVICE_ACCOUNT_BASE64 or individual FIREBASE_* env variables.");
   return null;
 }
 
