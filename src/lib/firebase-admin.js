@@ -1,6 +1,9 @@
 
 import admin from 'firebase-admin';
 
+// Load environment variables from .env file for local development
+require('dotenv').config();
+
 function getServiceAccount() {
   // Primary Method: Use Base64 encoded service account from Vercel environment variables.
   // This is the most robust method and avoids parsing issues with private keys.

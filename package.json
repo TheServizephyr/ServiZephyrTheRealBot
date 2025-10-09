@@ -21,6 +21,7 @@
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "date-fns": "^3.6.0",
+    "dotenv": "^16.4.5",
     "firebase": "^10.12.3",
     "flowbite": "^3.1.2",
     "framer-motion": "^11.3.19",
