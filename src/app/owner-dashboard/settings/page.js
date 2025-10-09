@@ -1,7 +1,7 @@
 
 "use client";
 
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { User, Mail, Phone, Shield, Edit, Save, XCircle, Bell, Trash2, KeyRound, Eye, EyeOff, FileText, Bot, Truck, Image as ImageIcon, Upload } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -441,5 +441,3 @@ export default function SettingsPage() {
         </div>
     );
 }
-
-    
