@@ -519,8 +519,8 @@ const OrderPageInternal = () => {
                 onAddToCart={handleAddToCart}
             />
 
-             <header className="sticky top-0 z-20 bg-background/80 backdrop-blur-lg border-b border-border">
-                <div className="relative h-32 md:h-40">
+             <header className="sticky top-0 z-20">
+                <div className="relative h-48 md:h-56">
                     <Image
                         src={bannerUrl}
                         alt={`${restaurantName} banner`}
@@ -528,27 +528,24 @@ const OrderPageInternal = () => {
                         objectFit="cover"
                         unoptimized
                     />
-                    <div className="absolute inset-0 bg-gradient-to-t from-background via-background/70 to-transparent"></div>
-                    <div className="absolute bottom-0 left-0 right-0">
-                        <div className="container mx-auto px-4 py-4 flex items-center gap-4">
-                            {logoUrl ? (
-                                <div className="relative w-16 h-16 md:w-20 md:h-20 rounded-full overflow-hidden border-2 border-background bg-card shadow-lg flex-shrink-0">
+                    <div className="absolute inset-0 bg-black/40"></div>
+                    <div className="container mx-auto px-4 h-full relative">
+                        <div className="absolute bottom-4 right-4 flex items-center gap-4 text-white">
+                             <div className="text-right">
+                                <p className="text-sm" style={{textShadow: '0 2px 4px rgba(0,0,0,0.5)'}}>Ordering from</p>
+                                <h1 className="text-3xl md:text-4xl font-bold" style={{textShadow: '0 2px 4px rgba(0,0,0,0.5)'}}>{restaurantName}</h1>
+                            </div>
+                            {logoUrl && (
+                                <div className="relative w-16 h-16 md:w-20 md:h-20 rounded-full overflow-hidden border-2 border-white bg-card shadow-lg flex-shrink-0">
                                     <Image src={logoUrl} alt={`${restaurantName} logo`} layout="fill" objectFit="cover" />
                                 </div>
-                            ) : null}
-                            <div>
-                                <p className="text-xs text-muted-foreground">Ordering from</p>
-                                <h1 className="text-2xl md:text-3xl font-bold">{restaurantName}</h1>
-                            </div>
-                            <div className="ml-auto">
-                                <RatingBadge rating={rating} />
-                            </div>
+                            )}
                         </div>
                     </div>
                 </div>
             </header>
 
-            <div className="sticky top-[128px] md:top-[160px] z-10 bg-background/95 backdrop-blur-sm py-2 border-b border-border">
+            <div className="sticky top-[0] z-10 bg-background/95 backdrop-blur-sm py-2 border-b border-border">
                 <div className="container mx-auto px-4 flex items-center gap-4">
                     <div className="relative flex-grow">
                         <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" size={20} />
