@@ -1,5 +1,4 @@
 
-
 'use client';
 
 import React, { useState, useEffect, Suspense, useMemo } from 'react';
@@ -14,38 +13,6 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 
-
-// --- START: DUMMY DATA FOR UI DEMO ---
-const dummyData = {
-    restaurantName: 'ServiZephyr Demo Restaurant',
-    deliveryCharge: 30,
-    rating: 4.1,
-    menu: {
-        "starters": [
-            { id: 'item-1', name: 'Paneer Tikka', description: 'Tandoor-cooked cottage cheese', portions: [{name: 'Half', price: 180}, {name: 'Full', price: 280}], isVeg: true, isAvailable: true, categoryId: 'starters', imageUrl: 'https://picsum.photos/seed/paneertikka/100/100', rating: 4.5, isRecommended: true, tags: ["Bestseller", "Spicy"] },
-            { id: 'item-2', name: 'Chilli Chicken', description: 'Spicy diced chicken', portions: [{name: 'Half', price: 200}, {name: 'Full', price: 320}], isVeg: false, isAvailable: true, categoryId: 'starters', imageUrl: 'https://picsum.photos/seed/chillichicken/100/100', rating: 4.7, isRecommended: true, tags: ["Most Reordered"] },
-        ],
-        "main-course": [
-            { id: 'item-3', name: 'Dal Makhani', description: 'Creamy black lentils', portions: [{name: 'Full', price: 250}], isVeg: true, isAvailable: true, categoryId: 'main-course', imageUrl: 'https://picsum.photos/seed/dalmakhani/100/100', rating: 4.2, isRecommended: false, addOnGroups: [
-                { title: "Select Your Bread", type: "radio", required: true, options: [{name: "Tandoori Roti", price: 15}, {name: "Butter Naan", price: 30}, {name: "Plain Naan", price: 25}] },
-                { title: "Want a Drink?", type: "checkbox", options: [{name: "Coke (250ml)", price: 40}, {name: "Fresh Lime Soda", price: 60}] }
-            ]},
-            { id: 'item-4', name: 'Butter Chicken', description: 'Classic creamy chicken curry', portions: [{name: 'Full', price: 450}], isVeg: false, isAvailable: true, categoryId: 'main-course', imageUrl: 'https://picsum.photos/seed/butterchicken/100/100', rating: 3.8, isRecommended: false },
-        ],
-        "momos": [
-            { id: 'item-5', name: 'Veg Steamed Momos', description: '8 Pcs, served with chutney', portions: [{name: 'Full', price: 120}], isVeg: true, isAvailable: true, categoryId: 'momos', imageUrl: 'https://picsum.photos/seed/vegmomos/100/100', rating: 4.8, isRecommended: true, tags: ["Chef's Special"] },
-        ],
-         "desserts": [
-            { id: 'item-6', name: 'Gulab Jamun', description: '2 Pcs, served hot', portions: [{name: 'Full', price: 80}], isVeg: true, isAvailable: true, categoryId: 'desserts', imageUrl: 'https://picsum.photos/seed/gulabjamun/100/100', rating: 4.0, isRecommended: false },
-        ],
-    },
-    coupons: [
-        { id: 'coupon-1', code: 'SAVE100', description: 'Get flat ₹100 off on orders above ₹599', type: 'flat', value: 100, minOrder: 599 },
-        { id: 'coupon-2', code: 'FREEDEL', description: 'Free delivery on all orders above ₹299', type: 'free_delivery', value: 0, minOrder: 299 },
-    ],
-    loyaltyPoints: 250, // Example loyalty points for a logged-in user
-};
-// --- END: DUMMY DATA ---
 
 const CustomizationDrawer = ({ item, isOpen, onClose, onAddToCart }) => {
     const [selectedPortion, setSelectedPortion] = useState(null);
@@ -278,6 +245,7 @@ const MenuBrowserModal = ({ isOpen, onClose, categories, onCategoryClick }) => {
 };
 
 const RatingBadge = ({ rating }) => {
+    if(!rating) return null;
     const getRatingColor = () => {
         if (rating >= 4) return 'bg-green-500/10 text-green-300 border-green-500/20';
         if (rating >= 3) return 'bg-yellow-500/10 text-yellow-300 border-yellow-500/20';
@@ -298,16 +266,20 @@ const OrderPageInternal = () => {
     const searchParams = useSearchParams();
     const { restaurantId } = params;
     const phone = searchParams.get('phone');
-
-    const [restaurantName, setRestaurantName] = useState(dummyData.restaurantName);
-    const [deliveryCharge, setDeliveryCharge] = useState(dummyData.deliveryCharge);
-    const [rating, setRating] = useState(dummyData.rating);
-    const [rawMenu, setRawMenu] = useState(dummyData.menu);
-    const [loading, setLoading] = useState(false);
-    const [cart, setCart] = useState([]);
-    const [isMenuBrowserOpen, setIsMenuBrowserOpen] = useState(false);
-    const [notes, setNotes] = useState("");
     
+    // --- STATE MANAGEMENT ---
+    const [restaurantName, setRestaurantName] = useState('');
+    const [deliveryCharge, setDeliveryCharge] = useState(0);
+    const [rating, setRating] = useState(0);
+    const [rawMenu, setRawMenu] = useState({});
+    const [coupons, setCoupons] = useState([]);
+    const [loyaltyPoints, setLoyaltyPoints] = useState(0);
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState(null);
+
+    const [cart, setCart] = useState([]);
+    const [notes, setNotes] = useState("");
+    const [isMenuBrowserOpen, setIsMenuBrowserOpen] = useState(false);
     const [searchQuery, setSearchQuery] = useState('');
     const [sortBy, setSortBy] = useState('default');
     const [filters, setFilters] = useState({
@@ -315,12 +287,39 @@ const OrderPageInternal = () => {
         nonVeg: false,
         recommended: false,
     });
-    
-    const [coupons, setCoupons] = useState(dummyData.coupons);
-    const [loyaltyPoints, setLoyaltyPoints] = useState(dummyData.loyaltyPoints);
     const [customizationItem, setCustomizationItem] = useState(null);
     
-    // Load cart from localStorage on initial render
+
+    // --- DATA FETCHING ---
+    useEffect(() => {
+      const fetchMenuData = async () => {
+        if (!restaurantId) return;
+        setLoading(true);
+        setError(null);
+        try {
+          const res = await fetch(`/api/menu/${restaurantId}`);
+          if (!res.ok) {
+            throw new Error('Failed to fetch menu data.');
+          }
+          const data = await res.json();
+          setRestaurantName(data.restaurantName);
+          setDeliveryCharge(data.deliveryCharge || 0);
+          setRawMenu(data.menu || {});
+          setCoupons(data.coupons || []);
+          // You might need another API to fetch user-specific loyalty points
+          // setLoyaltyPoints(data.loyaltyPoints || 0); 
+        } catch (err) {
+          setError(err.message);
+          console.error(err);
+        } finally {
+          setLoading(false);
+        }
+      };
+
+      fetchMenuData();
+    }, [restaurantId]);
+    
+    // --- CART PERSISTENCE ---
     useEffect(() => {
         if (restaurantId) {
             const savedCartData = localStorage.getItem(`cart_${restaurantId}`);
@@ -332,6 +331,26 @@ const OrderPageInternal = () => {
         }
     }, [restaurantId]);
     
+    const updateCart = (newCart, newNotes) => {
+        setCart(newCart);
+        if (newNotes !== undefined) {
+            setNotes(newNotes);
+        }
+        const cartData = {
+            cart: newCart,
+            notes: newNotes !== undefined ? newNotes : notes,
+            restaurantId,
+            restaurantName,
+            phone,
+            coupons,
+            loyaltyPoints,
+            deliveryCharge,
+        };
+        localStorage.setItem(`cart_${restaurantId}`, JSON.stringify(cartData));
+    };
+
+
+    // --- MENU PROCESSING & FILTERING ---
     const processedMenu = useMemo(() => {
         let newMenu = JSON.parse(JSON.stringify(rawMenu));
         const lowercasedQuery = searchQuery.toLowerCase();
@@ -345,14 +364,14 @@ const OrderPageInternal = () => {
 
             if (filters.veg) items = items.filter(item => item.isVeg);
             if (filters.nonVeg) items = items.filter(item => !item.isVeg);
-            if (filters.recommended) items = items.filter(item => item.isRecommended);
+            if (filters.recommended) items = items.filter(item => item.isRecommended); // Assuming this data comes from API
             
             if (sortBy === 'price-asc') {
               items.sort((a, b) => a.portions[0].price - b.portions[0].price);
             } else if (sortBy === 'price-desc') {
               items.sort((a, b) => b.portions[0].price - a.portions[0].price);
             } else if (sortBy === 'rating-desc') {
-              items.sort((a,b) => (b.rating || 0) - (a.rating || 0));
+              items.sort((a,b) => (b.rating || 0) - (a.rating || 0)); // Assuming rating comes from API
             }
             
             newMenu[category] = items;
@@ -381,26 +400,10 @@ const OrderPageInternal = () => {
     const handleSortChange = (sortValue) => {
         setSortBy(prev => prev === sortValue ? 'default' : sortValue);
     }
+    
+    // --- CART ACTIONS ---
 
     const subtotal = useMemo(() => cart.reduce((sum, item) => sum + item.totalPrice * item.quantity, 0), [cart]);
-
-    const updateCart = (newCart, newNotes) => {
-        setCart(newCart);
-        if (newNotes !== undefined) {
-            setNotes(newNotes);
-        }
-        const cartData = {
-            cart: newCart,
-            notes: newNotes !== undefined ? newNotes : notes,
-            restaurantId,
-            restaurantName,
-            phone,
-            coupons,
-            loyaltyPoints,
-            deliveryCharge,
-        };
-        localStorage.setItem(`cart_${restaurantId}`, JSON.stringify(cartData));
-    };
 
     const handleAddToCart = (item, portion, selectedAddOns, totalPrice) => {
         const cartItemId = `${item.id}-${portion.name}-${selectedAddOns.map(a => a.name).sort().join('-')}`;
@@ -426,13 +429,16 @@ const OrderPageInternal = () => {
     };
 
     const handleIncrement = (item) => {
-        setCustomizationItem(item);
+        if(item.portions?.length > 1 || item.addOnGroups?.length > 0) {
+            setCustomizationItem(item);
+        } else {
+            handleAddToCart(item, item.portions[0], [], item.portions[0].price);
+        }
     };
 
     const handleDecrement = (itemId) => {
         let newCart = [...cart];
         
-        // Find the last added item in the cart that matches the itemId, as it's the most likely one a user wants to remove
         const lastMatchingItemIndex = newCart.reduce((lastIndex, currentItem, currentIndex) => {
             if (currentItem.id === itemId) {
                 return currentIndex;
@@ -440,7 +446,7 @@ const OrderPageInternal = () => {
             return lastIndex;
         }, -1);
 
-        if (lastMatchingItemIndex === -1) return; // Should not happen if decrement button is visible
+        if (lastMatchingItemIndex === -1) return;
 
         if (newCart[lastMatchingItemIndex].quantity === 1) {
             newCart.splice(lastMatchingItemIndex, 1);
@@ -484,6 +490,16 @@ const OrderPageInternal = () => {
                 <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-primary"></div>
             </div>
         );
+    }
+    
+    if (error) {
+       return (
+         <div className="min-h-screen bg-background flex flex-col items-center justify-center text-destructive p-4">
+            <h1 className="text-2xl font-bold">Oops! Something went wrong.</h1>
+            <p className="mt-2">{error}</p>
+            <Button onClick={() => router.back()} className="mt-6">Go Back</Button>
+         </div>
+       );
     }
     
     return (
@@ -568,7 +584,7 @@ const OrderPageInternal = () => {
                                             key={item.id} 
                                             item={item} 
                                             quantity={cartItemQuantities[item.id] || 0}
-                                            onAdd={setCustomizationItem}
+                                            onAdd={handleIncrement}
                                             onIncrement={handleIncrement}
                                             onDecrement={handleDecrement}
                                         />
