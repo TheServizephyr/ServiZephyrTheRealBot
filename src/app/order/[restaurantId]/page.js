@@ -526,10 +526,9 @@ const OrderPageInternal = () => {
                         alt={`${restaurantName} banner`}
                         layout="fill"
                         objectFit="cover"
-                        className="opacity-20"
                         unoptimized
                     />
-                    <div className="absolute inset-0 bg-gradient-to-t from-background via-background/80 to-transparent"></div>
+                    <div className="absolute inset-0 bg-gradient-to-t from-background via-background/70 to-transparent"></div>
                     <div className="absolute bottom-0 left-0 right-0">
                         <div className="container mx-auto px-4 py-4 flex items-center gap-4">
                             {logoUrl ? (
