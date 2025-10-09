@@ -262,36 +262,42 @@ const BannerCarousel = ({ images, onClick, restaurantName, logoUrl }) => {
     }, [images.length]);
   
     return (
-      <div className="relative h-48 w-full cursor-pointer overflow-hidden group" onClick={onClick}>
-        <AnimatePresence initial={false}>
-          <motion.div
-            key={index}
-            className="absolute inset-0"
-            initial={{ x: '100%', opacity: 0 }}
-            animate={{ x: 0, opacity: 1 }}
-            exit={{ x: '-100%', opacity: 0 }}
-            transition={{ duration: 0.8, ease: 'easeInOut' }}
-          >
-            <Image
-              src={images[index]}
-              alt={`Banner ${index + 1}`}
-              layout="fill"
-              objectFit="cover"
-              unoptimized
-            />
-          </motion.div>
-        </AnimatePresence>
-        <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-black/20 to-transparent"></div>
-        <div className="container mx-auto px-4 h-full relative flex items-end justify-between">
-            {logoUrl && (
-                <div className="relative w-16 h-16 rounded-lg overflow-hidden border-2 border-white shadow-md flex-shrink-0">
-                    <Image src={logoUrl} alt={`${restaurantName} logo`} layout="fill" objectFit="cover" />
+      <div className="relative h-48 w-full cursor-pointer group" onClick={onClick}>
+        <div className="absolute inset-0 overflow-hidden">
+            <AnimatePresence initial={false}>
+            <motion.div
+                key={index}
+                className="absolute inset-0"
+                initial={{ x: '100%', opacity: 0 }}
+                animate={{ x: 0, opacity: 1 }}
+                exit={{ x: '-100%', opacity: 0 }}
+                transition={{ duration: 0.8, ease: 'easeInOut' }}
+            >
+                <Image
+                src={images[index]}
+                alt={`Banner ${index + 1}`}
+                layout="fill"
+                objectFit="cover"
+                unoptimized
+                />
+            </motion.div>
+            </AnimatePresence>
+        </div>
+        <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/30 to-transparent"></div>
+        <div className="absolute bottom-[-1px] left-0 right-0 p-4">
+             <div className="container mx-auto bg-black/50 backdrop-blur-md border border-white/20 rounded-xl p-3 flex items-center justify-between">
+                {logoUrl && (
+                    <div className="relative w-16 h-16 rounded-lg overflow-hidden border-2 border-white shadow-md flex-shrink-0">
+                        <Image src={logoUrl} alt={`${restaurantName} logo`} layout="fill" objectFit="cover" />
+                    </div>
+                )}
+                <div className="text-right">
+                    <span className="block text-sm font-normal text-white/90">Ordering from</span>
+                    <h1 className="font-sans text-2xl md:text-3xl font-bold text-white">
+                        {restaurantName}
+                    </h1>
                 </div>
-            )}
-            <h1 className="font-sans text-2xl md:text-3xl font-bold text-white text-right">
-                <span className="block text-sm font-normal">Ordering from</span>
-                {restaurantName}
-            </h1>
+            </div>
         </div>
       </div>
     );
@@ -559,7 +565,6 @@ const OrderPageInternal = () => {
                         onClick={() => setIsBannerExpanded(false)}
                     >
                         <motion.div 
-                            layoutId="banner"
                             className="relative w-full max-w-4xl"
                             style={{ aspectRatio: '16 / 9' }}
                             onClick={(e) => e.stopPropagation()}
@@ -593,9 +598,7 @@ const OrderPageInternal = () => {
                 />
 
                  <header className="bg-card">
-                    <motion.div layoutId="banner" onClick={() => setIsBannerExpanded(true)}>
-                       <BannerCarousel images={bannerUrls} restaurantName={restaurantName} logoUrl={logoUrl} />
-                    </motion.div>
+                    <BannerCarousel images={bannerUrls} onClick={() => setIsBannerExpanded(true)} restaurantName={restaurantName} logoUrl={logoUrl} />
                 </header>
 
                 <div className="sticky top-0 z-10 bg-background/95 backdrop-blur-sm py-2 border-b border-border">
