@@ -1,9 +1,14 @@
 
 import { NextResponse } from 'next/server';
-import { getAuth, getFirestore } from '@/lib/firebase-admin';
+import { getAuth } from '@/lib/firebase-admin';
+import { getFirestore } from 'firebase-admin/firestore';
+import { initializeApp, getApps } from 'firebase-admin/app';
+
 
 // This function now verifies the user and fetches both user and their restaurant data if they are an owner.
-async function verifyUserAndGetData(req, auth, firestore) {
+async function verifyUserAndGetData(req) {
+    const auth = getAuth();
+    const firestore = getFirestore();
     const authHeader = req.headers.get('authorization');
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
         throw { message: 'Authorization token not found or invalid.', status: 401 };
@@ -34,9 +39,7 @@ async function verifyUserAndGetData(req, auth, firestore) {
 
 export async function GET(req) {
     try {
-        const auth = await getAuth();
-        const firestore = await getFirestore();
-        const { uid, userData, restaurantData } = await verifyUserAndGetData(req, auth, firestore);
+        const { uid, userData, restaurantData } = await verifyUserAndGetData(req);
         
         const profileData = {
             name: userData.name || 'No Name',
@@ -53,7 +56,7 @@ export async function GET(req) {
             gstin: restaurantData?.gstin || '',
             fssai: restaurantData?.fssai || '',
             botPhoneNumberId: restaurantData?.botPhoneNumberId || '',
-            deliveryCharge: restaurantData?.deliveryCharge || 30, // Default to 30 if not set
+            deliveryCharge: restaurantData?.deliveryCharge === undefined ? 30 : restaurantData.deliveryCharge, // Default if not set
             logoUrl: restaurantData?.logoUrl || '',
             bannerUrl: restaurantData?.bannerUrl || '',
         };
@@ -68,18 +71,17 @@ export async function GET(req) {
 
 export async function PATCH(req) {
     try {
-        const auth = await getAuth();
-        const firestore = await getFirestore();
-        const { uid, userData } = await verifyUserAndGetData(req, auth, firestore);
+        const firestore = getFirestore();
+        const { uid, userData } = await verifyUserAndGetData(req);
         
         const { name, phone, notifications, gstin, fssai, botPhoneNumberId, deliveryCharge, logoUrl, bannerUrl } = await req.json();
 
         // --- Update User's Profile in 'users' collection ---
         const userRef = firestore.collection('users').doc(uid);
         const userUpdateData = {};
-        if (name) userUpdateData.name = name;
-        if (phone) userUpdateData.phone = phone;
-        if (notifications) userUpdateData.notifications = notifications;
+        if (name !== undefined) userUpdateData.name = name;
+        if (phone !== undefined) userUpdateData.phone = phone;
+        if (notifications !== undefined) userUpdateData.notifications = notifications;
 
         if (Object.keys(userUpdateData).length > 0) {
             await userRef.update(userUpdateData);
@@ -107,7 +109,7 @@ export async function PATCH(req) {
         }
         
         // --- Fetch and return the fully updated data ---
-        const { userData: finalUserData, restaurantData: finalRestaurantData } = await verifyUserAndGetData(req, auth, firestore);
+        const { userData: finalUserData, restaurantData: finalRestaurantData } = await verifyUserAndGetData(req);
         const responseData = {
             name: finalUserData.name,
             email: finalUserData.email,
@@ -118,7 +120,7 @@ export async function PATCH(req) {
             gstin: finalRestaurantData?.gstin || '',
             fssai: finalRestaurantData?.fssai || '',
             botPhoneNumberId: finalRestaurantData?.botPhoneNumberId || '',
-            deliveryCharge: finalRestaurantData?.deliveryCharge || 30,
+            deliveryCharge: finalRestaurantData?.deliveryCharge === undefined ? 30 : finalRestaurantData.deliveryCharge,
             logoUrl: finalRestaurantData?.logoUrl || '',
             bannerUrl: finalRestaurantData?.bannerUrl || '',
         };
@@ -130,3 +132,5 @@ export async function PATCH(req) {
         return NextResponse.json({ message: `Backend Error: ${error.message}` }, { status: error.status || 500 });
     }
 }
+
+    

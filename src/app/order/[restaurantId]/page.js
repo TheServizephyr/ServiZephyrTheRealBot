@@ -372,9 +372,9 @@ const OrderPageInternal = () => {
             if (filters.recommended) items = items.filter(item => item.isRecommended); // Assuming this data comes from API
             
             if (sortBy === 'price-asc') {
-              items.sort((a, b) => a.portions[0].price - b.portions[0].price);
+              items.sort((a, b) => (a.portions?.[0]?.price || 0) - (b.portions?.[0]?.price || 0));
             } else if (sortBy === 'price-desc') {
-              items.sort((a, b) => b.portions[0].price - a.portions[0].price);
+              items.sort((a, b) => (b.portions?.[0]?.price || 0) - (a.portions?.[0]?.price || 0));
             } else if (sortBy === 'rating-desc') {
               items.sort((a,b) => (b.rating || 0) - (a.rating || 0)); // Assuming rating comes from API
             }
@@ -520,7 +520,7 @@ const OrderPageInternal = () => {
             />
 
              <header>
-                <div className="relative h-48 md:h-56">
+                <div className="relative h-56">
                     <Image
                         src={bannerUrl}
                         alt={`${restaurantName} banner`}
@@ -669,3 +669,5 @@ const OrderPage = () => (
 );
 
 export default OrderPage;
+
+    
