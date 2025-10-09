@@ -531,7 +531,7 @@ const OrderPageInternal = () => {
                     <div className="absolute inset-0 bg-black/40"></div>
                     <div className="container mx-auto px-4 h-full relative flex items-end justify-between">
                          {logoUrl && (
-                            <div className="relative -mb-8 w-24 h-24 md:w-28 md:h-28 rounded-full overflow-hidden border-4 border-background bg-card shadow-lg flex-shrink-0">
+                            <div className="relative w-24 h-24 md:w-28 md:h-28 rounded-full overflow-hidden border-4 border-background bg-card shadow-lg flex-shrink-0">
                                 <Image src={logoUrl} alt={`${restaurantName} logo`} layout="fill" objectFit="cover" />
                             </div>
                         )}
