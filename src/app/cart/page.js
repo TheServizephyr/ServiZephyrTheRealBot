@@ -37,8 +37,8 @@ const CheckoutModal = ({ isOpen, onClose, restaurantId, phone, cart, notes, appl
     const [loading, setLoading] = useState(false);
     const [isExistingUser, setIsExistingUser] = useState(false);
     const [savedAddresses, setSavedAddresses] = useState([]);
-    const [selectedAddress, setSelectedAddress] = useState(null);
-    const [isAddingNew, setIsAddingNew] = useState(true);
+    const [selectedAddress, setSelectedAddress] = useState('');
+    const [isAddingNew, setIsAddingNew] = useState(false);
 
     useEffect(() => {
         const fetchUserData = async () => {
@@ -60,7 +60,6 @@ const CheckoutModal = ({ isOpen, onClose, restaurantId, phone, cart, notes, appl
                             setIsAddingNew(false);
                         } else {
                             setIsAddingNew(true);
-                            setAddress('');
                         }
                         setIsExistingUser(true);
                     } else {
@@ -70,10 +69,12 @@ const CheckoutModal = ({ isOpen, onClose, restaurantId, phone, cart, notes, appl
                         setName('');
                         setAddress('');
                         setSavedAddresses([]);
+                        setSelectedAddress('');
                     }
                 } catch (err) {
                     setError('Could not fetch user details. Please enter manually.');
                     setIsExistingUser(false);
+                    setIsAddingNew(true);
                 } finally {
                     setLoading(false);
                 }
@@ -149,7 +150,7 @@ const CheckoutModal = ({ isOpen, onClose, restaurantId, phone, cart, notes, appl
                 </DialogHeader>
                 <div className="py-4 space-y-4">
                      {loading ? (
-                        <div className="flex justify-center items-center h-24">
+                        <div className="flex justify-center items-center h-48">
                            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
                         </div>
                      ) : (
@@ -171,8 +172,8 @@ const CheckoutModal = ({ isOpen, onClose, restaurantId, phone, cart, notes, appl
                                                 {addr.full}
                                             </div>
                                         ))}
-                                         <div onClick={() => setIsAddingNew(true)} className={cn("p-3 rounded-md border-2 cursor-pointer", isAddingNew ? 'border-primary bg-primary/10' : 'border-border')}>
-                                            + Add a new address
+                                         <div onClick={() => { setIsAddingNew(true); setSelectedAddress(''); }} className={cn("p-3 rounded-md border-2 cursor-pointer flex items-center gap-2", isAddingNew ? 'border-primary bg-primary/10' : 'border-border')}>
+                                            <PlusCircle size={16}/> Add a new address
                                         </div>
                                     </div>
                                 </div>
@@ -183,7 +184,7 @@ const CheckoutModal = ({ isOpen, onClose, restaurantId, phone, cart, notes, appl
                                     <Label htmlFor="checkout-address">Delivery Address</Label>
                                     <div className="relative mt-1">
                                         <Home className="absolute left-3 top-3 h-5 w-5 text-muted-foreground" />
-                                        <textarea id="checkout-address" value={address} onChange={(e) => setAddress(e.target.value)} required rows={3} className="w-full pl-10 pr-4 py-2 rounded-md bg-input border border-border" placeholder="Enter your full delivery address" />
+                                        <textarea id="checkout-address" value={address} onChange={(e) => setAddress(e.target.value)} required rows={3} className="w-full pl-10 pr-4 py-2 rounded-md bg-input border-border" placeholder="Enter your full delivery address" />
                                     </div>
                                 </div>
                             )}
@@ -208,6 +209,7 @@ const CartPageInternal = () => {
     const router = useRouter();
     const searchParams = useSearchParams();
     const restaurantId = searchParams.get('restaurantId');
+    const phone = searchParams.get('phone');
     
     const [cartData, setCartData] = useState(null);
     const [cart, setCart] = useState([]);
@@ -362,7 +364,7 @@ const CartPageInternal = () => {
             isOpen={isCheckoutOpen} 
             onClose={() => setIsCheckoutOpen(false)}
             restaurantId={restaurantId}
-            phone={cartData.phone}
+            phone={phone}
             cart={cart}
             notes={notes}
             appliedCoupons={appliedCoupons}
@@ -377,7 +379,7 @@ const CartPageInternal = () => {
         <div className="min-h-screen bg-background text-foreground flex flex-col green-theme">
              <header className="sticky top-0 z-20 bg-background/80 backdrop-blur-lg border-b border-border">
                 <div className="container mx-auto px-4 py-3 flex items-center gap-4">
-                     <Button variant="ghost" size="icon" onClick={() => router.push(`/order/${restaurantId}`)} className="h-10 w-10">
+                     <Button variant="ghost" size="icon" onClick={() => router.push(`/order/${restaurantId}?phone=${phone}`)} className="h-10 w-10">
                         <ArrowLeft />
                     </Button>
                     <div>
@@ -393,7 +395,7 @@ const CartPageInternal = () => {
                         <ShoppingCart size={48} className="mb-4" />
                         <h1 className="text-2xl font-bold">Your Cart is Empty</h1>
                         <p className="mt-2">Looks like you haven't added anything to your cart yet.</p>
-                         <Button onClick={() => router.push(`/order/${restaurantId}`)} className="mt-6">
+                         <Button onClick={() => router.push(`/order/${restaurantId}?phone=${phone}`)} className="mt-6">
                             <ArrowLeft className="mr-2 h-4 w-4" /> Go Back to Menu
                         </Button>
                     </div>
@@ -433,7 +435,7 @@ const CartPageInternal = () => {
                                 ))}
                             </div>
 
-                            <Button variant="outline" onClick={() => router.push(`/order/${restaurantId}`)} className="w-full mt-4">
+                            <Button variant="outline" onClick={() => router.push(`/order/${restaurantId}?phone=${phone}`)} className="w-full mt-4">
                                 <PlusCircle className="mr-2 h-4 w-4" /> Add more items
                             </Button>
                             

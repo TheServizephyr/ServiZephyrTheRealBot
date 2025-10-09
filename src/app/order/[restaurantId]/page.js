@@ -130,7 +130,7 @@ const CustomizationDrawer = ({ item, isOpen, onClose, onAddToCart }) => {
                                                 )}
                                             >
                                                 <div className="flex items-center gap-3">
-                                                    <div className={cn("w-5 h-5 border-2 flex items-center justify-center rounded-sm", isSelected ? 'border-primary bg-primary' : 'border-muted-foreground')}>
+                                                    <div className={cn("w-5 h-5 border-2 flex items-center justify-center rounded", isSelected ? 'border-primary bg-primary' : 'border-muted-foreground')}>
                                                         {isSelected && <Check className="h-4 w-4 text-primary-foreground" />}
                                                     </div>
                                                     <span className="font-medium">{option.name}</span>
@@ -482,7 +482,7 @@ const OrderPageInternal = () => {
     }
 
     const handleCheckout = () => {
-        router.push(`/cart?restaurantId=${restaurantId}`);
+        router.push(`/cart?restaurantId=${restaurantId}&phone=${phone}`);
     };
 
     if (loading) {
