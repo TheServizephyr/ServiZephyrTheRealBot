@@ -1,12 +1,23 @@
 
 import admin from 'firebase-admin';
 
-// Load environment variables from .env file for local development
-require('dotenv').config();
+// Load environment variables from .env.local file for local development
+require('dotenv').config({ path: '.env.local' });
 
 function getServiceAccount() {
-  // Primary Method: Use Base64 encoded service account from Vercel environment variables.
-  // This is the most robust method and avoids parsing issues with private keys.
+  // New Method (Primary for Local): Parse the full JSON string from .env.local
+  if (process.env.FIREBASE_SERVICE_ACCOUNT_JSON) {
+    console.log("[firebase-admin] Initializing with FIREBASE_SERVICE_ACCOUNT_JSON from .env.local.");
+    try {
+      // The variable is a string representation of a JSON object, so it needs to be parsed.
+      return JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_JSON);
+    } catch (e) {
+      console.error("[firebase-admin] CRITICAL: Failed to parse FIREBASE_SERVICE_ACCOUNT_JSON.", e);
+      return null;
+    }
+  }
+
+  // Vercel Method: Use Base64 encoded service account from Vercel environment variables.
   if (process.env.FIREBASE_SERVICE_ACCOUNT_BASE64) {
     console.log("[firebase-admin] Initializing with Base64 encoded Vercel environment variable.");
     try {
@@ -18,10 +29,9 @@ function getServiceAccount() {
     }
   }
 
-  // Fallback Method: For local development or if the Base64 variable is not set.
-  // This will construct the object from individual keys.
+  // Old Fallback Method: For local development if the above are not set.
   if (process.env.FIREBASE_PRIVATE_KEY && process.env.FIREBASE_CLIENT_EMAIL) {
-    console.warn("[firebase-admin] Using individual Firebase environment variables. Base64 method is recommended for production.");
+    console.warn("[firebase-admin] Using individual Firebase environment variables. FIREBASE_SERVICE_ACCOUNT_JSON is recommended for local dev.");
     return {
       projectId: process.env.FIREBASE_PROJECT_ID || 'studio-6552995429-8bffe',
       privateKey: process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, '\n'),
@@ -29,7 +39,7 @@ function getServiceAccount() {
     };
   }
 
-  console.error("[firebase-admin] FATAL: No Firebase service account credentials found. Set FIREBASE_SERVICE_ACCOUNT_BASE64 or individual FIREBASE_* env variables.");
+  console.error("[firebase-admin] FATAL: No Firebase service account credentials found. Set FIREBASE_SERVICE_ACCOUNT_JSON or other required env variables.");
   return null;
 }
 
