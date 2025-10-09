@@ -131,8 +131,8 @@ const CustomizationDrawer = ({ item, isOpen, onClose, onAddToCart }) => {
                                                 )}
                                             >
                                                 <div className="flex items-center gap-3">
-                                                    <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${isSelected ? 'border-primary' : 'border-muted-foreground'}`}>
-                                                        {isSelected && <div className="w-2.5 h-2.5 bg-primary rounded-full" />}
+                                                    <div className={cn("w-5 h-5 border-2 flex items-center justify-center", isSelected ? 'border-primary bg-primary' : 'border-muted-foreground', group.type === 'radio' ? 'rounded-full' : 'rounded-sm')}>
+                                                        {isSelected && <Check className="h-4 w-4 text-primary-foreground" />}
                                                     </div>
                                                     <span className="font-medium">{option.name}</span>
                                                 </div>
