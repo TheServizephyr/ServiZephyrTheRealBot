@@ -519,7 +519,7 @@ const OrderPageInternal = () => {
                 onAddToCart={handleAddToCart}
             />
 
-             <header className="sticky top-0 z-20">
+             <header>
                 <div className="relative h-48 md:h-56">
                     <Image
                         src={bannerUrl}
@@ -545,7 +545,7 @@ const OrderPageInternal = () => {
                 </div>
             </header>
 
-            <div className="sticky top-[0] z-10 bg-background/95 backdrop-blur-sm py-2 border-b border-border">
+            <div className="sticky top-0 z-10 bg-background/95 backdrop-blur-sm py-2 border-b border-border">
                 <div className="container mx-auto px-4 flex items-center gap-4">
                     <div className="relative flex-grow">
                         <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" size={20} />
