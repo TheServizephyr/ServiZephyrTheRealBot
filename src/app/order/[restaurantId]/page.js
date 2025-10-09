@@ -121,7 +121,7 @@ const MenuItemCard = ({ item, quantity, onIncrement, onDecrement, onOpenPortionM
       <div className="relative w-24 h-24 rounded-md overflow-hidden bg-muted flex-shrink-0">
          <Image src={item.imageUrl} alt={item.name} layout="fill" objectFit="cover" data-ai-hint="food item" />
       </div>
-      <div className="flex-grow flex flex-col">
+      <div className="flex-grow flex flex-col h-full">
         <div className="flex items-center gap-2 mb-1">
           <div className={`w-4 h-4 border ${item.isVeg ? 'border-green-500' : 'border-red-500'} flex items-center justify-center`}>
             <div className={`w-2 h-2 ${item.isVeg ? 'bg-green-500' : 'bg-red-500'} rounded-full`}></div>
@@ -338,7 +338,6 @@ const OrderPageInternal = () => {
         if (existingItemIndex === -1) return;
         
         const itemInCart = cart[existingItemIndex];
-        const cartItemId = `${itemInCart.id}-${itemInCart.portion.name}`;
 
         if (itemInCart.quantity === 1) {
             newCart = cart.filter((ci, index) => index !== existingItemIndex);
@@ -482,11 +481,13 @@ const OrderPageInternal = () => {
             </div>
             
             <footer className="fixed bottom-0 left-0 right-0 z-30 pointer-events-none">
-                 <AnimatePresence>
+                <AnimatePresence>
                     <motion.div
-                        className="absolute bottom-4 right-4 pointer-events-auto"
+                        className="absolute right-4 pointer-events-auto"
+                        animate={{ bottom: totalCartItems > 0 ? '6.5rem' : '1rem' }}
+                        transition={{ type: "spring", stiffness: 300, damping: 25 }}
                         initial={{ opacity: 0, scale: 0.8 }}
-                        animate={{ opacity: 1, scale: 1 }}
+                        whileInView={{ opacity: 1, scale: 1 }}
                         exit={{ opacity: 0, scale: 0.8 }}
                     >
                         <button
