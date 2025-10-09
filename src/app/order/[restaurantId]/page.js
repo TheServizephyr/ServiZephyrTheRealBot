@@ -121,10 +121,10 @@ const CustomizationDrawer = ({ item, isOpen, onClose, onAddToCart }) => {
                         transition={{ type: "spring", stiffness: 300, damping: 30 }}
                         onClick={(e) => e.stopPropagation()}
                     >
-                        <DialogHeader className="flex-shrink-0">
-                            <DialogTitle className="text-2xl">{item.name}</DialogTitle>
-                            <DialogDescription>{item.description}</DialogDescription>
-                        </DialogHeader>
+                        <div className="flex-shrink-0">
+                            <h3 className="text-2xl font-bold">{item.name}</h3>
+                            <p className="text-sm text-muted-foreground">{item.description}</p>
+                        </div>
 
                         <div className="py-4 space-y-6 overflow-y-auto flex-grow">
                              {/* Portions */}
@@ -177,11 +177,11 @@ const CustomizationDrawer = ({ item, isOpen, onClose, onAddToCart }) => {
                             ))}
                         </div>
                         
-                        <DialogFooter className="flex-shrink-0 pt-4 border-t border-border">
+                        <div className="flex-shrink-0 pt-4 border-t border-border">
                             <Button onClick={handleFinalAddToCart} className="w-full h-14 text-lg bg-primary hover:bg-primary/90 text-primary-foreground">
                                 Add item for ₹{totalPrice}
                             </Button>
-                        </DialogFooter>
+                        </div>
                     </motion.div>
                 </motion.div>
             )}
@@ -190,8 +190,7 @@ const CustomizationDrawer = ({ item, isOpen, onClose, onAddToCart }) => {
 };
 
 
-const MenuItemCard = ({ item, quantity, onAdd }) => {
-    // Find the minimum price to display
+const MenuItemCard = ({ item, quantity, onAdd, onIncrement, onDecrement }) => {
     const minPricePortion = useMemo(() => {
       if (!item.portions || item.portions.length === 0) {
         return { price: 0 };
@@ -216,20 +215,26 @@ const MenuItemCard = ({ item, quantity, onAdd }) => {
           </div>
           <h4 className="font-semibold text-foreground">{item.name}</h4>
         </div>
-        <p className="text-sm text-muted-foreground mb-2 flex-grow">{item.description}</p>
-        <p className="font-bold text-lg text-primary">from ₹{minPricePortion.price}</p>
-         <div className="flex flex-wrap gap-2 mt-2">
+        <p className="text-sm text-muted-foreground flex-grow">{item.description}</p>
+        <div className="flex flex-wrap gap-2 mt-2 mb-3">
             {item.tags && item.tags.map(tag => (
                 <span key={tag} className="px-2 py-1 text-xs font-bold rounded-full bg-primary/10 text-primary-foreground border border-primary/20 flex items-center gap-1">
                     <TagIcon size={12} /> {tag}
                 </span>
             ))}
         </div>
+        <p className="font-bold text-lg text-primary">from ₹{minPricePortion.price}</p>
       </div>
       <div className="flex flex-col items-center justify-center h-full flex-shrink-0 ml-4">
         {quantity > 0 ? (
-          <div className="flex items-center gap-2">
-              <span className="font-bold text-lg text-primary">{quantity} in cart</span>
+          <div className="flex items-center justify-center bg-background border border-border rounded-lg shadow-sm">
+             <Button variant="ghost" size="icon" className="h-10 w-10 text-primary" onClick={() => onDecrement(item.id)}>
+                <Minus size={16}/>
+             </Button>
+             <span className="font-bold text-lg text-primary w-8 text-center">{quantity}</span>
+             <Button variant="ghost" size="icon" className="h-10 w-10 text-primary" onClick={() => onIncrement(item)}>
+                <Plus size={16}/>
+             </Button>
           </div>
         ) : (
           <Button
@@ -420,6 +425,32 @@ const OrderPageInternal = () => {
         updateCart(newCart);
     };
 
+    const handleIncrement = (item) => {
+        setCustomizationItem(item);
+    };
+
+    const handleDecrement = (itemId) => {
+        let newCart = [...cart];
+        
+        // Find the last added item in the cart that matches the itemId, as it's the most likely one a user wants to remove
+        const lastMatchingItemIndex = newCart.reduce((lastIndex, currentItem, currentIndex) => {
+            if (currentItem.id === itemId) {
+                return currentIndex;
+            }
+            return lastIndex;
+        }, -1);
+
+        if (lastMatchingItemIndex === -1) return; // Should not happen if decrement button is visible
+
+        if (newCart[lastMatchingItemIndex].quantity === 1) {
+            newCart.splice(lastMatchingItemIndex, 1);
+        } else {
+            newCart[lastMatchingItemIndex].quantity--;
+        }
+
+        updateCart(newCart);
+    };
+
     const totalCartItems = cart.reduce((sum, item) => sum + item.quantity, 0);
     
     const cartItemQuantities = useMemo(() => {
@@ -538,6 +569,8 @@ const OrderPageInternal = () => {
                                             item={item} 
                                             quantity={cartItemQuantities[item.id] || 0}
                                             onAdd={setCustomizationItem}
+                                            onIncrement={handleIncrement}
+                                            onDecrement={handleDecrement}
                                         />
                                     ))}
                                 </div>
@@ -548,13 +581,13 @@ const OrderPageInternal = () => {
             </div>
             
             <footer className="fixed bottom-0 left-0 right-0 z-30 pointer-events-none">
-                <div className="container mx-auto relative h-28">
+                <div className="container mx-auto px-4 relative h-28">
                     <motion.div
-                        className="absolute right-4 bottom-4 pointer-events-auto"
+                        className="absolute right-4 pointer-events-auto"
                         animate={{ bottom: totalCartItems > 0 ? '6.5rem' : '1rem' }}
                         transition={{ type: "spring", stiffness: 300, damping: 25 }}
                     >
-                        <button
+                         <button
                             onClick={() => setIsMenuBrowserOpen(true)}
                             className="bg-card text-foreground h-16 w-16 rounded-2xl shadow-lg flex flex-col items-center justify-center gap-1 border border-border"
                         >
