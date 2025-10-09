@@ -129,33 +129,33 @@ export async function POST(req) {
         const firestore = await getFirestore();
         const { restaurantId, restaurantSnap } = await verifyOwnerAndGetRestaurant(req, auth, firestore);
         const { item, categoryId, newCategory, isEditing } = await req.json();
-        
-        const batch = firestore.batch();
-        let finalCategoryId = categoryId;
-        
-        // If a new category was created, add it to the restaurant's custom category list
-        if (newCategory) {
-            const formattedId = newCategory.toLowerCase().replace(/\s+/g, '-');
-            finalCategoryId = formattedId;
 
-            const restaurantRef = restaurantSnap.ref;
-            const newCategoryObject = { id: formattedId, title: newCategory };
-            
-            const currentRestaurantData = restaurantSnap.data();
-            const currentCategories = currentRestaurantData.customCategories || [];
-            
-            if (!currentCategories.some(cat => cat.id === formattedId)) {
-                const updatedCategories = [...currentCategories, newCategoryObject];
-                batch.update(restaurantRef, { customCategories: updatedCategories });
-            }
-        }
-        
         if (!item || !item.name || !item.portions || item.portions.length === 0) {
             return NextResponse.json({ message: 'Missing required item data. Name and at least one portion are required.' }, { status: 400 });
         }
-        
+
+        const batch = firestore.batch();
+        let finalCategoryId = categoryId;
         const menuRef = firestore.collection('restaurants').doc(restaurantId).collection('menu');
+
+        // --- BATCH LOGIC ---
+
+        // Step 1: Handle new category creation
+        if (newCategory) {
+            const formattedId = newCategory.toLowerCase().replace(/\s+/g, '-');
+            finalCategoryId = formattedId;
+            const restaurantRef = restaurantSnap.ref;
+            const newCategoryObject = { id: formattedId, title: newCategory };
+            
+            // Atomically add the new category object to the array.
+            // This reads the document, updates the array in memory, and then writes the whole array back.
+            // It's necessary because arrayUnion doesn't work with objects as expected without unique IDs.
+            batch.update(restaurantRef, { 
+                customCategories: adminFirestore.FieldValue.arrayUnion(newCategoryObject) 
+            });
+        }
         
+        // Step 2: Prepare the menu item data
         const finalItem = {
             ...item,
             categoryId: finalCategoryId,
@@ -163,13 +163,12 @@ export async function POST(req) {
             addOnGroups: item.addOnGroups || [],
         };
 
+        // Step 3: Add the item operation (create or update) to the batch
         if (isEditing) {
             if (!item.id) return NextResponse.json({ message: 'Item ID is required for editing.' }, { status: 400 });
             const itemRef = menuRef.doc(item.id);
-            const { id, createdAt, order, ...updateData } = finalItem;
+            const { id, createdAt, ...updateData } = finalItem;
             batch.update(itemRef, updateData);
-            await batch.commit();
-            return NextResponse.json({ message: 'Item updated successfully!', id: item.id }, { status: 200 });
         } else {
             const categoryQuery = await menuRef.where('categoryId', '==', finalCategoryId).orderBy('order', 'desc').limit(1).get();
             const maxOrder = categoryQuery.empty ? 0 : (categoryQuery.docs[0].data().order || 0);
@@ -181,10 +180,15 @@ export async function POST(req) {
                 order: maxOrder + 1,
                 createdAt: adminFirestore.FieldValue.serverTimestamp(),
             });
-
-            await batch.commit();
-            return NextResponse.json({ message: 'Item added successfully!', id: newItemRef.id }, { status: 201 });
         }
+
+        // Step 4: Commit the entire batch
+        await batch.commit();
+
+        const message = isEditing ? 'Item updated successfully!' : 'Item added successfully!';
+        const status = isEditing ? 200 : 201;
+
+        return NextResponse.json({ message, id: item.id || finalItem.id }, { status });
 
     } catch (error) {
         console.error("POST MENU ERROR:", error);
