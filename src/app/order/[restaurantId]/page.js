@@ -589,17 +589,15 @@ const OrderPageInternal = () => {
                        <BannerCarousel images={bannerUrls} />
                     </div>
                     <div className="container mx-auto px-4 -mt-16 relative">
-                        <div className="bg-card p-4 rounded-xl shadow-lg border border-border">
-                            <div className="flex items-end gap-4">
-                                {logoUrl && (
-                                    <div className="relative w-20 h-20 rounded-lg overflow-hidden border-4 border-background bg-card shadow-md flex-shrink-0 -mt-10">
-                                        <Image src={logoUrl} alt={`${restaurantName} logo`} layout="fill" objectFit="cover" />
-                                    </div>
-                                )}
-                                <div className="flex-grow">
-                                    <h1 className="font-sans text-2xl md:text-3xl font-bold text-foreground">{restaurantName}</h1>
-                                    <p className="text-sm text-muted-foreground">The taste you can trust</p>
+                        <div className="bg-card p-4 rounded-xl shadow-lg border border-border flex items-end justify-between">
+                            {logoUrl && (
+                                <div className="relative w-20 h-20 rounded-lg overflow-hidden border-4 border-background bg-card shadow-md flex-shrink-0 -mt-10">
+                                    <Image src={logoUrl} alt={`${restaurantName} logo`} layout="fill" objectFit="cover" />
                                 </div>
+                            )}
+                            <div className="flex-grow text-right">
+                                <h1 className="font-sans text-2xl md:text-3xl font-bold text-foreground">{restaurantName}</h1>
+                                <p className="text-sm text-muted-foreground">The taste you can trust</p>
                             </div>
                         </div>
                     </div>
