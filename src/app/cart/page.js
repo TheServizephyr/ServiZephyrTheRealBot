@@ -94,18 +94,32 @@ const CheckoutModal = ({ isOpen, onClose, restaurantId, phone, cart, notes, appl
         setLoading(true);
         
         try {
+            // Explode cart items into individual line items for the bill
+            const finalItems = [];
+            cart.forEach(item => {
+                // Add the main item
+                finalItems.push({
+                    name: `${item.name} (${item.portion.name})`,
+                    quantity: item.quantity,
+                    price: item.portion.price,
+                });
+                // Add each selected add-on as a separate item
+                item.selectedAddOns.forEach(addon => {
+                    finalItems.push({
+                        name: `  - ${addon.name}`, // Indent for clarity
+                        quantity: item.quantity,
+                        price: addon.price,
+                    });
+                });
+            });
+
+
             const orderPayload = {
                 name: name.trim(),
                 address: finalAddress,
                 phone,
                 restaurantId,
-                items: cart.map(item => ({
-                    name: item.name,
-                    quantity: item.quantity,
-                    price: item.totalPrice,
-                    portion: item.portion.name,
-                    addOns: item.selectedAddOns.map(a => a.name)
-                })),
+                items: finalItems,
                 notes,
                 coupon: appliedCoupons.length > 0 ? {
                     code: appliedCoupons[0].code,

@@ -59,7 +59,9 @@ export async function POST(req) {
             console.log(`[Order API] New user profile created with UID: ${userId}`);
         }
         
-        const subtotal = items.reduce((sum, item) => sum + item.price * item.quantity, 0);
+        // The items array now contains main items and add-ons as separate entries.
+        // The subtotal is calculated from these exploded items.
+        const subtotal = items.reduce((sum, item) => sum + (item.price * item.quantity), 0);
         const couponDiscountAmount = coupon?.discount || 0;
         const finalLoyaltyDiscount = loyaltyDiscount || 0;
         const finalDiscount = couponDiscountAmount + finalLoyaltyDiscount;
