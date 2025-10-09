@@ -132,11 +132,12 @@ export default function SettingsPage() {
     const [user, setUser] = useState(null);
     const [editedUser, setEditedUser] = useState(null);
     const [loading, setLoading] = useState(true);
-    const [isEditing, setIsEditing] = useState(false);
+    const [isEditingProfile, setIsEditingProfile] = useState(false);
+    const [isEditingMedia, setIsEditingMedia] = useState(false);
     const [isDeleteModalOpen, setDeleteModalOpen] = useState(false);
     const [passwords, setPasswords] = useState({ current: '', new: '', confirm: '' });
     const [showNewPass, setShowNewPass] = useState(false);
-    const bannerInputRef = React.useRef(null);
+    const [bannerInputRef = React.useRef(null);
 
     useEffect(() => {
         const fetchUserData = async () => {
@@ -178,11 +179,18 @@ export default function SettingsPage() {
         return () => unsubscribe();
     }, []);
 
-    const handleEditToggle = () => {
-        if (isEditing) {
-            setEditedUser({...user, bannerUrls: user.bannerUrls || []});
+    const handleEditToggle = (section) => {
+        if (section === 'profile') {
+            if (isEditingProfile) {
+                setEditedUser({ ...editedUser, ...user });
+            }
+            setIsEditingProfile(!isEditingProfile);
+        } else if (section === 'media') {
+            if (isEditingMedia) {
+                setEditedUser({ ...editedUser, logoUrl: user.logoUrl, bannerUrls: user.bannerUrls || [] });
+            }
+            setIsEditingMedia(!isEditingMedia);
         }
-        setIsEditing(!isEditing);
     };
 
     const handleBannerFileChange = (e) => {
@@ -200,10 +208,28 @@ export default function SettingsPage() {
         setEditedUser(prev => ({...prev, bannerUrls: prev.bannerUrls.filter((_, i) => i !== index)}));
     };
 
-    const handleSave = async () => {
+    const handleSave = async (section) => {
         const currentUser = getAuth().currentUser;
         if (!currentUser || !editedUser) return;
         
+        let payload = {};
+        if (section === 'profile') {
+            payload = {
+                name: editedUser.name,
+                phone: editedUser.phone,
+                notifications: editedUser.notifications,
+                gstin: editedUser.gstin,
+                fssai: editedUser.fssai,
+                botPhoneNumberId: editedUser.botPhoneNumberId,
+                deliveryCharge: editedUser.deliveryCharge,
+            };
+        } else if (section === 'media') {
+            payload = {
+                logoUrl: editedUser.logoUrl,
+                bannerUrls: editedUser.bannerUrls,
+            };
+        }
+
         try {
             const idToken = await currentUser.getIdToken();
             const response = await fetch('/api/owner/settings', {
@@ -212,17 +238,7 @@ export default function SettingsPage() {
                     'Content-Type': 'application/json',
                     'Authorization': `Bearer ${idToken}` 
                 },
-                body: JSON.stringify({
-                    name: editedUser.name,
-                    phone: editedUser.phone,
-                    notifications: editedUser.notifications,
-                    gstin: editedUser.gstin,
-                    fssai: editedUser.fssai,
-                    botPhoneNumberId: editedUser.botPhoneNumberId,
-                    deliveryCharge: editedUser.deliveryCharge,
-                    logoUrl: editedUser.logoUrl,
-                    bannerUrls: editedUser.bannerUrls,
-                })
+                body: JSON.stringify(payload)
             });
 
             if (!response.ok) {
@@ -233,7 +249,8 @@ export default function SettingsPage() {
             const updatedUser = await response.json();
             setUser(updatedUser);
             setEditedUser(updatedUser);
-            setIsEditing(false);
+            if (section === 'profile') setIsEditingProfile(false);
+            if (section === 'media') setIsEditingMedia(false);
             alert("Profile Updated Successfully!");
 
         } catch (error) {
@@ -299,22 +316,22 @@ export default function SettingsPage() {
             {/* Profile Information Section */}
             <SectionCard 
                 title="Profile Information"
-                description="View and manage your personal and restaurant details."
+                description="Manage your personal and restaurant business details."
                 footer={
                     <div className="flex justify-end gap-3">
-                        {isEditing ? (
+                        {isEditingProfile ? (
                             <>
-                                <Button variant="secondary" onClick={handleEditToggle}><XCircle className="mr-2 h-4 w-4"/> Cancel</Button>
-                                <Button onClick={handleSave} className="bg-primary hover:bg-primary/90 text-primary-foreground"><Save className="mr-2 h-4 w-4"/> Save Changes</Button>
+                                <Button variant="secondary" onClick={() => handleEditToggle('profile')}><XCircle className="mr-2 h-4 w-4"/> Cancel</Button>
+                                <Button onClick={() => handleSave('profile')} className="bg-primary hover:bg-primary/90 text-primary-foreground"><Save className="mr-2 h-4 w-4"/> Save Profile</Button>
                             </>
                         ) : (
-                            <Button onClick={handleEditToggle} className="bg-primary hover:bg-primary/90 text-primary-foreground"><Edit className="mr-2 h-4 w-4"/> Edit Profile</Button>
+                            <Button onClick={() => handleEditToggle('profile')}><Edit className="mr-2 h-4 w-4"/> Edit Profile</Button>
                         )}
                     </div>
                 }
             >
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-8 items-start">
-                    <div className="flex flex-col items-center md:items-start gap-4">
+                     <div className="flex items-center gap-4">
                          <div className="relative w-24 h-24 rounded-full border-4 border-border overflow-hidden">
                             <Image 
                                 src={user.profilePicture || `https://picsum.photos/seed/${user.email}/200/200`}
@@ -323,7 +340,7 @@ export default function SettingsPage() {
                                 objectFit="cover"
                             />
                         </div>
-                         <div className="text-center md:text-left">
+                         <div>
                             <p className="text-2xl font-bold">{user.name}</p>
                              <span className="inline-flex items-center gap-2 mt-2 px-3 py-1 text-sm font-semibold rounded-full bg-primary/10 text-primary border border-primary/20">
                                 <Shield size={14} />
@@ -335,7 +352,7 @@ export default function SettingsPage() {
                     <div className="space-y-6">
                         <div>
                             <Label htmlFor="fullName" className="flex items-center gap-2"><User size={14}/> Full Name</Label>
-                            <input id="fullName" value={editedUser.name} onChange={e => setEditedUser({...editedUser, name: e.target.value})} disabled={!isEditing} className="mt-1 w-full p-2 border rounded-md bg-input border-border disabled:opacity-70 disabled:cursor-not-allowed" />
+                            <input id="fullName" value={editedUser.name} onChange={e => setEditedUser({...editedUser, name: e.target.value})} disabled={!isEditingProfile} className="mt-1 w-full p-2 border rounded-md bg-input border-border disabled:opacity-70 disabled:cursor-not-allowed" />
                         </div>
                         <div>
                             <Label htmlFor="email" className="flex items-center gap-2"><Mail size={14}/> Email Address</Label>
@@ -343,65 +360,132 @@ export default function SettingsPage() {
                         </div>
                         <div>
                             <Label htmlFor="phone" className="flex items-center gap-2"><Phone size={14}/> Phone Number</Label>
-                            <input id="phone" value={editedUser.phone} onChange={e => setEditedUser({...editedUser, phone: e.target.value})} disabled={!isEditing} className="mt-1 w-full p-2 border rounded-md bg-input border-border disabled:opacity-70 disabled:cursor-not-allowed" />
+                            <input id="phone" value={editedUser.phone} onChange={e => setEditedUser({...editedUser, phone: e.target.value})} disabled={!isEditingProfile} className="mt-1 w-full p-2 border rounded-md bg-input border-border disabled:opacity-70 disabled:cursor-not-allowed" />
                         </div>
-                        {user.role === 'owner' && (
-                            <>
-                                <ImageUpload
-                                    label="Logo Image"
-                                    currentImage={editedUser.logoUrl}
-                                    onFileSelect={(dataUrl) => setEditedUser({ ...editedUser, logoUrl: dataUrl })}
-                                    isEditing={isEditing}
-                                />
-                                <div>
-                                    <Label className="flex items-center gap-2"><ImageIcon size={14}/> Banner Images</Label>
-                                    <div className="mt-2 flex flex-wrap items-center gap-4">
-                                        {editedUser.bannerUrls?.map((url, index) => (
-                                            <div key={index} className="relative group w-20 h-20 rounded-lg overflow-hidden border-2 border-border">
-                                                <Image src={url} alt={`Banner ${index+1}`} layout="fill" objectFit="cover" />
-                                                {isEditing && (
-                                                    <button 
-                                                        onClick={() => removeBannerImage(index)}
-                                                        className="absolute top-1 right-1 bg-black/50 text-white rounded-full p-0.5 opacity-0 group-hover:opacity-100 transition-opacity"
-                                                    >
-                                                        <X size={12}/>
-                                                    </button>
-                                                )}
-                                            </div>
-                                        ))}
-                                         {isEditing && (
-                                            <>
-                                                <input type="file" accept="image/*" ref={bannerInputRef} onChange={handleBannerFileChange} className="hidden" />
-                                                <button type="button" onClick={() => bannerInputRef.current?.click()} className="w-20 h-20 rounded-lg border-2 border-dashed border-border flex flex-col items-center justify-center text-muted-foreground hover:bg-muted/50">
-                                                    <Upload size={20}/>
-                                                    <span className="text-xs mt-1">Add Banner</span>
-                                                </button>
-                                            </>
-                                        )}
-                                    </div>
-                                </div>
-                                <div>
-                                    <Label htmlFor="deliveryCharge" className="flex items-center gap-2"><Truck size={14}/> Base Delivery Charge (₹)</Label>
-                                    <input id="deliveryCharge" type="number" value={editedUser.deliveryCharge} onChange={e => setEditedUser({...editedUser, deliveryCharge: e.target.value})} disabled={!isEditing} className="mt-1 w-full p-2 border rounded-md bg-input border-border disabled:opacity-70 disabled:cursor-not-allowed" placeholder="e.g., 30"/>
-                                </div>
+                    </div>
+                    {user.role === 'owner' && (
+                        <>
+                            <div className="space-y-6">
                                 <div>
                                     <Label htmlFor="gstin" className="flex items-center gap-2"><FileText size={14}/> GSTIN</Label>
-                                    <input id="gstin" value={editedUser.gstin} onChange={e => setEditedUser({...editedUser, gstin: e.target.value})} disabled={!isEditing} className="mt-1 w-full p-2 border rounded-md bg-input border-border disabled:opacity-70 disabled:cursor-not-allowed" placeholder="e.g., 27ABCDE1234F1Z5"/>
+                                    <input id="gstin" value={editedUser.gstin} onChange={e => setEditedUser({...editedUser, gstin: e.target.value})} disabled={!isEditingProfile} className="mt-1 w-full p-2 border rounded-md bg-input border-border disabled:opacity-70 disabled:cursor-not-allowed" placeholder="e.g., 27ABCDE1234F1Z5"/>
                                 </div>
                                 <div>
                                     <Label htmlFor="fssai" className="flex items-center gap-2"><FileText size={14}/> FSSAI Number</Label>
-                                    <input id="fssai" value={editedUser.fssai} onChange={e => setEditedUser({...editedUser, fssai: e.target.value})} disabled={!isEditing} className="mt-1 w-full p-2 border rounded-md bg-input border-border disabled:opacity-70 disabled:cursor-not-allowed" placeholder="e.g., 10012345678901"/>
+                                    <input id="fssai" value={editedUser.fssai} onChange={e => setEditedUser({...editedUser, fssai: e.target.value})} disabled={!isEditingProfile} className="mt-1 w-full p-2 border rounded-md bg-input border-border disabled:opacity-70 disabled:cursor-not-allowed" placeholder="e.g., 10012345678901"/>
+                                </div>
+                            </div>
+                            <div className="space-y-6">
+                                <div>
+                                    <Label htmlFor="deliveryCharge" className="flex items-center gap-2"><Truck size={14}/> Base Delivery Charge (₹)</Label>
+                                    <input id="deliveryCharge" type="number" value={editedUser.deliveryCharge} onChange={e => setEditedUser({...editedUser, deliveryCharge: e.target.value})} disabled={!isEditingProfile} className="mt-1 w-full p-2 border rounded-md bg-input border-border disabled:opacity-70 disabled:cursor-not-allowed" placeholder="e.g., 30"/>
                                 </div>
                                 <div>
                                     <Label htmlFor="botPhoneNumberId" className="flex items-center gap-2"><Bot size={14}/> WhatsApp Bot Phone Number ID</Label>
-                                    <input id="botPhoneNumberId" value={editedUser.botPhoneNumberId} onChange={e => setEditedUser({...editedUser, botPhoneNumberId: e.target.value})} disabled={!isEditing} className="mt-1 w-full p-2 border rounded-md bg-input border-border disabled:opacity-70 disabled:cursor-not-allowed" placeholder="e.g., 15550921234"/>
+                                    <input id="botPhoneNumberId" value={editedUser.botPhoneNumberId} onChange={e => setEditedUser({...editedUser, botPhoneNumberId: e.target.value})} disabled={!isEditingProfile} className="mt-1 w-full p-2 border rounded-md bg-input border-border disabled:opacity-70 disabled:cursor-not-allowed" placeholder="e.g., 15550921234"/>
                                 </div>
-                            </>
-                        )}
-                    </div>
+                            </div>
+                        </>
+                    )}
                 </div>
             </SectionCard>
 
+            {/* Media & Branding Section */}
+            {user.role === 'owner' && (
+            <SectionCard
+                title="Media & Branding"
+                description="Upload your restaurant's logo and banner images."
+                footer={
+                     <div className="flex justify-end gap-3">
+                        {isEditingMedia ? (
+                            <>
+                                <Button variant="secondary" onClick={() => handleEditToggle('media')}><XCircle className="mr-2 h-4 w-4"/> Cancel</Button>
+                                <Button onClick={() => handleSave('media')} className="bg-primary hover:bg-primary/90 text-primary-foreground"><Save className="mr-2 h-4 w-4"/> Save Media</Button>
+                            </>
+                        ) : (
+                            <Button onClick={() => handleEditToggle('media')}><Edit className="mr-2 h-4 w-4"/> Edit Media</Button>
+                        )}
+                    </div>
+                }
+            >
+                <div className="space-y-6">
+                    <ImageUpload
+                        label="Logo Image"
+                        currentImage={editedUser.logoUrl}
+                        onFileSelect={(dataUrl) => setEditedUser({ ...editedUser, logoUrl: dataUrl })}
+                        isEditing={isEditingMedia}
+                    />
+                    <div>
+                        <Label className="flex items-center gap-2"><ImageIcon size={14}/> Banner Images</Label>
+                        <div className="mt-2 flex flex-wrap items-center gap-4">
+                            {editedUser.bannerUrls?.map((url, index) => (
+                                <div key={index} className="relative group w-28 h-20 rounded-lg overflow-hidden border-2 border-border">
+                                    <Image src={url} alt={`Banner ${index+1}`} layout="fill" objectFit="cover" />
+                                    {isEditingMedia && (
+                                        <button 
+                                            onClick={() => removeBannerImage(index)}
+                                            className="absolute top-1 right-1 bg-black/50 text-white rounded-full p-0.5 opacity-0 group-hover:opacity-100 transition-opacity"
+                                        >
+                                            <X size={12}/>
+                                        </button>
+                                    )}
+                                </div>
+                            ))}
+                                {isEditingMedia && (
+                                <>
+                                    <input type="file" accept="image/*" ref={bannerInputRef} onChange={handleBannerFileChange} className="hidden" />
+                                    <button type="button" onClick={() => bannerInputRef.current?.click()} className="w-28 h-20 rounded-lg border-2 border-dashed border-border flex flex-col items-center justify-center text-muted-foreground hover:bg-muted/50">
+                                        <Upload size={20}/>
+                                        <span className="text-xs mt-1">Add Banner</span>
+                                    </button>
+                                </>
+                            )}
+                        </div>
+                    </div>
+                </div>
+            </SectionCard>
+            )}
+
+
+            {/* Notification Settings Section */}
+            <SectionCard
+                title="Notification Settings"
+                description="Choose how you want to be notified."
+                footer={
+                    <div className="flex justify-end gap-3">
+                        {isEditingProfile ? (
+                            <Button onClick={() => handleSave('profile')} className="bg-primary hover:bg-primary/90 text-primary-foreground"><Save className="mr-2 h-4 w-4"/> Save Notifications</Button>
+                        ) : (
+                           <Button onClick={() => handleEditToggle('profile')}><Edit className="mr-2 h-4 w-4"/> Edit Notifications</Button>
+                        )}
+                    </div>
+                }
+            >
+                <div className="space-y-4">
+                    <div className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
+                        <Label htmlFor="newOrders" className="flex flex-col">
+                            <span>New Order Alerts</span>
+                            <span className="text-xs text-muted-foreground">Receive a real-time notification for every new order.</span>
+                        </Label>
+                        <Switch id="newOrders" checked={editedUser.notifications.newOrders} onCheckedChange={(checked) => setEditedUser({...editedUser, notifications: {...editedUser.notifications, newOrders: checked}})} disabled={!isEditingProfile} />
+                    </div>
+                    <div className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
+                         <Label htmlFor="dailySummary" className="flex flex-col">
+                            <span>Daily Sales Summary</span>
+                            <span className="text-xs text-muted-foreground">Get a WhatsApp message with your end-of-day sales report.</span>
+                        </Label>
+                        <Switch id="dailySummary" checked={editedUser.notifications.dailySummary} onCheckedChange={(checked) => setEditedUser({...editedUser, notifications: {...editedUser.notifications, dailySummary: checked}})} disabled={!isEditingProfile} />
+                    </div>
+                    <div className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
+                         <Label htmlFor="marketing" className="flex flex-col">
+                            <span>Promotional Emails</span>
+                            <span className="text-xs text-muted-foreground">Receive news about new features and special offers.</span>
+                        </Label>
+                        <Switch id="marketing" checked={editedUser.notifications.marketing} onCheckedChange={(checked) => setEditedUser({...editedUser, notifications: {...editedUser.notifications, marketing: checked}})} disabled={!isEditingProfile} />
+                    </div>
+                </div>
+            </SectionCard>
+            
             {/* Change Password Section */}
             <SectionCard
                 title="Change Password"
@@ -429,36 +513,6 @@ export default function SettingsPage() {
                 </form>
             </SectionCard>
 
-            {/* Notification Settings Section */}
-            <SectionCard
-                title="Notification Settings"
-                description="Choose how you want to be notified."
-            >
-                <div className="space-y-4">
-                    <div className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
-                        <Label htmlFor="newOrders" className="flex flex-col">
-                            <span>New Order Alerts</span>
-                            <span className="text-xs text-muted-foreground">Receive an email for every new order placed.</span>
-                        </Label>
-                        <Switch id="newOrders" checked={editedUser.notifications.newOrders} onCheckedChange={(checked) => setEditedUser({...editedUser, notifications: {...editedUser.notifications, newOrders: checked}})} disabled={!isEditing} />
-                    </div>
-                    <div className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
-                         <Label htmlFor="dailySummary" className="flex flex-col">
-                            <span>Daily Sales Summary</span>
-                            <span className="text-xs text-muted-foreground">Get a WhatsApp message with your end-of-day sales report.</span>
-                        </Label>
-                        <Switch id="dailySummary" checked={editedUser.notifications.dailySummary} onCheckedChange={(checked) => setEditedUser({...editedUser, notifications: {...editedUser.notifications, dailySummary: checked}})} disabled={!isEditing} />
-                    </div>
-                    <div className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
-                         <Label htmlFor="marketing" className="flex flex-col">
-                            <span>Promotional Emails</span>
-                            <span className="text-xs text-muted-foreground">Receive news about new features and special offers.</span>
-                        </Label>
-                        <Switch id="marketing" checked={editedUser.notifications.marketing} onCheckedChange={(checked) => setEditedUser({...editedUser, notifications: {...editedUser.notifications, marketing: checked}})} disabled={!isEditing} />
-                    </div>
-                </div>
-            </SectionCard>
-            
             {/* Danger Zone Section */}
             <SectionCard
                 title="Danger Zone"
