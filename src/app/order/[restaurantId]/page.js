@@ -597,7 +597,7 @@ const OrderPageInternal = () => {
                     onAddToCart={handleAddToCart}
                 />
 
-                 <header className="bg-card">
+                 <header>
                     <BannerCarousel images={bannerUrls} onClick={() => setIsBannerExpanded(true)} restaurantName={restaurantName} logoUrl={logoUrl} />
                 </header>
 
