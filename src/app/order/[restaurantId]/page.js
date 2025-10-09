@@ -432,7 +432,9 @@ const OrderPageInternal = () => {
         if(item.portions?.length > 1 || item.addOnGroups?.length > 0) {
             setCustomizationItem(item);
         } else {
-            handleAddToCart(item, item.portions[0], [], item.portions[0].price);
+            if (item.portions && item.portions.length > 0) {
+              handleAddToCart(item, item.portions[0], [], item.portions[0].price);
+            }
         }
     };
 
