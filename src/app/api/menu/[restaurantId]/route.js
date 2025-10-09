@@ -17,7 +17,7 @@ async function seedInitialPublicData(firestore, restaurantId) {
         deliveryCharge: 30,
         ownerId: 'demo-owner',
         logoUrl: '', // Add new field
-        bannerUrl: '', // Add new field
+        bannerUrls: [], // Add new field
     }, { merge: true });
 
     // Seed Menu Items
@@ -100,7 +100,7 @@ export async function GET(request, { params }) {
         const restaurantName = restaurantData.name;
         const deliveryCharge = restaurantData.deliveryCharge || 30;
         const logoUrl = restaurantData.logoUrl || '';
-        const bannerUrl = restaurantData.bannerUrl || '';
+        const bannerUrls = restaurantData.bannerUrls || [];
 
         // Process Menu
         const menuData = {};
@@ -142,7 +142,7 @@ export async function GET(request, { params }) {
             restaurantName: restaurantName,
             deliveryCharge: deliveryCharge,
             logoUrl: logoUrl,
-            bannerUrl: bannerUrl,
+            bannerUrls: bannerUrls,
             menu: menuData,
             coupons: allCoupons
         }, { status: 200 });

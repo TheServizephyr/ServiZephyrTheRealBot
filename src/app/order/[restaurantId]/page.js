@@ -243,21 +243,41 @@ const MenuBrowserModal = ({ isOpen, onClose, categories, onCategoryClick }) => {
   );
 };
 
-const RatingBadge = ({ rating }) => {
-    if(!rating) return null;
-    const getRatingColor = () => {
-        if (rating >= 4) return 'bg-green-500/10 text-green-300 border-green-500/20';
-        if (rating >= 3) return 'bg-yellow-500/10 text-yellow-300 border-yellow-500/20';
-        return 'bg-red-500/10 text-red-300 border-red-500/20';
-    };
-
+const BannerCarousel = ({ images, onClick }) => {
+    const [index, setIndex] = useState(0);
+  
+    useEffect(() => {
+      if (images.length <= 1) return;
+      const interval = setInterval(() => {
+        setIndex(prev => (prev + 1) % images.length);
+      }, 5000); // Change image every 5 seconds
+      return () => clearInterval(interval);
+    }, [images.length]);
+  
     return (
-        <div className={cn("flex items-center gap-1 px-2 py-1 rounded-full text-sm border", getRatingColor())}>
-            <Star size={14} className="fill-current"/> {rating.toFixed(1)}
-        </div>
+      <div className="relative h-56 w-full cursor-pointer overflow-hidden" onClick={onClick}>
+        <AnimatePresence initial={false}>
+          <motion.div
+            key={index}
+            className="absolute inset-0"
+            initial={{ x: '100%', opacity: 0 }}
+            animate={{ x: 0, opacity: 1 }}
+            exit={{ x: '-100%', opacity: 0 }}
+            transition={{ duration: 0.8, ease: 'easeInOut' }}
+          >
+            <Image
+              src={images[index]}
+              alt={`Banner ${index + 1}`}
+              layout="fill"
+              objectFit="cover"
+              unoptimized
+            />
+          </motion.div>
+        </AnimatePresence>
+        <div className="absolute inset-0 bg-black/40"></div>
+      </div>
     );
-};
-
+  };
 
 const OrderPageInternal = () => {
     const router = useRouter();
@@ -269,10 +289,9 @@ const OrderPageInternal = () => {
     // --- STATE MANAGEMENT ---
     const [restaurantName, setRestaurantName] = useState('');
     const [logoUrl, setLogoUrl] = useState('');
-    const [bannerUrl, setBannerUrl] = useState('/order_banner.jpg');
+    const [bannerUrls, setBannerUrls] = useState(['/order_banner.jpg']);
     const [isBannerExpanded, setIsBannerExpanded] = useState(false);
     const [deliveryCharge, setDeliveryCharge] = useState(0);
-    const [rating, setRating] = useState(0);
     const [rawMenu, setRawMenu] = useState({});
     const [coupons, setCoupons] = useState([]);
     const [loyaltyPoints, setLoyaltyPoints] = useState(0);
@@ -307,8 +326,8 @@ const OrderPageInternal = () => {
           setRestaurantName(data.restaurantName);
           setDeliveryCharge(data.deliveryCharge || 0);
           setLogoUrl(data.logoUrl || '');
-          if (data.bannerUrl) {
-            setBannerUrl(data.bannerUrl);
+          if (data.bannerUrls && data.bannerUrls.length > 0) {
+            setBannerUrls(data.bannerUrls);
           }
           setRawMenu(data.menu || {});
           setCoupons(data.coupons || []);
@@ -526,13 +545,7 @@ const OrderPageInternal = () => {
                             layoutId="banner"
                             onClick={(e) => e.stopPropagation()}
                         >
-                            <Image
-                                src={bannerUrl}
-                                alt={`${restaurantName} banner expanded`}
-                                layout="fill"
-                                objectFit="contain"
-                                unoptimized
-                            />
+                            <BannerCarousel images={bannerUrls} />
                         </motion.div>
                          <Button
                             variant="ghost"
@@ -555,27 +568,22 @@ const OrderPageInternal = () => {
                 />
 
                  <header>
-                    <motion.div className="relative h-56 cursor-pointer" layoutId="banner" onClick={() => setIsBannerExpanded(true)}>
-                        <Image
-                            src={bannerUrl}
-                            alt={`${restaurantName} banner`}
-                            layout="fill"
-                            objectFit="cover"
-                            unoptimized
-                        />
-                        <div className="absolute inset-0 bg-black/40"></div>
-                        <div className="container mx-auto px-4 h-full relative flex items-end justify-between">
-                            {logoUrl && (
-                                <div className="relative w-24 h-24 md:w-28 md:h-28 rounded-full overflow-hidden border-4 border-background bg-card shadow-lg flex-shrink-0">
+                    <motion.div layoutId="banner">
+                        <BannerCarousel images={bannerUrls} onClick={() => setIsBannerExpanded(true)}/>
+                    </motion.div>
+                    <div className="container mx-auto px-4 -mt-16 relative">
+                        <div className="bg-card p-4 rounded-xl shadow-lg border border-border flex justify-between items-end">
+                            {logoUrl ? (
+                                <div className="relative w-20 h-20 rounded-full overflow-hidden border-4 border-background bg-card shadow-lg flex-shrink-0 -mt-12">
                                     <Image src={logoUrl} alt={`${restaurantName} logo`} layout="fill" objectFit="cover" />
                                 </div>
-                            )}
-                            <div className="pb-4 text-right">
-                                <p className="text-sm text-white" style={{textShadow: '0 2px 4px rgba(0,0,0,0.5)'}}>Ordering from</p>
-                                <h1 className="font-sans text-3xl md:text-4xl font-bold text-white" style={{textShadow: '0 2px 4px rgba(0,0,0,0.5)'}}>{restaurantName}</h1>
+                            ) : <div></div>}
+                            <div className="text-right">
+                                <h1 className="font-sans text-2xl md:text-3xl font-bold text-foreground">{restaurantName}</h1>
+                                <p className="text-sm text-muted-foreground">The taste you can trust</p>
                             </div>
                         </div>
-                    </motion.div>
+                    </div>
                 </header>
 
                 <div className="sticky top-0 z-10 bg-background/95 backdrop-blur-sm py-2 border-b border-border">

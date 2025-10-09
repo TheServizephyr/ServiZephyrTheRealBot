@@ -3,7 +3,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { User, Mail, Phone, Shield, Edit, Save, XCircle, Bell, Trash2, KeyRound, Eye, EyeOff, FileText, Bot, Truck, Image as ImageIcon, Upload } from 'lucide-react';
+import { User, Mail, Phone, Shield, Edit, Save, XCircle, Bell, Trash2, KeyRound, Eye, EyeOff, FileText, Bot, Truck, Image as ImageIcon, Upload, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
@@ -117,7 +117,7 @@ const ImageUpload = ({ label, currentImage, onFileSelect, isEditing }) => {
             <>
               <input type="file" accept="image/*" ref={fileInputRef} onChange={handleFileChange} className="hidden" />
               <Button type="button" variant="outline" onClick={() => fileInputRef.current?.click()}>
-                <Upload size={16} className="mr-2"/> Upload Image
+                <Upload size={16} className="mr-2"/> Upload
               </Button>
             </>
           )}
@@ -136,6 +136,7 @@ export default function SettingsPage() {
     const [isDeleteModalOpen, setDeleteModalOpen] = useState(false);
     const [passwords, setPasswords] = useState({ current: '', new: '', confirm: '' });
     const [showNewPass, setShowNewPass] = useState(false);
+    const bannerInputRef = React.useRef(null);
 
     useEffect(() => {
         const fetchUserData = async () => {
@@ -157,7 +158,7 @@ export default function SettingsPage() {
                 
                 const data = await response.json();
                 setUser(data);
-                setEditedUser(data);
+                setEditedUser({...data, bannerUrls: data.bannerUrls || []}); // Ensure bannerUrls is an array
             } catch (error) {
                 console.error("Error fetching user data:", error);
                 alert(error.message);
@@ -179,9 +180,24 @@ export default function SettingsPage() {
 
     const handleEditToggle = () => {
         if (isEditing) {
-            setEditedUser(user);
+            setEditedUser({...user, bannerUrls: user.bannerUrls || []});
         }
         setIsEditing(!isEditing);
+    };
+
+    const handleBannerFileChange = (e) => {
+        const file = e.target.files[0];
+        if (file) {
+            const reader = new FileReader();
+            reader.onloadend = () => {
+                setEditedUser(prev => ({...prev, bannerUrls: [...(prev.bannerUrls || []), reader.result]}));
+            };
+            reader.readAsDataURL(file);
+        }
+    };
+
+    const removeBannerImage = (index) => {
+        setEditedUser(prev => ({...prev, bannerUrls: prev.bannerUrls.filter((_, i) => i !== index)}));
     };
 
     const handleSave = async () => {
@@ -205,7 +221,7 @@ export default function SettingsPage() {
                     botPhoneNumberId: editedUser.botPhoneNumberId,
                     deliveryCharge: editedUser.deliveryCharge,
                     logoUrl: editedUser.logoUrl,
-                    bannerUrl: editedUser.bannerUrl,
+                    bannerUrls: editedUser.bannerUrls,
                 })
             });
 
@@ -337,12 +353,33 @@ export default function SettingsPage() {
                                     onFileSelect={(dataUrl) => setEditedUser({ ...editedUser, logoUrl: dataUrl })}
                                     isEditing={isEditing}
                                 />
-                                <ImageUpload
-                                    label="Banner Image"
-                                    currentImage={editedUser.bannerUrl}
-                                    onFileSelect={(dataUrl) => setEditedUser({ ...editedUser, bannerUrl: dataUrl })}
-                                    isEditing={isEditing}
-                                />
+                                <div>
+                                    <Label className="flex items-center gap-2"><ImageIcon size={14}/> Banner Images</Label>
+                                    <div className="mt-2 flex flex-wrap items-center gap-4">
+                                        {editedUser.bannerUrls?.map((url, index) => (
+                                            <div key={index} className="relative group w-20 h-20 rounded-lg overflow-hidden border-2 border-border">
+                                                <Image src={url} alt={`Banner ${index+1}`} layout="fill" objectFit="cover" />
+                                                {isEditing && (
+                                                    <button 
+                                                        onClick={() => removeBannerImage(index)}
+                                                        className="absolute top-1 right-1 bg-black/50 text-white rounded-full p-0.5 opacity-0 group-hover:opacity-100 transition-opacity"
+                                                    >
+                                                        <X size={12}/>
+                                                    </button>
+                                                )}
+                                            </div>
+                                        ))}
+                                         {isEditing && (
+                                            <>
+                                                <input type="file" accept="image/*" ref={bannerInputRef} onChange={handleBannerFileChange} className="hidden" />
+                                                <button type="button" onClick={() => bannerInputRef.current?.click()} className="w-20 h-20 rounded-lg border-2 border-dashed border-border flex flex-col items-center justify-center text-muted-foreground hover:bg-muted/50">
+                                                    <Upload size={20}/>
+                                                    <span className="text-xs mt-1">Add Banner</span>
+                                                </button>
+                                            </>
+                                        )}
+                                    </div>
+                                </div>
                                 <div>
                                     <Label htmlFor="deliveryCharge" className="flex items-center gap-2"><Truck size={14}/> Base Delivery Charge (₹)</Label>
                                     <input id="deliveryCharge" type="number" value={editedUser.deliveryCharge} onChange={e => setEditedUser({...editedUser, deliveryCharge: e.target.value})} disabled={!isEditing} className="mt-1 w-full p-2 border rounded-md bg-input border-border disabled:opacity-70 disabled:cursor-not-allowed" placeholder="e.g., 30"/>

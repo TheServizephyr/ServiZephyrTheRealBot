@@ -58,7 +58,7 @@ export async function GET(req) {
             botPhoneNumberId: restaurantData?.botPhoneNumberId || '',
             deliveryCharge: restaurantData?.deliveryCharge === undefined ? 30 : restaurantData.deliveryCharge, // Default if not set
             logoUrl: restaurantData?.logoUrl || '',
-            bannerUrl: restaurantData?.bannerUrl || '',
+            bannerUrls: restaurantData?.bannerUrls || [],
         };
 
         return NextResponse.json(profileData, { status: 200 });
@@ -74,7 +74,7 @@ export async function PATCH(req) {
         const firestore = getFirestore();
         const { uid, userData } = await verifyUserAndGetData(req);
         
-        const { name, phone, notifications, gstin, fssai, botPhoneNumberId, deliveryCharge, logoUrl, bannerUrl } = await req.json();
+        const { name, phone, notifications, gstin, fssai, botPhoneNumberId, deliveryCharge, logoUrl, bannerUrls } = await req.json();
 
         // --- Update User's Profile in 'users' collection ---
         const userRef = firestore.collection('users').doc(uid);
@@ -99,7 +99,7 @@ export async function PATCH(req) {
                 if (botPhoneNumberId !== undefined) restaurantUpdateData.botPhoneNumberId = botPhoneNumberId;
                 if (deliveryCharge !== undefined) restaurantUpdateData.deliveryCharge = Number(deliveryCharge);
                 if (logoUrl !== undefined) restaurantUpdateData.logoUrl = logoUrl;
-                if (bannerUrl !== undefined) restaurantUpdateData.bannerUrl = bannerUrl;
+                if (bannerUrls !== undefined) restaurantUpdateData.bannerUrls = bannerUrls;
 
                 
                 if (Object.keys(restaurantUpdateData).length > 0) {
@@ -122,7 +122,7 @@ export async function PATCH(req) {
             botPhoneNumberId: finalRestaurantData?.botPhoneNumberId || '',
             deliveryCharge: finalRestaurantData?.deliveryCharge === undefined ? 30 : finalRestaurantData.deliveryCharge,
             logoUrl: finalRestaurantData?.logoUrl || '',
-            bannerUrl: finalRestaurantData?.bannerUrl || '',
+            bannerUrls: finalRestaurantData?.bannerUrls || [],
         };
 
         return NextResponse.json(responseData, { status: 200 });
@@ -132,5 +132,4 @@ export async function PATCH(req) {
         return NextResponse.json({ message: `Backend Error: ${error.message}` }, { status: error.status || 500 });
     }
 }
-
     
