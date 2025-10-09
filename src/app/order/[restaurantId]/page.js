@@ -166,7 +166,7 @@ const MenuItemCard = ({ item, quantity, onAdd, onIncrement, onDecrement }) => {
 
     return (
         <motion.div 
-            className="flex gap-4 p-4 bg-card rounded-lg border border-border"
+            className="flex gap-4 py-6 border-b border-border"
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.3 }}
@@ -250,7 +250,7 @@ const MenuBrowserModal = ({ isOpen, onClose, categories, onCategoryClick }) => {
   );
 };
 
-const BannerCarousel = ({ images, onClick }) => {
+const BannerCarousel = ({ images, onClick, restaurantName, logoUrl }) => {
     const [index, setIndex] = useState(0);
   
     useEffect(() => {
@@ -282,7 +282,17 @@ const BannerCarousel = ({ images, onClick }) => {
           </motion.div>
         </AnimatePresence>
         <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-black/20 to-transparent"></div>
-        
+        <div className="container mx-auto px-4 h-full relative flex items-end justify-between">
+            {logoUrl && (
+                <div className="relative w-16 h-16 rounded-lg overflow-hidden border-2 border-white shadow-md flex-shrink-0">
+                    <Image src={logoUrl} alt={`${restaurantName} logo`} layout="fill" objectFit="cover" />
+                </div>
+            )}
+            <h1 className="font-sans text-2xl md:text-3xl font-bold text-white text-right">
+                <span className="block text-sm font-normal">Ordering from</span>
+                {restaurantName}
+            </h1>
+        </div>
       </div>
     );
   };
@@ -549,20 +559,18 @@ const OrderPageInternal = () => {
                         onClick={() => setIsBannerExpanded(false)}
                     >
                         <motion.div 
-                            className="relative w-full max-w-4xl aspect-video"
+                            layoutId="banner"
+                            className="relative w-full max-w-4xl"
+                            style={{ aspectRatio: '16 / 9' }}
                             onClick={(e) => e.stopPropagation()}
                         >
-                            <BannerCarousel images={bannerUrls} />
-                             <style jsx>{`
-                                .aspect-video {
-                                    aspect-ratio: 16 / 9;
-                                }
-                                @media (max-width: 768px) {
-                                    .aspect-video {
-                                        aspect-ratio: 4 / 3;
-                                    }
-                                }
-                            `}</style>
+                            <Image
+                              src={bannerUrls[0]}
+                              alt="Banner Expanded"
+                              layout="fill"
+                              objectFit="contain"
+                              unoptimized
+                            />
                         </motion.div>
                          <Button
                             variant="ghost"
@@ -584,23 +592,10 @@ const OrderPageInternal = () => {
                     onAddToCart={handleAddToCart}
                 />
 
-                 <header>
-                    <div onClick={() => setIsBannerExpanded(true)}>
-                       <BannerCarousel images={bannerUrls} />
-                    </div>
-                    <div className="container mx-auto px-4 -mt-16 relative">
-                        <div className="bg-card p-4 rounded-xl shadow-lg border border-border flex items-end justify-between">
-                            {logoUrl && (
-                                <div className="relative w-20 h-20 rounded-lg overflow-hidden border-4 border-background bg-card shadow-md flex-shrink-0 -mt-10">
-                                    <Image src={logoUrl} alt={`${restaurantName} logo`} layout="fill" objectFit="cover" />
-                                </div>
-                            )}
-                            <div className="flex-grow text-right">
-                                <h1 className="font-sans text-2xl md:text-3xl font-bold text-foreground">{restaurantName}</h1>
-                                <p className="text-sm text-muted-foreground">The taste you can trust</p>
-                            </div>
-                        </div>
-                    </div>
+                 <header className="bg-card">
+                    <motion.div layoutId="banner" onClick={() => setIsBannerExpanded(true)}>
+                       <BannerCarousel images={bannerUrls} restaurantName={restaurantName} logoUrl={logoUrl} />
+                    </motion.div>
                 </header>
 
                 <div className="sticky top-0 z-10 bg-background/95 backdrop-blur-sm py-2 border-b border-border">
@@ -659,7 +654,7 @@ const OrderPageInternal = () => {
                             {menuCategories.map(({key, title}) => (
                                 <section id={key} key={key} className="scroll-mt-24">
                                     <h3 className="text-2xl font-bold mb-4">{title}</h3>
-                                    <div className="grid grid-cols-1 gap-6">
+                                    <div className="flex flex-col">
                                         {processedMenu[key].map(item => (
                                             <MenuItemCard 
                                                 key={item.id} 
