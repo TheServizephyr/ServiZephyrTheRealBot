@@ -185,7 +185,7 @@ const MenuItemCard = ({ item, quantity, onAdd, onIncrement, onDecrement }) => {
         <p className="text-sm text-muted-foreground flex-grow">{item.description}</p>
         <div className="flex flex-wrap gap-2 mt-2 mb-3">
             {item.tags && item.tags.map(tag => (
-                <span key={tag} className="px-2 py-1 text-xs font-bold rounded-full bg-primary/10 text-primary-foreground border border-primary/20 flex items-center gap-1">
+                <span key={tag} className="px-2 py-1 text-xs font-bold rounded-full bg-primary/10 text-primary border border-primary/20 flex items-center gap-1">
                     <TagIcon size={12} /> {tag}
                 </span>
             ))}
@@ -505,7 +505,7 @@ const OrderPageInternal = () => {
     }
     
     return (
-        <div className="min-h-screen bg-background text-foreground">
+        <div className="min-h-screen bg-background text-foreground green-theme">
             <MenuBrowserModal isOpen={isMenuBrowserOpen} onClose={() => setIsMenuBrowserOpen(false)} categories={menuCategories} onCategoryClick={handleCategoryClick} />
             <CustomizationDrawer
                 item={customizationItem}

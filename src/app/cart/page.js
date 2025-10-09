@@ -283,7 +283,7 @@ const CartPageInternal = () => {
             onClose={() => setIsClearCartDialogOpen(false)}
             onConfirm={handleClearCart}
         />
-        <div className="min-h-screen bg-background text-foreground flex flex-col">
+        <div className="min-h-screen bg-background text-foreground flex flex-col green-theme">
              <header className="sticky top-0 z-20 bg-background/80 backdrop-blur-lg border-b border-border">
                 <div className="container mx-auto px-4 py-3 flex items-center gap-4">
                      <Button variant="ghost" size="icon" onClick={() => router.push(`/order/${restaurantId}`)} className="h-10 w-10">
@@ -375,10 +375,10 @@ const CartPageInternal = () => {
                                           <div className="space-y-2">
                                               <p className="text-sm font-semibold flex items-center gap-2 text-primary"><Sparkles size={16}/> Special for you</p>
                                               {specialCoupons.map(coupon => (
-                                                  <div key={coupon.id} onClick={() => handleApplyCoupon(coupon)} className={cn("p-2 rounded-md border-2 cursor-pointer", appliedCoupons.some(c=>c.id === coupon.id) ? "border-green-500 bg-green-500/10" : "border-dashed border-primary/50 bg-background")}>
+                                                  <div key={coupon.id} onClick={() => handleApplyCoupon(coupon)} className={cn("p-2 rounded-md border-2 cursor-pointer", appliedCoupons.some(c=>c.id === coupon.id) ? "border-primary bg-primary/10" : "border-dashed border-primary/50 bg-background")}>
                                                       <div className="flex justify-between items-center">
                                                           <p className="font-bold text-foreground">{coupon.code}</p>
-                                                          {appliedCoupons.some(c=>c.id === coupon.id) && <Check size={16} className="text-green-500" />}
+                                                          {appliedCoupons.some(c=>c.id === coupon.id) && <Check size={16} className="text-primary" />}
                                                       </div>
                                                       <p className="text-xs text-muted-foreground">{coupon.description}</p>
                                                   </div>
@@ -388,10 +388,10 @@ const CartPageInternal = () => {
                                       )}
                                       
                                       {normalCoupons.length > 0 ? normalCoupons.map(coupon => (
-                                          <div key={coupon.id} onClick={() => handleApplyCoupon(coupon)} className={cn("p-2 rounded-md border-2 cursor-pointer", appliedCoupons.some(c=>c.id === coupon.id) ? "border-green-500 bg-green-500/10" : "border-border bg-background")}>
+                                          <div key={coupon.id} onClick={() => handleApplyCoupon(coupon)} className={cn("p-2 rounded-md border-2 cursor-pointer", appliedCoupons.some(c=>c.id === coupon.id) ? "border-primary bg-primary/10" : "border-border bg-background")}>
                                               <div className="flex justify-between items-center">
                                                   <p className="font-bold text-foreground">{coupon.code}</p>
-                                                  {appliedCoupons.some(c=>c.id === coupon.id) && <Check size={16} className="text-green-500" />}
+                                                  {appliedCoupons.some(c=>c.id === coupon.id) && <Check size={16} className="text-primary" />}
                                               </div>
                                               <p className="text-xs text-muted-foreground">{coupon.description}</p>
                                           </div>
@@ -408,8 +408,8 @@ const CartPageInternal = () => {
                             <div className="space-y-1 text-sm mb-4">
                                 <div className="flex justify-between"><span>Subtotal:</span> <span className="font-medium">₹{subtotal.toFixed(2)}</span></div>
                                 {couponDiscount > 0 && <div className="flex justify-between text-green-400"><span>Coupon Discount:</span> <span className="font-medium">- ₹{couponDiscount.toFixed(2)}</span></div>}
-                                {specialCouponDiscount > 0 && <div className="flex justify-between text-green-400"><span>Special Discount:</span> <span className="font-medium">- ₹{specialCouponDiscount.toFixed(2)}</span></div>}
-                                <div className="flex justify-between"><span>Delivery Fee:</span> {finalDeliveryCharge > 0 ? <span>₹{finalDeliveryCharge.toFixed(2)}</span> : <span className="text-green-400 font-bold">FREE</span>}</div>
+                                {specialCouponDiscount > 0 && <div className="flex justify-between text-primary"><span>Special Discount:</span> <span className="font-medium">- ₹{specialCouponDiscount.toFixed(2)}</span></div>}
+                                <div className="flex justify-between"><span>Delivery Fee:</span> {finalDeliveryCharge > 0 ? <span>₹{finalDeliveryCharge.toFixed(2)}</span> : <span className="text-primary font-bold">FREE</span>}</div>
                                 <div className="flex justify-between"><span>CGST ({5}%):</span> <span className="font-medium">₹{cgst.toFixed(2)}</span></div>
                                 <div className="flex justify-between"><span>SGST ({5}%):</span> <span className="font-medium">₹{sgst.toFixed(2)}</span></div>
                                 <div className="border-t border-dashed border-border my-2"></div>
