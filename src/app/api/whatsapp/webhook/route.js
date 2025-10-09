@@ -1,4 +1,5 @@
 
+
 // A simple, robust webhook handler for Next.js App Router, optimized for Vercel.
 import { NextResponse } from 'next/server';
 import axios from 'axios';
@@ -108,8 +109,10 @@ export async function POST(request) {
         }
 
         // Generate a relative path instead of a full URL
+        // THIS IS THE CRITICAL FIX FOR DEPLOYMENT
         const menuUrl = `/order/${restaurantId}?phone=${from}`;
-        const reply_body = `${welcomeMessage}\n\nWhat would you like to order today? You can view our full menu and place your order by clicking the link below:\n\nNote: This link will work on the deployed website.\n${menuUrl}`;
+        
+        const reply_body = `${welcomeMessage}\n\nWhat would you like to order today? You can view our full menu and place your order by clicking the link below:\n\n${menuUrl}`;
         
         // Send the reply message to the original number with country code
         await sendMessage(fromWithCode, reply_body);

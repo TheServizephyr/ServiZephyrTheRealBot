@@ -1,4 +1,5 @@
 
+
 import { NextResponse } from 'next/server';
 import { getFirestore } from '@/lib/firebase-admin';
 import { firestore as adminFirestore } from 'firebase-admin';
@@ -85,9 +86,10 @@ export async function GET(request, { params }) {
         let customerId = null;
         if (phone) {
             const usersRef = firestore.collection('users');
+            // IMPORTANT FIX: Search for the user by their phone number to get their UID
             const userQuery = await usersRef.where('phone', '==', phone).limit(1).get();
             if (!userQuery.empty) {
-                customerId = userQuery.docs[0].id;
+                customerId = userQuery.docs[0].id; // This is the user's UID
             }
         }
 
@@ -98,7 +100,7 @@ export async function GET(request, { params }) {
             generalCouponsQuery.get()
         ];
         
-        // If a customer ID is provided, also fetch their specific coupons
+        // If a customer ID (UID) is found, also fetch their specific coupons
         if (customerId) {
             const customerCouponsQuery = couponsRef.where('status', '==', 'Active').where('customerId', '==', customerId);
             promises.push(customerCouponsQuery.get());
@@ -131,6 +133,7 @@ export async function GET(request, { params }) {
         let allCoupons = [];
 
         const processCouponSnap = (snap) => {
+             if (!snap) return []; // Guard against undefined snap
              return snap.docs.map(doc => {
                 const data = doc.data();
                 return {
