@@ -137,7 +137,7 @@ export default function SettingsPage() {
     const [isDeleteModalOpen, setDeleteModalOpen] = useState(false);
     const [passwords, setPasswords] = useState({ current: '', new: '', confirm: '' });
     const [showNewPass, setShowNewPass] = useState(false);
-    const [bannerInputRef = React.useRef(null);
+    const bannerInputRef = React.useRef(null);
 
     useEffect(() => {
         const fetchUserData = async () => {
@@ -182,11 +182,13 @@ export default function SettingsPage() {
     const handleEditToggle = (section) => {
         if (section === 'profile') {
             if (isEditingProfile) {
-                setEditedUser({ ...editedUser, ...user });
+                // If canceling, reset editedUser to the original user data
+                setEditedUser({ ...user, ...editedUser }); // This merge keeps media changes while resetting profile
             }
             setIsEditingProfile(!isEditingProfile);
         } else if (section === 'media') {
             if (isEditingMedia) {
+                // If canceling media edit, reset media fields
                 setEditedUser({ ...editedUser, logoUrl: user.logoUrl, bannerUrls: user.bannerUrls || [] });
             }
             setIsEditingMedia(!isEditingMedia);
@@ -248,10 +250,10 @@ export default function SettingsPage() {
             
             const updatedUser = await response.json();
             setUser(updatedUser);
-            setEditedUser(updatedUser);
+            setEditedUser(updatedUser); // Make sure editedUser is in sync with saved data
             if (section === 'profile') setIsEditingProfile(false);
             if (section === 'media') setIsEditingMedia(false);
-            alert("Profile Updated Successfully!");
+            alert("Updated Successfully!");
 
         } catch (error) {
             console.error("Error saving data:", error);
