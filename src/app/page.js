@@ -494,7 +494,7 @@ export default function Home() {
           <div className="container mx-auto px-4 py-10 text-center">
             <h3 className="text-xl font-bold text-yellow-500">🚧 Development Only 🚧</h3>
             <p className="text-muted-foreground mb-4">This link is for testing purposes and will not be visible in production.</p>
-            <Link href="/order/PR5LbvgA2Ib72vkPzJt4?phone=1234567890" className="inline-block bg-secondary text-secondary-foreground font-bold py-3 px-8 rounded-lg hover:bg-muted transition-colors">
+            <Link href="/order/PR5LbvgA2Ib72vkPzJt4?phone=9027872803" className="inline-block bg-secondary text-secondary-foreground font-bold py-3 px-8 rounded-lg hover:bg-muted transition-colors">
                 Preview Customer Order Page
             </Link>
           </div>
