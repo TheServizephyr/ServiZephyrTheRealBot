@@ -529,17 +529,15 @@ const OrderPageInternal = () => {
                         unoptimized
                     />
                     <div className="absolute inset-0 bg-black/40"></div>
-                    <div className="container mx-auto px-4 h-full relative">
-                        <div className="absolute bottom-4 right-4 flex items-center gap-4 text-white">
-                             <div className="text-right">
-                                <p className="text-sm" style={{textShadow: '0 2px 4px rgba(0,0,0,0.5)'}}>Ordering from</p>
-                                <h1 className="font-sans text-3xl md:text-4xl font-bold" style={{textShadow: '0 2px 4px rgba(0,0,0,0.5)'}}>{restaurantName}</h1>
+                    <div className="container mx-auto px-4 h-full relative flex items-end justify-between">
+                         {logoUrl && (
+                            <div className="relative -mb-8 w-24 h-24 md:w-28 md:h-28 rounded-full overflow-hidden border-4 border-background bg-card shadow-lg flex-shrink-0">
+                                <Image src={logoUrl} alt={`${restaurantName} logo`} layout="fill" objectFit="cover" />
                             </div>
-                            {logoUrl && (
-                                <div className="relative w-16 h-16 md:w-20 md:h-20 rounded-full overflow-hidden border-2 border-white bg-card shadow-lg flex-shrink-0">
-                                    <Image src={logoUrl} alt={`${restaurantName} logo`} layout="fill" objectFit="cover" />
-                                </div>
-                            )}
+                        )}
+                        <div className="pb-4 text-right">
+                            <p className="text-sm text-white" style={{textShadow: '0 2px 4px rgba(0,0,0,0.5)'}}>Ordering from</p>
+                            <h1 className="font-sans text-3xl md:text-4xl font-bold text-white" style={{textShadow: '0 2px 4px rgba(0,0,0,0.5)'}}>{restaurantName}</h1>
                         </div>
                     </div>
                 </div>
@@ -669,5 +667,3 @@ const OrderPage = () => (
 );
 
 export default OrderPage;
-
-    
