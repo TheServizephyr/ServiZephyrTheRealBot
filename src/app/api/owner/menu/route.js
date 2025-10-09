@@ -23,9 +23,9 @@ async function verifyOwnerAndGetRestaurant(req, auth, firestore) {
     if (restaurantsQuery.empty) {
         throw { message: 'No restaurant associated with this owner.', status: 404 };
     }
-    const restaurantDoc = restaurantsQuery.docs[0];
+    const restaurantSnap = restaurantsQuery.docs[0];
     
-    return { uid, restaurantId: restaurantDoc.id, restaurantDoc };
+    return { uid, restaurantId: restaurantSnap.id, restaurantSnap };
 }
 
 async function seedInitialMenu(firestore, restaurantId) {
@@ -77,13 +77,13 @@ export async function GET(req) {
     try {
         const auth = await getAuth();
         const firestore = await getFirestore();
-        const { restaurantId, restaurantDoc } = await verifyOwnerAndGetRestaurant(req, auth, firestore);
+        const { restaurantId, restaurantSnap } = await verifyOwnerAndGetRestaurant(req, auth, firestore);
 
         const menuRef = firestore.collection('restaurants').doc(restaurantId).collection('menu');
         const menuSnap = await menuRef.get();
 
         let menuData = {};
-        const restaurantData = restaurantDoc.data();
+        const restaurantData = restaurantSnap.data();
         // Custom categories are now objects {id: string, title: string}
         const customCategories = restaurantData.customCategories || [];
 
@@ -127,9 +127,10 @@ export async function POST(req) {
     try {
         const auth = await getAuth();
         const firestore = await getFirestore();
-        const { restaurantId, restaurantDoc } = await verifyOwnerAndGetRestaurant(req, auth, firestore);
+        const { restaurantId, restaurantSnap } = await verifyOwnerAndGetRestaurant(req, auth, firestore);
         const { item, categoryId, newCategory, isEditing } = await req.json();
         
+        const batch = firestore.batch();
         let finalCategoryId = categoryId;
         
         // If a new category was created, add it to the restaurant's custom category list
@@ -137,20 +138,18 @@ export async function POST(req) {
             const formattedId = newCategory.toLowerCase().replace(/\s+/g, '-');
             finalCategoryId = formattedId;
 
-            const restaurantRef = restaurantDoc.ref;
+            const restaurantRef = restaurantSnap.ref;
             const newCategoryObject = { id: formattedId, title: newCategory };
             
-            // Read-modify-write to safely update the array
-            const currentRestaurantData = restaurantDoc.data();
+            const currentRestaurantData = restaurantSnap.data();
             const currentCategories = currentRestaurantData.customCategories || [];
             
             if (!currentCategories.some(cat => cat.id === formattedId)) {
                 const updatedCategories = [...currentCategories, newCategoryObject];
-                await restaurantRef.update({ customCategories: updatedCategories });
+                batch.update(restaurantRef, { customCategories: updatedCategories });
             }
         }
         
-
         if (!item || !item.name || !item.portions || item.portions.length === 0) {
             return NextResponse.json({ message: 'Missing required item data. Name and at least one portion are required.' }, { status: 400 });
         }
@@ -159,7 +158,7 @@ export async function POST(req) {
         
         const finalItem = {
             ...item,
-            categoryId: finalCategoryId, // Ensure categoryId is set correctly
+            categoryId: finalCategoryId,
             portions: item.portions || [],
             addOnGroups: item.addOnGroups || [],
         };
@@ -167,21 +166,23 @@ export async function POST(req) {
         if (isEditing) {
             if (!item.id) return NextResponse.json({ message: 'Item ID is required for editing.' }, { status: 400 });
             const itemRef = menuRef.doc(item.id);
-            // categoryId is now part of finalItem and will be updated
             const { id, createdAt, order, ...updateData } = finalItem;
-            await itemRef.update(updateData);
+            batch.update(itemRef, updateData);
+            await batch.commit();
             return NextResponse.json({ message: 'Item updated successfully!', id: item.id }, { status: 200 });
         } else {
             const categoryQuery = await menuRef.where('categoryId', '==', finalCategoryId).orderBy('order', 'desc').limit(1).get();
             const maxOrder = categoryQuery.empty ? 0 : (categoryQuery.docs[0].data().order || 0);
             const newItemRef = menuRef.doc();
             
-            await newItemRef.set({
+            batch.set(newItemRef, {
                 ...finalItem,
                 id: newItemRef.id,
                 order: maxOrder + 1,
                 createdAt: adminFirestore.FieldValue.serverTimestamp(),
             });
+
+            await batch.commit();
             return NextResponse.json({ message: 'Item added successfully!', id: newItemRef.id }, { status: 201 });
         }
 
