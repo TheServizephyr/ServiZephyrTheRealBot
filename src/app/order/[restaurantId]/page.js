@@ -158,61 +158,68 @@ const CustomizationDrawer = ({ item, isOpen, onClose, onAddToCart }) => {
 
 const MenuItemCard = ({ item, quantity, onAdd, onIncrement, onDecrement }) => {
     const minPricePortion = useMemo(() => {
-      if (!item.portions || item.portions.length === 0) {
-        return { price: 0 };
-      }
-      return item.portions.reduce((min, p) => p.price < min.price ? p : min, item.portions[0]);
+        if (!item.portions || item.portions.length === 0) {
+            return { price: 0 };
+        }
+        return item.portions.reduce((min, p) => p.price < min.price ? p : min, item.portions[0]);
     }, [item.portions]);
 
-  return (
-    <motion.div 
-        className="flex items-start gap-4 p-4 bg-card rounded-lg border border-border"
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.3 }}
-    >
-      <div className="relative w-24 h-24 rounded-md overflow-hidden bg-muted flex-shrink-0">
-         <Image src={item.imageUrl} alt={item.name} layout="fill" objectFit="cover" data-ai-hint="food item" />
-      </div>
-      <div className="flex-grow flex flex-col h-full">
-        <div className="flex items-center gap-2 mb-1">
-          <div className={`w-4 h-4 border ${item.isVeg ? 'border-green-500' : 'border-red-500'} flex items-center justify-center`}>
-            <div className={`w-2 h-2 ${item.isVeg ? 'bg-green-500' : 'bg-red-500'} rounded-full`}></div>
-          </div>
-          <h4 className="font-semibold text-foreground">{item.name}</h4>
-        </div>
-        <p className="text-sm text-muted-foreground flex-grow">{item.description}</p>
-        <div className="flex flex-wrap gap-2 mt-2 mb-3">
-            {item.tags && item.tags.map(tag => (
-                <span key={tag} className="px-2 py-1 text-xs font-bold rounded-full bg-primary/10 text-primary border border-primary/20 flex items-center gap-1">
-                    <TagIcon size={12} /> {tag}
-                </span>
-            ))}
-        </div>
-        <p className="font-bold text-lg text-primary">from ₹{minPricePortion.price}</p>
-      </div>
-      <div className="flex flex-col items-center justify-center h-full flex-shrink-0 ml-4">
-        {quantity > 0 ? (
-          <div className="flex items-center justify-center bg-background border border-border rounded-lg shadow-sm">
-             <Button variant="ghost" size="icon" className="h-10 w-10 text-primary" onClick={() => onDecrement(item.id)}>
-                <Minus size={16}/>
-             </Button>
-             <span className="font-bold text-lg text-primary w-8 text-center">{quantity}</span>
-             <Button variant="ghost" size="icon" className="h-10 w-10 text-primary" onClick={() => onIncrement(item)}>
-                <Plus size={16}/>
-             </Button>
-          </div>
-        ) : (
-          <Button
-            onClick={() => onAdd(item)}
-            className="w-24 bg-background text-primary font-bold border border-primary hover:bg-primary/10 shadow-md active:translate-y-px"
-          >
-            ADD
-          </Button>
-        )}
-      </div>
-    </motion.div>
-  );
+    return (
+        <motion.div 
+            className="flex gap-4 p-4 bg-card rounded-lg border border-border"
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.3 }}
+        >
+            <div className="flex-grow flex flex-col">
+                <div className="flex items-center gap-2 mb-1">
+                    <div className={`w-4 h-4 border ${item.isVeg ? 'border-green-500' : 'border-red-500'} flex items-center justify-center`}>
+                        <div className={`w-2 h-2 ${item.isVeg ? 'bg-green-500' : 'bg-red-500'} rounded-full`}></div>
+                    </div>
+                    <h4 className="font-semibold text-foreground">{item.name}</h4>
+                </div>
+
+                <div className="flex flex-wrap gap-2 mt-1 mb-2">
+                    {item.tags && item.tags.map(tag => (
+                        <span key={tag} className="px-2 py-0.5 text-xs font-semibold rounded-full bg-primary/10 text-primary border border-primary/20 flex items-center gap-1">
+                            <TagIcon size={12} /> {tag}
+                        </span>
+                    ))}
+                </div>
+                
+                <p className="font-bold text-md text-foreground">₹{minPricePortion.price}</p>
+                
+                <p className="text-sm text-muted-foreground mt-2 flex-grow">{item.description}</p>
+            </div>
+
+            <div className="w-32 flex-shrink-0 relative">
+                <div className="relative w-full h-32 rounded-md overflow-hidden bg-muted">
+                    <Image src={item.imageUrl} alt={item.name} layout="fill" objectFit="cover" data-ai-hint="food item" />
+                </div>
+                <div className="absolute -bottom-3 left-1/2 -translate-x-1/2 w-[90%]">
+                    {quantity > 0 ? (
+                        <div className="flex items-center justify-center bg-background border-2 border-border rounded-lg shadow-lg h-10">
+                            <Button variant="ghost" size="icon" className="h-full w-10 text-primary rounded-r-none" onClick={() => onDecrement(item.id)}>
+                                <Minus size={16}/>
+                            </Button>
+                            <span className="font-bold text-lg text-primary flex-grow text-center">{quantity}</span>
+                            <Button variant="ghost" size="icon" className="h-full w-10 text-primary rounded-l-none" onClick={() => onIncrement(item)}>
+                                <Plus size={16}/>
+                            </Button>
+                        </div>
+                    ) : (
+                        <Button
+                            onClick={() => onAdd(item)}
+                            variant="outline"
+                            className="w-full bg-background/80 backdrop-blur-sm text-primary font-bold border-2 border-primary hover:bg-primary/10 shadow-lg active:translate-y-px h-10"
+                        >
+                            ADD
+                        </Button>
+                    )}
+                </div>
+            </div>
+        </motion.div>
+    );
 };
 
 const MenuBrowserModal = ({ isOpen, onClose, categories, onCategoryClick }) => {
@@ -255,7 +262,7 @@ const BannerCarousel = ({ images, onClick }) => {
     }, [images.length]);
   
     return (
-      <div className="relative h-56 w-full cursor-pointer overflow-hidden" onClick={onClick}>
+      <div className="relative h-48 w-full cursor-pointer overflow-hidden group" onClick={onClick}>
         <AnimatePresence initial={false}>
           <motion.div
             key={index}
@@ -274,7 +281,8 @@ const BannerCarousel = ({ images, onClick }) => {
             />
           </motion.div>
         </AnimatePresence>
-        <div className="absolute inset-0 bg-black/40"></div>
+        <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-black/20 to-transparent"></div>
+        
       </div>
     );
   };
@@ -533,7 +541,7 @@ const OrderPageInternal = () => {
         <>
             <AnimatePresence>
                 {isBannerExpanded && (
-                    <motion.div
+                     <motion.div
                         className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4"
                         initial={{ opacity: 0 }}
                         animate={{ opacity: 1 }}
@@ -541,11 +549,20 @@ const OrderPageInternal = () => {
                         onClick={() => setIsBannerExpanded(false)}
                     >
                         <motion.div 
-                            className="relative w-full h-full"
-                            layoutId="banner"
+                            className="relative w-full max-w-4xl aspect-video"
                             onClick={(e) => e.stopPropagation()}
                         >
                             <BannerCarousel images={bannerUrls} />
+                             <style jsx>{`
+                                .aspect-video {
+                                    aspect-ratio: 16 / 9;
+                                }
+                                @media (max-width: 768px) {
+                                    .aspect-video {
+                                        aspect-ratio: 4 / 3;
+                                    }
+                                }
+                            `}</style>
                         </motion.div>
                          <Button
                             variant="ghost"
@@ -568,19 +585,21 @@ const OrderPageInternal = () => {
                 />
 
                  <header>
-                    <motion.div layoutId="banner">
-                        <BannerCarousel images={bannerUrls} onClick={() => setIsBannerExpanded(true)}/>
-                    </motion.div>
+                    <div onClick={() => setIsBannerExpanded(true)}>
+                       <BannerCarousel images={bannerUrls} />
+                    </div>
                     <div className="container mx-auto px-4 -mt-16 relative">
-                        <div className="bg-card p-4 rounded-xl shadow-lg border border-border flex justify-between items-end">
-                            {logoUrl ? (
-                                <div className="relative w-20 h-20 rounded-full overflow-hidden border-4 border-background bg-card shadow-lg flex-shrink-0 -mt-12">
-                                    <Image src={logoUrl} alt={`${restaurantName} logo`} layout="fill" objectFit="cover" />
+                        <div className="bg-card p-4 rounded-xl shadow-lg border border-border">
+                            <div className="flex items-end gap-4">
+                                {logoUrl && (
+                                    <div className="relative w-20 h-20 rounded-lg overflow-hidden border-4 border-background bg-card shadow-md flex-shrink-0 -mt-10">
+                                        <Image src={logoUrl} alt={`${restaurantName} logo`} layout="fill" objectFit="cover" />
+                                    </div>
+                                )}
+                                <div className="flex-grow">
+                                    <h1 className="font-sans text-2xl md:text-3xl font-bold text-foreground">{restaurantName}</h1>
+                                    <p className="text-sm text-muted-foreground">The taste you can trust</p>
                                 </div>
-                            ) : <div></div>}
-                            <div className="text-right">
-                                <h1 className="font-sans text-2xl md:text-3xl font-bold text-foreground">{restaurantName}</h1>
-                                <p className="text-sm text-muted-foreground">The taste you can trust</p>
                             </div>
                         </div>
                     </div>
@@ -642,7 +661,7 @@ const OrderPageInternal = () => {
                             {menuCategories.map(({key, title}) => (
                                 <section id={key} key={key} className="scroll-mt-24">
                                     <h3 className="text-2xl font-bold mb-4">{title}</h3>
-                                    <div className="grid grid-cols-1 gap-4">
+                                    <div className="grid grid-cols-1 gap-6">
                                         {processedMenu[key].map(item => (
                                             <MenuItemCard 
                                                 key={item.id} 
