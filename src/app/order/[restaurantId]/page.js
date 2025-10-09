@@ -270,6 +270,7 @@ const OrderPageInternal = () => {
     const [restaurantName, setRestaurantName] = useState('');
     const [logoUrl, setLogoUrl] = useState('');
     const [bannerUrl, setBannerUrl] = useState('/order_banner.jpg');
+    const [isBannerExpanded, setIsBannerExpanded] = useState(false);
     const [deliveryCharge, setDeliveryCharge] = useState(0);
     const [rating, setRating] = useState(0);
     const [rawMenu, setRawMenu] = useState({});
@@ -510,153 +511,188 @@ const OrderPageInternal = () => {
     }
     
     return (
-        <div className="min-h-screen bg-background text-foreground green-theme">
-            <MenuBrowserModal isOpen={isMenuBrowserOpen} onClose={() => setIsMenuBrowserOpen(false)} categories={menuCategories} onCategoryClick={handleCategoryClick} />
-            <CustomizationDrawer
-                item={customizationItem}
-                isOpen={!!customizationItem}
-                onClose={() => setCustomizationItem(null)}
-                onAddToCart={handleAddToCart}
-            />
-
-             <header>
-                <div className="relative h-56">
-                    <Image
-                        src={bannerUrl}
-                        alt={`${restaurantName} banner`}
-                        layout="fill"
-                        objectFit="cover"
-                        unoptimized
-                    />
-                    <div className="absolute inset-0 bg-black/40"></div>
-                    <div className="container mx-auto px-4 h-full relative flex items-end justify-between">
-                         {logoUrl && (
-                            <div className="relative w-24 h-24 md:w-28 md:h-28 rounded-full overflow-hidden border-4 border-background bg-card shadow-lg flex-shrink-0">
-                                <Image src={logoUrl} alt={`${restaurantName} logo`} layout="fill" objectFit="cover" />
-                            </div>
-                        )}
-                        <div className="pb-4 text-right">
-                            <p className="text-sm text-white" style={{textShadow: '0 2px 4px rgba(0,0,0,0.5)'}}>Ordering from</p>
-                            <h1 className="font-sans text-3xl md:text-4xl font-bold text-white" style={{textShadow: '0 2px 4px rgba(0,0,0,0.5)'}}>{restaurantName}</h1>
-                        </div>
-                    </div>
-                </div>
-            </header>
-
-            <div className="sticky top-0 z-10 bg-background/95 backdrop-blur-sm py-2 border-b border-border">
-                <div className="container mx-auto px-4 flex items-center gap-4">
-                    <div className="relative flex-grow">
-                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" size={20} />
-                        <input
-                            type="text"
-                            placeholder="Search for dishes..."
-                            value={searchQuery}
-                            onChange={(e) => setSearchQuery(e.target.value)}
-                            className="w-full bg-input border border-border rounded-lg pl-10 pr-4 py-2 h-10 text-sm focus:ring-2 focus:ring-primary focus:border-primary outline-none"
-                        />
-                    </div>
-
-                    <Popover>
-                        <PopoverTrigger asChild>
-                            <Button variant="outline" className="flex items-center gap-2 flex-shrink-0">
-                                <SlidersHorizontal size={16} /> Filter
-                            </Button>
-                        </PopoverTrigger>
-                        <PopoverContent className="w-64">
-                            <div className="grid gap-4">
-                               <div className="space-y-2">
-                                    <h4 className="font-medium leading-none">Sort by</h4>
-                                    <div className="flex flex-wrap gap-2">
-                                        <Button variant={sortBy === 'price-asc' ? 'default' : 'outline'} size="sm" onClick={() => handleSortChange('price-asc')} className={cn(sortBy === 'price-asc' && 'bg-primary hover:bg-primary/90 text-primary-foreground')}>Price: Low to High</Button>
-                                        <Button variant={sortBy === 'price-desc' ? 'default' : 'outline'} size="sm" onClick={() => handleSortChange('price-desc')} className={cn(sortBy === 'price-desc' && 'bg-primary hover:bg-primary/90 text-primary-foreground')}>Price: High to Low</Button>
-                                        <Button variant={sortBy === 'rating-desc' ? 'default' : 'outline'} size="sm" onClick={() => handleSortChange('rating-desc')} className={cn(sortBy === 'rating-desc' && 'bg-primary hover:bg-primary/90 text-primary-foreground')}>Top Rated</Button>
-                                    </div>
-                                </div>
-
-                                <div className="space-y-2">
-                                    <h4 className="font-medium leading-none">Filter By</h4>
-                                    <div className="flex flex-wrap gap-2">
-                                        <Button variant={filters.veg ? 'default' : 'outline'} size="sm" onClick={() => handleFilterChange('veg')} className={cn("flex items-center gap-2", filters.veg && 'bg-primary hover:bg-primary/90 text-primary-foreground')}>
-                                            <Utensils size={16} className={cn(filters.veg ? '' : 'text-green-500')} />Veg Only
-                                        </Button>
-                                        <Button variant={filters.nonVeg ? 'default' : 'outline'} size="sm" onClick={() => handleFilterChange('nonVeg')} className={cn("flex items-center gap-2", filters.nonVeg && 'bg-primary hover:bg-primary/90 text-primary-foreground')}>
-                                            <Flame size={16} className={cn(filters.nonVeg ? '' : 'text-red-500')} />Non-Veg Only
-                                        </Button>
-                                        <Button variant={filters.recommended ? 'default' : 'outline'} size="sm" onClick={() => handleFilterChange('recommended')} className={cn("flex items-center gap-2", filters.recommended && 'bg-primary hover:bg-primary/90 text-primary-foreground')}>
-                                            <Sparkles size={16} className={cn(filters.recommended ? '' : 'text-yellow-500')} />Highly reordered
-                                        </Button>
-                                    </div>
-                                </div>
-                            </div>
-                        </PopoverContent>
-                    </Popover>
-                </div>
-            </div>
-
-            <div className="container mx-auto px-4 mt-6 pb-32">
-                <main>
-                    <div className="space-y-8">
-                        {menuCategories.map(({key, title}) => (
-                            <section id={key} key={key} className="scroll-mt-24">
-                                <h3 className="text-2xl font-bold mb-4">{title}</h3>
-                                <div className="grid grid-cols-1 gap-4">
-                                    {processedMenu[key].map(item => (
-                                        <MenuItemCard 
-                                            key={item.id} 
-                                            item={item} 
-                                            quantity={cartItemQuantities[item.id] || 0}
-                                            onAdd={handleIncrement}
-                                            onIncrement={handleIncrement}
-                                            onDecrement={handleDecrement}
-                                        />
-                                    ))}
-                                </div>
-                            </section>
-                        ))}
-                    </div>
-                </main>
-            </div>
-            
-            <footer className="fixed bottom-0 left-0 right-0 z-30 pointer-events-none">
-                <div className="container mx-auto px-4 relative h-28">
+        <>
+            <AnimatePresence>
+                {isBannerExpanded && (
                     <motion.div
-                        className="absolute right-4 pointer-events-auto"
-                        animate={{ bottom: totalCartItems > 0 ? '6.5rem' : '1rem' }}
-                        transition={{ type: "spring", stiffness: 300, damping: 25 }}
+                        className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4"
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        onClick={() => setIsBannerExpanded(false)}
                     >
-                         <button
-                            onClick={() => setIsMenuBrowserOpen(true)}
-                            className="bg-card text-foreground h-16 w-16 rounded-2xl shadow-lg flex flex-col items-center justify-center gap-1 border border-border"
+                        <motion.div 
+                            className="relative w-full h-full"
+                            layoutId="banner"
+                            onClick={(e) => e.stopPropagation()}
                         >
-                            <BookOpen size={24} className="text-primary" />
-                            <span className="text-xs font-bold">Menu</span>
-                        </button>
+                            <Image
+                                src={bannerUrl}
+                                alt={`${restaurantName} banner expanded`}
+                                layout="fill"
+                                objectFit="contain"
+                                unoptimized
+                            />
+                        </motion.div>
+                         <Button
+                            variant="ghost"
+                            size="icon"
+                            className="absolute top-4 right-4 text-white bg-black/50 hover:bg-black/70 hover:text-white"
+                            onClick={() => setIsBannerExpanded(false)}
+                        >
+                            <X />
+                        </Button>
                     </motion.div>
+                )}
+            </AnimatePresence>
+            <div className="min-h-screen bg-background text-foreground green-theme">
+                <MenuBrowserModal isOpen={isMenuBrowserOpen} onClose={() => setIsMenuBrowserOpen(false)} categories={menuCategories} onCategoryClick={handleCategoryClick} />
+                <CustomizationDrawer
+                    item={customizationItem}
+                    isOpen={!!customizationItem}
+                    onClose={() => setCustomizationItem(null)}
+                    onAddToCart={handleAddToCart}
+                />
 
-                    <AnimatePresence>
-                        {totalCartItems > 0 && (
-                            <motion.div
-                                className="absolute bottom-0 left-0 right-0 bg-background/80 backdrop-blur-lg border-t border-border pointer-events-auto"
-                                initial={{ y: "100%" }}
-                                animate={{ y: 0 }}
-                                exit={{ y: "100%" }}
-                                transition={{ type: "spring", stiffness: 300, damping: 30 }}
-                            >
-                                <div className="container mx-auto p-4">
-                                    <Button onClick={handleCheckout} className="bg-primary hover:bg-primary/90 h-14 text-lg font-bold rounded-lg shadow-primary/30 flex justify-between items-center text-primary-foreground w-full">
-                                        <div className="flex items-center gap-2">
-                                           <ShoppingCart className="h-6 w-6"/> 
-                                           <span>{totalCartItems} {totalCartItems > 1 ? 'Items' : 'Item'}</span>
-                                        </div>
-                                        <span>View Cart | ₹{subtotal}</span>
-                                    </Button>
+                 <header>
+                    <motion.div className="relative h-56 cursor-pointer" layoutId="banner" onClick={() => setIsBannerExpanded(true)}>
+                        <Image
+                            src={bannerUrl}
+                            alt={`${restaurantName} banner`}
+                            layout="fill"
+                            objectFit="cover"
+                            unoptimized
+                        />
+                        <div className="absolute inset-0 bg-black/40"></div>
+                        <div className="container mx-auto px-4 h-full relative flex items-end justify-between">
+                            {logoUrl && (
+                                <div className="relative w-24 h-24 md:w-28 md:h-28 rounded-full overflow-hidden border-4 border-background bg-card shadow-lg flex-shrink-0">
+                                    <Image src={logoUrl} alt={`${restaurantName} logo`} layout="fill" objectFit="cover" />
                                 </div>
-                            </motion.div>
-                        )}
-                    </AnimatePresence>
+                            )}
+                            <div className="pb-4 text-right">
+                                <p className="text-sm text-white" style={{textShadow: '0 2px 4px rgba(0,0,0,0.5)'}}>Ordering from</p>
+                                <h1 className="font-sans text-3xl md:text-4xl font-bold text-white" style={{textShadow: '0 2px 4px rgba(0,0,0,0.5)'}}>{restaurantName}</h1>
+                            </div>
+                        </div>
+                    </motion.div>
+                </header>
+
+                <div className="sticky top-0 z-10 bg-background/95 backdrop-blur-sm py-2 border-b border-border">
+                    <div className="container mx-auto px-4 flex items-center gap-4">
+                        <div className="relative flex-grow">
+                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" size={20} />
+                            <input
+                                type="text"
+                                placeholder="Search for dishes..."
+                                value={searchQuery}
+                                onChange={(e) => setSearchQuery(e.target.value)}
+                                className="w-full bg-input border border-border rounded-lg pl-10 pr-4 py-2 h-10 text-sm focus:ring-2 focus:ring-primary focus:border-primary outline-none"
+                            />
+                        </div>
+
+                        <Popover>
+                            <PopoverTrigger asChild>
+                                <Button variant="outline" className="flex items-center gap-2 flex-shrink-0">
+                                    <SlidersHorizontal size={16} /> Filter
+                                </Button>
+                            </PopoverTrigger>
+                            <PopoverContent className="w-64">
+                                <div className="grid gap-4">
+                                   <div className="space-y-2">
+                                        <h4 className="font-medium leading-none">Sort by</h4>
+                                        <div className="flex flex-wrap gap-2">
+                                            <Button variant={sortBy === 'price-asc' ? 'default' : 'outline'} size="sm" onClick={() => handleSortChange('price-asc')} className={cn(sortBy === 'price-asc' && 'bg-primary hover:bg-primary/90 text-primary-foreground')}>Price: Low to High</Button>
+                                            <Button variant={sortBy === 'price-desc' ? 'default' : 'outline'} size="sm" onClick={() => handleSortChange('price-desc')} className={cn(sortBy === 'price-desc' && 'bg-primary hover:bg-primary/90 text-primary-foreground')}>Price: High to Low</Button>
+                                            <Button variant={sortBy === 'rating-desc' ? 'default' : 'outline'} size="sm" onClick={() => handleSortChange('rating-desc')} className={cn(sortBy === 'rating-desc' && 'bg-primary hover:bg-primary/90 text-primary-foreground')}>Top Rated</Button>
+                                        </div>
+                                    </div>
+
+                                    <div className="space-y-2">
+                                        <h4 className="font-medium leading-none">Filter By</h4>
+                                        <div className="flex flex-wrap gap-2">
+                                            <Button variant={filters.veg ? 'default' : 'outline'} size="sm" onClick={() => handleFilterChange('veg')} className={cn("flex items-center gap-2", filters.veg && 'bg-primary hover:bg-primary/90 text-primary-foreground')}>
+                                                <Utensils size={16} className={cn(filters.veg ? '' : 'text-green-500')} />Veg Only
+                                            </Button>
+                                            <Button variant={filters.nonVeg ? 'default' : 'outline'} size="sm" onClick={() => handleFilterChange('nonVeg')} className={cn("flex items-center gap-2", filters.nonVeg && 'bg-primary hover:bg-primary/90 text-primary-foreground')}>
+                                                <Flame size={16} className={cn(filters.nonVeg ? '' : 'text-red-500')} />Non-Veg Only
+                                            </Button>
+                                            <Button variant={filters.recommended ? 'default' : 'outline'} size="sm" onClick={() => handleFilterChange('recommended')} className={cn("flex items-center gap-2", filters.recommended && 'bg-primary hover:bg-primary/90 text-primary-foreground')}>
+                                                <Sparkles size={16} className={cn(filters.recommended ? '' : 'text-yellow-500')} />Highly reordered
+                                            </Button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </PopoverContent>
+                        </Popover>
+                    </div>
                 </div>
-            </footer>
-        </div>
+
+                <div className="container mx-auto px-4 mt-6 pb-32">
+                    <main>
+                        <div className="space-y-8">
+                            {menuCategories.map(({key, title}) => (
+                                <section id={key} key={key} className="scroll-mt-24">
+                                    <h3 className="text-2xl font-bold mb-4">{title}</h3>
+                                    <div className="grid grid-cols-1 gap-4">
+                                        {processedMenu[key].map(item => (
+                                            <MenuItemCard 
+                                                key={item.id} 
+                                                item={item} 
+                                                quantity={cartItemQuantities[item.id] || 0}
+                                                onAdd={handleIncrement}
+                                                onIncrement={handleIncrement}
+                                                onDecrement={handleDecrement}
+                                            />
+                                        ))}
+                                    </div>
+                                </section>
+                            ))}
+                        </div>
+                    </main>
+                </div>
+                
+                <footer className="fixed bottom-0 left-0 right-0 z-30 pointer-events-none">
+                    <div className="container mx-auto px-4 relative h-28">
+                        <motion.div
+                            className="absolute right-4 pointer-events-auto"
+                            animate={{ bottom: totalCartItems > 0 ? '6.5rem' : '1rem' }}
+                            transition={{ type: "spring", stiffness: 300, damping: 25 }}
+                        >
+                             <button
+                                onClick={() => setIsMenuBrowserOpen(true)}
+                                className="bg-card text-foreground h-16 w-16 rounded-2xl shadow-lg flex flex-col items-center justify-center gap-1 border border-border"
+                            >
+                                <BookOpen size={24} className="text-primary" />
+                                <span className="text-xs font-bold">Menu</span>
+                            </button>
+                        </motion.div>
+
+                        <AnimatePresence>
+                            {totalCartItems > 0 && (
+                                <motion.div
+                                    className="absolute bottom-0 left-0 right-0 bg-background/80 backdrop-blur-lg border-t border-border pointer-events-auto"
+                                    initial={{ y: "100%" }}
+                                    animate={{ y: 0 }}
+                                    exit={{ y: "100%" }}
+                                    transition={{ type: "spring", stiffness: 300, damping: 30 }}
+                                >
+                                    <div className="container mx-auto p-4">
+                                        <Button onClick={handleCheckout} className="bg-primary hover:bg-primary/90 h-14 text-lg font-bold rounded-lg shadow-primary/30 flex justify-between items-center text-primary-foreground w-full">
+                                            <div className="flex items-center gap-2">
+                                               <ShoppingCart className="h-6 w-6"/> 
+                                               <span>{totalCartItems} {totalCartItems > 1 ? 'Items' : 'Item'}</span>
+                                            </div>
+                                            <span>View Cart | ₹{subtotal}</span>
+                                        </Button>
+                                    </div>
+                                </motion.div>
+                            )}
+                        </AnimatePresence>
+                    </div>
+                </footer>
+            </div>
+        </>
     );
 };
 
