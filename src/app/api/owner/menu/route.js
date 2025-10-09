@@ -124,13 +124,20 @@ export async function GET(req) {
 
 
 export async function POST(req) {
+    console.log("[API LOG] Received POST request to /api/owner/menu");
     try {
         const auth = await getAuth();
         const firestore = await getFirestore();
+        console.log("[API LOG] Firebase Admin SDK initialized.");
+
         const { restaurantId, restaurantSnap } = await verifyOwnerAndGetRestaurant(req, auth, firestore);
+        console.log(`[API LOG] Owner verified for restaurant ID: ${restaurantId}`);
+
         const { item, categoryId, newCategory, isEditing } = await req.json();
+        console.log("[API LOG] Request body parsed:", { isEditing, categoryId, newCategory: !!newCategory });
 
         if (!item || !item.name || !item.portions || item.portions.length === 0) {
+            console.error("[API LOG] Validation Failed: Missing required item data.");
             return NextResponse.json({ message: 'Missing required item data. Name and at least one portion are required.' }, { status: 400 });
         }
 
@@ -140,25 +147,28 @@ export async function POST(req) {
         let finalCategoryId = categoryId;
 
         // --- BATCH LOGIC ---
-
         // Step 1: Handle new category creation if applicable
-        if (showNewCategory && newCategory) {
-            const formattedId = newCategory.toLowerCase().replace(/\s+/g, '-');
+        if (newCategory && newCategory.trim() !== '') {
+            console.log(`[API LOG] New category detected: "${newCategory}"`);
+            const formattedId = newCategory.trim().toLowerCase().replace(/\s+/g, '-');
             finalCategoryId = formattedId;
+            
             const restaurantRef = restaurantSnap.ref;
             const restaurantData = restaurantSnap.data();
             const currentCategories = restaurantData.customCategories || [];
             
-            // Check if the category already exists to prevent duplicates
             if (!currentCategories.some(cat => cat.id === formattedId)) {
-                const newCategoryObject = { id: formattedId, title: newCategory };
-                batch.update(restaurantRef, { 
-                    customCategories: adminFirestore.FieldValue.arrayUnion(newCategoryObject) 
-                });
+                console.log(`[API LOG] Category "${formattedId}" does not exist. Adding to batch.`);
+                const newCategoryObject = { id: formattedId, title: newCategory.trim() };
+                const updatedCategories = [...currentCategories, newCategoryObject];
+                batch.update(restaurantRef, { customCategories: updatedCategories });
+            } else {
+                console.log(`[API LOG] Category "${formattedId}" already exists.`);
             }
         }
         
         // Step 2: Prepare the menu item data
+        console.log("[API LOG] Preparing final item data.");
         const finalItem = {
             ...item,
             categoryId: finalCategoryId,
@@ -170,13 +180,19 @@ export async function POST(req) {
         
         // Step 3: Add the item operation (create or update) to the batch
         if (isEditing) {
-            if (!item.id) return NextResponse.json({ message: 'Item ID is required for editing.' }, { status: 400 });
+            console.log(`[API LOG] Editing item ID: ${item.id}. Adding update to batch.`);
+            if (!item.id) {
+                console.error("[API LOG] Edit failed: No item ID provided.");
+                return NextResponse.json({ message: 'Item ID is required for editing.' }, { status: 400 });
+            }
             const itemRef = menuRef.doc(item.id);
             const { id, createdAt, ...updateData } = finalItem;
             batch.update(itemRef, updateData);
         } else {
+            console.log(`[API LOG] Creating new item in category: ${finalCategoryId}.`);
             const categoryQuerySnap = await menuRef.where('categoryId', '==', finalCategoryId).orderBy('order', 'desc').limit(1).get();
             const maxOrder = categoryQuerySnap.empty ? 0 : (categoryQuerySnap.docs[0].data().order || 0);
+            console.log(`[API LOG] Max order in category is ${maxOrder}. New order will be ${maxOrder + 1}.`);
             
             const newItemRef = menuRef.doc();
             newItemId = newItemRef.id;
@@ -187,10 +203,13 @@ export async function POST(req) {
                 order: maxOrder + 1,
                 createdAt: adminFirestore.FieldValue.serverTimestamp(),
             });
+            console.log(`[API LOG] New item with ID ${newItemId} added to batch.`);
         }
 
         // Step 4: Commit the entire batch
+        console.log("[API LOG] Committing batch...");
         await batch.commit();
+        console.log("[API LOG] Batch commit successful!");
 
         const message = isEditing ? 'Item updated successfully!' : 'Item added successfully!';
         const status = isEditing ? 200 : 201;
@@ -198,7 +217,7 @@ export async function POST(req) {
         return NextResponse.json({ message, id: newItemId }, { status });
 
     } catch (error) {
-        console.error("POST MENU ERROR:", error);
+        console.error("[API LOG] CRITICAL ERROR in POST /api/owner/menu:", error);
         return NextResponse.json({ message: `Backend Error: ${error.message}` }, { status: error.status || 500 });
     }
 }
