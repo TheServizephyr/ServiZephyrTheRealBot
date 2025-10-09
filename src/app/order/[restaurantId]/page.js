@@ -342,7 +342,8 @@ const OrderPageInternal = () => {
         setLoading(true);
         setError(null);
         try {
-          const res = await fetch(`/api/menu/${restaurantId}`);
+          // Pass the phone number as customerId to fetch user-specific coupons
+          const res = await fetch(`/api/menu/${restaurantId}?customerId=${phone || ''}`);
           if (!res.ok) {
             throw new Error('Failed to fetch menu data.');
           }
@@ -366,7 +367,7 @@ const OrderPageInternal = () => {
       };
 
       fetchMenuData();
-    }, [restaurantId]);
+    }, [restaurantId, phone]);
     
     // --- CART PERSISTENCE ---
     useEffect(() => {
