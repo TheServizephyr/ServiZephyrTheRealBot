@@ -188,10 +188,18 @@ const MenuCategory = ({ categoryId, title, icon, items, onDeleteItem, onEditItem
 const AddItemModal = ({ isOpen, setIsOpen, onSave, editingItem, allCategories }) => {
     const [item, setItem] = useState(null);
     const [isSaving, setIsSaving] = useState(false);
+    const [newCategory, setNewCategory] = useState('');
+    const [showNewCategory, setShowNewCategory] = useState(false);
+
+    const sortedCategories = Object.keys(allCategories).sort((a, b) => 
+        allCategories[a].title.localeCompare(allCategories[b].title)
+    );
 
     useEffect(() => {
         if (isOpen) {
             setIsSaving(false);
+            setNewCategory('');
+            setShowNewCategory(false);
             if (editingItem) {
                 setItem({
                     ...editingItem,
@@ -215,6 +223,18 @@ const AddItemModal = ({ isOpen, setIsOpen, onSave, editingItem, allCategories })
             setItem(null);
         }
     }, [editingItem, isOpen]);
+
+    const handleCategoryChange = (e) => {
+        const value = e.target.value;
+        if (value === 'add_new') {
+            setShowNewCategory(true);
+            handleChange('categoryId', value);
+        } else {
+            setShowNewCategory(false);
+            setNewCategory('');
+            handleChange('categoryId', value);
+        }
+    };
 
     const handleChange = (field, value) => {
         setItem(prev => ({ ...prev, [field]: value }));
@@ -276,6 +296,11 @@ const AddItemModal = ({ isOpen, setIsOpen, onSave, editingItem, allCategories })
     const handleSubmit = async (e) => {
         e.preventDefault();
         if (!item || isSaving) return;
+        
+        if (showNewCategory && !newCategory.trim()) {
+            alert("Please enter a name for the new category.");
+            return;
+        }
 
         setIsSaving(true);
         try {
@@ -318,7 +343,7 @@ const AddItemModal = ({ isOpen, setIsOpen, onSave, editingItem, allCategories })
                 return;
             }
 
-            await onSave(newItemData, item.categoryId, !!editingItem);
+            await onSave(newItemData, item.categoryId, newCategory, !!editingItem);
             setIsOpen(false);
         } catch (error) {
             // Error alert is handled in the parent `handleSaveItem`
@@ -352,12 +377,19 @@ const AddItemModal = ({ isOpen, setIsOpen, onSave, editingItem, allCategories })
                             </div>
                             <div className="grid grid-cols-4 items-center gap-4">
                                 <Label htmlFor="category" className="text-right">Category</Label>
-                                <select id="category" value={item.categoryId} onChange={e => handleChange('categoryId', e.target.value)} disabled={!!editingItem} className="col-span-3 p-2 border rounded-md bg-input border-border ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:opacity-70">
-                                    {Object.keys(allCategories).map((key) => (
+                                <select id="category" value={item.categoryId} onChange={handleCategoryChange} disabled={!!editingItem} className="col-span-3 p-2 border rounded-md bg-input border-border ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:opacity-70">
+                                    {sortedCategories.map((key) => (
                                         <option key={key} value={key}>{allCategories[key].title}</option>
                                     ))}
+                                    <option value="add_new" className="font-bold text-primary">+ Add New Category...</option>
                                 </select>
                             </div>
+                            {showNewCategory && (
+                                <div className="grid grid-cols-4 items-center gap-4">
+                                    <Label htmlFor="newCategory" className="text-right">New Category</Label>
+                                    <input id="newCategory" value={newCategory} onChange={e => setNewCategory(e.target.value)} placeholder="e.g., Biryani Special" className="col-span-3 p-2 border rounded-md bg-input border-border" />
+                                </div>
+                            )}
                             <div className="grid grid-cols-4 items-center gap-4">
                                 <Label htmlFor="tags" className="text-right">Tags</Label>
                                 <input id="tags" value={item.tags} onChange={e => handleChange('tags', e.target.value)} placeholder="e.g., Spicy, Chef's Special" className="col-span-3 p-2 border rounded-md bg-input border-border ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2" />
@@ -446,6 +478,7 @@ const MotionButton = motion(Button);
 // --- Main Page Component ---
 export default function MenuPage() {
   const [menu, setMenu] = useState({});
+  const [customCategories, setCustomCategories] = useState([]);
   const [loading, setLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingItem, setEditingItem] = useState(null);
@@ -472,6 +505,7 @@ export default function MenuPage() {
         if (!user) { setLoading(false); return; }
         const data = await handleApiCall('/api/owner/menu', 'GET');
         setMenu(data.menu || {});
+        setCustomCategories(data.customCategories || []);
     } catch (error) {
         console.error("Error fetching menu:", error);
         alert("Could not fetch menu. " + error.message);
@@ -487,10 +521,18 @@ export default function MenuPage() {
     });
     return () => unsubscribe();
   }, []);
+  
+  const allCategories = { ...categoryConfig };
+  customCategories.forEach(cat => {
+    if (!allCategories[cat]) {
+      allCategories[cat] = { title: cat.replace(/-/g, ' ').replace(/\b\w/g, l => l.toUpperCase()), icon: Utensils };
+    }
+  });
 
-  const handleSaveItem = async (itemData, categoryId, isEditing) => {
+
+  const handleSaveItem = async (itemData, categoryId, newCategory, isEditing) => {
     try {
-        const data = await handleApiCall('/api/owner/menu', 'POST', { item: itemData, categoryId, isEditing });
+        const data = await handleApiCall('/api/owner/menu', 'POST', { item: itemData, categoryId, newCategory, isEditing });
         alert(data.message);
         await fetchMenu();
     } catch (error) {
@@ -561,7 +603,7 @@ export default function MenuPage() {
         setIsOpen={setIsModalOpen}
         onSave={handleSaveItem}
         editingItem={editingItem}
-        allCategories={categoryConfig}
+        allCategories={allCategories}
       />
 
       {/* Header */}
@@ -591,25 +633,26 @@ export default function MenuPage() {
       
       {/* Menu Categories */}
       <div className="space-y-4">
-        {Object.keys(categoryConfig).map(categoryId => {
-          const config = categoryConfig[categoryId];
-          const items = menu[categoryId] || [];
-          
-          return (
-            <MenuCategory
-                key={categoryId}
-                categoryId={categoryId}
-                title={config.title}
-                icon={config.icon}
-                items={items}
-                onDeleteItem={handleDeleteItem}
-                onEditItem={handleEditItem}
-                onToggleAvailability={handleToggleAvailability}
-                setMenu={setMenu}
-                open={openCategory}
-                setOpen={setOpenCategory}
-            />
-          );
+        {Object.keys(allCategories).sort((a, b) => allCategories[a].title.localeCompare(allCategories[b].title)).map(categoryId => {
+            const config = allCategories[categoryId];
+            const items = menu[categoryId] || [];
+            if (!config) return null;
+            
+            return (
+                <MenuCategory
+                    key={categoryId}
+                    categoryId={categoryId}
+                    title={config.title}
+                    icon={config.icon}
+                    items={items}
+                    onDeleteItem={handleDeleteItem}
+                    onEditItem={handleEditItem}
+                    onToggleAvailability={handleToggleAvailability}
+                    setMenu={setMenu}
+                    open={openCategory}
+                    setOpen={setOpenCategory}
+                />
+            );
         })}
       </div>
     </div>

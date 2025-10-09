@@ -23,9 +23,9 @@ async function verifyOwnerAndGetRestaurant(req, auth, firestore) {
     if (restaurantsQuery.empty) {
         throw { message: 'No restaurant associated with this owner.', status: 404 };
     }
-    const restaurantId = restaurantsQuery.docs[0].id;
+    const restaurantDoc = restaurantsQuery.docs[0];
     
-    return { uid, restaurantId };
+    return { uid, restaurantId: restaurantDoc.id, restaurantDoc };
 }
 
 async function seedInitialMenu(firestore, restaurantId) {
@@ -77,18 +77,22 @@ export async function GET(req) {
     try {
         const auth = await getAuth();
         const firestore = await getFirestore();
-        const { restaurantId } = await verifyOwnerAndGetRestaurant(req, auth, firestore);
+        const { restaurantId, restaurantDoc } = await verifyOwnerAndGetRestaurant(req, auth, firestore);
 
         const menuRef = firestore.collection('restaurants').doc(restaurantId).collection('menu');
         const menuSnap = await menuRef.get();
 
         let menuData = {};
+        const restaurantData = restaurantDoc.data();
+        const customCategories = restaurantData.customCategories || [];
+
+        const defaultCategoryKeys = ["momos", "burgers", "rolls", "soup", "tandoori-item", "starters", "main-course", "tandoori-khajana", "rice", "noodles", "pasta", "raita", "desserts", "beverages"];
+        const allCategoryKeys = [...new Set([...defaultCategoryKeys, ...customCategories])];
 
         if (menuSnap.empty) {
             menuData = await seedInitialMenu(firestore, restaurantId);
         } else {
-            const categoryKeys = ["momos", "burgers", "rolls", "soup", "tandoori-item", "starters", "main-course", "tandoori-khajana", "rice", "noodles", "pasta", "raita", "desserts", "beverages"];
-            categoryKeys.forEach(key => {
+            allCategoryKeys.forEach(key => {
                 menuData[key] = [];
             });
 
@@ -106,7 +110,7 @@ export async function GET(req) {
             });
         }
 
-        return NextResponse.json({ menu: menuData }, { status: 200 });
+        return NextResponse.json({ menu: menuData, customCategories: customCategories }, { status: 200 });
 
     } catch (error) {
         console.error("GET MENU ERROR:", error);
@@ -119,8 +123,10 @@ export async function POST(req) {
     try {
         const auth = await getAuth();
         const firestore = await getFirestore();
-        const { restaurantId } = await verifyOwnerAndGetRestaurant(req, auth, firestore);
-        const { item, categoryId, isEditing } = await req.json();
+        const { restaurantId, restaurantDoc } = await verifyOwnerAndGetRestaurant(req, auth, firestore);
+        const { item, categoryId, newCategory, isEditing } = await req.json();
+
+        const finalCategoryId = newCategory ? newCategory.toLowerCase().replace(/\s+/g, '-') : categoryId;
 
         if (!item || !item.name || !item.portions || item.portions.length === 0) {
             return NextResponse.json({ message: 'Missing required item data. Name and at least one portion are required.' }, { status: 400 });
@@ -128,12 +134,19 @@ export async function POST(req) {
         
         const menuRef = firestore.collection('restaurants').doc(restaurantId).collection('menu');
         
-        // Ensure addOnGroups and portions are arrays, even if they're empty
         const finalItem = {
             ...item,
             portions: item.portions || [],
             addOnGroups: item.addOnGroups || [],
         };
+        
+        // If a new category was created, add it to the restaurant's custom category list
+        if (newCategory) {
+            const restaurantRef = restaurantDoc.ref;
+            await restaurantRef.update({
+                customCategories: adminFirestore.FieldValue.arrayUnion(finalCategoryId)
+            });
+        }
 
 
         if (isEditing) {
@@ -143,13 +156,13 @@ export async function POST(req) {
             await itemRef.update(updateData);
             return NextResponse.json({ message: 'Item updated successfully!', id: item.id }, { status: 200 });
         } else {
-            const categoryQuery = await menuRef.where('categoryId', '==', categoryId).orderBy('order', 'desc').limit(1).get();
+            const categoryQuery = await menuRef.where('categoryId', '==', finalCategoryId).orderBy('order', 'desc').limit(1).get();
             const maxOrder = categoryQuery.empty ? 0 : (categoryQuery.docs[0].data().order || 0);
             const newItemRef = menuRef.doc();
             await newItemRef.set({
                 ...finalItem,
                 id: newItemRef.id,
-                categoryId: categoryId,
+                categoryId: finalCategoryId,
                 order: maxOrder + 1,
                 createdAt: adminFirestore.FieldValue.serverTimestamp(),
             });
