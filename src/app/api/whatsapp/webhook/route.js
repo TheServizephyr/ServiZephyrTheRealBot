@@ -108,9 +108,9 @@ export async function POST(request) {
             welcomeMessage = `Welcome to ${restaurantName}! 😃`;
         }
 
-        // Generate a relative path instead of a full URL
+        // Generate a full URL for the menu
         // THIS IS THE CRITICAL FIX FOR DEPLOYMENT
-        const menuUrl = `/order/${restaurantId}?phone=${from}`;
+        const menuUrl = `https://servizephyr.com/order/${restaurantId}?phone=${from}`;
         
         const reply_body = `${welcomeMessage}\n\nWhat would you like to order today? You can view our full menu and place your order by clicking the link below:\n\n${menuUrl}`;
         
