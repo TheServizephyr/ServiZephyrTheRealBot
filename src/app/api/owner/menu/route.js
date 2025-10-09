@@ -135,24 +135,27 @@ export async function POST(req) {
         }
 
         const batch = firestore.batch();
-        let finalCategoryId = categoryId;
         const menuRef = firestore.collection('restaurants').doc(restaurantId).collection('menu');
+        
+        let finalCategoryId = categoryId;
 
         // --- BATCH LOGIC ---
 
-        // Step 1: Handle new category creation
-        if (newCategory) {
+        // Step 1: Handle new category creation if applicable
+        if (showNewCategory && newCategory) {
             const formattedId = newCategory.toLowerCase().replace(/\s+/g, '-');
             finalCategoryId = formattedId;
             const restaurantRef = restaurantSnap.ref;
-            const newCategoryObject = { id: formattedId, title: newCategory };
+            const restaurantData = restaurantSnap.data();
+            const currentCategories = restaurantData.customCategories || [];
             
-            // Atomically add the new category object to the array.
-            // This reads the document, updates the array in memory, and then writes the whole array back.
-            // It's necessary because arrayUnion doesn't work with objects as expected without unique IDs.
-            batch.update(restaurantRef, { 
-                customCategories: adminFirestore.FieldValue.arrayUnion(newCategoryObject) 
-            });
+            // Check if the category already exists to prevent duplicates
+            if (!currentCategories.some(cat => cat.id === formattedId)) {
+                const newCategoryObject = { id: formattedId, title: newCategory };
+                batch.update(restaurantRef, { 
+                    customCategories: adminFirestore.FieldValue.arrayUnion(newCategoryObject) 
+                });
+            }
         }
         
         // Step 2: Prepare the menu item data
@@ -163,6 +166,8 @@ export async function POST(req) {
             addOnGroups: item.addOnGroups || [],
         };
 
+        let newItemId = item.id;
+        
         // Step 3: Add the item operation (create or update) to the batch
         if (isEditing) {
             if (!item.id) return NextResponse.json({ message: 'Item ID is required for editing.' }, { status: 400 });
@@ -170,13 +175,15 @@ export async function POST(req) {
             const { id, createdAt, ...updateData } = finalItem;
             batch.update(itemRef, updateData);
         } else {
-            const categoryQuery = await menuRef.where('categoryId', '==', finalCategoryId).orderBy('order', 'desc').limit(1).get();
-            const maxOrder = categoryQuery.empty ? 0 : (categoryQuery.docs[0].data().order || 0);
-            const newItemRef = menuRef.doc();
+            const categoryQuerySnap = await menuRef.where('categoryId', '==', finalCategoryId).orderBy('order', 'desc').limit(1).get();
+            const maxOrder = categoryQuerySnap.empty ? 0 : (categoryQuerySnap.docs[0].data().order || 0);
             
+            const newItemRef = menuRef.doc();
+            newItemId = newItemRef.id;
+
             batch.set(newItemRef, {
                 ...finalItem,
-                id: newItemRef.id,
+                id: newItemId,
                 order: maxOrder + 1,
                 createdAt: adminFirestore.FieldValue.serverTimestamp(),
             });
@@ -188,7 +195,7 @@ export async function POST(req) {
         const message = isEditing ? 'Item updated successfully!' : 'Item added successfully!';
         const status = isEditing ? 200 : 201;
 
-        return NextResponse.json({ message, id: item.id || finalItem.id }, { status });
+        return NextResponse.json({ message, id: newItemId }, { status });
 
     } catch (error) {
         console.error("POST MENU ERROR:", error);
