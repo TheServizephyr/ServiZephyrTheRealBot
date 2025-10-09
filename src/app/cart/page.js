@@ -29,7 +29,8 @@ const ClearCartDialog = ({ isOpen, onClose, onConfirm }) => {
     );
 };
 
-const CheckoutModal = ({ isOpen, onClose, restaurantId, phone, cart, notes, appliedCoupons }) => {
+const CheckoutModal = ({ isOpen, onClose, restaurantId, phone, cart, notes, appliedCoupons, subtotal, loyaltyPoints }) => {
+    const router = useRouter();
     const [name, setName] = useState('');
     const [address, setAddress] = useState('');
     const [error, setError] = useState('');
@@ -40,26 +41,47 @@ const CheckoutModal = ({ isOpen, onClose, restaurantId, phone, cart, notes, appl
     const [isAddingNew, setIsAddingNew] = useState(true);
 
     useEffect(() => {
-        if (isOpen) {
-            setLoading(false);
-            setError('');
-            setIsAddingNew(true);
-            if (phone === '9876543210') { // Demo existing user
-                setName('Rohan Sharma (Demo)');
-                setSavedAddresses([{ id: 'addr_1', full: '123, Cyber Street, Tech City' }]);
-                setSelectedAddress('123, Cyber Street, Tech City');
-                setIsAddingNew(false);
-                setIsExistingUser(true);
-            } else {
-                 setName('');
-                 setAddress('');
-                 setSavedAddresses([]);
-                 setSelectedAddress(null);
-                 setIsAddingNew(true);
-                 setIsExistingUser(false);
+        const fetchUserData = async () => {
+            if (isOpen && phone) {
+                setLoading(true);
+                setError('');
+                try {
+                    const res = await fetch('/api/customer/lookup', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ phone }),
+                    });
+                    if (res.ok) {
+                        const data = await res.json();
+                        setName(data.name);
+                        setSavedAddresses(data.addresses);
+                        if (data.addresses && data.addresses.length > 0) {
+                            setSelectedAddress(data.addresses[0].full);
+                            setIsAddingNew(false);
+                        } else {
+                            setIsAddingNew(true);
+                            setAddress('');
+                        }
+                        setIsExistingUser(true);
+                    } else {
+                        // New user
+                        setIsExistingUser(false);
+                        setIsAddingNew(true);
+                        setName('');
+                        setAddress('');
+                        setSavedAddresses([]);
+                    }
+                } catch (err) {
+                    setError('Could not fetch user details. Please enter manually.');
+                    setIsExistingUser(false);
+                } finally {
+                    setLoading(false);
+                }
             }
-        }
+        };
+        fetchUserData();
     }, [isOpen, phone]);
+    
 
     const handlePlaceOrder = async () => {
         const finalAddress = isAddingNew ? address : selectedAddress;
@@ -69,15 +91,56 @@ const CheckoutModal = ({ isOpen, onClose, restaurantId, phone, cart, notes, appl
         }
         setError('');
         setLoading(true);
-        setTimeout(() => {
-            alert("Success! (Demo) - Your order has been placed.");
-            setLoading(false);
-            onClose();
-            localStorage.removeItem(`cart_${restaurantId}`);
-            window.location.href = `/order/${restaurantId}`;
-        }, 1500);
-    };
+        
+        try {
+            const orderPayload = {
+                name: name.trim(),
+                address: finalAddress,
+                phone,
+                restaurantId,
+                items: cart.map(item => ({
+                    name: item.name,
+                    quantity: item.quantity,
+                    price: item.totalPrice,
+                    portion: item.portion.name,
+                    addOns: item.selectedAddOns.map(a => a.name)
+                })),
+                notes,
+                coupon: appliedCoupons.length > 0 ? {
+                    code: appliedCoupons[0].code,
+                    discount: appliedCoupons.reduce((total, coupon) => {
+                        if (coupon.type === 'flat') return total + coupon.value;
+                        if (coupon.type === 'percentage') return total + (subtotal * coupon.value / 100);
+                        return total;
+                    }, 0)
+                } : null,
+                loyaltyDiscount: 0, // Simplified for now
+            };
 
+            const res = await fetch('/api/customer/register', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(orderPayload),
+            });
+
+            const result = await res.json();
+
+            if (!res.ok) {
+                throw new Error(result.message || "Failed to place order.");
+            }
+
+            alert("Success! Your order has been placed.");
+            localStorage.removeItem(`cart_${restaurantId}`);
+            router.push(`/owner-dashboard/live-orders`); // Redirect to see the new order
+            onClose();
+
+        } catch (err) {
+            setError(err.message || 'An unexpected error occurred.');
+        } finally {
+            setLoading(false);
+        }
+    };
+    
     return (
         <Dialog open={isOpen} onOpenChange={onClose}>
             <DialogContent className="bg-background border-border text-foreground">
@@ -85,23 +148,49 @@ const CheckoutModal = ({ isOpen, onClose, restaurantId, phone, cart, notes, appl
                     <DialogTitle className="text-2xl">Confirm Your Details</DialogTitle>
                 </DialogHeader>
                 <div className="py-4 space-y-4">
-                    {!isExistingUser && (
-                        <div>
-                            <Label htmlFor="checkout-name">Full Name</Label>
-                            <div className="relative mt-1">
-                                <User className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
-                                <input id="checkout-name" type="text" value={name} onChange={(e) => setName(e.target.value)} required className="w-full pl-10 pr-4 py-2 rounded-md bg-input border border-border" placeholder="Enter your full name" />
+                     {loading ? (
+                        <div className="flex justify-center items-center h-24">
+                           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+                        </div>
+                     ) : (
+                        <>
+                            <div>
+                                <Label htmlFor="checkout-name">Full Name</Label>
+                                <div className="relative mt-1">
+                                    <User className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
+                                    <input id="checkout-name" type="text" value={name} onChange={(e) => setName(e.target.value)} required className="w-full pl-10 pr-4 py-2 rounded-md bg-input border border-border" placeholder="Enter your full name" disabled={isExistingUser} />
+                                </div>
                             </div>
-                        </div>
-                    )}
-                    <div>
-                        <Label htmlFor="checkout-address">Delivery Address</Label>
-                        <div className="relative mt-1">
-                            <Home className="absolute left-3 top-3 h-5 w-5 text-muted-foreground" />
-                            <textarea id="checkout-address" value={address} onChange={(e) => setAddress(e.target.value)} required rows={3} className="w-full pl-10 pr-4 py-2 rounded-md bg-input border border-border" placeholder="Enter your full delivery address" />
-                        </div>
-                    </div>
-                    {error && <p className="text-red-500 text-sm text-center">{error}</p>}
+                           
+                            {isExistingUser && savedAddresses.length > 0 && (
+                                <div>
+                                    <Label>Select Address</Label>
+                                    <div className="space-y-2 mt-1">
+                                        {savedAddresses.map(addr => (
+                                            <div key={addr.id} onClick={() => { setSelectedAddress(addr.full); setIsAddingNew(false); }} className={cn("p-3 rounded-md border-2 cursor-pointer", !isAddingNew && selectedAddress === addr.full ? 'border-primary bg-primary/10' : 'border-border')}>
+                                                {addr.full}
+                                            </div>
+                                        ))}
+                                         <div onClick={() => setIsAddingNew(true)} className={cn("p-3 rounded-md border-2 cursor-pointer", isAddingNew ? 'border-primary bg-primary/10' : 'border-border')}>
+                                            + Add a new address
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+
+                            {(isAddingNew || savedAddresses.length === 0) && (
+                                 <div>
+                                    <Label htmlFor="checkout-address">Delivery Address</Label>
+                                    <div className="relative mt-1">
+                                        <Home className="absolute left-3 top-3 h-5 w-5 text-muted-foreground" />
+                                        <textarea id="checkout-address" value={address} onChange={(e) => setAddress(e.target.value)} required rows={3} className="w-full pl-10 pr-4 py-2 rounded-md bg-input border border-border" placeholder="Enter your full delivery address" />
+                                    </div>
+                                </div>
+                            )}
+
+                            {error && <p className="text-red-500 text-sm text-center pt-2">{error}</p>}
+                        </>
+                     )}
                 </div>
                 <DialogFooter>
                     <DialogClose asChild><Button variant="secondary" disabled={loading}>Cancel</Button></DialogClose>
@@ -277,6 +366,8 @@ const CartPageInternal = () => {
             cart={cart}
             notes={notes}
             appliedCoupons={appliedCoupons}
+            subtotal={subtotal}
+            loyaltyPoints={cartData.loyaltyPoints}
         />
         <ClearCartDialog 
             isOpen={isClearCartDialogOpen}
