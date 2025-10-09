@@ -268,6 +268,8 @@ const OrderPageInternal = () => {
     
     // --- STATE MANAGEMENT ---
     const [restaurantName, setRestaurantName] = useState('');
+    const [logoUrl, setLogoUrl] = useState('');
+    const [bannerUrl, setBannerUrl] = useState('/order_banner.jpg');
     const [deliveryCharge, setDeliveryCharge] = useState(0);
     const [rating, setRating] = useState(0);
     const [rawMenu, setRawMenu] = useState({});
@@ -303,6 +305,10 @@ const OrderPageInternal = () => {
           const data = await res.json();
           setRestaurantName(data.restaurantName);
           setDeliveryCharge(data.deliveryCharge || 0);
+          setLogoUrl(data.logoUrl || '');
+          if (data.bannerUrl) {
+            setBannerUrl(data.bannerUrl);
+          }
           setRawMenu(data.menu || {});
           setCoupons(data.coupons || []);
           // You might need another API to fetch user-specific loyalty points
@@ -513,17 +519,37 @@ const OrderPageInternal = () => {
                 onAddToCart={handleAddToCart}
             />
 
-            <header className="sticky top-0 z-20 bg-background/80 backdrop-blur-lg border-b border-border">
-                <div className="container mx-auto px-4 py-3 flex justify-between items-center">
-                    <div>
-                        <p className="text-xs text-muted-foreground">Ordering from</p>
-                        <h1 className="text-xl font-bold">{restaurantName}</h1>
+             <header className="sticky top-0 z-20 bg-background/80 backdrop-blur-lg border-b border-border">
+                <div className="relative h-32 md:h-40">
+                    <Image
+                        src={bannerUrl}
+                        alt={`${restaurantName} banner`}
+                        layout="fill"
+                        objectFit="cover"
+                        className="opacity-20"
+                        unoptimized
+                    />
+                    <div className="absolute inset-0 bg-gradient-to-t from-background via-background/80 to-transparent"></div>
+                    <div className="absolute bottom-0 left-0 right-0">
+                        <div className="container mx-auto px-4 py-4 flex items-center gap-4">
+                            {logoUrl ? (
+                                <div className="relative w-16 h-16 md:w-20 md:h-20 rounded-full overflow-hidden border-2 border-background bg-card shadow-lg flex-shrink-0">
+                                    <Image src={logoUrl} alt={`${restaurantName} logo`} layout="fill" objectFit="cover" />
+                                </div>
+                            ) : null}
+                            <div>
+                                <p className="text-xs text-muted-foreground">Ordering from</p>
+                                <h1 className="text-2xl md:text-3xl font-bold">{restaurantName}</h1>
+                            </div>
+                            <div className="ml-auto">
+                                <RatingBadge rating={rating} />
+                            </div>
+                        </div>
                     </div>
-                     <RatingBadge rating={rating} />
                 </div>
             </header>
 
-            <div className="sticky top-[65px] z-10 bg-background/95 backdrop-blur-sm py-2 border-b border-border">
+            <div className="sticky top-[128px] md:top-[160px] z-10 bg-background/95 backdrop-blur-sm py-2 border-b border-border">
                 <div className="container mx-auto px-4 flex items-center gap-4">
                     <div className="relative flex-grow">
                         <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" size={20} />

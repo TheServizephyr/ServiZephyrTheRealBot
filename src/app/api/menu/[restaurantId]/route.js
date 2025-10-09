@@ -15,7 +15,9 @@ async function seedInitialPublicData(firestore, restaurantId) {
         name: 'ServiZephyr Demo Restaurant',
         address: '123 Cyber Street, Tech City',
         deliveryCharge: 30,
-        ownerId: 'demo-owner'
+        ownerId: 'demo-owner',
+        logoUrl: '', // Add new field
+        bannerUrl: '', // Add new field
     }, { merge: true });
 
     // Seed Menu Items
@@ -97,6 +99,8 @@ export async function GET(request, { params }) {
         const restaurantData = restaurantDoc.data();
         const restaurantName = restaurantData.name;
         const deliveryCharge = restaurantData.deliveryCharge || 30;
+        const logoUrl = restaurantData.logoUrl || '';
+        const bannerUrl = restaurantData.bannerUrl || '';
 
         // Process Menu
         const menuData = {};
@@ -137,6 +141,8 @@ export async function GET(request, { params }) {
         return NextResponse.json({ 
             restaurantName: restaurantName,
             deliveryCharge: deliveryCharge,
+            logoUrl: logoUrl,
+            bannerUrl: bannerUrl,
             menu: menuData,
             coupons: allCoupons
         }, { status: 200 });

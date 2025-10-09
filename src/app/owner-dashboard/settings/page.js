@@ -3,7 +3,7 @@
 
 import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { User, Mail, Phone, Shield, Edit, Save, XCircle, Bell, Trash2, KeyRound, Eye, EyeOff, FileText, Bot, Truck } from 'lucide-react';
+import { User, Mail, Phone, Shield, Edit, Save, XCircle, Bell, Trash2, KeyRound, Eye, EyeOff, FileText, Bot, Truck, Image as ImageIcon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
@@ -166,6 +166,8 @@ export default function SettingsPage() {
                     fssai: editedUser.fssai,
                     botPhoneNumberId: editedUser.botPhoneNumberId,
                     deliveryCharge: editedUser.deliveryCharge,
+                    logoUrl: editedUser.logoUrl,
+                    bannerUrl: editedUser.bannerUrl,
                 })
             });
 
@@ -288,6 +290,14 @@ export default function SettingsPage() {
                         </div>
                         {user.role === 'owner' && (
                             <>
+                                <div>
+                                    <Label htmlFor="logoUrl" className="flex items-center gap-2"><ImageIcon size={14}/> Logo Image URL</Label>
+                                    <input id="logoUrl" value={editedUser.logoUrl} onChange={e => setEditedUser({...editedUser, logoUrl: e.target.value})} disabled={!isEditing} className="mt-1 w-full p-2 border rounded-md bg-gray-700 border-gray-600 disabled:opacity-70 disabled:cursor-not-allowed" placeholder="e.g., https://example.com/logo.png"/>
+                                </div>
+                                <div>
+                                    <Label htmlFor="bannerUrl" className="flex items-center gap-2"><ImageIcon size={14}/> Banner Image URL</Label>
+                                    <input id="bannerUrl" value={editedUser.bannerUrl} onChange={e => setEditedUser({...editedUser, bannerUrl: e.target.value})} disabled={!isEditing} className="mt-1 w-full p-2 border rounded-md bg-gray-700 border-gray-600 disabled:opacity-70 disabled:cursor-not-allowed" placeholder="e.g., https://example.com/banner.jpg"/>
+                                </div>
                                 <div>
                                     <Label htmlFor="deliveryCharge" className="flex items-center gap-2"><Truck size={14}/> Base Delivery Charge (₹)</Label>
                                     <input id="deliveryCharge" type="number" value={editedUser.deliveryCharge} onChange={e => setEditedUser({...editedUser, deliveryCharge: e.target.value})} disabled={!isEditing} className="mt-1 w-full p-2 border rounded-md bg-gray-700 border-gray-600 disabled:opacity-70 disabled:cursor-not-allowed" placeholder="e.g., 30"/>
