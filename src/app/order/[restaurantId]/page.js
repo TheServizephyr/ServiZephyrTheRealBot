@@ -331,13 +331,17 @@ const OrderPageInternal = () => {
     
     const handleDecrement = (itemId) => {
         let newCart;
-        // Since we are decrementing, we can assume we only want to decrement the first found instance in the cart that matches the item id.
+        // Since decrementing only happens from the cart, we need to find the item in the cart.
+        // As an item can be in the cart multiple times with different portions, we just decrement the first one found.
         const existingItemIndex = cart.findIndex(ci => ci.id === itemId);
 
         if (existingItemIndex === -1) return;
+        
+        const itemInCart = cart[existingItemIndex];
+        const cartItemId = `${itemInCart.id}-${itemInCart.portion.name}`;
 
-        if (cart[existingItemIndex].quantity === 1) {
-            newCart = cart.filter((_, index) => index !== existingItemIndex);
+        if (itemInCart.quantity === 1) {
+            newCart = cart.filter((ci, index) => index !== existingItemIndex);
         } else {
             newCart = cart.map((cartItem, index) =>
                 index === existingItemIndex ? { ...cartItem, quantity: cartItem.quantity - 1 } : cartItem
@@ -478,23 +482,21 @@ const OrderPageInternal = () => {
             </div>
             
             <footer className="fixed bottom-0 left-0 right-0 z-30 pointer-events-none">
-                <AnimatePresence>
-                    {totalCartItems > 0 && (
-                        <motion.div
-                            className="absolute bottom-4 right-4 pointer-events-auto"
-                            initial={{ opacity: 0, scale: 0.8 }}
-                            animate={{ opacity: 1, scale: 1 }}
-                            exit={{ opacity: 0, scale: 0.8 }}
+                 <AnimatePresence>
+                    <motion.div
+                        className="absolute bottom-4 right-4 pointer-events-auto"
+                        initial={{ opacity: 0, scale: 0.8 }}
+                        animate={{ opacity: 1, scale: 1 }}
+                        exit={{ opacity: 0, scale: 0.8 }}
+                    >
+                        <button
+                            onClick={() => setIsMenuBrowserOpen(true)}
+                            className="bg-black text-white h-16 w-16 rounded-2xl shadow-lg flex flex-col items-center justify-center gap-1 border border-gray-700"
                         >
-                            <button
-                                onClick={() => setIsMenuBrowserOpen(true)}
-                                className="bg-black text-white h-16 w-16 rounded-2xl shadow-lg flex flex-col items-center justify-center gap-1 border border-gray-700"
-                            >
-                                <BookOpen size={24} className="text-primary" />
-                                <span className="text-xs font-bold">Menu</span>
-                            </button>
-                        </motion.div>
-                    )}
+                            <BookOpen size={24} className="text-primary" />
+                            <span className="text-xs font-bold">Menu</span>
+                        </button>
+                    </motion.div>
                 </AnimatePresence>
 
                 <AnimatePresence>
@@ -506,7 +508,7 @@ const OrderPageInternal = () => {
                             exit={{ y: "100%" }}
                             transition={{ type: "spring", stiffness: 300, damping: 30 }}
                         >
-                            <div className="container mx-auto px-4 py-4">
+                            <div className="container mx-auto p-4">
                                 <Button onClick={handleCheckout} className="bg-green-600 hover:bg-green-700 h-14 text-lg font-bold rounded-lg shadow-green-500/30 flex justify-between items-center text-white w-full">
                                     <div className="flex items-center gap-2">
                                        <ShoppingCart className="h-6 w-6"/> 
@@ -515,25 +517,6 @@ const OrderPageInternal = () => {
                                     <span>View Cart | ₹{subtotal}</span>
                                 </Button>
                             </div>
-                        </motion.div>
-                    )}
-                </AnimatePresence>
-
-                <AnimatePresence>
-                    {totalCartItems === 0 && (
-                        <motion.div
-                            className="absolute bottom-4 right-4 pointer-events-auto"
-                            initial={{ opacity: 0, scale: 0.8 }}
-                            animate={{ opacity: 1, scale: 1 }}
-                            exit={{ opacity: 0, scale: 0.8 }}
-                        >
-                            <button
-                                onClick={() => setIsMenuBrowserOpen(true)}
-                                className="bg-black text-white h-16 w-16 rounded-2xl shadow-lg flex flex-col items-center justify-center gap-1 border border-gray-700"
-                            >
-                                <BookOpen size={24} className="text-primary" />
-                                <span className="text-xs font-bold">Menu</span>
-                            </button>
                         </motion.div>
                     )}
                 </AnimatePresence>
