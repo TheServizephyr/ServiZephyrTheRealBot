@@ -129,8 +129,8 @@ export async function POST(req) {
         const firestore = await getFirestore();
         const { restaurantId, restaurantDoc } = await verifyOwnerAndGetRestaurant(req, auth, firestore);
         const { item, categoryId, newCategory, isEditing } = await req.json();
-
-        let finalCategoryId;
+        
+        let finalCategoryId = categoryId;
         
         // If a new category was created, add it to the restaurant's custom category list
         if (newCategory) {
@@ -140,15 +140,14 @@ export async function POST(req) {
             const restaurantRef = restaurantDoc.ref;
             const newCategoryObject = { id: formattedId, title: newCategory };
             
-            // Check if it already exists to avoid duplicates
-            const currentCategories = restaurantDoc.data().customCategories || [];
+            // Read-modify-write to safely update the array
+            const currentRestaurantData = restaurantDoc.data();
+            const currentCategories = currentRestaurantData.customCategories || [];
+            
             if (!currentCategories.some(cat => cat.id === formattedId)) {
-                await restaurantRef.update({
-                    customCategories: adminFirestore.FieldValue.arrayUnion(newCategoryObject)
-                });
+                const updatedCategories = [...currentCategories, newCategoryObject];
+                await restaurantRef.update({ customCategories: updatedCategories });
             }
-        } else {
-            finalCategoryId = categoryId;
         }
         
 
@@ -160,6 +159,7 @@ export async function POST(req) {
         
         const finalItem = {
             ...item,
+            categoryId: finalCategoryId, // Ensure categoryId is set correctly
             portions: item.portions || [],
             addOnGroups: item.addOnGroups || [],
         };
@@ -179,7 +179,6 @@ export async function POST(req) {
             await newItemRef.set({
                 ...finalItem,
                 id: newItemRef.id,
-                categoryId: finalCategoryId,
                 order: maxOrder + 1,
                 createdAt: adminFirestore.FieldValue.serverTimestamp(),
             });

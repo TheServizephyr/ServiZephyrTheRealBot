@@ -342,7 +342,6 @@ const AddItemModal = ({ isOpen, setIsOpen, onSave, editingItem, allCategories })
                 imageUrl: item.imageUrl || `https://picsum.photos/seed/${item.name.replace(/\s/g, '')}/100/100`,
                 tags: tagsArray,
                 addOnGroups: finalAddOnGroups,
-                categoryId: finalCategoryId,
             };
             
 
@@ -352,7 +351,7 @@ const AddItemModal = ({ isOpen, setIsOpen, onSave, editingItem, allCategories })
                 return;
             }
             
-            await onSave(newItemData, item.categoryId, finalNewCategoryName, !!editingItem);
+            await onSave(newItemData, finalCategoryId, finalNewCategoryName, !!editingItem);
             setIsOpen(false);
         } catch (error) {
             // Error alert is handled in the parent `handleSaveItem`
@@ -646,7 +645,7 @@ export default function MenuPage() {
             const titleA = allCategories[a]?.title;
             const titleB = allCategories[b]?.title;
             if (!titleA) return 1;
-            if (!titleB) return -1;
+            if (!b.title) return -1;
             return titleA.localeCompare(titleB);
           }).map(categoryId => {
             const config = allCategories[categoryId];
