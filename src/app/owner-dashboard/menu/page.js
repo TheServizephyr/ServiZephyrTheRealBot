@@ -15,7 +15,7 @@ import { auth } from '@/lib/firebase';
 import { cn } from "@/lib/utils";
 
 
-const categoryConfig = {
+const defaultCategoryConfig = {
   "starters": { title: "Starters", icon: Utensils },
   "momos": { title: "Momos", icon: Drumstick },
   "burgers": { title: "Burgers", icon: Pizza },
@@ -191,9 +191,9 @@ const AddItemModal = ({ isOpen, setIsOpen, onSave, editingItem, allCategories })
     const [newCategory, setNewCategory] = useState('');
     const [showNewCategory, setShowNewCategory] = useState(false);
 
-    const sortedCategories = Object.keys(allCategories).sort((a, b) => 
-        allCategories[a].title.localeCompare(allCategories[b].title)
-    );
+    const sortedCategories = Object.entries(allCategories)
+        .map(([id, {title}]) => ({ id, title }))
+        .sort((a, b) => a.title.localeCompare(b.title));
 
     useEffect(() => {
         if (isOpen) {
@@ -335,6 +335,7 @@ const AddItemModal = ({ isOpen, setIsOpen, onSave, editingItem, allCategories })
                 imageUrl: item.imageUrl || `https://picsum.photos/seed/${item.name.replace(/\s/g, '')}/100/100`,
                 tags: tagsArray,
                 addOnGroups: finalAddOnGroups,
+                categoryId: showNewCategory ? newCategory : item.categoryId, // Pass categoryId correctly
             };
 
             if (!newItemData.name) {
@@ -343,7 +344,7 @@ const AddItemModal = ({ isOpen, setIsOpen, onSave, editingItem, allCategories })
                 return;
             }
 
-            await onSave(newItemData, item.categoryId, newCategory, !!editingItem);
+            await onSave(newItemData, item.categoryId, showNewCategory ? newCategory : '', !!editingItem);
             setIsOpen(false);
         } catch (error) {
             // Error alert is handled in the parent `handleSaveItem`
@@ -377,9 +378,9 @@ const AddItemModal = ({ isOpen, setIsOpen, onSave, editingItem, allCategories })
                             </div>
                             <div className="grid grid-cols-4 items-center gap-4">
                                 <Label htmlFor="category" className="text-right">Category</Label>
-                                <select id="category" value={item.categoryId} onChange={handleCategoryChange} disabled={!!editingItem} className="col-span-3 p-2 border rounded-md bg-input border-border ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:opacity-70">
-                                    {sortedCategories.map((key) => (
-                                        <option key={key} value={key}>{allCategories[key].title}</option>
+                                <select id="category" value={item.categoryId} onChange={handleCategoryChange} className="col-span-3 p-2 border rounded-md bg-input border-border ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:opacity-70">
+                                    {sortedCategories.map(({id, title}) => (
+                                        <option key={id} value={id}>{title}</option>
                                     ))}
                                     <option value="add_new" className="font-bold text-primary">+ Add New Category...</option>
                                 </select>
@@ -522,10 +523,10 @@ export default function MenuPage() {
     return () => unsubscribe();
   }, []);
   
-  const allCategories = { ...categoryConfig };
+  const allCategories = { ...defaultCategoryConfig };
   customCategories.forEach(cat => {
-    if (!allCategories[cat]) {
-      allCategories[cat] = { title: cat.replace(/-/g, ' ').replace(/\b\w/g, l => l.toUpperCase()), icon: Utensils };
+    if (!allCategories[cat.id]) {
+      allCategories[cat.id] = { title: cat.title, icon: Utensils };
     }
   });
 

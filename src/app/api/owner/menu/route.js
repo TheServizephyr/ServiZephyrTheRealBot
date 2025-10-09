@@ -84,10 +84,13 @@ export async function GET(req) {
 
         let menuData = {};
         const restaurantData = restaurantDoc.data();
+        // Custom categories are now objects {id: string, title: string}
         const customCategories = restaurantData.customCategories || [];
 
         const defaultCategoryKeys = ["momos", "burgers", "rolls", "soup", "tandoori-item", "starters", "main-course", "tandoori-khajana", "rice", "noodles", "pasta", "raita", "desserts", "beverages"];
-        const allCategoryKeys = [...new Set([...defaultCategoryKeys, ...customCategories])];
+        
+        // Combine default keys with custom category IDs
+        const allCategoryKeys = [...new Set([...defaultCategoryKeys, ...customCategories.map(c => c.id)])];
 
         if (menuSnap.empty) {
             menuData = await seedInitialMenu(firestore, restaurantId);
@@ -101,6 +104,7 @@ export async function GET(req) {
                 if (item.categoryId && menuData.hasOwnProperty(item.categoryId)) {
                     menuData[item.categoryId].push({ id: doc.id, ...item });
                 } else if (item.categoryId) {
+                    // This case handles if a category exists in an item but not in the combined list (edge case)
                     menuData[item.categoryId] = [{ id: doc.id, ...item }];
                 }
             });
@@ -126,7 +130,27 @@ export async function POST(req) {
         const { restaurantId, restaurantDoc } = await verifyOwnerAndGetRestaurant(req, auth, firestore);
         const { item, categoryId, newCategory, isEditing } = await req.json();
 
-        const finalCategoryId = newCategory ? newCategory.toLowerCase().replace(/\s+/g, '-') : categoryId;
+        let finalCategoryId;
+        
+        // If a new category was created, add it to the restaurant's custom category list
+        if (newCategory) {
+            const formattedId = newCategory.toLowerCase().replace(/\s+/g, '-');
+            finalCategoryId = formattedId;
+
+            const restaurantRef = restaurantDoc.ref;
+            const newCategoryObject = { id: formattedId, title: newCategory };
+            
+            // Check if it already exists to avoid duplicates
+            const currentCategories = restaurantDoc.data().customCategories || [];
+            if (!currentCategories.some(cat => cat.id === formattedId)) {
+                await restaurantRef.update({
+                    customCategories: adminFirestore.FieldValue.arrayUnion(newCategoryObject)
+                });
+            }
+        } else {
+            finalCategoryId = categoryId;
+        }
+        
 
         if (!item || !item.name || !item.portions || item.portions.length === 0) {
             return NextResponse.json({ message: 'Missing required item data. Name and at least one portion are required.' }, { status: 400 });
@@ -139,26 +163,19 @@ export async function POST(req) {
             portions: item.portions || [],
             addOnGroups: item.addOnGroups || [],
         };
-        
-        // If a new category was created, add it to the restaurant's custom category list
-        if (newCategory) {
-            const restaurantRef = restaurantDoc.ref;
-            await restaurantRef.update({
-                customCategories: adminFirestore.FieldValue.arrayUnion(finalCategoryId)
-            });
-        }
-
 
         if (isEditing) {
             if (!item.id) return NextResponse.json({ message: 'Item ID is required for editing.' }, { status: 400 });
             const itemRef = menuRef.doc(item.id);
-            const { id, categoryId: ignoredCategoryId, order, createdAt, ...updateData } = finalItem;
+            // categoryId is now part of finalItem and will be updated
+            const { id, createdAt, order, ...updateData } = finalItem;
             await itemRef.update(updateData);
             return NextResponse.json({ message: 'Item updated successfully!', id: item.id }, { status: 200 });
         } else {
             const categoryQuery = await menuRef.where('categoryId', '==', finalCategoryId).orderBy('order', 'desc').limit(1).get();
             const maxOrder = categoryQuery.empty ? 0 : (categoryQuery.docs[0].data().order || 0);
             const newItemRef = menuRef.doc();
+            
             await newItemRef.set({
                 ...finalItem,
                 id: newItemRef.id,
