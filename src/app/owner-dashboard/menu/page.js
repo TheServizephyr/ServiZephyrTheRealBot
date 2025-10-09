@@ -634,7 +634,13 @@ export default function MenuPage() {
       
       {/* Menu Categories */}
       <div className="space-y-4">
-        {Object.keys(allCategories).sort((a, b) => allCategories[a].title.localeCompare(allCategories[b].title)).map(categoryId => {
+        {Object.keys(allCategories).sort((a, b) => {
+            const titleA = allCategories[a]?.title;
+            const titleB = allCategories[b]?.title;
+            if (!titleA) return 1;
+            if (!titleB) return -1;
+            return titleA.localeCompare(titleB);
+          }).map(categoryId => {
             const config = allCategories[categoryId];
             const items = menu[categoryId] || [];
             if (!config) return null;
