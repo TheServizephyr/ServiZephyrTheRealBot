@@ -1,4 +1,5 @@
 
+
 'use client';
 
 import React, { useState, useEffect, useMemo, Suspense } from 'react';
@@ -104,7 +105,7 @@ const CheckoutModal = ({ isOpen, onClose, restaurantId, phone, cart, notes, appl
                 </div>
                 <DialogFooter>
                     <DialogClose asChild><Button variant="secondary" disabled={loading}>Cancel</Button></DialogClose>
-                    <Button onClick={handlePlaceOrder} className="bg-green-600 hover:bg-green-700 text-white" disabled={loading}>
+                    <Button onClick={handlePlaceOrder} className="bg-primary hover:bg-primary/90 text-primary-foreground" disabled={loading}>
                         {loading ? 'Placing Order...' : 'Confirm & Place Order'}
                     </Button>
                 </DialogFooter>
@@ -421,7 +422,7 @@ const CartPageInternal = () => {
 
             <footer className="fixed bottom-0 left-0 w-full bg-background/80 backdrop-blur-lg border-t border-border z-30">
                 <div className="container mx-auto p-4 flex items-center justify-center gap-4">
-                    <Button onClick={() => setIsCheckoutOpen(true)} className="flex-grow bg-green-600 hover:bg-green-700 h-12 text-lg font-bold text-white" disabled={cart.length === 0}>
+                    <Button onClick={() => setIsCheckoutOpen(true)} className="flex-grow bg-primary hover:bg-primary/90 text-primary-foreground h-12 text-lg font-bold" disabled={cart.length === 0}>
                         Proceed to Checkout
                     </Button>
                 </div>

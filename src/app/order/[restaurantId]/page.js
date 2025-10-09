@@ -5,7 +5,7 @@
 import React, { useState, useEffect, Suspense, useMemo } from 'react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Utensils, Plus, Minus, X, Home, User, Edit2, ShoppingCart, Star, CookingPot, BookOpen, Check, SlidersHorizontal, ArrowUpDown, PlusCircle, Ticket, Gift, Sparkles, Flame, Search, Trash2, ChevronDown, Tag as TagIcon } from 'lucide-react';
+import { Utensils, Plus, Minus, X, Home, User, Edit2, ShoppingCart, Star, CookingPot, BookOpen, Check, SlidersHorizontal, ArrowUpDown, PlusCircle, Ticket, Gift, Sparkles, Flame, Search, Trash2, ChevronDown, Tag as TagIcon, RadioGroup, IndianRupee } from 'lucide-react';
 import Image from 'next/image';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
@@ -26,7 +26,10 @@ const dummyData = {
             { id: 'item-2', name: 'Chilli Chicken', description: 'Spicy diced chicken', portions: [{name: 'Half', price: 200}, {name: 'Full', price: 320}], isVeg: false, isAvailable: true, categoryId: 'starters', imageUrl: 'https://picsum.photos/seed/chillichicken/100/100', rating: 4.7, isRecommended: true, tags: ["Most Reordered"] },
         ],
         "main-course": [
-            { id: 'item-3', name: 'Dal Makhani', description: 'Creamy black lentils', portions: [{name: 'Full', price: 250}], isVeg: true, isAvailable: true, categoryId: 'main-course', imageUrl: 'https://picsum.photos/seed/dalmakhani/100/100', rating: 4.2, isRecommended: false },
+            { id: 'item-3', name: 'Dal Makhani', description: 'Creamy black lentils', portions: [{name: 'Full', price: 250}], isVeg: true, isAvailable: true, categoryId: 'main-course', imageUrl: 'https://picsum.photos/seed/dalmakhani/100/100', rating: 4.2, isRecommended: false, addOnGroups: [
+                { title: "Select Your Bread", type: "radio", required: true, options: [{name: "Tandoori Roti", price: 15}, {name: "Butter Naan", price: 30}, {name: "Plain Naan", price: 25}] },
+                { title: "Want a Drink?", type: "checkbox", options: [{name: "Coke (250ml)", price: 40}, {name: "Fresh Lime Soda", price: 60}] }
+            ]},
             { id: 'item-4', name: 'Butter Chicken', description: 'Classic creamy chicken curry', portions: [{name: 'Full', price: 450}], isVeg: false, isAvailable: true, categoryId: 'main-course', imageUrl: 'https://picsum.photos/seed/butterchicken/100/100', rating: 3.8, isRecommended: false },
         ],
         "momos": [
@@ -44,57 +47,150 @@ const dummyData = {
 };
 // --- END: DUMMY DATA ---
 
-const PortionSelectionModal = ({ item, isOpen, onClose, onAddToCart }) => {
-    const [selectedPortion, setSelectedPortion] = useState(item.portions[0]);
+const CustomizationDrawer = ({ item, isOpen, onClose, onAddToCart }) => {
+    const [selectedPortion, setSelectedPortion] = useState(null);
+    const [selectedAddOns, setSelectedAddOns] = useState({});
 
     useEffect(() => {
         if (item) {
             setSelectedPortion(item.portions[0]);
+            // Initialize add-ons state
+            const initialAddOns = {};
+            (item.addOnGroups || []).forEach(group => {
+                initialAddOns[group.title] = group.type === 'checkbox' ? [] : null;
+            });
+            setSelectedAddOns(initialAddOns);
         }
     }, [item]);
-    
-    if (!item) return null;
 
-    const handleAddToCart = () => {
-        onAddToCart(item, selectedPortion);
+    const handleAddOnSelect = (groupTitle, addOn, groupType) => {
+        setSelectedAddOns(prev => {
+            const newSelections = { ...prev };
+            if (groupType === 'checkbox') {
+                const currentSelection = newSelections[groupTitle] || [];
+                const isSelected = currentSelection.some(a => a.name === addOn.name);
+                if (isSelected) {
+                    newSelections[groupTitle] = currentSelection.filter(a => a.name !== addOn.name);
+                } else {
+                    newSelections[groupTitle] = [...currentSelection, addOn];
+                }
+            } else { // radio
+                newSelections[groupTitle] = addOn;
+            }
+            return newSelections;
+        });
+    };
+
+    const totalPrice = useMemo(() => {
+        if (!selectedPortion) return 0;
+        let total = selectedPortion.price;
+        for (const groupTitle in selectedAddOns) {
+            const selection = selectedAddOns[groupTitle];
+            if (Array.isArray(selection)) { // checkbox
+                total += selection.reduce((sum, addon) => sum + addon.price, 0);
+            } else if (selection) { // radio
+                total += selection.price;
+            }
+        }
+        return total;
+    }, [selectedPortion, selectedAddOns]);
+
+    const handleFinalAddToCart = () => {
+        const allSelectedAddOns = Object.values(selectedAddOns).flat().filter(Boolean);
+        onAddToCart(item, selectedPortion, allSelectedAddOns, totalPrice);
         onClose();
     };
 
+    if (!item) return null;
+
     return (
-        <Dialog open={isOpen} onOpenChange={onClose}>
-            <DialogContent className="bg-background border-border text-foreground">
-                <DialogHeader>
-                    <DialogTitle className="text-2xl">{item.name}</DialogTitle>
-                    <DialogDescription>Select your desired portion.</DialogDescription>
-                </DialogHeader>
-                <div className="py-4 space-y-4">
-                    <div className="space-y-2">
-                        {item.portions.map(portion => (
-                            <div
-                                key={portion.name}
-                                onClick={() => setSelectedPortion(portion)}
-                                className={cn(
-                                    "flex justify-between items-center p-4 rounded-lg border-2 cursor-pointer transition-all",
-                                    selectedPortion.name === portion.name ? "border-primary bg-primary/10" : "border-border hover:bg-muted"
-                                )}
-                            >
-                                <span className="font-semibold">{portion.name}</span>
-                                <span className="font-bold text-green-600">₹{portion.price}</span>
+        <AnimatePresence>
+            {isOpen && (
+                <motion.div 
+                  className="fixed inset-0 bg-black/60 z-40"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  onClick={onClose}
+                >
+                    <motion.div
+                        className="fixed bottom-0 left-0 right-0 bg-background rounded-t-2xl p-6 flex flex-col max-h-[85vh]"
+                        initial={{ y: "100%" }}
+                        animate={{ y: 0 }}
+                        exit={{ y: "100%" }}
+                        transition={{ type: "spring", stiffness: 300, damping: 30 }}
+                        onClick={(e) => e.stopPropagation()}
+                    >
+                        <DialogHeader className="flex-shrink-0">
+                            <DialogTitle className="text-2xl">{item.name}</DialogTitle>
+                            <DialogDescription>{item.description}</DialogDescription>
+                        </DialogHeader>
+
+                        <div className="py-4 space-y-6 overflow-y-auto flex-grow">
+                             {/* Portions */}
+                            <div className="space-y-2">
+                                <h4 className="font-semibold text-lg">Size</h4>
+                                {item.portions.map(portion => (
+                                    <div
+                                        key={portion.name}
+                                        onClick={() => setSelectedPortion(portion)}
+                                        className={cn(
+                                            "flex justify-between items-center p-4 rounded-lg border-2 cursor-pointer transition-all",
+                                            selectedPortion?.name === portion.name ? "border-primary bg-primary/10" : "border-border hover:bg-muted"
+                                        )}
+                                    >
+                                        <span className="font-semibold">{portion.name}</span>
+                                        <span className="font-bold text-primary">₹{portion.price}</span>
+                                    </div>
+                                ))}
                             </div>
-                        ))}
-                    </div>
-                </div>
-                <DialogFooter>
-                    <DialogClose asChild><Button variant="secondary">Cancel</Button></DialogClose>
-                    <Button onClick={handleAddToCart} className="bg-green-600 hover:bg-green-700 text-white">Add to Cart</Button>
-                </DialogFooter>
-            </DialogContent>
-        </Dialog>
+                            
+                            {/* Add-on Groups */}
+                            {(item.addOnGroups || []).map(group => (
+                                <div key={group.title} className="space-y-2 pt-4 border-t border-dashed border-border">
+                                    <h4 className="font-semibold text-lg">{group.title}</h4>
+                                     {group.options.map(option => {
+                                        const isSelected = group.type === 'checkbox' 
+                                            ? (selectedAddOns[group.title] || []).some(a => a.name === option.name)
+                                            : selectedAddOns[group.title]?.name === option.name;
+                                        
+                                        return (
+                                            <div
+                                                key={option.name}
+                                                onClick={() => handleAddOnSelect(group.title, option, group.type)}
+                                                className={cn(
+                                                    "flex justify-between items-center p-3 rounded-lg border cursor-pointer transition-all",
+                                                    isSelected ? "border-primary bg-primary/10" : "border-border hover:bg-muted"
+                                                )}
+                                            >
+                                                <div className="flex items-center gap-3">
+                                                    <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${isSelected ? 'border-primary' : 'border-muted-foreground'}`}>
+                                                        {isSelected && <div className="w-2.5 h-2.5 bg-primary rounded-full" />}
+                                                    </div>
+                                                    <span className="font-medium">{option.name}</span>
+                                                </div>
+                                                <span className="font-bold text-foreground">+ ₹{option.price}</span>
+                                            </div>
+                                        );
+                                     })}
+                                </div>
+                            ))}
+                        </div>
+                        
+                        <DialogFooter className="flex-shrink-0 pt-4 border-t border-border">
+                            <Button onClick={handleFinalAddToCart} className="w-full h-14 text-lg bg-primary hover:bg-primary/90 text-primary-foreground">
+                                Add item for ₹{totalPrice}
+                            </Button>
+                        </DialogFooter>
+                    </motion.div>
+                </motion.div>
+            )}
+        </AnimatePresence>
     );
 };
 
 
-const MenuItemCard = ({ item, quantity, onIncrement, onDecrement, onOpenPortionModal }) => {
+const MenuItemCard = ({ item, quantity, onAdd }) => {
     // Find the minimum price to display
     const minPricePortion = useMemo(() => {
       if (!item.portions || item.portions.length === 0) {
@@ -102,14 +198,6 @@ const MenuItemCard = ({ item, quantity, onIncrement, onDecrement, onOpenPortionM
       }
       return item.portions.reduce((min, p) => p.price < min.price ? p : min, item.portions[0]);
     }, [item.portions]);
-
-    const handleAddClick = () => {
-        if (item.portions.length > 1) {
-            onOpenPortionModal(item);
-        } else {
-            onIncrement(item, item.portions[0]);
-        }
-    };
 
   return (
     <motion.div 
@@ -129,9 +217,7 @@ const MenuItemCard = ({ item, quantity, onIncrement, onDecrement, onOpenPortionM
           <h4 className="font-semibold text-foreground">{item.name}</h4>
         </div>
         <p className="text-sm text-muted-foreground mb-2 flex-grow">{item.description}</p>
-        <div className="flex items-center gap-4">
-            <p className="font-bold text-lg text-green-600">₹{minPricePortion.price}</p>
-        </div>
+        <p className="font-bold text-lg text-primary">from ₹{minPricePortion.price}</p>
          <div className="flex flex-wrap gap-2 mt-2">
             {item.tags && item.tags.map(tag => (
                 <span key={tag} className="px-2 py-1 text-xs font-bold rounded-full bg-primary/10 text-primary-foreground border border-primary/20 flex items-center gap-1">
@@ -142,15 +228,13 @@ const MenuItemCard = ({ item, quantity, onIncrement, onDecrement, onOpenPortionM
       </div>
       <div className="flex flex-col items-center justify-center h-full flex-shrink-0 ml-4">
         {quantity > 0 ? (
-          <div className="flex items-center gap-1 bg-background p-1 rounded-lg border border-border">
-            <Button size="icon" variant="ghost" className="h-8 w-8 text-green-600" onClick={() => onDecrement(item.id)}><Minus size={16}/></Button>
-            <span className="font-bold w-6 text-center text-foreground">{quantity}</span>
-            <Button size="icon" variant="ghost" className="h-8 w-8 text-green-600" onClick={handleAddClick}><Plus size={16}/></Button>
+          <div className="flex items-center gap-2">
+              <span className="font-bold text-lg text-primary">{quantity} in cart</span>
           </div>
         ) : (
           <Button
-            onClick={handleAddClick}
-            className="w-24 bg-background text-green-600 font-bold border border-green-600 hover:bg-green-50 shadow-md active:translate-y-px"
+            onClick={() => onAdd(item)}
+            className="w-24 bg-background text-primary font-bold border border-primary hover:bg-primary/10 shadow-md active:translate-y-px"
           >
             ADD
           </Button>
@@ -229,7 +313,7 @@ const OrderPageInternal = () => {
     
     const [coupons, setCoupons] = useState(dummyData.coupons);
     const [loyaltyPoints, setLoyaltyPoints] = useState(dummyData.loyaltyPoints);
-    const [portionModalItem, setPortionModalItem] = useState(null);
+    const [customizationItem, setCustomizationItem] = useState(null);
     
     // Load cart from localStorage on initial render
     useEffect(() => {
@@ -293,7 +377,7 @@ const OrderPageInternal = () => {
         setSortBy(prev => prev === sortValue ? 'default' : sortValue);
     }
 
-    const subtotal = useMemo(() => cart.reduce((sum, item) => sum + item.portion.price * item.quantity, 0), [cart]);
+    const subtotal = useMemo(() => cart.reduce((sum, item) => sum + item.totalPrice * item.quantity, 0), [cart]);
 
     const updateCart = (newCart, newNotes) => {
         setCart(newCart);
@@ -313,38 +397,25 @@ const OrderPageInternal = () => {
         localStorage.setItem(`cart_${restaurantId}`, JSON.stringify(cartData));
     };
 
-    const handleIncrement = (item, portion) => {
-        let newCart;
-        // Unique identifier for cart item now includes portion
-        const cartItemId = `${item.id}-${portion.name}`;
-        const existingItemIndex = cart.findIndex(cartItem => `${cartItem.id}-${cartItem.portion.name}` === cartItemId);
+    const handleAddToCart = (item, portion, selectedAddOns, totalPrice) => {
+        const cartItemId = `${item.id}-${portion.name}-${selectedAddOns.map(a => a.name).sort().join('-')}`;
         
+        const existingItemIndex = cart.findIndex(cartItem => cartItem.cartItemId === cartItemId);
+        
+        let newCart;
         if (existingItemIndex > -1) {
             newCart = cart.map((cartItem, index) =>
                 index === existingItemIndex ? { ...cartItem, quantity: cartItem.quantity + 1 } : cartItem
             );
         } else {
-            newCart = [...cart, { ...item, portion, quantity: 1 }];
-        }
-        updateCart(newCart);
-    };
-    
-    const handleDecrement = (itemId) => {
-        let newCart;
-        // Since decrementing only happens from the cart, we need to find the item in the cart.
-        // As an item can be in the cart multiple times with different portions, we just decrement the first one found.
-        const existingItemIndex = cart.findIndex(ci => ci.id === itemId);
-
-        if (existingItemIndex === -1) return;
-        
-        const itemInCart = cart[existingItemIndex];
-
-        if (itemInCart.quantity === 1) {
-            newCart = cart.filter((ci, index) => index !== existingItemIndex);
-        } else {
-            newCart = cart.map((cartItem, index) =>
-                index === existingItemIndex ? { ...cartItem, quantity: cartItem.quantity - 1 } : cartItem
-            );
+            newCart = [...cart, { 
+                ...item, 
+                cartItemId, 
+                portion, 
+                selectedAddOns, 
+                totalPrice, 
+                quantity: 1 
+            }];
         }
         updateCart(newCart);
     };
@@ -379,7 +450,7 @@ const OrderPageInternal = () => {
     if (loading) {
         return (
             <div className="min-h-screen bg-background flex items-center justify-center">
-                <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-green-600"></div>
+                <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-primary"></div>
             </div>
         );
     }
@@ -387,14 +458,12 @@ const OrderPageInternal = () => {
     return (
         <div className="min-h-screen bg-background text-foreground">
             <MenuBrowserModal isOpen={isMenuBrowserOpen} onClose={() => setIsMenuBrowserOpen(false)} categories={menuCategories} onCategoryClick={handleCategoryClick} />
-            {portionModalItem && (
-              <PortionSelectionModal
-                item={portionModalItem}
-                isOpen={!!portionModalItem}
-                onClose={() => setPortionModalItem(null)}
-                onAddToCart={handleIncrement}
-              />
-            )}
+            <CustomizationDrawer
+                item={customizationItem}
+                isOpen={!!customizationItem}
+                onClose={() => setCustomizationItem(null)}
+                onAddToCart={handleAddToCart}
+            />
 
             <header className="sticky top-0 z-20 bg-background/80 backdrop-blur-lg border-b border-border">
                 <div className="container mx-auto px-4 py-3 flex justify-between items-center">
@@ -415,7 +484,7 @@ const OrderPageInternal = () => {
                             placeholder="Search for dishes..."
                             value={searchQuery}
                             onChange={(e) => setSearchQuery(e.target.value)}
-                            className="w-full bg-input border border-border rounded-lg pl-10 pr-4 py-2 h-10 text-sm focus:ring-2 focus:ring-green-600 focus:border-green-600 outline-none"
+                            className="w-full bg-input border border-border rounded-lg pl-10 pr-4 py-2 h-10 text-sm focus:ring-2 focus:ring-primary focus:border-primary outline-none"
                         />
                     </div>
 
@@ -430,22 +499,22 @@ const OrderPageInternal = () => {
                                <div className="space-y-2">
                                     <h4 className="font-medium leading-none">Sort by</h4>
                                     <div className="flex flex-wrap gap-2">
-                                        <Button variant={sortBy === 'price-asc' ? 'default' : 'outline'} size="sm" onClick={() => handleSortChange('price-asc')} className={cn(sortBy === 'price-asc' && 'bg-green-600 hover:bg-green-700 text-white')}>Price: Low to High</Button>
-                                        <Button variant={sortBy === 'price-desc' ? 'default' : 'outline'} size="sm" onClick={() => handleSortChange('price-desc')} className={cn(sortBy === 'price-desc' && 'bg-green-600 hover:bg-green-700 text-white')}>Price: High to Low</Button>
-                                        <Button variant={sortBy === 'rating-desc' ? 'default' : 'outline'} size="sm" onClick={() => handleSortChange('rating-desc')} className={cn(sortBy === 'rating-desc' && 'bg-green-600 hover:bg-green-700 text-white')}>Top Rated</Button>
+                                        <Button variant={sortBy === 'price-asc' ? 'default' : 'outline'} size="sm" onClick={() => handleSortChange('price-asc')} className={cn(sortBy === 'price-asc' && 'bg-primary hover:bg-primary/90 text-primary-foreground')}>Price: Low to High</Button>
+                                        <Button variant={sortBy === 'price-desc' ? 'default' : 'outline'} size="sm" onClick={() => handleSortChange('price-desc')} className={cn(sortBy === 'price-desc' && 'bg-primary hover:bg-primary/90 text-primary-foreground')}>Price: High to Low</Button>
+                                        <Button variant={sortBy === 'rating-desc' ? 'default' : 'outline'} size="sm" onClick={() => handleSortChange('rating-desc')} className={cn(sortBy === 'rating-desc' && 'bg-primary hover:bg-primary/90 text-primary-foreground')}>Top Rated</Button>
                                     </div>
                                 </div>
 
                                 <div className="space-y-2">
                                     <h4 className="font-medium leading-none">Filter By</h4>
                                     <div className="flex flex-wrap gap-2">
-                                        <Button variant={filters.veg ? 'default' : 'outline'} size="sm" onClick={() => handleFilterChange('veg')} className={cn("flex items-center gap-2", filters.veg && 'bg-green-600 hover:bg-green-700 text-white')}>
+                                        <Button variant={filters.veg ? 'default' : 'outline'} size="sm" onClick={() => handleFilterChange('veg')} className={cn("flex items-center gap-2", filters.veg && 'bg-primary hover:bg-primary/90 text-primary-foreground')}>
                                             <Utensils size={16} className={cn(filters.veg ? '' : 'text-green-500')} />Veg Only
                                         </Button>
-                                        <Button variant={filters.nonVeg ? 'default' : 'outline'} size="sm" onClick={() => handleFilterChange('nonVeg')} className={cn("flex items-center gap-2", filters.nonVeg && 'bg-green-600 hover:bg-green-700 text-white')}>
+                                        <Button variant={filters.nonVeg ? 'default' : 'outline'} size="sm" onClick={() => handleFilterChange('nonVeg')} className={cn("flex items-center gap-2", filters.nonVeg && 'bg-primary hover:bg-primary/90 text-primary-foreground')}>
                                             <Flame size={16} className={cn(filters.nonVeg ? '' : 'text-red-500')} />Non-Veg Only
                                         </Button>
-                                        <Button variant={filters.recommended ? 'default' : 'outline'} size="sm" onClick={() => handleFilterChange('recommended')} className={cn("flex items-center gap-2", filters.recommended && 'bg-green-600 hover:bg-green-700 text-white')}>
+                                        <Button variant={filters.recommended ? 'default' : 'outline'} size="sm" onClick={() => handleFilterChange('recommended')} className={cn("flex items-center gap-2", filters.recommended && 'bg-primary hover:bg-primary/90 text-primary-foreground')}>
                                             <Sparkles size={16} className={cn(filters.recommended ? '' : 'text-yellow-500')} />Highly reordered
                                         </Button>
                                     </div>
@@ -468,9 +537,7 @@ const OrderPageInternal = () => {
                                             key={item.id} 
                                             item={item} 
                                             quantity={cartItemQuantities[item.id] || 0}
-                                            onIncrement={handleIncrement}
-                                            onDecrement={handleDecrement}
-                                            onOpenPortionModal={setPortionModalItem}
+                                            onAdd={setCustomizationItem}
                                         />
                                     ))}
                                 </div>
@@ -481,53 +548,50 @@ const OrderPageInternal = () => {
             </div>
             
             <footer className="fixed bottom-0 left-0 right-0 z-30 pointer-events-none">
-                <AnimatePresence>
+                <div className="container mx-auto relative h-28">
                     <motion.div
-                        className="absolute right-4 pointer-events-auto"
+                        className="absolute right-4 bottom-4 pointer-events-auto"
                         animate={{ bottom: totalCartItems > 0 ? '6.5rem' : '1rem' }}
                         transition={{ type: "spring", stiffness: 300, damping: 25 }}
-                        initial={{ opacity: 0, scale: 0.8 }}
-                        whileInView={{ opacity: 1, scale: 1 }}
-                        exit={{ opacity: 0, scale: 0.8 }}
                     >
                         <button
                             onClick={() => setIsMenuBrowserOpen(true)}
-                            className="bg-black text-white h-16 w-16 rounded-2xl shadow-lg flex flex-col items-center justify-center gap-1 border border-gray-700"
+                            className="bg-card text-foreground h-16 w-16 rounded-2xl shadow-lg flex flex-col items-center justify-center gap-1 border border-border"
                         >
                             <BookOpen size={24} className="text-primary" />
                             <span className="text-xs font-bold">Menu</span>
                         </button>
                     </motion.div>
-                </AnimatePresence>
 
-                <AnimatePresence>
-                    {totalCartItems > 0 && (
-                        <motion.div
-                            className="bg-background/80 backdrop-blur-lg border-t border-border pointer-events-auto"
-                            initial={{ y: "100%" }}
-                            animate={{ y: 0 }}
-                            exit={{ y: "100%" }}
-                            transition={{ type: "spring", stiffness: 300, damping: 30 }}
-                        >
-                            <div className="container mx-auto p-4">
-                                <Button onClick={handleCheckout} className="bg-green-600 hover:bg-green-700 h-14 text-lg font-bold rounded-lg shadow-green-500/30 flex justify-between items-center text-white w-full">
-                                    <div className="flex items-center gap-2">
-                                       <ShoppingCart className="h-6 w-6"/> 
-                                       <span>{totalCartItems} {totalCartItems > 1 ? 'Items' : 'Item'}</span>
-                                    </div>
-                                    <span>View Cart | ₹{subtotal}</span>
-                                </Button>
-                            </div>
-                        </motion.div>
-                    )}
-                </AnimatePresence>
+                    <AnimatePresence>
+                        {totalCartItems > 0 && (
+                            <motion.div
+                                className="absolute bottom-0 left-0 right-0 bg-background/80 backdrop-blur-lg border-t border-border pointer-events-auto"
+                                initial={{ y: "100%" }}
+                                animate={{ y: 0 }}
+                                exit={{ y: "100%" }}
+                                transition={{ type: "spring", stiffness: 300, damping: 30 }}
+                            >
+                                <div className="container mx-auto p-4">
+                                    <Button onClick={handleCheckout} className="bg-primary hover:bg-primary/90 h-14 text-lg font-bold rounded-lg shadow-primary/30 flex justify-between items-center text-primary-foreground w-full">
+                                        <div className="flex items-center gap-2">
+                                           <ShoppingCart className="h-6 w-6"/> 
+                                           <span>{totalCartItems} {totalCartItems > 1 ? 'Items' : 'Item'}</span>
+                                        </div>
+                                        <span>View Cart | ₹{subtotal}</span>
+                                    </Button>
+                                </div>
+                            </motion.div>
+                        )}
+                    </AnimatePresence>
+                </div>
             </footer>
         </div>
     );
 };
 
 const OrderPage = () => (
-    <Suspense fallback={<div className="min-h-screen bg-background flex items-center justify-center"><div className="animate-spin rounded-full h-16 w-16 border-b-2 border-green-600"></div></div>}>
+    <Suspense fallback={<div className="min-h-screen bg-background flex items-center justify-center"><div className="animate-spin rounded-full h-16 w-16 border-b-2 border-primary"></div></div>}>
         <OrderPageInternal />
     </Suspense>
 );

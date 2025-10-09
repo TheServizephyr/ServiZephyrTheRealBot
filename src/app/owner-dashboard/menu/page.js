@@ -45,7 +45,7 @@ const MenuItem = ({ item, index, onDelete, onEdit, onToggleAvailability }) => {
                 <motion.div
                     ref={provided.innerRef}
                     {...provided.draggableProps}
-                    className={`flex flex-col md:grid md:grid-cols-12 md:items-center p-3 rounded-lg gap-3 bg-gray-800/60 m-2 border border-gray-700 ${snapshot.isDragging ? 'bg-indigo-500/20 shadow-lg ring-2 ring-indigo-400' : ''}`}
+                    className={`flex flex-col md:grid md:grid-cols-12 md:items-center p-3 rounded-lg gap-3 bg-card m-2 border border-border ${snapshot.isDragging ? 'bg-primary/10 shadow-lg ring-2 ring-primary' : ''}`}
                     whileHover={{ 
                         y: -2,
                         backgroundColor: "hsl(var(--primary) / 0.1)"
@@ -66,11 +66,11 @@ const MenuItem = ({ item, index, onDelete, onEdit, onToggleAvailability }) => {
                             )}
                         </div>
                         <div className="flex-grow text-left">
-                            <p className="font-semibold text-white">{item.name}</p>
+                            <p className="font-semibold text-foreground">{item.name}</p>
                             {item.description && <p className="text-xs text-muted-foreground">{item.description}</p>}
                         </div>
                     </div>
-                    <div className="md:col-span-2 font-medium flex justify-around items-center text-white">
+                    <div className="md:col-span-2 font-medium flex justify-around items-center text-foreground">
                         <span className="text-center">
                             {displayPortion ? `₹${displayPortion.price}` : 'N/A'}
                             {item.portions.length > 1 && <span className="text-xs text-muted-foreground"> ({item.portions.length} sizes)</span>}
@@ -82,8 +82,8 @@ const MenuItem = ({ item, index, onDelete, onEdit, onToggleAvailability }) => {
                             <Switch checked={item.isAvailable} onCheckedChange={() => onToggleAvailability(item.id, !item.isAvailable)} aria-label="Toggle Availability" />
                         </div>
                     </div>
-                    <div className="md:col-span-3 flex justify-center gap-2 pt-2 border-t border-gray-700 md:border-t-0 md:pt-0">
-                        <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-white" onClick={() => onEdit(item)}>
+                    <div className="md:col-span-3 flex justify-center gap-2 pt-2 border-t border-border md:border-t-0 md:pt-0">
+                        <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-foreground" onClick={() => onEdit(item)}>
                             <Edit size={16} />
                         </Button>
                         <Button variant="ghost" size="icon" className="text-destructive h-8 w-8 hover:bg-destructive/10 hover:text-destructive" onClick={() => onDelete(item.id)}>
@@ -122,19 +122,19 @@ const MenuCategory = ({ categoryId, title, icon, items, onDeleteItem, onEditItem
     return (
         <motion.div 
             layout 
-            className="bg-gray-900/50 border border-gray-700 rounded-xl overflow-hidden"
+            className="bg-card border border-border rounded-xl overflow-hidden"
             transition={{ type: "spring", stiffness: 300, damping: 20 }}
         >
-            <button className="flex items-center justify-between w-full p-4 hover:bg-gray-800/50 transition-colors" onClick={() => setOpen(isExpanded ? null : categoryId)}>
+            <button className="flex items-center justify-between w-full p-4 hover:bg-muted/50 transition-colors" onClick={() => setOpen(isExpanded ? null : categoryId)}>
                 <div className="flex items-center gap-3">
                     <div className="bg-primary/10 p-3 rounded-full">
                         <Icon className="h-6 w-6 text-primary" />
                     </div>
-                    <h3 className="text-lg font-semibold text-white">{title}</h3>
+                    <h3 className="text-lg font-semibold text-foreground">{title}</h3>
                     <span className="text-sm text-muted-foreground font-mono bg-muted px-2 py-0.5 rounded-md">({items.length})</span>
                 </div>
                 <motion.div animate={{ rotate: isExpanded ? 180 : 0 }}>
-                    <ChevronDown size={24} className="text-white"/>
+                    <ChevronDown size={24} className="text-foreground"/>
                 </motion.div>
             </button>
             <AnimatePresence>
@@ -146,7 +146,7 @@ const MenuCategory = ({ categoryId, title, icon, items, onDeleteItem, onEditItem
                         transition={{ duration: 0.3, ease: "easeInOut" }}
                         className="overflow-hidden"
                     >
-                        <div className="hidden md:grid grid-cols-12 items-center px-3 py-2 text-sm font-semibold text-muted-foreground bg-black/20">
+                        <div className="hidden md:grid grid-cols-12 items-center px-3 py-2 text-sm font-semibold text-muted-foreground bg-background">
                             <div className="col-span-1"></div>
                             <div className="col-span-4">Item</div>
                             <div className="col-span-2 text-center">Base Price</div>
@@ -329,7 +329,7 @@ const AddItemModal = ({ isOpen, setIsOpen, onSave, editingItem, allCategories })
 
     return (
         <Dialog open={isOpen} onOpenChange={setIsOpen}>
-            <DialogContent className="sm:max-w-4xl bg-gray-900 border-gray-700 text-white">
+            <DialogContent className="sm:max-w-4xl bg-card border-border text-foreground">
                 <form onSubmit={handleSubmit}>
                     <DialogHeader>
                         <DialogTitle>{editingItem ? 'Edit Menu Item' : 'Add New Menu Item'}</DialogTitle>
@@ -342,15 +342,15 @@ const AddItemModal = ({ isOpen, setIsOpen, onSave, editingItem, allCategories })
                         <div className="space-y-4">
                             <div className="grid grid-cols-4 items-center gap-4">
                                 <Label htmlFor="name" className="text-right">Name</Label>
-                                <input id="name" value={item.name} onChange={e => handleChange('name', e.target.value)} required placeholder="e.g., Veg Pulao" className="col-span-3 p-2 border rounded-md bg-gray-800 border-gray-600 ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2" />
+                                <input id="name" value={item.name} onChange={e => handleChange('name', e.target.value)} required placeholder="e.g., Veg Pulao" className="col-span-3 p-2 border rounded-md bg-input border-border ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2" />
                             </div>
                             <div className="grid grid-cols-4 items-center gap-4">
                                 <Label htmlFor="description" className="text-right">Description</Label>
-                                <input id="description" value={item.description} onChange={e => handleChange('description', e.target.value)} placeholder="e.g., 10 Pcs." className="col-span-3 p-2 border rounded-md bg-gray-800 border-gray-600 ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2" />
+                                <input id="description" value={item.description} onChange={e => handleChange('description', e.target.value)} placeholder="e.g., 10 Pcs." className="col-span-3 p-2 border rounded-md bg-input border-border ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2" />
                             </div>
                             <div className="grid grid-cols-4 items-center gap-4">
                                 <Label htmlFor="category" className="text-right">Category</Label>
-                                <select id="category" value={item.categoryId} onChange={e => handleChange('categoryId', e.target.value)} disabled={!!editingItem} className="col-span-3 p-2 border rounded-md bg-gray-800 border-gray-600 ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:opacity-70">
+                                <select id="category" value={item.categoryId} onChange={e => handleChange('categoryId', e.target.value)} disabled={!!editingItem} className="col-span-3 p-2 border rounded-md bg-input border-border ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:opacity-70">
                                     {Object.keys(allCategories).map((key) => (
                                         <option key={key} value={key}>{allCategories[key].title}</option>
                                     ))}
@@ -358,7 +358,7 @@ const AddItemModal = ({ isOpen, setIsOpen, onSave, editingItem, allCategories })
                             </div>
                             <div className="grid grid-cols-4 items-center gap-4">
                                 <Label htmlFor="tags" className="text-right">Tags</Label>
-                                <input id="tags" value={item.tags} onChange={e => handleChange('tags', e.target.value)} placeholder="e.g., Spicy, Chef's Special" className="col-span-3 p-2 border rounded-md bg-gray-800 border-gray-600 ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2" />
+                                <input id="tags" value={item.tags} onChange={e => handleChange('tags', e.target.value)} placeholder="e.g., Spicy, Chef's Special" className="col-span-3 p-2 border rounded-md bg-input border-border ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2" />
                             </div>
                              <div className="flex items-center justify-end gap-4 pt-4">
                                 <div className="flex items-center space-x-2">
@@ -379,9 +379,9 @@ const AddItemModal = ({ isOpen, setIsOpen, onSave, editingItem, allCategories })
                                 <div className="mt-2 space-y-3">
                                     {item.portions.map((portion, index) => (
                                         <div key={index} className="flex items-center gap-2">
-                                            <input value={portion.name} onChange={(e) => handlePortionChange(index, 'name', e.target.value)} placeholder="e.g., Half" className="flex-1 p-2 border rounded-md bg-gray-800 border-gray-600" required/>
+                                            <input value={portion.name} onChange={(e) => handlePortionChange(index, 'name', e.target.value)} placeholder="e.g., Half" className="flex-1 p-2 border rounded-md bg-input border-border" required/>
                                             <IndianRupee className="text-muted-foreground" size={16}/>
-                                            <input type="number" value={portion.price} onChange={(e) => handlePortionChange(index, 'price', e.target.value)} placeholder="Price" className="w-24 p-2 border rounded-md bg-gray-800 border-gray-600" required/>
+                                            <input type="number" value={portion.price} onChange={(e) => handlePortionChange(index, 'price', e.target.value)} placeholder="Price" className="w-24 p-2 border rounded-md bg-input border-border" required/>
                                             <Button type="button" variant="ghost" size="icon" className="text-destructive" onClick={() => removePortion(index)} disabled={item.portions.length <= 1}>
                                                 <Trash2 size={16}/>
                                             </Button>
@@ -392,19 +392,19 @@ const AddItemModal = ({ isOpen, setIsOpen, onSave, editingItem, allCategories })
                                     </Button>
                                 </div>
                             </div>
-                            <div className="border-t border-gray-700 pt-4">
+                            <div className="border-t border-border pt-4">
                                 <Label>Add-on Groups (Optional)</Label>
                                 <div className="mt-2 space-y-4">
                                     {item.addOnGroups.map((group, groupIndex) => (
-                                        <div key={groupIndex} className="p-3 bg-gray-800/50 border border-gray-700 rounded-lg space-y-3">
+                                        <div key={groupIndex} className="p-3 bg-muted/50 border border-border rounded-lg space-y-3">
                                             <div className="flex items-center gap-2">
-                                                <input value={group.title} onChange={(e) => handleAddOnGroupChange(groupIndex, 'title', e.target.value)} placeholder="Group Title (e.g., Breads)" className="flex-1 p-2 border rounded-md bg-gray-700 border-gray-600 text-white font-semibold" />
+                                                <input value={group.title} onChange={(e) => handleAddOnGroupChange(groupIndex, 'title', e.target.value)} placeholder="Group Title (e.g., Breads)" className="flex-1 p-2 border rounded-md bg-input border-border text-foreground font-semibold" />
                                                 <Button type="button" variant="ghost" size="icon" className="text-destructive" onClick={() => removeAddOnGroup(groupIndex)}><Trash2 size={16}/></Button>
                                             </div>
                                             {group.options.map((opt, optIndex) => (
                                                  <div key={optIndex} className="flex items-center gap-2">
-                                                    <input value={opt.name} onChange={(e) => handleAddOnOptionChange(groupIndex, optIndex, 'name', e.target.value)} placeholder="Option name" className="flex-1 p-2 border rounded-md bg-gray-800 border-gray-600"/>
-                                                    <input type="number" value={opt.price} onChange={(e) => handleAddOnOptionChange(groupIndex, optIndex, 'price', e.target.value)} placeholder="Price" className="w-24 p-2 border rounded-md bg-gray-800 border-gray-600"/>
+                                                    <input value={opt.name} onChange={(e) => handleAddOnOptionChange(groupIndex, optIndex, 'name', e.target.value)} placeholder="Option name" className="flex-1 p-2 border rounded-md bg-input border-border"/>
+                                                    <input type="number" value={opt.price} onChange={(e) => handleAddOnOptionChange(groupIndex, optIndex, 'price', e.target.value)} placeholder="Price" className="w-24 p-2 border rounded-md bg-input border-border"/>
                                                     <Button type="button" variant="ghost" size="icon" className="text-destructive" onClick={() => removeAddOnOption(groupIndex, optIndex)} disabled={group.options.length <= 1}><Trash2 size={16}/></Button>
                                                  </div>
                                             ))}
@@ -424,7 +424,7 @@ const AddItemModal = ({ isOpen, setIsOpen, onSave, editingItem, allCategories })
                         <DialogClose asChild>
                            <Button type="button" variant="secondary" disabled={isSaving}>Cancel</Button>
                         </DialogClose>
-                        <Button type="submit" disabled={isSaving} className="bg-indigo-600 hover:bg-indigo-700">
+                        <Button type="submit" disabled={isSaving} className="bg-primary hover:bg-primary/90 text-primary-foreground">
                             {isSaving ? (
                                 <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
                             ) : (
@@ -553,7 +553,7 @@ export default function MenuPage() {
   }
 
   return (
-    <div className="p-4 md:p-6 space-y-6">
+    <div className="p-4 md:p-6 space-y-6 bg-background text-foreground min-h-screen">
       <AddItemModal 
         isOpen={isModalOpen} 
         setIsOpen={setIsModalOpen}
@@ -565,12 +565,12 @@ export default function MenuPage() {
       {/* Header */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
-            <h1 className="text-3xl md:text-4xl font-bold tracking-tight text-white">Menu Management</h1>
+            <h1 className="text-3xl md:text-4xl font-bold tracking-tight text-foreground">Menu Management</h1>
             <p className="text-muted-foreground mt-1">Organize categories, reorder items, and manage availability.</p>
         </div>
         <MotionButton 
           onClick={handleAddNewItem}
-          className="bg-indigo-600 text-white hover:bg-indigo-700"
+          className="bg-primary text-primary-foreground hover:bg-primary/90"
           whileHover={{ scale: 1.05 }}
           whileTap={{ scale: 0.95 }}
         >
@@ -580,10 +580,10 @@ export default function MenuPage() {
       </div>
 
       {/* Search & Bulk Actions Bar */}
-      <div className="flex flex-col md:flex-row justify-between items-center gap-4 p-3 bg-gray-800/50 border border-gray-700 rounded-xl">
+      <div className="flex flex-col md:flex-row justify-between items-center gap-4 p-3 bg-card border border-border rounded-xl">
         <div className="flex items-center gap-2 w-full max-w-sm">
             <Search size={20} className="text-muted-foreground"/>
-            <input placeholder="Search for a dish..." className="w-full bg-transparent focus:outline-none placeholder-gray-500 dark:placeholder-gray-400 text-white"/>
+            <input placeholder="Search for a dish..." className="w-full bg-transparent focus:outline-none placeholder-muted-foreground text-foreground"/>
         </div>
       </div>
       
