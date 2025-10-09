@@ -59,7 +59,7 @@ export async function GET(request, { params }) {
         const firestore = getFirestore();
         const { restaurantId } = params;
         const { searchParams } = new URL(request.url);
-        const customerId = searchParams.get('customerId');
+        const phone = searchParams.get('phone'); // Changed from customerId to phone
 
         if (!restaurantId) {
             return NextResponse.json({ message: 'Restaurant ID is missing.' }, { status: 400 });
@@ -81,6 +81,16 @@ export async function GET(request, { params }) {
         
         // Base query for general, active coupons
         const generalCouponsQuery = couponsRef.where('status', '==', 'Active').where('customerId', '==', null);
+
+        let customerId = null;
+        if (phone) {
+            const usersRef = firestore.collection('users');
+            const userQuery = await usersRef.where('phone', '==', phone).limit(1).get();
+            if (!userQuery.empty) {
+                customerId = userQuery.docs[0].id;
+            }
+        }
+
 
         // Fetch everything concurrently
         const promises = [

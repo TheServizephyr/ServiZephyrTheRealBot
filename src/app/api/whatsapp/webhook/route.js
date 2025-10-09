@@ -107,8 +107,9 @@ export async function POST(request) {
             welcomeMessage = `Welcome to ${restaurantName}! 😃`;
         }
 
-        const menuUrl = `https://servizephyr.com/order/${restaurantId}?phone=${from}`;
-        const reply_body = `${welcomeMessage}\n\nWhat would you like to order today? You can view our full menu and place your order by clicking the link below:\n\n${menuUrl}`;
+        // Generate a relative path instead of a full URL
+        const menuUrl = `/order/${restaurantId}?phone=${from}`;
+        const reply_body = `${welcomeMessage}\n\nWhat would you like to order today? You can view our full menu and place your order by clicking the link below:\n\nNote: This link will work on the deployed website.\n${menuUrl}`;
         
         // Send the reply message to the original number with country code
         await sendMessage(fromWithCode, reply_body);
