@@ -262,8 +262,8 @@ const BannerCarousel = ({ images, onClick, restaurantName, logoUrl }) => {
     }, [images.length]);
   
     return (
-      <div className="relative h-48 w-full cursor-pointer group" onClick={onClick}>
-        <div className="absolute inset-0 overflow-hidden">
+      <div className="relative h-48 w-full group mb-12">
+        <div className="absolute inset-0 overflow-hidden cursor-pointer" onClick={onClick}>
             <AnimatePresence initial={false}>
             <motion.div
                 key={index}
@@ -283,17 +283,17 @@ const BannerCarousel = ({ images, onClick, restaurantName, logoUrl }) => {
             </motion.div>
             </AnimatePresence>
         </div>
-        <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/30 to-transparent"></div>
-        <div className="absolute bottom-[-1px] left-0 right-0 p-4">
-             <div className="container mx-auto bg-black/50 backdrop-blur-md border border-white/20 rounded-xl p-3 flex items-center justify-between">
+        <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-black/20 to-transparent"></div>
+        <div className="absolute bottom-[-3rem] left-0 right-0 px-4">
+             <div className="container mx-auto bg-background shadow-lg border border-border rounded-xl p-3 flex items-center justify-between">
                 {logoUrl && (
-                    <div className="relative w-16 h-16 rounded-lg overflow-hidden border-2 border-white shadow-md flex-shrink-0">
+                    <div className="relative w-16 h-16 rounded-lg overflow-hidden border-2 border-border shadow-md flex-shrink-0">
                         <Image src={logoUrl} alt={`${restaurantName} logo`} layout="fill" objectFit="cover" />
                     </div>
                 )}
                 <div className="text-right">
-                    <span className="block text-sm font-normal text-white/90">Ordering from</span>
-                    <h1 className="font-sans text-2xl md:text-3xl font-bold text-white">
+                    <span className="block text-sm font-normal text-muted-foreground">Ordering from</span>
+                    <h1 className="font-sans text-2xl md:text-3xl font-bold text-foreground">
                         {restaurantName}
                     </h1>
                 </div>
