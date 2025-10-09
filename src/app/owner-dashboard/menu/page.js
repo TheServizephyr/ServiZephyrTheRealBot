@@ -192,8 +192,12 @@ const AddItemModal = ({ isOpen, setIsOpen, onSave, editingItem, allCategories })
     const [showNewCategory, setShowNewCategory] = useState(false);
 
     const sortedCategories = Object.entries(allCategories)
-        .map(([id, {title}]) => ({ id, title }))
-        .sort((a, b) => a.title.localeCompare(b.title));
+        .map(([id, config]) => ({ id, title: config?.title }))
+        .sort((a, b) => {
+            if (!a.title) return 1;
+            if (!b.title) return -1;
+            return a.title.localeCompare(b.title);
+        });
 
     useEffect(() => {
         if (isOpen) {
@@ -297,7 +301,10 @@ const AddItemModal = ({ isOpen, setIsOpen, onSave, editingItem, allCategories })
         e.preventDefault();
         if (!item || isSaving) return;
         
-        if (showNewCategory && !newCategory.trim()) {
+        const finalCategoryId = showNewCategory ? newCategory.trim().toLowerCase().replace(/\s+/g, '-') : item.categoryId;
+        const finalNewCategoryName = showNewCategory ? newCategory.trim() : '';
+
+        if (showNewCategory && !finalNewCategoryName) {
             alert("Please enter a name for the new category.");
             return;
         }
@@ -335,16 +342,17 @@ const AddItemModal = ({ isOpen, setIsOpen, onSave, editingItem, allCategories })
                 imageUrl: item.imageUrl || `https://picsum.photos/seed/${item.name.replace(/\s/g, '')}/100/100`,
                 tags: tagsArray,
                 addOnGroups: finalAddOnGroups,
-                categoryId: showNewCategory ? newCategory : item.categoryId, // Pass categoryId correctly
+                categoryId: finalCategoryId,
             };
+            
 
             if (!newItemData.name) {
                 alert("Please provide an item name.");
                 setIsSaving(false);
                 return;
             }
-
-            await onSave(newItemData, item.categoryId, showNewCategory ? newCategory : '', !!editingItem);
+            
+            await onSave(newItemData, item.categoryId, finalNewCategoryName, !!editingItem);
             setIsOpen(false);
         } catch (error) {
             // Error alert is handled in the parent `handleSaveItem`
