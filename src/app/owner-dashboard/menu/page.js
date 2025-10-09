@@ -645,7 +645,7 @@ export default function MenuPage() {
             const titleA = allCategories[a]?.title;
             const titleB = allCategories[b]?.title;
             if (!titleA) return 1;
-            if (!b.title) return -1;
+            if (!titleB) return -1;
             return titleA.localeCompare(titleB);
           }).map(categoryId => {
             const config = allCategories[categoryId];
