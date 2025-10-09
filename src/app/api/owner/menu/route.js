@@ -32,10 +32,12 @@ async function seedInitialMenu(firestore, restaurantId) {
     const batch = firestore.batch();
 
     const initialItems = [
-        { name: 'Paneer Tikka', description: 'Tandoor-cooked cottage cheese', portions: [{name: 'Half', price: 180}, {name: 'Full', price: 280}], isVeg: true, isAvailable: true, categoryId: 'starters', order: 1, imageUrl: `https://picsum.photos/seed/paneertikka/100/100`, tags: ["Bestseller"] },
-        { name: 'Chilli Chicken', description: 'Spicy diced chicken', portions: [{name: 'Half', price: 200}, {name: 'Full', price: 320}], isVeg: false, isAvailable: true, categoryId: 'starters', order: 2, imageUrl: `https://picsum.photos/seed/chillichicken/100/100`, tags: ["Most Reordered"] },
-        { name: 'Dal Makhani', description: 'Creamy black lentils', portions: [{name: 'Full', price: 250}], isVeg: true, isAvailable: true, categoryId: 'main-course', order: 1, imageUrl: `https://picsum.photos/seed/dalmakhani/100/100` },
-        { name: 'Veg Steamed Momos', description: '8 Pcs, served with chutney', portions: [{name: 'Full', price: 120}], isVeg: true, isAvailable: true, categoryId: 'momos', order: 1, imageUrl: `https://picsum.photos/seed/vegmomos/100/100`, tags: ["Chef's Special"] },
+        { name: 'Paneer Tikka', description: 'Tandoor-cooked cottage cheese', portions: [{name: 'Half', price: 180}, {name: 'Full', price: 280}], isVeg: true, isAvailable: true, categoryId: 'starters', order: 1, imageUrl: `https://picsum.photos/seed/paneertikka/100/100`, tags: ["Bestseller"], addOnGroups: [] },
+        { name: 'Chilli Chicken', description: 'Spicy diced chicken', portions: [{name: 'Half', price: 200}, {name: 'Full', price: 320}], isVeg: false, isAvailable: true, categoryId: 'starters', order: 2, imageUrl: `https://picsum.photos/seed/chillichicken/100/100`, tags: ["Most Reordered"], addOnGroups: [] },
+        { name: 'Dal Makhani', description: 'Creamy black lentils', portions: [{name: 'Full', price: 250}], isVeg: true, isAvailable: true, categoryId: 'main-course', order: 1, imageUrl: `https://picsum.photos/seed/dalmakhani/100/100`, addOnGroups: [
+            { title: "Select Your Bread", options: [{name: "Tandoori Roti", price: 15}, {name: "Butter Naan", price: 30}], required: true, type: "radio" },
+        ]},
+        { name: 'Veg Steamed Momos', description: '8 Pcs, served with chutney', portions: [{name: 'Full', price: 120}], isVeg: true, isAvailable: true, categoryId: 'momos', order: 1, imageUrl: `https://picsum.photos/seed/vegmomos/100/100`, tags: ["Chef's Special"], addOnGroups: [] },
     ];
     
     initialItems.forEach(itemData => {
@@ -122,13 +124,20 @@ export async function POST(req) {
         if (!item || !item.name || !item.portions || item.portions.length === 0) {
             return NextResponse.json({ message: 'Missing required item data. Name and at least one portion are required.' }, { status: 400 });
         }
-
+        
         const menuRef = firestore.collection('restaurants').doc(restaurantId).collection('menu');
         
+        // Ensure addOnGroups is an array, even if it's empty
+        const finalItem = {
+            ...item,
+            addOnGroups: item.addOnGroups || [],
+        };
+
+
         if (isEditing) {
             if (!item.id) return NextResponse.json({ message: 'Item ID is required for editing.' }, { status: 400 });
             const itemRef = menuRef.doc(item.id);
-            const { id, categoryId: ignoredCategoryId, order, createdAt, ...updateData } = item;
+            const { id, categoryId: ignoredCategoryId, order, createdAt, ...updateData } = finalItem;
             await itemRef.update(updateData);
             return NextResponse.json({ message: 'Item updated successfully!', id: item.id }, { status: 200 });
         } else {
@@ -136,7 +145,7 @@ export async function POST(req) {
             const maxOrder = categoryQuery.empty ? 0 : (categoryQuery.docs[0].data().order || 0);
             const newItemRef = menuRef.doc();
             await newItemRef.set({
-                ...item,
+                ...finalItem,
                 id: newItemRef.id,
                 categoryId: categoryId,
                 order: maxOrder + 1,

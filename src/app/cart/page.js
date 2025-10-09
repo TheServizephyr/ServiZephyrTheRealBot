@@ -148,9 +148,9 @@ const CartPageInternal = () => {
     
     const handleUpdateCart = (item, action) => {
         let newCart = [...cart];
-        // Unique identifier for cart item now includes portion
-        const cartItemId = `${item.id}-${item.portion.name}`;
-        const existingItemIndex = newCart.findIndex(cartItem => `${cartItem.id}-${cartItem.portion.name}` === cartItemId);
+        // Unique identifier for cart item now includes portion and add-ons
+        const cartItemId = item.cartItemId;
+        const existingItemIndex = newCart.findIndex(cartItem => cartItem.cartItemId === cartItemId);
 
         if (existingItemIndex > -1) {
             if (action === 'increment') {
@@ -183,7 +183,7 @@ const CartPageInternal = () => {
     };
 
 
-    const subtotal = useMemo(() => cart.reduce((sum, item) => sum + item.portion.price * item.quantity, 0), [cart]);
+    const subtotal = useMemo(() => cart.reduce((sum, item) => sum + item.totalPrice * item.quantity, 0), [cart]);
 
     const { totalDiscount, couponDiscount, specialCouponDiscount } = useMemo(() => {
         let couponDiscount = 0;
@@ -311,23 +311,32 @@ const CartPageInternal = () => {
                             <div className="flex justify-between items-center mb-3">
                                 <h3 className="font-bold text-lg">Your Items</h3>
                             </div>
-                            <div className="space-y-3">
+                            <div className="space-y-4">
                                 {cart.map(item => (
                                     <motion.div 
                                         layout
-                                        key={`${item.id}-${item.portion.name}`}
+                                        key={item.cartItemId}
                                         className="flex items-center gap-4"
                                     >
                                         <div className="flex-grow">
                                           <p className="font-semibold text-foreground">{item.name}</p>
                                           <p className="text-xs text-muted-foreground">{item.portion.name}</p>
+                                          {item.selectedAddOns && item.selectedAddOns.length > 0 && (
+                                            <ul className="mt-1 pl-4">
+                                                {item.selectedAddOns.map(addon => (
+                                                    <li key={addon.name} className="text-xs text-muted-foreground list-disc list-inside">
+                                                        {addon.name} (+₹{addon.price})
+                                                    </li>
+                                                ))}
+                                            </ul>
+                                          )}
                                         </div>
                                         <div className="flex items-center gap-2">
                                             <Button size="icon" variant="outline" className="h-7 w-7" onClick={() => handleUpdateCart(item, 'decrement')}>-</Button>
                                             <span className="font-bold w-5 text-center">{item.quantity}</span>
                                             <Button size="icon" variant="outline" className="h-7 w-7" onClick={() => handleUpdateCart(item, 'increment')}>+</Button>
                                         </div>
-                                        <p className="w-20 text-right font-bold">₹{item.portion.price * item.quantity}</p>
+                                        <p className="w-20 text-right font-bold">₹{item.totalPrice * item.quantity}</p>
                                     </motion.div>
                                 ))}
                             </div>

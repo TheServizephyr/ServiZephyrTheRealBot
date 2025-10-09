@@ -194,6 +194,7 @@ const AddItemModal = ({ isOpen, setIsOpen, onSave, editingItem, allCategories })
                 setItem({
                     ...editingItem,
                     tags: Array.isArray(editingItem.tags) ? editingItem.tags.join(', ') : '',
+                    addOnGroups: editingItem.addOnGroups || [],
                 });
             } else {
                 setItem({
@@ -205,6 +206,7 @@ const AddItemModal = ({ isOpen, setIsOpen, onSave, editingItem, allCategories })
                     isAvailable: true,
                     imageUrl: "",
                     tags: "",
+                    addOnGroups: [],
                 });
             }
         } else {
@@ -232,6 +234,41 @@ const AddItemModal = ({ isOpen, setIsOpen, onSave, editingItem, allCategories })
             setItem(prev => ({ ...prev, portions: newPortions }));
         }
     };
+    
+    // --- Add-on Group Handlers ---
+    const addAddOnGroup = () => {
+        setItem(prev => ({ ...prev, addOnGroups: [...prev.addOnGroups, { title: '', type: 'radio', required: false, options: [{name: '', price: ''}] }] }));
+    };
+
+    const removeAddOnGroup = (groupIndex) => {
+        setItem(prev => ({ ...prev, addOnGroups: prev.addOnGroups.filter((_, i) => i !== groupIndex) }));
+    };
+
+    const handleAddOnGroupChange = (groupIndex, field, value) => {
+        const newGroups = [...item.addOnGroups];
+        newGroups[groupIndex][field] = value;
+        setItem(prev => ({ ...prev, addOnGroups: newGroups }));
+    };
+    
+    const addAddOnOption = (groupIndex) => {
+        const newGroups = [...item.addOnGroups];
+        newGroups[groupIndex].options.push({ name: '', price: '' });
+        setItem(prev => ({ ...prev, addOnGroups: newGroups }));
+    };
+    
+    const removeAddOnOption = (groupIndex, optionIndex) => {
+        const newGroups = [...item.addOnGroups];
+        if (newGroups[groupIndex].options.length > 1) {
+            newGroups[groupIndex].options = newGroups[groupIndex].options.filter((_, i) => i !== optionIndex);
+            setItem(prev => ({ ...prev, addOnGroups: newGroups }));
+        }
+    };
+    
+    const handleAddOnOptionChange = (groupIndex, optionIndex, field, value) => {
+        const newGroups = [...item.addOnGroups];
+        newGroups[groupIndex].options[optionIndex][field] = value;
+        setItem(prev => ({ ...prev, addOnGroups: newGroups }));
+    };
 
 
     const handleSubmit = async (e) => {
@@ -241,10 +278,20 @@ const AddItemModal = ({ isOpen, setIsOpen, onSave, editingItem, allCategories })
         setIsSaving(true);
         try {
             const tagsArray = item.tags ? item.tags.split(',').map(tag => tag.trim()).filter(Boolean) : [];
+            
             const finalPortions = item.portions
               .filter(p => p.name.trim() && p.price)
               .map(p => ({ name: p.name.trim(), price: parseFloat(p.price) }));
             
+            const finalAddOnGroups = item.addOnGroups
+                .filter(g => g.title.trim() && g.options.some(opt => opt.name.trim() && opt.price))
+                .map(g => ({
+                    ...g,
+                    options: g.options
+                        .filter(opt => opt.name.trim() && opt.price)
+                        .map(opt => ({ name: opt.name.trim(), price: parseFloat(opt.price) }))
+                }));
+
             if (finalPortions.length === 0) {
                 alert("Please add at least one valid portion with a name and price.");
                 setIsSaving(false);
@@ -260,6 +307,7 @@ const AddItemModal = ({ isOpen, setIsOpen, onSave, editingItem, allCategories })
                 isAvailable: item.isAvailable,
                 imageUrl: item.imageUrl || `https://picsum.photos/seed/${item.name.replace(/\s/g, '')}/100/100`,
                 tags: tagsArray,
+                addOnGroups: finalAddOnGroups,
             };
 
             if (!newItemData.name) {
@@ -281,7 +329,7 @@ const AddItemModal = ({ isOpen, setIsOpen, onSave, editingItem, allCategories })
 
     return (
         <Dialog open={isOpen} onOpenChange={setIsOpen}>
-            <DialogContent className="sm:max-w-[620px] bg-gray-900 border-gray-700 text-white">
+            <DialogContent className="sm:max-w-4xl bg-gray-900 border-gray-700 text-white">
                 <form onSubmit={handleSubmit}>
                     <DialogHeader>
                         <DialogTitle>{editingItem ? 'Edit Menu Item' : 'Add New Menu Item'}</DialogTitle>
@@ -289,57 +337,86 @@ const AddItemModal = ({ isOpen, setIsOpen, onSave, editingItem, allCategories })
                             {editingItem ? 'Update the details for this dish.' : "Fill in the details for the new dish. Click save when you're done."}
                         </DialogDescription>
                     </DialogHeader>
-                    <div className="grid gap-4 py-4 max-h-[70vh] overflow-y-auto pr-4">
-                        
-                        <div className="grid grid-cols-4 items-center gap-4">
-                            <Label htmlFor="name" className="text-right">Name</Label>
-                            <input id="name" value={item.name} onChange={e => handleChange('name', e.target.value)} required placeholder="e.g., Veg Pulao" className="col-span-3 p-2 border rounded-md bg-gray-800 border-gray-600 ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2" />
-                        </div>
-                        <div className="grid grid-cols-4 items-center gap-4">
-                            <Label htmlFor="description" className="text-right">Description</Label>
-                            <input id="description" value={item.description} onChange={e => handleChange('description', e.target.value)} placeholder="e.g., 10 Pcs." className="col-span-3 p-2 border rounded-md bg-gray-800 border-gray-600 ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2" />
-                        </div>
-                        
-                        <div>
-                          <Label className="text-right grid grid-cols-4">Portions</Label>
-                          <div className="col-span-4 mt-2 space-y-3">
-                              {item.portions.map((portion, index) => (
-                                <div key={index} className="flex items-center gap-2">
-                                  <input value={portion.name} onChange={(e) => handlePortionChange(index, 'name', e.target.value)} placeholder="e.g., Half" className="flex-1 p-2 border rounded-md bg-gray-800 border-gray-600"/>
-                                  <IndianRupee className="text-muted-foreground" size={16}/>
-                                  <input type="number" value={portion.price} onChange={(e) => handlePortionChange(index, 'price', e.target.value)} placeholder="Price" className="w-24 p-2 border rounded-md bg-gray-800 border-gray-600"/>
-                                  <Button type="button" variant="ghost" size="icon" className="text-destructive" onClick={() => removePortion(index)} disabled={item.portions.length <= 1}>
-                                    <Trash2 size={16}/>
-                                  </Button>
-                                </div>
-                              ))}
-                              <Button type="button" variant="outline" size="sm" onClick={addPortion}>
-                                <PlusCircle size={16} className="mr-2"/> Add Portion
-                              </Button>
-                          </div>
-                        </div>
-
-
-                        <div className="grid grid-cols-4 items-center gap-4">
-                            <Label htmlFor="category" className="text-right">Category</Label>
-                            <select id="category" value={item.categoryId} onChange={e => handleChange('categoryId', e.target.value)} disabled={!!editingItem} className="col-span-3 p-2 border rounded-md bg-gray-800 border-gray-600 ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:opacity-70">
-                                {Object.keys(allCategories).map((key) => (
-                                    <option key={key} value={key}>{allCategories[key].title}</option>
-                                ))}
-                            </select>
-                        </div>
-                        <div className="grid grid-cols-4 items-center gap-4">
-                            <Label htmlFor="tags" className="text-right">Tags</Label>
-                            <input id="tags" value={item.tags} onChange={e => handleChange('tags', e.target.value)} placeholder="e.g., Spicy, Chef's Special" className="col-span-3 p-2 border rounded-md bg-gray-800 border-gray-600 ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2" />
-                        </div>
-                        <div className="flex items-center justify-end gap-4 pt-4">
-                            <div className="flex items-center space-x-2">
-                               <Switch id="is-veg" checked={item.isVeg} onCheckedChange={checked => handleChange('isVeg', checked)} />
-                               <Label htmlFor="is-veg">Vegetarian</Label>
+                    <div className="grid md:grid-cols-2 gap-x-8 gap-y-4 py-4 max-h-[70vh] overflow-y-auto pr-4">
+                        {/* Left Column: Basic Details */}
+                        <div className="space-y-4">
+                            <div className="grid grid-cols-4 items-center gap-4">
+                                <Label htmlFor="name" className="text-right">Name</Label>
+                                <input id="name" value={item.name} onChange={e => handleChange('name', e.target.value)} required placeholder="e.g., Veg Pulao" className="col-span-3 p-2 border rounded-md bg-gray-800 border-gray-600 ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2" />
                             </div>
-                            <div className="flex items-center space-x-2">
-                               <Switch id="is-available" checked={item.isAvailable} onCheckedChange={checked => handleChange('isAvailable', checked)} />
-                               <Label htmlFor="is-available">Available</Label>
+                            <div className="grid grid-cols-4 items-center gap-4">
+                                <Label htmlFor="description" className="text-right">Description</Label>
+                                <input id="description" value={item.description} onChange={e => handleChange('description', e.target.value)} placeholder="e.g., 10 Pcs." className="col-span-3 p-2 border rounded-md bg-gray-800 border-gray-600 ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2" />
+                            </div>
+                            <div className="grid grid-cols-4 items-center gap-4">
+                                <Label htmlFor="category" className="text-right">Category</Label>
+                                <select id="category" value={item.categoryId} onChange={e => handleChange('categoryId', e.target.value)} disabled={!!editingItem} className="col-span-3 p-2 border rounded-md bg-gray-800 border-gray-600 ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:opacity-70">
+                                    {Object.keys(allCategories).map((key) => (
+                                        <option key={key} value={key}>{allCategories[key].title}</option>
+                                    ))}
+                                </select>
+                            </div>
+                            <div className="grid grid-cols-4 items-center gap-4">
+                                <Label htmlFor="tags" className="text-right">Tags</Label>
+                                <input id="tags" value={item.tags} onChange={e => handleChange('tags', e.target.value)} placeholder="e.g., Spicy, Chef's Special" className="col-span-3 p-2 border rounded-md bg-gray-800 border-gray-600 ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2" />
+                            </div>
+                             <div className="flex items-center justify-end gap-4 pt-4">
+                                <div className="flex items-center space-x-2">
+                                   <Switch id="is-veg" checked={item.isVeg} onCheckedChange={checked => handleChange('isVeg', checked)} />
+                                   <Label htmlFor="is-veg">Vegetarian</Label>
+                                </div>
+                                <div className="flex items-center space-x-2">
+                                   <Switch id="is-available" checked={item.isAvailable} onCheckedChange={checked => handleChange('isAvailable', checked)} />
+                                   <Label htmlFor="is-available">Available</Label>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Right Column: Portions & Add-ons */}
+                        <div className="space-y-4">
+                           <div>
+                                <Label>Portions</Label>
+                                <div className="mt-2 space-y-3">
+                                    {item.portions.map((portion, index) => (
+                                        <div key={index} className="flex items-center gap-2">
+                                            <input value={portion.name} onChange={(e) => handlePortionChange(index, 'name', e.target.value)} placeholder="e.g., Half" className="flex-1 p-2 border rounded-md bg-gray-800 border-gray-600" required/>
+                                            <IndianRupee className="text-muted-foreground" size={16}/>
+                                            <input type="number" value={portion.price} onChange={(e) => handlePortionChange(index, 'price', e.target.value)} placeholder="Price" className="w-24 p-2 border rounded-md bg-gray-800 border-gray-600" required/>
+                                            <Button type="button" variant="ghost" size="icon" className="text-destructive" onClick={() => removePortion(index)} disabled={item.portions.length <= 1}>
+                                                <Trash2 size={16}/>
+                                            </Button>
+                                        </div>
+                                    ))}
+                                    <Button type="button" variant="outline" size="sm" onClick={addPortion}>
+                                        <PlusCircle size={16} className="mr-2"/> Add Portion
+                                    </Button>
+                                </div>
+                            </div>
+                            <div className="border-t border-gray-700 pt-4">
+                                <Label>Add-on Groups (Optional)</Label>
+                                <div className="mt-2 space-y-4">
+                                    {item.addOnGroups.map((group, groupIndex) => (
+                                        <div key={groupIndex} className="p-3 bg-gray-800/50 border border-gray-700 rounded-lg space-y-3">
+                                            <div className="flex items-center gap-2">
+                                                <input value={group.title} onChange={(e) => handleAddOnGroupChange(groupIndex, 'title', e.target.value)} placeholder="Group Title (e.g., Breads)" className="flex-1 p-2 border rounded-md bg-gray-700 border-gray-600 text-white font-semibold" />
+                                                <Button type="button" variant="ghost" size="icon" className="text-destructive" onClick={() => removeAddOnGroup(groupIndex)}><Trash2 size={16}/></Button>
+                                            </div>
+                                            {group.options.map((opt, optIndex) => (
+                                                 <div key={optIndex} className="flex items-center gap-2">
+                                                    <input value={opt.name} onChange={(e) => handleAddOnOptionChange(groupIndex, optIndex, 'name', e.target.value)} placeholder="Option name" className="flex-1 p-2 border rounded-md bg-gray-800 border-gray-600"/>
+                                                    <input type="number" value={opt.price} onChange={(e) => handleAddOnOptionChange(groupIndex, optIndex, 'price', e.target.value)} placeholder="Price" className="w-24 p-2 border rounded-md bg-gray-800 border-gray-600"/>
+                                                    <Button type="button" variant="ghost" size="icon" className="text-destructive" onClick={() => removeAddOnOption(groupIndex, optIndex)} disabled={group.options.length <= 1}><Trash2 size={16}/></Button>
+                                                 </div>
+                                            ))}
+                                            <Button type="button" variant="outline" size="sm" onClick={() => addAddOnOption(groupIndex)}>
+                                                <PlusCircle size={16} className="mr-2"/> Add Option
+                                            </Button>
+                                        </div>
+                                    ))}
+                                    <Button type="button" variant="outline" onClick={addAddOnGroup}>
+                                       <PlusCircle size={16} className="mr-2"/> Add Add-on Group
+                                    </Button>
+                                </div>
                             </div>
                         </div>
                     </div>
