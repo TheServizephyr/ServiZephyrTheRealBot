@@ -37,7 +37,9 @@ const categoryConfig = {
 
 const MenuItem = ({ item, index, onDelete, onEdit, onToggleAvailability }) => {
     // Determine the price to display. Find the 'Full' price, or the first price if 'Full' doesn't exist.
-    const displayPortion = item.portions.find(p => p.name.toLowerCase() === 'full') || item.portions[0];
+    const displayPortion = (item.portions && item.portions.length > 0)
+        ? item.portions.find(p => p.name.toLowerCase() === 'full') || item.portions[0]
+        : null;
 
     return (
         <Draggable draggableId={item.id} index={index}>
@@ -73,7 +75,7 @@ const MenuItem = ({ item, index, onDelete, onEdit, onToggleAvailability }) => {
                     <div className="md:col-span-2 font-medium flex justify-around items-center text-foreground">
                         <span className="text-center">
                             {displayPortion ? `₹${displayPortion.price}` : 'N/A'}
-                            {item.portions.length > 1 && <span className="text-xs text-muted-foreground"> ({item.portions.length} sizes)</span>}
+                            {item.portions && item.portions.length > 1 && <span className="text-xs text-muted-foreground"> ({item.portions.length} sizes)</span>}
                         </span>
                     </div>
                     <div className="md:col-span-2 flex justify-center items-center">

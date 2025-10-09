@@ -128,9 +128,10 @@ export async function POST(req) {
         
         const menuRef = firestore.collection('restaurants').doc(restaurantId).collection('menu');
         
-        // Ensure addOnGroups is an array, even if it's empty
+        // Ensure addOnGroups and portions are arrays, even if they're empty
         const finalItem = {
             ...item,
+            portions: item.portions || [],
             addOnGroups: item.addOnGroups || [],
         };
 
