@@ -1,4 +1,5 @@
 
+
 'use client';
 
 import React, { useState, useEffect, Suspense, useMemo } from 'react';
@@ -24,39 +25,39 @@ const CustomizationDrawer = ({ item, isOpen, onClose, onAddToCart }) => {
             // Initialize add-ons state
             const initialAddOns = {};
             (item.addOnGroups || []).forEach(group => {
-                initialAddOns[group.title] = group.type === 'checkbox' ? [] : null;
+                // Always initialize as an array for multi-select
+                initialAddOns[group.title] = [];
             });
             setSelectedAddOns(initialAddOns);
         }
     }, [item]);
 
-    const handleAddOnSelect = (groupTitle, addOn, groupType) => {
+    const handleAddOnSelect = (groupTitle, addOn) => {
         setSelectedAddOns(prev => {
             const newSelections = { ...prev };
-            if (groupType === 'checkbox') {
-                const currentSelection = newSelections[groupTitle] || [];
-                const isSelected = currentSelection.some(a => a.name === addOn.name);
-                if (isSelected) {
-                    newSelections[groupTitle] = currentSelection.filter(a => a.name !== addOn.name);
-                } else {
-                    newSelections[groupTitle] = [...currentSelection, addOn];
-                }
-            } else { // radio
-                newSelections[groupTitle] = addOn;
+            const currentSelection = newSelections[groupTitle] || [];
+            const isSelected = currentSelection.some(a => a.name === addOn.name);
+
+            if (isSelected) {
+                // If it's already selected, remove it
+                newSelections[groupTitle] = currentSelection.filter(a => a.name !== addOn.name);
+            } else {
+                // If not selected, add it
+                newSelections[groupTitle] = [...currentSelection, addOn];
             }
             return newSelections;
         });
     };
+    
 
     const totalPrice = useMemo(() => {
         if (!selectedPortion) return 0;
         let total = selectedPortion.price;
         for (const groupTitle in selectedAddOns) {
             const selection = selectedAddOns[groupTitle];
-            if (Array.isArray(selection)) { // checkbox
+            // Always treat selection as an array of addons
+            if (Array.isArray(selection)) {
                 total += selection.reduce((sum, addon) => sum + addon.price, 0);
-            } else if (selection) { // radio
-                total += selection.price;
             }
         }
         return total;
@@ -117,21 +118,19 @@ const CustomizationDrawer = ({ item, isOpen, onClose, onAddToCart }) => {
                                 <div key={group.title} className="space-y-2 pt-4 border-t border-dashed border-border">
                                     <h4 className="font-semibold text-lg">{group.title}</h4>
                                      {group.options.map(option => {
-                                        const isSelected = group.type === 'checkbox' 
-                                            ? (selectedAddOns[group.title] || []).some(a => a.name === option.name)
-                                            : selectedAddOns[group.title]?.name === option.name;
+                                        const isSelected = (selectedAddOns[group.title] || []).some(a => a.name === option.name);
                                         
                                         return (
                                             <div
                                                 key={option.name}
-                                                onClick={() => handleAddOnSelect(group.title, option, group.type)}
+                                                onClick={() => handleAddOnSelect(group.title, option)}
                                                 className={cn(
                                                     "flex justify-between items-center p-3 rounded-lg border cursor-pointer transition-all",
                                                     isSelected ? "border-primary bg-primary/10" : "border-border hover:bg-muted"
                                                 )}
                                             >
                                                 <div className="flex items-center gap-3">
-                                                    <div className={cn("w-5 h-5 border-2 flex items-center justify-center", isSelected ? 'border-primary bg-primary' : 'border-muted-foreground', group.type === 'radio' ? 'rounded-full' : 'rounded-sm')}>
+                                                    <div className={cn("w-5 h-5 border-2 flex items-center justify-center rounded-sm", isSelected ? 'border-primary bg-primary' : 'border-muted-foreground')}>
                                                         {isSelected && <Check className="h-4 w-4 text-primary-foreground" />}
                                                     </div>
                                                     <span className="font-medium">{option.name}</span>
