@@ -729,7 +729,7 @@ export default function MenuPage() {
                     items={items}
                     onDeleteItem={handleDeleteItem}
                     onEditItem={handleEditItem}
-                    onToggleAvailability={onToggleAvailability}
+                    onToggleAvailability={handleToggleAvailability}
                     setMenu={setMenu}
                     open={openCategory}
                     setOpen={setOpenCategory}
@@ -741,4 +741,3 @@ export default function MenuPage() {
   );
 }
 
-    
