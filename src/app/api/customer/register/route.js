@@ -146,7 +146,7 @@ export async function POST(req) {
              const ownerPhoneWithCode = '91' + ownerPhone;
              // This is the pre-approved Message Template payload
              const notificationPayload = {
-                name: "new_order_alert", // Name of the template in WhatsApp Manager
+                name: "new_order_notification", // CORRECTED/STANDARD TEMPLATE NAME
                 language: { code: "en_US" },
                 components: [
                     {
