@@ -4,7 +4,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { PlusCircle, GripVertical, Trash2, Edit, Image as ImageIcon, Search, X, Utensils, Pizza, Soup, Drumstick, Salad, CakeSlice, GlassWater, ChevronDown, IndianRupee, Upload } from "lucide-react";
+import { PlusCircle, GripVertical, Trash2, Edit, Image as ImageIcon, Search, X, Utensils, Pizza, Soup, Drumstick, Salad, CakeSlice, GlassWater, ChevronDown, IndianRupee, Upload, Copy, FileJson } from "lucide-react";
 import Image from "next/image";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose } from "@/components/ui/dialog";
@@ -100,7 +100,7 @@ const MenuItem = ({ item, index, onDelete, onEdit, onToggleAvailability }) => {
 
 
 
-const MenuCategory = ({ categoryId, title, icon, items, onDeleteItem, onEditItem, onToggleAvailability, setMenu, open, setOpen }) => {
+const MenuCategory = ({ categoryId, title, icon, items, onDeleteItem, onEditItem, handleToggleAvailability, setMenu, open, setOpen }) => {
     const Icon = icon;
     const isExpanded = open === categoryId;
 
@@ -170,7 +170,7 @@ const MenuCategory = ({ categoryId, title, icon, items, onDeleteItem, onEditItem
                                     index={index}
                                     onDelete={() => onDeleteItem(item.id)}
                                     onEdit={onEditItem}
-                                    onToggleAvailability={onToggleAvailability}
+                                    onToggleAvailability={handleToggleAvailability}
                                     />
                                 ))}
                                 {provided.placeholder}
@@ -548,6 +548,126 @@ const AddItemModal = ({ isOpen, setIsOpen, onSave, editingItem, allCategories })
     );
 };
 
+const BulkAddModal = ({ isOpen, setIsOpen, onSave }) => {
+    const [jsonText, setJsonText] = useState('');
+    const [isSaving, setIsSaving] = useState(false);
+    const [copySuccess, setCopySuccess] = useState('');
+
+    const aiPrompt = `You are an expert menu data extractor. Convert the following restaurant menu text into a structured JSON array. Each object in the array must strictly follow this format:
+{
+  "name": "string (Dish name)",
+  "description": "string (Optional dish description)",
+  "categoryId": "string (Lowercase, dash-separated, e.g., 'main-course', 'starters', 'beverages')",
+  "isVeg": "boolean (true for vegetarian, false for non-vegetarian)",
+  "portions": [
+    { "name": "string (e.g., 'Full', 'Half', 'Regular')", "price": "number" }
+  ],
+  "tags": ["string", "... (Optional array of tags like 'Bestseller', 'Spicy')"],
+  "addOnGroups": [
+    { 
+      "title": "string (e.g., 'Choose your bread')", 
+      "options": [
+        { "name": "string (e.g., 'Tandoori Roti')", "price": "number" },
+        ...
+      ]
+    },
+    ...
+  ]
+}
+
+Important Rules:
+- If a dish has only one price, create a single entry in the 'portions' array with the name "Full".
+- If a category is not obvious, use a sensible default like 'main-course'.
+- If veg/non-veg status is not clear, assume 'isVeg: true'.
+- The final output must be ONLY the JSON array, with no extra text or explanations.
+
+Here is the menu text:
+---
+[PASTE YOUR MENU TEXT HERE]
+---`;
+
+    const handleCopy = () => {
+        navigator.clipboard.writeText(aiPrompt).then(() => {
+            setCopySuccess('Prompt Copied!');
+            setTimeout(() => setCopySuccess(''), 2000);
+        }, () => {
+            setCopySuccess('Failed to copy!');
+            setTimeout(() => setCopySuccess(''), 2000);
+        });
+    };
+    
+    const handleSubmit = async () => {
+        let items;
+        try {
+            items = JSON.parse(jsonText);
+            if (!Array.isArray(items)) throw new Error("JSON data must be an array.");
+        } catch (error) {
+            alert(`Invalid JSON format: ${error.message}`);
+            return;
+        }
+
+        setIsSaving(true);
+        try {
+            await onSave(items);
+            setJsonText('');
+            setIsOpen(false);
+        } catch (error) {
+            // alert is handled by the parent
+        } finally {
+            setIsSaving(false);
+        }
+    };
+
+    return (
+        <Dialog open={isOpen} onOpenChange={setIsOpen}>
+            <DialogContent className="sm:max-w-4xl bg-card border-border text-foreground">
+                <DialogHeader>
+                    <DialogTitle className="flex items-center gap-2 text-2xl"><FileJson /> Bulk Add Items via JSON</DialogTitle>
+                    <DialogDescription>Quickly add multiple items by pasting a structured JSON array.</DialogDescription>
+                </DialogHeader>
+                <div className="grid md:grid-cols-2 gap-x-8 max-h-[70vh] overflow-y-auto pr-4">
+                    <div className="space-y-4 py-4">
+                        <h3 className="font-semibold text-lg">How to use:</h3>
+                        <ol className="list-decimal list-inside space-y-2 text-sm text-muted-foreground">
+                            <li>Copy the AI prompt provided.</li>
+                            <li>Go to an AI tool like ChatGPT or Gemini.</li>
+                            <li>Paste the prompt, and then paste your menu text where it says `[PASTE YOUR MENU TEXT HERE]`.</li>
+                            <li>The AI will generate a JSON array. Copy the entire JSON code.</li>
+                            <li>Paste the copied JSON code into the text area on this page.</li>
+                            <li>Click "Upload & Save Items".</li>
+                        </ol>
+                        <div className="p-4 bg-muted rounded-lg">
+                            <div className="flex justify-between items-center mb-2">
+                                <Label className="font-semibold">AI Prompt for JSON Generation</Label>
+                                <Button size="sm" variant="ghost" onClick={handleCopy}>
+                                    <Copy size={14} className="mr-2"/> {copySuccess || 'Copy'}
+                                </Button>
+                            </div>
+                            <p className="text-xs bg-background p-3 rounded-md font-mono whitespace-pre-wrap">{aiPrompt}</p>
+                        </div>
+                    </div>
+                    <div className="py-4">
+                        <Label htmlFor="json-input" className="font-semibold text-lg">Paste JSON Here</Label>
+                        <textarea
+                            id="json-input"
+                            value={jsonText}
+                            onChange={(e) => setJsonText(e.target.value)}
+                            placeholder='[&#10;  {&#10;    "name": "Paneer Butter Masala",&#10;    "categoryId": "main-course",&#10;    ...&#10;  },&#10;  ...&#10;]'
+                            className="w-full h-96 mt-2 p-3 font-mono text-sm border rounded-md bg-input border-border focus:ring-primary focus:border-primary"
+                        />
+                    </div>
+                </div>
+                <DialogFooter>
+                    <DialogClose asChild><Button type="button" variant="secondary" disabled={isSaving}>Cancel</Button></DialogClose>
+                    <Button onClick={handleSubmit} disabled={isSaving || !jsonText} className="bg-primary hover:bg-primary/90 text-primary-foreground">
+                        {isSaving ? 'Uploading...' : 'Upload & Save Items'}
+                    </Button>
+                </DialogFooter>
+            </DialogContent>
+        </Dialog>
+    );
+};
+
 
 const MotionButton = motion(Button);
 
@@ -557,6 +677,7 @@ export default function MenuPage() {
   const [customCategories, setCustomCategories] = useState([]);
   const [loading, setLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isBulkModalOpen, setIsBulkModalOpen] = useState(false);
   const [editingItem, setEditingItem] = useState(null);
   const [openCategory, setOpenCategory] = useState("starters");
   
@@ -615,6 +736,18 @@ export default function MenuPage() {
         console.error("Error saving item:", error);
         alert("Could not save item. " + error.message);
         throw error; // Re-throw to keep modal open
+    }
+  };
+
+  const handleBulkSave = async (items) => {
+    try {
+        const data = await handleApiCall('/api/owner/menu-bulk', 'POST', { items });
+        alert(data.message);
+        await fetchMenu();
+    } catch (error) {
+        console.error("Error saving bulk items:", error);
+        alert(`Could not save bulk items: ${error.message}`);
+        throw error;
     }
   };
 
@@ -682,21 +815,38 @@ export default function MenuPage() {
         allCategories={allCategories}
       />
 
+      <BulkAddModal
+        isOpen={isBulkModalOpen}
+        setIsOpen={setIsBulkModalOpen}
+        onSave={handleBulkSave}
+      />
+
       {/* Header */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
             <h1 className="text-3xl md:text-4xl font-bold tracking-tight text-foreground">Menu Management</h1>
             <p className="text-muted-foreground mt-1">Organize categories, reorder items, and manage availability.</p>
         </div>
-        <MotionButton 
-          onClick={handleAddNewItem}
-          className="bg-primary text-primary-foreground hover:bg-primary/90"
-          whileHover={{ scale: 1.05 }}
-          whileTap={{ scale: 0.95 }}
-        >
-          <PlusCircle size={20} className="mr-2" />
-          Add New Item
-        </MotionButton>
+        <div className="flex gap-2">
+            <MotionButton
+                onClick={() => setIsBulkModalOpen(true)}
+                variant="outline"
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
+            >
+                <FileJson size={20} className="mr-2" />
+                Bulk Add via JSON
+            </MotionButton>
+            <MotionButton 
+                onClick={handleAddNewItem}
+                className="bg-primary text-primary-foreground hover:bg-primary/90"
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
+            >
+                <PlusCircle size={20} className="mr-2" />
+                Add New Item
+            </MotionButton>
+        </div>
       </div>
 
       {/* Search & Bulk Actions Bar */}
@@ -729,7 +879,7 @@ export default function MenuPage() {
                     items={items}
                     onDeleteItem={handleDeleteItem}
                     onEditItem={handleEditItem}
-                    onToggleAvailability={handleToggleAvailability}
+                    handleToggleAvailability={handleToggleAvailability}
                     setMenu={setMenu}
                     open={openCategory}
                     setOpen={setOpenCategory}
@@ -740,4 +890,3 @@ export default function MenuPage() {
     </div>
   );
 }
-
