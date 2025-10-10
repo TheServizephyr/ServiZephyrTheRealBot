@@ -51,6 +51,8 @@ export async function POST(request) {
             const buttonId = buttonReply.id; // e.g., "accept_order_ORDER_ID" or "reject_order_ORDER_ID"
             const fromNumber = message.from; // Owner's number
             const businessPhoneNumberId = change.value.metadata.phone_number_id;
+            
+            console.log(`[Webhook Debug] Button pressed. ID: ${buttonId}, From: ${fromNumber}`);
 
             const [action, orderId] = buttonId.split('_order_');
             
@@ -72,6 +74,8 @@ export async function POST(request) {
                     const customerPhoneWithCode = '91' + orderData.customerPhone; // Assuming Indian numbers
                     
                     const confirmationMessage = `🎉 Your order #${orderId.substring(0, 5)} from *${orderData.restaurantName}* has been confirmed!\n\nWe've started preparing your meal. We will notify you at every step.`;
+                    
+                    console.log(`[Webhook Debug] Sending confirmation to customer: ${customerPhoneWithCode}`);
                     await sendWhatsAppMessage(customerPhoneWithCode, confirmationMessage, businessPhoneNumberId);
                 }
 
@@ -109,7 +113,7 @@ export async function POST(request) {
             const restaurantName = restaurantData.name;
             const ownerId = restaurantData.ownerId;
 
-            console.log(`[Webhook] Matched to restaurant: ${restaurantName} (ID: ${restaurantId}) owned by UID: ${ownerId}`);
+            console.log(`[Webhook Debug] Matched to restaurant: ${restaurantName} (ID: ${restaurantId})`);
             
             // 2. Find the owner's phone number using the ownerId
             const ownerRef = firestore.collection('users').doc(ownerId);
@@ -136,6 +140,7 @@ export async function POST(request) {
             const menuUrl = `https://servizephyr.com/order/${restaurantId}?phone=${customerPhone}`;
             const reply_body = `${welcomeMessage}\n\nWhat would you like to order today? You can view our full menu and place your order by clicking the link below:\n\n${menuUrl}`;
             
+            console.log(`[Webhook Debug] Sending welcome message to customer: ${fromWithCode}`);
             await sendWhatsAppMessage(fromWithCode, reply_body, botPhoneNumberId);
         }
         

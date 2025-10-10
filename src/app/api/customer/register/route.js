@@ -138,6 +138,9 @@ export async function POST(req) {
             }
         }
         
+        // --- DEBUG CONSOLE LOG ---
+        console.log(`[Order API Debug] Attempting to send notification. Owner Phone: ${ownerPhone}, Bot ID: ${businessPhoneNumberId}`);
+
         // 2. Check if we have both numbers before attempting to send
         if (ownerPhone && businessPhoneNumberId) {
              const ownerPhoneWithCode = '91' + ownerPhone;
@@ -168,6 +171,8 @@ export async function POST(req) {
                     }
                 ]
             };
+            // --- DEBUG CONSOLE LOG ---
+            console.log('[Order API Debug] Payload prepared. Sending message to:', ownerPhoneWithCode, 'using bot ID:', businessPhoneNumberId);
             // Use the centralized function to send the message
             await sendWhatsAppMessage(ownerPhoneWithCode, notificationPayload, businessPhoneNumberId);
         } else {
