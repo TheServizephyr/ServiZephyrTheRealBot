@@ -191,6 +191,7 @@ const AddItemModal = ({ isOpen, setIsOpen, onSave, editingItem, allCategories })
     const [newCategory, setNewCategory] = useState('');
     const [showNewCategory, setShowNewCategory] = useState(false);
     const fileInputRef = useRef(null);
+    const [pricingType, setPricingType] = useState('portions');
 
     const sortedCategories = Object.entries(allCategories)
         .map(([id, config]) => ({ id, title: config?.title }))
@@ -206,12 +207,22 @@ const AddItemModal = ({ isOpen, setIsOpen, onSave, editingItem, allCategories })
             setNewCategory('');
             setShowNewCategory(false);
             if (editingItem) {
+                const hasMultiplePortions = editingItem.portions && editingItem.portions.length > 1;
+                const hasDifferentPortionName = editingItem.portions && editingItem.portions.length === 1 && editingItem.portions[0].name.toLowerCase() !== 'full';
+                
+                if (hasMultiplePortions || hasDifferentPortionName) {
+                    setPricingType('portions');
+                } else {
+                    setPricingType('single');
+                }
+                
                 setItem({
                     ...editingItem,
                     tags: Array.isArray(editingItem.tags) ? editingItem.tags.join(', ') : '',
                     addOnGroups: editingItem.addOnGroups || [],
                 });
             } else {
+                setPricingType('portions');
                 setItem({
                     name: "",
                     description: "",
@@ -250,6 +261,11 @@ const AddItemModal = ({ isOpen, setIsOpen, onSave, editingItem, allCategories })
         newPortions[index][field] = value;
         setItem(prev => ({ ...prev, portions: newPortions }));
     };
+    
+    const handleBasePriceChange = (value) => {
+        setItem(prev => ({ ...prev, portions: [{ name: 'Full', price: value }] }));
+    };
+
 
     const addPortion = () => {
         setItem(prev => ({ ...prev, portions: [...prev.portions, { name: '', price: '' }] }));
@@ -324,9 +340,20 @@ const AddItemModal = ({ isOpen, setIsOpen, onSave, editingItem, allCategories })
         try {
             const tagsArray = item.tags ? item.tags.split(',').map(tag => tag.trim()).filter(Boolean) : [];
             
-            const finalPortions = item.portions
-              .filter(p => p.name.trim() && p.price)
-              .map(p => ({ name: p.name.trim(), price: parseFloat(p.price) }));
+            let finalPortions;
+            if (pricingType === 'single') {
+                const basePrice = item.portions?.[0]?.price;
+                if (!basePrice || isNaN(parseFloat(basePrice))) {
+                    alert("Please enter a valid base price.");
+                    setIsSaving(false);
+                    return;
+                }
+                finalPortions = [{ name: 'Full', price: parseFloat(basePrice) }];
+            } else {
+                 finalPortions = item.portions
+                  .filter(p => p.name.trim() && p.price && !isNaN(parseFloat(p.price)))
+                  .map(p => ({ name: p.name.trim(), price: parseFloat(p.price) }));
+            }
             
             const finalAddOnGroups = item.addOnGroups
                 .filter(g => g.title.trim() && g.options.some(opt => opt.name.trim() && opt.price))
@@ -444,21 +471,35 @@ const AddItemModal = ({ isOpen, setIsOpen, onSave, editingItem, allCategories })
                         {/* Right Column: Portions & Add-ons */}
                         <div className="space-y-4">
                            <div>
-                                <Label>Portions</Label>
-                                <div className="mt-2 space-y-3">
-                                    {item.portions.map((portion, index) => (
-                                        <div key={index} className="flex items-center gap-2">
-                                            <input value={portion.name} onChange={(e) => handlePortionChange(index, 'name', e.target.value)} placeholder="e.g., Half" className="flex-1 p-2 border rounded-md bg-input border-border" required/>
+                                <Label>Pricing</Label>
+                                <div className="flex items-center gap-2 mt-2 bg-muted p-1 rounded-lg">
+                                    <Button type="button" onClick={() => setPricingType('single')} variant={pricingType === 'single' ? 'default' : 'ghost'} className={cn("flex-1", pricingType === 'single' && 'bg-background text-foreground shadow-sm')}>Single Price</Button>
+                                    <Button type="button" onClick={() => setPricingType('portions')} variant={pricingType === 'portions' ? 'default' : 'ghost'} className={cn("flex-1", pricingType === 'portions' && 'bg-background text-foreground shadow-sm')}>Variable Portions</Button>
+                                </div>
+                                <div className="mt-3 space-y-3">
+                                    {pricingType === 'single' ? (
+                                        <div className="flex items-center gap-2">
+                                            <Label className="w-24">Base Price</Label>
                                             <IndianRupee className="text-muted-foreground" size={16}/>
-                                            <input type="number" value={portion.price} onChange={(e) => handlePortionChange(index, 'price', e.target.value)} placeholder="Price" className="w-24 p-2 border rounded-md bg-input border-border" required/>
-                                            <Button type="button" variant="ghost" size="icon" className="text-destructive" onClick={() => removePortion(index)} disabled={item.portions.length <= 1}>
-                                                <Trash2 size={16}/>
-                                            </Button>
+                                            <input type="number" value={item.portions?.[0]?.price || ''} onChange={(e) => handleBasePriceChange(e.target.value)} placeholder="e.g., 150" className="flex-1 p-2 border rounded-md bg-input border-border" required/>
                                         </div>
-                                    ))}
-                                    <Button type="button" variant="outline" size="sm" onClick={addPortion}>
-                                        <PlusCircle size={16} className="mr-2"/> Add Portion
-                                    </Button>
+                                    ) : (
+                                        <>
+                                            {item.portions.map((portion, index) => (
+                                                <div key={index} className="flex items-center gap-2">
+                                                    <input value={portion.name} onChange={(e) => handlePortionChange(index, 'name', e.target.value)} placeholder="e.g., Half" className="flex-1 p-2 border rounded-md bg-input border-border" required/>
+                                                    <IndianRupee className="text-muted-foreground" size={16}/>
+                                                    <input type="number" value={portion.price} onChange={(e) => handlePortionChange(index, 'price', e.target.value)} placeholder="Price" className="w-24 p-2 border rounded-md bg-input border-border" required/>
+                                                    <Button type="button" variant="ghost" size="icon" className="text-destructive" onClick={() => removePortion(index)} disabled={item.portions.length <= 1}>
+                                                        <Trash2 size={16}/>
+                                                    </Button>
+                                                </div>
+                                            ))}
+                                            <Button type="button" variant="outline" size="sm" onClick={addPortion}>
+                                                <PlusCircle size={16} className="mr-2"/> Add Portion
+                                            </Button>
+                                        </>
+                                    )}
                                 </div>
                             </div>
                             <div className="border-t border-border pt-4">
@@ -688,7 +729,7 @@ export default function MenuPage() {
                     items={items}
                     onDeleteItem={handleDeleteItem}
                     onEditItem={handleEditItem}
-                    onToggleAvailability={handleToggleAvailability}
+                    onToggleAvailability={onToggleAvailability}
                     setMenu={setMenu}
                     open={openCategory}
                     setOpen={setOpenCategory}
@@ -699,3 +740,5 @@ export default function MenuPage() {
     </div>
   );
 }
+
+    
