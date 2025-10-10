@@ -2,35 +2,7 @@
 import { firestore as adminFirestore } from 'firebase-admin';
 import { getFirestore } from '@/lib/firebase-admin';
 import { NextResponse } from 'next/server';
-import axios from 'axios';
-
-// Function to send a WhatsApp message using an external API or service
-const sendWhatsAppMessage = async (phoneNumber, payload, businessPhoneNumberId) => {
-    const ACCESS_TOKEN = process.env.WHATSAPP_ACCESS_TOKEN;
-    if (!ACCESS_TOKEN || !businessPhoneNumberId) {
-        console.error("WhatsApp credentials (Access Token or Business Phone ID) are not configured.");
-        return;
-    }
-    try {
-        await axios({
-            method: 'POST',
-            url: `https://graph.facebook.com/v19.0/${businessPhoneNumberId}/messages`,
-            headers: {
-                'Authorization': `Bearer ${ACCESS_TOKEN}`,
-                'Content-Type': 'application/json'
-            },
-            data: {
-                messaging_product: 'whatsapp',
-                to: phoneNumber,
-                type: 'template',
-                template: payload
-            }
-        });
-        console.log(`[Order API] Successfully sent WhatsApp notification to ${phoneNumber}.`);
-    } catch (error) {
-        console.error(`[Order API] Failed to send WhatsApp message to ${phoneNumber}:`, error.response ? error.response.data : error.message);
-    }
-};
+import { sendWhatsAppMessage } from '@/lib/whatsapp';
 
 export async function POST(req) {
     try {
@@ -152,13 +124,13 @@ export async function POST(req) {
 
         await batch.commit();
 
-        // --- NEW: SEND WHATSAPP NOTIFICATION TO OWNER ---
-        // CORRECTED LOGIC: Use the restaurantData object fetched at the beginning
+        // --- SEND WHATSAPP NOTIFICATION TO OWNER ---
         const ownerPhone = restaurantData.ownerPhone;
         const businessPhoneNumberId = restaurantData.botPhoneNumberId;
 
         if (ownerPhone && businessPhoneNumberId) {
              const ownerPhoneWithCode = '91' + ownerPhone;
+             // This is the pre-approved Message Template payload
              const notificationPayload = {
                 name: "new_order_alert", // Name of the template in WhatsApp Manager
                 language: { code: "en_US" },
@@ -185,6 +157,7 @@ export async function POST(req) {
                     }
                 ]
             };
+            // Use the centralized function to send the message
             await sendWhatsAppMessage(ownerPhoneWithCode, notificationPayload, businessPhoneNumberId);
         } else {
             console.warn(`[Order API] Owner phone or Bot ID not found for restaurant ${restaurantId}. Cannot send notification.`);

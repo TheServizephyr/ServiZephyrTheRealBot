@@ -1,36 +1,10 @@
 
 // A simple, robust webhook handler for Next.js App Router, optimized for Vercel.
 import { NextResponse } from 'next/server';
-import axios from 'axios';
-import { getFirestore, getAuth } from '@/lib/firebase-admin';
-import { firestore as adminFirestore } from 'firebase-admin';
+import { getFirestore } from '@/lib/firebase-admin';
+import { sendWhatsAppMessage } from '@/lib/whatsapp';
 
-// These are your secret tokens and IDs. In production, Vercel will provide these.
 const VERIFY_TOKEN = process.env.WHATSAPP_VERIFY_TOKEN;
-const ACCESS_TOKEN = process.env.WHATSAPP_ACCESS_TOKEN;
-
-// Main function to send a message
-const sendMessage = async (phoneNumber, payload, businessPhoneNumberId) => {
-    try {
-        const messagePayload = typeof payload === 'string' ? { text: { body: payload } } : payload;
-        await axios({
-            method: 'POST',
-            url: `https://graph.facebook.com/v19.0/${businessPhoneNumberId}/messages`,
-            headers: {
-                'Authorization': `Bearer ${ACCESS_TOKEN}`,
-                'Content-Type': 'application/json'
-            },
-            data: {
-                messaging_product: 'whatsapp',
-                to: phoneNumber,
-                ...messagePayload
-            }
-        });
-        console.log(`[Webhook] Sent message to ${phoneNumber}`);
-    } catch (error) {
-        console.error('[Webhook] Error sending message:', error.response ? error.response.data : error.message);
-    }
-};
 
 // Handles GET requests for webhook verification
 export async function GET(request) {
@@ -76,6 +50,7 @@ export async function POST(request) {
             const buttonReply = message.interactive.button_reply;
             const buttonId = buttonReply.id; // e.g., "accept_order_ORDER_ID" or "reject_order_ORDER_ID"
             const fromNumber = message.from; // Owner's number
+            const businessPhoneNumberId = change.value.metadata.phone_number_id;
 
             const [action, orderId] = buttonId.split('_order_');
             
@@ -96,26 +71,18 @@ export async function POST(request) {
                     const orderData = orderDoc.data();
                     const customerPhoneWithCode = '91' + orderData.customerPhone; // Assuming Indian numbers
                     
-                    // Fetch restaurant to get the correct botPhoneNumberId
-                    const restaurant = await firestore.collection('restaurants').doc(orderData.restaurantId).get();
-                    if(restaurant.exists){
-                         const restaurantData = restaurant.data();
-                         const businessPhoneNumberId = restaurantData.botPhoneNumberId;
-                         const confirmationMessage = `🎉 Your order #${orderId.substring(0, 5)} from *${orderData.restaurantName}* has been confirmed!\n\nWe've started preparing your meal. We will notify you at every step.`;
-                         await sendMessage(customerPhoneWithCode, confirmationMessage, businessPhoneNumberId);
-                    }
+                    const confirmationMessage = `🎉 Your order #${orderId.substring(0, 5)} from *${orderData.restaurantName}* has been confirmed!\n\nWe've started preparing your meal. We will notify you at every step.`;
+                    await sendWhatsAppMessage(customerPhoneWithCode, confirmationMessage, businessPhoneNumberId);
                 }
 
             } else if (action === 'reject') {
                 await orderRef.delete();
                 console.log(`[Webhook] Order ${orderId} rejected and deleted by owner.`);
-                // Optionally, notify the owner that the order was rejected.
-                // You could also notify the customer about the rejection.
+                // Optionally, notify the customer about the rejection in the future.
             }
             
             // Acknowledge the button press to the owner
-            const metadata = change.value.metadata;
-            await sendMessage(fromNumber, { text: { body: `✅ Action complete: Order ${action.charAt(0).toUpperCase() + action.slice(1)}ed.` } }, metadata.phone_number_id);
+            await sendWhatsAppMessage(fromNumber, `✅ Action complete: Order ${action.charAt(0).toUpperCase() + action.slice(1)}ed.`, businessPhoneNumberId);
 
         } 
         // --- Logic for Standard Text Messages (Customer Welcome) ---
@@ -132,7 +99,7 @@ export async function POST(request) {
 
             if (restaurantQuery.empty) {
                 console.error(`[Webhook] No restaurant found for Bot Phone Number ID: ${botPhoneNumberId}`);
-                await sendMessage(fromWithCode, "We're sorry, we couldn't identify the restaurant you're trying to reach.", botPhoneNumberId);
+                await sendWhatsAppMessage(fromWithCode, "We're sorry, we couldn't identify the restaurant you're trying to reach.", botPhoneNumberId);
                 return NextResponse.json({ message: 'Restaurant not found' }, { status: 404 });
             }
             
@@ -154,7 +121,7 @@ export async function POST(request) {
             const menuUrl = `https://servizephyr.com/order/${restaurantId}?phone=${from}`;
             const reply_body = `${welcomeMessage}\n\nWhat would you like to order today? You can view our full menu and place your order by clicking the link below:\n\n${menuUrl}`;
             
-            await sendMessage(fromWithCode, reply_body, botPhoneNumberId);
+            await sendWhatsAppMessage(fromWithCode, reply_body, botPhoneNumberId);
         }
         
         return NextResponse.json({ message: 'Event received' }, { status: 200 });
