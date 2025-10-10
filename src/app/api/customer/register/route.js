@@ -20,7 +20,7 @@ export async function POST(req) {
         const restaurantRef = firestore.collection('restaurants').doc(restaurantId);
         const restaurantDoc = await restaurantRef.get();
         if (!restaurantDoc.exists) {
-            return NextResponse_json({ message: 'This restaurant does not exist.' }, { status: 404 });
+            return NextResponse.json({ message: 'This restaurant does not exist.' }, { status: 404 });
         }
         const restaurantData = restaurantDoc.data();
         const ownerId = restaurantData.ownerId; // Get ownerId from restaurant data

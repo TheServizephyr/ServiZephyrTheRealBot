@@ -1,3 +1,4 @@
+
 import axios from 'axios';
 
 const ACCESS_TOKEN = process.env.WHATSAPP_ACCESS_TOKEN;
@@ -37,8 +38,10 @@ export const sendWhatsAppMessage = async (phoneNumber, payload, businessPhoneNum
         };
     }
     
+    console.log("[WhatsApp Lib] Sending payload:", JSON.stringify(dataPayload, null, 2));
+
     try {
-        await axios({
+        const response = await axios({
             method: 'POST',
             url: `https://graph.facebook.com/v19.0/${businessPhoneNumberId}/messages`,
             headers: {
@@ -47,9 +50,9 @@ export const sendWhatsAppMessage = async (phoneNumber, payload, businessPhoneNum
             },
             data: dataPayload
         });
-        console.log(`[WhatsApp Lib] Successfully sent message to ${phoneNumber}.`);
+        console.log(`[WhatsApp Lib] Successfully sent message to ${phoneNumber}. Response:`, JSON.stringify(response.data, null, 2));
     } catch (error) {
-        console.error(`[WhatsApp Lib] Failed to send message to ${phoneNumber}:`, error.response ? error.response.data : error.message);
+        console.error(`[WhatsApp Lib] Failed to send message to ${phoneNumber}:`, error.response ? JSON.stringify(error.response.data, null, 2) : error.message);
         // Optionally re-throw the error if the caller needs to handle it
         // throw error;
     }

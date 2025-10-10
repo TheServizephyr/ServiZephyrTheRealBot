@@ -12,6 +12,8 @@ import { sendWhatsAppMessage } from './whatsapp';
  * @param {string} params.orderId - The unique ID of the new order.
  */
 export const sendNewOrderToOwner = async ({ ownerPhone, botPhoneNumberId, customerName, totalAmount, orderId }) => {
+    console.log('[Notification Lib] Called sendNewOrderToOwner with:', { ownerPhone, botPhoneNumberId, customerName, totalAmount, orderId });
+
     if (!ownerPhone || !botPhoneNumberId) {
         console.warn(`[Notification Lib] Owner phone or Bot ID not found for this restaurant. Cannot send new order notification.`);
         return;
@@ -65,12 +67,13 @@ export const sendNewOrderToOwner = async ({ ownerPhone, botPhoneNumberId, custom
  * @param {string} params.restaurantName - The name of the restaurant.
  */
 export const sendOrderConfirmationToCustomer = async ({ customerPhone, botPhoneNumberId, customerName, orderId, restaurantName }) => {
+    console.log('[Notification Lib] Called sendOrderConfirmationToCustomer with:', { customerPhone, botPhoneNumberId, customerName, orderId, restaurantName });
     const customerPhoneWithCode = '91 ' + customerPhone;
 
     // This is the pre-approved Message Template payload for 'order_status_update'
     const statusPayload = {
         name: "order_status_update",
-        language: { code: "en" }, // Or en_US, depending on your template
+        language: { code: "en" },
         components: [
             {
                 type: "body",
