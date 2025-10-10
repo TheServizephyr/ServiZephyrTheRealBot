@@ -2,9 +2,9 @@
 
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { PlusCircle, GripVertical, Trash2, Edit, Image as ImageIcon, Search, X, Utensils, Pizza, Soup, Drumstick, Salad, CakeSlice, GlassWater, ChevronDown, IndianRupee } from "lucide-react";
+import { PlusCircle, GripVertical, Trash2, Edit, Image as ImageIcon, Search, X, Utensils, Pizza, Soup, Drumstick, Salad, CakeSlice, GlassWater, ChevronDown, IndianRupee, Upload } from "lucide-react";
 import Image from "next/image";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose } from "@/components/ui/dialog";
@@ -190,6 +190,7 @@ const AddItemModal = ({ isOpen, setIsOpen, onSave, editingItem, allCategories })
     const [isSaving, setIsSaving] = useState(false);
     const [newCategory, setNewCategory] = useState('');
     const [showNewCategory, setShowNewCategory] = useState(false);
+    const fileInputRef = useRef(null);
 
     const sortedCategories = Object.entries(allCategories)
         .map(([id, config]) => ({ id, title: config?.title }))
@@ -261,6 +262,16 @@ const AddItemModal = ({ isOpen, setIsOpen, onSave, editingItem, allCategories })
         }
     };
     
+    const handleImageUpload = (e) => {
+        const file = e.target.files[0];
+        if (file) {
+            const reader = new FileReader();
+            reader.onloadend = () => {
+                handleChange('imageUrl', reader.result);
+            };
+            reader.readAsDataURL(file);
+        }
+    };
     // --- Add-on Group Handlers ---
     const addAddOnGroup = () => {
         setItem(prev => ({ ...prev, addOnGroups: [...prev.addOnGroups, { title: '', type: 'radio', required: false, options: [{name: '', price: ''}] }] }));
@@ -401,6 +412,22 @@ const AddItemModal = ({ isOpen, setIsOpen, onSave, editingItem, allCategories })
                             <div className="grid grid-cols-4 items-center gap-4">
                                 <Label htmlFor="tags" className="text-right">Tags</Label>
                                 <input id="tags" value={item.tags} onChange={e => handleChange('tags', e.target.value)} placeholder="e.g., Spicy, Chef's Special" className="col-span-3 p-2 border rounded-md bg-input border-border ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2" />
+                            </div>
+                             <div className="grid grid-cols-4 items-center gap-4">
+                                <Label className="text-right">Image</Label>
+                                <div className="col-span-3 flex items-center gap-4">
+                                    <div className="relative w-20 h-20 rounded-md border-2 border-dashed border-border flex items-center justify-center bg-muted overflow-hidden">
+                                        {item.imageUrl ? (
+                                            <Image src={item.imageUrl} alt={item.name} layout="fill" objectFit="cover" />
+                                        ) : (
+                                            <ImageIcon size={24} className="text-muted-foreground" />
+                                        )}
+                                    </div>
+                                    <input type="file" ref={fileInputRef} onChange={handleImageUpload} accept="image/*" className="hidden" />
+                                    <Button type="button" variant="outline" onClick={() => fileInputRef.current?.click()}>
+                                        <Upload size={16} className="mr-2"/>Upload
+                                    </Button>
+                                </div>
                             </div>
                              <div className="flex items-center justify-end gap-4 pt-4">
                                 <div className="flex items-center space-x-2">
