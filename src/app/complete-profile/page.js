@@ -129,6 +129,7 @@ export default function CompleteProfile() {
                 name: restaurantName,
                 address: restaurantAddress,
                 ownerId: user.uid,
+                ownerPhone: normalizedPhone, // Store owner's phone here
                 approvalStatus: 'pending',
                 botPhoneNumberId: `REPLACE_WITH_BOT_ID_${restaurantName.replace(/\s+/g, '-').toLowerCase()}`
              };
@@ -193,7 +194,7 @@ export default function CompleteProfile() {
               </div>
             </div>
              <div>
-              <label className="block text-sm font-medium text-muted-foreground mb-1">Mobile Number (10 digits)</label>
+              <label className="block text-sm font-medium text-muted-foreground mb-1">Your Mobile Number (10 digits)</label>
               <div className="relative">
                 <Phone className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
                 <input type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} required className="w-full pl-10 pr-4 py-2 rounded-md bg-input border border-border focus:ring-primary focus:border-primary" />

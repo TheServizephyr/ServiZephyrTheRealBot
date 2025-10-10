@@ -26,15 +26,17 @@ async function verifyUserAndGetData(req) {
     
     const userData = userDoc.data();
     let restaurantData = null;
+    let restaurantRef = null;
 
     if (userData.role === 'owner') {
         const restaurantsQuery = await firestore.collection('restaurants').where('ownerId', '==', uid).limit(1).get();
         if (!restaurantsQuery.empty) {
+            restaurantRef = restaurantsQuery.docs[0].ref;
             restaurantData = restaurantsQuery.docs[0].data();
         }
     }
     
-    return { uid, userData, restaurantData };
+    return { uid, userRef, userData, restaurantRef, restaurantData };
 }
 
 export async function GET(req) {
@@ -71,13 +73,11 @@ export async function GET(req) {
 
 export async function PATCH(req) {
     try {
-        const firestore = getFirestore();
-        const { uid, userData } = await verifyUserAndGetData(req);
+        const { userRef, userData, restaurantRef, restaurantData } = await verifyUserAndGetData(req);
         
         const { name, phone, notifications, gstin, fssai, botPhoneNumberId, deliveryCharge, logoUrl, bannerUrls } = await req.json();
 
         // --- Update User's Profile in 'users' collection ---
-        const userRef = firestore.collection('users').doc(uid);
         const userUpdateData = {};
         if (name !== undefined) userUpdateData.name = name;
         if (phone !== undefined) userUpdateData.phone = phone;
@@ -88,23 +88,23 @@ export async function PATCH(req) {
         }
 
         // --- Update Restaurant's Profile in 'restaurants' collection (if owner) ---
-        if (userData.role === 'owner') {
-            const restaurantsQuery = await firestore.collection('restaurants').where('ownerId', '==', uid).limit(1).get();
-            if (!restaurantsQuery.empty) {
-                const restaurantRef = restaurantsQuery.docs[0].ref;
-                const restaurantUpdateData = {};
-                // Only update if the values are provided (even if they are empty strings)
-                if (gstin !== undefined) restaurantUpdateData.gstin = gstin;
-                if (fssai !== undefined) restaurantUpdateData.fssai = fssai;
-                if (botPhoneNumberId !== undefined) restaurantUpdateData.botPhoneNumberId = botPhoneNumberId;
-                if (deliveryCharge !== undefined) restaurantUpdateData.deliveryCharge = Number(deliveryCharge);
-                if (logoUrl !== undefined) restaurantUpdateData.logoUrl = logoUrl;
-                if (bannerUrls !== undefined) restaurantUpdateData.bannerUrls = bannerUrls;
+        if (userData.role === 'owner' && restaurantRef) {
+            const restaurantUpdateData = {};
+            // Only update if the values are provided (even if they are empty strings)
+            if (gstin !== undefined) restaurantUpdateData.gstin = gstin;
+            if (fssai !== undefined) restaurantUpdateData.fssai = fssai;
+            if (botPhoneNumberId !== undefined) restaurantUpdateData.botPhoneNumberId = botPhoneNumberId;
+            if (deliveryCharge !== undefined) restaurantUpdateData.deliveryCharge = Number(deliveryCharge);
+            if (logoUrl !== undefined) restaurantUpdateData.logoUrl = logoUrl;
+            if (bannerUrls !== undefined) restaurantUpdateData.bannerUrls = bannerUrls;
 
-                
-                if (Object.keys(restaurantUpdateData).length > 0) {
-                    await restaurantRef.update(restaurantUpdateData);
-                }
+            // If the owner's phone number is changing, update it in the restaurant doc too
+            if (phone !== undefined && phone !== restaurantData.ownerPhone) {
+                restaurantUpdateData.ownerPhone = phone;
+            }
+            
+            if (Object.keys(restaurantUpdateData).length > 0) {
+                await restaurantRef.update(restaurantUpdateData);
             }
         }
         

@@ -2,6 +2,35 @@
 import { firestore as adminFirestore } from 'firebase-admin';
 import { getFirestore } from '@/lib/firebase-admin';
 import { NextResponse } from 'next/server';
+import axios from 'axios';
+
+// Function to send a WhatsApp message using an external API or service
+const sendWhatsAppMessage = async (phoneNumber, payload, businessPhoneNumberId) => {
+    const ACCESS_TOKEN = process.env.WHATSAPP_ACCESS_TOKEN;
+    if (!ACCESS_TOKEN || !businessPhoneNumberId) {
+        console.error("WhatsApp credentials (Access Token or Business Phone ID) are not configured.");
+        return;
+    }
+    try {
+        await axios({
+            method: 'POST',
+            url: `https://graph.facebook.com/v19.0/${businessPhoneNumberId}/messages`,
+            headers: {
+                'Authorization': `Bearer ${ACCESS_TOKEN}`,
+                'Content-Type': 'application/json'
+            },
+            data: {
+                messaging_product: 'whatsapp',
+                to: phoneNumber,
+                type: 'template',
+                template: payload
+            }
+        });
+        console.log(`[Order API] Successfully sent WhatsApp notification to ${phoneNumber}.`);
+    } catch (error) {
+        console.error(`[Order API] Failed to send WhatsApp message to ${phoneNumber}:`, error.response ? error.response.data : error.message);
+    }
+};
 
 export async function POST(req) {
     try {
@@ -59,8 +88,6 @@ export async function POST(req) {
             console.log(`[Order API] New user profile created with UID: ${userId}`);
         }
         
-        // The items array now contains main items and add-ons as separate entries.
-        // The subtotal is calculated from these exploded items.
         const subtotal = items.reduce((sum, item) => sum + (item.price * item.quantity), 0);
         const couponDiscountAmount = coupon?.discount || 0;
         const finalLoyaltyDiscount = loyaltyDiscount || 0;
@@ -121,9 +148,47 @@ export async function POST(req) {
             notes: notes || null
         });
         
-        console.log(`[Order API] Order ${newOrderRef.id} created for user ${userId}. Earned ${pointsEarned} points. Grand total: ${grandTotal}`);
+        console.log(`[Order API] Order ${newOrderRef.id} created for user ${userId}. Grand total: ${grandTotal}`);
 
         await batch.commit();
+
+        // --- NEW: SEND WHATSAPP NOTIFICATION TO OWNER ---
+        const ownerPhone = restaurantData.ownerPhone;
+        const businessPhoneNumberId = restaurantData.botPhoneNumberId;
+
+        if (ownerPhone && businessPhoneNumberId) {
+             const ownerPhoneWithCode = '91' + ownerPhone;
+             const notificationPayload = {
+                name: "new_order_alert", // Name of the template in WhatsApp Manager
+                language: { code: "en_US" },
+                components: [
+                    {
+                        type: "body",
+                        parameters: [
+                            { type: "text", text: name },
+                            { type: "text", text: `₹${grandTotal.toFixed(2)}` },
+                            { type: "text", text: newOrderRef.id }
+                        ]
+                    },
+                    {
+                        type: "button",
+                        sub_type: "quick_reply",
+                        index: "0",
+                        parameters: [{ type: "payload", payload: `accept_order_${newOrderRef.id}` }]
+                    },
+                    {
+                        type: "button",
+                        sub_type: "quick_reply",
+                        index: "1",
+                        parameters: [{ type: "payload", payload: `reject_order_${newOrderRef.id}` }]
+                    }
+                ]
+            };
+            await sendWhatsAppMessage(ownerPhoneWithCode, notificationPayload, businessPhoneNumberId);
+        } else {
+            console.warn(`[Order API] Owner phone or Bot ID not found for restaurant ${restaurantId}. Cannot send notification.`);
+        }
+        // --- END: NEW LOGIC ---
 
         return NextResponse.json({ 
             message: 'Order placed successfully! We will notify you on WhatsApp.'
