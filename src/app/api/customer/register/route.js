@@ -125,6 +125,7 @@ export async function POST(req) {
         await batch.commit();
 
         // --- NEW & CENTRALIZED WHATSAPP NOTIFICATION ---
+        console.log(`[Order API Debug] Attempting to send notification. Owner Phone: ${restaurantData.ownerPhone}, Bot ID: ${restaurantData.botPhoneNumberId}`);
         await sendNewOrderToOwner({
             ownerPhone: restaurantData.ownerPhone,
             botPhoneNumberId: restaurantData.botPhoneNumberId,

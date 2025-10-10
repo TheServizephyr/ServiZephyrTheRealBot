@@ -3,6 +3,7 @@ import { sendWhatsAppMessage } from './whatsapp';
 
 /**
  * Sends a "New Order" notification to the restaurant owner using a WhatsApp template.
+ * Now includes a link to the order details page.
  * @param {object} params
  * @param {string} params.ownerPhone - The owner's phone number with country code.
  * @param {string} params.botPhoneNumberId - The WhatsApp Business Phone Number ID.
@@ -12,12 +13,15 @@ import { sendWhatsAppMessage } from './whatsapp';
  */
 export const sendNewOrderToOwner = async ({ ownerPhone, botPhoneNumberId, customerName, totalAmount, orderId }) => {
     if (!ownerPhone || !botPhoneNumberId) {
-        console.warn(`[Notification Lib] Owner phone or Bot ID not found. Cannot send new order notification.`);
+        console.warn(`[Notification Lib] Owner phone or Bot ID not found for this restaurant. Cannot send new order notification.`);
         return;
     }
     const ownerPhoneWithCode = '91' + ownerPhone;
+    const orderDetailsUrl = `https://servizephyr.com/owner-dashboard/bill/${orderId}`;
+
 
     // This is the pre-approved Message Template payload for 'new_order_notification'
+    // It now includes a 4th variable for the order details link.
     const notificationPayload = {
         name: "new_order_notification",
         language: { code: "en_US" },
@@ -27,7 +31,8 @@ export const sendNewOrderToOwner = async ({ ownerPhone, botPhoneNumberId, custom
                 parameters: [
                     { type: "text", text: customerName },
                     { type: "text", text: `₹${totalAmount.toFixed(2)}` },
-                    { type: "text", text: orderId }
+                    { type: "text", text: orderId },
+                    { type: "text", text: orderDetailsUrl } // Variable 4: The link
                 ]
             },
             {
@@ -87,4 +92,5 @@ export const sendOrderConfirmationToCustomer = async ({ customerPhone, botPhoneN
 // export const sendOrderPreparingNotification = async (params) => { ... }
 // export const sendOrderDispatchedNotification = async (params) => { ... }
 // export const sendFeedbackRequest = async (params) => { ... }
+
 
