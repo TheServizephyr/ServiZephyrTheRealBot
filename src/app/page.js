@@ -142,13 +142,20 @@ export default function Home() {
               <p className="max-w-2xl mx-auto mt-6 text-lg text-muted-foreground font-body">
                 ServiZephyr aapke WhatsApp ko ek powerful profit machine mein badal deta hai. Paayein apna personal bot, smart dashboard, aur marketing tools.
               </p>
-              <div className="mt-8">
+              <div className="mt-8 flex flex-col items-center gap-4">
                 <button 
                     onClick={() => setIsModalOpen(true)}
                     className="bg-primary text-primary-foreground font-bold py-3 px-8 rounded-lg text-lg hover:bg-primary/90 transition-transform transform hover:scale-105"
                 >
                   Get Started & Save Money
                 </button>
+                 {/* This link is for testing purposes */}
+                 <Link 
+                    href="/order/PR5LbvgA2Ib72vkPzJt4?phone=9876543210"
+                    className="text-sm text-muted-foreground hover:text-primary underline"
+                  >
+                    Preview Customer Order Page (for testing)
+                  </Link>
               </div>
             </div>
           </div>
@@ -253,7 +260,7 @@ export default function Home() {
           variants={sectionVariants}
           className="container mx-auto px-4 py-20 sm:py-28"
         >
-          <h2 className="mb-4 text-center text-3xl font-bold tracking-tighter sm:text-4xl md:text-5xl text-foreground">Your All-in-One Growth Engine</h2>
+          <h2 className="mb-12 text-center text-3xl font-bold tracking-tighter sm:text-4xl md:text-5xl text-foreground">Your All-in-One Growth Engine</h2>
           <p className="mx-auto mb-12 max-w-2xl text-center text-lg text-muted-foreground md:text-xl">
             From seamless ordering to powerful analytics and marketing, ServiZephyr is packed with features designed to help you succeed.
           </p>
