@@ -60,7 +60,7 @@ export async function GET(request, { params }) {
         const firestore = getFirestore();
         const { restaurantId } = params;
         const { searchParams } = new URL(request.url);
-        const phone = searchParams.get('phone'); // Changed from customerId to phone
+        const phone = searchParams.get('phone');
 
         if (!restaurantId) {
             return NextResponse.json({ message: 'Restaurant ID is missing.' }, { status: 400 });
@@ -83,26 +83,15 @@ export async function GET(request, { params }) {
         // Base query for general, active coupons
         const generalCouponsQuery = couponsRef.where('status', '==', 'Active').where('customerId', '==', null);
 
-        let customerId = null;
-        if (phone) {
-            const usersRef = firestore.collection('users');
-            // IMPORTANT FIX: Search for the user by their phone number to get their UID
-            const userQuery = await usersRef.where('phone', '==', phone).limit(1).get();
-            if (!userQuery.empty) {
-                customerId = userQuery.docs[0].id; // This is the user's UID
-            }
-        }
-
-
         // Fetch everything concurrently
         const promises = [
             restaurantRef.collection('menu').where('isAvailable', '==', true).orderBy('order', 'asc').get(),
             generalCouponsQuery.get()
         ];
         
-        // If a customer ID (UID) is found, also fetch their specific coupons
-        if (customerId) {
-            const customerCouponsQuery = couponsRef.where('status', '==', 'Active').where('customerId', '==', customerId);
+        // If a customer phone number is provided, also fetch their specific coupons
+        if (phone) {
+            const customerCouponsQuery = couponsRef.where('status', '==', 'Active').where('customerId', '==', phone);
             promises.push(customerCouponsQuery.get());
         }
 
