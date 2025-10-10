@@ -24,7 +24,7 @@ export const sendNewOrderToOwner = async ({ ownerPhone, botPhoneNumberId, custom
     // It now includes a 4th variable for the order details link.
     const notificationPayload = {
         name: "new_order_notificat",
-        language: { code: "en_US" },
+        language: { code: "en" },
         components: [
             {
                 type: "body",
@@ -92,6 +92,7 @@ export const sendOrderConfirmationToCustomer = async ({ customerPhone, botPhoneN
 // export const sendOrderPreparingNotification = async (params) => { ... }
 // export const sendOrderDispatchedNotification = async (params) => { ... }
 // export const sendFeedbackRequest = async (params) => { ... }
+
 
 
 
