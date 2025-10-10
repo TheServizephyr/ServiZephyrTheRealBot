@@ -69,6 +69,8 @@ const CustomizationDrawer = ({ item, isOpen, onClose, onAddToCart }) => {
     };
 
     if (!item) return null;
+    
+    const showPortions = item.portions && item.portions.length > 1;
 
     return (
         <AnimatePresence>
@@ -90,12 +92,13 @@ const CustomizationDrawer = ({ item, isOpen, onClose, onAddToCart }) => {
                     >
                         <div className="flex-shrink-0">
                             <h3 className="text-2xl font-bold">{item.name}</h3>
-                            <p className="text-sm text-muted-foreground">{item.description}</p>
+                             {(item.addOnGroups?.length > 0) && <p className="text-sm font-semibold text-muted-foreground mt-1">Customize your dish</p>}
+                             {(!showPortions && item.description) && <p className="text-sm text-muted-foreground mt-1">{item.description}</p>}
                         </div>
 
                         <div className="py-4 space-y-6 overflow-y-auto flex-grow">
-                             {/* Portions */}
-                            {item.portions && item.portions.length > 0 && (
+                             {/* Portions - ONLY show if there are more than 1 */}
+                            {showPortions && (
                                 <div className="space-y-2">
                                     <h4 className="font-semibold text-lg">Size</h4>
                                     {item.portions.map(portion => (
@@ -480,12 +483,13 @@ const OrderPageInternal = () => {
     };
 
     const handleIncrement = (item) => {
-        if(item.portions?.length > 1 || item.addOnGroups?.length > 0) {
-            setCustomizationItem(item);
+        // Direct add if item is simple (1 portion, 0 addons)
+        if (item.portions?.length === 1 && (item.addOnGroups?.length || 0) === 0) {
+            const portion = item.portions[0];
+            handleAddToCart(item, portion, [], portion.price);
         } else {
-            if (item.portions && item.portions.length > 0) {
-              handleAddToCart(item, item.portions[0], [], item.portions[0].price);
-            }
+            // Otherwise, open customization
+            setCustomizationItem(item);
         }
     };
 
@@ -728,5 +732,3 @@ const OrderPage = () => (
 );
 
 export default OrderPage;
-
-    
