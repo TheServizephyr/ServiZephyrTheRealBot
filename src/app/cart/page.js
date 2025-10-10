@@ -146,7 +146,7 @@ const CheckoutModal = ({ isOpen, onClose, restaurantId, phone, cart, notes, appl
 
             alert("Success! Your order has been placed.");
             localStorage.removeItem(`cart_${restaurantId}`);
-            router.push(`/owner-dashboard/live-orders`); // Redirect to see the new order
+            router.push(`/order/placed?restaurantId=${restaurantId}`); // Redirect to a success page
             onClose();
 
         } catch (err) {
@@ -546,3 +546,5 @@ const CartPage = () => (
 );
 
 export default CartPage;
+
+    
