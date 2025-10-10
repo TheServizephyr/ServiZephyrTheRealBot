@@ -34,9 +34,6 @@ export default function CancellationRefundPolicyPage() {
 
           <h4>2.3. Refund Timeline</h4>
           <p>Once a refund is approved, it may take **5-7 working days** to be processed and credited back to your original payment method.</p>
-
-          <h2>3. Contact Us</h2>
-          <p>For any questions about this policy, please contact us at <a href="mailto:ashwanibaghel@servizephyr.com">ashwanibaghel@servizephyr.com</a>.</p>
         </div>
       </div>
     </div>
