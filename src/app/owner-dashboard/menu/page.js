@@ -100,7 +100,7 @@ const MenuItem = ({ item, index, onDelete, onEdit, onToggleAvailability }) => {
 
 
 
-const MenuCategory = ({ categoryId, title, icon, items, onDeleteItem, onEditItem, handleToggleAvailability, setMenu, open, setOpen }) => {
+const MenuCategory = ({ categoryId, title, icon, items, onDeleteItem, onEditItem, onToggleAvailability, setMenu, open, setOpen }) => {
     const Icon = icon;
     const isExpanded = open === categoryId;
 
@@ -170,7 +170,7 @@ const MenuCategory = ({ categoryId, title, icon, items, onDeleteItem, onEditItem
                                     index={index}
                                     onDelete={() => onDeleteItem(item.id)}
                                     onEdit={onEditItem}
-                                    onToggleAvailability={handleToggleAvailability}
+                                    onToggleAvailability={onToggleAvailability}
                                     />
                                 ))}
                                 {provided.placeholder}
@@ -557,6 +557,7 @@ const BulkAddModal = ({ isOpen, setIsOpen, onSave }) => {
 {
   "name": "string (Dish name)",
   "description": "string (Optional dish description)",
+  "imageUrl": "string (Optional URL to the dish image)",
   "categoryId": "string (Lowercase, dash-separated, e.g., 'main-course', 'starters', 'beverages')",
   "isVeg": "boolean (true for vegetarian, false for non-vegetarian)",
   "portions": [
@@ -579,6 +580,7 @@ Important Rules:
 - If a dish has only one price, create a single entry in the 'portions' array with the name "Full".
 - If a category is not obvious, use a sensible default like 'main-course'.
 - If veg/non-veg status is not clear, assume 'isVeg: true'.
+- The 'imageUrl' is optional. If not present, the system will use a placeholder.
 - The final output must be ONLY the JSON array, with no extra text or explanations.
 
 Here is the menu text:
@@ -879,7 +881,7 @@ export default function MenuPage() {
                     items={items}
                     onDeleteItem={handleDeleteItem}
                     onEditItem={handleEditItem}
-                    handleToggleAvailability={handleToggleAvailability}
+                    onToggleAvailability={handleToggleAvailability}
                     setMenu={setMenu}
                     open={openCategory}
                     setOpen={setOpenCategory}
