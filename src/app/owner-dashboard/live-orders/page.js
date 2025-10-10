@@ -1,4 +1,3 @@
-
 "use client";
 
 import React, { useState, useEffect, useMemo } from 'react';
@@ -21,12 +20,12 @@ const statusConfig = {
 
 const statusFlow = ['pending', 'confirmed', 'preparing', 'dispatched', 'delivered'];
 
-const ActionButton = ({ status, onNext, onRevert }) => {
+const ActionButton = ({ status, onNext, onRevert, orderId }) => {
     const currentIndex = statusFlow.indexOf(status);
     const nextStatus = statusFlow[currentIndex + 1];
     const prevStatus = statusFlow[currentIndex - 1];
 
-    if (!nextStatus || status === 'delivered') {
+    if (status === 'delivered') {
         return (
             <div className="flex items-center gap-2">
                 <span className="text-sm font-semibold text-green-400">Order Completed</span>
@@ -61,6 +60,13 @@ const ActionButton = ({ status, onNext, onRevert }) => {
                 <ActionIcon size={16} className="mr-2" />
                 {action.text}
             </Button>
+             <Link href={`/owner-dashboard/bill/${orderId}`} passHref>
+                <Button asChild variant="outline" size="sm" className="w-full h-9">
+                    <a>
+                        <Printer size={16} className="mr-2" /> Print Bill
+                    </a>
+                </Button>
+            </Link>
             {prevStatus && (
                  <Button
                     onClick={() => onRevert(prevStatus)}
@@ -289,21 +295,13 @@ export default function LiveOrdersPage() {
                                             {order.status}
                                         </span>
                                     </td>
-                                    <td className="p-4 w-[250px] space-y-2">
+                                    <td className="p-4 w-[250px]">
                                         <ActionButton
+                                            orderId={order.id}
                                             status={order.status}
                                             onNext={(newStatus) => handleUpdateStatus(order.id, newStatus)}
                                             onRevert={(newStatus) => handleUpdateStatus(order.id, newStatus)}
                                         />
-                                        {(order.status !== 'pending' && order.status !== 'delivered') && (
-                                            <Link href={`/owner-dashboard/bill/${order.id}`} passHref>
-                                                <Button asChild variant="outline" size="sm" className="w-full h-9">
-                                                    <a>
-                                                        <Printer size={16} className="mr-2" /> Print Bill
-                                                    </a>
-                                                </Button>
-                                            </Link>
-                                        )}
                                     </td>
                                 </motion.tr>
                             ))}

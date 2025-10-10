@@ -193,7 +193,7 @@ const BillPage = () => {
       </div>
 
        <div className="fixed bottom-5 right-5 no-print">
-            <Button onClick={handlePrint} size="lg" className="bg-indigo-600 hover:bg-indigo-700 shadow-xl">
+            <Button onClick={handlePrint} size="lg" className="bg-primary hover:bg-primary/90 shadow-xl">
                 <Printer className="mr-2 h-5 w-5" /> Print Bill
             </Button>
         </div>
