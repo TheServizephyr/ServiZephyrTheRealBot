@@ -23,6 +23,18 @@ export async function POST(req) {
             return NextResponse_json({ message: 'This restaurant does not exist.' }, { status: 404 });
         }
         const restaurantData = restaurantDoc.data();
+        const ownerId = restaurantData.ownerId; // Get ownerId from restaurant data
+
+        // --- START: CRITICAL FIX - Fetch owner's phone from users collection ---
+        let ownerPhone = null;
+        if (ownerId) {
+            const ownerDoc = await firestore.collection('users').doc(ownerId).get();
+            if (ownerDoc.exists) {
+                ownerPhone = ownerDoc.data().phone;
+            }
+        }
+        // --- END: CRITICAL FIX ---
+
 
         const batch = firestore.batch();
         
@@ -123,11 +135,11 @@ export async function POST(req) {
         console.log(`[Order API] Order ${newOrderRef.id} created for user ${userId}. Grand total: ${grandTotal}`);
 
         await batch.commit();
-
+        
         // --- NEW & CENTRALIZED WHATSAPP NOTIFICATION ---
-        console.log(`[Order API Debug] Attempting to send notification. Owner Phone: ${restaurantData.ownerPhone}, Bot ID: ${restaurantData.botPhoneNumberId}`);
+        console.log(`[Order API Debug] Attempting to send notification. Owner Phone: ${ownerPhone}, Bot ID: ${restaurantData.botPhoneNumberId}`);
         await sendNewOrderToOwner({
-            ownerPhone: restaurantData.ownerPhone,
+            ownerPhone: ownerPhone,
             botPhoneNumberId: restaurantData.botPhoneNumberId,
             customerName: name,
             totalAmount: grandTotal,
