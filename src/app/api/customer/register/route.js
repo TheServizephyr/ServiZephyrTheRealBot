@@ -20,7 +20,7 @@ export async function POST(req) {
         const restaurantRef = firestore.collection('restaurants').doc(restaurantId);
         const restaurantDoc = await restaurantRef.get();
         if (!restaurantDoc.exists) {
-            return NextResponse.json({ message: 'This restaurant does not exist.' }, { status: 404 });
+            return NextResponse_json({ message: 'This restaurant does not exist.' }, { status: 404 });
         }
         const restaurantData = restaurantDoc.data();
 
@@ -124,10 +124,21 @@ export async function POST(req) {
 
         await batch.commit();
 
-        // --- SEND WHATSAPP NOTIFICATION TO OWNER ---
-        const ownerPhone = restaurantData.ownerPhone;
+        // --- NEW & CORRECTED WHATSAPP NOTIFICATION LOGIC ---
+        const ownerId = restaurantData.ownerId;
         const businessPhoneNumberId = restaurantData.botPhoneNumberId;
 
+        // 1. Get Owner's document from 'users' collection to find their phone number
+        let ownerPhone;
+        if (ownerId) {
+            const ownerRef = firestore.collection('users').doc(ownerId);
+            const ownerDoc = await ownerRef.get();
+            if (ownerDoc.exists) {
+                ownerPhone = ownerDoc.data().phone;
+            }
+        }
+        
+        // 2. Check if we have both numbers before attempting to send
         if (ownerPhone && businessPhoneNumberId) {
              const ownerPhoneWithCode = '91' + ownerPhone;
              // This is the pre-approved Message Template payload
@@ -162,7 +173,7 @@ export async function POST(req) {
         } else {
             console.warn(`[Order API] Owner phone or Bot ID not found for restaurant ${restaurantId}. Cannot send notification.`);
         }
-        // --- END: NEW LOGIC ---
+        // --- END: CORRECTED LOGIC ---
 
         return NextResponse.json({ 
             message: 'Order placed successfully! We will notify you on WhatsApp.'
