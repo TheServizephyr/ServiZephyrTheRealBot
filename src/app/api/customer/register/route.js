@@ -153,6 +153,7 @@ export async function POST(req) {
         await batch.commit();
 
         // --- NEW: SEND WHATSAPP NOTIFICATION TO OWNER ---
+        // CORRECTED LOGIC: Use the restaurantData object fetched at the beginning
         const ownerPhone = restaurantData.ownerPhone;
         const businessPhoneNumberId = restaurantData.botPhoneNumberId;
 
