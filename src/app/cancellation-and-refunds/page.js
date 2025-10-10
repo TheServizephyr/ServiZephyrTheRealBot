@@ -6,25 +6,37 @@ export default function CancellationRefundPolicyPage() {
       <div className="container mx-auto max-w-4xl px-4 py-12 sm:py-16">
         <h1 className="font-headline text-4xl sm:text-5xl font-bold tracking-tighter mb-8 text-center">Cancellation &amp; Refund Policy</h1>
         <div className="prose prose-lg dark:prose-invert mx-auto text-muted-foreground">
-          <p>Last updated: {new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}</p>
+          <p>Last updated: October 11, 2025</p>
 
-          <h2>1. General Policy</h2>
-          <p>At ServiZephyr, we strive to provide the best service possible. This policy outlines the terms under which cancellations and refunds will be processed for our subscription services.</p>
+          <p>At ServiZephyr, our goal is to provide an exceptional experience for both our customers and our restaurant partners. To ensure clarity and fairness, our cancellation and refund policy is as follows:</p>
 
-          <h2>2. Subscription Cancellation</h2>
-          <p>You may cancel your subscription at any time. To cancel, please log in to your account dashboard and navigate to the subscription settings or contact our support team at <a href="mailto:ashwanibaghel@servizephyr.com">ashwanibaghel@servizephyr.com</a>.</p>
-          <p>Your cancellation will take effect at the end of your current billing cycle. You will continue to have access to the service until the end of that period. We do not provide prorated refunds for cancellations made mid-cycle.</p>
+          <h2>1. Order Cancellation Policy</h2>
+          
+          <h4>1.1. Cancellation Window</h4>
+          <p>You may cancel your order without any reason within **2 minutes** of placing it.</p>
+          
+          <h4>1.2. Cancellation After 2 Minutes</h4>
+          <p>If more than 2 minutes have passed, an order can only be canceled if the restaurant partner has not yet accepted it and started preparing the food.</p>
+          
+          <h4>1.3. Cancellation After Acceptance</h4>
+          <p>Once the restaurant partner has accepted your order, it cannot be canceled, and no refund will be issued for a cancellation request at this stage.</p>
 
-          <h2>3. Refund Policy</h2>
-          <p>We offer a 7-day money-back guarantee for new customers on their first subscription payment. If you are not satisfied with our service within the first 7 days of your subscription, you may request a full refund.</p>
-          <p>To request a refund, please contact our support team with your account details and the reason for your request. Refunds will be processed to the original method of payment within 5-10 business days.</p>
-          <p>After the initial 7-day period, subscription fees are non-refundable. We do not issue refunds for partial subscription periods, unused services, or account inactivity.</p>
+          <h4>1.4. Cancellation by Restaurant</h4>
+          <p>If the restaurant partner cancels your order for any reason (e.g., item unavailability), you will automatically receive a 100% refund.</p>
 
-          <h2>4. Changes to Policy</h2>
-          <p>ServiZephyr reserves the right to modify this Cancellation & Refund Policy at any time. We will notify you of any significant changes by posting the new policy on this page and updating the "Last updated" date.</p>
+          <h2>2. Refund & Replacement Policy</h2>
 
-          <h2>5. Contact Us</h2>
-          <p>If you have any questions about this policy, please contact us at <a href="mailto:ashwanibaghel@servizephyr.com">ashwanibaghel@servizephyr.com</a>.</p>
+          <h4>2.1. Issues with Order</h4>
+          <p>If you receive a wrong item, have a missing item, or are unsatisfied with the food quality, please contact our customer support team with a photograph of the order within **60 minutes** of receiving it.</p>
+
+          <h4>2.2. Complaint Resolution</h4>
+          <p>We will immediately forward your complaint to the respective restaurant partner. After an investigation by the restaurant, a replacement or refund will be processed as deemed appropriate. ServiZephyr will fully assist you throughout this process.</p>
+
+          <h4>2.3. Refund Timeline</h4>
+          <p>Once a refund is approved, it may take **5-7 working days** to be processed and credited back to your original payment method.</p>
+
+          <h2>3. Contact Us</h2>
+          <p>For any questions about this policy, please contact us at <a href="mailto:ashwanibaghel@servizephyr.com">ashwanibaghel@servizephyr.com</a>.</p>
         </div>
       </div>
     </div>
