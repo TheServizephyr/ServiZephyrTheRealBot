@@ -95,11 +95,15 @@ export async function POST(request) {
                 if (orderDoc.exists) {
                     const orderData = orderDoc.data();
                     const customerPhoneWithCode = '91' + orderData.customerPhone; // Assuming Indian numbers
+                    
+                    // Fetch restaurant to get the correct botPhoneNumberId
                     const restaurant = await firestore.collection('restaurants').doc(orderData.restaurantId).get();
-                    const restaurantData = restaurant.data();
-
-                    const confirmationMessage = `🎉 Your order #${orderId.substring(0, 5)} from *${orderData.restaurantName}* has been confirmed!\n\nWe've started preparing your meal. We will notify you at every step.`;
-                    await sendMessage(customerPhoneWithCode, confirmationMessage, restaurantData.botPhoneNumberId);
+                    if(restaurant.exists){
+                         const restaurantData = restaurant.data();
+                         const businessPhoneNumberId = restaurantData.botPhoneNumberId;
+                         const confirmationMessage = `🎉 Your order #${orderId.substring(0, 5)} from *${orderData.restaurantName}* has been confirmed!\n\nWe've started preparing your meal. We will notify you at every step.`;
+                         await sendMessage(customerPhoneWithCode, confirmationMessage, businessPhoneNumberId);
+                    }
                 }
 
             } else if (action === 'reject') {
