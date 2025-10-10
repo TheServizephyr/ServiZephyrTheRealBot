@@ -27,32 +27,6 @@ async function verifyOwnerAndGetRestaurant(req, auth, firestore) {
     return { uid, restaurantId: restaurantDoc.id, restaurantSnap: restaurantDoc };
 }
 
-async function seedInitialOrders(firestore, restaurantId, restaurantSnap) {
-    const ordersRef = firestore.collection('orders');
-    const batch = firestore.batch();
-
-    const restaurantData = restaurantSnap.data();
-
-    const initialOrders = [
-        { id: 'ZEP-001', customerName: 'Ravi Kumar', customerId: 'cust-123', customerAddress: '123, ABC Society, Near Park, Pune - 411028', customerPhone: '9876543210', items: [{ name: 'Paneer Butter Masala', qty: 2, price: 250 }, { name: 'Garlic Naan', qty: 4, price: 70 }], totalAmount: 780, status: 'pending', priority: 5, orderDate: adminFirestore.Timestamp.fromMillis(Date.now() - 2 * 60 * 1000) },
-        { id: 'ZEP-002', customerName: 'Sunita Sharma', customerId: 'cust-456', customerAddress: 'Flat 404, Star Tower, Andheri West, Mumbai', customerPhone: '9988776655', items: [{ name: 'Chicken Biryani', qty: 1, price: 350 }], totalAmount: 350, status: 'confirmed', priority: 3, orderDate: adminFirestore.Timestamp.fromMillis(Date.now() - 10 * 60 * 1000) },
-    ];
-    
-    const finalOrders = [];
-    initialOrders.forEach(order => {
-        const docRef = ordersRef.doc(order.id);
-        const newOrder = {
-            ...order,
-            restaurantId: restaurantId,
-            restaurantName: restaurantData?.name || 'Your Restaurant Name'
-        };
-        batch.set(docRef, newOrder);
-        finalOrders.push(newOrder);
-    });
-
-    await batch.commit();
-    return finalOrders;
-}
 
 export async function GET(req) {
     try {
@@ -96,23 +70,17 @@ export async function GET(req) {
         const ordersRef = firestore.collection('orders');
         const ordersSnap = await ordersRef.where('restaurantId', '==', restaurantId).orderBy('orderDate', 'desc').get();
 
-        let orders = [];
-        if (ordersSnap.empty) {
-            console.log(`No orders found for restaurant ${restaurantId}. Seeding initial data...`);
-            orders = await seedInitialOrders(firestore, restaurantId, restaurantSnap);
-        } else {
-            orders = ordersSnap.docs.map(doc => {
-                const data = doc.data();
-                return { 
-                    id: doc.id, 
-                    ...data,
-                    // Ensure date is ISO string for client-side processing
-                    orderDate: data.orderDate?.toDate ? data.orderDate.toDate().toISOString() : data.orderDate,
-                    customer: data.customerName,
-                    amount: data.totalAmount,
-                };
-            });
-        }
+        const orders = ordersSnap.docs.map(doc => {
+            const data = doc.data();
+            return { 
+                id: doc.id, 
+                ...data,
+                // Ensure date is ISO string for client-side processing
+                orderDate: data.orderDate?.toDate ? data.orderDate.toDate().toISOString() : data.orderDate,
+                customer: data.customerName,
+                amount: data.totalAmount,
+            };
+        });
 
         return NextResponse.json({ orders }, { status: 200 });
 
@@ -166,5 +134,3 @@ export async function DELETE(req) {
         return NextResponse.json({ message: `Backend Error: ${error.message}` }, { status: error.status || 500 });
     }
 }
-
-    

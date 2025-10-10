@@ -30,41 +30,6 @@ async function verifyOwnerAndGetRestaurant(req, auth, firestore) {
 }
 
 
-async function seedInitialCoupons(firestore, restaurantId) {
-    const batch = firestore.batch();
-    const couponsRef = firestore.collection('restaurants').doc(restaurantId).collection('coupons');
-    
-    const tomorrow = new Date();
-    tomorrow.setDate(tomorrow.getDate() + 1);
-    const nextMonth = new Date();
-    nextMonth.setMonth(nextMonth.getMonth() + 1);
-    
-    const initialCoupons = [
-        { code: 'SAVE100', description: 'Get flat ₹100 off on orders above ₹599', type: 'flat', value: 100, minOrder: 599, startDate: new Date(), expiryDate: nextMonth, status: 'Active', timesUsed: 5 },
-        { code: 'FREEDEL', description: 'Free delivery on all orders above ₹299', type: 'free_delivery', value: 0, minOrder: 299, startDate: new Date(), expiryDate: nextMonth, status: 'Active', timesUsed: 12 },
-        { code: 'WEEKEND20', description: '20% off on weekends', type: 'percentage', value: 20, minOrder: 499, startDate: new Date(), expiryDate: tomorrow, status: 'Inactive', timesUsed: 0 },
-    ];
-    
-    const finalCoupons = [];
-
-    initialCoupons.forEach(couponData => {
-        const docRef = couponsRef.doc(); 
-        const newCoupon = {
-            ...couponData,
-            id: docRef.id,
-            createdAt: adminFirestore.FieldValue.serverTimestamp(),
-            startDate: adminFirestore.Timestamp.fromDate(couponData.startDate),
-            expiryDate: adminFirestore.Timestamp.fromDate(couponData.expiryDate),
-        };
-        batch.set(docRef, newCoupon);
-        finalCoupons.push(newCoupon);
-    });
-
-    await batch.commit();
-    return finalCoupons;
-}
-
-
 export async function GET(req) {
     try {
         const auth = await getAuth();
@@ -74,12 +39,7 @@ export async function GET(req) {
         const couponsRef = firestore.collection('restaurants').doc(restaurantId).collection('coupons');
         const couponsSnap = await couponsRef.orderBy('expiryDate', 'desc').get();
         
-        let coupons = [];
-        if (couponsSnap.empty) {
-            coupons = await seedInitialCoupons(firestore, restaurantId);
-        } else {
-             coupons = couponsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-        }
+        let coupons = couponsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 
         return NextResponse.json({ coupons }, { status: 200 });
 

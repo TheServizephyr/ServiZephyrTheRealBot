@@ -28,34 +28,6 @@ async function verifyOwnerAndGetRestaurant(req, auth, firestore) {
 }
 
 
-async function seedInitialDeliveryBoys(firestore, restaurantId) {
-    const batch = firestore.batch();
-    const boysRef = firestore.collection('restaurants').doc(restaurantId).collection('deliveryBoys');
-    
-    const initialBoys = [
-        { name: 'Arjun Kumar', phone: '9876543210', status: 'Available', deliveriesToday: 5, totalDeliveries: 150, avgDeliveryTime: 28, avgRating: 4.8 },
-        { name: 'Vijay Singh', phone: '9876543211', status: 'On Delivery', deliveriesToday: 7, totalDeliveries: 210, avgDeliveryTime: 25, avgRating: 4.9 },
-    ];
-    
-    const finalBoys = [];
-
-    initialBoys.forEach(boyData => {
-        const docRef = boysRef.doc();
-        const newBoy = {
-            id: docRef.id,
-            location: null,
-            createdAt: adminFirestore.FieldValue.serverTimestamp(),
-            ...boyData
-        };
-        batch.set(docRef, newBoy);
-        finalBoys.push(newBoy);
-    });
-
-    await batch.commit();
-    return finalBoys;
-}
-
-
 export async function GET(req) {
     try {
         const auth = await getAuth();
@@ -64,13 +36,7 @@ export async function GET(req) {
 
         const boysRef = firestore.collection('restaurants').doc(restaurantId).collection('deliveryBoys');
         const boysSnap = await boysRef.get();
-        let boys = [];
-
-        if (boysSnap.empty) {
-            boys = await seedInitialDeliveryBoys(firestore, restaurantId);
-        } else {
-            boys = boysSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-        }
+        const boys = boysSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 
         const ordersRef = firestore.collection('orders').where('restaurantId', '==', restaurantId);
         const readyOrdersSnap = await ordersRef.where('status', '==', 'Ready for Dispatch').get();
@@ -82,8 +48,8 @@ export async function GET(req) {
         
         const performance = {
             totalDeliveries: boys.reduce((sum, boy) => sum + (boy.deliveriesToday || 0), 0),
-            avgDeliveryTime: boys.length > 0 ? Math.round(boys.reduce((sum, boy) => sum + (boy.avgDeliveryTime || 30), 0) / boys.length) : 0,
-            topPerformer: boys.reduce((top, boy) => ((boy.totalDeliveries || 0) > (top.totalDeliveries || 0)) ? boy : top, {}),
+            avgDeliveryTime: boys.length > 0 ? Math.round(boys.reduce((sum, boy) => sum + (boy.avgDeliveryTime || 0), 0) / boys.length) : 0,
+            topPerformer: boys.length > 0 ? boys.reduce((top, boy) => ((boy.totalDeliveries || 0) > (top.totalDeliveries || 0)) ? boy : top, boys[0]) : {},
         };
 
         const weeklyPerformance = Array.from({length: 7}, (_, i) => {
@@ -91,7 +57,7 @@ export async function GET(req) {
             date.setDate(date.getDate() - (6-i));
             return {
                 day: date.toLocaleDateString('en-IN', { weekday: 'short'}),
-                deliveries: Math.floor(Math.random() * (performance.totalDeliveries || 50)) + 10
+                deliveries: 0 // This would need to be calculated from historical order data in a real app
             };
         });
 

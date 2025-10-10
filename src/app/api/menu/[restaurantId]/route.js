@@ -2,57 +2,6 @@
 
 import { NextResponse } from 'next/server';
 import { getFirestore } from '@/lib/firebase-admin';
-import { firestore as adminFirestore } from 'firebase-admin';
-
-// --- DEMO DATA SEEDING FUNCTION ---
-async function seedInitialPublicData(firestore, restaurantId) {
-    const batch = firestore.batch();
-    const restaurantRef = firestore.collection('restaurants').doc(restaurantId);
-    const menuRef = restaurantRef.collection('menu');
-    const couponsRef = restaurantRef.collection('coupons');
-
-    // Seed Restaurant Info (if it doesn't exist)
-    batch.set(restaurantRef, {
-        name: 'ServiZephyr Demo Restaurant',
-        address: '123 Cyber Street, Tech City',
-        deliveryCharge: 30,
-        ownerId: 'demo-owner',
-        logoUrl: '', // Add new field
-        bannerUrls: [], // Add new field
-    }, { merge: true });
-
-    // Seed Menu Items
-    const initialItems = [
-        { name: 'Paneer Tikka', description: 'Tandoor-cooked cottage cheese', halfPrice: 180, fullPrice: 280, isVeg: true, isAvailable: true, categoryId: 'starters', order: 1, imageUrl: `https://picsum.photos/seed/paneertikka/100/100` },
-        { name: 'Chilli Chicken', description: 'Spicy diced chicken', halfPrice: 200, fullPrice: 320, isVeg: false, isAvailable: true, categoryId: 'starters', order: 2, imageUrl: `https://picsum.photos/seed/chillichicken/100/100` },
-        { name: 'Dal Makhani', description: 'Creamy black lentils', halfPrice: null, fullPrice: 250, isVeg: true, isAvailable: true, categoryId: 'main-course', order: 1, imageUrl: `https://picsum.photos/seed/dalmakhani/100/100` },
-        { name: 'Veg Steamed Momos', description: '8 Pcs, served with chutney', halfPrice: null, fullPrice: 120, isVeg: true, isAvailable: true, categoryId: 'momos', order: 1, imageUrl: `https://picsum.photos/seed/vegmomos/100/100` },
-    ];
-    initialItems.forEach(itemData => {
-        const docRef = menuRef.doc();
-        batch.set(docRef, { ...itemData, id: docRef.id });
-    });
-    
-    // Seed Coupons
-    const nextMonth = new Date();
-    nextMonth.setMonth(nextMonth.getMonth() + 1);
-    const initialCoupons = [
-        { code: 'SAVE100', description: 'Get flat ₹100 off on orders above ₹599', type: 'flat', value: 100, minOrder: 599, startDate: new Date(), expiryDate: nextMonth, status: 'Active', customerId: null },
-        { code: 'FREEDEL', description: 'Free delivery on all orders above ₹299', type: 'free_delivery', value: 0, minOrder: 299, startDate: new Date(), expiryDate: nextMonth, status: 'Active', customerId: null },
-    ];
-     initialCoupons.forEach(couponData => {
-        const docRef = couponsRef.doc();
-        batch.set(docRef, { 
-            ...couponData, 
-            id: docRef.id,
-            startDate: adminFirestore.Timestamp.fromDate(couponData.startDate),
-            expiryDate: adminFirestore.Timestamp.fromDate(couponData.expiryDate),
-        });
-    });
-
-    await batch.commit();
-}
-
 
 // This function can be used in any API route that needs to fetch menu data publicly.
 export async function GET(request, { params }) {
@@ -69,13 +18,9 @@ export async function GET(request, { params }) {
         const restaurantRef = firestore.collection('restaurants').doc(restaurantId);
         let restaurantDoc = await restaurantRef.get();
 
-        // --- SEEDING LOGIC ---
-        // If restaurant doesn't exist, create it with demo data.
+        // If restaurant doesn't exist, return a 404.
         if (!restaurantDoc.exists) {
-            console.log(`[Public Menu API] Restaurant ${restaurantId} not found. Seeding demo data...`);
-            await seedInitialPublicData(firestore, restaurantId);
-            // Re-fetch the document after seeding
-            restaurantDoc = await restaurantRef.get();
+            return NextResponse.json({ message: `Restaurant with ID ${restaurantId} not found.` }, { status: 404 });
         }
         
         const couponsRef = restaurantRef.collection('coupons');
@@ -99,7 +44,7 @@ export async function GET(request, { params }) {
 
         const restaurantData = restaurantDoc.data();
         const restaurantName = restaurantData.name;
-        const deliveryCharge = restaurantData.deliveryCharge || 30;
+        const deliveryCharge = restaurantData.deliveryCharge || 0; // Default to 0 if not set
         const logoUrl = restaurantData.logoUrl || '';
         const bannerUrls = restaurantData.bannerUrls || [];
 
