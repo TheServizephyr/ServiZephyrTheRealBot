@@ -2,7 +2,7 @@
 import { firestore as adminFirestore } from 'firebase-admin';
 import { getFirestore } from '@/lib/firebase-admin';
 import { NextResponse } from 'next/server';
-import { sendWhatsAppMessage } from '@/lib/whatsapp';
+import { sendNewOrderToOwner } from '@/lib/notifications';
 
 export async function POST(req) {
     try {
@@ -124,61 +124,15 @@ export async function POST(req) {
 
         await batch.commit();
 
-        // --- NEW & CORRECTED WHATSAPP NOTIFICATION LOGIC ---
-        const ownerId = restaurantData.ownerId;
-        const businessPhoneNumberId = restaurantData.botPhoneNumberId;
-
-        // 1. Get Owner's document from 'users' collection to find their phone number
-        let ownerPhone;
-        if (ownerId) {
-            const ownerRef = firestore.collection('users').doc(ownerId);
-            const ownerDoc = await ownerRef.get();
-            if (ownerDoc.exists) {
-                ownerPhone = ownerDoc.data().phone;
-            }
-        }
-        
-        // --- DEBUG CONSOLE LOG ---
-        console.log(`[Order API Debug] Attempting to send notification. Owner Phone: ${ownerPhone}, Bot ID: ${businessPhoneNumberId}`);
-
-        // 2. Check if we have both numbers before attempting to send
-        if (ownerPhone && businessPhoneNumberId) {
-             const ownerPhoneWithCode = '91' + ownerPhone;
-             // This is the pre-approved Message Template payload
-             const notificationPayload = {
-                name: "new_order_notification", // CORRECTED/STANDARD TEMPLATE NAME
-                language: { code: "en_US" },
-                components: [
-                    {
-                        type: "body",
-                        parameters: [
-                            { type: "text", text: name },
-                            { type: "text", text: `₹${grandTotal.toFixed(2)}` },
-                            { type: "text", text: newOrderRef.id }
-                        ]
-                    },
-                    {
-                        type: "button",
-                        sub_type: "quick_reply",
-                        index: "0",
-                        parameters: [{ type: "payload", payload: `accept_order_${newOrderRef.id}` }]
-                    },
-                    {
-                        type: "button",
-                        sub_type: "quick_reply",
-                        index: "1",
-                        parameters: [{ type: "payload", payload: `reject_order_${newOrderRef.id}` }]
-                    }
-                ]
-            };
-            // --- DEBUG CONSOLE LOG ---
-            console.log('[Order API Debug] Payload prepared. Sending message to:', ownerPhoneWithCode, 'using bot ID:', businessPhoneNumberId);
-            // Use the centralized function to send the message
-            await sendWhatsAppMessage(ownerPhoneWithCode, notificationPayload, businessPhoneNumberId);
-        } else {
-            console.warn(`[Order API] Owner phone or Bot ID not found for restaurant ${restaurantId}. Cannot send notification.`);
-        }
-        // --- END: CORRECTED LOGIC ---
+        // --- NEW & CENTRALIZED WHATSAPP NOTIFICATION ---
+        await sendNewOrderToOwner({
+            ownerPhone: restaurantData.ownerPhone,
+            botPhoneNumberId: restaurantData.botPhoneNumberId,
+            customerName: name,
+            totalAmount: grandTotal,
+            orderId: newOrderRef.id
+        });
+        // --- END: NEW LOGIC ---
 
         return NextResponse.json({ 
             message: 'Order placed successfully! We will notify you on WhatsApp.'

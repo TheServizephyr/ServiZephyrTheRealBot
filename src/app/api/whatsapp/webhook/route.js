@@ -3,6 +3,8 @@
 import { NextResponse } from 'next/server';
 import { getFirestore } from '@/lib/firebase-admin';
 import { sendWhatsAppMessage } from '@/lib/whatsapp';
+import { sendOrderConfirmationToCustomer } from '@/lib/notifications';
+
 
 const VERIFY_TOKEN = process.env.WHATSAPP_VERIFY_TOKEN;
 
@@ -48,13 +50,14 @@ export async function POST(request) {
         if (change?.value?.messages?.[0]?.interactive?.button_reply) {
             const message = change.value.messages[0];
             const buttonReply = message.interactive.button_reply;
-            const buttonId = buttonReply.id; // e.g., "accept_order_ORDER_ID" or "reject_order_ORDER_ID"
+            const buttonId = buttonReply.id; // e.g., "accept_order_ORDER_ID"
             const fromNumber = message.from; // Owner's number
             const businessPhoneNumberId = change.value.metadata.phone_number_id;
             
             console.log(`[Webhook Debug] Button pressed. ID: ${buttonId}, From: ${fromNumber}`);
 
-            const [action, orderId] = buttonId.split('_order_');
+            const [action, ...orderIdParts] = buttonId.split('_order_');
+            const orderId = orderIdParts.join('_order_'); // Re-join in case order ID has underscores
             
             if (!orderId || !['accept', 'reject'].includes(action)) {
                 console.log(`[Webhook] Ignoring invalid button ID: ${buttonId}`);
@@ -67,22 +70,25 @@ export async function POST(request) {
                 await orderRef.update({ status: 'confirmed' });
                 console.log(`[Webhook] Order ${orderId} accepted by owner.`);
                 
-                // Now, notify the customer
+                // Now, notify the customer using the centralized notification service
                 const orderDoc = await orderRef.get();
                 if (orderDoc.exists) {
                     const orderData = orderDoc.data();
-                    const customerPhoneWithCode = '91' + orderData.customerPhone; // Assuming Indian numbers
                     
-                    const confirmationMessage = `🎉 Your order #${orderId.substring(0, 5)} from *${orderData.restaurantName}* has been confirmed!\n\nWe've started preparing your meal. We will notify you at every step.`;
-                    
-                    console.log(`[Webhook Debug] Sending confirmation to customer: ${customerPhoneWithCode}`);
-                    await sendWhatsAppMessage(customerPhoneWithCode, confirmationMessage, businessPhoneNumberId);
+                    // Call the centralized function
+                    await sendOrderConfirmationToCustomer({
+                        customerPhone: orderData.customerPhone,
+                        botPhoneNumberId: businessPhoneNumberId,
+                        customerName: orderData.customerName,
+                        orderId: orderId,
+                        restaurantName: orderData.restaurantName
+                    });
                 }
 
             } else if (action === 'reject') {
+                // In a real app, you might want to update status to 'rejected' instead of deleting
                 await orderRef.delete();
                 console.log(`[Webhook] Order ${orderId} rejected and deleted by owner.`);
-                // Optionally, notify the customer about the rejection in the future.
             }
             
             // Acknowledge the button press to the owner
@@ -111,30 +117,18 @@ export async function POST(request) {
             const restaurantId = restaurantDoc.id;
             const restaurantData = restaurantDoc.data();
             const restaurantName = restaurantData.name;
-            const ownerId = restaurantData.ownerId;
 
             console.log(`[Webhook Debug] Matched to restaurant: ${restaurantName} (ID: ${restaurantId})`);
-            
-            // 2. Find the owner's phone number using the ownerId
-            const ownerRef = firestore.collection('users').doc(ownerId);
-            const ownerDoc = await ownerRef.get();
-            
-            let ownerName = 'Owner';
-            if(ownerDoc.exists) {
-                ownerName = ownerDoc.data().name || 'Owner';
-            }
 
-            // This logic welcomes the CUSTOMER, not the owner.
+            // 2. Find customer's name for a personalized welcome
             const customerPhone = fromWithCode.startsWith('91') ? fromWithCode.substring(2) : fromWithCode;
             const usersRef = firestore.collection('users');
             const userQuery = await usersRef.where('phone', '==', customerPhone).limit(1).get();
             
-            let welcomeMessage = '';
+            let welcomeMessage = `Welcome to ${restaurantName}! 😃`;
             if (!userQuery.empty) {
                 const user = userQuery.docs[0].data();
                 welcomeMessage = `Welcome back to ${restaurantName}, ${user.name}! 🥳`;
-            } else {
-                welcomeMessage = `Welcome to ${restaurantName}! 😃`;
             }
 
             const menuUrl = `https://servizephyr.com/order/${restaurantId}?phone=${customerPhone}`;
