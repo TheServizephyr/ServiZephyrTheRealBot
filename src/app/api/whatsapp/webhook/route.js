@@ -98,7 +98,7 @@ export async function POST(request) {
         // --- Logic for Standard Text Messages (Customer Welcome) ---
         else if (change?.value?.messages?.[0]?.text) {
             const message = change.value.messages[0];
-            const fromWithCode = message.from; // This is the customer's number
+            const fromWithCode = message.from; // This is the customer's number with country code but no space
             const botPhoneNumberId = change.value.metadata.phone_number_id;
 
             console.log(`[Webhook] Received text from customer ${fromWithCode} for bot ID ${botPhoneNumberId}`);
@@ -134,8 +134,9 @@ export async function POST(request) {
             const menuUrl = `https://servizephyr.com/order/${restaurantId}?phone=${customerPhone}`;
             const reply_body = `${welcomeMessage}\n\nWhat would you like to order today? You can view our full menu and place your order by clicking the link below:\n\n${menuUrl}`;
             
-            console.log(`[Webhook Debug] Sending welcome message to customer: ${fromWithCode}`);
-            await sendWhatsAppMessage(fromWithCode, reply_body, botPhoneNumberId);
+            const customerPhoneForApi = '91 ' + customerPhone; // Add space for the API call
+            console.log(`[Webhook Debug] Sending welcome message to customer: ${customerPhoneForApi}`);
+            await sendWhatsAppMessage(customerPhoneForApi, reply_body, botPhoneNumberId);
         }
         
         return NextResponse.json({ message: 'Event received' }, { status: 200 });

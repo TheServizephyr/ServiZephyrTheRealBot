@@ -16,7 +16,7 @@ export const sendNewOrderToOwner = async ({ ownerPhone, botPhoneNumberId, custom
         console.warn(`[Notification Lib] Owner phone or Bot ID not found for this restaurant. Cannot send new order notification.`);
         return;
     }
-    const ownerPhoneWithCode = '91' + ownerPhone;
+    const ownerPhoneWithCode = '91 ' + ownerPhone;
     const orderDetailsUrl = `https://servizephyr.com/owner-dashboard/bill/${orderId}`;
 
 
@@ -65,7 +65,7 @@ export const sendNewOrderToOwner = async ({ ownerPhone, botPhoneNumberId, custom
  * @param {string} params.restaurantName - The name of the restaurant.
  */
 export const sendOrderConfirmationToCustomer = async ({ customerPhone, botPhoneNumberId, customerName, orderId, restaurantName }) => {
-    const customerPhoneWithCode = '91' + customerPhone;
+    const customerPhoneWithCode = '91 ' + customerPhone;
 
     // This is the pre-approved Message Template payload for 'order_status_update'
     const statusPayload = {
@@ -92,8 +92,3 @@ export const sendOrderConfirmationToCustomer = async ({ customerPhone, botPhoneN
 // export const sendOrderPreparingNotification = async (params) => { ... }
 // export const sendOrderDispatchedNotification = async (params) => { ... }
 // export const sendFeedbackRequest = async (params) => { ... }
-
-
-
-
-
