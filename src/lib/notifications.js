@@ -20,10 +20,10 @@ export const sendNewOrderToOwner = async ({ ownerPhone, botPhoneNumberId, custom
     const orderDetailsUrl = `https://servizephyr.com/owner-dashboard/bill/${orderId}`;
 
 
-    // This is the pre-approved Message Template payload for 'new_order_notificat'
+    // This is the pre-approved Message Template payload for 'new_order_notification'
     // It now includes a 4th variable for the order details link.
     const notificationPayload = {
-        name: "new_order_notificat",
+        name: "new_order_notification",
         language: { code: "en" },
         components: [
             {
@@ -92,6 +92,7 @@ export const sendOrderConfirmationToCustomer = async ({ customerPhone, botPhoneN
 // export const sendOrderPreparingNotification = async (params) => { ... }
 // export const sendOrderDispatchedNotification = async (params) => { ... }
 // export const sendFeedbackRequest = async (params) => { ... }
+
 
 
 
