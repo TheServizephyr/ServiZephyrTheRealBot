@@ -88,12 +88,12 @@ export async function POST(request) {
         // --- Logic for Standard Text Messages (Customer Welcome) ---
         else if (change?.value?.messages?.[0]?.text) {
             const message = change.value.messages[0];
-            const fromWithCode = message.from;
-            const from = fromWithCode.startsWith('91') ? fromWithCode.substring(2) : fromWithCode;
-            console.log(`[Webhook] Normalized phone number from ${fromWithCode} to ${from}`);
-
+            const fromWithCode = message.from; // This is the customer's number
             const botPhoneNumberId = change.value.metadata.phone_number_id;
 
+            console.log(`[Webhook] Received text from customer ${fromWithCode} for bot ID ${botPhoneNumberId}`);
+
+            // 1. Find the restaurant using the botPhoneNumberId
             const restaurantsRef = firestore.collection('restaurants');
             const restaurantQuery = await restaurantsRef.where('botPhoneNumberId', '==', botPhoneNumberId).limit(1).get();
 
@@ -105,11 +105,26 @@ export async function POST(request) {
             
             const restaurantDoc = restaurantQuery.docs[0];
             const restaurantId = restaurantDoc.id;
-            const restaurantName = restaurantDoc.data().name;
+            const restaurantData = restaurantDoc.data();
+            const restaurantName = restaurantData.name;
+            const ownerId = restaurantData.ownerId;
 
+            console.log(`[Webhook] Matched to restaurant: ${restaurantName} (ID: ${restaurantId}) owned by UID: ${ownerId}`);
+            
+            // 2. Find the owner's phone number using the ownerId
+            const ownerRef = firestore.collection('users').doc(ownerId);
+            const ownerDoc = await ownerRef.get();
+            
+            let ownerName = 'Owner';
+            if(ownerDoc.exists) {
+                ownerName = ownerDoc.data().name || 'Owner';
+            }
+
+            // This logic welcomes the CUSTOMER, not the owner.
+            const customerPhone = fromWithCode.startsWith('91') ? fromWithCode.substring(2) : fromWithCode;
             const usersRef = firestore.collection('users');
-            const userQuery = await usersRef.where('phone', '==', from).limit(1).get();
-
+            const userQuery = await usersRef.where('phone', '==', customerPhone).limit(1).get();
+            
             let welcomeMessage = '';
             if (!userQuery.empty) {
                 const user = userQuery.docs[0].data();
@@ -118,7 +133,7 @@ export async function POST(request) {
                 welcomeMessage = `Welcome to ${restaurantName}! 😃`;
             }
 
-            const menuUrl = `https://servizephyr.com/order/${restaurantId}?phone=${from}`;
+            const menuUrl = `https://servizephyr.com/order/${restaurantId}?phone=${customerPhone}`;
             const reply_body = `${welcomeMessage}\n\nWhat would you like to order today? You can view our full menu and place your order by clicking the link below:\n\n${menuUrl}`;
             
             await sendWhatsAppMessage(fromWithCode, reply_body, botPhoneNumberId);
