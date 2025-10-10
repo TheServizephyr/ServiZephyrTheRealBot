@@ -1,5 +1,4 @@
 
-
 'use client';
 
 import React, { useState, useEffect, Suspense, useMemo } from 'react';
@@ -21,7 +20,7 @@ const CustomizationDrawer = ({ item, isOpen, onClose, onAddToCart }) => {
 
     useEffect(() => {
         if (item) {
-            setSelectedPortion(item.portions[0]);
+            setSelectedPortion(item.portions?.[0] || null);
             // Initialize add-ons state
             const initialAddOns = {};
             (item.addOnGroups || []).forEach(group => {
@@ -96,22 +95,24 @@ const CustomizationDrawer = ({ item, isOpen, onClose, onAddToCart }) => {
 
                         <div className="py-4 space-y-6 overflow-y-auto flex-grow">
                              {/* Portions */}
-                            <div className="space-y-2">
-                                <h4 className="font-semibold text-lg">Size</h4>
-                                {item.portions.map(portion => (
-                                    <div
-                                        key={portion.name}
-                                        onClick={() => setSelectedPortion(portion)}
-                                        className={cn(
-                                            "flex justify-between items-center p-4 rounded-lg border-2 cursor-pointer transition-all",
-                                            selectedPortion?.name === portion.name ? "border-primary bg-primary/10" : "border-border hover:bg-muted"
-                                        )}
-                                    >
-                                        <span className="font-semibold">{portion.name}</span>
-                                        <span className="font-bold text-primary">₹{portion.price}</span>
-                                    </div>
-                                ))}
-                            </div>
+                            {item.portions && item.portions.length > 0 && (
+                                <div className="space-y-2">
+                                    <h4 className="font-semibold text-lg">Size</h4>
+                                    {item.portions.map(portion => (
+                                        <div
+                                            key={portion.name}
+                                            onClick={() => setSelectedPortion(portion)}
+                                            className={cn(
+                                                "flex justify-between items-center p-4 rounded-lg border-2 cursor-pointer transition-all",
+                                                selectedPortion?.name === portion.name ? "border-primary bg-primary/10" : "border-border hover:bg-muted"
+                                            )}
+                                        >
+                                            <span className="font-semibold">{portion.name}</span>
+                                            <span className="font-bold text-primary">₹{portion.price}</span>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
                             
                             {/* Add-on Groups */}
                             {(item.addOnGroups || []).map(group => (
@@ -144,8 +145,8 @@ const CustomizationDrawer = ({ item, isOpen, onClose, onAddToCart }) => {
                         </div>
                         
                         <div className="flex-shrink-0 pt-4 border-t border-border">
-                            <Button onClick={handleFinalAddToCart} className="w-full h-14 text-lg bg-primary hover:bg-primary/90 text-primary-foreground">
-                                Add item for ₹{totalPrice}
+                            <Button onClick={handleFinalAddToCart} className="w-full h-14 text-lg bg-primary hover:bg-primary/90 text-primary-foreground" disabled={!selectedPortion}>
+                                {selectedPortion ? `Add item for ₹${totalPrice}` : 'Please select a size'}
                             </Button>
                         </div>
                     </motion.div>
@@ -343,7 +344,7 @@ const OrderPageInternal = () => {
         setError(null);
         try {
           // Pass the phone number as customerId to fetch user-specific coupons
-          const res = await fetch(`/api/menu/${restaurantId}?customerId=${phone || ''}`);
+          const res = await fetch(`/api/menu/${restaurantId}?phone=${phone || ''}`);
           if (!res.ok) {
             throw new Error('Failed to fetch menu data.');
           }
@@ -727,3 +728,5 @@ const OrderPage = () => (
 );
 
 export default OrderPage;
+
+    
