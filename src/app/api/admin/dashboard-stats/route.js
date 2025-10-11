@@ -31,10 +31,12 @@ export async function GET(req) {
         const recentUsersSnap = await firestore.collection('users').orderBy('createdAt', 'desc').limit(4).get();
         const recentSignups = recentUsersSnap.docs.map(doc => {
             const data = doc.data();
+            // CRITICAL FIX: Handle cases where createdAt might be missing
+            const signupTime = data.createdAt?.toDate ? data.createdAt.toDate().toISOString() : new Date().toISOString();
             return {
                 type: data.role === 'owner' ? 'Restaurant' : 'User',
                 name: data.name || 'Unnamed User',
-                time: data.createdAt?.toDate().toISOString() || new Date().toISOString(),
+                time: signupTime,
             };
         });
 
