@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Input } from '@/components/ui/input';
-import { Check, X, MoreVertical, Eye, Pause, Play, Search } from 'lucide-react';
+import { Check, X, MoreVertical, Eye, Pause, Play, Search, RefreshCcw } from 'lucide-react';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -23,6 +23,7 @@ const mockRestaurants = [
   { id: 5, name: 'Taco Town', owner: 'Rajesh Kumar', email: 'rajesh@example.com', onboarded: '2023-07-11', status: 'Suspended' },
   { id: 6, name: 'Noodle House', owner: 'Anjali Mehta', email: 'anjali@example.com', onboarded: '2023-09-28', status: 'Approved' },
   { id: 7, name: 'The Daily Grind', owner: 'Vikram Singh', email: 'vikram@example.com', onboarded: '2023-10-08', status: 'Pending' },
+  { id: 8, name: 'Lost & Found', owner: 'Admin', email: 'restore@me.com', onboarded: '2023-01-01', status: 'Rejected' },
 ];
 
 const RestaurantRow = ({ restaurant }) => {
@@ -30,6 +31,7 @@ const RestaurantRow = ({ restaurant }) => {
     Approved: 'bg-green-500/10 text-green-400',
     Pending: 'bg-yellow-500/10 text-yellow-400',
     Suspended: 'bg-red-500/10 text-red-400',
+    Rejected: 'bg-gray-500/10 text-gray-400',
   };
 
   return (
@@ -73,6 +75,11 @@ const RestaurantRow = ({ restaurant }) => {
             <Play className="mr-2 h-4 w-4" /> Re-activate
           </Button>
         )}
+        {restaurant.status === 'Rejected' && (
+           <Button variant="outline" size="sm" onClick={() => alert(`Re-approving ${restaurant.name}`)}>
+            <RefreshCcw className="mr-2 h-4 w-4" /> Re-Approve
+          </Button>
+        )}
       </TableCell>
     </TableRow>
   );
@@ -94,6 +101,7 @@ export default function AdminRestaurantsPage() {
             <TabsTrigger value="pending">Pending Approval</TabsTrigger>
             <TabsTrigger value="approved">Approved</TabsTrigger>
             <TabsTrigger value="suspended">Suspended</TabsTrigger>
+            <TabsTrigger value="rejected">Rejected</TabsTrigger>
           </TabsList>
           <div className="relative w-full max-w-sm">
              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" size={20} />
@@ -127,6 +135,9 @@ export default function AdminRestaurantsPage() {
                 </TabsContent>
                 <TabsContent value="suspended" className="contents">
                   {filteredRestaurants('Suspended').map(r => <RestaurantRow key={r.id} restaurant={r} />)}
+                </TabsContent>
+                 <TabsContent value="rejected" className="contents">
+                  {filteredRestaurants('Rejected').map(r => <RestaurantRow key={r.id} restaurant={r} />)}
                 </TabsContent>
               </TableBody>
             </Table>

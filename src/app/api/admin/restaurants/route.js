@@ -74,7 +74,7 @@ export async function PATCH(req) {
         
         // --- FIX: Change delete logic to update status ---
         // Instead of deleting, we set the status. This prevents data loss.
-        // Using set with merge:true will create the document if it was deleted.
+        // Using set with merge:true will create the document if it was deleted, restoring it.
         await restaurantRef.set({ approvalStatus: status }, { merge: true });
 
         const message = status === 'Rejected' 
