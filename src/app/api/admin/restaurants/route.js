@@ -8,9 +8,17 @@ export async function GET(req) {
         const firestore = getFirestore();
         const restaurantsSnap = await firestore.collection('restaurants').get();
         
-        const restaurants = restaurantsSnap.docs.map(doc => {
+        const restaurantPromises = restaurantsSnap.docs.map(async (doc) => {
             const data = doc.data();
-            return {
+            
+            // CRITICAL FIX: If a document has no fields (but might have subcollections),
+            // doc.data() will be undefined. We must skip these docs to prevent a crash.
+            if (!data) {
+                console.warn(`[ADMIN] Skipping empty document with ID: ${doc.id}`);
+                return null;
+            }
+
+            const restaurant = {
                 id: doc.id,
                 name: data.name || 'Unnamed Restaurant',
                 ownerId: data.ownerId, // Pass ownerId to fetch details later
@@ -19,10 +27,7 @@ export async function GET(req) {
                 onboarded: data.createdAt?.toDate().toISOString() || new Date().toISOString(),
                 status: data.approvalStatus || 'Pending',
             };
-        });
 
-        // This is a slow operation, do not do this in production for large datasets
-        for (let restaurant of restaurants) {
             if (restaurant.ownerId) {
                 try {
                     const userRecord = await getAuth().getUser(restaurant.ownerId);
@@ -32,7 +37,11 @@ export async function GET(req) {
                     console.warn(`Could not find user for ownerId: ${restaurant.ownerId}`)
                 }
             }
-        }
+            return restaurant;
+        });
+
+        // Resolve all promises and filter out any null results from empty docs
+        const restaurants = (await Promise.all(restaurantPromises)).filter(Boolean);
 
         return NextResponse.json({ restaurants }, { status: 200 });
 
