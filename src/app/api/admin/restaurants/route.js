@@ -10,6 +10,7 @@ export async function GET(req) {
         const restaurantPromises = restaurantsSnap.docs.map(async (doc) => {
             const data = doc.data();
             
+            // CRITICAL FIX: If a document is empty (but might have subcollections), skip it.
             if (!data) {
                 return null;
             }
@@ -20,7 +21,9 @@ export async function GET(req) {
                 ownerId: data.ownerId,
                 ownerName: 'N/A', 
                 ownerEmail: 'N/A', 
+                // SAFETY NET: Use a default date if createdAt is missing
                 onboarded: data.createdAt?.toDate()?.toISOString() || new Date().toISOString(),
+                // SAFETY NET: Default to 'Pending' if approvalStatus is missing
                 status: data.approvalStatus || 'Pending',
             };
 
@@ -30,17 +33,20 @@ export async function GET(req) {
                     restaurant.ownerName = userRecord.displayName || 'No Name';
                     restaurant.ownerEmail = userRecord.email;
                 } catch(e) {
+                    // This catch block is important to prevent a crash if a user is not found
                     console.warn(`Could not find user for ownerId: ${restaurant.ownerId}`);
                 }
             }
             return restaurant;
         });
 
+        // Use filter(Boolean) to remove any null entries from empty documents
         const restaurants = (await Promise.all(restaurantPromises)).filter(Boolean);
 
         return NextResponse.json({ restaurants }, { status: 200 });
 
     } catch (error) {
+        console.error("GET /api/admin/restaurants ERROR:", error);
         return NextResponse.json({ message: 'Internal Server Error', error: error.message }, { status: 500 });
     }
 }
@@ -67,6 +73,7 @@ export async function PATCH(req) {
         return NextResponse.json({ message: 'Restaurant status updated successfully' }, { status: 200 });
 
     } catch (error) {
+        console.error("PATCH /api/admin/restaurants ERROR:", error);
         return NextResponse.json({ message: 'Internal Server Error', error: error.message }, { status: 500 });
     }
 }
