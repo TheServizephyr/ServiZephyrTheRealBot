@@ -13,6 +13,7 @@ import { Switch } from "@/components/ui/switch";
 import { DragDropContext, Droppable, Draggable } from "@hello-pangea/dnd";
 import { auth } from '@/lib/firebase';
 import { cn } from "@/lib/utils";
+import { Checkbox } from "@/components/ui/checkbox";
 
 
 const defaultCategoryConfig = {
@@ -35,7 +36,7 @@ const defaultCategoryConfig = {
 
 // --- COMPONENTS (Single File) ---
 
-const MenuItem = ({ item, index, onDelete, onEdit, onToggleAvailability }) => {
+const MenuItem = ({ item, index, onDelete, onEdit, onToggleAvailability, onSelectItem, isSelected }) => {
     // Determine the price to display. Find the 'Full' price, or the first price if 'Full' doesn't exist.
     const displayPortion = (item.portions && item.portions.length > 0)
         ? item.portions.find(p => p.name.toLowerCase() === 'full') || item.portions[0]
@@ -47,19 +48,24 @@ const MenuItem = ({ item, index, onDelete, onEdit, onToggleAvailability }) => {
                 <motion.div
                     ref={provided.innerRef}
                     {...provided.draggableProps}
-                    className={`flex flex-col md:grid md:grid-cols-12 md:items-center p-3 rounded-lg gap-3 bg-card m-2 border border-border ${snapshot.isDragging ? 'bg-primary/10 shadow-lg ring-2 ring-primary' : ''}`}
+                    className={`flex flex-col md:grid md:grid-cols-12 md:items-center p-3 rounded-lg gap-3 bg-card m-2 border ${isSelected ? "border-primary bg-primary/10" : "border-border"} ${snapshot.isDragging ? 'bg-primary/10 shadow-lg ring-2 ring-primary' : ''}`}
                     whileHover={{ 
-                        y: -2,
                         backgroundColor: "hsl(var(--primary) / 0.1)"
                     }}
                     transition={{ type: "spring", stiffness: 300, damping: 20 }}
                 >
-                    <div className="flex items-center md:col-span-1 text-center md:text-left">
+                     <div className="flex items-center md:col-span-1 text-center md:text-left">
                         <div {...provided.dragHandleProps} className="p-2 cursor-grab text-muted-foreground hover:text-white">
                             <GripVertical size={20} />
                         </div>
                     </div>
                     <div className="flex md:col-span-4 items-center gap-4">
+                        <Checkbox
+                            checked={isSelected}
+                            onCheckedChange={() => onSelectItem(item.id)}
+                            aria-label={`Select ${item.name}`}
+                            className="mr-2"
+                        />
                         <div className="relative w-16 h-16 rounded-md overflow-hidden bg-muted flex-shrink-0">
                             {item.imageUrl ? (
                                 <Image src={item.imageUrl} alt={item.name} layout="fill" objectFit="cover" />
@@ -84,7 +90,7 @@ const MenuItem = ({ item, index, onDelete, onEdit, onToggleAvailability }) => {
                             <Switch checked={item.isAvailable} onCheckedChange={() => onToggleAvailability(item.id, !item.isAvailable)} aria-label="Toggle Availability" />
                         </div>
                     </div>
-                    <div className="md:col-span-3 flex justify-center gap-2 pt-2 border-t border-border md:border-t-0 md:pt-0">
+                    <div className="md:col-span-2 flex justify-center gap-2 pt-2 border-t border-border md:border-t-0 md:pt-0">
                         <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-foreground" onClick={() => onEdit(item)}>
                             <Edit size={16} />
                         </Button>
@@ -100,9 +106,21 @@ const MenuItem = ({ item, index, onDelete, onEdit, onToggleAvailability }) => {
 
 
 
-const MenuCategory = ({ categoryId, title, icon, items, onDeleteItem, onEditItem, onToggleAvailability, setMenu, open, setOpen }) => {
+const MenuCategory = ({ categoryId, title, icon, items, onDeleteItem, onEditItem, onToggleAvailability, setMenu, open, setOpen, selectedItems, setSelectedItems }) => {
     const Icon = icon;
     const isExpanded = open === categoryId;
+
+    const handleSelectAll = (checked) => {
+        const itemIdsInCategory = items.map(item => item.id);
+        if (checked) {
+            setSelectedItems(prev => [...new Set([...prev, ...itemIdsInCategory])]);
+        } else {
+            setSelectedItems(prev => prev.filter(id => !itemIdsInCategory.includes(id)));
+        }
+    };
+
+    const isAllSelected = items.length > 0 && items.every(item => selectedItems.includes(item.id));
+    const isPartiallySelected = items.some(item => selectedItems.includes(item.id)) && !isAllSelected;
 
     const handleDragEnd = (result) => {
         const { source, destination } = result;
@@ -150,10 +168,19 @@ const MenuCategory = ({ categoryId, title, icon, items, onDeleteItem, onEditItem
                     >
                         <div className="hidden md:grid grid-cols-12 items-center px-3 py-2 text-sm font-semibold text-muted-foreground bg-background">
                             <div className="col-span-1"></div>
-                            <div className="col-span-4">Item</div>
+                            <div className="col-span-4 flex items-center">
+                                <Checkbox
+                                    checked={isAllSelected}
+                                    onCheckedChange={handleSelectAll}
+                                    data-state={isPartiallySelected ? "indeterminate" : (isAllSelected ? "checked" : "unchecked")}
+                                    aria-label="Select all items in this category"
+                                    className="mr-4"
+                                />
+                                Item
+                            </div>
                             <div className="col-span-2 text-center">Base Price</div>
                             <div className="col-span-2 text-center">Available</div>
-                            <div className="col-span-3 text-center pr-4">Actions</div>
+                            <div className="col-span-2 text-center pr-4">Actions</div>
                         </div>
                         <DragDropContext onDragEnd={handleDragEnd}>
                             <Droppable droppableId={categoryId}>
@@ -165,12 +192,14 @@ const MenuCategory = ({ categoryId, title, icon, items, onDeleteItem, onEditItem
                                 >
                                 {items.map((item, index) => (
                                     <MenuItem 
-                                    key={item.id} 
-                                    item={item} 
-                                    index={index}
-                                    onDelete={() => onDeleteItem(item.id)}
-                                    onEdit={onEditItem}
-                                    onToggleAvailability={onToggleAvailability}
+                                        key={item.id} 
+                                        item={item} 
+                                        index={index}
+                                        onDelete={() => onDeleteItem(item.id)}
+                                        onEdit={onEditItem}
+                                        onToggleAvailability={onToggleAvailability}
+                                        onSelectItem={() => setSelectedItems(prev => prev.includes(item.id) ? prev.filter(id => id !== item.id) : [...prev, item.id])}
+                                        isSelected={selectedItems.includes(item.id)}
                                     />
                                 ))}
                                 {provided.placeholder}
@@ -682,6 +711,7 @@ export default function MenuPage() {
   const [isBulkModalOpen, setIsBulkModalOpen] = useState(false);
   const [editingItem, setEditingItem] = useState(null);
   const [openCategory, setOpenCategory] = useState("starters");
+  const [selectedItems, setSelectedItems] = useState([]);
   
   const handleApiCall = async (endpoint, method, body) => {
     const user = auth.currentUser;
@@ -799,6 +829,34 @@ export default function MenuPage() {
      }
   };
 
+  const handleBulkDelete = async () => {
+    if (window.confirm(`Are you sure you want to delete ${selectedItems.length} items? This action cannot be undone.`)) {
+        try {
+            await handleApiCall('/api/owner/menu', 'PATCH', { itemIds: selectedItems, action: 'delete' });
+            alert(`${selectedItems.length} items deleted successfully!`);
+            setSelectedItems([]);
+            await fetchMenu();
+        } catch (error) {
+            console.error("Error bulk deleting items:", error);
+            alert("Could not delete items. " + error.message);
+        }
+    }
+  };
+
+  const handleBulkOutOfStock = async () => {
+     if (window.confirm(`Are you sure you want to mark ${selectedItems.length} items as out of stock?`)) {
+        try {
+            await handleApiCall('/api/owner/menu', 'PATCH', { itemIds: selectedItems, action: 'outOfStock' });
+            alert(`${selectedItems.length} items marked as out of stock!`);
+            setSelectedItems([]);
+            await fetchMenu();
+        } catch (error) {
+            console.error("Error marking items out of stock:", error);
+            alert("Could not update items. " + error.message);
+        }
+    }
+  };
+
   if (loading) {
     return (
         <div className="p-6 text-center h-screen flex items-center justify-center">
@@ -860,7 +918,7 @@ export default function MenuPage() {
       </div>
       
       {/* Menu Categories */}
-      <div className="space-y-4">
+      <div className="space-y-4 pb-24">
         {Object.keys(allCategories).sort((a, b) => {
             const titleA = allCategories[a]?.title;
             const titleB = allCategories[b]?.title;
@@ -885,10 +943,35 @@ export default function MenuPage() {
                     setMenu={setMenu}
                     open={openCategory}
                     setOpen={setOpenCategory}
+                    selectedItems={selectedItems}
+                    setSelectedItems={setSelectedItems}
                 />
             );
         })}
       </div>
+
+      <AnimatePresence>
+        {selectedItems.length > 0 && (
+            <motion.div 
+                className="fixed bottom-4 left-1/2 -translate-x-1/2 w-auto bg-card border border-border rounded-xl shadow-2xl p-3 flex items-center gap-4 z-50"
+                initial={{ y: 100, opacity: 0 }}
+                animate={{ y: 0, opacity: 1 }}
+                exit={{ y: 100, opacity: 0 }}
+            >
+                <p className="text-sm font-semibold">{selectedItems.length} item(s) selected</p>
+                <Button variant="outline" size="sm" onClick={handleBulkOutOfStock}>
+                    <XCircle size={16} className="mr-2" /> Mark Out of Stock
+                </Button>
+                <Button variant="destructive" size="sm" onClick={handleBulkDelete}>
+                    <Trash2 size={16} className="mr-2" /> Delete Selected
+                </Button>
+                <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setSelectedItems([])}>
+                    <X size={16} />
+                </Button>
+            </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
+

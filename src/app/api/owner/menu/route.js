@@ -205,12 +205,14 @@ export async function PATCH(req) {
         
         const menuRef = firestore.collection('restaurants').doc(restaurantId).collection('menu');
 
+        // Handle single item availability toggle
         if (updates && updates.id) {
             const itemRef = menuRef.doc(updates.id);
             await itemRef.update({ isAvailable: updates.isAvailable });
             return NextResponse.json({ message: 'Item availability updated.' }, { status: 200 });
         }
 
+        // Handle bulk actions
         if (!itemIds || !Array.isArray(itemIds) || itemIds.length === 0 || !action) {
             return NextResponse.json({ message: 'Item IDs array and action are required for bulk updates.' }, { status: 400 });
         }
@@ -227,7 +229,8 @@ export async function PATCH(req) {
 
         await batch.commit();
 
-        return NextResponse.json({ message: `Bulk action '${action}' completed successfully.` }, { status: 200 });
+        return NextResponse.json({ message: `Bulk action '${action}' completed successfully on ${itemIds.length} items.` }, { status: 200 });
+
     } catch (error) {
         console.error("PATCH MENU ERROR:", error);
         return NextResponse.json({ message: `Backend Error: ${error.message}` }, { status: error.status || 500 });
