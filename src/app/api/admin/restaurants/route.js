@@ -12,7 +12,7 @@ export async function GET(req) {
             const data = doc.data();
             
             // --- START: CRITICAL FIX ---
-            // If doc.data() is undefined (document exists but has no fields), skip it.
+            // If doc.data() is undefined (document exists but has no fields), return null to be filtered out later.
             if (!data) {
                 console.warn(`[ADMIN] Skipping empty document with ID: ${doc.id}`);
                 return null;
