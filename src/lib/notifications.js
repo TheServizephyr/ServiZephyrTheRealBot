@@ -1,4 +1,5 @@
 
+
 import { sendWhatsAppMessage } from './whatsapp';
 
 /**
@@ -12,7 +13,6 @@ import { sendWhatsAppMessage } from './whatsapp';
  * @param {string} params.orderId - The unique ID of the new order.
  */
 export const sendNewOrderToOwner = async ({ ownerPhone, botPhoneNumberId, customerName, totalAmount, orderId }) => {
-    console.log('[Notification Lib] Called sendNewOrderToOwner with:', { ownerPhone, botPhoneNumberId, customerName, totalAmount, orderId });
 
     if (!ownerPhone || !botPhoneNumberId) {
         console.warn(`[Notification Lib] Owner phone or Bot ID not found for this restaurant. Cannot send new order notification.`);
@@ -52,7 +52,6 @@ export const sendNewOrderToOwner = async ({ ownerPhone, botPhoneNumberId, custom
         ]
     };
 
-    console.log('[Notification Lib] Payload prepared for owner. Sending message to:', ownerPhoneWithCode, 'using bot ID:', botPhoneNumberId);
     await sendWhatsAppMessage(ownerPhoneWithCode, notificationPayload, botPhoneNumberId);
 };
 
@@ -67,7 +66,6 @@ export const sendNewOrderToOwner = async ({ ownerPhone, botPhoneNumberId, custom
  * @param {string} params.restaurantName - The name of the restaurant.
  */
 export const sendOrderConfirmationToCustomer = async ({ customerPhone, botPhoneNumberId, customerName, orderId, restaurantName }) => {
-    console.log('[Notification Lib] Called sendOrderConfirmationToCustomer with:', { customerPhone, botPhoneNumberId, customerName, orderId, restaurantName });
     const customerPhoneWithCode = '91 ' + customerPhone;
 
     // This is the pre-approved Message Template payload for 'order_status_update'
@@ -87,7 +85,6 @@ export const sendOrderConfirmationToCustomer = async ({ customerPhone, botPhoneN
         ]
     };
     
-    console.log(`[Notification Lib] Sending confirmation to customer: ${customerPhoneWithCode}`);
     await sendWhatsAppMessage(customerPhoneWithCode, statusPayload, botPhoneNumberId);
 };
 
@@ -95,3 +92,5 @@ export const sendOrderConfirmationToCustomer = async ({ customerPhone, botPhoneN
 // export const sendOrderPreparingNotification = async (params) => { ... }
 // export const sendOrderDispatchedNotification = async (params) => { ... }
 // export const sendFeedbackRequest = async (params) => { ... }
+
+    

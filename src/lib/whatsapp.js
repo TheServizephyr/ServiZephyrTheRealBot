@@ -1,4 +1,5 @@
 
+
 import axios from 'axios';
 
 const ACCESS_TOKEN = process.env.WHATSAPP_ACCESS_TOKEN;
@@ -38,8 +39,6 @@ export const sendWhatsAppMessage = async (phoneNumber, payload, businessPhoneNum
         };
     }
     
-    console.log("[WhatsApp Lib] Sending payload:", JSON.stringify(dataPayload, null, 2));
-
     try {
         const response = await axios({
             method: 'POST',
@@ -50,10 +49,15 @@ export const sendWhatsAppMessage = async (phoneNumber, payload, businessPhoneNum
             },
             data: dataPayload
         });
-        console.log(`[WhatsApp Lib] Successfully sent message to ${phoneNumber}. Response:`, JSON.stringify(response.data, null, 2));
+        // Log success only in non-production environments for cleaner logs
+        if (process.env.NODE_ENV !== 'production') {
+            console.log(`[WhatsApp Lib] Successfully initiated message to ${phoneNumber}. Response:`, JSON.stringify(response.data, null, 2));
+        }
     } catch (error) {
         console.error(`[WhatsApp Lib] Failed to send message to ${phoneNumber}:`, error.response ? JSON.stringify(error.response.data, null, 2) : error.message);
         // Optionally re-throw the error if the caller needs to handle it
         // throw error;
     }
 };
+
+    

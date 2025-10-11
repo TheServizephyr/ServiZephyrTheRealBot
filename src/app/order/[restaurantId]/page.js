@@ -538,7 +538,7 @@ const OrderPageInternal = () => {
     }
 
     const handleCheckout = () => {
-        router.push(`/cart?restaurantId=${restaurantId}&phone=${phone}`);
+        router.push(`/cart?restaurantId=${restaurantId}`);
     };
 
     if (loading) {
@@ -732,3 +732,5 @@ const OrderPage = () => (
 );
 
 export default OrderPage;
+
+    

@@ -1,4 +1,5 @@
 
+
 // A simple, robust webhook handler for Next.js App Router, optimized for Vercel.
 import { NextResponse } from 'next/server';
 import { getFirestore } from '@/lib/firebase-admin';
@@ -17,10 +18,8 @@ export async function GET(request) {
     const token = searchParams.get('hub.verify_token');
     const challenge = searchParams.get('hub.challenge');
 
-    console.log("[Webhook] Received verification request.");
 
     if (mode === 'subscribe' && token === VERIFY_TOKEN) {
-      console.log('[Webhook] Verification successful.');
       return new NextResponse(challenge, { status: 200 });
     } else {
       console.error("[Webhook] Verification FAILED. Tokens do not match.");
@@ -36,8 +35,11 @@ export async function GET(request) {
 export async function POST(request) {
     try {
         const body = await request.json();
-        console.log("[Webhook] POST request received.");
-        console.log("[Webhook] Request Body:", JSON.stringify(body, null, 2));
+        
+        if (process.env.NODE_ENV !== 'production') {
+            console.log("[Webhook] Request Body:", JSON.stringify(body, null, 2));
+        }
+
 
         if (body.object !== 'whatsapp_business_account') {
             return NextResponse.json({ message: 'Not a WhatsApp event' }, { status: 200 });
@@ -54,13 +56,10 @@ export async function POST(request) {
             const fromNumber = message.from; // Owner's number
             const businessPhoneNumberId = change.value.metadata.phone_number_id;
             
-            console.log(`[Webhook Debug] Button pressed. ID: ${buttonId}, From: ${fromNumber}`);
-
             const [action, ...orderIdParts] = buttonId.split('_order_');
             const orderId = orderIdParts.join('_order_'); // Re-join in case order ID has underscores
             
             if (!orderId || !['accept', 'reject'].includes(action)) {
-                console.log(`[Webhook] Ignoring invalid button ID: ${buttonId}`);
                 return NextResponse.json({ message: 'Invalid button ID' }, { status: 200 });
             }
 
@@ -68,7 +67,6 @@ export async function POST(request) {
             
             if (action === 'accept') {
                 await orderRef.update({ status: 'confirmed' });
-                console.log(`[Webhook] Order ${orderId} accepted by owner.`);
                 
                 // Now, notify the customer using the centralized notification service
                 const orderDoc = await orderRef.get();
@@ -88,7 +86,6 @@ export async function POST(request) {
             } else if (action === 'reject') {
                 // In a real app, you might want to update status to 'rejected' instead of deleting
                 await orderRef.delete();
-                console.log(`[Webhook] Order ${orderId} rejected and deleted by owner.`);
             }
             
             // Acknowledge the button press to the owner
@@ -101,7 +98,6 @@ export async function POST(request) {
             const fromWithCode = message.from; // This is the customer's number with country code but no space
             const botPhoneNumberId = change.value.metadata.phone_number_id;
 
-            console.log(`[Webhook] Received text from customer ${fromWithCode} for bot ID ${botPhoneNumberId}`);
 
             // 1. Find the restaurant using the botPhoneNumberId
             const restaurantsRef = firestore.collection('restaurants');
@@ -118,8 +114,6 @@ export async function POST(request) {
             const restaurantData = restaurantDoc.data();
             const restaurantName = restaurantData.name;
 
-            console.log(`[Webhook Debug] Matched to restaurant: ${restaurantName} (ID: ${restaurantId})`);
-
             // 2. Find customer's name for a personalized welcome
             const customerPhone = fromWithCode.startsWith('91') ? fromWithCode.substring(2) : fromWithCode;
             const usersRef = firestore.collection('users');
@@ -135,7 +129,6 @@ export async function POST(request) {
             const reply_body = `${welcomeMessage}\n\nWhat would you like to order today? You can view our full menu and place your order by clicking the link below:\n\n${menuUrl}`;
             
             const customerPhoneForApi = '91 ' + customerPhone; // Add space for the API call
-            console.log(`[Webhook Debug] Sending welcome message to customer: ${customerPhoneForApi}`);
             await sendWhatsAppMessage(customerPhoneForApi, reply_body, botPhoneNumberId);
         }
         
@@ -146,3 +139,5 @@ export async function POST(request) {
         return NextResponse.json({ message: 'Error processing request, but acknowledged.' }, { status: 200 });
     }
 }
+
+    
