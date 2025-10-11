@@ -17,6 +17,7 @@ export async function GET(req) {
                 ownerName: 'N/A', 
                 ownerEmail: 'N/A', 
                 onboarded: data.createdAt?.toDate().toISOString() || new Date().toISOString(),
+                // CRITICAL FIX: Default to 'Pending' if approvalStatus is missing
                 status: data.approvalStatus || 'Pending',
             };
         });
@@ -61,6 +62,11 @@ export async function PATCH(req) {
         const restaurantRef = firestore.collection('restaurants').doc(restaurantId);
         
         await restaurantRef.update({ approvalStatus: status });
+        
+        // If approving, make sure the doc exists by setting with merge
+        if(status === 'Approved') {
+            await restaurantRef.set({ approvalStatus: status }, { merge: true });
+        }
         
         return NextResponse.json({ message: 'Restaurant status updated successfully' }, { status: 200 });
 
