@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -15,18 +15,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 
-const mockRestaurants = [
-  { id: 1, name: 'Pizza Paradise', owner: 'Rohan Sharma', email: 'rohan@example.com', onboarded: '2023-10-01', status: 'Pending' },
-  { id: 2, name: 'Curry Corner', owner: 'Amit Patel', email: 'amit@example.com', onboarded: '2023-09-15', status: 'Approved' },
-  { id: 3, name: 'Burger Barn', owner: 'Priya Desai', email: 'priya@example.com', onboarded: '2023-08-22', status: 'Approved' },
-  { id: 4, name: 'Sushi Spot', owner: 'Sunita Verma', email: 'sunita@example.com', onboarded: '2023-10-05', status: 'Pending' },
-  { id: 5, name: 'Taco Town', owner: 'Rajesh Kumar', email: 'rajesh@example.com', onboarded: '2023-07-11', status: 'Suspended' },
-  { id: 6, name: 'Noodle House', owner: 'Anjali Mehta', email: 'anjali@example.com', onboarded: '2023-09-28', status: 'Approved' },
-  { id: 7, name: 'The Daily Grind', owner: 'Vikram Singh', email: 'vikram@example.com', onboarded: '2023-10-08', status: 'Pending' },
-  { id: 8, name: 'Lost & Found', owner: 'Admin', email: 'restore@me.com', onboarded: '2023-01-01', status: 'Rejected' },
-];
-
-const RestaurantRow = ({ restaurant }) => {
+const RestaurantRow = ({ restaurant, onUpdateStatus }) => {
   const statusClasses = {
     Approved: 'bg-green-500/10 text-green-400',
     Pending: 'bg-yellow-500/10 text-yellow-400',
@@ -37,8 +26,8 @@ const RestaurantRow = ({ restaurant }) => {
   return (
     <TableRow>
       <TableCell className="font-medium">{restaurant.name}</TableCell>
-      <TableCell>{restaurant.owner}</TableCell>
-      <TableCell className="text-muted-foreground">{restaurant.email}</TableCell>
+      <TableCell>{restaurant.ownerName}</TableCell>
+      <TableCell className="text-muted-foreground">{restaurant.ownerEmail}</TableCell>
       <TableCell>{new Date(restaurant.onboarded).toLocaleDateString()}</TableCell>
       <TableCell>
         <span className={`px-2 py-1 text-xs font-semibold rounded-full ${statusClasses[restaurant.status]}`}>
@@ -48,10 +37,10 @@ const RestaurantRow = ({ restaurant }) => {
       <TableCell className="text-right">
         {restaurant.status === 'Pending' && (
           <div className="flex gap-2 justify-end">
-            <Button variant="outline" size="sm" className="border-green-500 text-green-500 hover:bg-green-500/10 hover:text-green-500">
+            <Button variant="outline" size="sm" className="border-green-500 text-green-500 hover:bg-green-500/10 hover:text-green-500" onClick={() => onUpdateStatus(restaurant.id, 'Approved')}>
               <Check className="mr-2 h-4 w-4" /> Approve
             </Button>
-            <Button variant="outline" size="sm" className="border-red-500 text-red-500 hover:bg-red-500/10 hover:text-red-500">
+            <Button variant="outline" size="sm" className="border-red-500 text-red-500 hover:bg-red-500/10 hover:text-red-500" onClick={() => onUpdateStatus(restaurant.id, 'Rejected')}>
               <X className="mr-2 h-4 w-4" /> Reject
             </Button>
           </div>
@@ -66,17 +55,17 @@ const RestaurantRow = ({ restaurant }) => {
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
               <DropdownMenuItem><Eye className="mr-2 h-4 w-4" /> View as Owner</DropdownMenuItem>
-              <DropdownMenuItem className="text-red-500"><Pause className="mr-2 h-4 w-4" /> Suspend</DropdownMenuItem>
+              <DropdownMenuItem className="text-red-500" onClick={() => onUpdateStatus(restaurant.id, 'Suspended')}><Pause className="mr-2 h-4 w-4" /> Suspend</DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
         )}
         {restaurant.status === 'Suspended' && (
-          <Button variant="outline" size="sm" onClick={() => alert(`Re-activating ${restaurant.name}`)}>
+          <Button variant="outline" size="sm" onClick={() => onUpdateStatus(restaurant.id, 'Approved')}>
             <Play className="mr-2 h-4 w-4" /> Re-activate
           </Button>
         )}
         {restaurant.status === 'Rejected' && (
-           <Button variant="outline" size="sm" onClick={() => alert(`This will re-approve ${restaurant.name}. The API logic needs to be connected to handle this.`)}>
+           <Button variant="outline" size="sm" onClick={() => onUpdateStatus(restaurant.id, 'Approved')}>
             <RefreshCcw className="mr-2 h-4 w-4" /> Re-Approve
           </Button>
         )}
@@ -86,11 +75,84 @@ const RestaurantRow = ({ restaurant }) => {
 };
 
 export default function AdminRestaurantsPage() {
-  const [restaurants, setRestaurants] = useState(mockRestaurants);
+  const [restaurants, setRestaurants] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
   const [search, setSearch] = useState('');
+
+  const fetchRestaurants = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+        const response = await fetch('/api/admin/restaurants');
+        if (!response.ok) {
+            throw new Error('Failed to fetch restaurants');
+        }
+        const data = await response.json();
+        setRestaurants(data.restaurants);
+    } catch (err) {
+        setError(err.message);
+    } finally {
+        setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchRestaurants();
+  }, []);
+
+  const handleUpdateStatus = async (restaurantId, newStatus) => {
+    try {
+        const res = await fetch('/api/admin/restaurants', {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ restaurantId, status: newStatus }),
+        });
+        if (!res.ok) {
+            const errorData = await res.json();
+            throw new Error(errorData.message || 'Failed to update status');
+        }
+        // Refresh the list after update
+        fetchRestaurants();
+    } catch (err) {
+        alert(err.message);
+    }
+  };
 
   const filteredRestaurants = (status) =>
     restaurants.filter(r => r.status === status && r.name.toLowerCase().includes(search.toLowerCase()));
+
+  const renderTableContent = (status) => {
+    if (loading) {
+      return (
+        <TableRow>
+          <TableCell colSpan={6} className="text-center p-8">
+            <RefreshCcw className="mx-auto h-8 w-8 animate-spin text-muted-foreground" />
+          </TableCell>
+        </TableRow>
+      );
+    }
+    if (error) {
+      return (
+        <TableRow>
+          <TableCell colSpan={6} className="text-center p-8 text-destructive">
+            Error: {error}
+          </TableCell>
+        </TableRow>
+      );
+    }
+    const data = filteredRestaurants(status);
+    if (data.length === 0) {
+      return (
+         <TableRow>
+          <TableCell colSpan={6} className="text-center p-8 text-muted-foreground">
+            No restaurants found for this status.
+          </TableCell>
+        </TableRow>
+      )
+    }
+    return data.map(r => <RestaurantRow key={r.id} restaurant={r} onUpdateStatus={handleUpdateStatus} />);
+  };
 
   return (
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-6">
@@ -128,16 +190,16 @@ export default function AdminRestaurantsPage() {
               </TableHeader>
               <TableBody>
                 <TabsContent value="pending" className="contents">
-                  {filteredRestaurants('Pending').map(r => <RestaurantRow key={r.id} restaurant={r} />)}
+                  {renderTableContent('Pending')}
                 </TabsContent>
                 <TabsContent value="approved" className="contents">
-                  {filteredRestaurants('Approved').map(r => <RestaurantRow key={r.id} restaurant={r} />)}
+                  {renderTableContent('Approved')}
                 </TabsContent>
                 <TabsContent value="suspended" className="contents">
-                  {filteredRestaurants('Suspended').map(r => <RestaurantRow key={r.id} restaurant={r} />)}
+                  {renderTableContent('Suspended')}
                 </TabsContent>
                  <TabsContent value="rejected" className="contents">
-                  {filteredRestaurants('Rejected').map(r => <RestaurantRow key={r.id} restaurant={r} />)}
+                  {renderTableContent('Rejected')}
                 </TabsContent>
               </TableBody>
             </Table>

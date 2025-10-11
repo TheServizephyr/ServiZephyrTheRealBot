@@ -72,21 +72,12 @@ export async function PATCH(req) {
         const firestore = getFirestore();
         const restaurantRef = firestore.collection('restaurants').doc(restaurantId);
         
-        // --- FIX: Change delete logic to update status ---
-        // Instead of deleting, we set the status. This prevents data loss.
-        // Using set with merge:true will create the document if it was deleted, restoring it.
-        await restaurantRef.set({ approvalStatus: status }, { merge: true });
-
-        const message = status === 'Rejected' 
-            ? 'Restaurant has been rejected.'
-            : 'Restaurant status updated successfully.';
+        await restaurantRef.update({ approvalStatus: status });
         
-        return NextResponse.json({ message }, { status: 200 });
+        return NextResponse.json({ message: 'Restaurant status updated successfully' }, { status: 200 });
 
     } catch (error) {
         console.error("ADMIN: PATCH RESTAURANT ERROR", error);
         return NextResponse.json({ message: 'Internal Server Error' }, { status: 500 });
     }
 }
-
-
