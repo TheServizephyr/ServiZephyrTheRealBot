@@ -11,10 +11,13 @@ export async function GET(req) {
         const restaurantPromises = restaurantsSnap.docs.map(async (doc) => {
             const data = doc.data();
             
+            // --- START: CRITICAL FIX ---
+            // If doc.data() is undefined (document exists but has no fields), skip it.
             if (!data) {
                 console.warn(`[ADMIN] Skipping empty document with ID: ${doc.id}`);
                 return null;
             }
+            // --- END: CRITICAL FIX ---
 
             const restaurant = {
                 id: doc.id,
@@ -38,6 +41,7 @@ export async function GET(req) {
             return restaurant;
         });
 
+        // Filter out any null results from the skipped empty documents
         const restaurants = (await Promise.all(restaurantPromises)).filter(Boolean);
 
         return NextResponse.json({ restaurants }, { status: 200 });
