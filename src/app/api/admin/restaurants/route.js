@@ -25,8 +25,9 @@ export async function GET(req) {
             return {
                 id: doc.id,
                 name: data.name,
-                ownerName: 'N/A', // You need a way to link ownerId to owner name
-                ownerEmail: 'N/A', // Same as above
+                ownerId: data.ownerId, // Pass ownerId to fetch details later
+                ownerName: 'N/A', 
+                ownerEmail: 'N/A', 
                 onboarded: data.createdAt?.toDate().toISOString() || new Date().toISOString(),
                 status: data.approvalStatus || 'Pending',
             };
@@ -71,18 +72,21 @@ export async function PATCH(req) {
         const firestore = getFirestore();
         const restaurantRef = firestore.collection('restaurants').doc(restaurantId);
         
-        if (status === 'Rejected') {
-            await restaurantRef.delete();
-            return NextResponse.json({ message: 'Restaurant rejected and deleted successfully' }, { status: 200 });
-        } else {
-             await restaurantRef.update({ approvalStatus: status });
-             return NextResponse.json({ message: 'Restaurant status updated successfully' }, { status: 200 });
-        }
+        // --- FIX: Change delete logic to update status ---
+        // Instead of deleting, we set the status. This prevents data loss.
+        // Using set with merge:true will create the document if it was deleted.
+        await restaurantRef.set({ approvalStatus: status }, { merge: true });
 
+        const message = status === 'Rejected' 
+            ? 'Restaurant has been rejected.'
+            : 'Restaurant status updated successfully.';
+        
+        return NextResponse.json({ message }, { status: 200 });
 
     } catch (error) {
         console.error("ADMIN: PATCH RESTAURANT ERROR", error);
         return NextResponse.json({ message: 'Internal Server Error' }, { status: 500 });
     }
 }
+
 
