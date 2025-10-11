@@ -1,15 +1,7 @@
-import { NextResponse } from 'next/server';
-import { getFirestore } from 'firebase-admin/firestore';
-import { getAuth } from 'firebase-admin/auth';
-import { initializeApp, getApps } from 'firebase-admin/app';
 
-// This function should be in a lib file but placing here for simplicity
-function initAdmin() {
-    if (!getApps().length) {
-        initializeApp();
-    }
-}
-initAdmin();
+import { NextResponse } from 'next/server';
+import { getFirestore } from '@/lib/firebase-admin';
+import { getAuth } from '@/lib/firebase-admin';
 
 export async function GET(req) {
     try {
