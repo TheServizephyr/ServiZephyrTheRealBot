@@ -59,7 +59,9 @@ function AdminLayoutContent({ children }) {
     const checkScreenSize = () => {
       const mobile = window.innerWidth < 768;
       setIsMobile(mobile);
-      setSidebarOpen(!mobile);
+      if (mobile) {
+        setSidebarOpen(false); // Always start collapsed on mobile
+      }
     };
     checkScreenSize();
     window.addEventListener('resize', checkScreenSize);
@@ -72,22 +74,26 @@ function AdminLayoutContent({ children }) {
     <div className="flex h-screen bg-background text-foreground">
       {/* Sidebar */}
       <AnimatePresence>
-        {isSidebarOpen && (
+        {(isSidebarOpen || !isMobile) && (
           <motion.aside
+            key="sidebar"
             initial={isMobile ? { x: '-100%' } : { width: '260px' }}
-            animate={isMobile ? { x: 0 } : { width: isCollapsed ? '80px' : '260px' }}
+            animate={isMobile ? (isSidebarOpen ? { x: 0 } : { x: '-100%' }) : { width: isCollapsed ? '80px' : '260px' }}
             exit={isMobile ? { x: '-100%' } : { width: '80px' }}
             transition={{ type: 'spring', stiffness: 300, damping: 30 }}
             className={`fixed md:relative h-full z-50 bg-card border-r border-border flex flex-col ${
-              isCollapsed ? 'items-center' : ''
+              isMobile && !isSidebarOpen ? 'hidden' : ''
             }`}
           >
             <div
-              className={`flex items-center shrink-0 border-b border-border ${
+              className={`flex items-center shrink-0 border-b border-border justify-between ${
                 isCollapsed ? 'h-[65px] justify-center' : 'h-[65px] px-6'
               }`}
             >
               {!isCollapsed && <h1 className="text-xl font-bold text-primary">ServiZephyr</h1>}
+               <Button variant="ghost" size="icon" className="hidden md:flex" onClick={() => setSidebarOpen(!isSidebarOpen)}>
+                <ChevronLeft className={`transition-transform duration-300 ${isCollapsed ? 'rotate-180' : ''}`} />
+              </Button>
             </div>
             <nav className="flex-grow p-4 space-y-2">
               <SidebarLink href="/admin-dashboard" icon={LayoutDashboard} isCollapsed={isCollapsed}>
@@ -112,6 +118,13 @@ function AdminLayoutContent({ children }) {
           </motion.aside>
         )}
       </AnimatePresence>
+       {isMobile && isSidebarOpen && (
+          <div
+            className="fixed inset-0 bg-black/60 z-40"
+            onClick={() => setSidebarOpen(false)}
+          />
+        )}
+
 
       <div className="flex-1 flex flex-col overflow-hidden">
         {/* Top Bar */}
