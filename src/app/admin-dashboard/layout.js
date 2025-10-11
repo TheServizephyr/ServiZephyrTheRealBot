@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useState, useEffect } from 'react';
@@ -52,21 +53,28 @@ const SidebarLink = ({ href, icon: Icon, children, isCollapsed }) => {
 
 function AdminLayoutContent({ children }) {
   const [isSidebarOpen, setSidebarOpen] = useState(true);
-  const [isMobile, setIsMobile] = useState(false);
+  const [isMobile, setIsMobile] = useState(null); // Changed from false to null
   const { theme, setTheme } = useTheme();
 
   useEffect(() => {
     const checkScreenSize = () => {
       const mobile = window.innerWidth < 768;
       setIsMobile(mobile);
-      if (mobile) {
-        setSidebarOpen(false); // Always start collapsed on mobile
-      }
+      setSidebarOpen(!mobile); // Open if not mobile, closed if mobile
     };
+
     checkScreenSize();
     window.addEventListener('resize', checkScreenSize);
     return () => window.removeEventListener('resize', checkScreenSize);
   }, []);
+
+  if (isMobile === null) {
+      return (
+        <div className="flex h-screen items-center justify-center bg-background">
+            <div className="h-16 w-16 animate-spin rounded-full border-b-2 border-primary"></div>
+        </div>
+      );
+  }
 
   const isCollapsed = !isSidebarOpen && !isMobile;
 
