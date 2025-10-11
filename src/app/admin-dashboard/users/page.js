@@ -1,13 +1,13 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Input } from '@/components/ui/input';
-import { MoreVertical, Eye, UserX, UserCheck, Search } from 'lucide-react';
+import { MoreVertical, Eye, UserX, UserCheck, Search, RefreshCw } from 'lucide-react';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -17,16 +17,7 @@ import {
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 
 
-const mockUsers = [
-  { id: 1, name: 'Rohan Sharma', email: 'rohan@example.com', phone: '9876543210', role: 'Owner', joinDate: '2023-10-01', status: 'Active' },
-  { id: 2, name: 'Priya Desai', email: 'priya@example.com', phone: '9876543211', role: 'Owner', joinDate: '2023-08-22', status: 'Active' },
-  { id: 3, name: 'Amit Patel', email: 'amit@example.com', phone: '9876543212', role: 'Owner', joinDate: '2023-09-15', status: 'Blocked' },
-  { id: 4, name: 'Anjali Mehta', email: 'anjali@example.com', phone: '9876543213', role: 'Customer', joinDate: '2023-09-28', status: 'Active' },
-  { id: 5, name: 'Vikram Singh', email: 'vikram@example.com', phone: '9876543214', role: 'Customer', joinDate: '2023-10-08', status: 'Active' },
-  { id: 6, name: 'Sunita Verma', email: 'sunita@example.com', phone: '9876543215', role: 'Customer', joinDate: '2023-10-05', status: 'Active' },
-];
-
-const UserRow = ({ user }) => {
+const UserRow = ({ user, onUpdateStatus }) => {
   const statusClasses = {
     Active: 'bg-green-500/10 text-green-400',
     Blocked: 'bg-red-500/10 text-red-400',
@@ -42,8 +33,8 @@ const UserRow = ({ user }) => {
       <TableCell>
         <div className="flex items-center gap-3">
             <Avatar>
-                <AvatarImage src={`https://picsum.photos/seed/${user.id}/40/40`} />
-                <AvatarFallback>{user.name.charAt(0)}</AvatarFallback>
+                <AvatarImage src={user.profilePictureUrl || `https://picsum.photos/seed/${user.id}/40/40`} />
+                <AvatarFallback>{user.name?.charAt(0) || 'U'}</AvatarFallback>
             </Avatar>
             <span className="font-medium">{user.name}</span>
         </div>
@@ -55,7 +46,7 @@ const UserRow = ({ user }) => {
             {user.role}
         </span>
       </TableCell>
-      <TableCell>{new Date(user.joinDate).toLocaleDateString()}</TableCell>
+      <TableCell>{user.joinDate ? new Date(user.joinDate).toLocaleDateString() : 'N/A'}</TableCell>
       <TableCell>
         <span className={`px-2 py-1 text-xs font-semibold rounded-full ${statusClasses[user.status]}`}>
           {user.status}
@@ -72,9 +63,9 @@ const UserRow = ({ user }) => {
             <DropdownMenuContent align="end">
               <DropdownMenuItem><Eye className="mr-2 h-4 w-4" /> View Activity</DropdownMenuItem>
               {user.status === 'Active' ? (
-                 <DropdownMenuItem className="text-red-500"><UserX className="mr-2 h-4 w-4" /> Block User</DropdownMenuItem>
+                 <DropdownMenuItem className="text-red-500" onClick={() => onUpdateStatus(user.id, 'Blocked')}><UserX className="mr-2 h-4 w-4" /> Block User</DropdownMenuItem>
               ) : (
-                <DropdownMenuItem className="text-green-500"><UserCheck className="mr-2 h-4 w-4" /> Unblock User</DropdownMenuItem>
+                <DropdownMenuItem className="text-green-500" onClick={() => onUpdateStatus(user.id, 'Active')}><UserCheck className="mr-2 h-4 w-4" /> Unblock User</DropdownMenuItem>
               )}
             </DropdownMenuContent>
           </DropdownMenu>
@@ -84,11 +75,84 @@ const UserRow = ({ user }) => {
 };
 
 export default function AdminUsersPage() {
-  const [users, setUsers] = useState(mockUsers);
+  const [users, setUsers] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
   const [search, setSearch] = useState('');
+
+  const fetchUsers = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+        const res = await fetch('/api/admin/users');
+        if (!res.ok) {
+            const errorData = await res.json();
+            throw new Error(errorData.message || 'Failed to fetch users');
+        }
+        const data = await res.json();
+        setUsers(data.users);
+    } catch(err) {
+        setError(err.message);
+    } finally {
+        setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchUsers();
+  }, []);
+
+  const handleUpdateStatus = async (userId, newStatus) => {
+    try {
+        const res = await fetch('/api/admin/users', {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ userId, status: newStatus })
+        });
+        if (!res.ok) {
+             const errorData = await res.json();
+            throw new Error(errorData.message || 'Failed to update user');
+        }
+        fetchUsers();
+    } catch(err) {
+        alert('Error: ' + err.message);
+    }
+  };
 
   const filteredUsers = (role) =>
     users.filter(u => u.role === role && (u.name.toLowerCase().includes(search.toLowerCase()) || u.email.toLowerCase().includes(search.toLowerCase())));
+
+  const renderTableContent = (role) => {
+     if (loading) {
+      return (
+        <TableRow>
+          <TableCell colSpan={7} className="text-center p-8">
+            <RefreshCw className="mx-auto h-8 w-8 animate-spin text-muted-foreground" />
+          </TableCell>
+        </TableRow>
+      );
+    }
+    if (error) {
+      return (
+        <TableRow>
+          <TableCell colSpan={7} className="text-center p-8 text-destructive">
+            Error: {error}
+          </TableCell>
+        </TableRow>
+      );
+    }
+    const data = filteredUsers(role);
+    if (data.length === 0) {
+      return (
+         <TableRow>
+          <TableCell colSpan={7} className="text-center p-8 text-muted-foreground">
+            No users found for this role.
+          </TableCell>
+        </TableRow>
+      )
+    }
+    return data.map(u => <UserRow key={u.id} user={u} onUpdateStatus={handleUpdateStatus}/>);
+  };
 
   return (
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-6">
@@ -125,10 +189,10 @@ export default function AdminUsersPage() {
               </TableHeader>
               <TableBody>
                 <TabsContent value="owners" className="contents">
-                  {filteredUsers('Owner').map(u => <UserRow key={u.id} user={u} />)}
+                  {renderTableContent('Owner')}
                 </TabsContent>
                 <TabsContent value="customers" className="contents">
-                  {filteredUsers('Customer').map(u => <UserRow key={u.id} user={u} />)}
+                  {renderTableContent('Customer')}
                 </TabsContent>
               </TableBody>
             </Table>
