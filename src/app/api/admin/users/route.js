@@ -15,9 +15,9 @@ export async function GET(req) {
                 name: data.name || 'Unnamed User',
                 email: data.email || 'No Email',
                 phone: data.phone || 'No Phone',
-                role: data.role || 'customer',
+                role: data.role?.charAt(0).toUpperCase() + data.role?.slice(1) || 'Customer',
                 joinDate: data.createdAt?.toDate().toISOString() || new Date().toISOString(),
-                status: data.status || 'Active', // Default to Active
+                status: data.status || 'Active',
                 profilePictureUrl: data.profilePictureUrl,
             };
         });
@@ -49,7 +49,6 @@ export async function PATCH(req) {
         
         await userRef.update({ status });
         
-        // Also update Firebase Auth user state
         const auth = getAuth();
         await auth.updateUser(userId, {
             disabled: status === 'Blocked'

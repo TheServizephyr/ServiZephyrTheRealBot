@@ -11,8 +11,6 @@ export async function GET(req) {
         const restaurantPromises = restaurantsSnap.docs.map(async (doc) => {
             const data = doc.data();
             
-            // CRITICAL FIX: If a document has no fields (but might have subcollections),
-            // doc.data() will be undefined. We must skip these docs to prevent a crash.
             if (!data) {
                 console.warn(`[ADMIN] Skipping empty document with ID: ${doc.id}`);
                 return null;
@@ -21,7 +19,7 @@ export async function GET(req) {
             const restaurant = {
                 id: doc.id,
                 name: data.name || 'Unnamed Restaurant',
-                ownerId: data.ownerId, // Pass ownerId to fetch details later
+                ownerId: data.ownerId,
                 ownerName: 'N/A', 
                 ownerEmail: 'N/A', 
                 onboarded: data.createdAt?.toDate().toISOString() || new Date().toISOString(),
@@ -40,7 +38,6 @@ export async function GET(req) {
             return restaurant;
         });
 
-        // Resolve all promises and filter out any null results from empty docs
         const restaurants = (await Promise.all(restaurantPromises)).filter(Boolean);
 
         return NextResponse.json({ restaurants }, { status: 200 });
@@ -68,8 +65,6 @@ export async function PATCH(req) {
         const firestore = getFirestore();
         const restaurantRef = firestore.collection('restaurants').doc(restaurantId);
         
-        // Use set with merge:true to ensure the document exists and the field is updated/created.
-        // This is safer than just update().
         await restaurantRef.set({ approvalStatus: status }, { merge: true });
         
         return NextResponse.json({ message: 'Restaurant status updated successfully' }, { status: 200 });
