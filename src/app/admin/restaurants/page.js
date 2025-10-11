@@ -76,7 +76,7 @@ const RestaurantRow = ({ restaurant }) => {
           </Button>
         )}
         {restaurant.status === 'Rejected' && (
-           <Button variant="outline" size="sm" onClick={() => alert(`Re-approving ${restaurant.name}`)}>
+           <Button variant="outline" size="sm" onClick={() => alert(`This will re-approve ${restaurant.name}. The API logic needs to be connected to handle this.`)}>
             <RefreshCcw className="mr-2 h-4 w-4" /> Re-Approve
           </Button>
         )}
