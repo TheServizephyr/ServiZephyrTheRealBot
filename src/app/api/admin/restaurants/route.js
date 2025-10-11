@@ -1,7 +1,6 @@
 
 import { NextResponse } from 'next/server';
-import { getFirestore } from '@/lib/firebase-admin';
-import { getAuth } from '@/lib/firebase-admin';
+import { getFirestore, getAuth } from '@/lib/firebase-admin';
 
 export async function GET(req) {
     try {
@@ -11,13 +10,9 @@ export async function GET(req) {
         const restaurantPromises = restaurantsSnap.docs.map(async (doc) => {
             const data = doc.data();
             
-            // --- START: CRITICAL FIX ---
-            // If doc.data() is undefined (document exists but has no fields), return null to be filtered out later.
             if (!data) {
-                console.warn(`[ADMIN] Skipping empty document with ID: ${doc.id}`);
                 return null;
             }
-            // --- END: CRITICAL FIX ---
 
             const restaurant = {
                 id: doc.id,
@@ -25,7 +20,7 @@ export async function GET(req) {
                 ownerId: data.ownerId,
                 ownerName: 'N/A', 
                 ownerEmail: 'N/A', 
-                onboarded: data.createdAt?.toDate().toISOString() || new Date().toISOString(),
+                onboarded: data.createdAt?.toDate()?.toISOString() || new Date().toISOString(),
                 status: data.approvalStatus || 'Pending',
             };
 
@@ -35,20 +30,18 @@ export async function GET(req) {
                     restaurant.ownerName = userRecord.displayName || 'No Name';
                     restaurant.ownerEmail = userRecord.email;
                 } catch(e) {
-                    console.warn(`Could not find user for ownerId: ${restaurant.ownerId}`)
+                    console.warn(`Could not find user for ownerId: ${restaurant.ownerId}`);
                 }
             }
             return restaurant;
         });
 
-        // Filter out any null results from the skipped empty documents
         const restaurants = (await Promise.all(restaurantPromises)).filter(Boolean);
 
         return NextResponse.json({ restaurants }, { status: 200 });
 
     } catch (error) {
-        console.error("ADMIN: GET RESTAURANTS ERROR", error);
-        return NextResponse.json({ message: 'Internal Server Error' }, { status: 500 });
+        return NextResponse.json({ message: 'Internal Server Error', error: error.message }, { status: 500 });
     }
 }
 
@@ -74,7 +67,6 @@ export async function PATCH(req) {
         return NextResponse.json({ message: 'Restaurant status updated successfully' }, { status: 200 });
 
     } catch (error) {
-        console.error("ADMIN: PATCH RESTAURANT ERROR", error);
-        return NextResponse.json({ message: 'Internal Server Error' }, { status: 500 });
+        return NextResponse.json({ message: 'Internal Server Error', error: error.message }, { status: 500 });
     }
 }

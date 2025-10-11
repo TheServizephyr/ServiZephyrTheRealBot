@@ -31,7 +31,7 @@ export async function GET(req) {
         const recentUsersSnap = await firestore.collection('users').orderBy('createdAt', 'desc').limit(4).get();
         const recentSignups = recentUsersSnap.docs.map(doc => {
             const data = doc.data();
-            const signupTime = data.createdAt?.toDate().toISOString() || new Date().toISOString();
+            const signupTime = data.createdAt?.toDate()?.toISOString() || new Date().toISOString();
             return {
                 type: data.role === 'owner' ? 'Restaurant' : 'User',
                 name: data.name || 'Unnamed User',
@@ -71,7 +71,6 @@ export async function GET(req) {
         }, { status: 200 });
 
     } catch (error) {
-        console.error("ADMIN: GET DASHBOARD STATS ERROR", error);
         return NextResponse.json({ message: 'Internal Server Error', error: error.message }, { status: 500 });
     }
 }
