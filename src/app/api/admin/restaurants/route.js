@@ -12,18 +12,16 @@ export async function GET(req) {
             const data = doc.data();
             return {
                 id: doc.id,
-                name: data.name,
+                name: data.name || 'Unnamed Restaurant',
                 ownerId: data.ownerId, // Pass ownerId to fetch details later
                 ownerName: 'N/A', 
                 ownerEmail: 'N/A', 
                 onboarded: data.createdAt?.toDate().toISOString() || new Date().toISOString(),
-                // CRITICAL FIX: Default to 'Pending' if approvalStatus is missing
                 status: data.approvalStatus || 'Pending',
             };
         });
 
         // This is a slow operation, do not do this in production for large datasets
-        // For a real app, you should denormalize ownerName and ownerEmail into the restaurant doc
         for (let restaurant of restaurants) {
             if (restaurant.ownerId) {
                 try {
@@ -61,12 +59,9 @@ export async function PATCH(req) {
         const firestore = getFirestore();
         const restaurantRef = firestore.collection('restaurants').doc(restaurantId);
         
-        await restaurantRef.update({ approvalStatus: status });
-        
-        // If approving, make sure the doc exists by setting with merge
-        if(status === 'Approved') {
-            await restaurantRef.set({ approvalStatus: status }, { merge: true });
-        }
+        // Use set with merge:true to ensure the document exists and the field is updated/created.
+        // This is safer than just update().
+        await restaurantRef.set({ approvalStatus: status }, { merge: true });
         
         return NextResponse.json({ message: 'Restaurant status updated successfully' }, { status: 200 });
 

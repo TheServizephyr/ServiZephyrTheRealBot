@@ -12,10 +12,10 @@ export async function GET(req) {
             const data = doc.data();
             return {
                 id: doc.id,
-                name: data.name,
-                email: data.email,
-                phone: data.phone,
-                role: data.role,
+                name: data.name || 'Unnamed User',
+                email: data.email || 'No Email',
+                phone: data.phone || 'No Phone',
+                role: data.role || 'customer',
                 joinDate: data.createdAt?.toDate().toISOString() || new Date().toISOString(),
                 status: data.status || 'Active', // Default to Active
                 profilePictureUrl: data.profilePictureUrl,
