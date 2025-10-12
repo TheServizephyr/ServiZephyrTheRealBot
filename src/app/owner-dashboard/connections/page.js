@@ -52,7 +52,25 @@ export default function ConnectionsPage() {
 
   // This is a placeholder. In a real app, you would fetch this from your backend.
   useEffect(() => {
-    // Mock data
+     // Load the Facebook SDK script
+    (function(d, s, id){
+       var js, fjs = d.getElementsByTagName(s)[0];
+       if (d.getElementById(id)) {return;}
+       js = d.createElement(s); js.id = id;
+       js.src = "https://connect.facebook.net/en_US/sdk.js";
+       fjs.parentNode.insertBefore(js, fjs);
+     }(document, 'script', 'facebook-jssdk'));
+
+    // Initialize the SDK after it loads
+    window.fbAsyncInit = function() {
+      window.FB.init({
+        appId            : process.env.NEXT_PUBLIC_FACEBOOK_APP_ID, // Use environment variable
+        xfbml            : true,
+        version          : 'v19.0'
+      });
+      window.FB.AppEvents.logPageView();
+    };
+
     setConnections([
       // { id: 1, restaurantName: "Curry Cloud", whatsAppNumber: "+91 98765 43210", status: "Connected" },
       // { id: 2, restaurantName: "Pizza on Wheels", whatsAppNumber: "Pending Connection", status: "Pending" },
@@ -99,6 +117,12 @@ export default function ConnectionsPage() {
 
     if (!window.FB) {
       setError("Facebook SDK not loaded. Please refresh the page.");
+      return;
+    }
+    
+    // Ensure the app ID is loaded before calling FB.login
+    if (!process.env.NEXT_PUBLIC_FACEBOOK_APP_ID) {
+      setError("Facebook App ID is not configured. Please contact support.");
       return;
     }
 

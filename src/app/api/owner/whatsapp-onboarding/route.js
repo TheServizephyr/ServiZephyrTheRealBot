@@ -44,6 +44,11 @@ export async function POST(req) {
         const appId = process.env.FACEBOOK_APP_ID;
         const appSecret = process.env.FACEBOOK_APP_SECRET;
 
+        if (!appId || !appSecret) {
+            console.error("[WhatsApp Onboarding] CRITICAL: FACEBOOK_APP_ID or FACEBOOK_APP_SECRET is not set in environment variables.");
+            return NextResponse.json({ message: 'Server configuration error. Please contact support.' }, { status: 500 });
+        }
+
         // Step 2.3: Exchange the Authorization Code for a User Access Token
         const tokenResponse = await axios.get('https://graph.facebook.com/v19.0/oauth/access_token', {
             params: {
