@@ -4,7 +4,7 @@
 import React, { useState, useEffect, Suspense, useMemo } from 'react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Utensils, Plus, Minus, X, Home, User, Edit2, ShoppingCart, Star, CookingPot, BookOpen, Check, SlidersHorizontal, ArrowUpDown, PlusCircle, Ticket, Gift, Sparkles, Flame, Search, Trash2, ChevronDown, Tag as TagIcon, RadioGroup, IndianRupee } from 'lucide-react';
+import { Utensils, Plus, Minus, X, Home, User, Edit2, ShoppingCart, Star, CookingPot, BookOpen, Check, SlidersHorizontal, ArrowUpDown, PlusCircle, Ticket, Gift, Sparkles, Flame, Search, Trash2, ChevronDown, Tag as TagIcon, RadioGroup, IndianRupee, HardHat } from 'lucide-react';
 import Image from 'next/image';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
@@ -315,13 +315,15 @@ const OrderPageInternal = () => {
     const phone = searchParams.get('phone');
     
     // --- STATE MANAGEMENT ---
-    const [restaurantName, setRestaurantName] = useState('');
-    const [logoUrl, setLogoUrl] = useState('');
-    const [bannerUrls, setBannerUrls] = useState(['/order_banner.jpg']);
-    const [isBannerExpanded, setIsBannerExpanded] = useState(false);
-    const [deliveryCharge, setDeliveryCharge] = useState(0);
-    const [rawMenu, setRawMenu] = useState({});
-    const [coupons, setCoupons] = useState([]);
+    const [restaurantData, setRestaurantData] = useState({
+        name: '',
+        status: null,
+        logoUrl: '',
+        bannerUrls: ['/order_banner.jpg'],
+        deliveryCharge: 0,
+        menu: {},
+        coupons: [],
+    });
     const [loyaltyPoints, setLoyaltyPoints] = useState(0);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
@@ -337,6 +339,7 @@ const OrderPageInternal = () => {
         recommended: false,
     });
     const [customizationItem, setCustomizationItem] = useState(null);
+    const [isBannerExpanded, setIsBannerExpanded] = useState(false);
     
 
     // --- DATA FETCHING ---
@@ -349,19 +352,21 @@ const OrderPageInternal = () => {
           // Pass the phone number as customerId to fetch user-specific coupons
           const res = await fetch(`/api/menu/${restaurantId}?phone=${phone || ''}`);
           if (!res.ok) {
-            throw new Error('Failed to fetch menu data.');
+            const errorData = await res.json();
+            throw new Error(errorData.message || 'Failed to fetch menu data.');
           }
           const data = await res.json();
-          setRestaurantName(data.restaurantName);
-          setDeliveryCharge(data.deliveryCharge || 0);
-          setLogoUrl(data.logoUrl || '');
-          if (data.bannerUrls && data.bannerUrls.length > 0) {
-            setBannerUrls(data.bannerUrls);
-          }
-          setRawMenu(data.menu || {});
-          setCoupons(data.coupons || []);
-          // You might need another API to fetch user-specific loyalty points
-          // setLoyaltyPoints(data.loyaltyPoints || 0); 
+
+          setRestaurantData({
+              name: data.restaurantName,
+              status: data.approvalStatus, // Expecting status from API
+              logoUrl: data.logoUrl || '',
+              bannerUrls: (data.bannerUrls && data.bannerUrls.length > 0) ? data.bannerUrls : ['/order_banner.jpg'],
+              deliveryCharge: data.deliveryCharge || 0,
+              menu: data.menu || {},
+              coupons: data.coupons || [],
+          });
+
         } catch (err) {
           setError(err.message);
           console.error(err);
@@ -394,11 +399,11 @@ const OrderPageInternal = () => {
             cart: newCart,
             notes: newNotes !== undefined ? newNotes : notes,
             restaurantId,
-            restaurantName,
+            restaurantName: restaurantData.name,
             phone,
-            coupons,
+            coupons: restaurantData.coupons,
             loyaltyPoints,
-            deliveryCharge,
+            deliveryCharge: restaurantData.deliveryCharge,
         };
         localStorage.setItem(`cart_${restaurantId}`, JSON.stringify(cartData));
     };
@@ -406,7 +411,7 @@ const OrderPageInternal = () => {
 
     // --- MENU PROCESSING & FILTERING ---
     const processedMenu = useMemo(() => {
-        let newMenu = JSON.parse(JSON.stringify(rawMenu));
+        let newMenu = JSON.parse(JSON.stringify(restaurantData.menu));
         const lowercasedQuery = searchQuery.toLowerCase();
 
         for (const category in newMenu) {
@@ -431,7 +436,7 @@ const OrderPageInternal = () => {
             newMenu[category] = items;
         }
         return newMenu;
-    }, [rawMenu, sortBy, filters, searchQuery]);
+    }, [restaurantData.menu, sortBy, filters, searchQuery]);
 
     const menuCategories = useMemo(() => Object.keys(processedMenu)
         .map(key => ({
@@ -549,12 +554,12 @@ const OrderPageInternal = () => {
         );
     }
     
-    if (error) {
+    if (error || restaurantData.status === 'rejected' || restaurantData.status === 'suspended') {
        return (
-         <div className="min-h-screen bg-background flex flex-col items-center justify-center text-destructive p-4">
-            <h1 className="text-2xl font-bold">Oops! Something went wrong.</h1>
-            <p className="mt-2">{error}</p>
-            <Button onClick={() => router.back()} className="mt-6">Go Back</Button>
+         <div className="min-h-screen bg-background flex flex-col items-center justify-center text-center text-destructive p-4">
+            <HardHat size={48} className="mb-4" />
+            <h1 className="text-2xl font-bold">Restaurant Currently Unavailable</h1>
+            <p className="mt-2 text-muted-foreground">{error || "This restaurant is not accepting orders at the moment. Please check back later."}</p>
          </div>
        );
     }
@@ -576,7 +581,7 @@ const OrderPageInternal = () => {
                             onClick={(e) => e.stopPropagation()}
                         >
                             <Image
-                              src={bannerUrls[0]}
+                              src={restaurantData.bannerUrls[0]}
                               alt="Banner Expanded"
                               layout="fill"
                               objectFit="contain"
@@ -604,7 +609,7 @@ const OrderPageInternal = () => {
                 />
 
                  <header>
-                    <BannerCarousel images={bannerUrls} onClick={() => setIsBannerExpanded(true)} restaurantName={restaurantName} logoUrl={logoUrl} />
+                    <BannerCarousel images={restaurantData.bannerUrls} onClick={() => setIsBannerExpanded(true)} restaurantName={restaurantData.name} logoUrl={restaurantData.logoUrl} />
                 </header>
 
                 <div className="sticky top-0 z-10 bg-background/95 backdrop-blur-sm py-2 border-b border-border">
@@ -732,5 +737,3 @@ const OrderPage = () => (
 );
 
 export default OrderPage;
-
-    

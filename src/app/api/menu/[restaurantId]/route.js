@@ -1,5 +1,4 @@
 
-
 import { NextResponse } from 'next/server';
 import { getFirestore } from '@/lib/firebase-admin';
 
@@ -23,6 +22,17 @@ export async function GET(request, { params }) {
             return NextResponse.json({ message: `Restaurant with ID ${restaurantId} not found.` }, { status: 404 });
         }
         
+        const restaurantData = restaurantDoc.data();
+
+        // ** NEW **: Check restaurant status
+        if (restaurantData.approvalStatus !== 'approved') {
+            return NextResponse.json({ 
+                message: 'This restaurant is currently not accepting orders.',
+                restaurantName: restaurantData.name,
+                approvalStatus: restaurantData.approvalStatus
+            }, { status: 403 }); // Using 403 Forbidden is appropriate here
+        }
+        
         const couponsRef = restaurantRef.collection('coupons');
         
         // Base query for general, active coupons
@@ -42,7 +52,6 @@ export async function GET(request, { params }) {
 
         const [menuSnap, generalCouponsSnap, customerCouponsSnap] = await Promise.all(promises);
 
-        const restaurantData = restaurantDoc.data();
         const restaurantName = restaurantData.name;
         const deliveryCharge = restaurantData.deliveryCharge || 0; // Default to 0 if not set
         const logoUrl = restaurantData.logoUrl || '';
@@ -91,7 +100,8 @@ export async function GET(request, { params }) {
             logoUrl: logoUrl,
             bannerUrls: bannerUrls,
             menu: menuData,
-            coupons: allCoupons
+            coupons: allCoupons,
+            approvalStatus: restaurantData.approvalStatus // Also return status
         }, { status: 200 });
 
     } catch (error) {

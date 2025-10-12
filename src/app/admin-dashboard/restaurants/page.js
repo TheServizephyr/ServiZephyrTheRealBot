@@ -4,28 +4,99 @@
 import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import Link from 'next/link';
-import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Input } from '@/components/ui/input';
-import { Check, X, MoreVertical, Eye, Pause, Play, Search, RefreshCw } from 'lucide-react';
+import { Check, X, MoreVertical, Eye, Pause, Play, Search, RefreshCw, ShieldCheck } from 'lucide-react';
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose } from '@/components/ui/dialog';
+import { Label } from '@/components/ui/label';
+import { Checkbox } from '@/components/ui/checkbox';
+
+
+const SuspensionModal = ({ isOpen, onOpenChange, onConfirm, restaurantName }) => {
+    const features = [
+        { id: 'live-orders', label: 'Live Order Management' },
+        { id: 'analytics', label: 'Analytics & Reports' },
+        { id: 'customers', label: 'Customer Hub' },
+        { id: 'delivery', label: 'Delivery Management' },
+        { id: 'coupons', label: 'Coupon & Offer Hub' },
+        { id: 'menu', label: 'Menu Management' }
+    ];
+    const [selectedFeatures, setSelectedFeatures] = useState([]);
+
+    const handleSelect = (featureId) => {
+        setSelectedFeatures(prev => 
+            prev.includes(featureId) ? prev.filter(id => id !== featureId) : [...prev, featureId]
+        );
+    };
+    
+    const handleConfirm = () => {
+        onConfirm(selectedFeatures);
+    }
+
+    return (
+        <Dialog open={isOpen} onOpenChange={onOpenChange}>
+            <DialogContent className="bg-card border-border text-foreground">
+                <DialogHeader>
+                    <DialogTitle>Suspend Restaurant: {restaurantName}</DialogTitle>
+                    <DialogDescription>
+                        Select the features you want to restrict for this owner. The owner will not be able to access the selected features until reactivated.
+                    </DialogDescription>
+                </DialogHeader>
+                <div className="py-4 space-y-3">
+                    {features.map(feature => (
+                        <div key={feature.id} className="flex items-center space-x-2 p-2 rounded-md hover:bg-muted">
+                            <Checkbox 
+                                id={feature.id} 
+                                onCheckedChange={() => handleSelect(feature.id)}
+                                checked={selectedFeatures.includes(feature.id)}
+                            />
+                            <Label htmlFor={feature.id} className="flex-grow cursor-pointer">{feature.label}</Label>
+                        </div>
+                    ))}
+                </div>
+                <DialogFooter>
+                    <DialogClose asChild><Button variant="secondary">Cancel</Button></DialogClose>
+                    <Button variant="destructive" onClick={handleConfirm}>Confirm Suspension</Button>
+                </DialogFooter>
+            </DialogContent>
+        </Dialog>
+    );
+};
+
 
 const RestaurantRow = ({ restaurant, onUpdateStatus }) => {
+  const [isSuspensionModalOpen, setIsSuspensionModalOpen] = useState(false);
+  
   const statusClasses = {
     Approved: 'bg-green-500/10 text-green-400',
     Pending: 'bg-yellow-500/10 text-yellow-400',
     Suspended: 'bg-red-500/10 text-red-400',
     Rejected: 'bg-gray-500/10 text-gray-400',
   };
+  
+  const handleSuspensionConfirm = (restrictedFeatures) => {
+    onUpdateStatus(restaurant.id, 'Suspended', restrictedFeatures);
+    setIsSuspensionModalOpen(false);
+  };
+
 
   return (
+    <>
+    <SuspensionModal 
+        isOpen={isSuspensionModalOpen}
+        onOpenChange={setIsSuspensionModalOpen}
+        onConfirm={handleSuspensionConfirm}
+        restaurantName={restaurant.name}
+    />
     <TableRow>
       <TableCell className="font-medium">{restaurant.name}</TableCell>
       <TableCell>{restaurant.ownerName}</TableCell>
@@ -61,22 +132,18 @@ const RestaurantRow = ({ restaurant, onUpdateStatus }) => {
                     <Eye className="mr-2 h-4 w-4" /> View as Owner
                 </Link>
               </DropdownMenuItem>
-              <DropdownMenuItem className="text-red-500" onClick={() => onUpdateStatus(restaurant.id, 'Suspended')}><Pause className="mr-2 h-4 w-4" /> Suspend</DropdownMenuItem>
+              <DropdownMenuItem className="text-red-500" onClick={() => setIsSuspensionModalOpen(true)}><Pause className="mr-2 h-4 w-4" /> Suspend</DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
         )}
-        {restaurant.status === 'Suspended' && (
-          <Button variant="outline" size="sm" onClick={() => onUpdateStatus(restaurant.id, 'Approved')}>
-            <Play className="mr-2 h-4 w-4" /> Re-activate
-          </Button>
-        )}
-        {restaurant.status === 'Rejected' && (
+        {(restaurant.status === 'Suspended' || restaurant.status === 'Rejected') && (
           <Button variant="outline" size="sm" className="border-green-500 text-green-500 hover:bg-green-500/10 hover:text-green-500" onClick={() => onUpdateStatus(restaurant.id, 'Approved')}>
-            <Check className="mr-2 h-4 w-4" /> Approve
+            <ShieldCheck className="mr-2 h-4 w-4" /> Re-activate
           </Button>
         )}
       </TableCell>
     </TableRow>
+    </>
   );
 };
 
@@ -108,12 +175,12 @@ export default function AdminRestaurantsPage() {
     fetchRestaurants();
   }, []);
 
-  const handleUpdateStatus = async (restaurantId, newStatus) => {
+  const handleUpdateStatus = async (restaurantId, newStatus, restrictedFeatures = []) => {
     try {
         const res = await fetch('/api/admin/restaurants', {
             method: 'PATCH',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ restaurantId, status: newStatus }),
+            body: JSON.stringify({ restaurantId, status: newStatus, restrictedFeatures }),
         });
         if (!res.ok) {
             const errorData = await res.json();

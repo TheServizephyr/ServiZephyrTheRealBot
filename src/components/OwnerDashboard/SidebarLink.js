@@ -1,3 +1,4 @@
+
 "use client";
 
 import Link from "next/link";
@@ -5,7 +6,7 @@ import { usePathname } from "next/navigation";
 import { motion } from "framer-motion";
 import styles from "./OwnerDashboard.module.css";
 
-export default function SidebarLink({ item, isCollapsed }) {
+export default function SidebarLink({ item, isCollapsed, isDisabled, disabledIcon: DisabledIcon }) {
   const pathname = usePathname();
   const isActive = pathname === item.href;
 
@@ -23,15 +24,19 @@ export default function SidebarLink({ item, isCollapsed }) {
     expanded: { opacity: 1, width: "auto" },
     collapsed: { opacity: 0, width: 0 },
   };
-
-  return (
-    <Link href={item.href} passHref>
-      <motion.div
+  
+  const content = (
+    <motion.div
         variants={linkVariants}
-        className={`${styles.sidebarLink} ${isActive ? styles.sidebarLinkActive : ""}`}
+        className={`${styles.sidebarLink} ${isActive && !isDisabled ? styles.sidebarLinkActive : ""} ${isDisabled ? 'opacity-50 cursor-not-allowed' : ''}`}
+        title={isDisabled ? `${item.name} is currently restricted` : item.name}
       >
         <motion.div variants={iconVariants}>
-            <item.icon className={styles.linkIcon} size={22} />
+            {isDisabled && DisabledIcon ? (
+                <DisabledIcon className={styles.linkIcon} size={22} />
+            ) : (
+                <item.icon className={styles.linkIcon} size={22} />
+            )}
         </motion.div>
         <motion.span
           variants={textVariants}
@@ -40,7 +45,16 @@ export default function SidebarLink({ item, isCollapsed }) {
         >
           {item.name}
         </motion.span>
-      </motion.div>
+    </motion.div>
+  );
+
+  if (isDisabled) {
+    return <div className="cursor-not-allowed">{content}</div>;
+  }
+
+  return (
+    <Link href={item.href} passHref>
+      {content}
     </Link>
   );
 }

@@ -29,18 +29,21 @@ export async function GET(req) {
                 status: capitalizedStatus, // Use the capitalized status
             };
 
+            // This check prevents crash if ownerId is missing
             if (restaurant.ownerId) {
                 try {
                     const userRecord = await getAuth().getUser(restaurant.ownerId);
                     restaurant.ownerName = userRecord.displayName || 'No Name';
                     restaurant.ownerEmail = userRecord.email;
                 } catch(e) {
+                    // Log a warning but don't crash the entire API call
                     console.warn(`[API] Could not find user for ownerId: ${restaurant.ownerId} in restaurant ${restaurant.name}. Proceeding without owner details.`);
                 }
             }
             return restaurant;
         });
 
+        // Filter out any null values that resulted from empty docs or errors
         const restaurants = (await Promise.all(restaurantPromises)).filter(Boolean);
 
         return NextResponse.json({ restaurants }, { status: 200 });
@@ -54,7 +57,7 @@ export async function GET(req) {
 
 export async function PATCH(req) {
     try {
-        const { restaurantId, status } = await req.json();
+        const { restaurantId, status, restrictedFeatures } = await req.json();
 
         if (!restaurantId || !status) {
             return NextResponse.json({ message: 'Missing required fields' }, { status: 400 });
@@ -68,8 +71,18 @@ export async function PATCH(req) {
         const firestore = getFirestore();
         const restaurantRef = firestore.collection('restaurants').doc(restaurantId);
         
-        // Save status in lowercase as per Firestore standard
-        await restaurantRef.set({ approvalStatus: status.toLowerCase() }, { merge: true });
+        const updateData = {
+            approvalStatus: status.toLowerCase(),
+        };
+
+        if (status === 'Suspended') {
+            updateData.restrictedFeatures = restrictedFeatures || [];
+        } else {
+            // When reactivating or rejecting, remove restrictions
+            updateData.restrictedFeatures = [];
+        }
+        
+        await restaurantRef.set(updateData, { merge: true });
         
         return NextResponse.json({ message: 'Restaurant status updated successfully' }, { status: 200 });
 
