@@ -4,7 +4,7 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Star, RefreshCw, ChevronUp, ChevronDown, Check, CookingPot, Bike, PartyPopper, Undo, Bell, PackageCheck, Printer } from 'lucide-react';
+import { Star, RefreshCw, ChevronUp, ChevronDown, Check, CookingPot, Bike, PartyPopper, Undo, Bell, PackageCheck, Printer, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { auth } from '@/lib/firebase';
 import { cn } from "@/lib/utils";
@@ -23,7 +23,7 @@ const statusConfig = {
 
 const statusFlow = ['pending', 'confirmed', 'preparing', 'dispatched', 'delivered'];
 
-const ActionButton = ({ status, onNext, onRevert, orderId }) => {
+const ActionButton = ({ status, onNext, onRevert, orderId, onReject }) => {
     const searchParams = useSearchParams();
     const impersonatedOwnerId = searchParams.get('impersonate_owner_id');
     const currentIndex = statusFlow.indexOf(status);
@@ -46,6 +46,41 @@ const ActionButton = ({ status, onNext, onRevert, orderId }) => {
     };
 
     const action = actionConfig[status];
+    
+    const billUrl = impersonatedOwnerId
+        ? `/owner-dashboard/bill/${orderId}?impersonate_owner_id=${impersonatedOwnerId}`
+        : `/owner-dashboard/bill/${orderId}`;
+    
+    if(status === 'pending') {
+         return (
+            <div className="flex items-center gap-2">
+                <Button
+                    onClick={() => onNext(nextStatus)}
+                    size="sm"
+                    className="bg-primary hover:bg-primary/90 h-9 flex-grow"
+                >
+                    <Check size={16} className="mr-2" />
+                    Confirm Order
+                </Button>
+                <Button
+                    onClick={onReject}
+                    variant="destructive"
+                    size="sm"
+                    className="h-9"
+                >
+                    <X size={16} className="mr-2" />
+                    Reject
+                </Button>
+                 <Link href={billUrl} passHref>
+                    <Button asChild variant="outline" size="sm" className="h-9">
+                        <a><Printer size={16} /></a>
+                    </Button>
+                </Link>
+            </div>
+        );
+    }
+
+
     if (!action) {
          return (
             <div className="flex items-center gap-2">
@@ -54,10 +89,6 @@ const ActionButton = ({ status, onNext, onRevert, orderId }) => {
         );
     }
     const ActionIcon = action.icon;
-    
-    const billUrl = impersonatedOwnerId
-        ? `/owner-dashboard/bill/${orderId}?impersonate_owner_id=${impersonatedOwnerId}`
-        : `/owner-dashboard/bill/${orderId}`;
 
 
     return (
@@ -71,9 +102,9 @@ const ActionButton = ({ status, onNext, onRevert, orderId }) => {
                 {action.text}
             </Button>
              <Link href={billUrl} passHref>
-                <Button asChild variant="outline" size="sm" className="w-full h-9">
+                <Button asChild variant="outline" size="icon" className="h-9 w-9">
                     <a>
-                        <Printer size={16} className="mr-2" /> Print Bill
+                        <Printer size={16} />
                     </a>
                 </Button>
             </Link>
@@ -218,6 +249,20 @@ export default function LiveOrdersPage() {
     }
   };
   
+  const handleRejectOrder = async (orderId) => {
+    if (!window.confirm("Are you sure you want to reject and delete this order?")) return;
+
+    const originalOrders = [...orders];
+    setOrders(orders.filter(order => order.id !== orderId));
+
+    try {
+        await handleAPICall('DELETE', { orderId });
+    } catch (error) {
+        alert(`Error rejecting order: ${error.message}`);
+        setOrders(originalOrders);
+    }
+  }
+
   const handleSort = (key) => {
     let direction = 'asc';
     if (sortConfig.key === key && sortConfig.direction === 'asc') {
@@ -319,12 +364,13 @@ export default function LiveOrdersPage() {
                                             {order.status}
                                         </span>
                                     </td>
-                                    <td className="p-4 w-[250px]">
+                                    <td className="p-4 w-[300px]">
                                         <ActionButton
                                             orderId={order.id}
                                             status={order.status}
                                             onNext={(newStatus) => handleUpdateStatus(order.id, newStatus)}
                                             onRevert={(newStatus) => handleUpdateStatus(order.id, newStatus)}
+                                            onReject={() => handleRejectOrder(order.id)}
                                         />
                                     </td>
                                 </motion.tr>
