@@ -100,7 +100,7 @@ export async function PATCH(req) {
         }
 
         // --- Update Restaurant's Profile in 'restaurants' collection (if owner or impersonating admin) ---
-        if ((userData.role === 'owner' || userData.role === 'admin') && restaurantRef) {
+        if ((userData.role === 'owner' || (userData.role === 'admin' && restaurantRef))) {
             const restaurantUpdateData = {};
             // Only update if the values are provided (even if they are empty strings)
             if (gstin !== undefined) restaurantUpdateData.gstin = gstin;
