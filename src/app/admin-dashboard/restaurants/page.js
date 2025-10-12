@@ -21,6 +21,7 @@ const RestaurantRow = ({ restaurant, onUpdateStatus }) => {
     Approved: 'bg-green-500/10 text-green-400',
     Pending: 'bg-yellow-500/10 text-yellow-400',
     Suspended: 'bg-red-500/10 text-red-400',
+    Rejected: 'bg-gray-500/10 text-gray-400',
   };
 
   return (
@@ -62,6 +63,11 @@ const RestaurantRow = ({ restaurant, onUpdateStatus }) => {
         {restaurant.status === 'Suspended' && (
           <Button variant="outline" size="sm" onClick={() => onUpdateStatus(restaurant.id, 'Approved')}>
             <Play className="mr-2 h-4 w-4" /> Re-activate
+          </Button>
+        )}
+        {restaurant.status === 'Rejected' && (
+          <Button variant="outline" size="sm" className="border-green-500 text-green-500 hover:bg-green-500/10 hover:text-green-500" onClick={() => onUpdateStatus(restaurant.id, 'Approved')}>
+            <Check className="mr-2 h-4 w-4" /> Approve
           </Button>
         )}
       </TableCell>
@@ -159,6 +165,7 @@ export default function AdminRestaurantsPage() {
             <TabsTrigger value="Pending">Pending Approval</TabsTrigger>
             <TabsTrigger value="Approved">Approved</TabsTrigger>
             <TabsTrigger value="Suspended">Suspended</TabsTrigger>
+            <TabsTrigger value="Rejected">Rejected</TabsTrigger>
           </TabsList>
           <div className="relative w-full max-w-sm">
              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" size={20} />
@@ -192,6 +199,9 @@ export default function AdminRestaurantsPage() {
                 </TabsContent>
                 <TabsContent value="Suspended" className="contents">
                   {renderTableContent('Suspended')}
+                </TabsContent>
+                <TabsContent value="Rejected" className="contents">
+                  {renderTableContent('Rejected')}
                 </TabsContent>
               </TableBody>
             </Table>
