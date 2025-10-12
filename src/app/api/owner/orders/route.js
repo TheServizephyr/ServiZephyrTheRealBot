@@ -13,12 +13,20 @@ async function verifyOwnerAndGetRestaurant(req, auth, firestore) {
     const decodedToken = await auth.verifyIdToken(token);
     const uid = decodedToken.uid;
     
-    // --- ADMIN IMPERSONATION LOGIC ---
-    const url = new URL(req.url);
+    // --- ADMIN IMPERSONATION & PERMISSION LOGIC ---
+    const url = new URL(req.headers.get('referer'));
     const impersonatedOwnerId = url.searchParams.get('impersonate_owner_id');
-    const adminUserDoc = await firestore.collection('users').doc(uid).get();
+    const userDoc = await firestore.collection('users').doc(uid).get();
 
-    if (adminUserDoc.exists && adminUserDoc.data().role === 'admin' && impersonatedOwnerId) {
+    if (!userDoc.exists) {
+        throw { message: 'Access Denied: User profile not found.', status: 403 };
+    }
+
+    const userData = userDoc.data();
+    const userRole = userData.role;
+
+    // If admin is impersonating, find the restaurant for the impersonated owner
+    if (userRole === 'admin' && impersonatedOwnerId) {
         console.log(`[API Impersonation] Admin ${uid} is viewing data for owner ${impersonatedOwnerId}.`);
         const restaurantsQuery = await firestore.collection('restaurants').where('ownerId', '==', impersonatedOwnerId).limit(1).get();
         if (restaurantsQuery.empty) {
@@ -27,20 +35,19 @@ async function verifyOwnerAndGetRestaurant(req, auth, firestore) {
         const restaurantSnap = restaurantsQuery.docs[0];
         return { uid: impersonatedOwnerId, restaurantId: restaurantSnap.id, restaurantSnap, isAdmin: true };
     }
-    // --- END ADMIN IMPERSONATION LOGIC ---
 
-    const userDoc = await firestore.collection('users').doc(uid).get();
-    if (!userDoc.exists || userDoc.data().role !== 'owner') {
-        throw { message: 'Access Denied: You do not have owner privileges.', status: 403 };
+    // If the user is a standard owner, find their restaurant
+    if (userRole === 'owner') {
+        const restaurantsQuery = await firestore.collection('restaurants').where('ownerId', '==', uid).limit(1).get();
+        if (restaurantsQuery.empty) {
+            throw { message: 'No restaurant associated with this owner.', status: 404 };
+        }
+        const restaurantDoc = restaurantsQuery.docs[0];
+        return { uid, restaurantId: restaurantDoc.id, restaurantSnap: restaurantDoc };
     }
     
-    const restaurantsQuery = await firestore.collection('restaurants').where('ownerId', '==', uid).limit(1).get();
-    if (restaurantsQuery.empty) {
-        throw { message: 'No restaurant associated with this owner.', status: 404 };
-    }
-    
-    const restaurantDoc = restaurantsQuery.docs[0];
-    return { uid, restaurantId: restaurantDoc.id, restaurantSnap: restaurantDoc };
+    // If not an admin impersonating or an owner, deny access
+    throw { message: 'Access Denied: You do not have sufficient privileges.', status: 403 };
 }
 
 

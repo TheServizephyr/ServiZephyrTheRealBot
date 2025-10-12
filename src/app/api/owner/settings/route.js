@@ -17,8 +17,8 @@ async function verifyUserAndGetData(req) {
     const decodedToken = await auth.verifyIdToken(token);
     const uid = decodedToken.uid;
     
-    // --- ADMIN IMPERSONATION LOGIC ---
-    const url = new URL(req.url);
+    // --- ADMIN IMPERSONATION & PERMISSION LOGIC ---
+    const url = new URL(req.headers.get('referer'));
     const impersonatedOwnerId = url.searchParams.get('impersonate_owner_id');
     const adminUserDoc = await firestore.collection('users').doc(uid).get();
 
@@ -40,7 +40,7 @@ async function verifyUserAndGetData(req) {
     let restaurantData = null;
     let restaurantRef = null;
 
-    if (userData.role === 'owner') {
+    if (userData.role === 'owner' || (adminUserDoc.data().role === 'admin' && impersonatedOwnerId)) {
         const restaurantsQuery = await firestore.collection('restaurants').where('ownerId', '==', finalUserId).limit(1).get();
         if (!restaurantsQuery.empty) {
             restaurantRef = restaurantsQuery.docs[0].ref;
@@ -99,8 +99,8 @@ export async function PATCH(req) {
             await userRef.update(userUpdateData);
         }
 
-        // --- Update Restaurant's Profile in 'restaurants' collection (if owner) ---
-        if (userData.role === 'owner' && restaurantRef) {
+        // --- Update Restaurant's Profile in 'restaurants' collection (if owner or impersonating admin) ---
+        if ((userData.role === 'owner' || userData.role === 'admin') && restaurantRef) {
             const restaurantUpdateData = {};
             // Only update if the values are provided (even if they are empty strings)
             if (gstin !== undefined) restaurantUpdateData.gstin = gstin;
