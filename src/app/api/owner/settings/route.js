@@ -17,7 +17,19 @@ async function verifyUserAndGetData(req) {
     const decodedToken = await auth.verifyIdToken(token);
     const uid = decodedToken.uid;
     
-    const userRef = firestore.collection('users').doc(uid);
+    // --- ADMIN IMPERSONATION LOGIC ---
+    const url = new URL(req.url);
+    const impersonatedOwnerId = url.searchParams.get('impersonate_owner_id');
+    const adminUserDoc = await firestore.collection('users').doc(uid).get();
+
+    let finalUserId = uid;
+    if (adminUserDoc.exists && adminUserDoc.data().role === 'admin' && impersonatedOwnerId) {
+        console.log(`[API Impersonation] Admin ${uid} is viewing data for owner ${impersonatedOwnerId}.`);
+        finalUserId = impersonatedOwnerId;
+    }
+    // --- END ADMIN IMPERSONATION LOGIC ---
+
+    const userRef = firestore.collection('users').doc(finalUserId);
     const userDoc = await userRef.get();
 
     if (!userDoc.exists) {
@@ -29,14 +41,14 @@ async function verifyUserAndGetData(req) {
     let restaurantRef = null;
 
     if (userData.role === 'owner') {
-        const restaurantsQuery = await firestore.collection('restaurants').where('ownerId', '==', uid).limit(1).get();
+        const restaurantsQuery = await firestore.collection('restaurants').where('ownerId', '==', finalUserId).limit(1).get();
         if (!restaurantsQuery.empty) {
             restaurantRef = restaurantsQuery.docs[0].ref;
             restaurantData = restaurantsQuery.docs[0].data();
         }
     }
     
-    return { uid, userRef, userData, restaurantRef, restaurantData };
+    return { uid: finalUserId, userRef, userData, restaurantRef, restaurantData };
 }
 
 export async function GET(req) {

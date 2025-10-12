@@ -4,7 +4,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Plus, Tag, XCircle, ArrowUpRight, IndianRupee, Hash, Users, ListFilter } from 'lucide-react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { cn } from '@/lib/utils';
 import { auth } from '@/lib/firebase';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
@@ -165,11 +165,13 @@ const TopSellingItem = ({ name, count, imageUrl }) => (
 
 // --- Main Dashboard Page Component ---
 
-export default function OwnerDashboardPage() {
+function PageContent() {
   const [activeFilter, setActiveFilter] = useState('Today');
   const [dashboardData, setDashboardData] = useState(null);
   const [loading, setLoading] = useState(true);
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const impersonatedOwnerId = searchParams.get('impersonate_owner_id');
 
   useEffect(() => {
     const fetchData = async () => {
@@ -177,16 +179,20 @@ export default function OwnerDashboardPage() {
         try {
             const user = auth.currentUser;
             if (!user) {
-              // This should be handled by a higher-order component or middleware
-              // that redirects to login if not authenticated.
-              // For now, we'll just log and stop.
               console.error("User not authenticated");
               setLoading(false);
               return;
             }
 
             const idToken = await user.getIdToken(true);
-            const res = await fetch(`/api/owner/dashboard-data?filter=${activeFilter}`, {
+            
+            // Append impersonation ID if it exists
+            let apiUrl = `/api/owner/dashboard-data?filter=${activeFilter}`;
+            if (impersonatedOwnerId) {
+                apiUrl += `&impersonate_owner_id=${impersonatedOwnerId}`;
+            }
+
+            const res = await fetch(apiUrl, {
                 headers: { 'Authorization': `Bearer ${idToken}` }
             });
 
@@ -198,13 +204,6 @@ export default function OwnerDashboardPage() {
             const data = await res.json();
             setDashboardData(data);
 
-            // Play notification sound if new orders have arrived since last fetch
-            // This logic is simplified; a real app would use websockets or more complex state management.
-            if (dashboardData && data.liveOrders.length > dashboardData.liveOrders.length) {
-                 const sound = document.getElementById('notification-sound');
-                 if(sound) sound.play().catch(e => console.log("Audio play failed:", e));
-            }
-
         } catch (error) {
             console.error("Error fetching dashboard data:", error);
             alert(`Error: ${error.message}`);
@@ -213,18 +212,17 @@ export default function OwnerDashboardPage() {
         }
     };
     
-    // Auth state listener
     const unsubscribe = auth.onAuthStateChanged(user => {
       if (user) {
         fetchData();
       } else {
         setLoading(false);
-        router.push('/'); // Redirect to home/login if user signs out
+        router.push('/');
       }
     });
 
     return () => unsubscribe();
-  }, [activeFilter, router]);
+  }, [activeFilter, router, impersonatedOwnerId]);
 
   return (
     <div className="text-foreground min-h-full p-4 md:p-6">
@@ -322,4 +320,12 @@ export default function OwnerDashboardPage() {
       </motion.div>
     </div>
   );
+}
+
+export default function OwnerDashboardPage() {
+    return (
+        <React.Suspense fallback={<div className="flex h-screen items-center justify-center bg-background"><div className="h-16 w-16 animate-spin rounded-full border-b-2 border-primary"></div></div>}>
+            <PageContent />
+        </React.Suspense>
+    )
 }

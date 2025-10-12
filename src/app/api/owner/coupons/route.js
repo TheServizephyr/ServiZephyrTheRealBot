@@ -13,13 +13,27 @@ async function verifyOwnerAndGetRestaurant(req, auth, firestore) {
     const decodedToken = await auth.verifyIdToken(token);
     const uid = decodedToken.uid;
     
-    // Verify user is an owner from the central 'users' collection
+    // --- ADMIN IMPERSONATION LOGIC ---
+    const url = new URL(req.url);
+    const impersonatedOwnerId = url.searchParams.get('impersonate_owner_id');
+    const adminUserDoc = await firestore.collection('users').doc(uid).get();
+
+    if (adminUserDoc.exists && adminUserDoc.data().role === 'admin' && impersonatedOwnerId) {
+        console.log(`[API Impersonation] Admin ${uid} is viewing data for owner ${impersonatedOwnerId}.`);
+        const restaurantsQuery = await firestore.collection('restaurants').where('ownerId', '==', impersonatedOwnerId).limit(1).get();
+        if (restaurantsQuery.empty) {
+            throw { message: 'Impersonated owner does not have an associated restaurant.', status: 404 };
+        }
+        const restaurantId = restaurantsQuery.docs[0].id;
+        return { uid: impersonatedOwnerId, restaurantId, isAdmin: true };
+    }
+    // --- END ADMIN IMPERSONATION LOGIC ---
+    
     const userDoc = await firestore.collection('users').doc(uid).get();
     if (!userDoc.exists || userDoc.data().role !== 'owner') {
         throw { message: 'Access Denied: You do not have owner privileges.', status: 403 };
     }
     
-    // Find the restaurant associated with this owner
     const restaurantsQuery = await firestore.collection('restaurants').where('ownerId', '==', uid).limit(1).get();
     if (restaurantsQuery.empty) {
         throw { message: 'No restaurant associated with this owner.', status: 404 };
