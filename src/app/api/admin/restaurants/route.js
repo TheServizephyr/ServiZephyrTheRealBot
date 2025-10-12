@@ -11,7 +11,7 @@ export async function GET(req) {
             const data = doc.data();
             
             // CRITICAL FIX: If a document is empty (but might have subcollections), skip it.
-            if (!data) {
+            if (!data || Object.keys(data).length === 0) {
                 console.warn(`[API] Skipping empty document with ID: ${doc.id}`);
                 return null;
             }

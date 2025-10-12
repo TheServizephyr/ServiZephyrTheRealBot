@@ -22,8 +22,8 @@ export default function ContactPage() {
               <div>
                 <h3 className="text-lg font-semibold">Customer & Business Support</h3>
                 <p className="text-muted-foreground">For any inquiries, support, or partnership questions, please email us.</p>
-                <a href="mailto:ashwanibaghel@servizephyr.com" className="text-primary font-medium hover:underline">
-                  ashwanibaghel@servizephyr.com
+                <a href="mailto:contact@servizephyr.com" className="text-primary font-medium hover:underline">
+                  contact@servizephyr.com
                 </a>
               </div>
             </div>
