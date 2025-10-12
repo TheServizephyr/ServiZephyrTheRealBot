@@ -1,7 +1,7 @@
 
 "use client";
 
-import { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Plus, Tag, XCircle, ArrowUpRight, IndianRupee, Hash, Users, ListFilter } from 'lucide-react';
 import { useRouter, useSearchParams } from 'next/navigation';
