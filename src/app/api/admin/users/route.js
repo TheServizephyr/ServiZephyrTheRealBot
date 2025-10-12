@@ -15,7 +15,9 @@ export async function GET(req) {
                 email: data.email || 'No Email',
                 phone: data.phone || 'No Phone',
                 role: data.role?.charAt(0).toUpperCase() + data.role?.slice(1) || 'Customer',
-                joinDate: data.createdAt?.toDate()?.toISOString() || new Date().toISOString(),
+                // SAFETY NET: Use current time if createdAt is missing
+                joinDate: data.createdAt?.toDate?.()?.toISOString() || new Date().toISOString(),
+                // SAFETY NET: Default to 'Active' if status is missing
                 status: data.status || 'Active',
                 profilePictureUrl: data.profilePictureUrl,
             };
@@ -24,6 +26,7 @@ export async function GET(req) {
         return NextResponse.json({ users }, { status: 200 });
 
     } catch (error) {
+        console.error("GET /api/admin/users ERROR:", error);
         return NextResponse.json({ message: 'Internal Server Error', error: error.message }, { status: 500 });
     }
 }
@@ -55,6 +58,7 @@ export async function PATCH(req) {
         return NextResponse.json({ message: 'User status updated successfully' }, { status: 200 });
 
     } catch (error) {
+        console.error("PATCH /api/admin/users ERROR:", error);
         return NextResponse.json({ message: 'Internal Server Error', error: error.message }, { status: 500 });
     }
 }

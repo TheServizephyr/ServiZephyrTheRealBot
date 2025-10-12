@@ -23,7 +23,7 @@ export async function GET(req) {
                 ownerName: 'N/A', 
                 ownerEmail: 'N/A', 
                 // SAFETY NET: Use a default date if createdAt is missing
-                onboarded: data.createdAt?.toDate()?.toISOString() || new Date().toISOString(),
+                onboarded: data.createdAt?.toDate?.()?.toISOString() || new Date().toISOString(),
                 // SAFETY NET: Default to 'Pending' if approvalStatus is missing
                 status: data.approvalStatus || 'Pending',
             };

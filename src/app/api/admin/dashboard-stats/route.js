@@ -25,12 +25,13 @@ export async function GET(req) {
         
         const todayOrdersSnap = await firestore.collection('orders').where('orderDate', '>=', today).get();
         const todayOrders = todayOrdersSnap.size;
-        const todayRevenue = todayOrdersSnap.docs.reduce((sum, doc) => sum + doc.data().totalAmount, 0);
+        const todayRevenue = todayOrdersSnap.docs.reduce((sum, doc) => sum + (doc.data().totalAmount || 0), 0);
         
         // 5. Recent Signups
         const recentUsersSnap = await firestore.collection('users').orderBy('createdAt', 'desc').limit(4).get();
         const recentSignups = recentUsersSnap.docs.map(doc => {
             const data = doc.data();
+            // SAFETY NET: Use current time if createdAt is missing
             const signupTime = data.createdAt?.toDate()?.toISOString() || new Date().toISOString();
             return {
                 type: data.role === 'owner' ? 'Restaurant' : 'User',
@@ -71,6 +72,7 @@ export async function GET(req) {
         }, { status: 200 });
 
     } catch (error) {
+        console.error("GET /api/admin/dashboard-stats ERROR:", error);
         return NextResponse.json({ message: 'Internal Server Error', error: error.message }, { status: 500 });
     }
 }
