@@ -1,4 +1,5 @@
 
+
 "use client";
 
 import {
@@ -13,6 +14,7 @@ import {
   Truck,
   Ticket,
   Lock,
+  Bot
 } from "lucide-react";
 import styles from "./OwnerDashboard.module.css";
 import SidebarLink from "./SidebarLink";
@@ -27,19 +29,18 @@ const menuItems = [
   { name: "Coupons", icon: Ticket, href: "/owner-dashboard/coupons", featureId: "coupons" },
 ];
 
-const settingsItem = {
-  name: "Settings",
-  icon: Settings,
-  href: "/owner-dashboard/settings",
-  featureId: "settings"
-};
+const settingsItems = [
+    { name: "Connections", icon: Bot, href: "/owner-dashboard/connections", featureId: "connections" },
+    { name: "Settings", icon: Settings, href: "/owner-dashboard/settings", featureId: "settings" },
+];
+
 
 export default function Sidebar({ isOpen, setIsOpen, isMobile, isCollapsed, restrictedFeatures = [], status }) {
 
   const getIsDisabled = (featureId) => {
     // If restaurant is pending or rejected, only menu and settings are enabled.
     if (status === 'pending' || status === 'rejected') {
-      return featureId !== 'menu' && featureId !== 'settings';
+      return !['menu', 'settings', 'connections'].includes(featureId);
     }
     // If suspended, check the restrictedFeatures list.
     if (status === 'suspended') {
@@ -78,12 +79,15 @@ export default function Sidebar({ isOpen, setIsOpen, isMobile, isCollapsed, rest
         </div>
         <div className={styles.menuGroup}>
             <span className={`${styles.menuGroupTitle} ${isCollapsed ? styles.collapsedText : ''}`}>General</span>
-            <SidebarLink 
-              item={settingsItem} 
-              isCollapsed={isCollapsed} 
-              isDisabled={getIsDisabled(settingsItem.featureId)}
-              disabledIcon={Lock}
-            />
+            {settingsItems.map((item) => (
+                 <SidebarLink 
+                    key={item.name}
+                    item={item} 
+                    isCollapsed={isCollapsed} 
+                    isDisabled={getIsDisabled(item.featureId)}
+                    disabledIcon={Lock}
+                />
+            ))}
         </div>
       </nav>
       

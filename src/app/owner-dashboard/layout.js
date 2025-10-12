@@ -1,4 +1,5 @@
 
+
 "use client";
 
 import { useState, useEffect } from "react";
@@ -68,6 +69,24 @@ function OwnerDashboardContent({ children }) {
   const pathname = usePathname();
 
   useEffect(() => {
+    // Load Facebook SDK
+    window.fbAsyncInit = function() {
+      window.FB.init({
+        appId            : '1183141156381017',
+        xfbml            : true,
+        version          : 'v19.0'
+      });
+      window.FB.AppEvents.logPageView();
+    };
+    
+    (function(d, s, id){
+       var js, fjs = d.getElementsByTagName(s)[0];
+       if (d.getElementById(id)) {return;}
+       js = d.createElement(s); js.id = id;
+       js.src = "https://connect.facebook.net/en_US/sdk.js";
+       fjs.parentNode.insertBefore(js, fjs);
+     }(document, 'script', 'facebook-jssdk'));
+
     const checkScreenSize = () => {
       const mobile = window.innerWidth < 768;
       setIsMobile(mobile);
@@ -137,7 +156,7 @@ function OwnerDashboardContent({ children }) {
       // Handle pending, rejected, error states
       switch(restaurantStatus.status) {
           case 'pending':
-              if (pathname.endsWith('/owner-dashboard/menu') || pathname.endsWith('/owner-dashboard/settings')) {
+              if (pathname.endsWith('/owner-dashboard/menu') || pathname.endsWith('/owner-dashboard/settings') || pathname.endsWith('/owner-dashboard/connections')) {
                   return null;
               }
               icon = <HardHat className="h-16 w-16 text-yellow-400" />;
@@ -215,11 +234,6 @@ export default function OwnerDashboardRootLayout({ children }) {
       enableSystem
       disableTransitionOnChange
     >
-      <Script
-        src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
-        integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
-        crossOrigin=""
-      />
       <OwnerDashboardContent>{children}</OwnerDashboardContent>
     </ThemeProvider>
   );

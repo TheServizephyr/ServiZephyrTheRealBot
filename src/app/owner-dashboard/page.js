@@ -2,14 +2,15 @@
 
 "use client";
 
-import React, { useState, useEffect, useRef } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
-import { Plus, Tag, XCircle, ArrowUpRight, IndianRupee, Hash, Users, ListFilter } from 'lucide-react';
+import React, { useState, useEffect, Suspense } from 'react';
+import { motion } from 'framer-motion';
+import { Plus, Tag, XCircle, ArrowUpRight, IndianRupee, Hash, Users, ListFilter, Bot } from 'lucide-react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { cn } from '@/lib/utils';
 import { auth } from '@/lib/firebase';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import Image from 'next/image';
+import Link from 'next/link';
 
 // Helper function to format currency
 const formatCurrency = (value) => `₹${Number(value).toLocaleString('en-IN')}`;
@@ -78,7 +79,7 @@ const LiveOrderFeed = ({ orders, isLoading }) => {
     <div className="bg-card border border-border rounded-xl p-5 h-[380px] flex flex-col">
       <h3 className="text-lg font-semibold text-foreground mb-4">🔥 Live Order Feed</h3>
       <div className="overflow-y-auto pr-2 flex-grow">
-        <AnimatePresence>
+        
           {orders && orders.length > 0 ? orders.map((order, index) => (
             <motion.div
               key={order.id}
@@ -109,7 +110,7 @@ const LiveOrderFeed = ({ orders, isLoading }) => {
                 No live orders right now.
             </div>
           )}
-        </AnimatePresence>
+        
       </div>
       <audio id="notification-sound" src="/notification.mp3" preload="auto" />
     </div>
@@ -162,6 +163,33 @@ const TopSellingItem = ({ name, count, imageUrl }) => (
     <p className="text-xs text-primary">{count} times today</p>
   </div>
 );
+
+const BotOnboardingNudge = ({ botCount }) => {
+    if (botCount > 0) return null;
+    return (
+        <motion.div
+            className="bg-primary/10 border-2 border-dashed border-primary/50 rounded-xl p-6 text-center"
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.5 }}
+        >
+            <Bot size={40} className="mx-auto text-primary" />
+            <h3 className="mt-4 text-xl font-bold text-foreground">Your next step: Connect your first WhatsApp Bot!</h3>
+            <p className="mt-2 text-muted-foreground max-w-lg mx-auto">
+                Unlock direct orders and marketing by connecting your business WhatsApp number. The setup takes less than 5 minutes.
+            </p>
+            <Link href="/owner-dashboard/connections" passHref>
+                <motion.button
+                    className="mt-6 bg-primary text-primary-foreground font-bold py-3 px-6 rounded-lg text-md hover:bg-primary/90 transition-transform transform hover:scale-105"
+                    whileHover={{ scale: 1.05 }}
+                    whileTap={{ scale: 0.95 }}
+                >
+                    Connect WhatsApp Bot Now
+                </motion.button>
+            </Link>
+        </motion.div>
+    );
+};
 
 
 // --- Main Dashboard Page Component ---
@@ -245,6 +273,11 @@ function PageContent() {
               </button>
             ))}
           </div>
+        </div>
+        
+        <div className="mb-6">
+             {/* This is a placeholder value. In a real app, you'd fetch this from user/restaurant data. */}
+             <BotOnboardingNudge botCount={0} />
         </div>
 
         {/* Quick Action Buttons */}
