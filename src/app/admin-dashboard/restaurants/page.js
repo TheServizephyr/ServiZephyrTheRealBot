@@ -19,18 +19,28 @@ import {
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
+import { Textarea } from '@/components/ui/textarea';
 
 
 const SuspensionModal = ({ isOpen, onOpenChange, onConfirm, restaurantName }) => {
     const features = [
+        { id: 'dashboard', label: 'Dashboard' },
         { id: 'live-orders', label: 'Live Order Management' },
+        { id: 'menu', label: 'Menu Management' },
         { id: 'analytics', label: 'Analytics & Reports' },
         { id: 'customers', label: 'Customer Hub' },
         { id: 'delivery', label: 'Delivery Management' },
         { id: 'coupons', label: 'Coupon & Offer Hub' },
-        { id: 'menu', label: 'Menu Management' }
     ];
     const [selectedFeatures, setSelectedFeatures] = useState([]);
+    const [remark, setRemark] = useState("");
+
+    useEffect(() => {
+        if (!isOpen) {
+            setSelectedFeatures([]);
+            setRemark("");
+        }
+    }, [isOpen]);
 
     const handleSelect = (featureId) => {
         setSelectedFeatures(prev => 
@@ -39,7 +49,7 @@ const SuspensionModal = ({ isOpen, onOpenChange, onConfirm, restaurantName }) =>
     };
     
     const handleConfirm = () => {
-        onConfirm(selectedFeatures);
+        onConfirm(selectedFeatures, remark);
     }
 
     return (
@@ -48,20 +58,31 @@ const SuspensionModal = ({ isOpen, onOpenChange, onConfirm, restaurantName }) =>
                 <DialogHeader>
                     <DialogTitle>Suspend Restaurant: {restaurantName}</DialogTitle>
                     <DialogDescription>
-                        Select the features you want to restrict for this owner. The owner will not be able to access the selected features until reactivated.
+                        Select the features you want to restrict. The owner will see a lock screen for these features with your remark.
                     </DialogDescription>
                 </DialogHeader>
-                <div className="py-4 space-y-3">
-                    {features.map(feature => (
-                        <div key={feature.id} className="flex items-center space-x-2 p-2 rounded-md hover:bg-muted">
+                <div className="py-4 space-y-3 max-h-[60vh] overflow-y-auto">
+                     {features.map(feature => (
+                        <div key={feature.id} className="flex items-center space-x-3 p-2 rounded-md hover:bg-muted">
                             <Checkbox 
                                 id={feature.id} 
                                 onCheckedChange={() => handleSelect(feature.id)}
                                 checked={selectedFeatures.includes(feature.id)}
                             />
-                            <Label htmlFor={feature.id} className="flex-grow cursor-pointer">{feature.label}</Label>
+                            <Label htmlFor={feature.id} className="flex-grow cursor-pointer text-sm font-medium">{feature.label}</Label>
                         </div>
                     ))}
+                    <div className="pt-4 border-t border-border">
+                        <Label htmlFor="suspension-remark">Suspension Remark (Optional)</Label>
+                        <Textarea 
+                            id="suspension-remark"
+                            value={remark}
+                            onChange={(e) => setRemark(e.target.value)}
+                            placeholder="e.g., Menu not updated as per policy."
+                            className="mt-2"
+                        />
+                         <p className="text-xs text-muted-foreground mt-1">This message will be shown to the restaurant owner.</p>
+                    </div>
                 </div>
                 <DialogFooter>
                     <DialogClose asChild><Button variant="secondary">Cancel</Button></DialogClose>
@@ -83,8 +104,8 @@ const RestaurantRow = ({ restaurant, onUpdateStatus }) => {
     Rejected: 'bg-gray-500/10 text-gray-400',
   };
   
-  const handleSuspensionConfirm = (restrictedFeatures) => {
-    onUpdateStatus(restaurant.id, 'Suspended', restrictedFeatures);
+  const handleSuspensionConfirm = (restrictedFeatures, suspensionRemark) => {
+    onUpdateStatus(restaurant.id, 'Suspended', { restrictedFeatures, suspensionRemark });
     setIsSuspensionModalOpen(false);
   };
 
@@ -175,12 +196,12 @@ export default function AdminRestaurantsPage() {
     fetchRestaurants();
   }, []);
 
-  const handleUpdateStatus = async (restaurantId, newStatus, restrictedFeatures = []) => {
+  const handleUpdateStatus = async (restaurantId, newStatus, suspensionDetails = {}) => {
     try {
         const res = await fetch('/api/admin/restaurants', {
             method: 'PATCH',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ restaurantId, status: newStatus, restrictedFeatures }),
+            body: JSON.stringify({ restaurantId, status: newStatus, ...suspensionDetails }),
         });
         if (!res.ok) {
             const errorData = await res.json();

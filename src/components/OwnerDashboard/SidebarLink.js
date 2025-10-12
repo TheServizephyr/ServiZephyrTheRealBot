@@ -28,7 +28,7 @@ export default function SidebarLink({ item, isCollapsed, isDisabled, disabledIco
   const content = (
     <motion.div
         variants={linkVariants}
-        className={`${styles.sidebarLink} ${isActive && !isDisabled ? styles.sidebarLinkActive : ""} ${isDisabled ? 'opacity-50 cursor-not-allowed' : ''}`}
+        className={`${styles.sidebarLink} ${isActive && !isDisabled ? styles.sidebarLinkActive : ""} ${isDisabled ? 'opacity-50 cursor-pointer' : ''}`}
         title={isDisabled ? `${item.name} is currently restricted` : item.name}
       >
         <motion.div variants={iconVariants}>
@@ -47,10 +47,6 @@ export default function SidebarLink({ item, isCollapsed, isDisabled, disabledIco
         </motion.span>
     </motion.div>
   );
-
-  if (isDisabled) {
-    return <div className="cursor-not-allowed">{content}</div>;
-  }
 
   return (
     <Link href={item.href} passHref>

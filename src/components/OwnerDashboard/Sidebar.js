@@ -34,9 +34,20 @@ const settingsItem = {
   featureId: "settings"
 };
 
-export default function Sidebar({ isOpen, setIsOpen, isMobile, isCollapsed, restrictedFeatures = [] }) {
+export default function Sidebar({ isOpen, setIsOpen, isMobile, isCollapsed, restrictedFeatures = [], status }) {
 
-  const isRestricted = (featureId) => restrictedFeatures.includes(featureId);
+  const getIsDisabled = (featureId) => {
+    // If restaurant is pending or rejected, only menu and settings are enabled.
+    if (status === 'pending' || status === 'rejected') {
+      return featureId !== 'menu' && featureId !== 'settings';
+    }
+    // If suspended, check the restrictedFeatures list.
+    if (status === 'suspended') {
+      return restrictedFeatures.includes(featureId);
+    }
+    // If approved or any other status, nothing is disabled.
+    return false;
+  };
 
   return (
     <aside
@@ -60,7 +71,7 @@ export default function Sidebar({ isOpen, setIsOpen, isMobile, isCollapsed, rest
                 key={item.name} 
                 item={item} 
                 isCollapsed={isCollapsed} 
-                isDisabled={isRestricted(item.featureId)}
+                isDisabled={getIsDisabled(item.featureId)}
                 disabledIcon={Lock}
               />
             ))}
@@ -70,7 +81,7 @@ export default function Sidebar({ isOpen, setIsOpen, isMobile, isCollapsed, rest
             <SidebarLink 
               item={settingsItem} 
               isCollapsed={isCollapsed} 
-              isDisabled={isRestricted(settingsItem.featureId)}
+              isDisabled={getIsDisabled(settingsItem.featureId)}
               disabledIcon={Lock}
             />
         </div>

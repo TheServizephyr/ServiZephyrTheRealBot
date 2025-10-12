@@ -57,7 +57,7 @@ export async function GET(req) {
 
 export async function PATCH(req) {
     try {
-        const { restaurantId, status, restrictedFeatures } = await req.json();
+        const { restaurantId, status, restrictedFeatures, suspensionRemark } = await req.json();
 
         if (!restaurantId || !status) {
             return NextResponse.json({ message: 'Missing required fields' }, { status: 400 });
@@ -77,9 +77,11 @@ export async function PATCH(req) {
 
         if (status === 'Suspended') {
             updateData.restrictedFeatures = restrictedFeatures || [];
+            updateData.suspensionRemark = suspensionRemark || '';
         } else {
-            // When reactivating or rejecting, remove restrictions
+            // When reactivating or rejecting, remove restrictions and remark
             updateData.restrictedFeatures = [];
+            updateData.suspensionRemark = '';
         }
         
         await restaurantRef.set(updateData, { merge: true });

@@ -22,7 +22,7 @@ async function verifyOwnerAndGetRestaurant(req) {
     const restaurantsQuery = await firestore.collection('restaurants').where('ownerId', '==', uid).limit(1).get();
     if (restaurantsQuery.empty) {
         // This can happen during profile completion, so we default to 'pending'
-        return { status: 'pending', restrictedFeatures: [] };
+        return { status: 'pending', restrictedFeatures: [], suspensionRemark: '' };
     }
     
     const restaurantDoc = restaurantsQuery.docs[0];
@@ -30,15 +30,16 @@ async function verifyOwnerAndGetRestaurant(req) {
     
     return { 
         status: restaurantData.approvalStatus || 'pending', 
-        restrictedFeatures: restaurantData.restrictedFeatures || [] 
+        restrictedFeatures: restaurantData.restrictedFeatures || [],
+        suspensionRemark: restaurantData.suspensionRemark || '',
     };
 }
 
 
 export async function GET(req) {
     try {
-        const { status, restrictedFeatures } = await verifyOwnerAndGetRestaurant(req);
-        return NextResponse.json({ status, restrictedFeatures }, { status: 200 });
+        const { status, restrictedFeatures, suspensionRemark } = await verifyOwnerAndGetRestaurant(req);
+        return NextResponse.json({ status, restrictedFeatures, suspensionRemark }, { status: 200 });
     } catch (error) {
         console.error("GET /api/owner/status ERROR:", error);
         return NextResponse.json({ message: error.message || 'Internal Server Error' }, { status: error.status || 500 });

@@ -10,19 +10,40 @@ import Script from "next/script";
 import { ThemeProvider } from "@/components/ThemeProvider";
 import "../globals.css";
 import { auth } from "@/lib/firebase";
-import { AlertTriangle, HardHat, ShieldOff, Salad, XCircle } from 'lucide-react';
+import { AlertTriangle, HardHat, ShieldOff, Salad, XCircle, Lock } from 'lucide-react';
 import { Button } from "@/components/ui/button";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 
 export const dynamic = 'force-dynamic';
+
+function FeatureLockScreen({ remark }) {
+  return (
+    <div className="flex flex-col items-center justify-center text-center h-full p-8 bg-card border border-border rounded-xl">
+        <Lock className="h-16 w-16 text-yellow-400" />
+        <h2 className="mt-6 text-2xl font-bold">Feature Restricted</h2>
+        <p className="mt-2 max-w-md text-muted-foreground">Access to this feature has been temporarily restricted by the platform administrator.</p>
+        {remark && (
+            <div className="mt-4 p-4 bg-muted/50 rounded-lg w-full max-w-md">
+                <p className="font-semibold">Admin Remark:</p>
+                <p className="text-muted-foreground italic">"{remark}"</p>
+            </div>
+        )}
+    </div>
+  );
+}
+
 
 function OwnerDashboardContent({ children }) {
   const [isSidebarOpen, setSidebarOpen] = useState(false);
   const [isMobile, setIsMobile] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [restaurantStatus, setRestaurantStatus] = useState(null);
-  const [restrictedFeatures, setRestrictedFeatures] = useState([]);
+  const [restaurantStatus, setRestaurantStatus] = useState({
+      status: null,
+      restrictedFeatures: [],
+      suspensionRemark: ''
+  });
   const router = useRouter();
+  const pathname = usePathname();
 
   useEffect(() => {
     const checkScreenSize = () => {
@@ -41,13 +62,16 @@ function OwnerDashboardContent({ children }) {
             });
             if (res.ok) {
                 const data = await res.json();
-                setRestaurantStatus(data.status);
-                setRestrictedFeatures(data.restrictedFeatures || []);
+                setRestaurantStatus({
+                    status: data.status,
+                    restrictedFeatures: data.restrictedFeatures || [],
+                    suspensionRemark: data.suspensionRemark || '',
+                });
             } else {
-                setRestaurantStatus('error');
+                setRestaurantStatus({ status: 'error', restrictedFeatures: [], suspensionRemark: '' });
             }
         } catch (e) {
-            setRestaurantStatus('error');
+            setRestaurantStatus({ status: 'error', restrictedFeatures: [], suspensionRemark: '' });
         } finally {
             setLoading(false);
         }
@@ -76,16 +100,27 @@ function OwnerDashboardContent({ children }) {
   }
   
   const renderStatusScreen = () => {
-      // Approved and Suspended statuses should render the normal layout
-      if (restaurantStatus === 'approved' || restaurantStatus === 'suspended') return null;
-
       let icon, title, message, actions;
 
-      switch(restaurantStatus) {
+      if (restaurantStatus.status === 'approved') return null; // Good to go
+      if (restaurantStatus.status === 'suspended') {
+        const featureId = pathname.split('/').pop();
+        if (restaurantStatus.restrictedFeatures.includes(featureId)) {
+          return <FeatureLockScreen remark={restaurantStatus.suspensionRemark} />;
+        }
+        return null; // Not this specific feature, so allow render
+      }
+
+      // Handle pending, rejected, error states
+      switch(restaurantStatus.status) {
           case 'pending':
+              if (pathname.includes('/menu') || pathname.includes('/settings')) {
+                  // Allow access to menu and settings for pending users
+                  return null;
+              }
               icon = <HardHat className="h-16 w-16 text-yellow-400" />;
               title = "Application Under Review";
-              message = "Your restaurant profile is being reviewed by our team. You can set up your menu while you wait.";
+              message = "Your other dashboard features are being reviewed. You can set up your menu while you wait.";
               actions = <Button onClick={() => router.push('/owner-dashboard/menu')}><Salad className="mr-2 h-4 w-4"/> Go to Menu</Button>
               break;
           case 'rejected':
@@ -101,30 +136,6 @@ function OwnerDashboardContent({ children }) {
              actions = <Button onClick={() => window.location.reload()}>Refresh</Button>
       }
 
-      // Special case for 'pending': show the sidebar but limited content
-      if (restaurantStatus === 'pending') {
-          return (
-              <div className={styles.contentWrapper}>
-                 <Sidebar
-                    isOpen={isSidebarOpen}
-                    setIsOpen={setSidebarOpen}
-                    isMobile={isMobile}
-                    isCollapsed={!isSidebarOpen && !isMobile}
-                    restrictedFeatures={['live-orders', 'customers', 'analytics', 'delivery', 'coupons', 'dashboard']}
-                 />
-                 <main className={styles.mainContent}>
-                      <div className="flex flex-col items-center justify-center text-center h-full p-8 bg-card border border-border rounded-xl">
-                          {icon}
-                          <h2 className="mt-6 text-2xl font-bold">{title}</h2>
-                          <p className="mt-2 max-w-md text-muted-foreground">{message}</p>
-                          <div className="mt-6">{actions}</div>
-                      </div>
-                 </main>
-              </div>
-          );
-      }
-      
-      // For other statuses (rejected, error), show a full-screen block
       return (
         <main className={styles.mainContent} style={{padding: '1rem'}}>
           <div className="flex flex-col items-center justify-center text-center h-full p-8 bg-card border border-border rounded-xl">
@@ -137,7 +148,7 @@ function OwnerDashboardContent({ children }) {
       );
   }
 
-  const statusScreen = renderStatusScreen();
+  const blockedContent = renderStatusScreen();
 
   return (
     <>
@@ -145,31 +156,30 @@ function OwnerDashboardContent({ children }) {
           isSidebarOpen={isSidebarOpen}
           setSidebarOpen={setSidebarOpen}
       />
-      {statusScreen ? statusScreen : (
-         <div className={styles.contentWrapper}>
-            <AnimatePresence>
-              {isSidebarOpen && isMobile && (
-                <motion.div
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  exit={{ opacity: 0 }}
-                  onClick={() => setSidebarOpen(false)}
-                  className={styles.mobileOverlay}
-                />
-              )}
-            </AnimatePresence>
-            <Sidebar
-              isOpen={isSidebarOpen}
-              setIsOpen={setSidebarOpen}
-              isMobile={isMobile}
-              isCollapsed={!isSidebarOpen && !isMobile}
-              restrictedFeatures={restrictedFeatures}
-            />
-            <main className={styles.mainContent}>
-                {children}
-            </main>
-          </div>
-      )}
+       <div className={styles.contentWrapper}>
+          <AnimatePresence>
+            {isSidebarOpen && isMobile && (
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                onClick={() => setSidebarOpen(false)}
+                className={styles.mobileOverlay}
+              />
+            )}
+          </AnimatePresence>
+          <Sidebar
+            isOpen={isSidebarOpen}
+            setIsOpen={setSidebarOpen}
+            isMobile={isMobile}
+            isCollapsed={!isSidebarOpen && !isMobile}
+            restrictedFeatures={restaurantStatus.restrictedFeatures}
+            status={restaurantStatus.status}
+          />
+          <main className={styles.mainContent}>
+              {blockedContent || children}
+          </main>
+        </div>
     </>
   );
 }
