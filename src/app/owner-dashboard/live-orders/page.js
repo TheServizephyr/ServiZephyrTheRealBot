@@ -164,10 +164,7 @@ export default function LiveOrdersPage() {
   const impersonatedOwnerId = searchParams.get('impersonate_owner_id');
 
   const fetchOrders = async (isManualRefresh = false) => {
-    if (!isManualRefresh) setLoading(true); else {
-        // add a small visual flicker on manual refresh
-        setOrders(prev => [...prev]);
-    }
+    if (!isManualRefresh) setLoading(true);
     
     try {
         const user = auth.currentUser;
@@ -234,33 +231,22 @@ export default function LiveOrdersPage() {
   };
 
   const handleUpdateStatus = async (orderId, newStatus) => {
-    const originalOrders = [...orders];
-    const updatedOrders = orders.map(order =>
-        order.id === orderId ? { ...order, status: newStatus } : order
-    );
-    setOrders(updatedOrders);
-    
     try {
       await handleAPICall('PATCH', { orderId, newStatus });
       await fetchOrders(true); // Re-fetch to ensure data consistency
     } catch (error) {
       alert(`Error updating status: ${error.message}`);
-      setOrders(originalOrders); // Revert on failure
     }
   };
   
   const handleRejectOrder = async (orderId) => {
     if (!window.confirm("Are you sure you want to reject and delete this order?")) return;
 
-    const originalOrders = [...orders];
-    setOrders(orders.filter(order => order.id !== orderId));
-
     try {
         await handleAPICall('DELETE', { orderId });
         await fetchOrders(true); // Re-fetch to ensure data consistency
     } catch (error) {
         alert(`Error rejecting order: ${error.message}`);
-        setOrders(originalOrders);
     }
   }
 
@@ -279,8 +265,8 @@ export default function LiveOrdersPage() {
       let valA = a[key];
       let valB = b[key];
       if (key === 'orderDate') {
-          valA = new Date(valA.seconds ? valA.seconds * 1000 : valA);
-          valB = new Date(valB.seconds ? valB.seconds * 1000 : valB);
+          valA = new Date(valA?.seconds ? valA.seconds * 1000 : valA);
+          valB = new Date(valB?.seconds ? valB.seconds * 1000 : valB);
       }
       if (valA < valB) {
         return sortConfig.direction === 'asc' ? -1 : 1;
@@ -358,7 +344,7 @@ export default function LiveOrdersPage() {
                                         </ul>
                                     </td>
                                     <td className="p-4 text-sm text-muted-foreground">
-                                        {formatDistanceToNowStrict(new Date(order.orderDate.seconds ? order.orderDate.seconds * 1000 : order.orderDate))} ago
+                                        {formatDistanceToNowStrict(new Date(order.orderDate?.seconds ? order.orderDate.seconds * 1000 : order.orderDate))} ago
                                     </td>
                                     <td className="p-4">
                                         <span className={cn('px-2 py-1 text-xs font-semibold rounded-full border flex items-center gap-2 w-fit', statusConfig[order.status]?.color)}>
