@@ -10,7 +10,7 @@ import Script from "next/script";
 import { ThemeProvider } from "@/components/ThemeProvider";
 import "../globals.css";
 import { auth } from "@/lib/firebase";
-import { AlertTriangle, HardHat, ShieldOff, Salad } from 'lucide-react';
+import { AlertTriangle, HardHat, ShieldOff, Salad, XCircle } from 'lucide-react';
 import { Button } from "@/components/ui/button";
 import { useRouter } from "next/navigation";
 
@@ -76,7 +76,8 @@ function OwnerDashboardContent({ children }) {
   }
   
   const renderStatusScreen = () => {
-      if (restaurantStatus === 'approved') return null;
+      // Approved and Suspended statuses should render the normal layout
+      if (restaurantStatus === 'approved' || restaurantStatus === 'suspended') return null;
 
       let icon, title, message, actions;
 
@@ -84,19 +85,13 @@ function OwnerDashboardContent({ children }) {
           case 'pending':
               icon = <HardHat className="h-16 w-16 text-yellow-400" />;
               title = "Application Under Review";
-              message = "Your restaurant profile is being reviewed by our team. We'll notify you upon approval. In the meantime, you can set up your menu.";
+              message = "Your restaurant profile is being reviewed by our team. You can set up your menu while you wait.";
               actions = <Button onClick={() => router.push('/owner-dashboard/menu')}><Salad className="mr-2 h-4 w-4"/> Go to Menu</Button>
               break;
           case 'rejected':
               icon = <XCircle className="h-16 w-16 text-red-500" />;
               title = "Application Rejected";
               message = "Unfortunately, your application did not meet our criteria at this time. Please contact support for more information.";
-              actions = <Button onClick={() => router.push('/contact')}>Contact Support</Button>
-              break;
-          case 'suspended':
-              icon = <ShieldOff className="h-16 w-16 text-red-500" />;
-              title = "Account Suspended";
-              message = "Your account has been temporarily suspended due to a violation of our terms. Please contact support.";
               actions = <Button onClick={() => router.push('/contact')}>Contact Support</Button>
               break;
           default: // Error or other states
@@ -129,7 +124,7 @@ function OwnerDashboardContent({ children }) {
           );
       }
       
-      // For other statuses, show a full-screen block
+      // For other statuses (rejected, error), show a full-screen block
       return (
         <main className={styles.mainContent} style={{padding: '1rem'}}>
           <div className="flex flex-col items-center justify-center text-center h-full p-8 bg-card border border-border rounded-xl">
