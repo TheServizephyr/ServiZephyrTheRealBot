@@ -1,4 +1,3 @@
-
 'use client';
 
 import { useState, useEffect } from 'react';
@@ -6,7 +5,6 @@ import { motion } from 'framer-motion';
 import { Bot, PlusCircle, CheckCircle, AlertCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { auth } from '@/lib/firebase';
-import { useSearchParams } from 'next/navigation';
 
 const containerVariants = {
   hidden: { opacity: 0, y: 20 },
@@ -48,7 +46,6 @@ export default function ConnectionsPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [connections, setConnections] = useState([]); // This will be fetched from backend later
-  const searchParams = useSearchParams();
 
   // This is a placeholder. In a real app, you would fetch this from your backend.
   useEffect(() => {

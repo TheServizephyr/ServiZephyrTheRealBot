@@ -1,4 +1,3 @@
-
 import { NextResponse } from 'next/server';
 import { getAuth, getFirestore } from '@/lib/firebase-admin';
 import axios from 'axios';
