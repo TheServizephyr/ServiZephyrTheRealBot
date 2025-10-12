@@ -5,7 +5,7 @@ import { sendWhatsAppMessage } from './whatsapp';
 export const sendNewOrderToOwner = async ({ ownerPhone, botPhoneNumberId, customerName, totalAmount, orderId }) => {
 
     if (!ownerPhone || !botPhoneNumberId) {
-        console.warn(`[Notification Lib] Owner phone or Bot ID not found for this restaurant. Cannot send new order notification.`);
+        console.error(`[Notification Lib] CRITICAL: Cannot send new order notification. Owner phone or Bot ID is missing. Owner Phone: ${ownerPhone}, Bot ID: ${botPhoneNumberId}`);
         return;
     }
     const ownerPhoneWithCode = '91' + ownerPhone;
@@ -44,6 +44,10 @@ export const sendNewOrderToOwner = async ({ ownerPhone, botPhoneNumberId, custom
 
 
 export const sendOrderStatusUpdateToCustomer = async ({ customerPhone, botPhoneNumberId, customerName, orderId, restaurantName, status }) => {
+    if (!customerPhone || !botPhoneNumberId) {
+        console.warn(`[Notification Lib] Customer phone or Bot ID not found. Cannot send status update for order ${orderId}.`);
+        return;
+    }
     const customerPhoneWithCode = '91' + customerPhone;
     const capitalizedStatus = status.charAt(0).toUpperCase() + status.slice(1);
 
