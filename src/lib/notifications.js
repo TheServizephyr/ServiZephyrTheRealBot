@@ -43,8 +43,9 @@ export const sendNewOrderToOwner = async ({ ownerPhone, botPhoneNumberId, custom
 };
 
 
-export const sendOrderConfirmationToCustomer = async ({ customerPhone, botPhoneNumberId, customerName, orderId, restaurantName }) => {
+export const sendOrderStatusUpdateToCustomer = async ({ customerPhone, botPhoneNumberId, customerName, orderId, restaurantName, status }) => {
     const customerPhoneWithCode = '91' + customerPhone;
+    const capitalizedStatus = status.charAt(0).toUpperCase() + status.slice(1);
 
     const statusPayload = {
         name: "order_status_update",
@@ -56,7 +57,7 @@ export const sendOrderConfirmationToCustomer = async ({ customerPhone, botPhoneN
                     { type: "text", text: customerName },
                     { type: "text", text: orderId.substring(0, 8) },
                     { type: "text", text: restaurantName },
-                    { type: "text", text: "Confirmed" }
+                    { type: "text", text: capitalizedStatus }
                 ]
             }
         ]

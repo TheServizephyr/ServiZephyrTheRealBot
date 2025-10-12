@@ -3,7 +3,7 @@
 import { NextResponse } from 'next/server';
 import { firestore as adminFirestore } from 'firebase-admin';
 import { getAuth, getFirestore } from '@/lib/firebase-admin';
-import { sendOrderConfirmationToCustomer } from '@/lib/notifications';
+import { sendOrderStatusUpdateToCustomer } from '@/lib/notifications';
 
 
 async function verifyOwnerAndGetRestaurant(req, auth, firestore) {
@@ -130,18 +130,17 @@ export async function PATCH(req) {
 
         await orderRef.update({ status: newStatus });
         
-        if (newStatus === 'confirmed') {
-            const orderData = orderDoc.data();
-            const restaurantData = restaurantSnap.data();
-            await sendOrderConfirmationToCustomer({
-                customerPhone: orderData.customerPhone,
-                botPhoneNumberId: restaurantData.botPhoneNumberId,
-                customerName: orderData.customerName,
-                orderId: orderId,
-                restaurantName: restaurantData.name,
-            });
-        }
-
+        // Send WhatsApp notification for any status update
+        const orderData = orderDoc.data();
+        const restaurantData = restaurantSnap.data();
+        await sendOrderStatusUpdateToCustomer({
+            customerPhone: orderData.customerPhone,
+            botPhoneNumberId: restaurantData.botPhoneNumberId,
+            customerName: orderData.customerName,
+            orderId: orderId,
+            restaurantName: restaurantData.name,
+            status: newStatus
+        });
 
         return NextResponse.json({ message: 'Order status updated successfully.' }, { status: 200 });
 
@@ -177,3 +176,4 @@ export async function DELETE(req) {
         return NextResponse.json({ message: `Backend Error: ${error.message}` }, { status: error.status || 500 });
     }
 }
+
