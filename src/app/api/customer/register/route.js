@@ -23,9 +23,8 @@ export async function POST(req) {
             return NextResponse.json({ message: 'This restaurant does not exist.' }, { status: 404 });
         }
         const restaurantData = restaurantDoc.data();
-        const ownerId = restaurantData.ownerId; // Get ownerId from restaurant data
+        const ownerId = restaurantData.ownerId;
 
-        // --- START: CRITICAL FIX - Fetch owner's phone from users collection ---
         let ownerPhone = null;
         if (ownerId) {
             const ownerDoc = await firestore.collection('users').doc(ownerId).get();
@@ -33,8 +32,6 @@ export async function POST(req) {
                 ownerPhone = ownerDoc.data().phone;
             }
         }
-        // --- END: CRITICAL FIX ---
-
 
         const batch = firestore.batch();
         
@@ -136,7 +133,6 @@ export async function POST(req) {
 
         await batch.commit();
         
-        // --- NEW & CENTRALIZED WHATSAPP NOTIFICATION ---
         console.log(`[Order API Debug] Attempting to send notification. Owner Phone: ${ownerPhone}, Bot ID: ${restaurantData.botPhoneNumberId}`);
         await sendNewOrderToOwner({
             ownerPhone: ownerPhone,
@@ -145,7 +141,6 @@ export async function POST(req) {
             totalAmount: grandTotal,
             orderId: newOrderRef.id
         });
-        // --- END: NEW LOGIC ---
 
         return NextResponse.json({ 
             message: 'Order placed successfully! We will notify you on WhatsApp.'

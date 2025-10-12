@@ -1,6 +1,5 @@
 
 
-// A simple, robust webhook handler for Next.js App Router, optimized for Vercel.
 import { NextResponse } from 'next/server';
 import { getFirestore } from '@/lib/firebase-admin';
 import { sendWhatsAppMessage } from '@/lib/whatsapp';
@@ -9,7 +8,6 @@ import { sendOrderConfirmationToCustomer } from '@/lib/notifications';
 
 const VERIFY_TOKEN = process.env.WHATSAPP_VERIFY_TOKEN;
 
-// Handles GET requests for webhook verification
 export async function GET(request) {
   try {
     const { searchParams } = new URL(request.url);
@@ -31,7 +29,6 @@ export async function GET(request) {
   }
 }
 
-// Handles POST requests for incoming messages
 export async function POST(request) {
     try {
         const body = await request.json();
@@ -40,7 +37,6 @@ export async function POST(request) {
             console.log("[Webhook] Request Body:", JSON.stringify(body, null, 2));
         }
 
-
         if (body.object !== 'whatsapp_business_account') {
             return NextResponse.json({ message: 'Not a WhatsApp event' }, { status: 200 });
         }
@@ -48,16 +44,15 @@ export async function POST(request) {
         const firestore = getFirestore();
         const change = body.entry?.[0]?.changes?.[0];
         
-        // --- Logic for Interactive Button Presses ---
         if (change?.value?.messages?.[0]?.interactive?.button_reply) {
             const message = change.value.messages[0];
             const buttonReply = message.interactive.button_reply;
-            const buttonId = buttonReply.id; // e.g., "accept_order_ORDER_ID"
-            const fromNumber = message.from; // Owner's number
+            const buttonId = buttonReply.id;
+            const fromNumber = message.from;
             const businessPhoneNumberId = change.value.metadata.phone_number_id;
             
             const [action, ...orderIdParts] = buttonId.split('_order_');
-            const orderId = orderIdParts.join('_order_'); // Re-join in case order ID has underscores
+            const orderId = orderIdParts.join('_order_'); 
             
             if (!orderId || !['accept', 'reject'].includes(action)) {
                 return NextResponse.json({ message: 'Invalid button ID' }, { status: 200 });
@@ -68,38 +63,33 @@ export async function POST(request) {
             if (action === 'accept') {
                 await orderRef.update({ status: 'confirmed' });
                 
-                // Now, notify the customer using the centralized notification service
                 const orderDoc = await orderRef.get();
                 if (orderDoc.exists) {
                     const orderData = orderDoc.data();
                     
-                    // Call the centralized function
+                    const restaurantDoc = await firestore.collection('restaurants').doc(orderData.restaurantId).get();
+                    const restaurantData = restaurantDoc.data();
+                    
                     await sendOrderConfirmationToCustomer({
                         customerPhone: orderData.customerPhone,
                         botPhoneNumberId: businessPhoneNumberId,
                         customerName: orderData.customerName,
                         orderId: orderId,
-                        restaurantName: orderData.restaurantName
+                        restaurantName: restaurantData.name,
                     });
                 }
+                await sendWhatsAppMessage(fromNumber, `✅ Action complete: Order ${orderId} has been confirmed.`, businessPhoneNumberId);
 
             } else if (action === 'reject') {
-                // In a real app, you might want to update status to 'rejected' instead of deleting
                 await orderRef.delete();
+                await sendWhatsAppMessage(fromNumber, `✅ Action complete: Order ${orderId} has been rejected.`, businessPhoneNumberId);
             }
-            
-            // Acknowledge the button press to the owner
-            await sendWhatsAppMessage(fromNumber, `✅ Action complete: Order ${action.charAt(0).toUpperCase() + action.slice(1)}ed.`, businessPhoneNumberId);
-
         } 
-        // --- Logic for Standard Text Messages (Customer Welcome) ---
         else if (change?.value?.messages?.[0]?.text) {
             const message = change.value.messages[0];
-            const fromWithCode = message.from; // This is the customer's number with country code but no space
+            const fromWithCode = message.from; 
             const botPhoneNumberId = change.value.metadata.phone_number_id;
 
-
-            // 1. Find the restaurant using the botPhoneNumberId
             const restaurantsRef = firestore.collection('restaurants');
             const restaurantQuery = await restaurantsRef.where('botPhoneNumberId', '==', botPhoneNumberId).limit(1).get();
 
@@ -114,7 +104,6 @@ export async function POST(request) {
             const restaurantData = restaurantDoc.data();
             const restaurantName = restaurantData.name;
 
-            // 2. Find customer's name for a personalized welcome
             const customerPhone = fromWithCode.startsWith('91') ? fromWithCode.substring(2) : fromWithCode;
             const usersRef = firestore.collection('users');
             const userQuery = await usersRef.where('phone', '==', customerPhone).limit(1).get();
@@ -128,7 +117,7 @@ export async function POST(request) {
             const menuUrl = `https://servizephyr.com/order/${restaurantId}?phone=${customerPhone}`;
             const reply_body = `${welcomeMessage}\n\nWhat would you like to order today? You can view our full menu and place your order by clicking the link below:\n\n${menuUrl}`;
             
-            const customerPhoneForApi = '91 ' + customerPhone; // Add space for the API call
+            const customerPhoneForApi = '91' + customerPhone;
             await sendWhatsAppMessage(customerPhoneForApi, reply_body, botPhoneNumberId);
         }
         
@@ -139,5 +128,3 @@ export async function POST(request) {
         return NextResponse.json({ message: 'Error processing request, but acknowledged.' }, { status: 200 });
     }
 }
-
-    

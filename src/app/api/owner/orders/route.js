@@ -3,8 +3,9 @@
 import { NextResponse } from 'next/server';
 import { firestore as adminFirestore } from 'firebase-admin';
 import { getAuth, getFirestore } from '@/lib/firebase-admin';
+import { sendOrderConfirmationToCustomer } from '@/lib/notifications';
 
-// Helper to verify owner and get their first restaurant ID
+
 async function verifyOwnerAndGetRestaurant(req, auth, firestore) {
     const authHeader = req.headers.get('authorization');
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
@@ -14,7 +15,6 @@ async function verifyOwnerAndGetRestaurant(req, auth, firestore) {
     const decodedToken = await auth.verifyIdToken(token);
     const uid = decodedToken.uid;
     
-    // --- ADMIN IMPERSONATION & PERMISSION LOGIC ---
     const url = new URL(req.headers.get('referer'));
     const impersonatedOwnerId = url.searchParams.get('impersonate_owner_id');
     const userDoc = await firestore.collection('users').doc(uid).get();
@@ -26,7 +26,6 @@ async function verifyOwnerAndGetRestaurant(req, auth, firestore) {
     const userData = userDoc.data();
     const userRole = userData.role;
 
-    // If admin is impersonating, find the restaurant for the impersonated owner
     if (userRole === 'admin' && impersonatedOwnerId) {
         console.log(`[API Impersonation] Admin ${uid} is viewing data for owner ${impersonatedOwnerId}.`);
         const restaurantsQuery = await firestore.collection('restaurants').where('ownerId', '==', impersonatedOwnerId).limit(1).get();
@@ -37,7 +36,6 @@ async function verifyOwnerAndGetRestaurant(req, auth, firestore) {
         return { uid: impersonatedOwnerId, restaurantId: restaurantSnap.id, restaurantSnap, isAdmin: true };
     }
 
-    // If the user is a standard owner, find their restaurant
     if (userRole === 'owner') {
         const restaurantsQuery = await firestore.collection('restaurants').where('ownerId', '==', uid).limit(1).get();
         if (restaurantsQuery.empty) {
@@ -47,7 +45,6 @@ async function verifyOwnerAndGetRestaurant(req, auth, firestore) {
         return { uid, restaurantId: restaurantDoc.id, restaurantSnap: restaurantDoc };
     }
     
-    // If not an admin impersonating or an owner, deny access
     throw { message: 'Access Denied: You do not have sufficient privileges.', status: 403 };
 }
 
@@ -57,13 +54,11 @@ export async function GET(req) {
         const auth = await getAuth();
         const firestore = await getFirestore();
         
-        // --- Verify Owner ---
         const { uid, restaurantId, restaurantSnap } = await verifyOwnerAndGetRestaurant(req, auth, firestore);
         
         const { searchParams } = new URL(req.url);
         const orderId = searchParams.get('id');
         
-        // --- Logic to fetch a SINGLE order for the bill page ---
         if (orderId) {
             const orderRef = firestore.collection('orders').doc(orderId);
             const orderDoc = await orderRef.get();
@@ -73,12 +68,10 @@ export async function GET(req) {
             }
             
             let orderData = orderDoc.data();
-            // Security check: ensure the fetched order belongs to the owner's restaurant
             if (orderData.restaurantId !== restaurantId) {
                 return NextResponse.json({ message: 'Access denied to this order.' }, { status: 403 });
             }
             
-            // CONVERT TIMESTAMP TO ISO STRING FOR CLIENT
             if (orderData.orderDate && orderData.orderDate.toDate) {
                 orderData = { ...orderData, orderDate: orderData.orderDate.toDate().toISOString() };
             }
@@ -89,8 +82,6 @@ export async function GET(req) {
             return NextResponse.json({ order: orderData, restaurant: restaurantData }, { status: 200 });
         }
 
-
-        // --- Original logic to fetch ALL orders for the live orders page ---
         const ordersRef = firestore.collection('orders');
         const ordersSnap = await ordersRef.where('restaurantId', '==', restaurantId).orderBy('orderDate', 'desc').get();
 
@@ -99,7 +90,6 @@ export async function GET(req) {
             return { 
                 id: doc.id, 
                 ...data,
-                // Ensure date is ISO string for client-side processing
                 orderDate: data.orderDate?.toDate ? data.orderDate.toDate().toISOString() : data.orderDate,
                 customer: data.customerName,
                 amount: data.totalAmount,
@@ -119,8 +109,7 @@ export async function PATCH(req) {
     try {
         const auth = await getAuth();
         const firestore = await getFirestore();
-        // We still verify the owner to ensure they have rights, even though orderId is unique
-        const { restaurantId } = await verifyOwnerAndGetRestaurant(req, auth, firestore);
+        const { restaurantId, restaurantSnap } = await verifyOwnerAndGetRestaurant(req, auth, firestore);
         const { orderId, newStatus } = await req.json();
 
         if (!orderId || !newStatus) {
@@ -134,13 +123,25 @@ export async function PATCH(req) {
 
         const orderRef = firestore.collection('orders').doc(orderId);
         
-        // Security check before updating
         const orderDoc = await orderRef.get();
         if (!orderDoc.exists || orderDoc.data().restaurantId !== restaurantId) {
             return NextResponse.json({ message: 'Access denied to this order.' }, { status: 403 });
         }
 
         await orderRef.update({ status: newStatus });
+        
+        if (newStatus === 'confirmed') {
+            const orderData = orderDoc.data();
+            const restaurantData = restaurantSnap.data();
+            await sendOrderConfirmationToCustomer({
+                customerPhone: orderData.customerPhone,
+                botPhoneNumberId: restaurantData.botPhoneNumberId,
+                customerName: orderData.customerName,
+                orderId: orderId,
+                restaurantName: restaurantData.name,
+            });
+        }
+
 
         return NextResponse.json({ message: 'Order status updated successfully.' }, { status: 200 });
 
@@ -163,7 +164,6 @@ export async function DELETE(req) {
 
         const orderRef = firestore.collection('orders').doc(orderId);
         
-        // Security check before deleting
         const orderDoc = await orderRef.get();
         if (!orderDoc.exists || orderDoc.data().restaurantId !== restaurantId) {
             return NextResponse.json({ message: 'Access denied to this order.' }, { status: 403 });
