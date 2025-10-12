@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useState, useEffect } from 'react';
@@ -80,7 +81,8 @@ export default function AdminRestaurantsPage() {
     try {
         const response = await fetch('/api/admin/restaurants');
         if (!response.ok) {
-            throw new Error('Failed to fetch restaurants');
+            const errorData = await response.json();
+            throw new Error(errorData.message || 'Failed to fetch restaurants');
         }
         const data = await response.json();
         setRestaurants(data.restaurants);
@@ -154,9 +156,9 @@ export default function AdminRestaurantsPage() {
       <Tabs defaultValue="pending">
         <div className="flex justify-between items-center mb-4">
           <TabsList>
-            <TabsTrigger value="pending">Pending Approval</TabsTrigger>
-            <TabsTrigger value="approved">Approved</TabsTrigger>
-            <TabsTrigger value="suspended">Suspended</TabsTrigger>
+            <TabsTrigger value="Pending">Pending Approval</TabsTrigger>
+            <TabsTrigger value="Approved">Approved</TabsTrigger>
+            <TabsTrigger value="Suspended">Suspended</TabsTrigger>
           </TabsList>
           <div className="relative w-full max-w-sm">
              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" size={20} />
@@ -182,13 +184,13 @@ export default function AdminRestaurantsPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                <TabsContent value="pending" className="contents">
+                <TabsContent value="Pending" className="contents">
                   {renderTableContent('Pending')}
                 </TabsContent>
-                <TabsContent value="approved" className="contents">
+                <TabsContent value="Approved" className="contents">
                   {renderTableContent('Approved')}
                 </TabsContent>
-                <TabsContent value="suspended" className="contents">
+                <TabsContent value="Suspended" className="contents">
                   {renderTableContent('Suspended')}
                 </TabsContent>
               </TableBody>

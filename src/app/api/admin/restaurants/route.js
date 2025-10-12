@@ -10,11 +10,14 @@ export async function GET(req) {
         const restaurantPromises = restaurantsSnap.docs.map(async (doc) => {
             const data = doc.data();
             
-            // CRITICAL FIX: If a document is empty (but might have subcollections), skip it.
             if (!data || Object.keys(data).length === 0) {
                 console.warn(`[API] Skipping empty document with ID: ${doc.id}`);
                 return null;
             }
+
+            // Standardize the status field. Default to 'Pending' if missing.
+            const status = data.approvalStatus || 'pending';
+            const capitalizedStatus = status.charAt(0).toUpperCase() + status.slice(1);
 
             const restaurant = {
                 id: doc.id,
@@ -22,10 +25,8 @@ export async function GET(req) {
                 ownerId: data.ownerId,
                 ownerName: 'N/A', 
                 ownerEmail: 'N/A', 
-                // SAFETY NET: Use a default date if createdAt is missing
                 onboarded: data.createdAt?.toDate?.()?.toISOString() || new Date().toISOString(),
-                // SAFETY NET: Default to 'Pending' if approvalStatus is missing
-                status: data.approvalStatus || 'Pending',
+                status: capitalizedStatus, // Use the capitalized status
             };
 
             if (restaurant.ownerId) {
@@ -34,14 +35,12 @@ export async function GET(req) {
                     restaurant.ownerName = userRecord.displayName || 'No Name';
                     restaurant.ownerEmail = userRecord.email;
                 } catch(e) {
-                    // This catch block is important to prevent a crash if a user is not found
                     console.warn(`[API] Could not find user for ownerId: ${restaurant.ownerId} in restaurant ${restaurant.name}. Proceeding without owner details.`);
                 }
             }
             return restaurant;
         });
 
-        // Use filter(Boolean) to remove any null entries from empty documents
         const restaurants = (await Promise.all(restaurantPromises)).filter(Boolean);
 
         return NextResponse.json({ restaurants }, { status: 200 });
@@ -69,8 +68,8 @@ export async function PATCH(req) {
         const firestore = getFirestore();
         const restaurantRef = firestore.collection('restaurants').doc(restaurantId);
         
-        // Use set with merge:true to be safe, it will create or update the field.
-        await restaurantRef.set({ approvalStatus: status }, { merge: true });
+        // Save status in lowercase as per Firestore standard
+        await restaurantRef.set({ approvalStatus: status.toLowerCase() }, { merge: true });
         
         return NextResponse.json({ message: 'Restaurant status updated successfully' }, { status: 200 });
 
