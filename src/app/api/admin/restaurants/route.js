@@ -12,6 +12,7 @@ export async function GET(req) {
             
             // CRITICAL FIX: If a document is empty (but might have subcollections), skip it.
             if (!data) {
+                console.warn(`[API] Skipping empty document with ID: ${doc.id}`);
                 return null;
             }
 
@@ -34,7 +35,7 @@ export async function GET(req) {
                     restaurant.ownerEmail = userRecord.email;
                 } catch(e) {
                     // This catch block is important to prevent a crash if a user is not found
-                    console.warn(`Could not find user for ownerId: ${restaurant.ownerId}`);
+                    console.warn(`[API] Could not find user for ownerId: ${restaurant.ownerId} in restaurant ${restaurant.name}. Proceeding without owner details.`);
                 }
             }
             return restaurant;
