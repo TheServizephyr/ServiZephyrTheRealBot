@@ -284,12 +284,12 @@ export default function CouponsPage() {
         if (!user) throw new Error("Authentication required.");
         const idToken = await user.getIdToken();
 
-        let url = '/api/owner/coupons';
+        let url = new URL('/api/owner/coupons', window.location.origin);
         if (impersonatedOwnerId) {
-            url += `?impersonate_owner_id=${impersonatedOwnerId}`;
+            url.searchParams.append('impersonate_owner_id', impersonatedOwnerId);
         }
         
-        const res = await fetch(url, {
+        const res = await fetch(url.toString(), {
             method,
             headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${idToken}` },
             body: JSON.stringify(body),
@@ -323,7 +323,7 @@ export default function CouponsPage() {
             else setLoading(false);
         });
         return () => unsubscribe();
-    }, []);
+    }, [impersonatedOwnerId]);
 
     const handleSaveCoupon = async (couponData) => {
         try {

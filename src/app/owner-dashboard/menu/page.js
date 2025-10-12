@@ -721,12 +721,12 @@ export default function MenuPage() {
     if (!user) throw new Error("User not authenticated.");
     const idToken = await user.getIdToken();
     
-    let url = endpoint;
+    let url = new URL(endpoint, window.location.origin);
     if (impersonatedOwnerId) {
-        url += `?impersonate_owner_id=${impersonatedOwnerId}`;
+        url.searchParams.append('impersonate_owner_id', impersonatedOwnerId);
     }
 
-    const res = await fetch(url, {
+    const res = await fetch(url.toString(), {
       method,
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${idToken}` },
       body: JSON.stringify(body),
@@ -758,7 +758,7 @@ export default function MenuPage() {
         else setLoading(false);
     });
     return () => unsubscribe();
-  }, []);
+  }, [impersonatedOwnerId]);
   
   const allCategories = { ...defaultCategoryConfig };
   customCategories.forEach(cat => {

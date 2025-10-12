@@ -1,4 +1,5 @@
 
+
 "use client";
 
 import { useState, useMemo, useEffect } from 'react';
@@ -300,12 +301,12 @@ export default function DeliveryPage() {
         if (!user) throw new Error("Authentication required.");
         const idToken = await user.getIdToken();
         
-        let url = '/api/owner/delivery';
+        let url = new URL('/api/owner/delivery', window.location.origin);
         if (impersonatedOwnerId) {
-            url += `?impersonate_owner_id=${impersonatedOwnerId}`;
+            url.searchParams.append('impersonate_owner_id', impersonatedOwnerId);
         }
         
-        const res = await fetch(url, {
+        const res = await fetch(url.toString(), {
             method,
             headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${idToken}` },
             body: JSON.stringify(body),
@@ -334,7 +335,7 @@ export default function DeliveryPage() {
             else setLoading(false);
         });
         return () => unsubscribe();
-    }, []);
+    }, [impersonatedOwnerId]);
 
     const handleSaveBoy = async (boyData) => {
         try {

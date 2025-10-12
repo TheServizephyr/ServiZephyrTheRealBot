@@ -1,7 +1,8 @@
 
+
 'use client';
 
-import { useParams } from 'next/navigation';
+import { useParams, useSearchParams } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { Printer } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -10,6 +11,9 @@ import { auth } from '@/lib/firebase';
 const BillPage = () => {
   const params = useParams();
   const orderId = params.orderId;
+  const searchParams = useSearchParams();
+  const impersonatedOwnerId = searchParams.get('impersonate_owner_id');
+
   const [order, setOrder] = useState(null);
   const [restaurant, setRestaurant] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -26,9 +30,17 @@ const BillPage = () => {
               throw new Error("Authentication required.");
             }
             const idToken = await user.getIdToken();
-            const res = await fetch(`/api/owner/orders?id=${orderId}`, {
+
+            let url = new URL(`/api/owner/orders`, window.location.origin);
+            url.searchParams.append('id', orderId);
+            if (impersonatedOwnerId) {
+                url.searchParams.append('impersonate_owner_id', impersonatedOwnerId);
+            }
+            
+            const res = await fetch(url.toString(), {
                 headers: { 'Authorization': `Bearer ${idToken}` }
             });
+
             if (!res.ok) {
                 const errData = await res.json();
                 throw new Error(errData.message || "Failed to fetch bill data.");
@@ -54,7 +66,7 @@ const BillPage = () => {
         });
         return () => unsubscribe();
     }
-  }, [orderId]);
+  }, [orderId, impersonatedOwnerId]);
 
   const handlePrint = () => {
     window.print();

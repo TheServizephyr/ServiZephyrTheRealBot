@@ -1,4 +1,5 @@
 
+
 "use client";
 
 import React, { useState, useEffect, useRef } from 'react';
@@ -186,7 +187,6 @@ function PageContent() {
 
             const idToken = await user.getIdToken(true);
             
-            // Append impersonation ID if it exists
             let apiUrl = `/api/owner/dashboard-data?filter=${activeFilter}`;
             if (impersonatedOwnerId) {
                 apiUrl += `&impersonate_owner_id=${impersonatedOwnerId}`;

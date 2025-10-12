@@ -1,4 +1,5 @@
 
+
 "use client";
 
 import { useState, useEffect } from "react";
@@ -36,12 +37,12 @@ export default function OrdersPage() {
         if(!user) throw new Error("Authentication required.");
         const idToken = await user.getIdToken();
 
-        let url = '/api/owner/orders';
+        let url = new URL('/api/owner/orders', window.location.origin);
         if (impersonatedOwnerId) {
-            url += `?impersonate_owner_id=${impersonatedOwnerId}`;
+            url.searchParams.append('impersonate_owner_id', impersonatedOwnerId);
         }
         
-        const res = await fetch(url, {
+        const res = await fetch(url.toString(), {
             headers: { 'Authorization': `Bearer ${idToken}` }
         });
         if(!res.ok) {
@@ -64,7 +65,7 @@ export default function OrdersPage() {
       else setLoading(false);
     });
     return () => unsubscribe();
-  }, []);
+  }, [impersonatedOwnerId]);
 
   const handleStatusChange = (orderId, newStatus) => {
     setOrders(currentOrders =>

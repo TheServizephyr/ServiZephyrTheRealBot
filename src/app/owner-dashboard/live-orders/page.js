@@ -1,4 +1,5 @@
 
+
 "use client";
 
 import React, { useState, useEffect, useMemo } from 'react';
@@ -23,6 +24,8 @@ const statusConfig = {
 const statusFlow = ['pending', 'confirmed', 'preparing', 'dispatched', 'delivered'];
 
 const ActionButton = ({ status, onNext, onRevert, orderId }) => {
+    const searchParams = useSearchParams();
+    const impersonatedOwnerId = searchParams.get('impersonate_owner_id');
     const currentIndex = statusFlow.indexOf(status);
     const nextStatus = statusFlow[currentIndex + 1];
     const prevStatus = statusFlow[currentIndex - 1];
@@ -51,6 +54,11 @@ const ActionButton = ({ status, onNext, onRevert, orderId }) => {
         );
     }
     const ActionIcon = action.icon;
+    
+    const billUrl = impersonatedOwnerId
+        ? `/owner-dashboard/bill/${orderId}?impersonate_owner_id=${impersonatedOwnerId}`
+        : `/owner-dashboard/bill/${orderId}`;
+
 
     return (
         <div className="flex items-center gap-2">
@@ -62,7 +70,7 @@ const ActionButton = ({ status, onNext, onRevert, orderId }) => {
                 <ActionIcon size={16} className="mr-2" />
                 {action.text}
             </Button>
-             <Link href={`/owner-dashboard/bill/${orderId}`} passHref>
+             <Link href={billUrl} passHref>
                 <Button asChild variant="outline" size="sm" className="w-full h-9">
                     <a>
                         <Printer size={16} className="mr-2" /> Print Bill
@@ -135,12 +143,12 @@ export default function LiveOrdersPage() {
         if (!user) throw new Error("Not authenticated");
         const idToken = await user.getIdToken();
 
-        let url = '/api/owner/orders';
+        let url = new URL('/api/owner/orders', window.location.origin);
         if (impersonatedOwnerId) {
-            url += `?impersonate_owner_id=${impersonatedOwnerId}`;
+            url.searchParams.append('impersonate_owner_id', impersonatedOwnerId);
         }
         
-        const res = await fetch(url, {
+        const res = await fetch(url.toString(), {
             headers: { 'Authorization': `Bearer ${idToken}` }
         });
         if (!res.ok) throw new Error('Failed to fetch orders');
@@ -172,19 +180,19 @@ export default function LiveOrdersPage() {
         unsubscribe();
         clearInterval(interval);
     };
-  }, []);
+  }, [impersonatedOwnerId]);
 
   const handleAPICall = async (method, body) => {
     const user = auth.currentUser;
     if (!user) throw new Error("Authentication required.");
     const idToken = await user.getIdToken();
     
-    let url = '/api/owner/orders';
+    let url = new URL('/api/owner/orders', window.location.origin);
     if (impersonatedOwnerId) {
-        url += `?impersonate_owner_id=${impersonatedOwnerId}`;
+        url.searchParams.append('impersonate_owner_id', impersonatedOwnerId);
     }
 
-    const res = await fetch(url, {
+    const res = await fetch(url.toString(), {
         method,
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${idToken}` },
         body: JSON.stringify(body),

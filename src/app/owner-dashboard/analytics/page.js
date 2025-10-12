@@ -1,4 +1,5 @@
 
+
 "use client";
 
 import { useState, useMemo, useEffect } from 'react';
@@ -15,6 +16,7 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { format, addDays }from 'date-fns';
 import { useSearchParams } from 'next/navigation';
+import { auth } from '@/lib/firebase';
 
 
 // --- DUMMY DATA ---
@@ -998,6 +1000,8 @@ export default function AnalyticsPage() {
         to: new Date(),
     });
     const [isPopoverOpen, setIsPopoverOpen] = useState(false);
+    const searchParams = useSearchParams();
+    const impersonatedOwnerId = searchParams.get('impersonate_owner_id');
 
     useEffect(() => {
         if (date?.from && date?.to) {
