@@ -3,6 +3,7 @@
 
 import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
+import Link from 'next/link';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -55,7 +56,11 @@ const RestaurantRow = ({ restaurant, onUpdateStatus }) => {
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
-              <DropdownMenuItem><Eye className="mr-2 h-4 w-4" /> View as Owner</DropdownMenuItem>
+              <DropdownMenuItem asChild>
+                <Link href={`/owner-dashboard?impersonate_owner_id=${restaurant.ownerId}`} target="_blank">
+                    <Eye className="mr-2 h-4 w-4" /> View as Owner
+                </Link>
+              </DropdownMenuItem>
               <DropdownMenuItem className="text-red-500" onClick={() => onUpdateStatus(restaurant.id, 'Suspended')}><Pause className="mr-2 h-4 w-4" /> Suspend</DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
