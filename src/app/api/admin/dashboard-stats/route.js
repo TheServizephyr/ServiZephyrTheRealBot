@@ -32,7 +32,7 @@ export async function GET(req) {
         const recentSignups = recentUsersSnap.docs.map(doc => {
             const data = doc.data();
             // SAFETY NET: Use current time if createdAt is missing
-            const signupTime = data.createdAt?.toDate()?.toISOString() || new Date().toISOString();
+            const signupTime = data.createdAt?.toDate?.()?.toISOString() || new Date().toISOString();
             return {
                 type: data.role === 'owner' ? 'Restaurant' : 'User',
                 name: data.name || 'Unnamed User',

@@ -69,6 +69,7 @@ export async function PATCH(req) {
         const firestore = getFirestore();
         const restaurantRef = firestore.collection('restaurants').doc(restaurantId);
         
+        // Use set with merge:true to be safe, it will create or update the field.
         await restaurantRef.set({ approvalStatus: status }, { merge: true });
         
         return NextResponse.json({ message: 'Restaurant status updated successfully' }, { status: 200 });
