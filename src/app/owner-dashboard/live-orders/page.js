@@ -60,36 +60,6 @@ const ActionButton = ({ status, onNext, onRevert, orderId, onReject, isUpdating 
         ? `/owner-dashboard/bill/${orderId}?impersonate_owner_id=${impersonatedOwnerId}`
         : `/owner-dashboard/bill/${orderId}`;
     
-    if(status === 'pending') {
-         return (
-            <div className="flex items-center gap-2">
-                <Button
-                    onClick={() => onNext(nextStatus)}
-                    size="sm"
-                    className="bg-primary hover:bg-primary/90 h-9 flex-grow"
-                >
-                    <Check size={16} className="mr-2" />
-                    Confirm Order
-                </Button>
-                <Button
-                    onClick={onReject}
-                    variant="destructive"
-                    size="sm"
-                    className="h-9"
-                >
-                    <X size={16} className="mr-2" />
-                    Reject
-                </Button>
-                 <Link href={billUrl} passHref>
-                    <Button asChild variant="outline" size="sm" className="h-9">
-                        <a><Printer size={16} /></a>
-                    </Button>
-                </Link>
-            </div>
-        );
-    }
-
-
     if (!action) {
          return (
             <div className="flex items-center gap-2">
@@ -110,6 +80,17 @@ const ActionButton = ({ status, onNext, onRevert, orderId, onReject, isUpdating 
                 <ActionIcon size={16} className="mr-2" />
                 {action.text}
             </Button>
+            {status === 'pending' && (
+                 <Button
+                    onClick={onReject}
+                    variant="destructive"
+                    size="sm"
+                    className="h-9"
+                >
+                    <X size={16} className="mr-2" />
+                    Reject
+                </Button>
+            )}
              <Link href={billUrl} passHref>
                 <Button asChild variant="outline" size="icon" className="h-9 w-9">
                     <a>
@@ -192,7 +173,7 @@ export default function LiveOrdersPage() {
         if (!res.ok) throw new Error('Failed to fetch orders');
         const data = await res.json();
         
-        if (data.orders.length > orders.length && orders.length > 0) {
+        if (data.orders.length > orders.length && orders.length > 0 && !isManualRefresh) {
             const sound = document.getElementById('notification-sound');
             if(sound) sound.play().catch(e => console.log("Audio play failed:", e));
         }
