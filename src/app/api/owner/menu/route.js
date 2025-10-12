@@ -15,7 +15,9 @@ async function verifyOwnerAndGetRestaurant(req, auth, firestore) {
     const uid = decodedToken.uid;
     
     // --- ADMIN IMPERSONATION LOGIC ---
-    const url = new URL(req.url);
+    // CORRECTED: Use 'referer' header to get the full URL with query params on the server.
+    const referer = req.headers.get('referer');
+    const url = new URL(referer);
     const impersonatedOwnerId = url.searchParams.get('impersonate_owner_id');
     const adminUserDoc = await firestore.collection('users').doc(uid).get();
 
