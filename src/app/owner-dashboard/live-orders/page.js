@@ -1,3 +1,4 @@
+
 "use client";
 
 import React, { useState, useEffect, useMemo } from 'react';
@@ -8,6 +9,7 @@ import { auth } from '@/lib/firebase';
 import { cn } from "@/lib/utils";
 import { formatDistanceToNowStrict } from 'date-fns';
 import Link from 'next/link';
+import { useSearchParams } from 'next/navigation';
 
 
 const statusConfig = {
@@ -119,6 +121,8 @@ export default function LiveOrdersPage() {
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
   const [sortConfig, setSortConfig] = useState({ key: 'orderDate', direction: 'desc' });
+  const searchParams = useSearchParams();
+  const impersonatedOwnerId = searchParams.get('impersonate_owner_id');
 
   const fetchOrders = async (isManualRefresh = false) => {
     if (!isManualRefresh) setLoading(true); else {
@@ -130,7 +134,13 @@ export default function LiveOrdersPage() {
         const user = auth.currentUser;
         if (!user) throw new Error("Not authenticated");
         const idToken = await user.getIdToken();
-        const res = await fetch('/api/owner/orders', {
+
+        let url = '/api/owner/orders';
+        if (impersonatedOwnerId) {
+            url += `?impersonate_owner_id=${impersonatedOwnerId}`;
+        }
+        
+        const res = await fetch(url, {
             headers: { 'Authorization': `Bearer ${idToken}` }
         });
         if (!res.ok) throw new Error('Failed to fetch orders');
@@ -168,7 +178,13 @@ export default function LiveOrdersPage() {
     const user = auth.currentUser;
     if (!user) throw new Error("Authentication required.");
     const idToken = await user.getIdToken();
-    const res = await fetch('/api/owner/orders', {
+    
+    let url = '/api/owner/orders';
+    if (impersonatedOwnerId) {
+        url += `?impersonate_owner_id=${impersonatedOwnerId}`;
+    }
+
+    const res = await fetch(url, {
         method,
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${idToken}` },
         body: JSON.stringify(body),

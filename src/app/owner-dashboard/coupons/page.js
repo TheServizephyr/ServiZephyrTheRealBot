@@ -14,6 +14,7 @@ import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { format } from "date-fns";
 import { auth } from '@/lib/firebase';
+import { useSearchParams } from 'next/navigation';
 
 
 const formatDate = (dateStr) => {
@@ -275,22 +276,33 @@ export default function CouponsPage() {
     const [editingCoupon, setEditingCoupon] = useState(null);
     const [filter, setFilter] = useState('All');
     const [sort, setSort] = useState('expiryDate-asc');
+    const searchParams = useSearchParams();
+    const impersonatedOwnerId = searchParams.get('impersonate_owner_id');
+
+    const handleApiCall = async (method, body) => {
+        const user = auth.currentUser;
+        if (!user) throw new Error("Authentication required.");
+        const idToken = await user.getIdToken();
+
+        let url = '/api/owner/coupons';
+        if (impersonatedOwnerId) {
+            url += `?impersonate_owner_id=${impersonatedOwnerId}`;
+        }
+        
+        const res = await fetch(url, {
+            method,
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${idToken}` },
+            body: JSON.stringify(body),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.message || 'API call failed');
+        return data;
+    }
 
     const fetchCoupons = async () => {
         setLoading(true);
         try {
-            const user = auth.currentUser;
-            if (!user) throw new Error("Not authenticated");
-            const idToken = await user.getIdToken();
-            const res = await fetch('/api/owner/coupons', {
-                headers: { 'Authorization': `Bearer ${idToken}` }
-            });
-            if (!res.ok) {
-                const errorData = await res.json();
-                throw new Error(errorData.message || 'Failed to fetch coupons');
-            }
-            const data = await res.json();
-            // Process dates from Firestore Timestamps to JS Dates
+            const data = await handleApiCall('GET');
             const processedCoupons = (data.coupons || []).map(c => ({
                 ...c,
                 startDate: c.startDate.seconds ? new Date(c.startDate.seconds * 1000) : new Date(c.startDate),
@@ -313,35 +325,20 @@ export default function CouponsPage() {
         return () => unsubscribe();
     }, []);
 
-    const handleAPICall = async (method, body) => {
-        const user = auth.currentUser;
-        if (!user) throw new Error("Authentication required.");
-        const idToken = await user.getIdToken();
-        const res = await fetch('/api/owner/coupons', {
-            method,
-            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${idToken}` },
-            body: JSON.stringify(body),
-        });
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.message || 'API call failed');
-        return data;
-    }
-
     const handleSaveCoupon = async (couponData) => {
         try {
             const isEditing = !!couponData.id;
-            // Convert dates to ISO strings for JSON serialization
             const payload = {
                 ...couponData,
                 startDate: couponData.startDate.toISOString(),
                 expiryDate: couponData.expiryDate.toISOString(),
             };
-            const data = await handleAPICall(isEditing ? 'PATCH' : 'POST', { coupon: payload });
+            const data = await handleApiCall(isEditing ? 'PATCH' : 'POST', { coupon: payload });
             alert(data.message);
-            await fetchCoupons(); // Refresh list
+            await fetchCoupons();
         } catch (error) {
             alert(`Error saving coupon: ${error.message}`);
-            throw error; // Re-throw to keep modal open
+            throw error;
         }
     };
 
@@ -358,9 +355,9 @@ export default function CouponsPage() {
     const handleDelete = async (id) => {
         if(window.confirm('Are you sure you want to delete this coupon? This action cannot be undone.')) {
             try {
-                const data = await handleAPICall('DELETE', { couponId: id });
+                const data = await handleApiCall('DELETE', { couponId: id });
                 alert(data.message);
-                await fetchCoupons(); // Refresh list
+                await fetchCoupons();
             } catch (error) {
                 alert(`Error deleting coupon: ${error.message}`);
             }
@@ -369,12 +366,11 @@ export default function CouponsPage() {
     
     const handleStatusToggle = async (coupon, newStatus) => {
         try {
-            await handleAPICall('PATCH', { coupon: { id: coupon.id, status: newStatus } });
-            // Optimistic update
+            await handleApiCall('PATCH', { coupon: { id: coupon.id, status: newStatus } });
             setCoupons(prev => prev.map(c => c.id === coupon.id ? { ...c, status: newStatus } : c));
         } catch (error) {
             alert(`Error updating status: ${error.message}`);
-            await fetchCoupons(); // Re-fetch to correct state
+            await fetchCoupons();
         }
     };
 

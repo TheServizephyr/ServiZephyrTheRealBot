@@ -4,7 +4,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { PlusCircle, GripVertical, Trash2, Edit, Image as ImageIcon, Search, X, Utensils, Pizza, Soup, Drumstick, Salad, CakeSlice, GlassWater, ChevronDown, IndianRupee, Upload, Copy, FileJson } from "lucide-react";
+import { PlusCircle, GripVertical, Trash2, Edit, Image as ImageIcon, Search, X, Utensils, Pizza, Soup, Drumstick, Salad, CakeSlice, GlassWater, ChevronDown, IndianRupee, Upload, Copy, FileJson, XCircle } from "lucide-react";
 import Image from "next/image";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose } from "@/components/ui/dialog";
@@ -14,6 +14,7 @@ import { DragDropContext, Droppable, Draggable } from "@hello-pangea/dnd";
 import { auth } from '@/lib/firebase';
 import { cn } from "@/lib/utils";
 import { Checkbox } from "@/components/ui/checkbox";
+import { useSearchParams } from "next/navigation";
 
 
 const defaultCategoryConfig = {
@@ -712,12 +713,20 @@ export default function MenuPage() {
   const [editingItem, setEditingItem] = useState(null);
   const [openCategory, setOpenCategory] = useState("starters");
   const [selectedItems, setSelectedItems] = useState([]);
+  const searchParams = useSearchParams();
+  const impersonatedOwnerId = searchParams.get('impersonate_owner_id');
   
   const handleApiCall = async (endpoint, method, body) => {
     const user = auth.currentUser;
     if (!user) throw new Error("User not authenticated.");
     const idToken = await user.getIdToken();
-    const res = await fetch(endpoint, {
+    
+    let url = endpoint;
+    if (impersonatedOwnerId) {
+        url += `?impersonate_owner_id=${impersonatedOwnerId}`;
+    }
+
+    const res = await fetch(url, {
       method,
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${idToken}` },
       body: JSON.stringify(body),
@@ -974,4 +983,3 @@ export default function MenuPage() {
     </div>
   );
 }
-

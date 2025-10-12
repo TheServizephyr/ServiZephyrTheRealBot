@@ -14,6 +14,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Calendar } from '@/components/ui/calendar';
 import { format } from 'date-fns';
 import { Calendar as CalendarIcon, Wand2, Ticket, Percent, Truck } from 'lucide-react';
+import { useSearchParams } from 'next/navigation';
 
 
 const formatDate = (dateString) => {
@@ -353,22 +354,34 @@ export default function CustomersPage() {
     const [activeFilter, setActiveFilter] = useState("All");
     const [isCouponModalOpen, setCouponModalOpen] = useState(false);
     const [rewardCustomer, setRewardCustomer] = useState(null);
+    const searchParams = useSearchParams();
+    const impersonatedOwnerId = searchParams.get('impersonate_owner_id');
+
+    const handleApiCall = async (endpoint, method, body) => {
+        const user = auth.currentUser;
+        if (!user) throw new Error("Authentication required.");
+        const idToken = await user.getIdToken();
+        
+        let url = endpoint;
+        if (impersonatedOwnerId) {
+            url += `?impersonate_owner_id=${impersonatedOwnerId}`;
+        }
+        
+        const res = await fetch(url, {
+            method,
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${idToken}` },
+            body: JSON.stringify(body),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.message || 'API call failed');
+        return data;
+    }
 
     useEffect(() => {
         const fetchCustomers = async () => {
             setLoading(true);
             try {
-                const user = auth.currentUser;
-                if (!user) throw new Error("User not authenticated.");
-                const idToken = await user.getIdToken();
-                const res = await fetch('/api/owner/customers', {
-                    headers: { 'Authorization': `Bearer ${idToken}` }
-                });
-                if (!res.ok) {
-                    const errorData = await res.json();
-                    throw new Error(errorData.message || 'Failed to fetch');
-                }
-                const data = await res.json();
+                const data = await handleApiCall('/api/owner/customers', 'GET');
                 setCustomers(data.customers || []);
                 setStats(data.stats || {});
             } catch (error) {
@@ -386,20 +399,6 @@ export default function CustomersPage() {
         return () => unsubscribe();
     }, []);
     
-    const handleAPICall = async (endpoint, method, body) => {
-        const user = auth.currentUser;
-        if (!user) throw new Error("Authentication required.");
-        const idToken = await user.getIdToken();
-        const res = await fetch(endpoint, {
-            method,
-            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${idToken}` },
-            body: JSON.stringify(body),
-        });
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.message || 'API call failed');
-        return data;
-    }
-
     const vipCustomers = useMemo(() => {
         return [...customers].sort((a, b) => b.totalSpend - a.totalSpend).slice(0, 5);
     }, [customers]);
@@ -415,8 +414,8 @@ export default function CustomersPage() {
             startDate: couponData.startDate.toISOString(),
             expiryDate: couponData.expiryDate.toISOString(),
         };
-        await handleAPICall('/api/owner/coupons', 'POST', { coupon: payload });
-        alert(`Reward coupon "${couponData.code}" created for ${couponData.customerId}!`);
+        await handleApiCall('/api/owner/coupons', 'POST', { coupon: payload });
+        alert(`Reward coupon "${couponData.code}" created for ${rewardCustomer.name}!`);
     };
 
     const filteredAndSortedCustomers = useMemo(() => {
@@ -459,7 +458,7 @@ export default function CustomersPage() {
     };
 
     const handleSaveNotes = async (customerId, newNotes) => {
-        await handleAPICall('/api/owner/customers', 'PATCH', { customerId, notes: newNotes });
+        await handleApiCall('/api/owner/customers', 'PATCH', { customerId, notes: newNotes });
         setCustomers(prev => prev.map(c => c.id === customerId ? { ...c, notes: newNotes } : c));
         if(selectedCustomer && selectedCustomer.id === customerId) {
             setSelectedCustomer(prev => ({...prev, notes: newNotes}));

@@ -134,7 +134,7 @@ export async function GET(req) {
         
         const todayDayIndex = new Date().getDay();
         const orderedDays = [...daysOfWeek.slice(todayDayIndex + 1), ...daysOfWeek.slice(0, todayDayIndex + 1)];
-        orderedDays.forEach(day => salesChartData.push({ day, salesByDay[day] || 0 }));
+        orderedDays.forEach(day => salesChartData.push({ day: day, sales: salesByDay[day] || 0 }));
 
         const itemCounts = {};
         topItemsSnap.docs.forEach(doc => {

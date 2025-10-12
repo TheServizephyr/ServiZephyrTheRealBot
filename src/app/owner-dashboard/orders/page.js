@@ -7,6 +7,7 @@ import { motion } from "framer-motion";
 import { RefreshCw } from "lucide-react";
 import styles from "@/components/OwnerDashboard/OwnerDashboard.module.css";
 import { auth } from '@/lib/firebase';
+import { useSearchParams } from "next/navigation";
 
 
 const containerVariants = {
@@ -22,6 +23,8 @@ const containerVariants = {
 export default function OrdersPage() {
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
+  const searchParams = useSearchParams();
+  const impersonatedOwnerId = searchParams.get('impersonate_owner_id');
 
   const loadData = async (isManualRefresh = false) => {
     if (!isManualRefresh) {
@@ -32,7 +35,13 @@ export default function OrdersPage() {
         const user = auth.currentUser;
         if(!user) throw new Error("Authentication required.");
         const idToken = await user.getIdToken();
-        const res = await fetch('/api/owner/orders', {
+
+        let url = '/api/owner/orders';
+        if (impersonatedOwnerId) {
+            url += `?impersonate_owner_id=${impersonatedOwnerId}`;
+        }
+        
+        const res = await fetch(url, {
             headers: { 'Authorization': `Bearer ${idToken}` }
         });
         if(!res.ok) {

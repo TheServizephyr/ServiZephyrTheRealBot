@@ -10,6 +10,7 @@ import { Label } from '@/components/ui/label';
 import { cn } from "@/lib/utils";
 import { auth } from '@/lib/firebase';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend } from 'recharts';
+import { useSearchParams } from 'next/navigation';
 
 
 const StatusBadge = ({ status }) => {
@@ -291,19 +292,33 @@ export default function DeliveryPage() {
     const [isAddModalOpen, setAddModalOpen] = useState(false);
     const [isAssignModalOpen, setAssignModalOpen] = useState(false);
     const [selectedBoy, setSelectedBoy] = useState(null);
+    const searchParams = useSearchParams();
+    const impersonatedOwnerId = searchParams.get('impersonate_owner_id');
+
+    const handleApiCall = async (method, body) => {
+        const user = auth.currentUser;
+        if (!user) throw new Error("Authentication required.");
+        const idToken = await user.getIdToken();
+        
+        let url = '/api/owner/delivery';
+        if (impersonatedOwnerId) {
+            url += `?impersonate_owner_id=${impersonatedOwnerId}`;
+        }
+        
+        const res = await fetch(url, {
+            method,
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${idToken}` },
+            body: JSON.stringify(body),
+        });
+        const result = await res.json();
+        if (!res.ok) throw new Error(result.message || 'API call failed');
+        return result;
+    }
 
     const fetchData = async (isManualRefresh = false) => {
         if (!isManualRefresh) setLoading(true);
         try {
-            const user = auth.currentUser;
-            if (!user) throw new Error("Not authenticated");
-            const idToken = await user.getIdToken();
-            const res = await fetch('/api/owner/delivery', { headers: { 'Authorization': `Bearer ${idToken}` } });
-            if (!res.ok) {
-                const errorData = await res.json();
-                throw new Error(errorData.message || 'Failed to fetch data');
-            }
-            const result = await res.json();
+            const result = await handleApiCall('GET');
             setData(result);
         } catch (error) {
             console.error(error);
@@ -321,23 +336,9 @@ export default function DeliveryPage() {
         return () => unsubscribe();
     }, []);
 
-    const handleAPICall = async (method, body) => {
-        const user = auth.currentUser;
-        if (!user) throw new Error("Authentication required.");
-        const idToken = await user.getIdToken();
-        const res = await fetch('/api/owner/delivery', {
-            method,
-            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${idToken}` },
-            body: JSON.stringify(body),
-        });
-        const result = await res.json();
-        if (!res.ok) throw new Error(result.message || 'API call failed');
-        return result;
-    }
-
     const handleSaveBoy = async (boyData) => {
         try {
-            await handleAPICall(boyData.id ? 'PATCH' : 'POST', { boy: boyData });
+            await handleApiCall(boyData.id ? 'PATCH' : 'POST', { boy: boyData });
             await fetchData(true);
         } catch (error) {
             alert(`Error saving delivery boy: ${error.message}`);
@@ -349,7 +350,7 @@ export default function DeliveryPage() {
         if (!selectedBoy) return;
         try {
             // This needs to update the order status as well, but for now, just updates the boy.
-            await handleAPICall('PATCH', { boy: { id: selectedBoy.id, status: 'On Delivery' } });
+            await handleApiCall('PATCH', { boy: { id: selectedBoy.id, status: 'On Delivery' } });
             alert(`Order ${orderId} assigned to ${selectedBoy.name}`);
             await fetchData(true);
         } catch (error) {
@@ -444,4 +445,3 @@ export default function DeliveryPage() {
         </div>
     );
 }
-    
