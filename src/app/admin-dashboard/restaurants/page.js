@@ -9,7 +9,7 @@ import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Input } from '@/components/ui/input';
-import { Check, X, MoreVertical, Eye, Pause, Play, Search, RefreshCw, ShieldCheck } from 'lucide-react';
+import { Check, X, MoreVertical, Eye, Pause, Play, Search, RefreshCw, ShieldCheck, Edit } from 'lucide-react';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -22,7 +22,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Textarea } from '@/components/ui/textarea';
 
 
-const SuspensionModal = ({ isOpen, onOpenChange, onConfirm, restaurantName }) => {
+const SuspensionModal = ({ isOpen, onOpenChange, onConfirm, restaurantName, initialRestrictedFeatures = [] }) => {
     const features = [
         { id: 'dashboard', label: 'Dashboard' },
         { id: 'live-orders', label: 'Live Order Management' },
@@ -36,11 +36,11 @@ const SuspensionModal = ({ isOpen, onOpenChange, onConfirm, restaurantName }) =>
     const [remark, setRemark] = useState("");
 
     useEffect(() => {
-        if (!isOpen) {
-            setSelectedFeatures([]);
-            setRemark("");
+        if (isOpen) {
+            setSelectedFeatures(initialRestrictedFeatures);
+            setRemark(""); // Reset remark every time it opens
         }
-    }, [isOpen]);
+    }, [isOpen, initialRestrictedFeatures]);
 
     const handleSelect = (featureId) => {
         setSelectedFeatures(prev => 
@@ -48,20 +48,40 @@ const SuspensionModal = ({ isOpen, onOpenChange, onConfirm, restaurantName }) =>
         );
     };
     
+    const handleSelectAll = (checked) => {
+        if (checked) {
+            setSelectedFeatures(features.map(f => f.id));
+        } else {
+            setSelectedFeatures([]);
+        }
+    };
+    
     const handleConfirm = () => {
         onConfirm(selectedFeatures, remark);
     }
+
+    const allSelected = selectedFeatures.length === features.length;
+    const partiallySelected = selectedFeatures.length > 0 && selectedFeatures.length < features.length;
 
     return (
         <Dialog open={isOpen} onOpenChange={onOpenChange}>
             <DialogContent className="bg-card border-border text-foreground">
                 <DialogHeader>
-                    <DialogTitle>Suspend Restaurant: {restaurantName}</DialogTitle>
+                    <DialogTitle>Suspend / Edit Suspension for: {restaurantName}</DialogTitle>
                     <DialogDescription>
                         Select the features you want to restrict. The owner will see a lock screen for these features with your remark.
                     </DialogDescription>
                 </DialogHeader>
                 <div className="py-4 space-y-3 max-h-[60vh] overflow-y-auto">
+                     <div className="flex items-center space-x-3 p-3 rounded-md bg-muted border border-border">
+                        <Checkbox 
+                            id="select-all" 
+                            onCheckedChange={handleSelectAll}
+                            checked={allSelected}
+                            data-state={partiallySelected ? "indeterminate" : (allSelected ? "checked" : "unchecked")}
+                        />
+                        <Label htmlFor="select-all" className="flex-grow cursor-pointer text-sm font-bold">Select/Deselect All</Label>
+                    </div>
                      {features.map(feature => (
                         <div key={feature.id} className="flex items-center space-x-3 p-2 rounded-md hover:bg-muted">
                             <Checkbox 
@@ -117,6 +137,7 @@ const RestaurantRow = ({ restaurant, onUpdateStatus }) => {
         onOpenChange={setIsSuspensionModalOpen}
         onConfirm={handleSuspensionConfirm}
         restaurantName={restaurant.name}
+        initialRestrictedFeatures={restaurant.restrictedFeatures || []}
     />
     <TableRow>
       <TableCell className="font-medium">{restaurant.name}</TableCell>
@@ -157,7 +178,17 @@ const RestaurantRow = ({ restaurant, onUpdateStatus }) => {
             </DropdownMenuContent>
           </DropdownMenu>
         )}
-        {(restaurant.status === 'Suspended' || restaurant.status === 'Rejected') && (
+        {restaurant.status === 'Suspended' && (
+            <div className="flex gap-2 justify-end">
+                <Button variant="outline" size="sm" className="border-yellow-500 text-yellow-500 hover:bg-yellow-500/10 hover:text-yellow-500" onClick={() => setIsSuspensionModalOpen(true)}>
+                    <Edit className="mr-2 h-4 w-4" /> Edit Suspension
+                </Button>
+                <Button variant="outline" size="sm" className="border-green-500 text-green-500 hover:bg-green-500/10 hover:text-green-500" onClick={() => onUpdateStatus(restaurant.id, 'Approved')}>
+                    <ShieldCheck className="mr-2 h-4 w-4" /> Re-activate
+                </Button>
+            </div>
+        )}
+        {restaurant.status === 'Rejected' && (
           <Button variant="outline" size="sm" className="border-green-500 text-green-500 hover:bg-green-500/10 hover:text-green-500" onClick={() => onUpdateStatus(restaurant.id, 'Approved')}>
             <ShieldCheck className="mr-2 h-4 w-4" /> Re-activate
           </Button>

@@ -26,7 +26,8 @@ export async function GET(req) {
                 ownerName: 'N/A', 
                 ownerEmail: 'N/A', 
                 onboarded: data.createdAt?.toDate?.()?.toISOString() || new Date().toISOString(),
-                status: capitalizedStatus, // Use the capitalized status
+                status: capitalizedStatus,
+                restrictedFeatures: data.restrictedFeatures || [],
             };
 
             // This check prevents crash if ownerId is missing
