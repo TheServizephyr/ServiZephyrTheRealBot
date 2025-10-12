@@ -1,4 +1,5 @@
 
+
 import { NextResponse } from 'next/server';
 import { firestore as adminFirestore } from 'firebase-admin';
 import { getAuth, getFirestore } from '@/lib/firebase-admin';
@@ -119,14 +120,26 @@ export async function PATCH(req) {
         const auth = await getAuth();
         const firestore = await getFirestore();
         // We still verify the owner to ensure they have rights, even though orderId is unique
-        await verifyOwnerAndGetRestaurant(req, auth, firestore);
+        const { restaurantId } = await verifyOwnerAndGetRestaurant(req, auth, firestore);
         const { orderId, newStatus } = await req.json();
 
         if (!orderId || !newStatus) {
             return NextResponse.json({ message: 'Order ID and new status are required.' }, { status: 400 });
         }
+        
+        const validStatuses = ["pending", "confirmed", "preparing", "dispatched", "delivered"];
+        if(!validStatuses.includes(newStatus)) {
+            return NextResponse.json({ message: 'Invalid status provided.' }, { status: 400 });
+        }
 
         const orderRef = firestore.collection('orders').doc(orderId);
+        
+        // Security check before updating
+        const orderDoc = await orderRef.get();
+        if (!orderDoc.exists || orderDoc.data().restaurantId !== restaurantId) {
+            return NextResponse.json({ message: 'Access denied to this order.' }, { status: 403 });
+        }
+
         await orderRef.update({ status: newStatus });
 
         return NextResponse.json({ message: 'Order status updated successfully.' }, { status: 200 });
@@ -141,7 +154,7 @@ export async function DELETE(req) {
     try {
         const auth = await getAuth();
         const firestore = await getFirestore();
-        await verifyOwnerAndGetRestaurant(req, auth, firestore);
+        const { restaurantId } = await verifyOwnerAndGetRestaurant(req, auth, firestore);
         const { orderId } = await req.json();
 
         if (!orderId) {
@@ -149,6 +162,13 @@ export async function DELETE(req) {
         }
 
         const orderRef = firestore.collection('orders').doc(orderId);
+        
+        // Security check before deleting
+        const orderDoc = await orderRef.get();
+        if (!orderDoc.exists || orderDoc.data().restaurantId !== restaurantId) {
+            return NextResponse.json({ message: 'Access denied to this order.' }, { status: 403 });
+        }
+
         await orderRef.delete();
 
         return NextResponse.json({ message: 'Order rejected and removed.' }, { status: 200 });

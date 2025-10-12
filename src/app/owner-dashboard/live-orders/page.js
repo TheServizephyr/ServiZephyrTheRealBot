@@ -234,7 +234,6 @@ export default function LiveOrdersPage() {
   };
 
   const handleUpdateStatus = async (orderId, newStatus) => {
-    // Optimistic UI update
     const originalOrders = [...orders];
     const updatedOrders = orders.map(order =>
         order.id === orderId ? { ...order, status: newStatus } : order
@@ -243,6 +242,7 @@ export default function LiveOrdersPage() {
     
     try {
       await handleAPICall('PATCH', { orderId, newStatus });
+      await fetchOrders(true); // Re-fetch to ensure data consistency
     } catch (error) {
       alert(`Error updating status: ${error.message}`);
       setOrders(originalOrders); // Revert on failure
@@ -257,6 +257,7 @@ export default function LiveOrdersPage() {
 
     try {
         await handleAPICall('DELETE', { orderId });
+        await fetchOrders(true); // Re-fetch to ensure data consistency
     } catch (error) {
         alert(`Error rejecting order: ${error.message}`);
         setOrders(originalOrders);
