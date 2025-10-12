@@ -10,13 +10,21 @@ import Script from "next/script";
 import { ThemeProvider } from "@/components/ThemeProvider";
 import "../globals.css";
 import { auth } from "@/lib/firebase";
-import { AlertTriangle, HardHat, ShieldOff, Salad, XCircle, Lock } from 'lucide-react';
+import { AlertTriangle, HardHat, ShieldOff, Salad, XCircle, Lock, Mail, Phone, MessageSquare } from 'lucide-react';
 import { Button } from "@/components/ui/button";
 import { usePathname, useRouter } from "next/navigation";
 
 export const dynamic = 'force-dynamic';
 
-function FeatureLockScreen({ remark }) {
+function FeatureLockScreen({ remark, featureId }) {
+  const supportPhone = "919027872803";
+  const supportEmail = "contact@servizephyr.com";
+
+  const whatsappText = encodeURIComponent(`Hello ServiZephyr Team,\n\nMy access to the '${featureId}' feature has been restricted. The remark says: "${remark}".\n\nPlease help me resolve this.`);
+  const emailSubject = encodeURIComponent(`Issue: Access Restricted for '${featureId}' Feature`);
+  const emailBody = encodeURIComponent(`Hello ServiZephyr Team,\n\nI am writing to you because my access to the '${featureId}' feature on my dashboard has been restricted.\n\nThe remark provided is: "${remark}"\n\nCould you please provide more details or guide me on the steps to resolve this?\n\nThank you.`);
+
+
   return (
     <div className="flex flex-col items-center justify-center text-center h-full p-8 bg-card border border-border rounded-xl">
         <Lock className="h-16 w-16 text-yellow-400" />
@@ -28,6 +36,20 @@ function FeatureLockScreen({ remark }) {
                 <p className="text-muted-foreground italic">"{remark}"</p>
             </div>
         )}
+        <div className="mt-6 pt-6 border-t border-border w-full max-w-md">
+            <p className="text-sm font-semibold mb-4">Need help? Contact support.</p>
+            <div className="flex justify-center gap-4">
+                <a href={`https://wa.me/${supportPhone}?text=${whatsappText}`} target="_blank" rel="noopener noreferrer">
+                    <Button variant="outline"><MessageSquare className="mr-2 h-4 w-4"/> WhatsApp</Button>
+                </a>
+                <a href={`mailto:${supportEmail}?subject=${emailSubject}&body=${emailBody}`}>
+                    <Button variant="outline"><Mail className="mr-2 h-4 w-4"/> Email</Button>
+                </a>
+                <a href={`tel:${supportPhone}`}>
+                     <Button variant="outline"><Phone className="mr-2 h-4 w-4"/> Call Us</Button>
+                </a>
+            </div>
+        </div>
     </div>
   );
 }
@@ -100,27 +122,27 @@ function OwnerDashboardContent({ children }) {
   }
   
   const renderStatusScreen = () => {
-      let icon, title, message, actions;
+      const featureId = pathname.split('/').pop();
+      if (restaurantStatus.status === 'approved') return null; 
 
-      if (restaurantStatus.status === 'approved') return null; // Good to go
       if (restaurantStatus.status === 'suspended') {
-        const featureId = pathname.split('/').pop();
         if (restaurantStatus.restrictedFeatures.includes(featureId)) {
-          return <FeatureLockScreen remark={restaurantStatus.suspensionRemark} />;
+          return <FeatureLockScreen remark={restaurantStatus.suspensionRemark} featureId={featureId} />;
         }
         return null; // Not this specific feature, so allow render
       }
+      
+      let icon, title, message, actions;
 
       // Handle pending, rejected, error states
       switch(restaurantStatus.status) {
           case 'pending':
-              if (pathname.includes('/menu') || pathname.includes('/settings')) {
-                  // Allow access to menu and settings for pending users
+              if (pathname.endsWith('/owner-dashboard/menu') || pathname.endsWith('/owner-dashboard/settings')) {
                   return null;
               }
               icon = <HardHat className="h-16 w-16 text-yellow-400" />;
               title = "Application Under Review";
-              message = "Your other dashboard features are being reviewed. You can set up your menu while you wait.";
+              message = "Your other dashboard features are being reviewed. You can set up your menu and settings while you wait.";
               actions = <Button onClick={() => router.push('/owner-dashboard/menu')}><Salad className="mr-2 h-4 w-4"/> Go to Menu</Button>
               break;
           case 'rejected':
