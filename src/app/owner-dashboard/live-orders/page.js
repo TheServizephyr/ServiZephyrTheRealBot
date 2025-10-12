@@ -4,7 +4,7 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Star, RefreshCw, ChevronUp, ChevronDown, Check, CookingPot, Bike, PartyPopper, Undo, Bell, PackageCheck, Printer, X } from 'lucide-react';
+import { Star, RefreshCw, ChevronUp, ChevronDown, Check, CookingPot, Bike, PartyPopper, Undo, Bell, PackageCheck, Printer, X, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { auth } from '@/lib/firebase';
 import { cn } from "@/lib/utils";
@@ -23,12 +23,21 @@ const statusConfig = {
 
 const statusFlow = ['pending', 'confirmed', 'preparing', 'dispatched', 'delivered'];
 
-const ActionButton = ({ status, onNext, onRevert, orderId, onReject }) => {
+const ActionButton = ({ status, onNext, onRevert, orderId, onReject, isUpdating }) => {
     const searchParams = useSearchParams();
     const impersonatedOwnerId = searchParams.get('impersonate_owner_id');
     const currentIndex = statusFlow.indexOf(status);
     const nextStatus = statusFlow[currentIndex + 1];
     const prevStatus = statusFlow[currentIndex - 1];
+
+    if (isUpdating) {
+        return (
+            <div className="flex items-center justify-center gap-2 h-9 text-muted-foreground text-sm">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Processing...
+            </div>
+        );
+    }
 
     if (status === 'delivered') {
         return (
@@ -159,6 +168,7 @@ const SortableHeader = ({ children, column, sortConfig, onSort }) => {
 export default function LiveOrdersPage() {
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [updatingOrderId, setUpdatingOrderId] = useState(null);
   const [sortConfig, setSortConfig] = useState({ key: 'orderDate', direction: 'desc' });
   const searchParams = useSearchParams();
   const impersonatedOwnerId = searchParams.get('impersonate_owner_id');
@@ -182,7 +192,6 @@ export default function LiveOrdersPage() {
         if (!res.ok) throw new Error('Failed to fetch orders');
         const data = await res.json();
         
-        // Play sound if new orders have arrived (simplified logic)
         if (data.orders.length > orders.length && orders.length > 0) {
             const sound = document.getElementById('notification-sound');
             if(sound) sound.play().catch(e => console.log("Audio play failed:", e));
@@ -203,7 +212,7 @@ export default function LiveOrdersPage() {
       else setLoading(false);
     });
 
-    const interval = setInterval(() => fetchOrders(true), 30000); // Auto-refresh every 30 seconds
+    const interval = setInterval(() => fetchOrders(true), 30000);
     return () => {
         unsubscribe();
         clearInterval(interval);
@@ -231,22 +240,27 @@ export default function LiveOrdersPage() {
   };
 
   const handleUpdateStatus = async (orderId, newStatus) => {
+    setUpdatingOrderId(orderId);
     try {
       await handleAPICall('PATCH', { orderId, newStatus });
-      await fetchOrders(true); // Re-fetch to ensure data consistency
+      await fetchOrders(true);
     } catch (error) {
       alert(`Error updating status: ${error.message}`);
+    } finally {
+      setUpdatingOrderId(null);
     }
   };
   
   const handleRejectOrder = async (orderId) => {
     if (!window.confirm("Are you sure you want to reject and delete this order?")) return;
-
+    setUpdatingOrderId(orderId);
     try {
         await handleAPICall('DELETE', { orderId });
-        await fetchOrders(true); // Re-fetch to ensure data consistency
+        await fetchOrders(true);
     } catch (error) {
         alert(`Error rejecting order: ${error.message}`);
+    } finally {
+        setUpdatingOrderId(null);
     }
   }
 
@@ -355,6 +369,7 @@ export default function LiveOrdersPage() {
                                         <ActionButton
                                             orderId={order.id}
                                             status={order.status}
+                                            isUpdating={updatingOrderId === order.id}
                                             onNext={(newStatus) => handleUpdateStatus(order.id, newStatus)}
                                             onRevert={(newStatus) => handleUpdateStatus(order.id, newStatus)}
                                             onReject={() => handleRejectOrder(order.id)}
@@ -378,3 +393,5 @@ export default function LiveOrdersPage() {
     </div>
   );
 }
+
+    
