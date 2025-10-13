@@ -69,3 +69,28 @@ export const sendOrderStatusUpdateToCustomer = async ({ customerPhone, botPhoneN
     
     await sendWhatsAppMessage(customerPhoneWithCode, statusPayload, botPhoneNumberId);
 };
+
+export const sendOrderConfirmationToCustomer = async ({ customerPhone, botPhoneNumberId, customerName, orderId, restaurantName }) => {
+    if (!customerPhone || !botPhoneNumberId) {
+        console.warn(`[Notification Lib] Customer phone or Bot ID not found. Cannot send order confirmation for order ${orderId}.`);
+        return;
+    }
+    const customerPhoneWithCode = '91' + customerPhone;
+    
+    const payload = {
+        name: "order_confirmation",
+        language: { code: "en" },
+        components: [
+            {
+                type: "body",
+                parameters: [
+                    { type: "text", text: customerName },
+                    { type: "text", text: orderId.substring(0, 8) },
+                    { type: "text", text: restaurantName },
+                ]
+            }
+        ]
+    };
+    
+    await sendWhatsAppMessage(customerPhoneWithCode, payload, botPhoneNumberId);
+};
