@@ -1,3 +1,4 @@
+
 import { NextResponse } from 'next/server';
 import { getAuth, getFirestore } from '@/lib/firebase-admin';
 import axios from 'axios';
@@ -40,11 +41,11 @@ export async function POST(req) {
             return NextResponse.json({ message: 'Authorization code is missing.' }, { status: 400 });
         }
 
-        const appId = process.env.FACEBOOK_APP_ID;
+        const appId = process.env.NEXT_PUBLIC_FACEBOOK_APP_ID;
         const appSecret = process.env.FACEBOOK_APP_SECRET;
 
         if (!appId || !appSecret) {
-            console.error("[WhatsApp Onboarding] CRITICAL: FACEBOOK_APP_ID or FACEBOOK_APP_SECRET is not set in environment variables.");
+            console.error("[WhatsApp Onboarding] CRITICAL: NEXT_PUBLIC_FACEBOOK_APP_ID or FACEBOOK_APP_SECRET is not set in environment variables.");
             return NextResponse.json({ message: 'Server configuration error. Please contact support.' }, { status: 500 });
         }
 
