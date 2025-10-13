@@ -46,34 +46,40 @@ export default function ConnectionsPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [connections, setConnections] = useState([]); // This will be fetched from backend later
+  const [sdkLoaded, setSdkLoaded] = useState(false);
+
 
   useEffect(() => {
-    // Load the Facebook SDK script
-    (function(d, s, id){
-       var js, fjs = d.getElementsByTagName(s)[0];
-       if (d.getElementById(id)) {return;}
-       js = d.createElement(s); js.id = id;
-       js.src = "https://connect.facebook.net/en_US/sdk.js";
-       fjs.parentNode.insertBefore(js, fjs);
-     }(document, 'script', 'facebook-jssdk'));
-
-    // Initialize the SDK after it loads
-    window.fbAsyncInit = function() {
-      // **FIX:** Directly use the environment variable. It's safe because it starts with NEXT_PUBLIC_.
-      const appId = process.env.NEXT_PUBLIC_FACEBOOK_APP_ID;
-      console.log("DEBUG: App ID being used is:", process.env.NEXT_PUBLIC_FACEBOOK_APP_ID);
-      if (!appId) {
-        console.error("CRITICAL: NEXT_PUBLIC_FACEBOOK_APP_ID is not defined!");
-        setError("Facebook App ID is not configured. Please contact support.");
-        return;
-      }
-      window.FB.init({
-        appId            : appId,
-        xfbml            : true,
-        version          : 'v19.0'
-      });
-      window.FB.AppEvents.logPageView();
+    // Function to initialize the SDK
+    const initializeFacebookSDK = () => {
+        const appId = process.env.NEXT_PUBLIC_FACEBOOK_APP_ID;
+        if (!appId) {
+            console.error("CRITICAL: NEXT_PUBLIC_FACEBOOK_APP_ID is not defined!");
+            setError("Facebook App ID is not configured. Please contact support.");
+            return;
+        }
+        
+        if (window.FB) {
+            window.FB.init({
+                appId: appId,
+                xfbml: true,
+                version: 'v19.0'
+            });
+            console.log("Facebook SDK initialized successfully.");
+            setSdkLoaded(true);
+        }
     };
+
+    // Load the Facebook SDK script
+    if (document.getElementById('facebook-jssdk')) {
+        initializeFacebookSDK();
+    } else {
+        const script = document.createElement('script');
+        script.id = 'facebook-jssdk';
+        script.src = "https://connect.facebook.net/en_US/sdk.js";
+        script.onload = initializeFacebookSDK;
+        document.head.appendChild(script);
+    }
 
     setConnections([]);
   }, []);
@@ -113,18 +119,17 @@ export default function ConnectionsPage() {
   };
 
   const handleFacebookLogin = () => {
-    if (loading) return;
-
+    if (loading || !sdkLoaded) {
+      setError("Facebook SDK is not ready yet. Please wait a moment.");
+      return;
+    }
+    
     if (!window.FB) {
       setError("Facebook SDK not loaded. Please refresh the page.");
       return;
     }
-    
-    if (!process.env.NEXT_PUBLIC_FACEBOOK_APP_ID) {
-      setError("Facebook App ID is not configured. Please contact support.");
-      return;
-    }
 
+    console.log("DEBUG: App ID being used for login is:", process.env.NEXT_PUBLIC_FACEBOOK_APP_ID);
     const config_id = "808539835091857";
     const scopes = 'whatsapp_business_management,business_management';
 
@@ -157,7 +162,7 @@ export default function ConnectionsPage() {
           <h1 className="text-3xl font-bold tracking-tight">Your WhatsApp Bot Connections</h1>
           <p className="text-muted-foreground mt-1">Manage your restaurant's WhatsApp bots here.</p>
         </div>
-        <Button onClick={handleFacebookLogin} disabled={loading} className="bg-primary hover:bg-primary/90 text-primary-foreground">
+        <Button onClick={handleFacebookLogin} disabled={loading || !sdkLoaded} className="bg-primary hover:bg-primary/90 text-primary-foreground">
           <PlusCircle size={20} className="mr-2" />
           {loading ? 'Connecting...' : 'Connect a New WhatsApp Bot'}
         </Button>
