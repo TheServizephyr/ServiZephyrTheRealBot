@@ -70,6 +70,7 @@ export async function GET(req) {
             gstin: restaurantData?.gstin || '',
             fssai: restaurantData?.fssai || '',
             botPhoneNumberId: restaurantData?.botPhoneNumberId || '',
+            razorpayAccountId: restaurantData?.razorpayAccountId || '', // Add this line
             deliveryCharge: restaurantData?.deliveryCharge === undefined ? 30 : restaurantData.deliveryCharge, // Default if not set
             logoUrl: restaurantData?.logoUrl || '',
             bannerUrls: restaurantData?.bannerUrls || [],
@@ -106,6 +107,7 @@ export async function PATCH(req) {
             if (gstin !== undefined) restaurantUpdateData.gstin = gstin;
             if (fssai !== undefined) restaurantUpdateData.fssai = fssai;
             if (botPhoneNumberId !== undefined) restaurantUpdateData.botPhoneNumberId = botPhoneNumberId;
+            // Note: razorpayAccountId is not editable by the user, so it's not included here.
             if (deliveryCharge !== undefined) restaurantUpdateData.deliveryCharge = Number(deliveryCharge);
             if (logoUrl !== undefined) restaurantUpdateData.logoUrl = logoUrl;
             if (bannerUrls !== undefined) restaurantUpdateData.bannerUrls = bannerUrls;
@@ -132,6 +134,7 @@ export async function PATCH(req) {
             gstin: finalRestaurantData?.gstin || '',
             fssai: finalRestaurantData?.fssai || '',
             botPhoneNumberId: finalRestaurantData?.botPhoneNumberId || '',
+            razorpayAccountId: finalRestaurantData?.razorpayAccountId || '', // Add this line
             deliveryCharge: finalRestaurantData?.deliveryCharge === undefined ? 30 : finalRestaurantData.deliveryCharge,
             logoUrl: finalRestaurantData?.logoUrl || '',
             bannerUrls: finalRestaurantData?.bannerUrls || [],

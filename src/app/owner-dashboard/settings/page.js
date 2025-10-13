@@ -3,7 +3,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { User, Mail, Phone, Shield, Edit, Save, XCircle, Bell, Trash2, KeyRound, Eye, EyeOff, FileText, Bot, Truck, Image as ImageIcon, Upload, X } from 'lucide-react';
+import { User, Mail, Phone, Shield, Edit, Save, XCircle, Bell, Trash2, KeyRound, Eye, EyeOff, FileText, Bot, Truck, Image as ImageIcon, Upload, X, IndianRupee } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
@@ -375,6 +375,10 @@ export default function SettingsPage() {
                                 <div>
                                     <Label htmlFor="fssai" className="flex items-center gap-2"><FileText size={14}/> FSSAI Number</Label>
                                     <input id="fssai" value={editedUser.fssai} onChange={e => setEditedUser({...editedUser, fssai: e.target.value})} disabled={!isEditingProfile} className="mt-1 w-full p-2 border rounded-md bg-input border-border disabled:opacity-70 disabled:cursor-not-allowed" placeholder="e.g., 10012345678901"/>
+                                </div>
+                                <div>
+                                    <Label htmlFor="razorpayAccountId" className="flex items-center gap-2"><IndianRupee size={14}/> Razorpay Account ID</Label>
+                                    <input id="razorpayAccountId" value={editedUser.razorpayAccountId} disabled className="mt-1 w-full p-2 border rounded-md bg-input border-border disabled:opacity-50 disabled:cursor-not-allowed" placeholder="Not connected"/>
                                 </div>
                             </div>
                             <div className="space-y-6">

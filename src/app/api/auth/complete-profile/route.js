@@ -122,7 +122,11 @@ export async function POST(req) {
         if (finalUserData.role === 'owner' && restaurantData) {
              const restaurantId = restaurantData.name.replace(/\s+/g, '-').toLowerCase();
              const restaurantRef = firestore.collection('restaurants').doc(restaurantId);
-             batch.set(restaurantRef, restaurantData);
+             const finalRestaurantData = {
+                ...restaurantData,
+                razorpayAccountId: '', // Add this field for future Razorpay Route integration
+             };
+             batch.set(restaurantRef, finalRestaurantData);
              console.log(`[PROFILE COMPLETION] Owner Action: New restaurant ${restaurantId} added to batch.`);
         }
         
