@@ -61,6 +61,7 @@ export default function ConnectionsPage() {
     window.fbAsyncInit = function() {
       // **FIX:** Directly use the environment variable. It's safe because it starts with NEXT_PUBLIC_.
       const appId = process.env.NEXT_PUBLIC_FACEBOOK_APP_ID;
+      console.log("DEBUG: App ID being used is:", process.env.NEXT_PUBLIC_FACEBOOK_APP_ID);
       if (!appId) {
         console.error("CRITICAL: NEXT_PUBLIC_FACEBOOK_APP_ID is not defined!");
         setError("Facebook App ID is not configured. Please contact support.");

@@ -44,6 +44,7 @@ export async function POST(req) {
         // **FIX:** Use the same public environment variable as the frontend.
         const appId = process.env.NEXT_PUBLIC_FACEBOOK_APP_ID;
         const appSecret = process.env.FACEBOOK_APP_SECRET;
+        console.log("DEBUG: App ID being used is:", process.env.NEXT_PUBLIC_FACEBOOK_APP_ID);
 
         if (!appId || !appSecret) {
             console.error("[WhatsApp Onboarding] CRITICAL: NEXT_PUBLIC_FACEBOOK_APP_ID or FACEBOOK_APP_SECRET is not set in environment variables.");
