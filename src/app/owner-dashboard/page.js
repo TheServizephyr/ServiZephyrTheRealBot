@@ -1,5 +1,4 @@
 
-
 "use client";
 
 import React, { useState, useEffect, Suspense } from 'react';
@@ -164,8 +163,7 @@ const TopSellingItem = ({ name, count, imageUrl }) => (
   </div>
 );
 
-const BotOnboardingNudge = ({ botCount }) => {
-    if (botCount > 0) return null;
+const BotOnboardingNudge = () => {
     return (
         <motion.div
             className="bg-primary/10 border-2 border-dashed border-primary/50 rounded-xl p-6 text-center"
@@ -288,7 +286,7 @@ function PageContent() {
         </div>
         
         <div className="mb-6">
-             <BotOnboardingNudge botCount={botCount} />
+             {!loading && botCount === 0 && <BotOnboardingNudge />}
         </div>
 
         {/* Quick Action Buttons */}
