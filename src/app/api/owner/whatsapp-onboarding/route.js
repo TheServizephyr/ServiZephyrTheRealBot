@@ -41,6 +41,7 @@ export async function POST(req) {
             return NextResponse.json({ message: 'Authorization code is missing.' }, { status: 400 });
         }
 
+        // **FIX:** Use the same public environment variable as the frontend.
         const appId = process.env.NEXT_PUBLIC_FACEBOOK_APP_ID;
         const appSecret = process.env.FACEBOOK_APP_SECRET;
 

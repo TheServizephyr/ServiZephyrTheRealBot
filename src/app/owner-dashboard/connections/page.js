@@ -47,9 +47,8 @@ export default function ConnectionsPage() {
   const [error, setError] = useState('');
   const [connections, setConnections] = useState([]); // This will be fetched from backend later
 
-  // This is a placeholder. In a real app, you would fetch this from your backend.
   useEffect(() => {
-     // Load the Facebook SDK script
+    // Load the Facebook SDK script
     (function(d, s, id){
        var js, fjs = d.getElementsByTagName(s)[0];
        if (d.getElementById(id)) {return;}
@@ -60,18 +59,22 @@ export default function ConnectionsPage() {
 
     // Initialize the SDK after it loads
     window.fbAsyncInit = function() {
+      // **FIX:** Directly use the environment variable. It's safe because it starts with NEXT_PUBLIC_.
+      const appId = process.env.NEXT_PUBLIC_FACEBOOK_APP_ID;
+      if (!appId) {
+        console.error("CRITICAL: NEXT_PUBLIC_FACEBOOK_APP_ID is not defined!");
+        setError("Facebook App ID is not configured. Please contact support.");
+        return;
+      }
       window.FB.init({
-        appId            : process.env.NEXT_PUBLIC_FACEBOOK_APP_ID, // Use environment variable
+        appId            : appId,
         xfbml            : true,
         version          : 'v19.0'
       });
       window.FB.AppEvents.logPageView();
     };
 
-    setConnections([
-      // { id: 1, restaurantName: "Curry Cloud", whatsAppNumber: "+91 98765 43210", status: "Connected" },
-      // { id: 2, restaurantName: "Pizza on Wheels", whatsAppNumber: "Pending Connection", status: "Pending" },
-    ]);
+    setConnections([]);
   }, []);
 
   const sendCodeToBackend = async (authCode) => {
@@ -98,7 +101,6 @@ export default function ConnectionsPage() {
       }
 
       alert("WhatsApp bot connected successfully! Refreshing connections...");
-      // Here you would typically re-fetch the connections list
       window.location.reload(); 
 
     } catch (err) {
@@ -117,7 +119,6 @@ export default function ConnectionsPage() {
       return;
     }
     
-    // Ensure the app ID is loaded before calling FB.login
     if (!process.env.NEXT_PUBLIC_FACEBOOK_APP_ID) {
       setError("Facebook App ID is not configured. Please contact support.");
       return;
