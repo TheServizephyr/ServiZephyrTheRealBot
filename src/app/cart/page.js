@@ -104,6 +104,9 @@ const CheckoutModal = ({ isOpen, onClose, restaurantId, phone, cart, notes, appl
 
             if (!orderCreationResponse.ok) {
                 const errorData = await orderCreationResponse.json();
+                 if (errorData.message === 'Payment gateway is not configured.') {
+                    throw new Error("Could not connect to payment gateway. Please try again later.");
+                }
                 throw new Error(errorData.message || "Failed to create payment order.");
             }
             const razorpayOrder = await orderCreationResponse.json();
@@ -586,3 +589,4 @@ export default CartPage;
     
 
     
+
