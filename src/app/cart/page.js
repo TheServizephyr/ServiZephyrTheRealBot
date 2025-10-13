@@ -117,7 +117,7 @@ const CheckoutModal = ({ isOpen, onClose, restaurantId, phone, cart, notes, appl
                 amount: razorpayOrder.amount, 
                 currency: "INR",
                 name: "ServiZephyr (Pvt. Ltd.)",
-                description: `Payment for Order`,
+                description: `Payment for Order (Test Mode)`,
                 order_id: razorpayOrder.id,
                 handler: async function (response){
                     // Step 3: Verify payment and place final order
@@ -589,5 +589,6 @@ export default CartPage;
     
 
     
+
 
 
