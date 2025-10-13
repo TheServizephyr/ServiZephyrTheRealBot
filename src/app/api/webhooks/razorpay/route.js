@@ -1,3 +1,4 @@
+
 import { NextResponse } from 'next/server';
 import { getFirestore } from '@/lib/firebase-admin';
 import { sendNewOrderToOwner } from '@/lib/notifications';
@@ -84,7 +85,8 @@ export async function POST(req) {
                                     }
                                 ]
                             };
-
+                            
+                            console.log(`[Webhook] Initiating transfer for payment ${paymentId} to account ${restaurantData.razorpayAccountId}...`);
                             await razorpay.payments.transfer(paymentId, transferPayload);
                             console.log(`[Webhook] Successfully initiated transfer for payment ${paymentId} to account ${restaurantData.razorpayAccountId}.`);
 
