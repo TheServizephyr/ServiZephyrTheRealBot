@@ -2,9 +2,10 @@
 
 import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { Bot, PlusCircle, CheckCircle, AlertCircle } from 'lucide-react';
+import { Bot, PlusCircle, CheckCircle, AlertCircle, RefreshCw, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { auth } from '@/lib/firebase';
+import { useSearchParams } from 'next/navigation';
 
 const containerVariants = {
   hidden: { opacity: 0, y: 20 },
@@ -23,13 +24,18 @@ const itemVariants = {
 const ConnectionCard = ({ restaurantName, whatsAppNumber, status }) => (
   <motion.div
     variants={itemVariants}
-    className="bg-card border border-border rounded-xl p-6 flex items-center justify-between"
+    className="bg-card border border-border rounded-xl p-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4"
   >
-    <div>
-      <h3 className="text-lg font-bold text-foreground">{restaurantName}</h3>
-      <p className="text-sm text-muted-foreground mt-1">{whatsAppNumber}</p>
+    <div className="flex items-center gap-4">
+       <div className="bg-primary/10 p-3 rounded-full">
+         <Bot className="h-6 w-6 text-primary" />
+       </div>
+       <div>
+          <h3 className="text-lg font-bold text-foreground">{restaurantName}</h3>
+          <p className="text-sm text-muted-foreground mt-1">{whatsAppNumber}</p>
+       </div>
     </div>
-    <div className="flex items-center gap-2">
+    <div className="flex items-center gap-2 self-end sm:self-center">
       {status === 'Connected' ? (
         <CheckCircle className="text-green-500" />
       ) : (
@@ -43,50 +49,79 @@ const ConnectionCard = ({ restaurantName, whatsAppNumber, status }) => (
 );
 
 export default function ConnectionsPage() {
-  const [loading, setLoading] = useState(false);
+  const [fbLoading, setFbLoading] = useState(false);
+  const [dataLoading, setDataLoading] = useState(true);
   const [error, setError] = useState('');
-  const [connections, setConnections] = useState([]); // This will be fetched from backend later
+  const [connections, setConnections] = useState([]);
   const [sdkLoaded, setSdkLoaded] = useState(false);
+  const searchParams = useSearchParams();
+  const impersonatedOwnerId = searchParams.get('impersonate_owner_id');
 
+  const fetchConnections = async (isManualRefresh = false) => {
+    if (!isManualRefresh) setDataLoading(true);
+    setError('');
+    try {
+        const user = auth.currentUser;
+        if (!user) throw new Error("Authentication required to fetch connections.");
+        const idToken = await user.getIdToken();
 
-  useEffect(() => {
-    // Function to initialize the SDK
-    const initializeFacebookSDK = () => {
-        const appId = process.env.NEXT_PUBLIC_FACEBOOK_APP_ID;
-        if (!appId) {
-            console.error("CRITICAL: NEXT_PUBLIC_FACEBOOK_APP_ID is not defined!");
-            setError("Facebook App ID is not configured. Please contact support.");
-            return;
+        let url = '/api/owner/connections';
+        if (impersonatedOwnerId) {
+            url += `?impersonate_owner_id=${impersonatedOwnerId}`;
         }
         
-        if (window.FB) {
-            window.FB.init({
-                appId: appId,
-                xfbml: true,
-                version: 'v19.0'
-            });
-            console.log("Facebook SDK initialized successfully.");
-            setSdkLoaded(true);
-        }
-    };
+        const res = await fetch(url, {
+            headers: { 'Authorization': `Bearer ${idToken}` }
+        });
 
+        if (!res.ok) {
+            const errorData = await res.json();
+            throw new Error(errorData.message || 'Failed to fetch connections.');
+        }
+
+        const data = await res.json();
+        setConnections(data.connections || []);
+
+    } catch(err) {
+        console.error(err);
+        setError(err.message);
+    } finally {
+        if (!isManualRefresh) setDataLoading(false);
+    }
+  };
+
+  useEffect(() => {
     // Load the Facebook SDK script
     if (document.getElementById('facebook-jssdk')) {
-        initializeFacebookSDK();
+      initializeFacebookSDK();
     } else {
-        const script = document.createElement('script');
-        script.id = 'facebook-jssdk';
-        script.src = "https://connect.facebook.net/en_US/sdk.js";
-        script.onload = initializeFacebookSDK;
-        document.head.appendChild(script);
+      const script = document.createElement('script');
+      script.id = 'facebook-jssdk';
+      script.src = "https://connect.facebook.net/en_US/sdk.js";
+      script.onload = initializeFacebookSDK;
+      document.head.appendChild(script);
     }
 
-    setConnections([]);
-  }, []);
+    const unsubscribe = auth.onAuthStateChanged(user => {
+        if (user) {
+            fetchConnections();
+        } else {
+            setDataLoading(false);
+        }
+    });
+
+    return () => unsubscribe();
+  }, [impersonatedOwnerId]);
+
+  const initializeFacebookSDK = () => {
+    if (window.FB) {
+        setSdkLoaded(true);
+    }
+  };
 
   const sendCodeToBackend = async (authCode) => {
     setError('');
-    setLoading(true);
+    setFbLoading(true);
     try {
       const user = auth.currentUser;
       if (!user) throw new Error("You must be logged in to connect a bot.");
@@ -108,18 +143,18 @@ export default function ConnectionsPage() {
       }
 
       alert("WhatsApp bot connected successfully! Refreshing connections...");
-      window.location.reload(); 
+      await fetchConnections(true); // Manually refresh list
 
     } catch (err) {
       console.error(err);
       setError(err.message);
     } finally {
-      setLoading(false);
+      setFbLoading(false);
     }
   };
 
   const handleFacebookLogin = () => {
-    if (loading || !sdkLoaded) {
+    if (fbLoading || !sdkLoaded) {
       setError("Facebook SDK is not ready yet. Please wait a moment.");
       return;
     }
@@ -128,8 +163,20 @@ export default function ConnectionsPage() {
       setError("Facebook SDK not loaded. Please refresh the page.");
       return;
     }
+    
+    const appId = process.env.NEXT_PUBLIC_FACEBOOK_APP_ID;
+    console.log("DEBUG: App ID being used for login is:", appId);
+    if (!appId) {
+        setError("Facebook App ID is not configured. Please contact support.");
+        return;
+    }
 
-    console.log("DEBUG: App ID being used for login is:", process.env.NEXT_PUBLIC_FACEBOOK_APP_ID);
+    window.FB.init({
+      appId: appId,
+      xfbml: true,
+      version: 'v19.0'
+    });
+    
     const config_id = "808539835091857";
     const scopes = 'whatsapp_business_management,business_management';
 
@@ -140,6 +187,7 @@ export default function ConnectionsPage() {
         sendCodeToBackend(authCode);
       } else {
         console.log('User cancelled login or did not fully authorize.');
+        console.log("DEBUG: App ID used for login was:", process.env.NEXT_PUBLIC_FACEBOOK_APP_ID);
         setError('Login cancelled or not fully authorized.');
       }
     }, {
@@ -162,10 +210,16 @@ export default function ConnectionsPage() {
           <h1 className="text-3xl font-bold tracking-tight">Your WhatsApp Bot Connections</h1>
           <p className="text-muted-foreground mt-1">Manage your restaurant's WhatsApp bots here.</p>
         </div>
-        <Button onClick={handleFacebookLogin} disabled={loading || !sdkLoaded} className="bg-primary hover:bg-primary/90 text-primary-foreground">
-          <PlusCircle size={20} className="mr-2" />
-          {loading ? 'Connecting...' : 'Connect a New WhatsApp Bot'}
-        </Button>
+        <div className="flex gap-4">
+            <Button onClick={() => fetchConnections(true)} variant="outline" disabled={dataLoading}>
+                <RefreshCw size={16} className={dataLoading ? "animate-spin" : ""} />
+                <span className="ml-2">Refresh</span>
+            </Button>
+            <Button onClick={handleFacebookLogin} disabled={fbLoading || !sdkLoaded} className="bg-primary hover:bg-primary/90 text-primary-foreground">
+                {fbLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <PlusCircle size={20} className="mr-2" />}
+                {fbLoading ? 'Connecting...' : 'Connect a New WhatsApp Bot'}
+            </Button>
+        </div>
       </div>
 
       {error && (
@@ -175,7 +229,12 @@ export default function ConnectionsPage() {
       )}
 
       <div className="space-y-4">
-        {connections.length > 0 ? (
+        {dataLoading ? (
+             <div className="text-center py-16 text-muted-foreground border-2 border-dashed border-border rounded-xl">
+                 <Loader2 className="mx-auto h-12 w-12 animate-spin text-primary" />
+                <p className="mt-4 text-lg font-semibold">Loading your connections...</p>
+             </div>
+        ) : connections.length > 0 ? (
           connections.map(conn => (
             <ConnectionCard key={conn.id} {...conn} />
           ))
