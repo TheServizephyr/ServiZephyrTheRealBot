@@ -19,6 +19,7 @@ const statusConfig = {
   'preparing': { color: 'bg-orange-500/20 text-orange-400 border-orange-500/30' },
   'dispatched': { color: 'bg-indigo-500/20 text-indigo-400 border-indigo-500/30' },
   'delivered': { color: 'bg-green-500/20 text-green-400 border-green-500/30' },
+  'rejected': { color: 'bg-red-500/20 text-red-400 border-red-500/30' },
 };
 
 const statusFlow = ['pending', 'confirmed', 'preparing', 'dispatched', 'delivered'];
@@ -39,10 +40,12 @@ const ActionButton = ({ status, onNext, onRevert, orderId, onReject, isUpdating 
         );
     }
 
-    if (status === 'delivered') {
+    if (status === 'delivered' || status === 'rejected') {
         return (
             <div className="flex items-center gap-2">
-                <span className="text-sm font-semibold text-green-400">Order Completed</span>
+                <span className={`text-sm font-semibold ${status === 'delivered' ? 'text-green-400' : 'text-red-400'}`}>
+                    Order {status.charAt(0).toUpperCase() + status.slice(1)}
+                </span>
             </div>
         );
     }
@@ -233,10 +236,10 @@ export default function LiveOrdersPage() {
   };
   
   const handleRejectOrder = async (orderId) => {
-    if (!window.confirm("Are you sure you want to reject and delete this order?")) return;
+    if (!window.confirm("Are you sure you want to reject this order? It will be marked as 'rejected' but not permanently deleted.")) return;
     setUpdatingOrderId(orderId);
     try {
-        await handleAPICall('DELETE', { orderId });
+        await handleAPICall('PATCH', { orderId, newStatus: 'rejected' });
         await fetchOrders(true);
     } catch (error) {
         alert(`Error rejecting order: ${error.message}`);
@@ -342,7 +345,7 @@ export default function LiveOrdersPage() {
                                         {formatDistanceToNowStrict(new Date(order.orderDate?.seconds ? order.orderDate.seconds * 1000 : order.orderDate))} ago
                                     </td>
                                     <td className="p-4">
-                                        <span className={cn('px-2 py-1 text-xs font-semibold rounded-full border flex items-center gap-2 w-fit', statusConfig[order.status]?.color)}>
+                                        <span className={cn('px-2 py-1 text-xs font-semibold rounded-full border flex items-center gap-2 w-fit capitalize', statusConfig[order.status]?.color)}>
                                             {order.status}
                                         </span>
                                     </td>

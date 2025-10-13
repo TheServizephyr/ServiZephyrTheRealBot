@@ -116,7 +116,7 @@ export async function PATCH(req) {
             return NextResponse.json({ message: 'Order ID and new status are required.' }, { status: 400 });
         }
         
-        const validStatuses = ["pending", "confirmed", "preparing", "dispatched", "delivered"];
+        const validStatuses = ["pending", "confirmed", "preparing", "dispatched", "delivered", "rejected"];
         if(!validStatuses.includes(newStatus)) {
             return NextResponse.json({ message: 'Invalid status provided.' }, { status: 400 });
         }
@@ -149,31 +149,3 @@ export async function PATCH(req) {
         return NextResponse.json({ message: `Backend Error: ${error.message}` }, { status: error.status || 500 });
     }
 }
-
-export async function DELETE(req) {
-    try {
-        const auth = await getAuth();
-        const firestore = await getFirestore();
-        const { restaurantId } = await verifyOwnerAndGetRestaurant(req, auth, firestore);
-        const { orderId } = await req.json();
-
-        if (!orderId) {
-            return NextResponse.json({ message: 'Order ID is required.' }, { status: 400 });
-        }
-
-        const orderRef = firestore.collection('orders').doc(orderId);
-        
-        const orderDoc = await orderRef.get();
-        if (!orderDoc.exists || orderDoc.data().restaurantId !== restaurantId) {
-            return NextResponse.json({ message: 'Access denied to this order.' }, { status: 403 });
-        }
-
-        await orderRef.delete();
-
-        return NextResponse.json({ message: 'Order rejected and removed.' }, { status: 200 });
-    } catch (error) {
-        console.error("DELETE ORDER ERROR:", error);
-        return NextResponse.json({ message: `Backend Error: ${error.message}` }, { status: error.status || 500 });
-    }
-}
-
