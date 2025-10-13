@@ -6,6 +6,7 @@ import React, { useState, useEffect, useMemo, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { motion } from 'framer-motion';
 import { Utensils, Plus, Minus, X, Home, User, ShoppingCart, CookingPot, Ticket, Gift, ArrowLeft, Sparkles, Check, PlusCircle, Trash2 } from 'lucide-react';
+import Script from 'next/script';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose } from "@/components/ui/dialog";
 import { Label } from '@/components/ui/label';
@@ -29,7 +30,7 @@ const ClearCartDialog = ({ isOpen, onClose, onConfirm }) => {
     );
 };
 
-const CheckoutModal = ({ isOpen, onClose, restaurantId, phone, cart, notes, appliedCoupons, subtotal, loyaltyPoints }) => {
+const CheckoutModal = ({ isOpen, onClose, restaurantId, phone, cart, notes, appliedCoupons, subtotal, loyaltyPoints, grandTotal }) => {
     const router = useRouter();
     const [name, setName] = useState('');
     const [address, setAddress] = useState('');
@@ -39,7 +40,8 @@ const CheckoutModal = ({ isOpen, onClose, restaurantId, phone, cart, notes, appl
     const [savedAddresses, setSavedAddresses] = useState([]);
     const [selectedAddress, setSelectedAddress] = useState('');
     const [isAddingNew, setIsAddingNew] = useState(false);
-
+    
+    // Fetch User Data when Modal Opens
     useEffect(() => {
         const fetchUserData = async () => {
             if (isOpen && phone) {
@@ -63,7 +65,6 @@ const CheckoutModal = ({ isOpen, onClose, restaurantId, phone, cart, notes, appl
                         }
                         setIsExistingUser(true);
                     } else {
-                        // New user
                         setIsExistingUser(false);
                         setIsAddingNew(true);
                         setName('');
@@ -94,25 +95,60 @@ const CheckoutModal = ({ isOpen, onClose, restaurantId, phone, cart, notes, appl
         setLoading(true);
         
         try {
-            // Explode cart items into individual line items for the bill
-            const finalItems = [];
-            cart.forEach(item => {
-                // Add the main item
-                finalItems.push({
-                    name: `${item.name} (${item.portion.name})`,
-                    quantity: item.quantity,
-                    price: item.portion.price,
-                });
-                // Add each selected add-on as a separate item
-                item.selectedAddOns.forEach(addon => {
-                    finalItems.push({
-                        name: `  - ${addon.name}`, // Indent for clarity
-                        quantity: item.quantity,
-                        price: addon.price,
-                    });
-                });
+            // Step 1: Create a Razorpay Order
+            const orderCreationResponse = await fetch('/api/payment/create-order', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ amount: grandTotal }),
             });
 
+            if (!orderCreationResponse.ok) {
+                const errorData = await orderCreationResponse.json();
+                throw new Error(errorData.message || "Failed to create payment order.");
+            }
+            const razorpayOrder = await orderCreationResponse.json();
+
+            // Step 2: Open Razorpay Checkout
+            const options = {
+                key: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID, 
+                amount: razorpayOrder.amount, 
+                currency: "INR",
+                name: "ServiZephyr (Pvt. Ltd.)",
+                description: `Payment for Order`,
+                order_id: razorpayOrder.id,
+                handler: async function (response){
+                    // Step 3: Verify payment and place final order
+                    await verifyPaymentAndPlaceOrder(response);
+                },
+                prefill: {
+                    name: name.trim(),
+                    contact: phone,
+                },
+                theme: {
+                    color: "#3399cc"
+                }
+            };
+            const rzp1 = new window.Razorpay(options);
+            rzp1.on('payment.failed', function (response){
+                setError(`Payment Failed: ${response.error.description}`);
+                setLoading(false);
+            });
+            rzp1.open();
+
+        } catch (err) {
+            setError(err.message || 'An unexpected error occurred.');
+            setLoading(false);
+        }
+    };
+    
+    const verifyPaymentAndPlaceOrder = async (razorpayResponse) => {
+        try {
+            const finalAddress = isAddingNew ? address : selectedAddress;
+            const finalItems = cart.map(item => ({
+                name: `${item.name} (${item.portion.name})${item.selectedAddOns.map(a => ` + ${a.name}`).join('')}`,
+                quantity: item.quantity,
+                price: item.totalPrice,
+            }));
 
             const orderPayload = {
                 name: name.trim(),
@@ -129,7 +165,8 @@ const CheckoutModal = ({ isOpen, onClose, restaurantId, phone, cart, notes, appl
                         return total;
                     }, 0)
                 } : null,
-                loyaltyDiscount: 0, // Simplified for now
+                loyaltyDiscount: 0,
+                ...razorpayResponse
             };
 
             const res = await fetch('/api/customer/register', {
@@ -137,24 +174,21 @@ const CheckoutModal = ({ isOpen, onClose, restaurantId, phone, cart, notes, appl
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(orderPayload),
             });
-
+            
             const result = await res.json();
-
             if (!res.ok) {
-                throw new Error(result.message || "Failed to place order.");
+                throw new Error(result.message || "Failed to place final order after payment.");
             }
 
-            alert("Success! Your order has been placed.");
             localStorage.removeItem(`cart_${restaurantId}`);
-            router.push(`/order/placed?restaurantId=${restaurantId}`); // Redirect to a success page
+            router.push(`/order/placed?restaurantId=${restaurantId}`);
             onClose();
 
         } catch (err) {
-            setError(err.message || 'An unexpected error occurred.');
-        } finally {
+            setError(err.message);
             setLoading(false);
         }
-    };
+    }
     
     return (
         <Dialog open={isOpen} onOpenChange={onClose}>
@@ -163,7 +197,7 @@ const CheckoutModal = ({ isOpen, onClose, restaurantId, phone, cart, notes, appl
                     <DialogTitle className="text-2xl">Confirm Your Details</DialogTitle>
                 </DialogHeader>
                 <div className="py-4 space-y-4">
-                     {loading ? (
+                     {loading && !isExistingUser && name === '' ? (
                         <div className="flex justify-center items-center h-48">
                            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
                         </div>
@@ -173,7 +207,7 @@ const CheckoutModal = ({ isOpen, onClose, restaurantId, phone, cart, notes, appl
                                 <Label htmlFor="checkout-name">Full Name</Label>
                                 <div className="relative mt-1">
                                     <User className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
-                                    <input id="checkout-name" type="text" value={name} onChange={(e) => setName(e.target.value)} required className="w-full pl-10 pr-4 py-2 rounded-md bg-input border border-border" placeholder="Enter your full name" disabled={isExistingUser} />
+                                    <input id="checkout-name" type="text" value={name} onChange={(e) => setName(e.target.value)} required className="w-full pl-10 pr-4 py-2 rounded-md bg-input border border-border" placeholder="Enter your full name" disabled={isExistingUser && !isAddingNew} />
                                 </div>
                             </div>
                            
@@ -193,7 +227,7 @@ const CheckoutModal = ({ isOpen, onClose, restaurantId, phone, cart, notes, appl
                                 </div>
                             )}
 
-                            {(isAddingNew || savedAddresses.length === 0) && (
+                            {(isAddingNew || !isExistingUser || savedAddresses.length === 0) && (
                                  <div>
                                     <Label htmlFor="checkout-address">Delivery Address</Label>
                                     <div className="relative mt-1">
@@ -210,7 +244,7 @@ const CheckoutModal = ({ isOpen, onClose, restaurantId, phone, cart, notes, appl
                 <DialogFooter>
                     <DialogClose asChild><Button variant="secondary" disabled={loading}>Cancel</Button></DialogClose>
                     <Button onClick={handlePlaceOrder} className="bg-primary hover:bg-primary/90 text-primary-foreground" disabled={loading}>
-                        {loading ? 'Placing Order...' : 'Confirm & Place Order'}
+                        {loading ? 'Processing...' : `Pay ${grandTotal > 0 ? `₹${grandTotal.toFixed(2)}` : ''}`}
                     </Button>
                 </DialogFooter>
             </DialogContent>
@@ -240,7 +274,7 @@ const CartPageInternal = () => {
                 setCartData(parsedData);
                 setCart(parsedData.cart || []);
                 setNotes(parsedData.notes || '');
-                setPhone(parsedData.phone || ''); // Load phone from local storage
+                setPhone(parsedData.phone || '');
             } else {
                 setCart([]);
             }
@@ -255,7 +289,6 @@ const CartPageInternal = () => {
     
     const handleUpdateCart = (item, action) => {
         let newCart = [...cart];
-        // Unique identifier for cart item now includes portion and add-ons
         const cartItemId = item.cartItemId;
         const existingItemIndex = newCart.findIndex(cartItem => cartItem.cartItemId === cartItemId);
 
@@ -375,6 +408,7 @@ const CartPageInternal = () => {
     
     return (
         <>
+        <Script src="https://checkout.razorpay.com/v1/checkout.js" />
         <CheckoutModal 
             isOpen={isCheckoutOpen} 
             onClose={() => setIsCheckoutOpen(false)}
@@ -385,6 +419,7 @@ const CartPageInternal = () => {
             appliedCoupons={appliedCoupons}
             subtotal={subtotal}
             loyaltyPoints={cartData.loyaltyPoints}
+            grandTotal={grandTotal}
         />
         <ClearCartDialog 
             isOpen={isClearCartDialogOpen}

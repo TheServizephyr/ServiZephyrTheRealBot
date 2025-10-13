@@ -4,11 +4,34 @@ import { firestore as adminFirestore } from 'firebase-admin';
 import { getFirestore } from '@/lib/firebase-admin';
 import { NextResponse } from 'next/server';
 import { sendNewOrderToOwner } from '@/lib/notifications';
+import crypto from 'crypto';
 
 export async function POST(req) {
     try {
         const firestore = getFirestore();
-        const { name, address, phone, restaurantId, items, notes, coupon, loyaltyDiscount } = await req.json();
+        const { name, address, phone, restaurantId, items, notes, coupon, loyaltyDiscount, razorpay_payment_id, razorpay_order_id, razorpay_signature } = await req.json();
+
+        // --- Payment Verification ---
+        if (!process.env.RAZORPAY_KEY_SECRET) {
+            throw new Error("Razorpay Key Secret is not configured.");
+        }
+        if (razorpay_payment_id && razorpay_order_id && razorpay_signature) {
+             const body = razorpay_order_id + "|" + razorpay_payment_id;
+             const expectedSignature = crypto
+                .createHmac('sha256', process.env.RAZORPAY_KEY_SECRET)
+                .update(body.toString())
+                .digest('hex');
+            
+            if (expectedSignature !== razorpay_signature) {
+                return NextResponse.json({ message: 'Payment verification failed. Invalid signature.' }, { status: 400 });
+            }
+             console.log(`[Order API] Payment verified for Razorpay Order ID: ${razorpay_order_id}`);
+        } else {
+             // This can be a COD order in the future, for now we enforce payment
+             return NextResponse.json({ message: 'Payment details are missing.' }, { status: 400 });
+        }
+        // --- End Payment Verification ---
+
 
         if (!name || !address || !phone || !restaurantId || !items) {
             return NextResponse.json({ message: 'Missing required fields.' }, { status: 400 });
@@ -25,8 +48,7 @@ export async function POST(req) {
         }
         const restaurantData = restaurantDoc.data();
         
-        // --- CORRECTED LOGIC TO GET OWNER PHONE ---
-        const ownerPhone = restaurantData.ownerPhone; // Directly get ownerPhone from restaurant data
+        const ownerPhone = restaurantData.ownerPhone;
         const botPhoneNumberId = restaurantData.botPhoneNumberId;
 
         const batch = firestore.batch();
@@ -122,7 +144,12 @@ export async function POST(req) {
             status: 'pending',
             priority: Math.floor(Math.random() * 5) + 1,
             orderDate: adminFirestore.FieldValue.serverTimestamp(),
-            notes: notes || null
+            notes: notes || null,
+            paymentDetails: {
+                razorpay_payment_id,
+                razorpay_order_id,
+                method: 'online'
+            }
         });
         
         console.log(`[Order API] Order ${newOrderRef.id} created for user ${userId}. Grand total: ${grandTotal}`);
