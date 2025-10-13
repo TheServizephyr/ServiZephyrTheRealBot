@@ -198,12 +198,13 @@ function PageContent() {
   const [activeFilter, setActiveFilter] = useState('Today');
   const [dashboardData, setDashboardData] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [botCount, setBotCount] = useState(0);
   const router = useRouter();
   const searchParams = useSearchParams();
   const impersonatedOwnerId = searchParams.get('impersonate_owner_id');
 
   useEffect(() => {
-    const fetchData = async () => {
+    const fetchInitialData = async () => {
         setLoading(true);
         try {
             const user = auth.currentUser;
@@ -215,25 +216,36 @@ function PageContent() {
 
             const idToken = await user.getIdToken(true);
             
-            let apiUrl = `/api/owner/dashboard-data?filter=${activeFilter}`;
+            // API URLs
+            let dashboardApiUrl = `/api/owner/dashboard-data?filter=${activeFilter}`;
             if (impersonatedOwnerId) {
-                apiUrl += `&impersonate_owner_id=${impersonatedOwnerId}`;
+                dashboardApiUrl += `&impersonate_owner_id=${impersonatedOwnerId}`;
             }
 
-            const res = await fetch(apiUrl, {
-                headers: { 'Authorization': `Bearer ${idToken}` }
-            });
+            let connectionsApiUrl = '/api/owner/connections';
+            if (impersonatedOwnerId) {
+                connectionsApiUrl += `?impersonate_owner_id=${impersonatedOwnerId}`;
+            }
+            
+            // Fetch both endpoints concurrently
+            const [dashboardRes, connectionsRes] = await Promise.all([
+                fetch(dashboardApiUrl, { headers: { 'Authorization': `Bearer ${idToken}` } }),
+                fetch(connectionsApiUrl, { headers: { 'Authorization': `Bearer ${idToken}` } })
+            ]);
 
-            if (!res.ok) {
-                const errorData = await res.json();
-                throw new Error(errorData.message || 'Failed to fetch dashboard data');
+            if (!dashboardRes.ok || !connectionsRes.ok) {
+                 const errorData = !dashboardRes.ok ? await dashboardRes.json() : await connectionsRes.json();
+                 throw new Error(errorData.message || 'Failed to fetch initial data');
             }
 
-            const data = await res.json();
-            setDashboardData(data);
+            const dashboardData = await dashboardRes.json();
+            const connectionsData = await connectionsRes.json();
+            
+            setDashboardData(dashboardData);
+            setBotCount(connectionsData.connections?.length || 0);
 
         } catch (error) {
-            console.error("Error fetching dashboard data:", error);
+            console.error("Error fetching initial data:", error);
             alert(`Error: ${error.message}`);
         } finally {
             setLoading(false);
@@ -242,7 +254,7 @@ function PageContent() {
     
     const unsubscribe = auth.onAuthStateChanged(user => {
       if (user) {
-        fetchData();
+        fetchInitialData();
       } else {
         setLoading(false);
         router.push('/');
@@ -276,8 +288,7 @@ function PageContent() {
         </div>
         
         <div className="mb-6">
-             {/* This is a placeholder value. In a real app, you'd fetch this from user/restaurant data. */}
-             <BotOnboardingNudge botCount={0} />
+             <BotOnboardingNudge botCount={botCount} />
         </div>
 
         {/* Quick Action Buttons */}
