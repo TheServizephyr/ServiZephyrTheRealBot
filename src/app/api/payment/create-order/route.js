@@ -11,13 +11,14 @@ export async function POST(req) {
             return NextResponse.json({ message: 'Valid amount is required.' }, { status: 400 });
         }
         
-        if (!process.env.RAZORPAY_KEY_ID || !process.env.RAZORPAY_KEY_SECRET) {
+        // CORRECTED: Use NEXT_PUBLIC_RAZORPAY_KEY_ID to match Vercel environment variables
+        if (!process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID || !process.env.RAZORPAY_KEY_SECRET) {
             console.error("Razorpay keys are not configured in environment variables.");
             return NextResponse.json({ message: 'Payment gateway is not configured.' }, { status: 500 });
         }
 
         const razorpay = new Razorpay({
-            key_id: process.env.RAZORPAY_KEY_ID,
+            key_id: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID,
             key_secret: process.env.RAZORPAY_KEY_SECRET,
         });
 
