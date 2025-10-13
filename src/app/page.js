@@ -151,7 +151,7 @@ export default function Home() {
                 </button>
                  {/* This link is for testing purposes */}
                  <Link 
-                    href="/order/PR5LbvgA2Ib72vkPzJt4?phone=9027872803"
+                    href="/order/baghel-'s-dhaba?phone=9027872803"
                     className="text-sm text-muted-foreground hover:text-primary underline"
                   >
                     Preview Customer Order Page (for testing)
