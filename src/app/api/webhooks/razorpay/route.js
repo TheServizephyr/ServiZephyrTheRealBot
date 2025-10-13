@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { getFirestore } from '@/lib/firebase-admin';
 import { sendNewOrderToOwner } from '@/lib/notifications';
 import crypto from 'crypto';
+import Razorpay from 'razorpay';
 
 export async function POST(req) {
     const secret = process.env.RAZORPAY_WEBHOOK_SECRET;
@@ -32,6 +33,7 @@ export async function POST(req) {
         if (eventData.event === 'payment.captured') {
             const paymentEntity = eventData.payload.payment.entity;
             const razorpayOrderId = paymentEntity.order_id;
+            const paymentId = paymentEntity.id; // Get the payment ID for transfer
             
             if (!razorpayOrderId) {
                 console.warn("[Webhook] 'order_id' not found in payment entity.");
@@ -56,7 +58,6 @@ export async function POST(req) {
             const orderData = orderDoc.data();
 
             // Step 4: Update the order status to 'paid'
-            // We check the status to avoid re-triggering notifications
             if (orderData.status === 'pending') {
                 await orderDoc.ref.update({ status: 'paid' });
                 console.log(`[Webhook] Order ${orderDoc.id} status updated to 'paid'.`);
@@ -65,6 +66,37 @@ export async function POST(req) {
                 const restaurantDoc = await firestore.collection('restaurants').doc(orderData.restaurantId).get();
                 if (restaurantDoc.exists) {
                     const restaurantData = restaurantDoc.data();
+                    
+                    // --- NEW: Handle Payment Transfer ---
+                    if (restaurantData.razorpayAccountId) {
+                        try {
+                            const razorpay = new Razorpay({
+                                key_id: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID,
+                                key_secret: process.env.RAZORPAY_KEY_SECRET,
+                            });
+
+                            const transferPayload = {
+                                transfers: [
+                                    {
+                                        account: restaurantData.razorpayAccountId,
+                                        amount: paymentEntity.amount, // Use amount from payment entity (in paisa)
+                                        currency: 'INR',
+                                    }
+                                ]
+                            };
+
+                            await razorpay.payments.transfer(paymentId, transferPayload);
+                            console.log(`[Webhook] Successfully initiated transfer for payment ${paymentId} to account ${restaurantData.razorpayAccountId}.`);
+
+                        } catch (transferError) {
+                            console.error(`[Webhook] CRITICAL: Failed to transfer payment ${paymentId} to account ${restaurantData.razorpayAccountId}.`, transferError);
+                            // Even if transfer fails, we don't stop the notification flow.
+                        }
+                    } else {
+                        console.warn(`[Webhook] Restaurant ${orderData.restaurantId} does not have a Razorpay Account ID. Skipping transfer.`);
+                    }
+                    // --- END: Handle Payment Transfer ---
+
                     await sendNewOrderToOwner({
                         ownerPhone: restaurantData.ownerPhone,
                         botPhoneNumberId: restaurantData.botPhoneNumberId,
@@ -72,8 +104,9 @@ export async function POST(req) {
                         totalAmount: orderData.totalAmount,
                         orderId: orderDoc.id
                     });
+
                 } else {
-                    console.error(`[Webhook] Restaurant ${orderData.restaurantId} not found for order ${orderDoc.id}. Cannot send notification.`);
+                    console.error(`[Webhook] Restaurant ${orderData.restaurantId} not found for order ${orderDoc.id}. Cannot send notification or transfer.`);
                 }
             } else {
                  console.log(`[Webhook] Order ${orderDoc.id} status is already '${orderData.status}', no action taken.`);
@@ -85,8 +118,6 @@ export async function POST(req) {
 
     } catch (error) {
         console.error('[Webhook] Error processing webhook:', error);
-        // Respond with a 200 OK even on errors to prevent Razorpay from resending.
-        // We log the error on the server for debugging.
         return NextResponse.json({ status: 'error', message: 'Internal server error' }, { status: 200 });
     }
 }
