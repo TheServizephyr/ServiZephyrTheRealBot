@@ -1,11 +1,13 @@
+
 'use client';
 
 import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { Bot, PlusCircle, CheckCircle, AlertCircle, RefreshCw, Loader2 } from 'lucide-react';
+import { Bot, PlusCircle, CheckCircle, AlertCircle, RefreshCw, Loader2, HelpCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { auth } from '@/lib/firebase';
 import { useSearchParams } from 'next/navigation';
+import Link from 'next/link';
 
 const containerVariants = {
   hidden: { opacity: 0, y: 20 },
@@ -159,11 +161,6 @@ export default function ConnectionsPage() {
       return;
     }
     
-    if (!window.FB) {
-      setError("Facebook SDK not loaded. Please refresh the page.");
-      return;
-    }
-    
     const appId = process.env.NEXT_PUBLIC_FACEBOOK_APP_ID;
     console.log("DEBUG: App ID being used for login is:", appId);
     if (!appId) {
@@ -173,8 +170,8 @@ export default function ConnectionsPage() {
 
     window.FB.init({
       appId: appId,
+      version: 'v19.0',
       xfbml: true,
-      version: 'v19.0'
     });
     
     const config_id = "808539835091857";
@@ -209,6 +206,10 @@ export default function ConnectionsPage() {
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Your WhatsApp Bot Connections</h1>
           <p className="text-muted-foreground mt-1">Manage your restaurant's WhatsApp bots here.</p>
+          <p className="text-sm text-primary mt-2 flex items-center gap-2">
+            <HelpCircle size={16} />
+            Need help getting started? <Link href="/support/onboarding-guide" className="underline font-semibold hover:text-primary/80">Read our simple step-by-step guide.</Link>
+          </p>
         </div>
         <div className="flex gap-4">
             <Button onClick={() => fetchConnections(true)} variant="outline" disabled={dataLoading}>
