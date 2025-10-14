@@ -65,7 +65,7 @@ export async function POST(req) {
             email: ownerEmail,
             // You can add more details like contact number if available
         };
-        // CORRECTED: 'contacts' -> 'contact'
+        
         const contact = await razorpay.contact.create(contactPayload);
         if (!contact || !contact.id) {
             throw new Error("Failed to create Contact on Razorpay.");
