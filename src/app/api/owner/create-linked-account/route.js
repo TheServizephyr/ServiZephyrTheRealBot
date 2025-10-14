@@ -46,7 +46,6 @@ export async function POST(req) {
             key_secret: process.env.RAZORPAY_KEY_SECRET,
         });
 
-        // The restaurant's email is needed for the linked account
         const restaurantSnap = await restaurantRef.get();
         const ownerId = restaurantSnap.data().ownerId;
         const ownerDoc = await getFirestore().collection('users').doc(ownerId).get();
@@ -55,32 +54,35 @@ export async function POST(req) {
         if (!ownerEmail) {
              return NextResponse.json({ message: 'Owner email not found, which is required for creating a linked account.' }, { status: 400 });
         }
-
-        const linkedAccountPayload = {
-            name: name,
-            email: ownerEmail,
-            type: 'customer', // As per Razorpay Route docs for this simple use case
+        
+        // --- UPDATED LOGIC: Use Fund Account API ---
+        const fundAccountPayload = {
+            contact: {
+                name: name,
+                email: ownerEmail,
+            },
+            account_type: 'bank_account',
             bank_account: {
-                ifsc_code: ifsc,
-                account_number: account_number,
-                name: name
+                name: name,
+                ifsc: ifsc,
+                account_number: account_number
             }
         };
 
-        const linkedAccount = await razorpay.customers.create(linkedAccountPayload);
-
-        if (!linkedAccount || !linkedAccount.id) {
-            throw new Error("Failed to create linked account on Razorpay.");
-        }
+        const fundAccount = await razorpay.fundAccount.create(fundAccountPayload);
         
-        // Save the returned account ID to the restaurant document
+        if (!fundAccount || !fundAccount.id) {
+            throw new Error("Failed to create Fund Account on Razorpay.");
+        }
+
+        // Save the returned fund account ID (starts with 'fa_')
         await restaurantRef.update({
-            razorpayAccountId: linkedAccount.id
+            razorpayAccountId: fundAccount.id
         });
 
         return NextResponse.json({ 
-            message: 'Razorpay Linked Account created successfully!', 
-            accountId: linkedAccount.id 
+            message: 'Razorpay Fund Account created and linked successfully!', 
+            accountId: fundAccount.id 
         }, { status: 201 });
 
     } catch (error) {
