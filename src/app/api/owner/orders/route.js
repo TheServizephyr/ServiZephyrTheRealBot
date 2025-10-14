@@ -130,17 +130,21 @@ export async function PATCH(req) {
 
         await orderRef.update({ status: newStatus });
         
-        // Send WhatsApp notification for any status update
-        const orderData = orderDoc.data();
-        const restaurantData = restaurantSnap.data();
-        await sendOrderStatusUpdateToCustomer({
-            customerPhone: orderData.customerPhone,
-            botPhoneNumberId: restaurantData.botPhoneNumberId,
-            customerName: orderData.customerName,
-            orderId: orderId,
-            restaurantName: restaurantData.name,
-            status: newStatus
-        });
+        // --- MODIFIED LOGIC ---
+        // Send WhatsApp notification ONLY when the order is confirmed or delivered
+        if (newStatus === 'confirmed' || newStatus === 'delivered') {
+            const orderData = orderDoc.data();
+            const restaurantData = restaurantSnap.data();
+            await sendOrderStatusUpdateToCustomer({
+                customerPhone: orderData.customerPhone,
+                botPhoneNumberId: restaurantData.botPhoneNumberId,
+                customerName: orderData.customerName,
+                orderId: orderId,
+                restaurantName: restaurantData.name,
+                status: newStatus
+            });
+        }
+
 
         return NextResponse.json({ message: 'Order status updated successfully.' }, { status: 200 });
 

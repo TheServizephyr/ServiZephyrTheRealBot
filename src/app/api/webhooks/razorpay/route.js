@@ -60,15 +60,18 @@ export async function POST(req) {
 
             // Step 4: Update the order status to 'paid'
             if (orderData.status === 'pending') {
-                await orderDoc.ref.update({ status: 'paid' });
+                await orderDoc.ref.update({ 
+                    status: 'paid',
+                    'paymentDetails.razorpay_payment_id': paymentId,
+                 });
                 console.log(`[Webhook] Order ${orderDoc.id} status updated to 'paid'.`);
                 
-                // Step 5: Trigger WhatsApp notification to the owner
+                // Step 5: Trigger WhatsApp notification to the owner & Handle payment transfer
                 const restaurantDoc = await firestore.collection('restaurants').doc(orderData.restaurantId).get();
                 if (restaurantDoc.exists) {
                     const restaurantData = restaurantDoc.data();
                     
-                    // --- NEW: Handle Payment Transfer ---
+                    // --- Handle Payment Transfer ---
                     if (restaurantData.razorpayAccountId) {
                         try {
                             const razorpay = new Razorpay({
@@ -80,7 +83,7 @@ export async function POST(req) {
                                 transfers: [
                                     {
                                         account: restaurantData.razorpayAccountId,
-                                        amount: paymentEntity.amount, // Use amount from payment entity (in paisa)
+                                        amount: paymentEntity.amount, 
                                         currency: 'INR',
                                         notes: {
                                             order_id: orderDoc.id,
@@ -92,17 +95,16 @@ export async function POST(req) {
                             
                             console.log(`[Webhook] Initiating transfer for payment ${paymentId} to account ${restaurantData.razorpayAccountId}...`);
                             await razorpay.payments.transfer(paymentId, transferPayload);
-                            console.log(`[Webhook] Successfully initiated transfer for payment ${paymentId} to account ${restaurantData.razorpayAccountId}.`);
+                            console.log(`[Webhook] Successfully initiated transfer for payment ${paymentId}.`);
 
                         } catch (transferError) {
-                            console.error(`[Webhook] CRITICAL: Failed to transfer payment ${paymentId} to account ${restaurantData.razorpayAccountId}.`, transferError.response ? transferError.response.data : transferError.message);
-                            // Even if transfer fails, we don't stop the notification flow.
+                            console.error(`[Webhook] CRITICAL: Failed to transfer payment ${paymentId}.`, transferError.response ? transferError.response.data : transferError.message);
                         }
                     } else {
                         console.warn(`[Webhook] Restaurant ${orderData.restaurantId} does not have a Razorpay Account ID. Skipping transfer.`);
                     }
-                    // --- END: Handle Payment Transfer ---
 
+                    // --- Send New Order Notification to Owner ---
                     await sendNewOrderToOwner({
                         ownerPhone: restaurantData.ownerPhone,
                         botPhoneNumberId: restaurantData.botPhoneNumberId,
