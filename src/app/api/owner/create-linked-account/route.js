@@ -1,3 +1,4 @@
+
 'use server';
 
 import { NextResponse } from 'next/server';
@@ -22,7 +23,7 @@ async function verifyOwnerAndGetRestaurant(req, auth) {
     return restaurantsQuery.docs[0].ref;
 }
 
-// --- THIS IS THE FINAL AND CORRECT IMPLEMENTATION ---
+// --- THIS IS THE FINAL AND CORRECT IMPLEMENTATION USING AXIOS ---
 export async function POST(req) {
     console.log("[API LOG] Received POST request to /api/owner/create-linked-account");
     const auth = getAuth();
