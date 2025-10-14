@@ -3,7 +3,7 @@
 
 import { NextResponse } from 'next/server';
 import { getAuth, getFirestore } from '@/lib/firebase-admin';
-import axios from 'axios';
+import https from 'https';
 
 // Helper to verify owner and get their restaurant details
 async function verifyOwnerAndGetRestaurant(req, auth) {
@@ -41,7 +41,6 @@ export async function POST(req) {
     try {
         const { restaurantRef, restaurantData, userData } = await verifyOwnerAndGetRestaurant(req, auth);
         
-        // --- VALIDATION ---
         if (!userData.email || !restaurantData.name || !userData.name) {
              return NextResponse.json({ message: 'User email, name, and restaurant name are required to create a linked account.' }, { status: 400 });
         }
@@ -57,8 +56,8 @@ export async function POST(req) {
         const credentials = Buffer.from(`${key_id}:${key_secret}`).toString('base64');
 
         // --- STEP 1: Create a Linked Account via /accounts endpoint ---
-        console.log("[API LOG] Step 1: Creating Razorpay Linked Account...");
-        const accountPayload = {
+        console.log("[API LOG] Step 1: Creating Razorpay Linked Account using native https...");
+        const accountPayload = JSON.stringify({
             type: "linked",
             email: userData.email,
             legal_business_name: restaurantData.name,
@@ -67,38 +66,57 @@ export async function POST(req) {
                 category: "food_beverage",
                 subcategory: "restaurant"
             }
-        };
+        });
         
-        let linkedAccount;
-        try {
-            // ** THE FINAL FIX **: Use a direct axios call with the full, absolute URL.
-            const accountResponse = await axios.post('https://api.razorpay.com/v1/accounts', accountPayload, {
-                headers: {
-                    'Authorization': `Basic ${credentials}`,
-                    'Content-Type': 'application/json'
-                }
+        const options = {
+            hostname: 'api.razorpay.com',
+            port: 443,
+            path: '/v1/accounts',
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Content-Length': accountPayload.length,
+                'Authorization': `Basic ${credentials}`
+            }
+        };
+
+        const linkedAccount = await new Promise((resolve, reject) => {
+            const apiReq = https.request(options, (apiRes) => {
+                let data = '';
+                apiRes.on('data', (chunk) => {
+                    data += chunk;
+                });
+                apiRes.on('end', () => {
+                    if (apiRes.statusCode >= 200 && apiRes.statusCode < 300) {
+                        resolve(JSON.parse(data));
+                    } else {
+                        reject({ response: { data: JSON.parse(data) }});
+                    }
+                });
             });
 
-            linkedAccount = accountResponse.data;
-            // The ID here will be the `acc_...` ID
-            console.log("[API LOG] Razorpay Linked Account created. Account ID is:", linkedAccount.id); 
-        } catch (error) {
-            console.error("[API ERROR] Failed to create Razorpay Linked Account:", error.response ? error.response.data : error.message);
-            const errorDetail = error.response?.data?.error?.description || 'Failed to create linked account.';
-            return NextResponse.json({ message: `Razorpay Error: ${errorDetail}` }, { status: 500 });
-        }
+            apiReq.on('error', (e) => {
+                reject({ message: e.message });
+            });
+
+            apiReq.write(accountPayload);
+            apiReq.end();
+        });
+        
+        console.log("[API LOG] Razorpay Linked Account created. Account ID is:", linkedAccount.id); 
 
         // --- STEP 2: Save the `acc_...` ID to Firestore ---
         console.log("[API LOG] Step 2: Saving Route Account ID to Firestore...");
         await restaurantRef.update({
-            razorpayAccountId: linkedAccount.id, // This is the 'acc_...' ID
+            razorpayAccountId: linkedAccount.id,
         });
         console.log(`[API LOG] Firestore updated with Account ID: ${linkedAccount.id}`);
 
         return NextResponse.json({ message: 'Linked account created successfully!', accountId: linkedAccount.id }, { status: 200 });
 
     } catch (error) {
-        console.error("CREATE LINKED ACCOUNT API - FULL ERROR OBJECT:", error);
-        return NextResponse.json({ message: `Backend Error: ${error.message}` }, { status: error.status || 500 });
+        console.error("[API ERROR] Failed to create Razorpay Linked Account:", error.response ? error.response.data : error.message);
+        const errorDetail = error.response?.data?.error?.description || error.message || 'Failed to create linked account.';
+        return NextResponse.json({ message: `Razorpay Error: ${errorDetail}` }, { status: 500 });
     }
 }
