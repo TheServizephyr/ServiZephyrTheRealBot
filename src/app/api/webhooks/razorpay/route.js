@@ -3,7 +3,6 @@ import { NextResponse } from 'next/server';
 import { getFirestore } from '@/lib/firebase-admin';
 import { sendNewOrderToOwner } from '@/lib/notifications';
 import crypto from 'crypto';
-import Razorpay from 'razorpay';
 
 export async function POST(req) {
     const secret = process.env.RAZORPAY_WEBHOOK_SECRET;
@@ -34,7 +33,7 @@ export async function POST(req) {
         if (eventData.event === 'payment.captured') {
             const paymentEntity = eventData.payload.payment.entity;
             const razorpayOrderId = paymentEntity.order_id;
-            const paymentId = paymentEntity.id; // Get the payment ID for transfer
+            const paymentId = paymentEntity.id;
             
             if (!razorpayOrderId) {
                 console.warn("[Webhook] 'order_id' not found in payment entity.");
@@ -66,52 +65,11 @@ export async function POST(req) {
                  });
                 console.log(`[Webhook] Order ${orderDoc.id} status updated to 'paid'.`);
                 
-                // Step 5: Trigger WhatsApp notification to the owner & Handle payment transfer
+                // Step 5: Trigger WhatsApp notification to the owner
                 const restaurantDoc = await firestore.collection('restaurants').doc(orderData.restaurantId).get();
                 if (restaurantDoc.exists) {
                     const restaurantData = restaurantDoc.data();
                     
-                    // --- Handle Payment Transfer ---
-                    if (restaurantData.razorpayAccountId && process.env.RAZORPAY_ACCOUNT_ID) {
-                        try {
-                            const razorpay = new Razorpay({
-                                key_id: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID,
-                                key_secret: process.env.RAZORPAY_KEY_SECRET,
-                            });
-
-                            const transferPayload = {
-                                transfers: [
-                                    {
-                                        account: restaurantData.razorpayAccountId,
-                                        amount: paymentEntity.amount, 
-                                        currency: 'INR',
-                                        on_hold: 0,
-                                        notes: {
-                                            order_id: orderDoc.id,
-                                            restaurant_name: restaurantData.name,
-                                        }
-                                    }
-                                ]
-                            };
-                            
-                            console.log(`[Webhook] Initiating transfer for payment ${paymentId} to account ${restaurantData.razorpayAccountId}...`);
-                            // Use razorpay.payments.transfer with the platform account header
-                            await razorpay.payments.transfer(paymentId, transferPayload, {
-                                headers: {
-                                   "X-Razorpay-Account": process.env.RAZORPAY_ACCOUNT_ID
-                                }
-                            });
-                            console.log(`[Webhook] Successfully initiated transfer for payment ${paymentId}.`);
-
-                        } catch (transferError) {
-                             const errorResponse = transferError.response ? transferError.response.data : transferError;
-                             console.error(`[Webhook] CRITICAL: Failed to transfer payment ${paymentId}.`, JSON.stringify(errorResponse, null, 2));
-                        }
-                    } else {
-                        console.warn(`[Webhook] Restaurant ${orderData.restaurantId} does not have a Razorpay Account ID or Platform RAZORPAY_ACCOUNT_ID is not set. Skipping transfer.`);
-                    }
-
-                    // --- Send New Order Notification to Owner ---
                     if (restaurantData.ownerPhone && restaurantData.botPhoneNumberId) {
                       await sendNewOrderToOwner({
                           ownerPhone: restaurantData.ownerPhone,
@@ -123,7 +81,7 @@ export async function POST(req) {
                     }
 
                 } else {
-                    console.error(`[Webhook] Restaurant ${orderData.restaurantId} not found for order ${orderDoc.id}. Cannot send notification or transfer.`);
+                    console.error(`[Webhook] Restaurant ${orderData.restaurantId} not found for order ${orderDoc.id}. Cannot send notification.`);
                 }
             } else {
                  console.log(`[Webhook] Order ${orderDoc.id} status is already '${orderData.status}', no action taken.`);
