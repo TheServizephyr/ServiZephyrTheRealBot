@@ -18,7 +18,7 @@ export default function PayoutSettingsPage() {
         ifsc_code: '',
         bank_name: 'ServiZephyr Default Bank' // This can be static or fetched
     });
-    const [loading, setLoading] = useState(false);
+    const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
     const [success, setSuccess] = useState('');
     const [accountId, setAccountId] = useState('');
@@ -26,6 +26,7 @@ export default function PayoutSettingsPage() {
 
     useEffect(() => {
         const fetchUserData = async () => {
+             setLoading(true);
              const user = auth.currentUser;
              if (user) {
                  setFormData(prev => ({
@@ -45,6 +46,7 @@ export default function PayoutSettingsPage() {
                      }
                  }
              }
+             setLoading(false);
         };
 
         const unsubscribe = auth.onAuthStateChanged(user => {
@@ -107,16 +109,30 @@ export default function PayoutSettingsPage() {
             setLoading(false);
         }
     };
+    
+    if (loading) {
+         return (
+            <div className="flex flex-col items-center justify-center h-full text-center p-8">
+                <Loader2 className="h-16 w-16 text-primary animate-spin" />
+                <p className="mt-4 text-muted-foreground">Checking your account status...</p>
+            </div>
+        )
+    }
+
 
     if(accountId) {
         return (
-             <div className="flex flex-col items-center justify-center h-full text-center p-8 bg-card border border-border rounded-xl">
+             <motion.div 
+                initial={{ opacity: 0, scale: 0.9 }}
+                animate={{ opacity: 1, scale: 1 }}
+                className="flex flex-col items-center justify-center h-full text-center p-8 bg-card border border-border rounded-xl"
+            >
                 <CheckCircle className="h-20 w-20 text-green-500" />
                 <h2 className="mt-6 text-2xl font-bold">Bank Account Linked Successfully!</h2>
                 <p className="mt-2 max-w-md text-muted-foreground">Your Razorpay Linked Account ID is:</p>
-                <p className="mt-2 text-lg font-mono p-3 bg-muted rounded-md border border-border">{accountId}</p>
+                <p className="mt-2 text-lg font-mono p-3 bg-muted rounded-md border border-border text-foreground">{accountId}</p>
                 <p className="mt-4 text-sm text-muted-foreground">You are all set to receive payouts. No further action is needed.</p>
-            </div>
+            </motion.div>
         )
     }
 
