@@ -40,15 +40,20 @@ export async function POST(req) {
             return NextResponse.json({ message: 'Account holder name, account number, and IFSC code are required.' }, { status: 400 });
         }
         
-        if (!process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID || !process.env.RAZORPAY_KEY_SECRET) {
-            console.error("Razorpay keys are not configured in environment variables.");
+        if (!process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID || !process.env.RAZORPAY_KEY_SECRET || !process.env.RAZORPAY_ACCOUNT_ID) {
+            console.error("Razorpay keys or Platform Account ID are not configured in environment variables.");
             return NextResponse.json({ message: 'Payment gateway is not configured on the server.' }, { status: 500 });
         }
-
+        
+        // Correct Initialization with Headers for Route API
         const razorpay = new Razorpay({
             key_id: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID,
             key_secret: process.env.RAZORPAY_KEY_SECRET,
+            headers: {
+                "X-Razorpay-Account": process.env.RAZORPAY_ACCOUNT_ID
+            }
         });
+
 
         const ownerDoc = await getFirestore().collection('users').doc(ownerId).get();
         const ownerEmail = ownerDoc.exists ? ownerDoc.data().email : null;
@@ -101,10 +106,11 @@ export async function POST(req) {
 
     } catch (error) {
         // Log the entire error object to see its structure
-        console.error("CREATE LINKED ACCOUNT API - FULL ERROR OBJECT:", JSON.stringify(error, null, 2));
-
+        const errorResponse = error.response ? error.response.data : error;
+        console.error("CREATE LINKED ACCOUNT API - FULL ERROR OBJECT:", JSON.stringify(errorResponse, null, 2));
+        
         // Try to find the message, even if it's nested
-        const errorMessage = error.description || error.message || "An unknown error occurred. Check server logs for the full error object.";
+        const errorMessage = errorResponse?.error?.description || error.message || "An unknown error occurred. Check server logs for the full error object.";
         
         return NextResponse.json({ message: `Backend Error: ${errorMessage}` }, { status: 500 });
     }

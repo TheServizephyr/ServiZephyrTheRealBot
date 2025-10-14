@@ -72,11 +72,14 @@ export async function POST(req) {
                     const restaurantData = restaurantDoc.data();
                     
                     // --- Handle Payment Transfer ---
-                    if (restaurantData.razorpayAccountId) {
+                    if (restaurantData.razorpayAccountId && process.env.RAZORPAY_ACCOUNT_ID) {
                         try {
                             const razorpay = new Razorpay({
                                 key_id: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID,
                                 key_secret: process.env.RAZORPAY_KEY_SECRET,
+                                headers: {
+                                   "X-Razorpay-Account": process.env.RAZORPAY_ACCOUNT_ID
+                                }
                             });
 
                             const transferPayload = {
@@ -98,20 +101,23 @@ export async function POST(req) {
                             console.log(`[Webhook] Successfully initiated transfer for payment ${paymentId}.`);
 
                         } catch (transferError) {
-                            console.error(`[Webhook] CRITICAL: Failed to transfer payment ${paymentId}.`, transferError.response ? transferError.response.data : transferError.message);
+                             const errorResponse = transferError.response ? transferError.response.data : transferError;
+                             console.error(`[Webhook] CRITICAL: Failed to transfer payment ${paymentId}.`, JSON.stringify(errorResponse, null, 2));
                         }
                     } else {
-                        console.warn(`[Webhook] Restaurant ${orderData.restaurantId} does not have a Razorpay Account ID. Skipping transfer.`);
+                        console.warn(`[Webhook] Restaurant ${orderData.restaurantId} does not have a Razorpay Account ID or Platform RAZORPAY_ACCOUNT_ID is not set. Skipping transfer.`);
                     }
 
                     // --- Send New Order Notification to Owner ---
-                    await sendNewOrderToOwner({
-                        ownerPhone: restaurantData.ownerPhone,
-                        botPhoneNumberId: restaurantData.botPhoneNumberId,
-                        customerName: orderData.customerName,
-                        totalAmount: orderData.totalAmount,
-                        orderId: orderDoc.id
-                    });
+                    if (restaurantData.ownerPhone && restaurantData.botPhoneNumberId) {
+                      await sendNewOrderToOwner({
+                          ownerPhone: restaurantData.ownerPhone,
+                          botPhoneNumberId: restaurantData.botPhoneNumberId,
+                          customerName: orderData.customerName,
+                          totalAmount: orderData.totalAmount,
+                          orderId: orderDoc.id
+                      });
+                    }
 
                 } else {
                     console.error(`[Webhook] Restaurant ${orderData.restaurantId} not found for order ${orderDoc.id}. Cannot send notification or transfer.`);
