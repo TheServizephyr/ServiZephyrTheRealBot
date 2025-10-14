@@ -23,13 +23,17 @@ async function verifyOwnerAndGetRestaurantRef(req) {
         throw { message: 'No restaurant associated with this owner.', status: 404 };
     }
     
-    return restaurantsQuery.docs[0].ref;
+    return restaurantsQuery.docs[0];
 }
 
 
 export async function POST(req) {
     try {
-        const restaurantRef = await verifyOwnerAndGetRestaurantRef(req);
+        const restaurantDoc = await verifyOwnerAndGetRestaurantRef(req);
+        const restaurantRef = restaurantDoc.ref;
+        const restaurantData = restaurantDoc.data();
+        const ownerId = restaurantData.ownerId;
+        
         const { name, account_number, ifsc } = await req.json();
 
         if (!name || !account_number || !ifsc) {
@@ -46,16 +50,14 @@ export async function POST(req) {
             key_secret: process.env.RAZORPAY_KEY_SECRET,
         });
 
-        const restaurantSnap = await restaurantRef.get();
-        const ownerId = restaurantSnap.data().ownerId;
         const ownerDoc = await getFirestore().collection('users').doc(ownerId).get();
-        const ownerEmail = ownerDoc.data().email;
+        const ownerEmail = ownerDoc.exists() ? ownerDoc.data().email : null;
 
         if (!ownerEmail) {
              return NextResponse.json({ message: 'Owner email not found, which is required for creating a linked account.' }, { status: 400 });
         }
         
-        // --- UPDATED LOGIC: Use Fund Account API ---
+        // --- Use Fund Account API ---
         const fundAccountPayload = {
             contact: {
                 name: name,
@@ -72,7 +74,7 @@ export async function POST(req) {
         const fundAccount = await razorpay.fundAccount.create(fundAccountPayload);
         
         if (!fundAccount || !fundAccount.id) {
-            throw new Error("Failed to create Fund Account on Razorpay.");
+            throw new Error("Failed to create Fund Account on Razorpay. The response did not contain a Fund Account ID.");
         }
 
         // Save the returned fund account ID (starts with 'fa_')
@@ -86,8 +88,12 @@ export async function POST(req) {
         }, { status: 201 });
 
     } catch (error) {
-        console.error("CREATE LINKED ACCOUNT API ERROR:", error.response ? error.response.data : error.message);
-        const errorMessage = error.response?.data?.error?.description || error.message || "An unknown error occurred.";
-        return NextResponse.json({ message: `Backend Error: ${errorMessage}` }, { status: error.status || 500 });
+        // Improved Error Logging
+        console.error("CREATE LINKED ACCOUNT API ERROR:", error.response ? JSON.stringify(error.response.data, null, 2) : error.message);
+        
+        const errorMessage = error.response?.data?.error?.description || error.message || "An unknown error occurred on the server.";
+        const statusCode = error.response?.status || 500;
+        
+        return NextResponse.json({ message: `Backend Error: ${errorMessage}` }, { status: statusCode });
     }
 }
