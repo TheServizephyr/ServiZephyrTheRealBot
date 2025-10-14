@@ -127,24 +127,29 @@ export async function PATCH(req) {
         if (!orderDoc.exists || orderDoc.data().restaurantId !== restaurantId) {
             return NextResponse.json({ message: 'Access denied to this order.' }, { status: 403 });
         }
-
-        await orderRef.update({ status: newStatus });
         
-        // --- CORRECTED NOTIFICATION LOGIC ---
+        // --- NEW LOGIC: Send notification FIRST for faster perceived speed ---
         const statusesThatNotifyCustomer = ['confirmed', 'preparing', 'dispatched', 'delivered'];
         if (statusesThatNotifyCustomer.includes(newStatus)) {
             const orderData = orderDoc.data();
             const restaurantData = restaurantSnap.data();
-            await sendOrderStatusUpdateToCustomer({
+            // We call this first, but we DON'T wait for it to finish.
+            // This sends the API request to WhatsApp immediately.
+            sendOrderStatusUpdateToCustomer({
                 customerPhone: orderData.customerPhone,
                 botPhoneNumberId: restaurantData.botPhoneNumberId,
                 customerName: orderData.customerName,
                 orderId: orderId,
                 restaurantName: restaurantData.name,
                 status: newStatus
+            }).catch(e => {
+                // Log the error but don't block the main flow
+                console.error(`[API LOG] Failed to send WhatsApp notification for order ${orderId} in the background:`, e.message);
             });
         }
-
+        
+        // Now, update the database status
+        await orderRef.update({ status: newStatus });
 
         return NextResponse.json({ message: 'Order status updated successfully.' }, { status: 200 });
 

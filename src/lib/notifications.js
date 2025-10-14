@@ -50,13 +50,13 @@ export const sendOrderStatusUpdateToCustomer = async ({ customerPhone, botPhoneN
     }
     const customerPhoneWithCode = '91' + customerPhone;
     
-    // Choose the right template and parameters based on the status
     let templateName;
     let parameters;
 
     switch (status) {
         case 'confirmed':
             templateName = 'order_confirmation';
+            // FIX: This template requires exactly 3 variables.
             parameters = [
                 { type: "text", text: customerName },
                 { type: "text", text: orderId.substring(0, 8) },
@@ -68,6 +68,7 @@ export const sendOrderStatusUpdateToCustomer = async ({ customerPhone, botPhoneN
         case 'delivered':
             templateName = 'order_status_update';
             const capitalizedStatus = status.charAt(0).toUpperCase() + status.slice(1);
+            // This template requires 4 variables.
             parameters = [
                 { type: "text", text: customerName },
                 { type: "text", text: orderId.substring(0, 8) },
