@@ -66,7 +66,7 @@ export async function POST(req) {
             // You can add more details like contact number if available
         };
         
-        const contact = await razorpay.contact.create(contactPayload);
+        const contact = await razorpay.contacts.create(contactPayload);
         if (!contact || !contact.id) {
             throw new Error("Failed to create Contact on Razorpay.");
         }
@@ -83,13 +83,13 @@ export async function POST(req) {
             }
         };
 
-        const fundAccount = await razorpay.fundAccount.create(fundAccountPayload);
+        const fundAccount = await razorpay.fundAccounts.create(fundAccountPayload);
         
         if (!fundAccount || !fundAccount.id) {
             throw new Error("Failed to create Fund Account on Razorpay. The response did not contain a Fund Account ID.");
         }
 
-        // Save the returned fund account ID (starts with 'fa_')
+        // Save the returned fund account ID (starts with 'fa_') 
         await restaurantRef.update({
             razorpayAccountId: fundAccount.id
         });
