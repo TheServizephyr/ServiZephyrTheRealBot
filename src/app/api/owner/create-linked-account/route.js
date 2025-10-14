@@ -55,17 +55,6 @@ export async function POST(req) {
         }
         
         const credentials = Buffer.from(`${key_id}:${key_secret}`).toString('base64');
-        
-        // ** THE FIX IS HERE **
-        // The correct endpoint for creating Linked Accounts for Route is under the /accounts namespace.
-        // We are creating the axios instance correctly now.
-        const razorpayApi = axios.create({
-            baseURL: 'https://api.razorpay.com/v1',
-            headers: {
-                'Authorization': `Basic ${credentials}`,
-                'Content-Type': 'application/json'
-            }
-        });
 
         // --- STEP 1: Create a Linked Account via /accounts endpoint ---
         console.log("[API LOG] Step 1: Creating Razorpay Linked Account...");
@@ -82,8 +71,14 @@ export async function POST(req) {
         
         let linkedAccount;
         try {
-             // ** THE FIX **: The URL is now correct.
-            const accountResponse = await razorpayApi.post('/accounts', accountPayload);
+            // ** THE FINAL FIX **: Use a direct axios call with the full, absolute URL.
+            const accountResponse = await axios.post('https://api.razorpay.com/v1/accounts', accountPayload, {
+                headers: {
+                    'Authorization': `Basic ${credentials}`,
+                    'Content-Type': 'application/json'
+                }
+            });
+
             linkedAccount = accountResponse.data;
             // The ID here will be the `acc_...` ID
             console.log("[API LOG] Razorpay Linked Account created. Account ID is:", linkedAccount.id); 
