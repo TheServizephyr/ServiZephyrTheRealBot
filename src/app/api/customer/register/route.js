@@ -43,8 +43,9 @@ export async function POST(req) {
                 console.error("[Order API] Razorpay keys are not configured in environment variables.");
                 return NextResponse.json({ message: 'Payment gateway is not configured on the server.' }, { status: 500 });
             }
-            if (!razorpayAccountId || !razorpayAccountId.startsWith('acc_')) {
-                 console.error(`[Order API] Restaurant ${restaurantId} does not have a linked Razorpay route account ID.`);
+            // ** THE FIX **: Removed the check for `acc_`. We will trust the ID from the database.
+            if (!razorpayAccountId) {
+                 console.error(`[Order API] Restaurant ${restaurantId} does not have a linked Razorpay account ID.`);
                  return NextResponse.json({ message: 'This restaurant is not configured to accept online payments.' }, { status: 500 });
             }
 
@@ -54,7 +55,7 @@ export async function POST(req) {
                     account: razorpayAccountId,
                     amount: Math.round(grandTotal * 100), // Transfer the full amount
                     currency: "INR",
-                    on_hold: 1, // **CRITICAL**: Keep the transfer on hold until payment is confirmed
+                    on_hold: 1, // **CRITICAL**: Keep the transfer on hold until payment is confirmed by webhook
                 },
             ];
 
