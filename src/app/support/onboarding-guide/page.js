@@ -39,8 +39,8 @@ export default function OnboardingGuidePage() {
                     
                     <GuideStep
                         title="Step 1: 'Connect Bot' Button Dhoondhein"
-                        text="Apne ServiZephyr Owner Dashboard mein login karein. Aapko homepage par hi ek bada sa, 'Create & Connect Your WhatsApp Bot' ka button dikhega. Shuruaat karne ke liye is par click karein."
-                        screenshot="ServiZephyr dashboard showing the 'Create & Connect' button"
+                        text="Apne ServiZephyr Owner Dashboard mein login karein. 'Connections' page par jaayein. Aapko 'Connect a New WhatsApp Bot' ka button dikhega. Shuruaat karne ke liye is par click karein."
+                        screenshot="ServiZephyr Connections page showing the 'Connect a New WhatsApp Bot' button"
                     />
 
                     <GuideStep
@@ -80,6 +80,34 @@ export default function OnboardingGuidePage() {
                         text="WhatsApp har mahine aapko 1,000 conversations free deta hai. Uske baad, har conversation ka ek chhota sa charge lagta hai. Iske liye aapko ek payment method (jaise credit card) add karna hota hai. Shuruaat mein, aapka bill ₹0 hi rahega. Kaise Karein? Apne Meta Business Manager ke 'Billing & Payments' section mein jaakar 'Add Payment Method' par click karein aur apni card details daal dein."
                         screenshot="Payment Methods page in Meta Business Manager"
                     />
+                    
+                    <hr className="my-12" />
+                    
+                    <h2 className="text-3xl font-bold text-foreground">Part 3: Apne Message Templates Kaise Banayein?</h2>
+                    
+                    <GuideStep
+                        title="Step 1: Template Manager Par Jaayein"
+                        text="Apne ServiZephyr Dashboard ke 'Connections' page par wapas jaayein. Yahan aapko 'Manage WhatsApp Templates' ka ek section dikhega. 'Open Template Manager' button par click karein."
+                        screenshot="ServiZephyr Connections page showing the 'Manage WhatsApp Templates' button"
+                    />
+                    
+                     <GuideStep
+                        title="Step 2: Naya Template Banayein"
+                        text="'Open Template Manager' par click karte hi aap seedhe Meta ke official WhatsApp Manager page par pahunch jaayenge. Yahan, 'Create Template' button par click karein."
+                        screenshot="Meta WhatsApp Manager interface with 'Create Template' button highlighted"
+                    />
+                    
+                     <GuideStep
+                        title="Step 3: Template Category Aur Details Bharein"
+                        text="Meta aapse poochega ki aapka template kis baare mein hai. 'Marketing' ya 'Utility' chunein. Apne template ko ek naam dein (e.g., 'diwali_offer' ya 'order_status_update'). Phir, apne message ka content likhein. Aap variables (jaise customer ka naam, order number) jodne ke liye {{1}}, {{2}} jaise placeholders ka istemal kar sakte hain."
+                        screenshot="Meta's template creation form"
+                    />
+                    
+                     <GuideStep
+                        title="Step 4: Template Ko Review Ke Liye Submit Karein"
+                        text="Apna message likhne ke baad, 'Submit' par click karein. Meta ki team aapke template ko review karegi. Agar yeh unki policies ke mutabik hai, to yeh 5 minute se lekar kuch ghanton mein approve ho jaayega. Approved templates aap apni marketing campaigns mein istemal kar sakte hain."
+                    />
+
 
                     <hr className="my-12" />
 

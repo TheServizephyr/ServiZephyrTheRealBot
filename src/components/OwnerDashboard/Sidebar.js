@@ -15,7 +15,8 @@ import {
   Ticket,
   Lock,
   Bot,
-  Banknote
+  Banknote,
+  MessageSquare
 } from "lucide-react";
 import styles from "./OwnerDashboard.module.css";
 import SidebarLink from "./SidebarLink";
@@ -32,6 +33,7 @@ const menuItems = [
 
 const settingsItems = [
     { name: "Connections", icon: Bot, href: "/owner-dashboard/connections", featureId: "connections" },
+    { name: "Templates", icon: MessageSquare, href: "/owner-dashboard/connections", featureId: "templates" },
     { name: "Settings", icon: Settings, href: "/owner-dashboard/settings", featureId: "settings" },
     { name: "Payout Settings", icon: Banknote, href: "/owner-dashboard/payout-settings", featureId: "payout-settings" },
 ];
@@ -42,7 +44,7 @@ export default function Sidebar({ isOpen, setIsOpen, isMobile, isCollapsed, rest
   const getIsDisabled = (featureId) => {
     // If restaurant is pending or rejected, only menu and settings are enabled.
     if (status === 'pending' || status === 'rejected') {
-      return !['menu', 'settings', 'connections', 'payout-settings'].includes(featureId);
+      return !['menu', 'settings', 'connections', 'payout-settings', 'templates'].includes(featureId);
     }
     // If suspended, check the restrictedFeatures list.
     if (status === 'suspended') {

@@ -3,7 +3,7 @@
 
 import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { Bot, PlusCircle, CheckCircle, AlertCircle, RefreshCw, Loader2, HelpCircle } from 'lucide-react';
+import { Bot, PlusCircle, CheckCircle, AlertCircle, RefreshCw, Loader2, HelpCircle, MessageSquare, ExternalLink } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { auth } from '@/lib/firebase';
 import { useSearchParams } from 'next/navigation';
@@ -247,6 +247,34 @@ export default function ConnectionsPage() {
           </div>
         )}
       </div>
+
+      <motion.div 
+        variants={itemVariants}
+        className="bg-card border border-border rounded-xl p-6"
+      >
+        <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+          <div className="flex items-center gap-4">
+            <div className="bg-muted p-3 rounded-full">
+              <MessageSquare className="h-6 w-6 text-foreground" />
+            </div>
+            <div>
+              <h3 className="text-lg font-bold text-foreground">Manage WhatsApp Templates</h3>
+              <p className="text-sm text-muted-foreground mt-1">Create and manage your message templates (e.g., for promotions) in the Meta Business Suite.</p>
+            </div>
+          </div>
+          <a 
+            href="https://business.facebook.com/wa/manage/message-templates/" 
+            target="_blank" 
+            rel="noopener noreferrer"
+            className="flex-shrink-0"
+          >
+            <Button variant="outline">
+              Open Template Manager <ExternalLink size={16} className="ml-2"/>
+            </Button>
+          </a>
+        </div>
+      </motion.div>
+
     </motion.div>
   );
 }
