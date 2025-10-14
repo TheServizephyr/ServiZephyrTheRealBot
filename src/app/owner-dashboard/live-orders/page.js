@@ -4,7 +4,7 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Star, RefreshCw, ChevronUp, ChevronDown, Check, CookingPot, Bike, PartyPopper, Undo, Bell, PackageCheck, Printer, X, Loader2 } from 'lucide-react';
+import { Star, RefreshCw, ChevronUp, ChevronDown, Check, CookingPot, Bike, PartyPopper, Undo, Bell, PackageCheck, Printer, X, Loader2, IndianRupee, Wallet } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { auth } from '@/lib/firebase';
 import { cn } from "@/lib/utils";
@@ -15,6 +15,7 @@ import { useSearchParams } from 'next/navigation';
 
 const statusConfig = {
   'pending': { color: 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30' },
+  'paid': { color: 'bg-green-500/20 text-green-400 border-green-500/30' },
   'confirmed': { color: 'bg-blue-500/20 text-blue-400 border-blue-500/30' },
   'preparing': { color: 'bg-orange-500/20 text-orange-400 border-orange-500/30' },
   'dispatched': { color: 'bg-indigo-500/20 text-indigo-400 border-indigo-500/30' },
@@ -22,12 +23,16 @@ const statusConfig = {
   'rejected': { color: 'bg-red-500/20 text-red-400 border-red-500/30' },
 };
 
-const statusFlow = ['pending', 'confirmed', 'preparing', 'dispatched', 'delivered'];
+const statusFlow = ['pending', 'paid', 'confirmed', 'preparing', 'dispatched', 'delivered'];
 
 const ActionButton = ({ status, onNext, onRevert, orderId, onReject, isUpdating }) => {
     const searchParams = useSearchParams();
     const impersonatedOwnerId = searchParams.get('impersonate_owner_id');
-    const currentIndex = statusFlow.indexOf(status);
+    
+    // Treat 'paid' and 'pending' as the same for the action flow
+    const actionStatus = status === 'paid' ? 'pending' : status;
+    const currentIndex = statusFlow.indexOf(actionStatus);
+
     const nextStatus = statusFlow[currentIndex + 1];
     const prevStatus = statusFlow[currentIndex - 1];
 
@@ -57,7 +62,7 @@ const ActionButton = ({ status, onNext, onRevert, orderId, onReject, isUpdating 
         'dispatched': { text: 'Mark Delivered', icon: PartyPopper },
     };
 
-    const action = actionConfig[status];
+    const action = actionConfig[actionStatus];
     
     const billUrl = impersonatedOwnerId
         ? `/owner-dashboard/bill/${orderId}?impersonate_owner_id=${impersonatedOwnerId}`
@@ -83,7 +88,7 @@ const ActionButton = ({ status, onNext, onRevert, orderId, onReject, isUpdating 
                 <ActionIcon size={16} className="mr-2" />
                 {action.text}
             </Button>
-            {status === 'pending' && (
+            {(status === 'pending' || status === 'paid') && (
                  <Button
                     onClick={onReject}
                     variant="destructive"
@@ -333,6 +338,15 @@ export default function LiveOrdersPage() {
                                     <td className="p-4">
                                         <div className="font-bold text-foreground">{order.id}</div>
                                         <div className="text-sm text-muted-foreground">{order.customer}</div>
+                                        {order.paymentDetails?.method === 'cod' ? (
+                                            <div className="mt-1 flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full bg-yellow-500/20 text-yellow-400 border border-yellow-500/30 w-fit">
+                                                <IndianRupee size={12}/> COD
+                                            </div>
+                                        ) : (
+                                            <div className="mt-1 flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full bg-green-500/20 text-green-400 border border-green-500/30 w-fit">
+                                               <Wallet size={12}/> PAID
+                                            </div>
+                                        )}
                                     </td>
                                     <td className="p-4 text-sm text-muted-foreground">
                                         <ul className="space-y-1">

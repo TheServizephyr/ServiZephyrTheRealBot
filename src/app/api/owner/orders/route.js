@@ -15,7 +15,7 @@ async function verifyOwnerAndGetRestaurant(req, auth, firestore) {
     const decodedToken = await auth.verifyIdToken(token);
     const uid = decodedToken.uid;
     
-    const url = new URL(req.headers.get('referer'));
+    const url = new URL(req.headers.get('referer') || 'http://localhost');
     const impersonatedOwnerId = url.searchParams.get('impersonate_owner_id');
     const userDoc = await firestore.collection('users').doc(uid).get();
 
@@ -116,7 +116,7 @@ export async function PATCH(req) {
             return NextResponse.json({ message: 'Order ID and new status are required.' }, { status: 400 });
         }
         
-        const validStatuses = ["pending", "confirmed", "preparing", "dispatched", "delivered", "rejected"];
+        const validStatuses = ["pending", "paid", "confirmed", "preparing", "dispatched", "delivered", "rejected"];
         if(!validStatuses.includes(newStatus)) {
             return NextResponse.json({ message: 'Invalid status provided.' }, { status: 400 });
         }
