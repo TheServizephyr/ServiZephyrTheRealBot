@@ -1,10 +1,10 @@
-
 'use client';
 
 import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { Banknote, User, Mail, Phone, Landmark, Hash, Save, AlertTriangle, CheckCircle, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Label } from '@/components/ui/label';
 import { auth } from '@/lib/firebase';
 import { useRouter } from 'next/navigation';
 
@@ -177,4 +177,3 @@ export default function PayoutSettingsPage() {
         </motion.div>
     );
 }
-
