@@ -57,13 +57,13 @@ export async function POST(req) {
         const credentials = Buffer.from(`${key_id}:${key_secret}`).toString('base64');
         
         // ** THE FIX IS HERE **
-        // The correct endpoint for creating Linked Accounts for Route is under the /beta/ namespace.
+        // The correct endpoint for creating Linked Accounts for Route is under the /accounts namespace.
+        // We are creating the axios instance correctly now.
         const razorpayApi = axios.create({
             baseURL: 'https://api.razorpay.com/v1',
             headers: {
                 'Authorization': `Basic ${credentials}`,
-                'Content-Type': 'application/json',
-                'X-Razorpay-Account': process.env.RAZORPAY_ACCOUNT_ID
+                'Content-Type': 'application/json'
             }
         });
 
