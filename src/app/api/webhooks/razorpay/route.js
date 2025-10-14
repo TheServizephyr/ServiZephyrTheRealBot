@@ -77,9 +77,6 @@ export async function POST(req) {
                             const razorpay = new Razorpay({
                                 key_id: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID,
                                 key_secret: process.env.RAZORPAY_KEY_SECRET,
-                                headers: {
-                                   "X-Razorpay-Account": process.env.RAZORPAY_ACCOUNT_ID
-                                }
                             });
 
                             const transferPayload = {
@@ -88,6 +85,7 @@ export async function POST(req) {
                                         account: restaurantData.razorpayAccountId,
                                         amount: paymentEntity.amount, 
                                         currency: 'INR',
+                                        on_hold: 0,
                                         notes: {
                                             order_id: orderDoc.id,
                                             restaurant_name: restaurantData.name,
@@ -97,7 +95,12 @@ export async function POST(req) {
                             };
                             
                             console.log(`[Webhook] Initiating transfer for payment ${paymentId} to account ${restaurantData.razorpayAccountId}...`);
-                            await razorpay.payments.transfer(paymentId, transferPayload);
+                            // Use razorpay.payments.transfer with the platform account header
+                            await razorpay.payments.transfer(paymentId, transferPayload, {
+                                headers: {
+                                   "X-Razorpay-Account": process.env.RAZORPAY_ACCOUNT_ID
+                                }
+                            });
                             console.log(`[Webhook] Successfully initiated transfer for payment ${paymentId}.`);
 
                         } catch (transferError) {

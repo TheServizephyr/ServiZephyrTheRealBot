@@ -49,9 +49,6 @@ export async function POST(req) {
         const razorpay = new Razorpay({
             key_id: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID,
             key_secret: process.env.RAZORPAY_KEY_SECRET,
-            headers: {
-                "X-Razorpay-Account": process.env.RAZORPAY_ACCOUNT_ID
-            }
         });
 
 
