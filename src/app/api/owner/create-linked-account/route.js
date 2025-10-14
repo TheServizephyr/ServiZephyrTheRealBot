@@ -89,12 +89,13 @@ export async function POST(req) {
         }, { status: 201 });
 
     } catch (error) {
-        // Improved Error Logging
-        console.error("CREATE LINKED ACCOUNT API ERROR:", error.response ? JSON.stringify(error.response.data, null, 2) : error.message);
+        // --- FINAL DEBUGGING LOGIC ---
+        // Log the entire error object to see its structure
+        console.error("CREATE LINKED ACCOUNT API - FULL ERROR OBJECT:", JSON.stringify(error, null, 2));
+
+        // Try to find the message, even if it's nested
+        const errorMessage = error.response?.data?.error?.description || error.message || "An unknown error occurred. Check server logs for the full error object.";
         
-        const errorMessage = error.response?.data?.error?.description || error.message || "An unknown error occurred on the server.";
-        const statusCode = error.response?.status || 500;
-        
-        return NextResponse.json({ message: `Backend Error: ${errorMessage}` }, { status: statusCode });
+        return NextResponse.json({ message: `Backend Error: ${errorMessage}` }, { status: 500 });
     }
 }
