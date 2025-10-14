@@ -129,7 +129,7 @@ export default function PayoutSettingsPage() {
             >
                 <CheckCircle className="h-20 w-20 text-green-500" />
                 <h2 className="mt-6 text-2xl font-bold">Bank Account Linked Successfully!</h2>
-                <p className="mt-2 max-w-md text-muted-foreground">Your Razorpay Linked Account ID is:</p>
+                <p className="mt-2 max-w-md text-muted-foreground">Your Razorpay Contact ID for routing is:</p>
                 <p className="mt-2 text-lg font-mono p-3 bg-muted rounded-md border border-border text-foreground">{accountId}</p>
                 <p className="mt-4 text-sm text-muted-foreground">You are all set to receive payouts. No further action is needed.</p>
             </motion.div>

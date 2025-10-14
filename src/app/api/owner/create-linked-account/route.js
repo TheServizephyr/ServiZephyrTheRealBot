@@ -23,7 +23,6 @@ async function verifyOwnerAndGetRestaurant(req, auth) {
     return restaurantsQuery.docs[0].ref;
 }
 
-// --- THIS IS THE FINAL AND CORRECT IMPLEMENTATION USING AXIOS ---
 export async function POST(req) {
     console.log("[API LOG] Received POST request to /api/owner/create-linked-account");
     const auth = getAuth();
@@ -55,7 +54,7 @@ export async function POST(req) {
         });
 
 
-        // --- STEP 1: Create a Contact (This response contains the `acc_...` ID) ---
+        // --- STEP 1: Create a Contact ---
         console.log("[API LOG] Step 1: Creating Razorpay Contact...");
         const contactPayload = {
             name: name,
@@ -71,8 +70,7 @@ export async function POST(req) {
         try {
             const contactResponse = await razorpayApi.post('/contacts', contactPayload);
             contact = contactResponse.data;
-            // The 'id' in the contact response is the Route Account ID (`acc_...`)
-            console.log("[API LOG] Razorpay Contact created. The Route Account ID is:", contact.id);
+            console.log("[API LOG] Razorpay Contact created. Contact ID is:", contact.id); // This is 'cont_...'
         } catch (error) {
             console.error("[API ERROR] Failed to create Razorpay contact:", error.response ? error.response.data : error.message);
             const errorDetail = error.response?.data?.error?.description || 'Failed to create contact.';
@@ -83,7 +81,7 @@ export async function POST(req) {
         // --- STEP 2: Create a Fund Account (to link the bank) ---
         console.log("[API LOG] Step 2: Creating Razorpay Fund Account...");
         const fundAccountPayload = {
-            contact_id: contact.id, // Use the ID from the contact, which is the acc_... ID
+            contact_id: contact.id, 
             account_type: "bank_account",
             bank_account: {
                 name: name,
@@ -96,22 +94,22 @@ export async function POST(req) {
         try {
             const fundAccountResponse = await razorpayApi.post('/fund_accounts', fundAccountPayload);
             fundAccount = fundAccountResponse.data;
-            console.log("[API LOG] Razorpay Fund Account created successfully. Fund Account ID is:", fundAccount.id);
+            console.log("[API LOG] Razorpay Fund Account created successfully. Fund Account ID is:", fundAccount.id); // This is 'fa_...'
         } catch (error) {
              console.error("[API ERROR] Failed to create Razorpay fund account:", error.response ? error.response.data : error.message);
             const errorDetail = error.response?.data?.error?.description || 'Failed to create fund account.';
             return NextResponse.json({ message: `Razorpay Error: ${errorDetail}` }, { status: 500 });
         }
         
-        // --- STEP 3: Save the CORRECT Route Account ID ('acc_...') to Firestore ---
-        console.log("[API LOG] Step 3: Saving Razorpay Route Account ID to Firestore...");
+        // --- STEP 3: Save BOTH IDs to Firestore ---
+        console.log("[API LOG] Step 3: Saving Contact ID and Fund Account ID to Firestore...");
         await restaurantRef.update({
-            // ** THE FIX **: We save the 'id' from the contact response, which is the 'acc_...' ID.
-            razorpayAccountId: contact.id 
+            razorpayAccountId: contact.id, // Save the 'cont_...' ID
+            razorpayFundAccountId: fundAccount.id // Save the 'fa_...' ID
         });
-        console.log("[API LOG] Firestore updated successfully with Route Account ID:", contact.id);
+        console.log(`[API LOG] Firestore updated. Contact ID: ${contact.id}, Fund ID: ${fundAccount.id}`);
 
-        return NextResponse.json({ message: 'Bank account linked successfully!', accountId: contact.id }, { status: 200 });
+        return NextResponse.json({ message: 'Bank account linked successfully!', accountId: contact.id, fundAccountId: fundAccount.id }, { status: 200 });
 
     } catch (error) {
         console.error("CREATE LINKED ACCOUNT API - FULL ERROR OBJECT:", error);

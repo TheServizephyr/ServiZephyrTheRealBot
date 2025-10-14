@@ -27,7 +27,9 @@ export async function POST(req) {
             return NextResponse.json({ message: 'This restaurant does not exist.' }, { status: 404 });
         }
         const restaurantData = restaurantDoc.data();
-        const razorpayAccountId = restaurantData.razorpayAccountId;
+        const razorpayAccountId = restaurantData.razorpayAccountId; // This should be the 'cont_...' ID
+        const razorpayFundAccountId = restaurantData.razorpayFundAccountId; // This should be the 'fa_...' ID
+
 
         // --- RAZORPAY ORDER CREATION ---
         let razorpayOrderId = null;
@@ -44,18 +46,23 @@ export async function POST(req) {
                 return NextResponse.json({ message: 'Payment gateway is not configured on the server.' }, { status: 500 });
             }
 
-            if (!razorpayAccountId) {
-                 console.error(`[Order API] Restaurant ${restaurantId} does not have a linked Razorpay account ID.`);
+            if (!razorpayAccountId || !razorpayFundAccountId) {
+                 console.error(`[Order API] Restaurant ${restaurantId} does not have a linked Razorpay Contact ID or Fund Account ID.`);
                  return NextResponse.json({ message: 'This restaurant is not configured to accept online payments.' }, { status: 500 });
             }
 
-            // **THE FIX**: Add the transfers array to route payments using the correct `acc_...` ID
+            // **THE FIX**: Use the 'cont_...' ID for the account and 'fa_...' for the notes
             razorpayOrderOptions.transfers = [
                 {
-                    account: razorpayAccountId, // This should now be the `acc_...` ID
-                    amount: Math.round(grandTotal * 100), // Transfer the full amount
+                    account: razorpayAccountId, // This must be the 'cont_...' ID
+                    amount: Math.round(grandTotal * 100),
                     currency: "INR",
-                    on_hold: 1, // **CRITICAL**: Keep the transfer on hold until payment is confirmed by webhook
+                    on_hold: 1, // Keep the transfer on hold until payment is confirmed by webhook
+                    notes: {
+                        fund_account_id: razorpayFundAccountId, // Specify which bank account to use
+                        name: name,
+                        notes: "Payment for order."
+                    }
                 },
             ];
 
