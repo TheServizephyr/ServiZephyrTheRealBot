@@ -1,3 +1,4 @@
+
 import { NextResponse } from 'next/server';
 import { getAuth, getFirestore } from '@/lib/firebase-admin';
 import Razorpay from 'razorpay';
@@ -51,7 +52,7 @@ export async function POST(req) {
         });
 
         const ownerDoc = await getFirestore().collection('users').doc(ownerId).get();
-        const ownerEmail = ownerDoc.exists() ? ownerDoc.data().email : null;
+        const ownerEmail = ownerDoc.exists ? ownerDoc.data().email : null;
 
         if (!ownerEmail) {
              return NextResponse.json({ message: 'Owner email not found, which is required for creating a linked account.' }, { status: 400 });
