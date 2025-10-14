@@ -11,30 +11,12 @@ export async function POST(req) {
         const firestore = getFirestore();
         const { name, address, phone, restaurantId, items, notes, coupon, loyaltyDiscount, razorpay_payment_id, razorpay_order_id, razorpay_signature } = await req.json();
 
-        // --- Payment Verification ---
-        if (!process.env.RAZORPAY_KEY_SECRET) {
-            throw new Error("Razorpay Key Secret is not configured.");
-        }
-        if (razorpay_payment_id && razorpay_order_id && razorpay_signature) {
-             const body = razorpay_order_id + "|" + razorpay_payment_id;
-             const expectedSignature = crypto
-                .createHmac('sha256', process.env.RAZORPAY_KEY_SECRET)
-                .update(body.toString())
-                .digest('hex');
-            
-            if (expectedSignature !== razorpay_signature) {
-                return NextResponse.json({ message: 'Payment verification failed. Invalid signature.' }, { status: 400 });
-            }
-             console.log(`[Order API] Payment verified for Razorpay Order ID: ${razorpay_order_id}`);
-        } else {
-             // This can be a COD order in the future, for now we enforce payment
-             return NextResponse.json({ message: 'Payment details are missing.' }, { status: 400 });
-        }
-        // --- End Payment Verification ---
-
-
-        if (!name || !address || !phone || !restaurantId || !items) {
-            return NextResponse.json({ message: 'Missing required fields.' }, { status: 400 });
+        // --- PAYMENT VERIFICATION REMOVED ---
+        // Verification will now be handled exclusively by the /api/webhooks/razorpay webhook
+        // to prevent race conditions. This API now only creates the pending order.
+        
+        if (!name || !address || !phone || !restaurantId || !items || !razorpay_order_id) {
+            return NextResponse.json({ message: 'Missing required fields for order creation.' }, { status: 400 });
         }
         
         if (!/^\d{10}$/.test(phone)) {
@@ -141,32 +123,26 @@ export async function POST(req) {
             sgst: sgst,
             deliveryCharge: deliveryCharge,
             totalAmount: grandTotal,
-            status: 'pending',
+            status: 'pending', // Order is created as 'pending'
             priority: Math.floor(Math.random() * 5) + 1,
             orderDate: adminFirestore.FieldValue.serverTimestamp(),
             notes: notes || null,
             paymentDetails: {
-                razorpay_payment_id,
-                razorpay_order_id,
+                razorpay_payment_id: razorpay_payment_id || null,
+                razorpay_order_id: razorpay_order_id,
+                razorpay_signature: razorpay_signature || null,
                 method: 'online'
             }
         });
         
-        console.log(`[Order API] Order ${newOrderRef.id} created for user ${userId}. Grand total: ${grandTotal}`);
+        console.log(`[Order API] Pending order ${newOrderRef.id} created for user ${userId}. Grand total: ${grandTotal}`);
 
         await batch.commit();
         
-        console.log(`[Order API Debug] Attempting to send notification. Owner Phone: ${ownerPhone}, Bot ID: ${botPhoneNumberId}`);
-        await sendNewOrderToOwner({
-            ownerPhone: ownerPhone,
-            botPhoneNumberId: botPhoneNumberId,
-            customerName: name,
-            totalAmount: grandTotal,
-            orderId: newOrderRef.id
-        });
+        // Notification is now moved to the webhook after payment is confirmed.
 
         return NextResponse.json({ 
-            message: 'Order placed successfully! We will notify you on WhatsApp.'
+            message: 'Order received. Please complete payment. We will notify you on WhatsApp once payment is confirmed.'
         }, { status: 200 });
 
     } catch (error) {
@@ -174,3 +150,4 @@ export async function POST(req) {
         return NextResponse.json({ message: `Backend Error: ${error.message}` }, { status: 500 });
     }
 }
+
