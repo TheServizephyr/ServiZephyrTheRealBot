@@ -9,9 +9,8 @@ import { Button } from '@/components/ui/button';
 import { auth } from '@/lib/firebase';
 import { cn } from "@/lib/utils";
 import { formatDistanceToNowStrict } from 'date-fns';
-import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
-
+import { Dialog, DialogContent } from "@/components/ui/dialog";
 
 const statusConfig = {
   'pending': { color: 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30' },
@@ -25,10 +24,101 @@ const statusConfig = {
 
 const statusFlow = ['pending', 'paid', 'confirmed', 'preparing', 'dispatched', 'delivered'];
 
-const ActionButton = ({ status, onNext, onRevert, orderId, onReject, isUpdating }) => {
-    const searchParams = useSearchParams();
-    const impersonatedOwnerId = searchParams.get('impersonate_owner_id');
-    
+// --- Bill Modal Component ---
+const BillModal = ({ order, restaurant, onClose, onPrint }) => {
+    if (!order || !restaurant) return null;
+
+    const subtotal = order.subtotal || order.items.reduce((acc, item) => acc + item.qty * item.price, 0);
+    const couponDiscount = order.coupon?.discount || 0;
+    const loyaltyDiscount = order.loyaltyDiscount || 0;
+    const totalDiscount = couponDiscount + loyaltyDiscount;
+    const cgst = order.cgst || 0;
+    const sgst = order.sgst || 0;
+    const deliveryCharge = order.deliveryCharge || 0;
+    const grandTotal = order.totalAmount;
+    const orderDate = new Date(order.orderDate.seconds ? order.orderDate.seconds * 1000 : order.orderDate);
+
+    return (
+        <Dialog open={true} onOpenChange={onClose}>
+            <DialogContent className="bg-background border-border text-foreground max-w-md p-0">
+                 <div id="bill-content" className="font-mono text-black bg-white p-6">
+                    <div className="text-center mb-6 border-b-2 border-dashed border-black pb-4">
+                        <h1 className="text-2xl font-bold uppercase">{restaurant.name}</h1>
+                        <p className="text-xs">{restaurant.address}</p>
+                        {restaurant.gstin && <p className="text-xs mt-1">GSTIN: {restaurant.gstin}</p>}
+                        {restaurant.fssai && <p className="text-xs">FSSAI: {restaurant.fssai}</p>}
+                    </div>
+
+                    <div className="mb-4 text-xs">
+                        <p><strong>Bill To:</strong> {order.customerName}</p>
+                        <p><strong>Add:</strong> {order.customerAddress}</p>
+                        <p><strong>Mobile:</strong> {order.customerPhone}</p>
+                    </div>
+
+                    <table className="w-full text-xs mb-4">
+                        <thead className="border-y-2 border-dashed border-black">
+                            <tr>
+                                <th className="text-left font-bold py-2">ITEM</th>
+                                <th className="text-center font-bold py-2">QTY</th>
+                                <th className="text-right font-bold py-2">RATE</th>
+                                <th className="text-right font-bold py-2">AMOUNT</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {order.items.map((item, index) => (
+                                <tr key={index} className="border-b border-dotted border-black">
+                                    <td className="py-2">{item.name}</td>
+                                    <td className="text-center py-2">{item.qty}</td>
+                                    <td className="text-right py-2">{item.price.toFixed(2)}</td>
+                                    <td className="text-right py-2">{(item.qty * item.price).toFixed(2)}</td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+
+                    <div className="space-y-1 text-xs">
+                         <div className="flex justify-between"><span className="font-semibold">SUB TOTAL</span><span>{subtotal.toFixed(2)}</span></div>
+                         {totalDiscount > 0 && <div className="flex justify-between"><span className="font-semibold">DISCOUNT</span><span>- {totalDiscount.toFixed(2)}</span></div>}
+                         <div className="flex justify-between"><span className="font-semibold">CGST (5%)</span><span>{cgst.toFixed(2)}</span></div>
+                         <div className="flex justify-between"><span className="font-semibold">SGST (5%)</span><span>{sgst.toFixed(2)}</span></div>
+                         <div className="flex justify-between"><span className="font-semibold">Delivery Charge</span><span>{deliveryCharge.toFixed(2)}</span></div>
+                    </div>
+                    
+                    <div className="flex justify-between font-bold text-lg pt-2 mt-2 border-t-2 border-dashed border-black">
+                        <span>GRAND TOTAL</span>
+                        <span>₹{grandTotal.toFixed(2)}</span>
+                    </div>
+
+                     <div className="mt-4 pt-4 border-t-2 border-dashed border-black text-center">
+                        {order.paymentDetails?.method === 'cod' ? (
+                            <div className="text-base font-bold text-red-600">CASH ON DELIVERY</div>
+                        ) : (
+                            <div className="text-base font-bold text-green-600">PAID ONLINE</div>
+                        )}
+                    </div>
+                    
+                    <div className="mt-4 pt-4 border-t border-dashed border-black text-xs">
+                        <p><strong>Transaction ID:</strong> {order.id}</p>
+                        <p><strong>Date:</strong> {orderDate.toLocaleDateString('en-IN')} | <strong>Time:</strong> {orderDate.toLocaleTimeString('en-IN')}</p>
+                    </div>
+
+                    <div className="text-center mt-6 pt-4 border-t border-dashed border-black">
+                        <p className="text-xs italic">Thank you for your order!</p>
+                        <p className="text-xs font-bold mt-1">Powered by ServiZephyr</p>
+                    </div>
+                </div>
+                 <div className="p-4 bg-muted border-t border-border flex justify-end">
+                    <Button onClick={onPrint} className="bg-primary hover:bg-primary/90">
+                        <Printer className="mr-2 h-4 w-4" /> Print Bill
+                    </Button>
+                </div>
+            </DialogContent>
+        </Dialog>
+    );
+};
+
+
+const ActionButton = ({ status, onNext, onRevert, orderId, onReject, isUpdating, onPrintClick }) => {
     // Treat 'paid' and 'pending' as the same for the action flow
     const actionStatus = status === 'paid' ? 'pending' : status;
     const currentIndex = statusFlow.indexOf(actionStatus);
@@ -51,6 +141,9 @@ const ActionButton = ({ status, onNext, onRevert, orderId, onReject, isUpdating 
                 <span className={`text-sm font-semibold ${status === 'delivered' ? 'text-green-400' : 'text-red-400'}`}>
                     Order {status.charAt(0).toUpperCase() + status.slice(1)}
                 </span>
+                 <Button onClick={onPrintClick} variant="outline" size="icon" className="h-9 w-9">
+                    <Printer size={16} />
+                 </Button>
             </div>
         );
     }
@@ -64,10 +157,6 @@ const ActionButton = ({ status, onNext, onRevert, orderId, onReject, isUpdating 
 
     const action = actionConfig[actionStatus];
     
-    const billUrl = impersonatedOwnerId
-        ? `/owner-dashboard/bill/${orderId}?impersonate_owner_id=${impersonatedOwnerId}`
-        : `/owner-dashboard/bill/${orderId}`;
-    
     if (!action) {
          return (
             <div className="flex items-center gap-2">
@@ -76,7 +165,6 @@ const ActionButton = ({ status, onNext, onRevert, orderId, onReject, isUpdating 
         );
     }
     const ActionIcon = action.icon;
-
 
     return (
         <div className="flex items-center gap-2">
@@ -99,13 +187,9 @@ const ActionButton = ({ status, onNext, onRevert, orderId, onReject, isUpdating 
                     Reject
                 </Button>
             )}
-             <Link href={billUrl} passHref>
-                <Button asChild variant="outline" size="icon" className="h-9 w-9">
-                    <a>
-                        <Printer size={16} />
-                    </a>
-                </Button>
-            </Link>
+             <Button onClick={onPrintClick} variant="outline" size="icon" className="h-9 w-9">
+                <Printer size={16} />
+             </Button>
             {prevStatus && (
                  <Button
                     onClick={() => onRevert(prevStatus)}
@@ -136,7 +220,6 @@ const PriorityStars = ({ score }) => (
   </div>
 );
 
-
 const SortableHeader = ({ children, column, sortConfig, onSort }) => {
   const isSorted = sortConfig.key === column;
   const direction = isSorted ? sortConfig.direction : 'desc';
@@ -159,6 +242,7 @@ export default function LiveOrdersPage() {
   const [loading, setLoading] = useState(true);
   const [updatingOrderId, setUpdatingOrderId] = useState(null);
   const [sortConfig, setSortConfig] = useState({ key: 'orderDate', direction: 'desc' });
+  const [billData, setBillData] = useState({ order: null, restaurant: null });
   const searchParams = useSearchParams();
   const impersonatedOwnerId = searchParams.get('impersonate_owner_id');
 
@@ -208,20 +292,23 @@ export default function LiveOrdersPage() {
     };
   }, [impersonatedOwnerId]);
 
-  const handleAPICall = async (method, body) => {
+  const handleAPICall = async (method, body, endpoint = '/api/owner/orders') => {
     const user = auth.currentUser;
     if (!user) throw new Error("Authentication required.");
     const idToken = await user.getIdToken();
     
-    let url = new URL('/api/owner/orders', window.location.origin);
+    let url = new URL(endpoint, window.location.origin);
     if (impersonatedOwnerId) {
         url.searchParams.append('impersonate_owner_id', impersonatedOwnerId);
+    }
+    if (method === 'GET' && body) {
+        Object.keys(body).forEach(key => url.searchParams.append(key, body[key]));
     }
 
     const res = await fetch(url.toString(), {
         method,
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${idToken}` },
-        body: JSON.stringify(body),
+        headers: method !== 'GET' ? { 'Content-Type': 'application/json', 'Authorization': `Bearer ${idToken}` } : { 'Authorization': `Bearer ${idToken}` },
+        body: method !== 'GET' ? JSON.stringify(body) : undefined,
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.message || 'API call failed');
@@ -253,6 +340,34 @@ export default function LiveOrdersPage() {
     }
   }
 
+  const handlePrintClick = async (orderId) => {
+      try {
+        setUpdatingOrderId(orderId);
+        const data = await handleAPICall('GET', { id: orderId });
+        setBillData({ order: data.order, restaurant: data.restaurant });
+      } catch(e) {
+        alert("Could not load bill data: " + e.message);
+      } finally {
+        setUpdatingOrderId(null);
+      }
+  };
+
+  const handlePrint = () => {
+    const printContents = document.getElementById('bill-content').innerHTML;
+    const originalContents = document.body.innerHTML;
+    const printWindow = window.open('', '', 'height=600,width=800');
+    printWindow.document.write('<html><head><title>Print Bill</title>');
+    printWindow.document.write('<style>@page { size: 80mm auto; margin: 0; } body { margin: 0; font-family: monospace; } table { width: 100%; border-collapse: collapse; } th, td { padding: 4px; } </style>');
+    printWindow.document.write('</head><body>');
+    printWindow.document.write(printContents);
+    printWindow.document.write('</body></html>');
+    printWindow.document.close();
+    printWindow.focus();
+    printWindow.print();
+    printWindow.close();
+};
+
+
   const handleSort = (key) => {
     let direction = 'asc';
     if (sortConfig.key === key && sortConfig.direction === 'asc') {
@@ -282,11 +397,19 @@ export default function LiveOrdersPage() {
     return sortableItems;
   }, [orders, sortConfig]);
 
-
   return (
     <div className="p-4 md:p-6 text-foreground min-h-screen bg-background">
         <audio id="notification-sound" src="/notification.mp3" preload="auto"></audio>
-
+        
+         {billData.order && (
+            <BillModal 
+                order={billData.order}
+                restaurant={billData.restaurant}
+                onClose={() => setBillData({ order: null, restaurant: null })}
+                onPrint={handlePrint}
+            />
+        )}
+        
         <div className="flex flex-col md:flex-row justify-between md:items-center mb-6">
             <div>
                 <h1 className="text-2xl md:text-3xl font-bold tracking-tight">Live Order Management</h1>
@@ -338,7 +461,7 @@ export default function LiveOrdersPage() {
                                     <td className="p-4">
                                         <div className="font-bold text-foreground">{order.id}</div>
                                         <div className="text-sm text-muted-foreground">{order.customer}</div>
-                                        {order.paymentDetails?.method === 'cod' ? (
+                                         {order.paymentDetails?.method === 'cod' ? (
                                             <div className="mt-1 flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full bg-yellow-500/20 text-yellow-400 border border-yellow-500/30 w-fit">
                                                 <IndianRupee size={12}/> COD
                                             </div>
@@ -371,6 +494,7 @@ export default function LiveOrdersPage() {
                                             onNext={(newStatus) => handleUpdateStatus(order.id, newStatus)}
                                             onRevert={(newStatus) => handleUpdateStatus(order.id, newStatus)}
                                             onReject={() => handleRejectOrder(order.id)}
+                                            onPrintClick={() => handlePrintClick(order.id)}
                                         />
                                     </td>
                                 </motion.tr>
