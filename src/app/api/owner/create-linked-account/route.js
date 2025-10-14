@@ -5,7 +5,7 @@ import { NextResponse } from 'next/server';
 import { getAuth, getFirestore } from '@/lib/firebase-admin';
 import axios from 'axios';
 
-// Helper to verify owner and get their first restaurant ID
+// Helper to verify owner and get their restaurant details
 async function verifyOwnerAndGetRestaurant(req, auth) {
     const authHeader = req.headers.get('authorization');
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
@@ -20,7 +20,18 @@ async function verifyOwnerAndGetRestaurant(req, auth) {
     if (restaurantsQuery.empty) {
         throw { message: 'No restaurant associated with this owner.', status: 404 };
     }
-    return restaurantsQuery.docs[0].ref;
+    
+    const userDoc = await firestore.collection('users').doc(uid).get();
+    if (!userDoc.exists) {
+        throw { message: 'Owner user profile not found.', status: 404 };
+    }
+    
+    const restaurantDoc = restaurantsQuery.docs[0];
+    return {
+      restaurantRef: restaurantDoc.ref,
+      restaurantData: restaurantDoc.data(),
+      userData: userDoc.data()
+    };
 }
 
 export async function POST(req) {
@@ -28,12 +39,11 @@ export async function POST(req) {
     const auth = getAuth();
     
     try {
-        const restaurantRef = await verifyOwnerAndGetRestaurant(req, auth);
-        const { name, email, phone, account_number, ifsc_code, bank_name } = await req.json();
-
+        const { restaurantRef, restaurantData, userData } = await verifyOwnerAndGetRestaurant(req, auth);
+        
         // --- VALIDATION ---
-        if (!name || !email || !phone || !account_number || !ifsc_code) {
-            return NextResponse.json({ message: 'Missing required fields for account creation.' }, { status: 400 });
+        if (!userData.email || !restaurantData.name || !userData.name) {
+             return NextResponse.json({ message: 'User email, name, and restaurant name are required to create a linked account.' }, { status: 400 });
         }
 
         const key_id = process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID;
@@ -53,63 +63,39 @@ export async function POST(req) {
             }
         });
 
-
-        // --- STEP 1: Create a Contact ---
-        console.log("[API LOG] Step 1: Creating Razorpay Contact...");
-        const contactPayload = {
-            name: name,
-            email: email,
-            contact: phone,
-            type: "vendor",
-            notes: {
-                "business_name": bank_name,
+        // --- STEP 1: Create a Linked Account via /accounts endpoint ---
+        console.log("[API LOG] Step 1: Creating Razorpay Linked Account...");
+        const accountPayload = {
+            type: "linked",
+            email: userData.email,
+            legal_business_name: restaurantData.name,
+            contact_name: userData.name,
+            profile: {
+                category: "food_beverage",
+                subcategory: "restaurant"
             }
         };
         
-        let contact;
+        let linkedAccount;
         try {
-            const contactResponse = await razorpayApi.post('/contacts', contactPayload);
-            contact = contactResponse.data;
-            console.log("[API LOG] Razorpay Contact created. Contact ID is:", contact.id); // This is 'cont_...'
+            const accountResponse = await razorpayApi.post('/accounts', accountPayload);
+            linkedAccount = accountResponse.data;
+            // The ID here will be the `acc_...` ID
+            console.log("[API LOG] Razorpay Linked Account created. Account ID is:", linkedAccount.id); 
         } catch (error) {
-            console.error("[API ERROR] Failed to create Razorpay contact:", error.response ? error.response.data : error.message);
-            const errorDetail = error.response?.data?.error?.description || 'Failed to create contact.';
+            console.error("[API ERROR] Failed to create Razorpay Linked Account:", error.response ? error.response.data : error.message);
+            const errorDetail = error.response?.data?.error?.description || 'Failed to create linked account.';
             return NextResponse.json({ message: `Razorpay Error: ${errorDetail}` }, { status: 500 });
         }
 
-
-        // --- STEP 2: Create a Fund Account (to link the bank) ---
-        console.log("[API LOG] Step 2: Creating Razorpay Fund Account...");
-        const fundAccountPayload = {
-            contact_id: contact.id, 
-            account_type: "bank_account",
-            bank_account: {
-                name: name,
-                ifsc: ifsc_code,
-                account_number: account_number
-            }
-        };
-
-        let fundAccount;
-        try {
-            const fundAccountResponse = await razorpayApi.post('/fund_accounts', fundAccountPayload);
-            fundAccount = fundAccountResponse.data;
-            console.log("[API LOG] Razorpay Fund Account created successfully. Fund Account ID is:", fundAccount.id); // This is 'fa_...'
-        } catch (error) {
-             console.error("[API ERROR] Failed to create Razorpay fund account:", error.response ? error.response.data : error.message);
-            const errorDetail = error.response?.data?.error?.description || 'Failed to create fund account.';
-            return NextResponse.json({ message: `Razorpay Error: ${errorDetail}` }, { status: 500 });
-        }
-        
-        // --- STEP 3: Save BOTH IDs to Firestore ---
-        console.log("[API LOG] Step 3: Saving Contact ID and Fund Account ID to Firestore...");
+        // --- STEP 2: Save the `acc_...` ID to Firestore ---
+        console.log("[API LOG] Step 2: Saving Route Account ID to Firestore...");
         await restaurantRef.update({
-            razorpayAccountId: contact.id, // Save the 'cont_...' ID
-            razorpayFundAccountId: fundAccount.id // Save the 'fa_...' ID
+            razorpayAccountId: linkedAccount.id, // This is the 'acc_...' ID
         });
-        console.log(`[API LOG] Firestore updated. Contact ID: ${contact.id}, Fund ID: ${fundAccount.id}`);
+        console.log(`[API LOG] Firestore updated with Account ID: ${linkedAccount.id}`);
 
-        return NextResponse.json({ message: 'Bank account linked successfully!', accountId: contact.id, fundAccountId: fundAccount.id }, { status: 200 });
+        return NextResponse.json({ message: 'Linked account created successfully!', accountId: linkedAccount.id }, { status: 200 });
 
     } catch (error) {
         console.error("CREATE LINKED ACCOUNT API - FULL ERROR OBJECT:", error);

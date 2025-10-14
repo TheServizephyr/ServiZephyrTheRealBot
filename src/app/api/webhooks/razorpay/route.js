@@ -4,7 +4,7 @@ import { NextResponse } from 'next/server';
 import { getFirestore } from '@/lib/firebase-admin';
 import { sendNewOrderToOwner } from '@/lib/notifications';
 import crypto from 'crypto';
-import Razorpay from 'razorpay';
+import axios from 'axios';
 
 
 export async function POST(req) {
@@ -19,7 +19,6 @@ export async function POST(req) {
         const body = await req.text();
         const signature = req.headers.get('x-razorpay-signature');
 
-        // Step 1: Verify the webhook signature
         const shasum = crypto.createHmac('sha256', secret);
         shasum.update(body);
         const digest = shasum.digest('hex');
@@ -29,28 +28,23 @@ export async function POST(req) {
             return NextResponse.json({ message: 'Invalid signature' }, { status: 403 });
         }
 
-        // Signature is valid, now process the payload
         const eventData = JSON.parse(body);
-
-        // Step 2: Check for the 'payment.captured' event
+        
         if (eventData.event === 'payment.captured') {
             const paymentEntity = eventData.payload.payment.entity;
             const razorpayOrderId = paymentEntity.order_id;
             const paymentId = paymentEntity.id;
+            const paymentAmount = paymentEntity.amount; // Amount in paisa
             
             if (!razorpayOrderId) {
                 console.warn("[Webhook] 'order_id' not found in payment entity.");
-                return NextResponse.json({ status: 'ok' }); // Acknowledge receipt, but do nothing
+                return NextResponse.json({ status: 'ok' });
             }
 
             const firestore = getFirestore();
             const ordersRef = firestore.collection('orders');
             
-            // Step 3: Find the order using razorpay_order_id
-            const orderQuery = await ordersRef
-                .where('paymentDetails.razorpay_order_id', '==', razorpayOrderId)
-                .limit(1)
-                .get();
+            const orderQuery = await ordersRef.where('paymentDetails.razorpay_order_id', '==', razorpayOrderId).limit(1).get();
 
             if (orderQuery.empty) {
                 console.warn(`[Webhook] Order with Razorpay Order ID ${razorpayOrderId} not found in Firestore.`);
@@ -60,7 +54,6 @@ export async function POST(req) {
             const orderDoc = orderQuery.docs[0];
             const orderData = orderDoc.data();
 
-            // Step 4: Update the order status to 'paid'
             if (orderData.status === 'pending') {
                 await orderDoc.ref.update({ 
                     status: 'paid',
@@ -69,29 +62,45 @@ export async function POST(req) {
                 console.log(`[Webhook] Order ${orderDoc.id} status updated to 'paid'.`);
 
                 const restaurantDoc = await firestore.collection('restaurants').doc(orderData.restaurantId).get();
+                
                 if (restaurantDoc.exists) {
                     const restaurantData = restaurantDoc.data();
-                    const razorpay = new Razorpay({
-                        key_id: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID,
-                        key_secret: process.env.RAZORPAY_KEY_SECRET,
-                    });
-                    
-                    try {
-                        // Release the funds held for the transfer
-                        const transferData = await razorpay.orders.edit(razorpayOrderId, {
-                           transfers: [
-                             {
-                               on_hold: 0, // Release the hold
-                             }
-                           ]
-                        });
-                        console.log(`[Webhook] Successfully processed transfer for order ${razorpayOrderId}. Response:`, transferData);
-                    } catch (transferError) {
-                        console.error(`[Webhook] CRITICAL: Failed to process transfer for order ${razorpayOrderId}. Error:`, transferError);
-                        // In a real app, you would add this to a retry queue
-                    }
+                    const linkedAccountId = restaurantData.razorpayAccountId;
 
-                    // Step 5: Trigger WhatsApp notification to the owner
+                    // --- START: RAZORPAY ROUTE TRANSFER LOGIC ---
+                    if (linkedAccountId && linkedAccountId.startsWith('acc_')) {
+                        const key_id = process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID;
+                        const key_secret = process.env.RAZORPAY_KEY_SECRET;
+                        const credentials = Buffer.from(`${key_id}:${key_secret}`).toString('base64');
+
+                        const transferPayload = {
+                            transfers: [{
+                                account: linkedAccountId,
+                                amount: paymentAmount, // Use the full payment amount
+                                currency: "INR"
+                            }]
+                        };
+
+                        try {
+                            console.log(`[Webhook] Attempting to transfer ${paymentAmount} to ${linkedAccountId} for payment ${paymentId}`);
+                            await axios.post(`https://api.razorpay.com/v1/payments/${paymentId}/transfers`, transferPayload, {
+                                headers: {
+                                    'Authorization': `Basic ${credentials}`,
+                                    'Content-Type': 'application/json'
+                                }
+                            });
+                             console.log(`[Webhook] Successfully initiated transfer for payment ${paymentId} to account ${linkedAccountId}.`);
+                        } catch (transferError) {
+                            console.error(`[Webhook] CRITICAL: Failed to process transfer for payment ${paymentId}. Error:`, transferError.response ? transferError.response.data : transferError.message);
+                            // In a real app, you would add this to a retry queue
+                        }
+                    } else {
+                        console.warn(`[Webhook] Restaurant ${orderData.restaurantId} does not have a valid Linked Account ID (acc_...). Skipping transfer.`);
+                    }
+                    // --- END: RAZORPAY ROUTE TRANSFER LOGIC ---
+
+
+                    // Trigger WhatsApp notification to the owner
                     if (restaurantData.ownerPhone && restaurantData.botPhoneNumberId) {
                       await sendNewOrderToOwner({
                           ownerPhone: restaurantData.ownerPhone,
@@ -110,7 +119,6 @@ export async function POST(req) {
             }
         }
 
-        // Step 6: Respond with 200 OK
         return NextResponse.json({ status: 'ok' });
 
     } catch (error) {

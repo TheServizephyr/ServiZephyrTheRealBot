@@ -20,57 +20,31 @@ export async function POST(req) {
             return NextResponse.json({ message: 'Invalid phone number format. Must be 10 digits.' }, { status: 400 });
         }
 
-        // --- GET RESTAURANT DATA ---
         const restaurantRef = firestore.collection('restaurants').doc(restaurantId);
         const restaurantDoc = await restaurantRef.get();
         if (!restaurantDoc.exists) {
             return NextResponse.json({ message: 'This restaurant does not exist.' }, { status: 404 });
         }
-        const restaurantData = restaurantDoc.data();
-        const razorpayAccountId = restaurantData.razorpayAccountId; // This should be the 'cont_...' ID
-        const razorpayFundAccountId = restaurantData.razorpayFundAccountId; // This should be the 'fa_...' ID
-
-
-        // --- RAZORPAY ORDER CREATION ---
+        
         let razorpayOrderId = null;
-        let razorpayOrderOptions = {
-            amount: Math.round(grandTotal * 100), // Amount in paisa
-            currency: 'INR',
-            receipt: `receipt_order_${nanoid()}`,
-            payment_capture: 1
-        };
-
         if (paymentMethod === 'razorpay') {
             if (!process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID || !process.env.RAZORPAY_KEY_SECRET) {
                 console.error("[Order API] Razorpay keys are not configured in environment variables.");
                 return NextResponse.json({ message: 'Payment gateway is not configured on the server.' }, { status: 500 });
             }
 
-            if (!razorpayAccountId || !razorpayFundAccountId) {
-                 console.error(`[Order API] Restaurant ${restaurantId} does not have a linked Razorpay Contact ID or Fund Account ID.`);
-                 return NextResponse.json({ message: 'This restaurant is not configured to accept online payments.' }, { status: 500 });
-            }
-
-            // **THE FIX**: Use the 'cont_...' ID for the account and 'fa_...' for the notes
-            razorpayOrderOptions.transfers = [
-                {
-                    account: razorpayAccountId, // This must be the 'cont_...' ID
-                    amount: Math.round(grandTotal * 100),
-                    currency: "INR",
-                    on_hold: 1, // Keep the transfer on hold until payment is confirmed by webhook
-                    notes: {
-                        fund_account_id: razorpayFundAccountId, // Specify which bank account to use
-                        name: name,
-                        notes: "Payment for order."
-                    }
-                },
-            ];
-
             const razorpay = new Razorpay({
                 key_id: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID,
                 key_secret: process.env.RAZORPAY_KEY_SECRET,
             });
             
+            const razorpayOrderOptions = {
+                amount: Math.round(grandTotal * 100), // Amount in paisa
+                currency: 'INR',
+                receipt: `receipt_order_${nanoid()}`,
+                payment_capture: 1
+            };
+
             const razorpayOrder = await razorpay.orders.create(razorpayOrderOptions);
             razorpayOrderId = razorpayOrder.id;
             console.log(`[Order API] Razorpay Order ${razorpayOrderId} created for amount ${grandTotal}.`);
@@ -103,12 +77,13 @@ export async function POST(req) {
         const taxRate = 0.05;
         const cgst = taxableAmount > 0 ? taxableAmount * taxRate : 0;
         const sgst = taxableAmount > 0 ? taxableAmount * taxRate : 0;
+        
+        const restaurantData = restaurantDoc.data();
         const deliveryCharge = (coupon?.code?.includes('FREE')) ? 0 : (restaurantData.deliveryCharge || 30);
         
         const pointsEarned = Math.floor(subtotal / 100) * 10;
         const pointsSpent = finalLoyaltyDiscount > 0 ? finalLoyaltyDiscount / 0.5 : 0;
 
-        // --- Update customer stats in sub-collections ---
         const restaurantCustomerRef = restaurantRef.collection('customers').doc(userId);
         batch.set(restaurantCustomerRef, {
             name: name, phone: phone, status: 'claimed',
@@ -127,7 +102,6 @@ export async function POST(req) {
              totalOrders: adminFirestore.FieldValue.increment(1),
         }, { merge: true });
 
-        // --- Create the pending order document ---
         const newOrderRef = firestore.collection('orders').doc();
         batch.set(newOrderRef, {
             customerName: name, customerId: userId, customerAddress: address, customerPhone: phone,
@@ -135,15 +109,15 @@ export async function POST(req) {
             items: items.map(item => ({ name: item.name, qty: item.quantity, price: item.price })),
             subtotal, coupon, loyaltyDiscount, discount: finalDiscount, cgst, sgst, deliveryCharge,
             totalAmount: grandTotal,
-            status: 'pending', // All orders start as 'pending'
+            status: 'pending',
             priority: Math.floor(Math.random() * 5) + 1,
             orderDate: adminFirestore.FieldValue.serverTimestamp(),
             notes: notes || null,
             paymentDetails: {
                 razorpay_payment_id: null,
-                razorpay_order_id: razorpayOrderId, // Can be null for COD
+                razorpay_order_id: razorpayOrderId,
                 razorpay_signature: null,
-                method: paymentMethod, // 'razorpay' or 'cod'
+                method: paymentMethod,
             }
         });
         
@@ -151,7 +125,6 @@ export async function POST(req) {
 
         await batch.commit();
         
-        // --- Respond to Frontend ---
         return NextResponse.json({ 
             message: 'Pending order created successfully.',
             razorpay_order_id: razorpayOrderId,
@@ -160,7 +133,6 @@ export async function POST(req) {
 
     } catch (error) {
         console.error('CUSTOMER ORDER/REGISTER ERROR:', error);
-        // This will now properly catch the error from razorpay.orders.create if it fails
         if(error.error && error.error.code === 'BAD_REQUEST_ERROR') {
              return NextResponse.json({ message: `Payment Gateway Error: ${error.error.description}` }, { status: 400 });
         }

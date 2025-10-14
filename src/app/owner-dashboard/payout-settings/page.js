@@ -3,24 +3,15 @@
 
 import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { Banknote, User, Mail, Phone, Landmark, Hash, Save, AlertTriangle, CheckCircle, Loader2 } from 'lucide-react';
+import { Banknote, AlertTriangle, CheckCircle, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Label } from '@/components/ui/label';
 import { auth } from '@/lib/firebase';
 import { useRouter } from 'next/navigation';
 
 export default function PayoutSettingsPage() {
-    const [formData, setFormData] = useState({
-        name: '',
-        email: '',
-        phone: '',
-        account_number: '',
-        ifsc_code: '',
-        bank_name: 'ServiZephyr Default Bank' // This can be static or fetched
-    });
     const [loading, setLoading] = useState(true);
+    const [isSubmitting, setIsSubmitting] = useState(false);
     const [error, setError] = useState('');
-    const [success, setSuccess] = useState('');
     const [accountId, setAccountId] = useState('');
     const router = useRouter();
 
@@ -29,14 +20,6 @@ export default function PayoutSettingsPage() {
              setLoading(true);
              const user = auth.currentUser;
              if (user) {
-                 setFormData(prev => ({
-                     ...prev,
-                     name: user.displayName || '',
-                     email: user.email || '',
-                     phone: user.phoneNumber || ''
-                 }));
-
-                 // Fetch existing account ID if it's there
                  const idToken = await user.getIdToken();
                  const res = await fetch('/api/owner/settings', { headers: { 'Authorization': `Bearer ${idToken}` }});
                  if (res.ok) {
@@ -60,37 +43,20 @@ export default function PayoutSettingsPage() {
         return () => unsubscribe();
     }, [router]);
 
-
-    const handleChange = (e) => {
-        setFormData({ ...formData, [e.target.id]: e.target.value });
-    };
-
-    const handleSubmit = async (e) => {
-        e.preventDefault();
-        setLoading(true);
+    const handleLinkAccount = async () => {
+        setIsSubmitting(true);
         setError('');
-        setSuccess('');
         
-        const { name, email, phone, account_number, ifsc_code, bank_name } = formData;
-        if (!name || !email || !phone || !account_number || !ifsc_code) {
-            setError("All fields are required.");
-            setLoading(false);
-            return;
-        }
-
         try {
             const user = auth.currentUser;
             if (!user) throw new Error("Authentication failed.");
             
             const idToken = await user.getIdToken();
 
+            // The backend will get the required user/restaurant details from the token
             const response = await fetch('/api/owner/create-linked-account', {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${idToken}`
-                },
-                body: JSON.stringify(formData),
+                headers: { 'Authorization': `Bearer ${idToken}` },
             });
 
             const result = await response.json();
@@ -99,14 +65,13 @@ export default function PayoutSettingsPage() {
                 throw new Error(result.message || "Failed to link bank account.");
             }
             
-            setSuccess(result.message);
             setAccountId(result.accountId);
 
         } catch (err) {
             console.error("Payout Settings Error:", err);
             setError(err.message);
         } finally {
-            setLoading(false);
+            setIsSubmitting(false);
         }
     };
     
@@ -119,8 +84,7 @@ export default function PayoutSettingsPage() {
         )
     }
 
-
-    if(accountId) {
+    if (accountId) {
         return (
              <motion.div 
                 initial={{ opacity: 0, scale: 0.9 }}
@@ -129,7 +93,7 @@ export default function PayoutSettingsPage() {
             >
                 <CheckCircle className="h-20 w-20 text-green-500" />
                 <h2 className="mt-6 text-2xl font-bold">Bank Account Linked Successfully!</h2>
-                <p className="mt-2 max-w-md text-muted-foreground">Your Razorpay Contact ID for routing is:</p>
+                <p className="mt-2 max-w-md text-muted-foreground">Your Razorpay Linked Account ID is:</p>
                 <p className="mt-2 text-lg font-mono p-3 bg-muted rounded-md border border-border text-foreground">{accountId}</p>
                 <p className="mt-4 text-sm text-muted-foreground">You are all set to receive payouts. No further action is needed.</p>
             </motion.div>
@@ -148,47 +112,27 @@ export default function PayoutSettingsPage() {
                     <p className="text-muted-foreground mt-1">Link your bank account to receive payments from online orders.</p>
                 </div>
 
-                <div className="bg-card border border-border rounded-xl">
-                    <form onSubmit={handleSubmit}>
-                        <div className="p-6 space-y-6">
-                            <h3 className="text-xl font-semibold flex items-center gap-3"><Banknote/> Bank Account Details</h3>
-                            
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                <div>
-                                    <Label htmlFor="name" className="flex items-center gap-2 mb-1"><User size={14}/> Account Holder Name</Label>
-                                    <input id="name" type="text" value={formData.name} onChange={handleChange} required className="w-full p-2 border rounded-md bg-input border-border" />
-                                </div>
-                                 <div>
-                                    <Label htmlFor="account_number" className="flex items-center gap-2 mb-1"><Hash size={14}/> Account Number</Label>
-                                    <input id="account_number" type="text" value={formData.account_number} onChange={handleChange} required className="w-full p-2 border rounded-md bg-input border-border" />
-                                </div>
-                            </div>
-                           
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                <div>
-                                    <Label htmlFor="ifsc_code" className="flex items-center gap-2 mb-1"><Landmark size={14}/> IFSC Code</Label>
-                                    <input id="ifsc_code" type="text" value={formData.ifsc_code} onChange={handleChange} required className="w-full p-2 border rounded-md bg-input border-border" />
-                                </div>
-                                <div>
-                                    <Label htmlFor="email" className="flex items-center gap-2 mb-1"><Mail size={14}/> Contact Email</Label>
-                                    <input id="email" type="email" value={formData.email} onChange={handleChange} required className="w-full p-2 border rounded-md bg-input border-border" />
-                                </div>
-                            </div>
-
-                             <div>
-                                <Label htmlFor="phone" className="flex items-center gap-2 mb-1"><Phone size={14}/> Contact Phone</Label>
-                                <input id="phone" type="tel" value={formData.phone} onChange={handleChange} required className="w-full p-2 border rounded-md bg-input border-border" />
-                            </div>
+                <div className="bg-card border border-border rounded-xl p-8 text-center">
+                    <Banknote className="mx-auto h-16 w-16 text-primary mb-4" />
+                    <h3 className="text-xl font-semibold text-foreground">Enable Payouts via Razorpay Route</h3>
+                    <p className="mt-2 text-muted-foreground max-w-lg mx-auto">
+                        To receive your earnings, you need to create a Razorpay Linked Account. This is a one-time setup. Clicking the button will securely create an account for your restaurant on Razorpay.
+                    </p>
+                    
+                    {error && (
+                        <div className="mt-4 flex items-center justify-center gap-2 text-sm text-destructive bg-destructive/10 p-3 rounded-md">
+                            <AlertTriangle size={16}/> {error}
                         </div>
-                        <div className="px-6 py-4 bg-muted/50 border-t border-border flex flex-col sm:flex-row justify-between items-center gap-4">
-                            {error && <div className="flex items-center gap-2 text-sm text-destructive"><AlertTriangle size={16}/> {error}</div>}
-                            {success && <div className="flex items-center gap-2 text-sm text-green-400"><CheckCircle size={16}/> {success}</div>}
-                            <Button type="submit" className="w-full sm:w-auto bg-primary hover:bg-primary/90" disabled={loading}>
-                                {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <Save className="mr-2 h-4 w-4"/>}
-                                {loading ? 'Linking Account...' : 'Save & Link Account'}
-                            </Button>
-                        </div>
-                    </form>
+                    )}
+                    
+                    <Button 
+                        onClick={handleLinkAccount}
+                        className="mt-6 w-full sm:w-auto bg-primary hover:bg-primary/90 text-primary-foreground text-lg py-6 px-8" 
+                        disabled={isSubmitting}
+                    >
+                        {isSubmitting ? <Loader2 className="mr-2 h-5 w-5 animate-spin"/> : null}
+                        {isSubmitting ? 'Creating Account...' : 'Create Linked Account Now'}
+                    </Button>
                 </div>
             </div>
         </motion.div>
