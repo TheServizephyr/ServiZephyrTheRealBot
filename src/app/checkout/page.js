@@ -262,17 +262,26 @@ const CheckoutPageInternal = () => {
                     handler: function (response) {
                         localStorage.removeItem(`cart_${restaurantId}`);
                         router.push(`/order/placed?restaurantId=${restaurantId}`);
-                        setIsModalOpen(false);
                     },
                     prefill: { name: name.trim(), contact: cartData.phone },
                     theme: { color: "#4f46e5" }
                 };
-                const rzp1 = new window.Razorpay(options);
-                rzp1.on('payment.failed', function (response) {
-                    setError(`Payment Failed: ${response.error.description}`);
-                    setLoading(false);
-                });
-                rzp1.open();
+                
+                // ** THE FIX **: Close our modal *before* opening Razorpay's modal
+                setIsModalOpen(false);
+                
+                // Allow a tiny delay for the modal to close visually before Razorpay opens
+                setTimeout(() => {
+                    const rzp1 = new window.Razorpay(options);
+                    rzp1.on('payment.failed', function (response) {
+                        // Re-open our modal to show the error if payment fails
+                        setIsModalOpen(true);
+                        setError(`Payment Failed: ${response.error.description}`);
+                        setLoading(false);
+                    });
+                    rzp1.open();
+                }, 200);
+
             } else { // COD
                  localStorage.removeItem(`cart_${restaurantId}`);
                  router.push(`/order/placed?restaurantId=${restaurantId}`);
