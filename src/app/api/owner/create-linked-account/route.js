@@ -62,7 +62,7 @@ export async function POST(req) {
         
         const credentials = Buffer.from(`${key_id}:${key_secret}`).toString('base64');
 
-        // --- STEP 1: Create a Linked Account via /accounts endpoint ---
+        // --- STEP 1: Create a Linked Account via /v2/accounts endpoint ---
         console.log("[API LOG] Step 1: Creating Razorpay Linked Account using native https...");
         const accountPayload = JSON.stringify({
             type: "linked",
@@ -80,7 +80,7 @@ export async function POST(req) {
         const options = {
             hostname: 'api.razorpay.com',
             port: 443,
-            path: '/v1/accounts',
+            path: '/v2/accounts',
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -106,19 +106,19 @@ export async function POST(req) {
                             resolve(parsedData);
                         } else {
                             // Reject with the parsed error from Razorpay
-                            reject({ response: { data: parsedData }});
+                            reject(parsedData);
                         }
                     } catch (e) {
                          console.error("[API ERROR] Failed to parse Razorpay JSON response.", e);
                          // Reject with the raw data if JSON parsing fails
-                         reject({ message: `Failed to parse Razorpay response. Raw data: ${data}` });
+                         reject({ error: { description: `Failed to parse Razorpay response. Raw data: ${data}` } });
                     }
                 });
             });
 
             apiReq.on('error', (e) => {
                 console.error("[API ERROR] HTTPS request error:", e);
-                reject({ message: e.message });
+                reject({ error: { description: e.message } });
             });
 
             apiReq.write(accountPayload);
@@ -143,10 +143,10 @@ export async function POST(req) {
 
     } catch (error) {
         // Log detailed error information
-        const errorDetail = error.response ? JSON.stringify(error.response.data, null, 2) : error.message;
+        const errorDetail = error.error ? JSON.stringify(error.error, null, 2) : error.message;
         console.error("[API ERROR] Failed to create Razorpay Linked Account:", errorDetail);
         
-        const errorMessageForUser = error.response?.data?.error?.description || error.message || 'Failed to create linked account.';
+        const errorMessageForUser = error.error?.description || error.message || 'Failed to create linked account.';
         return NextResponse.json({ message: `Razorpay Error: ${errorMessageForUser}` }, { status: 500 });
     }
 }
