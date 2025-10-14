@@ -27,24 +27,42 @@ export async function POST(req) {
             return NextResponse.json({ message: 'This restaurant does not exist.' }, { status: 404 });
         }
         const restaurantData = restaurantDoc.data();
+        const razorpayAccountId = restaurantData.razorpayAccountId;
 
-        // --- RAZORPAY ORDER CREATION (only for online payment) ---
+        // --- RAZORPAY ORDER CREATION ---
         let razorpayOrderId = null;
+        let razorpayOrderOptions = {
+            amount: Math.round(grandTotal * 100), // Amount in paisa
+            currency: 'INR',
+            receipt: `receipt_order_${nanoid()}`,
+            payment_capture: 1
+        };
+
         if (paymentMethod === 'razorpay') {
             if (!process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID || !process.env.RAZORPAY_KEY_SECRET) {
                 console.error("[Order API] Razorpay keys are not configured in environment variables.");
                 return NextResponse.json({ message: 'Payment gateway is not configured on the server.' }, { status: 500 });
             }
+            if (!razorpayAccountId || !razorpayAccountId.startsWith('acc_')) {
+                 console.error(`[Order API] Restaurant ${restaurantId} does not have a linked Razorpay route account ID.`);
+                 return NextResponse.json({ message: 'This restaurant is not configured to accept online payments.' }, { status: 500 });
+            }
+
+            // **THE FIX**: Add the transfers array to route payments
+            razorpayOrderOptions.transfers = [
+                {
+                    account: razorpayAccountId,
+                    amount: Math.round(grandTotal * 100), // Transfer the full amount
+                    currency: "INR",
+                    on_hold: 1, // **CRITICAL**: Keep the transfer on hold until payment is confirmed
+                },
+            ];
+
             const razorpay = new Razorpay({
                 key_id: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID,
                 key_secret: process.env.RAZORPAY_KEY_SECRET,
             });
-            const razorpayOrderOptions = {
-                amount: Math.round(grandTotal * 100), // Amount in paisa
-                currency: 'INR',
-                receipt: `receipt_order_${nanoid()}`,
-                payment_capture: 1
-            };
+            
             const razorpayOrder = await razorpay.orders.create(razorpayOrderOptions);
             razorpayOrderId = razorpayOrder.id;
             console.log(`[Order API] Razorpay Order ${razorpayOrderId} created for amount ${grandTotal}.`);
