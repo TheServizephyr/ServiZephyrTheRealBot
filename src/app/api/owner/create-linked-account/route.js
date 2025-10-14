@@ -52,12 +52,13 @@ export async function POST(req) {
 
         const key_id = process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID;
         const key_secret = process.env.RAZORPAY_KEY_SECRET;
+        const merchantAccountId = process.env.RAZORPAY_ACCOUNT_ID;
 
         console.log(`[API LOG] Using Razorpay Key ID: ${key_id ? 'Found' : 'NOT FOUND'}`);
 
-        if (!key_id || !key_secret) {
-            console.error("[API ERROR] Razorpay credentials are not configured on the server.");
-            return NextResponse.json({ message: 'Payment gateway is not configured on the server.' }, { status: 500 });
+        if (!key_id || !key_secret || !merchantAccountId) {
+            console.error("[API ERROR] Razorpay credentials or Merchant Account ID are not configured on the server.");
+            return NextResponse.json({ message: 'Payment gateway is not fully configured on the server. RAZORPAY_ACCOUNT_ID is missing.' }, { status: 500 });
         }
         
         const credentials = Buffer.from(`${key_id}:${key_secret}`).toString('base64');
@@ -85,7 +86,9 @@ export async function POST(req) {
             headers: {
                 'Content-Type': 'application/json',
                 'Content-Length': accountPayload.length,
-                'Authorization': `Basic ${credentials}`
+                'Authorization': `Basic ${credentials}`,
+                 // ** THE FIX **: Add the main merchant account ID as a header.
+                'X-Razorpay-Account': merchantAccountId
             }
         };
 
