@@ -107,7 +107,7 @@ const BillModal = ({ order, restaurant, onClose, onPrint }) => {
                         <p className="text-xs font-bold mt-1">Powered by ServiZephyr</p>
                     </div>
                 </div>
-                 <div className="p-4 bg-muted border-t border-border flex justify-end">
+                 <div className="p-4 bg-muted border-t border-border flex justify-end no-print">
                     <Button onClick={onPrint} className="bg-primary hover:bg-primary/90">
                         <Printer className="mr-2 h-4 w-4" /> Print Bill
                     </Button>
@@ -353,19 +353,8 @@ export default function LiveOrdersPage() {
   };
 
   const handlePrint = () => {
-    const printContents = document.getElementById('bill-content').innerHTML;
-    const originalContents = document.body.innerHTML;
-    const printWindow = window.open('', '', 'height=600,width=800');
-    printWindow.document.write('<html><head><title>Print Bill</title>');
-    printWindow.document.write('<style>@page { size: 80mm auto; margin: 0; } body { margin: 0; font-family: monospace; } table { width: 100%; border-collapse: collapse; } th, td { padding: 4px; } </style>');
-    printWindow.document.write('</head><body>');
-    printWindow.document.write(printContents);
-    printWindow.document.write('</body></html>');
-    printWindow.document.close();
-    printWindow.focus();
-    printWindow.print();
-    printWindow.close();
-};
+    window.print();
+  };
 
 
   const handleSort = (key) => {
