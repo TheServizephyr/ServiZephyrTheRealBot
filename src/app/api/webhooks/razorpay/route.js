@@ -82,6 +82,10 @@ export async function POST(req) {
                                         account: restaurantData.razorpayAccountId,
                                         amount: paymentEntity.amount, // Use amount from payment entity (in paisa)
                                         currency: 'INR',
+                                        notes: {
+                                            order_id: orderDoc.id,
+                                            restaurant_name: restaurantData.name,
+                                        }
                                     }
                                 ]
                             };
@@ -91,7 +95,7 @@ export async function POST(req) {
                             console.log(`[Webhook] Successfully initiated transfer for payment ${paymentId} to account ${restaurantData.razorpayAccountId}.`);
 
                         } catch (transferError) {
-                            console.error(`[Webhook] CRITICAL: Failed to transfer payment ${paymentId} to account ${restaurantData.razorpayAccountId}.`, transferError);
+                            console.error(`[Webhook] CRITICAL: Failed to transfer payment ${paymentId} to account ${restaurantData.razorpayAccountId}.`, transferError.response ? transferError.response.data : transferError.message);
                             // Even if transfer fails, we don't stop the notification flow.
                         }
                     } else {
