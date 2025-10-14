@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { Banknote, User, Hash, Landmark, Save, Loader2, CheckCircle, AlertTriangle } from 'lucide-react';
+import { Banknote, User, Hash, Landmark, Save, Loader2, CheckCircle, AlertTriangle, RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
@@ -102,7 +102,7 @@ export default function PayoutSettingsPage() {
             const result = await res.json();
             if (!res.ok) throw new Error(result.message || "Failed to create linked account.");
             
-            setSuccess(`Account linked successfully! Your Account ID is: ${result.accountId}`);
+            setSuccess(`Account linked successfully! Your new Account ID is: ${result.accountId}`);
             setRazorpayAccountId(result.accountId); // Update state to show the connected view
 
         } catch (err) {
@@ -121,22 +121,17 @@ export default function PayoutSettingsPage() {
             );
         }
 
-        if (razorpayAccountId) {
-            return (
-                <div className="text-center">
-                    <CheckCircle className="h-16 w-16 text-green-400 mx-auto" />
-                    <h3 className="mt-4 text-xl font-bold">Payouts Connected</h3>
-                    <p className="mt-2 text-muted-foreground">Your bank account is linked with Razorpay for payouts.</p>
-                    <div className="mt-4 p-4 bg-muted rounded-lg inline-block">
-                        <p className="text-sm text-muted-foreground">Your Linked Account ID:</p>
-                        <p className="font-mono text-lg text-foreground">{razorpayAccountId}</p>
-                    </div>
-                </div>
-            );
-        }
-
         return (
             <form onSubmit={handleSubmit} className="space-y-6">
+                {razorpayAccountId && (
+                     <div className="text-center p-4 bg-muted rounded-lg border border-border">
+                        <p className="text-sm text-muted-foreground">Currently Linked Account ID:</p>
+                        <p className="font-mono text-lg text-foreground">{razorpayAccountId}</p>
+                        {razorpayAccountId.startsWith('cust_') && (
+                            <p className="text-xs text-yellow-400 mt-1">This ID seems incorrect. Please re-link your account to enable payouts.</p>
+                        )}
+                    </div>
+                )}
                 <div>
                     <Label htmlFor="name" className="flex items-center gap-2 mb-1"><User size={14}/> Account Holder Name</Label>
                     <Input id="name" value={accountDetails.name} onChange={handleChange} placeholder="e.g., Rohan Sharma" required />
@@ -159,15 +154,15 @@ export default function PayoutSettingsPage() {
 
             <SectionCard
                 title="Razorpay Payout Connection"
-                description="Link your bank account with Razorpay to receive payments from your customers. This is a one-time setup."
-                footer={!razorpayAccountId && !loading && (
+                description="Link your bank account with Razorpay to receive payments from your customers. You can update your details anytime."
+                footer={
                     <div className="flex justify-end">
-                        <Button onClick={handleSubmit} disabled={isSaving} className="bg-primary hover:bg-primary/90 text-primary-foreground">
+                        <Button onClick={handleSubmit} disabled={isSaving || loading} className="bg-primary hover:bg-primary/90 text-primary-foreground">
                             {isSaving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
-                            {isSaving ? "Connecting..." : "Connect Bank Account"}
+                            {isSaving ? "Connecting..." : (razorpayAccountId ? "Update / Re-link Bank Account" : "Connect Bank Account")}
                         </Button>
                     </div>
-                )}
+                }
             >
                 {renderContent()}
                 {error && <p className="mt-4 text-center text-sm text-red-500 bg-red-500/10 p-3 rounded-md"><AlertTriangle className="inline-block mr-2"/>{error}</p>}
@@ -178,8 +173,8 @@ export default function PayoutSettingsPage() {
                 <h4 className="font-semibold text-foreground mb-2">How do payouts work?</h4>
                 <ol className="list-decimal list-inside space-y-1">
                     <li>When a customer pays, the money first comes to ServiZephyr's main Razorpay account.</li>
-                    <li>Razorpay automatically transfers your share to your linked bank account based on the settlement cycle.</li>
-                    <li>This entire process is handled by Razorpay Route, ensuring secure and timely payouts.</li>
+                    <li>Our system automatically triggers a transfer to your linked bank account via Razorpay Route.</li>
+                    <li>This entire process is secure and managed by Razorpay to ensure timely payouts.</li>
                 </ol>
             </div>
         </div>
