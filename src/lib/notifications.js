@@ -49,20 +49,44 @@ export const sendOrderStatusUpdateToCustomer = async ({ customerPhone, botPhoneN
         return;
     }
     const customerPhoneWithCode = '91' + customerPhone;
-    const capitalizedStatus = status.charAt(0).toUpperCase() + status.slice(1);
+    
+    // Choose the right template and parameters based on the status
+    let templateName;
+    let parameters;
+
+    switch (status) {
+        case 'confirmed':
+            templateName = 'order_confirmation';
+            parameters = [
+                { type: "text", text: customerName },
+                { type: "text", text: orderId.substring(0, 8) },
+                { type: "text", text: restaurantName },
+            ];
+            break;
+        case 'preparing':
+        case 'dispatched':
+        case 'delivered':
+            templateName = 'order_status_update';
+            const capitalizedStatus = status.charAt(0).toUpperCase() + status.slice(1);
+            parameters = [
+                { type: "text", text: customerName },
+                { type: "text", text: orderId.substring(0, 8) },
+                { type: "text", text: restaurantName },
+                { type: "text", text: capitalizedStatus },
+            ];
+            break;
+        default:
+            // Do not send notifications for other statuses like 'pending'
+            return;
+    }
 
     const statusPayload = {
-        name: "order_status_update",
+        name: templateName,
         language: { code: "en" },
         components: [
             {
                 type: "body",
-                parameters: [
-                    { type: "text", text: customerName },
-                    { type: "text", text: orderId.substring(0, 8) },
-                    { type: "text", text: restaurantName },
-                    { type: "text", text: capitalizedStatus }
-                ]
+                parameters: parameters,
             }
         ]
     };
@@ -70,27 +94,7 @@ export const sendOrderStatusUpdateToCustomer = async ({ customerPhone, botPhoneN
     await sendWhatsAppMessage(customerPhoneWithCode, statusPayload, botPhoneNumberId);
 };
 
-export const sendOrderConfirmationToCustomer = async ({ customerPhone, botPhoneNumberId, customerName, orderId, restaurantName }) => {
-    if (!customerPhone || !botPhoneNumberId) {
-        console.warn(`[Notification Lib] Customer phone or Bot ID not found. Cannot send order confirmation for order ${orderId}.`);
-        return;
-    }
-    const customerPhoneWithCode = '91' + customerPhone;
-    
-    const payload = {
-        name: "order_confirmation",
-        language: { code: "en" },
-        components: [
-            {
-                type: "body",
-                parameters: [
-                    { type: "text", text: customerName },
-                    { type: "text", text: orderId.substring(0, 8) },
-                    { type: "text", text: restaurantName },
-                ]
-            }
-        ]
-    };
-    
-    await sendWhatsAppMessage(customerPhoneWithCode, payload, botPhoneNumberId);
+// This function is now part of sendOrderStatusUpdateToCustomer, but kept for legacy calls if any.
+export const sendOrderConfirmationToCustomer = async (params) => {
+    await sendOrderStatusUpdateToCustomer({ ...params, status: 'confirmed' });
 };

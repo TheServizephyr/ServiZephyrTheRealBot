@@ -131,8 +131,8 @@ export async function PATCH(req) {
         await orderRef.update({ status: newStatus });
         
         // --- CORRECTED NOTIFICATION LOGIC ---
-        // Send notification to customer ONLY when order is confirmed OR delivered.
-        if (newStatus === 'confirmed' || newStatus === 'delivered') {
+        const statusesThatNotifyCustomer = ['confirmed', 'preparing', 'dispatched', 'delivered'];
+        if (statusesThatNotifyCustomer.includes(newStatus)) {
             const orderData = orderDoc.data();
             const restaurantData = restaurantSnap.data();
             await sendOrderStatusUpdateToCustomer({
