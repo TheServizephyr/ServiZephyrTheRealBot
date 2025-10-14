@@ -87,10 +87,15 @@ export async function POST(req) {
                     data += chunk;
                 });
                 apiRes.on('end', () => {
-                    if (apiRes.statusCode >= 200 && apiRes.statusCode < 300) {
-                        resolve(JSON.parse(data));
-                    } else {
-                        reject({ response: { data: JSON.parse(data) }});
+                    try {
+                        const parsedData = JSON.parse(data);
+                        if (apiRes.statusCode >= 200 && apiRes.statusCode < 300) {
+                            resolve(parsedData);
+                        } else {
+                            reject({ response: { data: parsedData }});
+                        }
+                    } catch (e) {
+                         reject({ message: 'Failed to parse Razorpay response' });
                     }
                 });
             });
