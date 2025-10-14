@@ -57,7 +57,7 @@ export async function POST(req) {
         console.log(`[API LOG] Using Razorpay Key ID: ${key_id ? 'Found' : 'NOT FOUND'}`);
 
         if (!key_id || !key_secret || !merchantAccountId) {
-            console.error("[API ERROR] Razorpay credentials or Merchant Account ID are not configured on the server.");
+            console.error("[API ERROR] Razorpay credentials or Merchant Account ID are not configured on the server. RAZORPAY_ACCOUNT_ID is missing.");
             return NextResponse.json({ message: 'Payment gateway is not fully configured on the server. RAZORPAY_ACCOUNT_ID is missing.' }, { status: 500 });
         }
         
