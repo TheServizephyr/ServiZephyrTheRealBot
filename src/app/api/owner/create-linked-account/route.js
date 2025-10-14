@@ -66,7 +66,7 @@ export async function POST(req) {
             // You can add more details like contact number if available
         };
         
-        const contact = await razorpay.instance.contacts.create(contactPayload);
+        const contact = await razorpay.contacts.create(contactPayload);
         if (!contact || !contact.id) {
             throw new Error("Failed to create Contact on Razorpay.");
         }
@@ -83,7 +83,7 @@ export async function POST(req) {
             }
         };
 
-        const fundAccount = await razorpay.instance.fundAccounts.create(fundAccountPayload);
+        const fundAccount = await razorpay.fundAccounts.create(fundAccountPayload);
         
         if (!fundAccount || !fundAccount.id) {
             throw new Error("Failed to create Fund Account on Razorpay. The response did not contain a Fund Account ID.");
@@ -104,7 +104,7 @@ export async function POST(req) {
         console.error("CREATE LINKED ACCOUNT API - FULL ERROR OBJECT:", JSON.stringify(error, null, 2));
 
         // Try to find the message, even if it's nested
-        const errorMessage = error.response?.data?.error?.description || error.message || "An unknown error occurred. Check server logs for the full error object.";
+        const errorMessage = error.description || error.message || "An unknown error occurred. Check server logs for the full error object.";
         
         return NextResponse.json({ message: `Backend Error: ${errorMessage}` }, { status: 500 });
     }
