@@ -183,10 +183,26 @@ const BillPage = () => {
                 <span className="font-semibold">Delivery Charge</span>
                 <span>{deliveryCharge.toFixed(2)}</span>
             </div>
-            <div className="flex justify-between font-bold text-lg pt-2 border-t-2 border-dashed border-black">
-                <span>GRAND TOTAL</span>
-                <span>₹{grandTotal.toFixed(2)}</span>
-            </div>
+        </div>
+
+        {/* Payment Status */}
+        <div className="mt-4 pt-4 border-t-2 border-dashed border-black text-center">
+            {order.paymentDetails?.method === 'cod' ? (
+                <div className="text-lg font-bold text-red-600">
+                    <p>PAYMENT DUE</p>
+                    <p>CASH ON DELIVERY</p>
+                </div>
+            ) : (
+                 <div className="text-lg font-bold text-green-600">
+                    <p>PAYMENT RECEIVED</p>
+                    <p>PAID ONLINE</p>
+                </div>
+            )}
+        </div>
+
+        <div className="flex justify-between font-bold text-lg pt-2 mt-2 border-t-2 border-dashed border-black">
+            <span>GRAND TOTAL</span>
+            <span>₹{grandTotal.toFixed(2)}</span>
         </div>
         
         {/* Transaction Details */}
