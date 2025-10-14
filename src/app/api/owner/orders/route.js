@@ -130,8 +130,8 @@ export async function PATCH(req) {
 
         await orderRef.update({ status: newStatus });
         
-        // --- MODIFIED LOGIC ---
-        // Send WhatsApp notification ONLY when the order is confirmed or delivered
+        // --- CORRECTED NOTIFICATION LOGIC ---
+        // Send notification to customer ONLY when order is confirmed OR delivered.
         if (newStatus === 'confirmed' || newStatus === 'delivered') {
             const orderData = orderDoc.data();
             const restaurantData = restaurantSnap.data();

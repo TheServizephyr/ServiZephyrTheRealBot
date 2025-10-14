@@ -22,7 +22,7 @@ const statusConfig = {
   'rejected': { color: 'bg-red-500/20 text-red-400 border-red-500/30' },
 };
 
-const statusFlow = ['pending', 'paid', 'confirmed', 'preparing', 'dispatched', 'delivered'];
+const statusFlow = ['pending', 'confirmed', 'preparing', 'dispatched', 'delivered'];
 
 // --- Bill Modal Component ---
 const BillModal = ({ order, restaurant, onClose, onPrint }) => {
@@ -119,12 +119,14 @@ const BillModal = ({ order, restaurant, onClose, onPrint }) => {
 
 
 const ActionButton = ({ status, onNext, onRevert, orderId, onReject, isUpdating, onPrintClick }) => {
-    // Treat 'paid' and 'pending' as the same for the action flow
-    const actionStatus = status === 'paid' ? 'pending' : status;
+    // Corrected logic: 'paid' orders should also be 'confirmed' as the next step.
+    const isConfirmable = status === 'pending' || status === 'paid';
+    const actionStatus = isConfirmable ? 'pending' : status; // Treat paid same as pending for flow
     const currentIndex = statusFlow.indexOf(actionStatus);
 
     const nextStatus = statusFlow[currentIndex + 1];
-    const prevStatus = statusFlow[currentIndex - 1];
+    const prevStatus = currentIndex > 1 ? statusFlow[currentIndex - 1] : (status === 'confirmed' ? 'pending' : null);
+
 
     if (isUpdating) {
         return (
@@ -149,7 +151,7 @@ const ActionButton = ({ status, onNext, onRevert, orderId, onReject, isUpdating,
     }
     
     const actionConfig = {
-        'pending': { text: 'Confirm Order', icon: Check },
+        'pending': { text: 'Confirm Order', icon: Check }, // Covers 'paid' as well
         'confirmed': { text: 'Start Preparing', icon: CookingPot },
         'preparing': { text: 'Out for Delivery', icon: Bike },
         'dispatched': { text: 'Mark Delivered', icon: PartyPopper },
@@ -176,7 +178,7 @@ const ActionButton = ({ status, onNext, onRevert, orderId, onReject, isUpdating,
                 <ActionIcon size={16} className="mr-2" />
                 {action.text}
             </Button>
-            {(status === 'pending' || status === 'paid') && (
+            {isConfirmable && (
                  <Button
                     onClick={onReject}
                     variant="destructive"
