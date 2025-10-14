@@ -7,6 +7,7 @@ import https from 'https';
 
 // Helper to verify owner and get their restaurant details
 async function verifyOwnerAndGetRestaurant(req, auth) {
+    console.log("[API LOG] Verifying owner and fetching data...");
     const authHeader = req.headers.get('authorization');
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
         throw { message: 'Authorization token not found or invalid.', status: 401 };
@@ -14,6 +15,7 @@ async function verifyOwnerAndGetRestaurant(req, auth) {
     const token = authHeader.split('Bearer ')[1];
     const decodedToken = await auth.verifyIdToken(token);
     const uid = decodedToken.uid;
+    console.log(`[API LOG] UID: ${uid} verified.`);
     
     const firestore = getFirestore();
     const restaurantsQuery = await firestore.collection('restaurants').where('ownerId', '==', uid).limit(1).get();
@@ -27,6 +29,7 @@ async function verifyOwnerAndGetRestaurant(req, auth) {
     }
     
     const restaurantDoc = restaurantsQuery.docs[0];
+    console.log("[API LOG] Successfully fetched user and restaurant data.");
     return {
       restaurantRef: restaurantDoc.ref,
       restaurantData: restaurantDoc.data(),
@@ -40,6 +43,8 @@ export async function POST(req) {
     
     try {
         const { restaurantRef, restaurantData, userData } = await verifyOwnerAndGetRestaurant(req, auth);
+        console.log("[API LOG] User Data:", JSON.stringify(userData, null, 2));
+        console.log("[API LOG] Restaurant Data:", JSON.stringify(restaurantData, null, 2));
         
         if (!userData.email || !restaurantData.name || !userData.name) {
              return NextResponse.json({ message: 'User email, name, and restaurant name are required to create a linked account.' }, { status: 400 });
@@ -47,6 +52,8 @@ export async function POST(req) {
 
         const key_id = process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID;
         const key_secret = process.env.RAZORPAY_KEY_SECRET;
+
+        console.log(`[API LOG] Using Razorpay Key ID: ${key_id ? 'Found' : 'NOT FOUND'}`);
 
         if (!key_id || !key_secret) {
             console.error("[API ERROR] Razorpay credentials are not configured on the server.");
@@ -68,6 +75,8 @@ export async function POST(req) {
             }
         });
         
+        console.log("[API LOG] Sending this payload to Razorpay:", accountPayload);
+
         const options = {
             hostname: 'api.razorpay.com',
             port: 443,
@@ -80,27 +89,35 @@ export async function POST(req) {
             }
         };
 
+        console.log("[API LOG] HTTPS Request Options:", JSON.stringify(options, null, 2));
+
         const linkedAccount = await new Promise((resolve, reject) => {
             const apiReq = https.request(options, (apiRes) => {
                 let data = '';
+                console.log(`[API LOG] Razorpay Response Status Code: ${apiRes.statusCode}`);
                 apiRes.on('data', (chunk) => {
                     data += chunk;
                 });
                 apiRes.on('end', () => {
+                    console.log("[API LOG] Raw response from Razorpay:", data);
                     try {
                         const parsedData = JSON.parse(data);
                         if (apiRes.statusCode >= 200 && apiRes.statusCode < 300) {
                             resolve(parsedData);
                         } else {
+                            // Reject with the parsed error from Razorpay
                             reject({ response: { data: parsedData }});
                         }
                     } catch (e) {
-                         reject({ message: 'Failed to parse Razorpay response' });
+                         console.error("[API ERROR] Failed to parse Razorpay JSON response.", e);
+                         // Reject with the raw data if JSON parsing fails
+                         reject({ message: `Failed to parse Razorpay response. Raw data: ${data}` });
                     }
                 });
             });
 
             apiReq.on('error', (e) => {
+                console.error("[API ERROR] HTTPS request error:", e);
                 reject({ message: e.message });
             });
 
@@ -108,20 +125,28 @@ export async function POST(req) {
             apiReq.end();
         });
         
-        console.log("[API LOG] Razorpay Linked Account created. Account ID is:", linkedAccount.id); 
+        console.log("[API LOG] Razorpay Linked Account created. Full Response:", JSON.stringify(linkedAccount, null, 2));
+        const accountId = linkedAccount.id;
+        if (!accountId || !accountId.startsWith('acc_')) {
+            throw new Error(`Invalid Account ID received from Razorpay: ${accountId}`);
+        }
+        console.log("[API LOG] Extracted Account ID:", accountId); 
 
         // --- STEP 2: Save the `acc_...` ID to Firestore ---
-        console.log("[API LOG] Step 2: Saving Route Account ID to Firestore...");
+        console.log(`[API LOG] Step 2: Saving Route Account ID ${accountId} to Firestore...`);
         await restaurantRef.update({
-            razorpayAccountId: linkedAccount.id,
+            razorpayAccountId: accountId,
         });
-        console.log(`[API LOG] Firestore updated with Account ID: ${linkedAccount.id}`);
+        console.log(`[API LOG] Firestore updated successfully.`);
 
-        return NextResponse.json({ message: 'Linked account created successfully!', accountId: linkedAccount.id }, { status: 200 });
+        return NextResponse.json({ message: 'Linked account created successfully!', accountId: accountId }, { status: 200 });
 
     } catch (error) {
-        console.error("[API ERROR] Failed to create Razorpay Linked Account:", error.response ? error.response.data : error.message);
-        const errorDetail = error.response?.data?.error?.description || error.message || 'Failed to create linked account.';
-        return NextResponse.json({ message: `Razorpay Error: ${errorDetail}` }, { status: 500 });
+        // Log detailed error information
+        const errorDetail = error.response ? JSON.stringify(error.response.data, null, 2) : error.message;
+        console.error("[API ERROR] Failed to create Razorpay Linked Account:", errorDetail);
+        
+        const errorMessageForUser = error.response?.data?.error?.description || error.message || 'Failed to create linked account.';
+        return NextResponse.json({ message: `Razorpay Error: ${errorMessageForUser}` }, { status: 500 });
     }
 }
