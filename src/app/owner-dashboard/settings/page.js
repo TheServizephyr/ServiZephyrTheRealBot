@@ -134,6 +134,7 @@ export default function SettingsPage() {
     const [loading, setLoading] = useState(true);
     const [isEditingProfile, setIsEditingProfile] = useState(false);
     const [isEditingMedia, setIsEditingMedia] = useState(false);
+    const [isEditingPayment, setIsEditingPayment] = useState(false);
     const [isDeleteModalOpen, setDeleteModalOpen] = useState(false);
     const [passwords, setPasswords] = useState({ current: '', new: '', confirm: '' });
     const [showNewPass, setShowNewPass] = useState(false);
@@ -182,16 +183,19 @@ export default function SettingsPage() {
     const handleEditToggle = (section) => {
         if (section === 'profile') {
             if (isEditingProfile) {
-                // If canceling, reset editedUser to the original user data
-                setEditedUser({ ...user, ...editedUser }); // This merge keeps media changes while resetting profile
+                setEditedUser({ ...user, ...editedUser, ...editedUser });
             }
             setIsEditingProfile(!isEditingProfile);
         } else if (section === 'media') {
             if (isEditingMedia) {
-                // If canceling media edit, reset media fields
                 setEditedUser({ ...editedUser, logoUrl: user.logoUrl, bannerUrls: user.bannerUrls || [] });
             }
             setIsEditingMedia(!isEditingMedia);
+        } else if (section === 'payment') {
+            if (isEditingPayment) {
+                 setEditedUser({ ...editedUser, deliveryCharge: user.deliveryCharge, codEnabled: user.codEnabled });
+            }
+            setIsEditingPayment(!isEditingPayment);
         }
     };
 
@@ -223,13 +227,17 @@ export default function SettingsPage() {
                 gstin: editedUser.gstin,
                 fssai: editedUser.fssai,
                 botPhoneNumberId: editedUser.botPhoneNumberId,
-                deliveryCharge: editedUser.deliveryCharge,
             };
         } else if (section === 'media') {
             payload = {
                 logoUrl: editedUser.logoUrl,
                 bannerUrls: editedUser.bannerUrls,
             };
+        } else if (section === 'payment') {
+            payload = {
+                deliveryCharge: editedUser.deliveryCharge,
+                codEnabled: editedUser.codEnabled,
+            }
         }
 
         try {
@@ -245,14 +253,15 @@ export default function SettingsPage() {
 
             if (!response.ok) {
                 const errorData = await response.json();
-                throw new Error(errorData.message || 'Failed to update profile');
+                throw new Error(errorData.message || 'Failed to update settings');
             }
             
             const updatedUser = await response.json();
             setUser(updatedUser);
-            setEditedUser(updatedUser); // Make sure editedUser is in sync with saved data
+            setEditedUser(updatedUser);
             if (section === 'profile') setIsEditingProfile(false);
             if (section === 'media') setIsEditingMedia(false);
+            if (section === 'payment') setIsEditingPayment(false);
             alert("Updated Successfully!");
 
         } catch (error) {
@@ -376,16 +385,8 @@ export default function SettingsPage() {
                                     <Label htmlFor="fssai" className="flex items-center gap-2"><FileText size={14}/> FSSAI Number</Label>
                                     <input id="fssai" value={editedUser.fssai} onChange={e => setEditedUser({...editedUser, fssai: e.target.value})} disabled={!isEditingProfile} className="mt-1 w-full p-2 border rounded-md bg-input border-border disabled:opacity-70 disabled:cursor-not-allowed" placeholder="e.g., 10012345678901"/>
                                 </div>
-                                <div>
-                                    <Label htmlFor="razorpayAccountId" className="flex items-center gap-2"><IndianRupee size={14}/> Razorpay Account ID</Label>
-                                    <input id="razorpayAccountId" value={editedUser.razorpayAccountId} disabled className="mt-1 w-full p-2 border rounded-md bg-input border-border disabled:opacity-50 disabled:cursor-not-allowed" placeholder="Not connected"/>
-                                </div>
                             </div>
                             <div className="space-y-6">
-                                <div>
-                                    <Label htmlFor="deliveryCharge" className="flex items-center gap-2"><Truck size={14}/> Base Delivery Charge (₹)</Label>
-                                    <input id="deliveryCharge" type="number" value={editedUser.deliveryCharge} onChange={e => setEditedUser({...editedUser, deliveryCharge: e.target.value})} disabled={!isEditingProfile} className="mt-1 w-full p-2 border rounded-md bg-input border-border disabled:opacity-70 disabled:cursor-not-allowed" placeholder="e.g., 30"/>
-                                </div>
                                 <div>
                                     <Label htmlFor="botPhoneNumberId" className="flex items-center gap-2"><Bot size={14}/> WhatsApp Bot Phone Number ID</Label>
                                     <input id="botPhoneNumberId" value={editedUser.botPhoneNumberId} onChange={e => setEditedUser({...editedUser, botPhoneNumberId: e.target.value})} disabled={!isEditingProfile} className="mt-1 w-full p-2 border rounded-md bg-input border-border disabled:opacity-70 disabled:cursor-not-allowed" placeholder="e.g., 15550921234"/>
@@ -396,64 +397,93 @@ export default function SettingsPage() {
                 </div>
             </SectionCard>
 
-            {/* Media & Branding Section */}
             {user.role === 'owner' && (
-            <SectionCard
-                title="Media & Branding"
-                description="Upload your restaurant's logo and banner images."
-                footer={
-                     <div className="flex justify-end gap-3">
-                        {isEditingMedia ? (
-                            <>
-                                <Button variant="secondary" onClick={() => handleEditToggle('media')}><XCircle className="mr-2 h-4 w-4"/> Cancel</Button>
-                                <Button onClick={() => handleSave('media')} className="bg-primary hover:bg-primary/90 text-primary-foreground"><Save className="mr-2 h-4 w-4"/> Save Media</Button>
-                            </>
-                        ) : (
-                            <Button onClick={() => handleEditToggle('media')}><Edit className="mr-2 h-4 w-4"/> Edit Media</Button>
-                        )}
-                    </div>
-                }
-            >
-                <div className="space-y-6">
-                    <ImageUpload
-                        label="Logo Image"
-                        currentImage={editedUser.logoUrl}
-                        onFileSelect={(dataUrl) => setEditedUser({ ...editedUser, logoUrl: dataUrl })}
-                        isEditing={isEditingMedia}
-                    />
-                    <div>
-                        <Label className="flex items-center gap-2"><ImageIcon size={14}/> Banner Images</Label>
-                        <div className="mt-2 flex flex-wrap items-center gap-4">
-                            {editedUser.bannerUrls?.map((url, index) => (
-                                <div key={index} className="relative group w-28 h-20 rounded-lg overflow-hidden border-2 border-border">
-                                    <Image src={url} alt={`Banner ${index+1}`} layout="fill" objectFit="cover" />
-                                    {isEditingMedia && (
-                                        <button 
-                                            onClick={() => removeBannerImage(index)}
-                                            className="absolute top-1 right-1 bg-black/50 text-white rounded-full p-0.5 opacity-0 group-hover:opacity-100 transition-opacity"
-                                        >
-                                            <X size={12}/>
-                                        </button>
-                                    )}
-                                </div>
-                            ))}
-                                {isEditingMedia && (
+            <>
+                <SectionCard
+                    title="Media & Branding"
+                    description="Upload your restaurant's logo and banner images."
+                    footer={
+                         <div className="flex justify-end gap-3">
+                            {isEditingMedia ? (
                                 <>
-                                    <input type="file" accept="image/*" ref={bannerInputRef} onChange={handleBannerFileChange} className="hidden" />
-                                    <button type="button" onClick={() => bannerInputRef.current?.click()} className="w-28 h-20 rounded-lg border-2 border-dashed border-border flex flex-col items-center justify-center text-muted-foreground hover:bg-muted/50">
-                                        <Upload size={20}/>
-                                        <span className="text-xs mt-1">Add Banner</span>
-                                    </button>
+                                    <Button variant="secondary" onClick={() => handleEditToggle('media')}><XCircle className="mr-2 h-4 w-4"/> Cancel</Button>
+                                    <Button onClick={() => handleSave('media')} className="bg-primary hover:bg-primary/90 text-primary-foreground"><Save className="mr-2 h-4 w-4"/> Save Media</Button>
                                 </>
+                            ) : (
+                                <Button onClick={() => handleEditToggle('media')}><Edit className="mr-2 h-4 w-4"/> Edit Media</Button>
                             )}
                         </div>
+                    }
+                >
+                    <div className="space-y-6">
+                        <ImageUpload
+                            label="Logo Image"
+                            currentImage={editedUser.logoUrl}
+                            onFileSelect={(dataUrl) => setEditedUser({ ...editedUser, logoUrl: dataUrl })}
+                            isEditing={isEditingMedia}
+                        />
+                        <div>
+                            <Label className="flex items-center gap-2"><ImageIcon size={14}/> Banner Images</Label>
+                            <div className="mt-2 flex flex-wrap items-center gap-4">
+                                {editedUser.bannerUrls?.map((url, index) => (
+                                    <div key={index} className="relative group w-28 h-20 rounded-lg overflow-hidden border-2 border-border">
+                                        <Image src={url} alt={`Banner ${index+1}`} layout="fill" objectFit="cover" />
+                                        {isEditingMedia && (
+                                            <button 
+                                                onClick={() => removeBannerImage(index)}
+                                                className="absolute top-1 right-1 bg-black/50 text-white rounded-full p-0.5 opacity-0 group-hover:opacity-100 transition-opacity"
+                                            >
+                                                <X size={12}/>
+                                            </button>
+                                        )}
+                                    </div>
+                                ))}
+                                    {isEditingMedia && (
+                                    <>
+                                        <input type="file" accept="image/*" ref={bannerInputRef} onChange={handleBannerFileChange} className="hidden" />
+                                        <button type="button" onClick={() => bannerInputRef.current?.click()} className="w-28 h-20 rounded-lg border-2 border-dashed border-border flex flex-col items-center justify-center text-muted-foreground hover:bg-muted/50">
+                                            <Upload size={20}/>
+                                            <span className="text-xs mt-1">Add Banner</span>
+                                        </button>
+                                    </>
+                                )}
+                            </div>
+                        </div>
                     </div>
-                </div>
-            </SectionCard>
+                </SectionCard>
+                <SectionCard
+                    title="Payment Settings"
+                    description="Manage delivery charges and payment methods for your customers."
+                     footer={
+                        <div className="flex justify-end gap-3">
+                            {isEditingPayment ? (
+                                <>
+                                    <Button variant="secondary" onClick={() => handleEditToggle('payment')}><XCircle className="mr-2 h-4 w-4"/> Cancel</Button>
+                                    <Button onClick={() => handleSave('payment')} className="bg-primary hover:bg-primary/90 text-primary-foreground"><Save className="mr-2 h-4 w-4"/> Save Settings</Button>
+                                </>
+                            ) : (
+                                <Button onClick={() => handleEditToggle('payment')}><Edit className="mr-2 h-4 w-4"/> Edit Payment Settings</Button>
+                            )}
+                        </div>
+                    }
+                >
+                    <div className="space-y-6">
+                        <div>
+                            <Label htmlFor="deliveryCharge" className="flex items-center gap-2"><Truck size={14}/> Base Delivery Charge (₹)</Label>
+                            <input id="deliveryCharge" type="number" value={editedUser.deliveryCharge} onChange={e => setEditedUser({...editedUser, deliveryCharge: e.target.value})} disabled={!isEditingPayment} className="mt-1 w-full max-w-xs p-2 border rounded-md bg-input border-border disabled:opacity-70 disabled:cursor-not-allowed" placeholder="e.g., 30"/>
+                        </div>
+                        <div className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
+                            <Label htmlFor="codEnabled" className="flex flex-col">
+                                <span>Enable Cash on Delivery (COD)</span>
+                                <span className="text-xs text-muted-foreground">Allow customers to pay with cash upon delivery.</span>
+                            </Label>
+                            <Switch id="codEnabled" checked={editedUser.codEnabled} onCheckedChange={(checked) => setEditedUser({...editedUser, codEnabled: checked})} disabled={!isEditingPayment} />
+                        </div>
+                    </div>
+                </SectionCard>
+            </>
             )}
 
-
-            {/* Notification Settings Section */}
             <SectionCard
                 title="Notification Settings"
                 description="Choose how you want to be notified."
@@ -492,7 +522,6 @@ export default function SettingsPage() {
                 </div>
             </SectionCard>
             
-            {/* Change Password Section */}
             <SectionCard
                 title="Change Password"
                 description="For your security, we recommend using a strong, unique password."
@@ -519,7 +548,6 @@ export default function SettingsPage() {
                 </form>
             </SectionCard>
 
-            {/* Danger Zone Section */}
             <SectionCard
                 title="Danger Zone"
                 description="Manage risky account actions here."

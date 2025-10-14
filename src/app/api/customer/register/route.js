@@ -10,43 +10,47 @@ import { nanoid } from 'nanoid';
 export async function POST(req) {
     try {
         const firestore = getFirestore();
-        const { name, address, phone, restaurantId, items, notes, coupon, loyaltyDiscount, grandTotal } = await req.json();
+        const { name, address, phone, restaurantId, items, notes, coupon, loyaltyDiscount, grandTotal, paymentMethod } = await req.json();
 
         // --- VALIDATION ---
-        if (!name || !address || !phone || !restaurantId || !items || !grandTotal) {
+        if (!name || !address || !phone || !restaurantId || !items || !grandTotal || !paymentMethod) {
             return NextResponse.json({ message: 'Missing required fields for order creation.' }, { status: 400 });
         }
         if (!/^\d{10}$/.test(phone)) {
             return NextResponse.json({ message: 'Invalid phone number format. Must be 10 digits.' }, { status: 400 });
         }
 
-        // --- RAZORPAY ORDER CREATION ---
-        if (!process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID || !process.env.RAZORPAY_KEY_SECRET) {
-            console.error("[Order API] Razorpay keys are not configured in environment variables.");
-            return NextResponse.json({ message: 'Payment gateway is not configured on the server.' }, { status: 500 });
-        }
-        const razorpay = new Razorpay({
-            key_id: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID,
-            key_secret: process.env.RAZORPAY_KEY_SECRET,
-        });
-        const razorpayOrderOptions = {
-            amount: Math.round(grandTotal * 100), // Amount in paisa
-            currency: 'INR',
-            receipt: `receipt_order_${nanoid()}`,
-            payment_capture: 1
-        };
-        const razorpayOrder = await razorpay.orders.create(razorpayOrderOptions);
-        console.log(`[Order API] Razorpay Order ${razorpayOrder.id} created for amount ${grandTotal}.`);
-
-
-        // --- FIRESTORE BATCH WRITE ---
+        // --- GET RESTAURANT DATA ---
         const restaurantRef = firestore.collection('restaurants').doc(restaurantId);
         const restaurantDoc = await restaurantRef.get();
         if (!restaurantDoc.exists) {
             return NextResponse.json({ message: 'This restaurant does not exist.' }, { status: 404 });
         }
         const restaurantData = restaurantDoc.data();
-        
+
+        // --- RAZORPAY ORDER CREATION (only for online payment) ---
+        let razorpayOrderId = null;
+        if (paymentMethod === 'razorpay') {
+            if (!process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID || !process.env.RAZORPAY_KEY_SECRET) {
+                console.error("[Order API] Razorpay keys are not configured in environment variables.");
+                return NextResponse.json({ message: 'Payment gateway is not configured on the server.' }, { status: 500 });
+            }
+            const razorpay = new Razorpay({
+                key_id: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID,
+                key_secret: process.env.RAZORPAY_KEY_SECRET,
+            });
+            const razorpayOrderOptions = {
+                amount: Math.round(grandTotal * 100), // Amount in paisa
+                currency: 'INR',
+                receipt: `receipt_order_${nanoid()}`,
+                payment_capture: 1
+            };
+            const razorpayOrder = await razorpay.orders.create(razorpayOrderOptions);
+            razorpayOrderId = razorpayOrder.id;
+            console.log(`[Order API] Razorpay Order ${razorpayOrderId} created for amount ${grandTotal}.`);
+        }
+
+        // --- FIRESTORE BATCH WRITE ---
         const batch = firestore.batch();
         
         const usersRef = firestore.collection('users');
@@ -105,26 +109,26 @@ export async function POST(req) {
             items: items.map(item => ({ name: item.name, qty: item.quantity, price: item.price })),
             subtotal, coupon, loyaltyDiscount, discount: finalDiscount, cgst, sgst, deliveryCharge,
             totalAmount: grandTotal,
-            status: 'pending', // Order is created as 'pending'
+            status: 'pending', // All orders start as 'pending'
             priority: Math.floor(Math.random() * 5) + 1,
             orderDate: adminFirestore.FieldValue.serverTimestamp(),
             notes: notes || null,
             paymentDetails: {
-                razorpay_payment_id: null, // This will be updated by webhook
-                razorpay_order_id: razorpayOrder.id, // SAVE THE RAZORPAY ORDER ID
+                razorpay_payment_id: null,
+                razorpay_order_id: razorpayOrderId, // Can be null for COD
                 razorpay_signature: null,
-                method: 'online'
+                method: paymentMethod, // 'razorpay' or 'cod'
             }
         });
         
-        console.log(`[Order API] Pending order ${newOrderRef.id} added to batch with Razorpay Order ID ${razorpayOrder.id}.`);
+        console.log(`[Order API] Pending order ${newOrderRef.id} added to batch with payment method ${paymentMethod}.`);
 
         await batch.commit();
         
         // --- Respond to Frontend ---
         return NextResponse.json({ 
-            message: 'Pending order created. Proceed to payment.',
-            razorpay_order_id: razorpayOrder.id,
+            message: 'Pending order created successfully.',
+            razorpay_order_id: razorpayOrderId,
             firestore_order_id: newOrderRef.id,
         }, { status: 200 });
 

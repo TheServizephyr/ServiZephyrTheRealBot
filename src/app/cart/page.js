@@ -30,210 +30,6 @@ const ClearCartDialog = ({ isOpen, onClose, onConfirm }) => {
     );
 };
 
-const CheckoutModal = ({ isOpen, onClose, restaurantId, phone, cart, notes, appliedCoupons, subtotal, loyaltyPoints, grandTotal }) => {
-    const router = useRouter();
-    const [name, setName] = useState('');
-    const [address, setAddress] = useState('');
-    const [error, setError] = useState('');
-    const [loading, setLoading] = useState(false);
-    const [isExistingUser, setIsExistingUser] = useState(false);
-    const [savedAddresses, setSavedAddresses] = useState([]);
-    const [selectedAddress, setSelectedAddress] = useState('');
-    const [isAddingNew, setIsAddingNew] = useState(false);
-    
-    // Fetch User Data when Modal Opens
-    useEffect(() => {
-        const fetchUserData = async () => {
-            if (isOpen && phone) {
-                setLoading(true);
-                setError('');
-                try {
-                    const res = await fetch('/api/customer/lookup', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ phone }),
-                    });
-                    if (res.ok) {
-                        const data = await res.json();
-                        setName(data.name);
-                        setSavedAddresses(data.addresses);
-                        if (data.addresses && data.addresses.length > 0) {
-                            setSelectedAddress(data.addresses[0].full);
-                            setIsAddingNew(false);
-                        } else {
-                            setIsAddingNew(true);
-                        }
-                        setIsExistingUser(true);
-                    } else {
-                        setIsExistingUser(false);
-                        setIsAddingNew(true);
-                        setName('');
-                        setAddress('');
-                        setSavedAddresses([]);
-                        setSelectedAddress('');
-                    }
-                } catch (err) {
-                    setError('Could not fetch user details. Please enter manually.');
-                    setIsExistingUser(false);
-                    setIsAddingNew(true);
-                } finally {
-                    setLoading(false);
-                }
-            }
-        };
-        fetchUserData();
-    }, [isOpen, phone]);
-    
-
-    const handlePlaceOrder = async () => {
-        const finalAddress = isAddingNew ? address : selectedAddress;
-        if (!finalAddress || !name.trim()) {
-            setError('Please enter your name and address.');
-            return;
-        }
-        setError('');
-        setLoading(true);
-        
-        try {
-            const finalItems = cart.map(item => ({
-                name: `${item.name} (${item.portion.name})${item.selectedAddOns.map(a => ` + ${a.name}`).join('')}`,
-                quantity: item.quantity,
-                price: item.totalPrice,
-            }));
-
-            // Step 1: Call our backend to create a pending order and get the Razorpay Order ID
-            const orderPayload = {
-                name: name.trim(),
-                address: finalAddress,
-                phone,
-                restaurantId,
-                items: finalItems,
-                notes,
-                coupon: appliedCoupons.length > 0 ? {
-                    code: appliedCoupons[0].code,
-                    discount: appliedCoupons.reduce((total, coupon) => {
-                        if (coupon.type === 'flat') return total + coupon.value;
-                        if (coupon.type === 'percentage') return total + (subtotal * coupon.value / 100);
-                        return total;
-                    }, 0)
-                } : null,
-                loyaltyDiscount: 0, // Simplified for now
-                grandTotal: grandTotal,
-            };
-
-            const orderCreationResponse = await fetch('/api/customer/register', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(orderPayload),
-            });
-
-            const orderCreationResult = await orderCreationResponse.json();
-
-            if (!orderCreationResponse.ok) {
-                throw new Error(orderCreationResult.message || "Failed to create order.");
-            }
-            
-            const { razorpay_order_id } = orderCreationResult;
-
-            // Step 2: Open Razorpay Checkout with the Order ID from our backend
-            const options = {
-                key: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID, 
-                amount: grandTotal * 100, // Amount should be in paisa
-                currency: "INR",
-                name: "ServiZephyr (Pvt. Ltd.)",
-                description: `Payment for Order (Test Mode)`,
-                order_id: razorpay_order_id,
-                handler: function (response){
-                    // On success, Razorpay webhook will handle the rest.
-                    // We just need to redirect the user.
-                    localStorage.removeItem(`cart_${restaurantId}`);
-                    router.push(`/order/placed?restaurantId=${restaurantId}`);
-                    onClose();
-                },
-                prefill: {
-                    name: name.trim(),
-                    contact: phone,
-                },
-                theme: {
-                    color: "#3399cc"
-                }
-            };
-            const rzp1 = new window.Razorpay(options);
-            rzp1.on('payment.failed', function (response){
-                setError(`Payment Failed: ${response.error.description}`);
-                setLoading(false);
-            });
-            rzp1.open();
-
-        } catch (err) {
-            setError(err.message || 'An unexpected error occurred.');
-            setLoading(false);
-        }
-    };
-    
-    return (
-        <Dialog open={isOpen} onOpenChange={onClose}>
-            <DialogContent className="bg-background border-border text-foreground">
-                <DialogHeader>
-                    <DialogTitle className="text-2xl">Confirm Your Details</DialogTitle>
-                </DialogHeader>
-                <div className="py-4 space-y-4">
-                     {loading && !isExistingUser && name === '' ? (
-                        <div className="flex justify-center items-center h-48">
-                           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
-                        </div>
-                     ) : (
-                        <>
-                            <div>
-                                <Label htmlFor="checkout-name">Full Name</Label>
-                                <div className="relative mt-1">
-                                    <User className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
-                                    <input id="checkout-name" type="text" value={name} onChange={(e) => setName(e.target.value)} required className="w-full pl-10 pr-4 py-2 rounded-md bg-input border border-border" placeholder="Enter your full name" disabled={isExistingUser && !isAddingNew} />
-                                </div>
-                            </div>
-                           
-                            {isExistingUser && savedAddresses.length > 0 && (
-                                <div>
-                                    <Label>Select Address</Label>
-                                    <div className="space-y-2 mt-1">
-                                        {savedAddresses.map(addr => (
-                                            <div key={addr.id} onClick={() => { setSelectedAddress(addr.full); setIsAddingNew(false); }} className={cn("p-3 rounded-md border-2 cursor-pointer", !isAddingNew && selectedAddress === addr.full ? 'border-primary bg-primary/10' : 'border-border')}>
-                                                {addr.full}
-                                            </div>
-                                        ))}
-                                         <div onClick={() => { setIsAddingNew(true); setSelectedAddress(''); }} className={cn("p-3 rounded-md border-2 cursor-pointer flex items-center gap-2", isAddingNew ? 'border-primary bg-primary/10' : 'border-border')}>
-                                            <PlusCircle size={16}/> Add a new address
-                                        </div>
-                                    </div>
-                                </div>
-                            )}
-
-                            {(isAddingNew || !isExistingUser || savedAddresses.length === 0) && (
-                                 <div>
-                                    <Label htmlFor="checkout-address">Delivery Address</Label>
-                                    <div className="relative mt-1">
-                                        <Home className="absolute left-3 top-3 h-5 w-5 text-muted-foreground" />
-                                        <textarea id="checkout-address" value={address} onChange={(e) => setAddress(e.target.value)} required rows={3} className="w-full pl-10 pr-4 py-2 rounded-md bg-input border-border" placeholder="Enter your full delivery address" />
-                                    </div>
-                                </div>
-                            )}
-
-                            {error && <p className="text-red-500 text-sm text-center pt-2">{error}</p>}
-                        </>
-                     )}
-                </div>
-                <DialogFooter>
-                    <DialogClose asChild><Button variant="secondary" disabled={loading}>Cancel</Button></DialogClose>
-                    <Button onClick={handlePlaceOrder} className="bg-primary hover:bg-primary/90 text-primary-foreground" disabled={loading}>
-                        {loading ? 'Processing...' : `Pay ${grandTotal > 0 ? `₹${grandTotal.toFixed(2)}` : ''}`}
-                    </Button>
-                </DialogFooter>
-            </DialogContent>
-        </Dialog>
-    );
-};
-
-
 const CartPageInternal = () => {
     const router = useRouter();
     const searchParams = useSearchParams();
@@ -244,7 +40,6 @@ const CartPageInternal = () => {
     const [cart, setCart] = useState([]);
     const [notes, setNotes] = useState('');
     const [appliedCoupons, setAppliedCoupons] = useState([]);
-    const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
     const [isClearCartDialogOpen, setIsClearCartDialogOpen] = useState(false);
 
     useEffect(() => {
@@ -301,6 +96,10 @@ const CartPageInternal = () => {
         setAppliedCoupons([]);
         setCartData(prev => ({...prev, cart: []}));
         setIsClearCartDialogOpen(false);
+    };
+
+    const handleConfirmOrder = () => {
+        router.push(`/checkout?restaurantId=${restaurantId}`);
     };
 
 
@@ -390,18 +189,6 @@ const CartPageInternal = () => {
     return (
         <>
         <Script src="https://checkout.razorpay.com/v1/checkout.js" />
-        <CheckoutModal 
-            isOpen={isCheckoutOpen} 
-            onClose={() => setIsCheckoutOpen(false)}
-            restaurantId={restaurantId}
-            phone={phone}
-            cart={cart}
-            notes={notes}
-            appliedCoupons={appliedCoupons}
-            subtotal={subtotal}
-            loyaltyPoints={cartData.loyaltyPoints}
-            grandTotal={grandTotal}
-        />
         <ClearCartDialog 
             isOpen={isClearCartDialogOpen}
             onClose={() => setIsClearCartDialogOpen(false)}
@@ -546,8 +333,8 @@ const CartPageInternal = () => {
 
             <footer className="fixed bottom-0 left-0 w-full bg-background/80 backdrop-blur-lg border-t border-border z-30">
                 <div className="container mx-auto p-4 flex items-center justify-center gap-4">
-                    <Button onClick={() => setIsCheckoutOpen(true)} className="flex-grow bg-primary hover:bg-primary/90 text-primary-foreground h-12 text-lg font-bold" disabled={cart.length === 0}>
-                        Proceed to Checkout
+                    <Button onClick={handleConfirmOrder} className="flex-grow bg-primary hover:bg-primary/90 text-primary-foreground h-12 text-lg font-bold" disabled={cart.length === 0}>
+                        Confirm Order
                     </Button>
                 </div>
             </footer>
@@ -563,11 +350,3 @@ const CartPage = () => (
 );
 
 export default CartPage;
-
-    
-
-    
-
-
-
-

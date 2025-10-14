@@ -1,4 +1,5 @@
 
+
 import { NextResponse } from 'next/server';
 import { getAuth } from '@/lib/firebase-admin';
 import { getFirestore } from 'firebase-admin/firestore';
@@ -40,7 +41,7 @@ async function verifyUserAndGetData(req) {
     let restaurantData = null;
     let restaurantRef = null;
 
-    if (userData.role === 'owner' || (adminUserDoc.data().role === 'admin' && impersonatedOwnerId)) {
+    if (userData.role === 'owner' || (adminUserDoc.exists && adminUserDoc.data().role === 'admin' && impersonatedOwnerId)) {
         const restaurantsQuery = await firestore.collection('restaurants').where('ownerId', '==', finalUserId).limit(1).get();
         if (!restaurantsQuery.empty) {
             restaurantRef = restaurantsQuery.docs[0].ref;
@@ -53,6 +54,21 @@ async function verifyUserAndGetData(req) {
 
 export async function GET(req) {
     try {
+        const { searchParams } = new URL(req.url);
+        const restaurantId = searchParams.get('restaurantId');
+        
+        // Public endpoint for fetching only COD status
+        if (restaurantId) {
+            const firestore = getFirestore();
+            const restaurantDoc = await firestore.collection('restaurants').doc(restaurantId).get();
+            if (!restaurantDoc.exists) {
+                return NextResponse.json({ message: "Restaurant not found." }, { status: 404 });
+            }
+            const restaurantData = restaurantDoc.data();
+            return NextResponse.json({ codEnabled: restaurantData.codEnabled || false }, { status: 200 });
+        }
+        
+        // Authenticated endpoint for full settings
         const { uid, userData, restaurantData } = await verifyUserAndGetData(req);
         
         const profileData = {
@@ -70,10 +86,11 @@ export async function GET(req) {
             gstin: restaurantData?.gstin || '',
             fssai: restaurantData?.fssai || '',
             botPhoneNumberId: restaurantData?.botPhoneNumberId || '',
-            razorpayAccountId: restaurantData?.razorpayAccountId || '', // Add this line
-            deliveryCharge: restaurantData?.deliveryCharge === undefined ? 30 : restaurantData.deliveryCharge, // Default if not set
+            razorpayAccountId: restaurantData?.razorpayAccountId || '', 
+            deliveryCharge: restaurantData?.deliveryCharge === undefined ? 30 : restaurantData.deliveryCharge,
             logoUrl: restaurantData?.logoUrl || '',
             bannerUrls: restaurantData?.bannerUrls || [],
+            codEnabled: restaurantData?.codEnabled || false, // Add this line
         };
 
         return NextResponse.json(profileData, { status: 200 });
@@ -88,7 +105,7 @@ export async function PATCH(req) {
     try {
         const { userRef, userData, restaurantRef, restaurantData } = await verifyUserAndGetData(req);
         
-        const { name, phone, notifications, gstin, fssai, botPhoneNumberId, deliveryCharge, logoUrl, bannerUrls } = await req.json();
+        const { name, phone, notifications, gstin, fssai, botPhoneNumberId, deliveryCharge, logoUrl, bannerUrls, codEnabled } = await req.json();
 
         // --- Update User's Profile in 'users' collection ---
         const userUpdateData = {};
@@ -100,20 +117,18 @@ export async function PATCH(req) {
             await userRef.update(userUpdateData);
         }
 
-        // --- Update Restaurant's Profile in 'restaurants' collection (if owner or impersonating admin) ---
-        if ((userData.role === 'owner' || (userData.role === 'admin' && restaurantRef))) {
+        // --- Update Restaurant's Profile in 'restaurants' collection ---
+        if (restaurantRef) {
             const restaurantUpdateData = {};
-            // Only update if the values are provided (even if they are empty strings)
             if (gstin !== undefined) restaurantUpdateData.gstin = gstin;
             if (fssai !== undefined) restaurantUpdateData.fssai = fssai;
             if (botPhoneNumberId !== undefined) restaurantUpdateData.botPhoneNumberId = botPhoneNumberId;
-            // Note: razorpayAccountId is not editable by the user, so it's not included here.
             if (deliveryCharge !== undefined) restaurantUpdateData.deliveryCharge = Number(deliveryCharge);
             if (logoUrl !== undefined) restaurantUpdateData.logoUrl = logoUrl;
             if (bannerUrls !== undefined) restaurantUpdateData.bannerUrls = bannerUrls;
+            if (codEnabled !== undefined) restaurantUpdateData.codEnabled = codEnabled; // Add this line
 
-            // If the owner's phone number is changing, update it in the restaurant doc too
-            if (phone !== undefined && phone !== restaurantData.ownerPhone) {
+            if (phone !== undefined && phone !== restaurantData?.ownerPhone) {
                 restaurantUpdateData.ownerPhone = phone;
             }
             
@@ -122,7 +137,6 @@ export async function PATCH(req) {
             }
         }
         
-        // --- Fetch and return the fully updated data ---
         const { userData: finalUserData, restaurantData: finalRestaurantData } = await verifyUserAndGetData(req);
         const responseData = {
             name: finalUserData.name,
@@ -134,10 +148,11 @@ export async function PATCH(req) {
             gstin: finalRestaurantData?.gstin || '',
             fssai: finalRestaurantData?.fssai || '',
             botPhoneNumberId: finalRestaurantData?.botPhoneNumberId || '',
-            razorpayAccountId: finalRestaurantData?.razorpayAccountId || '', // Add this line
+            razorpayAccountId: finalRestaurantData?.razorpayAccountId || '',
             deliveryCharge: finalRestaurantData?.deliveryCharge === undefined ? 30 : finalRestaurantData.deliveryCharge,
             logoUrl: finalRestaurantData?.logoUrl || '',
             bannerUrls: finalRestaurantData?.bannerUrls || [],
+            codEnabled: finalRestaurantData?.codEnabled || false,
         };
 
         return NextResponse.json(responseData, { status: 200 });
