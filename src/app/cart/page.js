@@ -95,33 +95,60 @@ const CheckoutModal = ({ isOpen, onClose, restaurantId, phone, cart, notes, appl
         setLoading(true);
         
         try {
-            // Step 1: Create a Razorpay Order
-            const orderCreationResponse = await fetch('/api/payment/create-order', {
+            const finalItems = cart.map(item => ({
+                name: `${item.name} (${item.portion.name})${item.selectedAddOns.map(a => ` + ${a.name}`).join('')}`,
+                quantity: item.quantity,
+                price: item.totalPrice,
+            }));
+
+            // Step 1: Call our backend to create a pending order and get the Razorpay Order ID
+            const orderPayload = {
+                name: name.trim(),
+                address: finalAddress,
+                phone,
+                restaurantId,
+                items: finalItems,
+                notes,
+                coupon: appliedCoupons.length > 0 ? {
+                    code: appliedCoupons[0].code,
+                    discount: appliedCoupons.reduce((total, coupon) => {
+                        if (coupon.type === 'flat') return total + coupon.value;
+                        if (coupon.type === 'percentage') return total + (subtotal * coupon.value / 100);
+                        return total;
+                    }, 0)
+                } : null,
+                loyaltyDiscount: 0, // Simplified for now
+                grandTotal: grandTotal,
+            };
+
+            const orderCreationResponse = await fetch('/api/customer/register', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ amount: grandTotal }),
+                body: JSON.stringify(orderPayload),
             });
 
-            if (!orderCreationResponse.ok) {
-                const errorData = await orderCreationResponse.json();
-                 if (errorData.message === 'Payment gateway is not configured.') {
-                    throw new Error("Could not connect to payment gateway. Please try again later.");
-                }
-                throw new Error(errorData.message || "Failed to create payment order.");
-            }
-            const razorpayOrder = await orderCreationResponse.json();
+            const orderCreationResult = await orderCreationResponse.json();
 
-            // Step 2: Open Razorpay Checkout
+            if (!orderCreationResponse.ok) {
+                throw new Error(orderCreationResult.message || "Failed to create order.");
+            }
+            
+            const { razorpay_order_id } = orderCreationResult;
+
+            // Step 2: Open Razorpay Checkout with the Order ID from our backend
             const options = {
                 key: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID, 
-                amount: razorpayOrder.amount, 
+                amount: grandTotal * 100, // Amount should be in paisa
                 currency: "INR",
                 name: "ServiZephyr (Pvt. Ltd.)",
                 description: `Payment for Order (Test Mode)`,
-                order_id: razorpayOrder.id,
-                handler: async function (response){
-                    // Step 3: Verify payment and place final order
-                    await verifyPaymentAndPlaceOrder(response);
+                order_id: razorpay_order_id,
+                handler: function (response){
+                    // On success, Razorpay webhook will handle the rest.
+                    // We just need to redirect the user.
+                    localStorage.removeItem(`cart_${restaurantId}`);
+                    router.push(`/order/placed?restaurantId=${restaurantId}`);
+                    onClose();
                 },
                 prefill: {
                     name: name.trim(),
@@ -143,55 +170,6 @@ const CheckoutModal = ({ isOpen, onClose, restaurantId, phone, cart, notes, appl
             setLoading(false);
         }
     };
-    
-    const verifyPaymentAndPlaceOrder = async (razorpayResponse) => {
-        try {
-            const finalAddress = isAddingNew ? address : selectedAddress;
-            const finalItems = cart.map(item => ({
-                name: `${item.name} (${item.portion.name})${item.selectedAddOns.map(a => ` + ${a.name}`).join('')}`,
-                quantity: item.quantity,
-                price: item.totalPrice,
-            }));
-
-            const orderPayload = {
-                name: name.trim(),
-                address: finalAddress,
-                phone,
-                restaurantId,
-                items: finalItems,
-                notes,
-                coupon: appliedCoupons.length > 0 ? {
-                    code: appliedCoupons[0].code,
-                    discount: appliedCoupons.reduce((total, coupon) => {
-                        if (coupon.type === 'flat') return total + coupon.value;
-                        if (coupon.type === 'percentage') return total + (subtotal * coupon.value / 100);
-                        return total;
-                    }, 0)
-                } : null,
-                loyaltyDiscount: 0,
-                ...razorpayResponse
-            };
-
-            const res = await fetch('/api/customer/register', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(orderPayload),
-            });
-            
-            const result = await res.json();
-            if (!res.ok) {
-                throw new Error(result.message || "Failed to place final order after payment.");
-            }
-
-            localStorage.removeItem(`cart_${restaurantId}`);
-            router.push(`/order/placed?restaurantId=${restaurantId}`);
-            onClose();
-
-        } catch (err) {
-            setError(err.message);
-            setLoading(false);
-        }
-    }
     
     return (
         <Dialog open={isOpen} onOpenChange={onClose}>
@@ -589,6 +567,7 @@ export default CartPage;
     
 
     
+
 
 
 
