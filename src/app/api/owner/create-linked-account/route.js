@@ -92,19 +92,22 @@ export async function POST(req) {
         try {
             const fundAccountResponse = await razorpayApi.post('/fund_accounts', fundAccountPayload);
             fundAccount = fundAccountResponse.data;
-            console.log("[API LOG] Razorpay Fund Account created successfully. ID:", fundAccount.id);
+            // ** THE MOST IMPORTANT FIX IS HERE **
+            // The `id` in the fund account response is the `acc_...` ID we need for routes.
+            console.log("[API LOG] Razorpay Fund Account created successfully. The Route Account ID is:", fundAccount.id);
         } catch (error) {
              console.error("[API ERROR] Failed to create Razorpay fund account:", error.response ? error.response.data : error.message);
             const errorDetail = error.response?.data?.error?.description || 'Failed to create fund account.';
             return NextResponse.json({ message: `Razorpay Error: ${errorDetail}` }, { status: 500 });
         }
         
-        // --- STEP 3: Save the Fund Account ID to Firestore ---
-        console.log("[API LOG] Step 3: Saving Razorpay Account ID to Firestore...");
+        // --- STEP 3: Save the CORRECT Route Account ID (`acc_...`) to Firestore ---
+        console.log("[API LOG] Step 3: Saving Razorpay Route Account ID to Firestore...");
         await restaurantRef.update({
-            razorpayAccountId: fundAccount.id
+            // ** THE FIX **: We save the `id` from the fundAccount response, which is the `acc_...` ID.
+            razorpayAccountId: fundAccount.id 
         });
-        console.log("[API LOG] Firestore updated successfully.");
+        console.log("[API LOG] Firestore updated successfully with Route Account ID:", fundAccount.id);
 
         return NextResponse.json({ message: 'Bank account linked successfully!', accountId: fundAccount.id }, { status: 200 });
 
