@@ -32,8 +32,7 @@ export async function POST(req) {
     try {
         const restaurantDoc = await verifyOwnerAndGetRestaurantRef(req);
         const restaurantRef = restaurantDoc.ref;
-        const restaurantData = restaurantDoc.data();
-        const ownerId = restaurantData.ownerId;
+        const ownerId = restaurantDoc.data().ownerId;
         
         const { name, account_number, ifsc } = await req.json();
 
@@ -58,12 +57,23 @@ export async function POST(req) {
              return NextResponse.json({ message: 'Owner email not found, which is required for creating a linked account.' }, { status: 400 });
         }
         
-        // --- Use Fund Account API ---
+        // --- CORRECTED LOGIC: Create a Contact first, then a Fund Account ---
+
+        // Step 1: Create a Contact
+        const contactPayload = {
+            name: name, // Use the account holder's name for the contact
+            email: ownerEmail,
+            // You can add more details like contact number if available
+        };
+        const contact = await razorpay.contacts.create(contactPayload);
+        if (!contact || !contact.id) {
+            throw new Error("Failed to create Contact on Razorpay.");
+        }
+        const contactId = contact.id;
+        
+        // Step 2: Use the Contact ID to create the Fund Account
         const fundAccountPayload = {
-            contact: {
-                name: name,
-                email: ownerEmail,
-            },
+            contact_id: contactId,
             account_type: 'bank_account',
             bank_account: {
                 name: name,
@@ -89,7 +99,6 @@ export async function POST(req) {
         }, { status: 201 });
 
     } catch (error) {
-        // --- FINAL DEBUGGING LOGIC ---
         // Log the entire error object to see its structure
         console.error("CREATE LINKED ACCOUNT API - FULL ERROR OBJECT:", JSON.stringify(error, null, 2));
 
