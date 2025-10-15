@@ -82,51 +82,44 @@ const AnimatedNumber = ({ value, suffix = '', prefix = '' }) => {
 };
 
 const AnimatedWhatShop = ({ onAnimationComplete }) => {
-  const [text, setText] = useState('');
-  const [color, setColor] = useState('hsl(var(--primary))'); // Start with yellow
+  const [textParts, setTextParts] = useState({ part1: '', part2: '' });
   const isMounted = useRef(true);
 
   useEffect(() => {
     isMounted.current = true;
     const sequence = async () => {
       while (isMounted.current) {
-        // Reset state for loop
-        setText('');
-        setColor('hsl(var(--primary))');
+        setTextParts({ part1: '', part2: '' });
         await new Promise(res => setTimeout(res, 500));
 
-        // 1. Fade in "WhatsApp"
-        if (!isMounted.current) return;
-        setColor('#25D366'); // WhatsApp Green
-        for (let i = 1; i <= 'WhatsApp'.length; i++) {
+        // 1. Type "WhatsApp" in green
+        let tempText = '';
+        for (const char of 'WhatsApp') {
           if (!isMounted.current) return;
-          setText('WhatsApp'.substring(0, i));
+          tempText += char;
+          setTextParts({ part1: tempText, part2: '' });
           await new Promise(res => setTimeout(res, 80));
         }
         await new Promise(res => setTimeout(res, 1000));
-
+        
         // First time animation completes
         if (typeof onAnimationComplete === 'function') {
             onAnimationComplete();
         }
 
-        // 2. Backspace effect
+        // 2. Backspace "app"
         for (let i = 'WhatsApp'.length; i >= 'Whats'.length; i--) {
           if (!isMounted.current) return;
-          setText('WhatsApp'.substring(0, i));
+          setTextParts({ part1: 'WhatsApp'.substring(0, i), part2: '' });
           await new Promise(res => setTimeout(res, 100));
         }
         await new Promise(res => setTimeout(res, 300));
-
-        // 3. Typing "Shop"
-        if (!isMounted.current) return;
-        setColor('hsl(var(--primary))'); // Brand color
-        let currentText = 'Whats';
+        
+        // 3. Type "Shop" in yellow
         for (const char of 'Shop') {
-          if (!isMounted.current) return;
-          currentText += char;
-          setText(currentText);
-          await new Promise(res => setTimeout(res, 120));
+            if (!isMounted.current) return;
+            setTextParts(prev => ({ ...prev, part2: prev.part2 + char }));
+            await new Promise(res => setTimeout(res, 120));
         }
         
         await new Promise(res => setTimeout(res, 2000)); // Pause on "WhatShop"
@@ -143,10 +136,11 @@ const AnimatedWhatShop = ({ onAnimationComplete }) => {
   return (
       <h2 
         className="font-headline text-4xl md:text-6xl tracking-tighter leading-tight font-bold transition-colors duration-500"
-        style={{ color: color, minHeight: '70px' }}
+        style={{ minHeight: '70px' }}
       >
-        {text}
-        <span className="animate-ping">|</span>
+        <span style={{ color: '#25D366' }}>{textParts.part1}</span>
+        <span style={{ color: 'hsl(var(--primary))' }}>{textParts.part2}</span>
+        <span className="animate-ping" style={{color: 'hsl(var(--primary))'}}>|</span>
       </h2>
   );
 };
