@@ -1,5 +1,4 @@
 
-
 'use client'
 
 import { motion, useInView, animate, AnimatePresence } from 'framer-motion'
@@ -91,10 +90,10 @@ const AnimatedWhatShop = ({ onAnimationComplete }) => {
         await new Promise(res => setTimeout(res, 500));
 
         // 1. Type "WhatsApp" in green
-        let tempText = '';
+        let tempWhatsAppText = '';
         for (const char of 'WhatsApp') {
-          tempText += char;
-          setTextParts({ part1: tempText, part2: '' });
+          tempWhatsAppText += char;
+          setTextParts({ part1: tempWhatsAppText, part2: '' });
           await new Promise(res => setTimeout(res, 80));
         }
         await new Promise(res => setTimeout(res, 1200));
@@ -107,8 +106,10 @@ const AnimatedWhatShop = ({ onAnimationComplete }) => {
         await new Promise(res => setTimeout(res, 400));
         
         // 3. Type "Shop" in yellow
+        let tempShopText = '';
         for (const char of 'Shop') {
-            setTextParts(prev => ({ ...prev, part2: prev.part2 + char }));
+            tempShopText += char;
+            setTextParts(prev => ({ ...prev, part2: tempShopText }));
             await new Promise(res => setTimeout(res, 150));
         }
         
