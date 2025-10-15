@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useState, useEffect } from 'react';
@@ -8,7 +9,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { useParams, useRouter } from 'next/navigation';
 import { useDoc } from '@/firebase/firestore/use-doc';
-import { doc, GeoPoint } from 'firebase/firestore';
+import { doc, getDoc, GeoPoint } from 'firebase/firestore';
 import { useFirestore } from '@/firebase';
 import dynamic from 'next/dynamic';
 
@@ -108,6 +109,13 @@ export default function OrderTrackingPage() {
     const { data: orderData, isLoading: isOrderLoading, error: orderError } = useDoc(
         orderId ? doc(firestore, 'orders', orderId) : null
     );
+
+    // This effect now logs the specific error from the API
+    useEffect(() => {
+        if(orderError) {
+            console.error("Firestore Order Hook Error:", orderError);
+        }
+    }, [orderError]);
     
     // Fetch related data when order data is available
     useEffect(() => {
@@ -125,6 +133,7 @@ export default function OrderTrackingPage() {
                     }
 
                 } catch (err) {
+                    console.error("Error fetching related data:", err);
                     setError(err.message);
                 } finally {
                     setLoading(false);

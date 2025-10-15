@@ -66,6 +66,7 @@ export async function GET(request, { params }) {
 
     } catch (error) {
         console.error("GET /api/order/status/[orderId] ERROR:", error);
+        console.log("Error details for status API:", error.message);
         return NextResponse.json({ message: `Backend Error: ${error.message}` }, { status: 500 });
     }
 }
