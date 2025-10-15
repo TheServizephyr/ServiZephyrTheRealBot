@@ -184,7 +184,7 @@ export default function Home() {
     <div className="flex flex-col min-h-screen overflow-x-hidden bg-background">
       <main className="flex-grow">
         {/* Hero Section */}
-        <section className="w-full py-20 md:py-32">
+        <section className="w-full py-16 md:py-28">
           <div className="container px-4 md:px-6 text-center">
             <div className="max-w-4xl mx-auto flex flex-col items-center">
                <h1 className="font-headline text-5xl md:text-7xl tracking-tighter leading-tight text-foreground">
