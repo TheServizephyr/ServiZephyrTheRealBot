@@ -33,35 +33,31 @@ const CartPageInternal = () => {
     const router = useRouter();
     const searchParams = useSearchParams();
     const restaurantId = searchParams.get('restaurantId');
-    const phoneFromUrl = searchParams.get('phone');
     
+    // **THE FIX**: Prioritize URL, then localStorage, then nothing.
+    const phoneFromUrl = searchParams.get('phone');
+    const phoneFromStorage = typeof window !== 'undefined' ? localStorage.getItem('lastKnownPhone') : null;
+    const initialPhone = phoneFromUrl || phoneFromStorage;
+
     const [cartData, setCartData] = useState(null);
     const [cart, setCart] = useState([]);
     const [notes, setNotes] = useState('');
     const [appliedCoupons, setAppliedCoupons] = useState([]);
     const [isClearCartDialogOpen, setIsClearCartDialogOpen] = useState(false);
-    const [phone, setPhone] = useState(null);
+    const [phone, setPhone] = useState(initialPhone);
 
 
     useEffect(() => {
         if (!restaurantId) return;
 
-        // --- START: THE ULTIMATE PHONE NUMBER FIX ---
-        // 1. Prioritize phone number from the URL first.
-        let authoritativePhone = phoneFromUrl;
-        
-        // 2. If it's not in the URL, try to get it from localStorage.
-        if (!authoritativePhone) {
-            authoritativePhone = localStorage.getItem('lastKnownPhone');
+        // **THE FIX**: Logic to establish the authoritative phone number.
+        const phoneToUse = phoneFromUrl || phoneFromStorage;
+        if (phoneToUse) {
+            setPhone(phoneToUse);
+            if (typeof window !== 'undefined') {
+                localStorage.setItem('lastKnownPhone', phoneToUse);
+            }
         }
-
-        // 3. If we found a phone number from either source, lock it in.
-        if (authoritativePhone) {
-            setPhone(authoritativePhone);
-            // And save it to localStorage to ensure it persists across sessions and navigations.
-            localStorage.setItem('lastKnownPhone', authoritativePhone);
-        }
-        // --- END: THE ULTIMATE PHONE NUMBER FIX ---
 
         // Now, load cart data from localStorage for the specific restaurant.
         const data = localStorage.getItem(`cart_${restaurantId}`);
@@ -74,7 +70,7 @@ const CartPageInternal = () => {
             setCart([]);
         }
 
-    }, [restaurantId, phoneFromUrl]);
+    }, [restaurantId, phoneFromUrl, phoneFromStorage]);
 
     const updateCartInStorage = (newCart, newNotes) => {
         // Ensure that even if cartData is null initially, we create a new object.
@@ -195,6 +191,7 @@ const CartPageInternal = () => {
         });
     };
 
+    // **THE FIX** Correctly separate special and normal coupons
     const allCoupons = cartData?.coupons || [];
     const specialCoupons = allCoupons.filter(c => c.customerId);
     const normalCoupons = allCoupons.filter(c => !c.customerId);
@@ -333,7 +330,7 @@ const CartPageInternal = () => {
                                               </div>
                                               <p className="text-xs text-muted-foreground">{coupon.description}</p>
                                           </div>
-                                      )) : <p className="text-xs text-muted-foreground text-center">No other coupons available.</p>}
+                                      )) : (specialCoupons.length === 0 && <p className="text-xs text-muted-foreground text-center">No coupons available.</p>)}
 
                                      </div>
                                 </PopoverContent>
