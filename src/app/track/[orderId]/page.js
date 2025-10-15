@@ -119,29 +119,35 @@ export default function OrderTrackingPage() {
     
     // Fetch related data when order data is available
     useEffect(() => {
-        if (orderData) {
-            setOrder(orderData);
-            const fetchRelatedData = async () => {
-                try {
-                    // Fetch restaurant details
-                    const restaurantRef = doc(firestore, 'restaurants', orderData.restaurantId);
-                    const restaurantSnap = await getDoc(restaurantRef);
-                    if (restaurantSnap.exists()) {
-                        setRestaurant({ id: restaurantSnap.id, ...restaurantSnap.data()});
-                    } else {
-                        throw new Error("Restaurant not found");
+        // This effect runs when the order data from useDoc is resolved (loaded).
+        // It's crucial to set loading to false even if orderData is null.
+        if (!isOrderLoading) {
+            if (orderData) {
+                setOrder(orderData);
+                const fetchRelatedData = async () => {
+                    try {
+                        const restaurantRef = doc(firestore, 'restaurants', orderData.restaurantId);
+                        const restaurantSnap = await getDoc(restaurantRef);
+                        if (restaurantSnap.exists()) {
+                            setRestaurant({ id: restaurantSnap.id, ...restaurantSnap.data()});
+                        } else {
+                            throw new Error("Restaurant not found");
+                        }
+                    } catch (err) {
+                        console.error("Error fetching related data:", err);
+                        setError(err.message);
+                    } finally {
+                        setLoading(false); // Set loading false after fetching related data or on error
                     }
-
-                } catch (err) {
-                    console.error("Error fetching related data:", err);
-                    setError(err.message);
-                } finally {
-                    setLoading(false);
-                }
-            };
-            fetchRelatedData();
+                };
+                fetchRelatedData();
+            } else {
+                // If useDoc returns no data (and is not loading), it means the order doesn't exist.
+                // Stop the main loading indicator.
+                setLoading(false);
+            }
         }
-    }, [orderData, firestore]);
+    }, [orderData, isOrderLoading, firestore]);
     
     // Real-time listener for the delivery boy
     const { data: deliveryBoyData } = useDoc(
