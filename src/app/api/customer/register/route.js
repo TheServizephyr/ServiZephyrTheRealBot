@@ -1,5 +1,4 @@
 
-
 import { firestore as adminFirestore } from 'firebase-admin';
 import { getFirestore } from '@/lib/firebase-admin';
 import { NextResponse } from 'next/server';
@@ -101,6 +100,16 @@ export async function POST(req) {
              lastOrderDate: adminFirestore.FieldValue.serverTimestamp(),
              totalOrders: adminFirestore.FieldValue.increment(1),
         }, { merge: true });
+        
+        // --- NEW: Increment coupon usage count ---
+        if (coupon && coupon.id) {
+            const couponRef = restaurantRef.collection('coupons').doc(coupon.id);
+            batch.update(couponRef, {
+                timesUsed: adminFirestore.FieldValue.increment(1)
+            });
+            console.log(`[Order API] Coupon ${coupon.id} usage count incremented.`);
+        }
+
 
         const newOrderRef = firestore.collection('orders').doc();
         batch.set(newOrderRef, {
