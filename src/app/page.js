@@ -207,7 +207,7 @@ export default function Home() {
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ duration: 0.8, ease: "easeOut" }}
                   >
-                    <h3 className="text-xl md:text-2xl text-muted-foreground mt-4">
+                    <h3 className="text-xl md:text-2xl text-muted-foreground">
                         Ab lijiye direct orders customer ke WhatsApp se.
                     </h3>
                      <h2 className="text-2xl md:text-4xl font-bold tracking-tight text-foreground mt-6">
