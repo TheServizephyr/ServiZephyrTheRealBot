@@ -1,5 +1,4 @@
 
-
 'use client'
 
 import { motion, useInView, animate } from 'framer-motion'
@@ -82,9 +81,9 @@ const AnimatedNumber = ({ value, suffix = '', prefix = '' }) => {
   );
 };
 
-
 export default function Home() {
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [animationFinished, setAnimationFinished] = useState(false);
 
   const testimonials = [
     {
@@ -132,28 +131,40 @@ export default function Home() {
         {/* Hero Section */}
         <section className="w-full py-20 md:py-32">
           <div className="container px-4 md:px-6 text-center">
-            <div className="max-w-4xl mx-auto">
-              <h1 className="font-headline text-5xl md:text-7xl tracking-tighter leading-tight text-foreground">
+            <div className="max-w-4xl mx-auto flex flex-col items-center">
+               <h1 className="font-headline text-5xl md:text-7xl tracking-tighter leading-tight text-foreground">
                 Your Business. Your Customers. Your Control.
               </h1>
-              <p className="max-w-2xl mx-auto mt-6 text-lg text-muted-foreground font-body">
-                ServiZephyr turns your WhatsApp into a powerful profit machine. Get your own personal bot, smart dashboard, and marketing tools.
-              </p>
-              <div className="mt-8 flex flex-col items-center gap-4">
-                <button 
-                    onClick={() => setIsModalOpen(true)}
-                    className="bg-primary text-primary-foreground font-bold py-3 px-8 rounded-lg text-lg hover:bg-primary/90 transition-transform transform hover:scale-105"
-                >
-                  Get Started & Save Money
-                </button>
-                 {/* This link is for testing purposes */}
-                 <Link 
-                    href="/order/baghel-'s-dhaba?phone=9027872803"
-                    className="text-sm text-muted-foreground hover:text-primary underline"
+
+              <div className="my-6 h-16 md:h-20 flex items-center justify-center">
+                 <h2 
+                    className="font-headline text-5xl md:text-7xl tracking-tighter leading-tight font-bold text-primary"
                   >
-                    Preview Customer Order Page (for testing)
-                  </Link>
+                    WhatShop
+                  </h2>
               </div>
+
+              
+                  <motion.div
+                    className="flex flex-col items-center w-full"
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.8, ease: "easeOut" }}
+                  >
+                    <h3 className="text-xl md:text-2xl text-muted-foreground mt-4">
+                        Ab lijiye direct orders customer ke WhatsApp se.
+                    </h3>
+                     <h2 className="text-2xl md:text-4xl font-bold tracking-tight text-foreground mt-6">
+                        Cut Commission. Boost Profits by <span className="text-primary">25%+.</span>
+                    </h2>
+                    <button 
+                        onClick={() => setIsModalOpen(true)}
+                        className="mt-8 bg-primary text-primary-foreground font-bold py-3 px-8 rounded-lg text-lg hover:bg-primary/90 transition-transform transform hover:scale-105"
+                    >
+                      Start Your Free Trial
+                    </button>
+                  </motion.div>
+                
             </div>
           </div>
         </section>
