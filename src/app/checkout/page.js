@@ -135,7 +135,7 @@ const CheckoutPageInternal = () => {
                     const data = await res.json();
                     setCodEnabled(data.codEnabled || false);
                  }
-            } catch (err) => {
+            } catch (err) {
                 console.error("Could not fetch restaurant settings for COD:", err);
                 // Assume COD is disabled if fetch fails
                 setCodEnabled(false);
