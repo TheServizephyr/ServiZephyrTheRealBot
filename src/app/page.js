@@ -86,6 +86,7 @@ const AnimatedWhatShop = ({ onAnimationComplete }) => {
 
   useEffect(() => {
     const sequence = async () => {
+        // Reset state for re-animation if component re-mounts
         setTextParts({ part1: '', part2: '' });
         await new Promise(res => setTimeout(res, 500));
 
@@ -114,6 +115,7 @@ const AnimatedWhatShop = ({ onAnimationComplete }) => {
         }
         
         await new Promise(res => setTimeout(res, 500));
+        // Notify parent component that animation is done
         if (typeof onAnimationComplete === 'function') {
             onAnimationComplete();
         }
@@ -121,6 +123,8 @@ const AnimatedWhatShop = ({ onAnimationComplete }) => {
 
     sequence();
     
+    // Cleanup function is not strictly necessary here as we run it once,
+    // but good practice if the component could re-render and re-trigger the effect.
   }, [onAnimationComplete]);
 
   return (
@@ -207,7 +211,7 @@ export default function Home() {
                         Ab lijiye direct orders customer ke WhatsApp se.
                     </h3>
                      <h2 className="text-2xl md:text-4xl font-bold tracking-tight text-foreground mt-6">
-                        Cut Commission. Boost Profits by <span className="text-primary">25%+.</span>
+                        Cut Commission. Boost Profits by <span className="text-green-500">25%+.</span>
                     </h2>
                     <button 
                         onClick={() => setIsModalOpen(true)}
