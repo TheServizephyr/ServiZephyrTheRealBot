@@ -55,6 +55,12 @@ const CartPageInternal = () => {
                 setCart(updatedData.cart || []);
                 setNotes(updatedData.notes || '');
                 localStorage.setItem(`cart_${restaurantId}`, JSON.stringify(updatedData));
+
+                // **NEW FIX**: Persist the phone number for back navigation
+                if (finalPhone) {
+                    localStorage.setItem('lastKnownPhone', finalPhone);
+                }
+
             } else {
                 setCart([]);
             }
@@ -355,3 +361,5 @@ const CartPage = () => (
 );
 
 export default CartPage;
+
+    

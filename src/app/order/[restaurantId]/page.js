@@ -312,8 +312,23 @@ const OrderPageInternal = () => {
     const params = useParams();
     const searchParams = useSearchParams();
     const { restaurantId } = params;
-    const phone = searchParams.get('phone');
     
+    // **NEW FIX**: Prioritize URL param, then localStorage, then null.
+    const [phone, setPhone] = useState(null);
+
+    useEffect(() => {
+        const phoneFromUrl = searchParams.get('phone');
+        const phoneFromStorage = localStorage.getItem('lastKnownPhone');
+        const effectivePhone = phoneFromUrl || phoneFromStorage;
+        setPhone(effectivePhone);
+
+        // If phone is from URL, update localStorage
+        if (phoneFromUrl) {
+            localStorage.setItem('lastKnownPhone', phoneFromUrl);
+        }
+
+    }, [searchParams]);
+
     // --- STATE MANAGEMENT ---
     const [restaurantData, setRestaurantData] = useState({
         name: '',
@@ -344,6 +359,9 @@ const OrderPageInternal = () => {
 
     // --- DATA FETCHING ---
     useEffect(() => {
+      // Only fetch if phone state has been determined
+      if (phone === null) return; 
+
       const fetchMenuData = async () => {
         if (!restaurantId) return;
         setLoading(true);
@@ -376,7 +394,7 @@ const OrderPageInternal = () => {
       };
 
       fetchMenuData();
-    }, [restaurantId, phone]);
+    }, [restaurantId, phone]); // Depends on phone now
     
     // --- CART PERSISTENCE ---
     useEffect(() => {
@@ -737,3 +755,5 @@ const OrderPage = () => (
 );
 
 export default OrderPage;
+
+    
