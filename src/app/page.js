@@ -136,9 +136,6 @@ export default function Home() {
               <h1 className="font-headline text-5xl md:text-7xl tracking-tighter leading-tight text-foreground">
                 Your Business. Your Customers. Your Control.
               </h1>
-              <h2 className="font-headline text-5xl md:text-7xl tracking-tighter leading-tight text-foreground mt-2">
-                Say goodbye to 30% commissions.
-              </h2>
               <p className="max-w-2xl mx-auto mt-6 text-lg text-muted-foreground font-body">
                 ServiZephyr turns your WhatsApp into a powerful profit machine. Get your own personal bot, smart dashboard, and marketing tools.
               </p>
