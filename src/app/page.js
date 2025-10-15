@@ -83,16 +83,20 @@ const AnimatedNumber = ({ value, suffix = '', prefix = '' }) => {
 
 const AnimatedWhatShop = ({ onAnimationComplete }) => {
   const [textParts, setTextParts] = useState({ part1: '', part2: '' });
+  const isMounted = useRef(true);
 
   useEffect(() => {
+    isMounted.current = true;
     const sequence = async () => {
-        // Reset state for re-animation if component re-mounts
-        setTextParts({ part1: '', part2: '' });
+      while(isMounted.current) {
+        // Reset state for re-animation
+        if (isMounted.current) setTextParts({ part1: '', part2: '' });
         await new Promise(res => setTimeout(res, 500));
 
         // 1. Type "WhatsApp" in green
         let tempWhatsAppText = '';
         for (const char of 'WhatsApp') {
+          if (!isMounted.current) return;
           tempWhatsAppText += char;
           setTextParts({ part1: tempWhatsAppText, part2: '' });
           await new Promise(res => setTimeout(res, 80));
@@ -101,6 +105,7 @@ const AnimatedWhatShop = ({ onAnimationComplete }) => {
 
         // 2. Backspace "app"
         for (let i = 'WhatsApp'.length; i >= 'Whats'.length; i--) {
+          if (!isMounted.current) return;
           setTextParts({ part1: 'WhatsApp'.substring(0, i), part2: '' });
           await new Promise(res => setTimeout(res, 120));
         }
@@ -109,23 +114,28 @@ const AnimatedWhatShop = ({ onAnimationComplete }) => {
         // 3. Type "Shop" in yellow
         let tempShopText = '';
         for (const char of 'Shop') {
+            if (!isMounted.current) return;
             tempShopText += char;
             setTextParts(prev => ({ ...prev, part2: tempShopText }));
             await new Promise(res => setTimeout(res, 150));
         }
         
+        // Hold the final word
+        await new Promise(res => setTimeout(res, 2500));
+        
+        // Fade out before restarting
+        setTextParts({ part1: ' ', part2: '' }); // Clear text to fade out
         await new Promise(res => setTimeout(res, 500));
-        // Notify parent component that animation is done
-        if (typeof onAnimationComplete === 'function') {
-            onAnimationComplete();
-        }
+      }
     };
 
     sequence();
+
+    return () => {
+      isMounted.current = false;
+    }
     
-    // Cleanup function is not strictly necessary here as we run it once,
-    // but good practice if the component could re-render and re-trigger the effect.
-  }, [onAnimationComplete]);
+  }, []);
 
   return (
       <h2 
@@ -134,7 +144,7 @@ const AnimatedWhatShop = ({ onAnimationComplete }) => {
       >
         <span style={{ color: '#25D366' }}>{textParts.part1}</span>
         <span style={{ color: 'hsl(var(--primary))' }}>{textParts.part2}</span>
-        <span className="animate-ping" style={{color: 'hsl(var(--primary))'}}>|</span>
+        { (textParts.part1 || textParts.part2) && <span className="animate-ping" style={{color: 'hsl(var(--primary))'}}>|</span>}
       </h2>
   );
 };
@@ -142,7 +152,7 @@ const AnimatedWhatShop = ({ onAnimationComplete }) => {
 
 export default function Home() {
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [animationFinished, setAnimationFinished] = useState(false);
+  const [animationFinished, setAnimationFinished] = useState(true); // Always show content now
 
   const testimonials = [
     {
@@ -196,7 +206,7 @@ export default function Home() {
               </h1>
 
               <div className="my-6 h-16 md:h-20 flex items-center justify-center">
-                <AnimatedWhatShop onAnimationComplete={() => setAnimationFinished(true)} />
+                <AnimatedWhatShop onAnimationComplete={() => {}} />
               </div>
 
               <AnimatePresence>
