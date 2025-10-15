@@ -33,7 +33,7 @@ const Header = () => {
         transition={{ duration: 0.5 }}
         className={cn(
           "sticky top-0 z-50 w-full border-b transition-colors duration-300",
-          isScrolled ? "border-border bg-background/80 backdrop-blur-lg" : "border-transparent bg-background"
+          isScrolled ? "border-border bg-background/80 backdrop-blur-lg" : "border-transparent"
         )}
       >
         <div className="container mx-auto flex h-20 items-center justify-between px-4 md:px-6">
