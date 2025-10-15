@@ -20,11 +20,7 @@ import { useSearchParams } from 'next/navigation';
 const formatDate = (dateStr) => {
     if (!dateStr) return 'N/A';
     const date = new Date(dateStr);
-    if (isNaN(date.getTime())) { // Invalid date
-       // Handle Firestore timestamp object
-       if(dateStr.seconds) {
-         return format(new Date(dateStr.seconds * 1000), "dd MMM yyyy");
-       }
+    if (isNaN(date.getTime())) {
        return 'N/A';
     }
     return format(date, "dd MMM yyyy");
@@ -40,11 +36,10 @@ const CouponModal = ({ isOpen, setIsOpen, onSave, editingCoupon }) => {
         if(isOpen) {
             setIsSaving(false);
             if (editingCoupon) {
-                // Ensure dates are Date objects for the calendar
+                // The parent component already converts Firestore timestamps to Date objects.
+                // No further `new Date()` conversion is needed here.
                 setCoupon({
-                    ...editingCoupon,
-                    startDate: new Date(editingCoupon.startDate),
-                    expiryDate: new Date(editingCoupon.expiryDate),
+                    ...editingCoupon
                 });
             } else {
                 setCoupon({
@@ -208,7 +203,7 @@ const CouponModal = ({ isOpen, setIsOpen, onSave, editingCoupon }) => {
 };
 
 const CouponCard = ({ coupon, onStatusToggle, onEdit, onDelete }) => {
-    const expiryDate = coupon.expiryDate?.seconds ? new Date(coupon.expiryDate.seconds * 1000) : new Date(coupon.expiryDate);
+    const expiryDate = new Date(coupon.expiryDate);
     const isExpired = expiryDate < new Date();
     const status = isExpired ? 'Expired' : coupon.status;
     
@@ -376,7 +371,7 @@ export default function CouponsPage() {
 
     const filteredAndSortedCoupons = useMemo(() => {
         let items = [...coupons].map(c => {
-            const expiryDate = c.expiryDate?.seconds ? new Date(c.expiryDate.seconds * 1000) : new Date(c.expiryDate);
+            const expiryDate = new Date(c.expiryDate);
             return {...c, isExpired: expiryDate < new Date()};
         });
 
@@ -389,8 +384,8 @@ export default function CouponsPage() {
             let valA = a[sortKey];
             let valB = b[sortKey];
             if (sortKey.includes('Date')) {
-                valA = a[sortKey]?.seconds ? new Date(a[sortKey].seconds * 1000) : new Date(a[sortKey]);
-                valB = b[sortKey]?.seconds ? new Date(b[sortKey].seconds * 1000) : new Date(b[sortKey]);
+                valA = new Date(a[sortKey]);
+                valB = new Date(b[sortKey]);
             }
             if (valA < valB) return sortDir === 'asc' ? -1 : 1;
             if (valA > valB) return sortDir === 'asc' ? 1 : -1;
