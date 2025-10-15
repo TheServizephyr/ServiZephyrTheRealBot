@@ -1,4 +1,5 @@
 
+
 'use client';
 
 import React, { useState, useEffect, useMemo, Suspense } from 'react';
@@ -81,6 +82,7 @@ const CheckoutPageInternal = () => {
     const router = useRouter();
     const searchParams = useSearchParams();
     const restaurantId = searchParams.get('restaurantId');
+    const phone = searchParams.get('phone'); // **THE FIX**: Get phone from URL
     
     // States for cart and user details
     const [cart, setCart] = useState([]);
@@ -111,8 +113,12 @@ const CheckoutPageInternal = () => {
             const savedCartData = localStorage.getItem(`cart_${restaurantId}`);
             if (savedCartData) {
                 const parsedData = JSON.parse(savedCartData);
-                setCart(parsedData.cart || []);
-                setCartData(parsedData);
+                // **THE FIX**: Ensure phone from URL is prioritized
+                const finalPhone = phone || parsedData.phone;
+                const updatedData = { ...parsedData, phone: finalPhone };
+
+                setCart(updatedData.cart || []);
+                setCartData(updatedData);
             } else {
                 // If no cart, redirect back
                 router.push(`/order/${restaurantId}`);
@@ -129,7 +135,7 @@ const CheckoutPageInternal = () => {
                     const data = await res.json();
                     setCodEnabled(data.codEnabled || false);
                  }
-            } catch (err) {
+            } catch (err) => {
                 console.error("Could not fetch restaurant settings for COD:", err);
                 // Assume COD is disabled if fetch fails
                 setCodEnabled(false);
@@ -139,12 +145,13 @@ const CheckoutPageInternal = () => {
         };
 
         fetchInitialData();
-    }, [restaurantId, router]);
+    }, [restaurantId, router, phone]);
 
 
     // Fetch user details when modal is about to open
     useEffect(() => {
         const fetchUserData = async () => {
+            // **THE FIX**: Use the authoritative phone from state (set from URL)
             if (isModalOpen && cartData?.phone) {
                 setLoading(true);
                 setError('');
@@ -403,7 +410,3 @@ const CheckoutPage = () => (
 );
 
 export default CheckoutPage;
-
-    
-
-    

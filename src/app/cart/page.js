@@ -34,7 +34,7 @@ const CartPageInternal = () => {
     const router = useRouter();
     const searchParams = useSearchParams();
     const restaurantId = searchParams.get('restaurantId');
-    const [phone, setPhone] = useState('');
+    const phone = searchParams.get('phone');
     
     const [cartData, setCartData] = useState(null);
     const [cart, setCart] = useState([]);
@@ -47,18 +47,22 @@ const CartPageInternal = () => {
             const data = localStorage.getItem(`cart_${restaurantId}`);
             if (data) {
                 const parsedData = JSON.parse(data);
-                setCartData(parsedData);
-                setCart(parsedData.cart || []);
-                setNotes(parsedData.notes || '');
-                setPhone(parsedData.phone || '');
+                // **THE FIX**: Ensure phone from URL is always authoritative
+                const finalPhone = phone || parsedData.phone;
+                const updatedData = { ...parsedData, phone: finalPhone };
+                
+                setCartData(updatedData);
+                setCart(updatedData.cart || []);
+                setNotes(updatedData.notes || '');
+                localStorage.setItem(`cart_${restaurantId}`, JSON.stringify(updatedData));
             } else {
                 setCart([]);
             }
         }
-    }, [restaurantId]);
+    }, [restaurantId, phone]);
 
     const updateCartInStorage = (newCart, newNotes) => {
-        const updatedData = { ...cartData, cart: newCart, notes: newNotes };
+        const updatedData = { ...cartData, cart: newCart, notes: newNotes, phone: phone }; // Always include the latest phone
         setCartData(updatedData);
         localStorage.setItem(`cart_${restaurantId}`, JSON.stringify(updatedData));
     };
@@ -99,7 +103,8 @@ const CartPageInternal = () => {
     };
 
     const handleConfirmOrder = () => {
-        router.push(`/checkout?restaurantId=${restaurantId}`);
+        // **THE FIX**: Pass the phone number to the checkout page
+        router.push(`/checkout?restaurantId=${restaurantId}&phone=${phone}`);
     };
 
 
@@ -197,7 +202,7 @@ const CartPageInternal = () => {
         <div className="min-h-screen bg-background text-foreground flex flex-col green-theme">
              <header className="sticky top-0 z-20 bg-background/80 backdrop-blur-lg border-b border-border">
                 <div className="container mx-auto px-4 py-3 flex items-center gap-4">
-                     <Button variant="ghost" size="icon" onClick={() => router.push(`/order/${restaurantId}`)} className="h-10 w-10">
+                     <Button variant="ghost" size="icon" onClick={() => router.push(`/order/${restaurantId}?phone=${phone}`)} className="h-10 w-10">
                         <ArrowLeft />
                     </Button>
                     <div>
@@ -213,7 +218,7 @@ const CartPageInternal = () => {
                         <ShoppingCart size={48} className="mb-4" />
                         <h1 className="text-2xl font-bold">Your Cart is Empty</h1>
                         <p className="mt-2">Looks like you haven't added anything to your cart yet.</p>
-                         <Button onClick={() => router.push(`/order/${restaurantId}`)} className="mt-6">
+                         <Button onClick={() => router.push(`/order/${restaurantId}?phone=${phone}`)} className="mt-6">
                             <ArrowLeft className="mr-2 h-4 w-4" /> Go Back to Menu
                         </Button>
                     </div>
@@ -253,7 +258,7 @@ const CartPageInternal = () => {
                                 ))}
                             </div>
 
-                            <Button variant="outline" onClick={() => router.push(`/order/${restaurantId}`)} className="w-full mt-4">
+                            <Button variant="outline" onClick={() => router.push(`/order/${restaurantId}?phone=${phone}`)} className="w-full mt-4">
                                 <PlusCircle className="mr-2 h-4 w-4" /> Add more items
                             </Button>
                             
