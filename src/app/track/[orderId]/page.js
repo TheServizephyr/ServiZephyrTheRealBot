@@ -227,8 +227,3 @@ export default function OrderTrackingPage() {
         </div>
     );
 }
-
-const getDoc = async (ref) => {
-  const { getDoc: fsGetDoc } = await import("firebase/firestore");
-  return fsGetDoc(ref);
-};
