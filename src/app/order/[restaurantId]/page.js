@@ -313,21 +313,12 @@ const OrderPageInternal = () => {
     const searchParams = useSearchParams();
     const { restaurantId } = params;
     
-    // **NEW FIX**: Prioritize URL param, then localStorage, then null.
-    const [phone, setPhone] = useState(null);
-
-    useEffect(() => {
-        const phoneFromUrl = searchParams.get('phone');
-        const phoneFromStorage = localStorage.getItem('lastKnownPhone');
-        const effectivePhone = phoneFromUrl || phoneFromStorage;
-        setPhone(effectivePhone);
-
-        // If phone is from URL, update localStorage
-        if (phoneFromUrl) {
-            localStorage.setItem('lastKnownPhone', phoneFromUrl);
-        }
-
-    }, [searchParams]);
+    // **THE FIX**: Logic to get phone number moved out of useEffect
+    const phoneFromUrl = searchParams.get('phone');
+    const phoneFromStorage = typeof window !== 'undefined' ? localStorage.getItem('lastKnownPhone') : null;
+    const initialPhone = phoneFromUrl || phoneFromStorage;
+    
+    const [phone, setPhone] = useState(initialPhone);
 
     // --- STATE MANAGEMENT ---
     const [restaurantData, setRestaurantData] = useState({
@@ -359,11 +350,18 @@ const OrderPageInternal = () => {
 
     // --- DATA FETCHING ---
     useEffect(() => {
-      // Only fetch if phone state has been determined
-      if (phone === null) return; 
+      // Update state and localStorage if phone in URL changes
+      const phoneFromUrl = searchParams.get('phone');
+      if (phoneFromUrl && phoneFromUrl !== phone) {
+        setPhone(phoneFromUrl);
+        localStorage.setItem('lastKnownPhone', phoneFromUrl);
+      }
 
       const fetchMenuData = async () => {
-        if (!restaurantId) return;
+        if (!restaurantId || !phone) { // Only fetch if we have a phone number
+            setLoading(false); // Stop loading if no phone
+            return;
+        };
         setLoading(true);
         setError(null);
         try {
@@ -394,7 +392,7 @@ const OrderPageInternal = () => {
       };
 
       fetchMenuData();
-    }, [restaurantId, phone]); // Depends on phone now
+    }, [restaurantId, phone, searchParams]); // Re-run if phone or URL params change
     
     // --- CART PERSISTENCE ---
     useEffect(() => {
@@ -755,5 +753,3 @@ const OrderPage = () => (
 );
 
 export default OrderPage;
-
-    
