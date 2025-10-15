@@ -1,7 +1,7 @@
 
 'use client'
 
-import { motion, useInView, animate } from 'framer-motion'
+import { motion, useInView, animate, AnimatePresence } from 'framer-motion'
 import { CheckCircle, Bot, Zap, Rocket, Users, ArrowRight, Star, ShoppingCart, BarChart2, MessageSquare, Briefcase, Store, Soup, Pizza } from 'lucide-react'
 import Image from 'next/image'
 import Link from 'next/link'
@@ -81,6 +81,57 @@ const AnimatedNumber = ({ value, suffix = '', prefix = '' }) => {
   );
 };
 
+const AnimatedWhatShop = ({ onAnimationComplete }) => {
+  const [text, setText] = useState('');
+  const [color, setColor] = useState('#25D366'); // WhatsApp Green
+
+  useEffect(() => {
+    const sequence = async () => {
+      // 1. Fade in "WhatsApp"
+      await new Promise(res => setTimeout(res, 500)); // Initial delay
+      setColor('#25D366');
+      for (let i = 1; i <= 'WhatsApp'.length; i++) {
+        setText('WhatsApp'.substring(0, i));
+        await new Promise(res => setTimeout(res, 80));
+      }
+      await new Promise(res => setTimeout(res, 1000)); // Pause
+
+      // 2. Backspace effect
+      for (let i = 'WhatsApp'.length; i >= 'Whats'.length; i--) {
+        setText('WhatsApp'.substring(0, i));
+        await new Promise(res => setTimeout(res, 100));
+      }
+       await new Promise(res => setTimeout(res, 300));
+
+      // 3. Typing "Shop"
+      setColor('hsl(var(--primary))'); // Brand color
+      let currentText = 'Whats';
+      for (const char of 'Shop') {
+        currentText += char;
+        setText(currentText);
+        await new Promise(res => setTimeout(res, 120));
+      }
+      
+      // 4. Final pulse and notify parent
+       await new Promise(res => setTimeout(res, 500));
+      onAnimationComplete();
+    };
+
+    sequence();
+  }, [onAnimationComplete]);
+
+  return (
+      <h2 
+        className="font-headline text-5xl md:text-7xl tracking-tighter leading-tight font-bold transition-colors duration-500"
+        style={{ color: color, minHeight: '80px' }}
+      >
+        {text}
+        <span className="animate-ping">|</span>
+      </h2>
+  );
+};
+
+
 export default function Home() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [animationFinished, setAnimationFinished] = useState(false);
@@ -137,14 +188,11 @@ export default function Home() {
               </h1>
 
               <div className="my-6 h-16 md:h-20 flex items-center justify-center">
-                 <h2 
-                    className="font-headline text-5xl md:text-7xl tracking-tighter leading-tight font-bold text-primary"
-                  >
-                    WhatShop
-                  </h2>
+                <AnimatedWhatShop onAnimationComplete={() => setAnimationFinished(true)} />
               </div>
 
-              
+              <AnimatePresence>
+                {animationFinished && (
                   <motion.div
                     className="flex flex-col items-center w-full"
                     initial={{ opacity: 0, y: 20 }}
@@ -164,7 +212,8 @@ export default function Home() {
                       Start Your Free Trial
                     </button>
                   </motion.div>
-                
+                )}
+              </AnimatePresence>
             </div>
           </div>
         </section>
