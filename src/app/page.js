@@ -83,47 +83,67 @@ const AnimatedNumber = ({ value, suffix = '', prefix = '' }) => {
 
 const AnimatedWhatShop = ({ onAnimationComplete }) => {
   const [text, setText] = useState('');
-  const [color, setColor] = useState('#25D366'); // WhatsApp Green
+  const [color, setColor] = useState('hsl(var(--primary))'); // Start with yellow
+  const isMounted = useRef(true);
 
   useEffect(() => {
+    isMounted.current = true;
     const sequence = async () => {
-      // 1. Fade in "WhatsApp"
-      await new Promise(res => setTimeout(res, 500)); // Initial delay
-      setColor('#25D366');
-      for (let i = 1; i <= 'WhatsApp'.length; i++) {
-        setText('WhatsApp'.substring(0, i));
-        await new Promise(res => setTimeout(res, 80));
-      }
-      await new Promise(res => setTimeout(res, 1000)); // Pause
+      while (isMounted.current) {
+        // Reset state for loop
+        setText('');
+        setColor('hsl(var(--primary))');
+        await new Promise(res => setTimeout(res, 500));
 
-      // 2. Backspace effect
-      for (let i = 'WhatsApp'.length; i >= 'Whats'.length; i--) {
-        setText('WhatsApp'.substring(0, i));
-        await new Promise(res => setTimeout(res, 100));
-      }
-       await new Promise(res => setTimeout(res, 300));
+        // 1. Fade in "WhatsApp"
+        if (!isMounted.current) return;
+        setColor('#25D366'); // WhatsApp Green
+        for (let i = 1; i <= 'WhatsApp'.length; i++) {
+          if (!isMounted.current) return;
+          setText('WhatsApp'.substring(0, i));
+          await new Promise(res => setTimeout(res, 80));
+        }
+        await new Promise(res => setTimeout(res, 1000));
 
-      // 3. Typing "Shop"
-      setColor('hsl(var(--primary))'); // Brand color
-      let currentText = 'Whats';
-      for (const char of 'Shop') {
-        currentText += char;
-        setText(currentText);
-        await new Promise(res => setTimeout(res, 120));
+        // First time animation completes
+        if (typeof onAnimationComplete === 'function') {
+            onAnimationComplete();
+        }
+
+        // 2. Backspace effect
+        for (let i = 'WhatsApp'.length; i >= 'Whats'.length; i--) {
+          if (!isMounted.current) return;
+          setText('WhatsApp'.substring(0, i));
+          await new Promise(res => setTimeout(res, 100));
+        }
+        await new Promise(res => setTimeout(res, 300));
+
+        // 3. Typing "Shop"
+        if (!isMounted.current) return;
+        setColor('hsl(var(--primary))'); // Brand color
+        let currentText = 'Whats';
+        for (const char of 'Shop') {
+          if (!isMounted.current) return;
+          currentText += char;
+          setText(currentText);
+          await new Promise(res => setTimeout(res, 120));
+        }
+        
+        await new Promise(res => setTimeout(res, 2000)); // Pause on "WhatShop"
       }
-      
-      // 4. Final pulse and notify parent
-       await new Promise(res => setTimeout(res, 500));
-      onAnimationComplete();
     };
 
     sequence();
+    
+    return () => {
+        isMounted.current = false;
+    }
   }, [onAnimationComplete]);
 
   return (
       <h2 
-        className="font-headline text-5xl md:text-7xl tracking-tighter leading-tight font-bold transition-colors duration-500"
-        style={{ color: color, minHeight: '80px' }}
+        className="font-headline text-4xl md:text-6xl tracking-tighter leading-tight font-bold transition-colors duration-500"
+        style={{ color: color, minHeight: '70px' }}
       >
         {text}
         <span className="animate-ping">|</span>
@@ -188,7 +208,7 @@ export default function Home() {
               </h1>
 
               <div className="my-6 h-16 md:h-20 flex items-center justify-center">
-                <AnimatedWhatShop onAnimationComplete={() => setAnimationFinished(true)} />
+                <AnimatedWhatShop onAnimationComplete={() => !animationFinished && setAnimationFinished(true)} />
               </div>
 
               <AnimatePresence>
