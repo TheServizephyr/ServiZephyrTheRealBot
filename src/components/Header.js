@@ -41,23 +41,23 @@ const Header = () => {
             <Image src="/logo.png" alt="ServiZephyr Logo" width={192} height={64} style={{height: 'auto'}} priority />
           </Link>
           <nav className="hidden items-center justify-evenly flex-1 md:flex">
-            <Link href="#product" className="group relative text-sm font-medium text-foreground transition-colors hover:text-primary">
+            <Link href="#product" className="group relative text-sm font-medium text-gray-300 transition-colors hover:text-primary">
               Product
               <span className="absolute bottom-0 left-0 h-0.5 w-full scale-x-0 bg-primary transition-transform duration-300 ease-out group-hover:scale-x-100"></span>
             </Link>
-            <Link href="#features" className="group relative text-sm font-medium text-foreground transition-colors hover:text-primary">
+            <Link href="#features" className="group relative text-sm font-medium text-gray-300 transition-colors hover:text-primary">
               Features
               <span className="absolute bottom-0 left-0 h-0.5 w-full scale-x-0 bg-primary transition-transform duration-300 ease-out group-hover:scale-x-100"></span>
             </Link>
-            <Link href="#pricing" className="group relative text-sm font-medium text-foreground transition-colors hover:text-primary">
+            <Link href="#pricing" className="group relative text-sm font-medium text-gray-300 transition-colors hover:text-primary">
               Pricing
               <span className="absolute bottom-0 left-0 h-0.5 w-full scale-x-0 bg-primary transition-transform duration-300 ease-out group-hover:scale-x-100"></span>
             </Link>
-            <Link href="#faq" className="group relative text-sm font-medium text-foreground transition-colors hover:text-primary">
+            <Link href="#faq" className="group relative text-sm font-medium text-gray-300 transition-colors hover:text-primary">
               FAQ
               <span className="absolute bottom-0 left-0 h-0.5 w-full scale-x-0 bg-primary transition-transform duration-300 ease-out group-hover:scale-x-100"></span>
             </Link>
-            <Link href="#contact" className="group relative text-sm font-medium text-foreground transition-colors hover:text-primary">
+            <Link href="#contact" className="group relative text-sm font-medium text-gray-300 transition-colors hover:text-primary">
               Contact
               <span className="absolute bottom-0 left-0 h-0.5 w-full scale-x-0 bg-primary transition-transform duration-300 ease-out group-hover:scale-x-100"></span>
             </Link>
