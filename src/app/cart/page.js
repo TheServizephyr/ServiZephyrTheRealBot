@@ -33,41 +33,53 @@ const CartPageInternal = () => {
     const router = useRouter();
     const searchParams = useSearchParams();
     const restaurantId = searchParams.get('restaurantId');
-    const phone = searchParams.get('phone');
+    const phoneFromUrl = searchParams.get('phone');
     
     const [cartData, setCartData] = useState(null);
     const [cart, setCart] = useState([]);
     const [notes, setNotes] = useState('');
     const [appliedCoupons, setAppliedCoupons] = useState([]);
     const [isClearCartDialogOpen, setIsClearCartDialogOpen] = useState(false);
+    const [phone, setPhone] = useState(null);
+
 
     useEffect(() => {
-        if (restaurantId) {
-            const data = localStorage.getItem(`cart_${restaurantId}`);
-            if (data) {
-                const parsedData = JSON.parse(data);
-                // **THE FIX**: Ensure phone from URL is always authoritative
-                const finalPhone = phone || parsedData.phone;
-                const updatedData = { ...parsedData, phone: finalPhone };
-                
-                setCartData(updatedData);
-                setCart(updatedData.cart || []);
-                setNotes(updatedData.notes || '');
-                localStorage.setItem(`cart_${restaurantId}`, JSON.stringify(updatedData));
+        if (!restaurantId) return;
 
-                // **NEW FIX**: Persist the phone number for back navigation
-                if (finalPhone) {
-                    localStorage.setItem('lastKnownPhone', finalPhone);
-                }
-
-            } else {
-                setCart([]);
-            }
+        // --- START: THE ULTIMATE PHONE NUMBER FIX ---
+        // 1. Prioritize phone number from the URL first.
+        let authoritativePhone = phoneFromUrl;
+        
+        // 2. If it's not in the URL, try to get it from localStorage.
+        if (!authoritativePhone) {
+            authoritativePhone = localStorage.getItem('lastKnownPhone');
         }
-    }, [restaurantId, phone]);
+
+        // 3. If we found a phone number from either source, lock it in.
+        if (authoritativePhone) {
+            setPhone(authoritativePhone);
+            // And save it to localStorage to ensure it persists across sessions and navigations.
+            localStorage.setItem('lastKnownPhone', authoritativePhone);
+        }
+        // --- END: THE ULTIMATE PHONE NUMBER FIX ---
+
+        // Now, load cart data from localStorage for the specific restaurant.
+        const data = localStorage.getItem(`cart_${restaurantId}`);
+        if (data) {
+            const parsedData = JSON.parse(data);
+            setCartData(parsedData);
+            setCart(parsedData.cart || []);
+            setNotes(parsedData.notes || '');
+        } else {
+            setCart([]);
+        }
+
+    }, [restaurantId, phoneFromUrl]);
 
     const updateCartInStorage = (newCart, newNotes) => {
-        const updatedData = { ...cartData, cart: newCart, notes: newNotes, phone: phone }; // Always include the latest phone
+        // Ensure that even if cartData is null initially, we create a new object.
+        const currentData = cartData || {}; 
+        const updatedData = { ...currentData, cart: newCart, notes: newNotes, phone: phone };
         setCartData(updatedData);
         localStorage.setItem(`cart_${restaurantId}`, JSON.stringify(updatedData));
     };
@@ -108,8 +120,13 @@ const CartPageInternal = () => {
     };
 
     const handleConfirmOrder = () => {
-        // **THE FIX**: Pass the phone number to the checkout page
+        // **THE FIX**: Pass the authoritative phone number to the checkout page.
         router.push(`/checkout?restaurantId=${restaurantId}&phone=${phone}`);
+    };
+
+    // **THE FIX**: Ensure the back button also carries the phone number.
+    const handleGoBack = () => {
+        router.push(`/order/${restaurantId}?phone=${phone}`);
     };
 
 
@@ -190,7 +207,7 @@ const CartPageInternal = () => {
                 <h1 className="text-2xl font-bold">Your Cart is Empty</h1>
                 <p className="mt-2">Looks like you haven't added anything to your cart yet.</p>
                 <Button onClick={() => router.back()} className="mt-6">
-                    <ArrowLeft className="mr-2 h-4 w-4" /> Go Back to Menu
+                    <ArrowLeft className="mr-2 h-4 w-4" /> Go Back
                 </Button>
             </div>
         );
@@ -207,7 +224,7 @@ const CartPageInternal = () => {
         <div className="min-h-screen bg-background text-foreground flex flex-col green-theme">
              <header className="sticky top-0 z-20 bg-background/80 backdrop-blur-lg border-b border-border">
                 <div className="container mx-auto px-4 py-3 flex items-center gap-4">
-                     <Button variant="ghost" size="icon" onClick={() => router.push(`/order/${restaurantId}?phone=${phone}`)} className="h-10 w-10">
+                     <Button variant="ghost" size="icon" onClick={handleGoBack} className="h-10 w-10">
                         <ArrowLeft />
                     </Button>
                     <div>
@@ -223,7 +240,7 @@ const CartPageInternal = () => {
                         <ShoppingCart size={48} className="mb-4" />
                         <h1 className="text-2xl font-bold">Your Cart is Empty</h1>
                         <p className="mt-2">Looks like you haven't added anything to your cart yet.</p>
-                         <Button onClick={() => router.push(`/order/${restaurantId}?phone=${phone}`)} className="mt-6">
+                         <Button onClick={handleGoBack} className="mt-6">
                             <ArrowLeft className="mr-2 h-4 w-4" /> Go Back to Menu
                         </Button>
                     </div>
@@ -263,7 +280,7 @@ const CartPageInternal = () => {
                                 ))}
                             </div>
 
-                            <Button variant="outline" onClick={() => router.push(`/order/${restaurantId}?phone=${phone}`)} className="w-full mt-4">
+                            <Button variant="outline" onClick={handleGoBack} className="w-full mt-4">
                                 <PlusCircle className="mr-2 h-4 w-4" /> Add more items
                             </Button>
                             
