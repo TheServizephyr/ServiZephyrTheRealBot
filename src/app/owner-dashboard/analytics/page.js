@@ -12,7 +12,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
 import { Label } from "@/components/ui/label";
-import { Switch } from "@/components/ui/switch';
+import { Switch } from '@/components/ui/switch';
 import { format, addDays }from 'date-fns';
 import { useSearchParams } from 'next/navigation';
 import { auth } from '@/lib/firebase';
