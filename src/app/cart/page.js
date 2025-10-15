@@ -191,7 +191,6 @@ const CartPageInternal = () => {
         });
     };
 
-    // **THE FIX** Correctly separate special and normal coupons
     const allCoupons = cartData?.coupons || [];
     const specialCoupons = allCoupons.filter(c => c.customerId);
     const normalCoupons = allCoupons.filter(c => !c.customerId);
