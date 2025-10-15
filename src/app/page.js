@@ -277,8 +277,18 @@ export default function Home() {
     <div className="flex flex-col min-h-screen overflow-x-hidden bg-background">
       <main className="flex-grow">
         {/* Hero Section */}
-        <section className="w-full min-h-screen flex flex-col justify-center items-center py-12 md:py-20">
-          <div className="container px-4 md:px-6 text-center">
+        <section className="relative w-full min-h-screen flex flex-col justify-center items-center py-12 md:py-20 overflow-hidden">
+          <video 
+            src="/Animated_Hero_Video_for_Website.mp4" 
+            autoPlay 
+            loop 
+            muted 
+            playsInline
+            className="absolute top-0 left-0 w-full h-full object-cover -z-10 opacity-20"
+          />
+          <div className="absolute inset-0 bg-gradient-to-t from-background via-background/50 to-transparent -z-10"></div>
+          
+          <div className="container px-4 md:px-6 text-center z-10">
             <div className="max-w-4xl mx-auto flex flex-col items-center">
                <h1 className="font-headline text-5xl md:text-7xl tracking-tighter leading-tight text-foreground">
                 Your Business. Your Customers. Your Control.
@@ -555,8 +565,8 @@ export default function Home() {
                 <TableHeader>
                   <TableRow>
                     <TableHead className="w-[40%] text-lg text-foreground">Feature</TableHead>
-                    <TableHead className="text-center text-lg text-green-500 font-bold">ServiZephyr</TableHead>
-                    <TableHead className="text-center text-lg text-primary font-bold">Food Aggregators</TableHead>
+                    <TableHead className="text-center text-lg text-primary font-bold">ServiZephyr</TableHead>
+                    <TableHead className="text-center text-lg text-muted-foreground">Food Aggregators</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
