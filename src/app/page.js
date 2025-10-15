@@ -1,4 +1,5 @@
 
+
 'use client'
 
 import { motion, useInView, animate, AnimatePresence } from 'framer-motion'
@@ -83,54 +84,42 @@ const AnimatedNumber = ({ value, suffix = '', prefix = '' }) => {
 
 const AnimatedWhatShop = ({ onAnimationComplete }) => {
   const [textParts, setTextParts] = useState({ part1: '', part2: '' });
-  const isMounted = useRef(true);
 
   useEffect(() => {
-    isMounted.current = true;
     const sequence = async () => {
-      while (isMounted.current) {
         setTextParts({ part1: '', part2: '' });
         await new Promise(res => setTimeout(res, 500));
 
         // 1. Type "WhatsApp" in green
         let tempText = '';
         for (const char of 'WhatsApp') {
-          if (!isMounted.current) return;
           tempText += char;
           setTextParts({ part1: tempText, part2: '' });
           await new Promise(res => setTimeout(res, 80));
         }
-        await new Promise(res => setTimeout(res, 1000));
-        
-        // First time animation completes
-        if (typeof onAnimationComplete === 'function') {
-            onAnimationComplete();
-        }
+        await new Promise(res => setTimeout(res, 1200));
 
         // 2. Backspace "app"
         for (let i = 'WhatsApp'.length; i >= 'Whats'.length; i--) {
-          if (!isMounted.current) return;
           setTextParts({ part1: 'WhatsApp'.substring(0, i), part2: '' });
-          await new Promise(res => setTimeout(res, 100));
+          await new Promise(res => setTimeout(res, 120));
         }
-        await new Promise(res => setTimeout(res, 300));
+        await new Promise(res => setTimeout(res, 400));
         
         // 3. Type "Shop" in yellow
         for (const char of 'Shop') {
-            if (!isMounted.current) return;
             setTextParts(prev => ({ ...prev, part2: prev.part2 + char }));
-            await new Promise(res => setTimeout(res, 120));
+            await new Promise(res => setTimeout(res, 150));
         }
         
-        await new Promise(res => setTimeout(res, 2000)); // Pause on "WhatShop"
-      }
+        await new Promise(res => setTimeout(res, 500));
+        if (typeof onAnimationComplete === 'function') {
+            onAnimationComplete();
+        }
     };
 
     sequence();
     
-    return () => {
-        isMounted.current = false;
-    }
   }, [onAnimationComplete]);
 
   return (
@@ -202,7 +191,7 @@ export default function Home() {
               </h1>
 
               <div className="my-6 h-16 md:h-20 flex items-center justify-center">
-                <AnimatedWhatShop onAnimationComplete={() => !animationFinished && setAnimationFinished(true)} />
+                <AnimatedWhatShop onAnimationComplete={() => setAnimationFinished(true)} />
               </div>
 
               <AnimatePresence>
