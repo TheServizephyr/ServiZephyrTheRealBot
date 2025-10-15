@@ -1,7 +1,7 @@
 
 'use client'
 
-import { motion, useInView, animate } from 'framer-motion'
+import { motion, useInView, animate, AnimatePresence } from 'framer-motion'
 import { CheckCircle, Bot, Zap, Rocket, Users, ArrowRight, Star, ShoppingCart, BarChart2, MessageSquare, Briefcase, Store, Soup, Pizza } from 'lucide-react'
 import Image from 'next/image'
 import Link from 'next/link'
@@ -32,7 +32,7 @@ import {
   TabsList,
   TabsTrigger,
 } from "@/components/ui/tabs"
-import placeholderData from './lib/placeholder-images.json'
+import placeholderData from '@/app/lib/placeholder-images.json'
 import AuthModal from '@/components/AuthModal'
 
 
@@ -81,60 +81,157 @@ const AnimatedNumber = ({ value, suffix = '', prefix = '' }) => {
   );
 };
 
-const AnimatedWhatShop = ({ onAnimationComplete }) => {
-  const [text, setText] = useState('');
-  const [color, setColor] = useState('#25D366'); // WhatsApp Green
+const AnimatedWhatShop = () => {
+    const [part1, setPart1] = useState('');
+    const [part2, setPart2] = useState('');
+    const isMounted = useRef(true);
 
-  useEffect(() => {
-    const sequence = async () => {
-      // 1. Fade in "WhatsApp"
-      await new Promise(res => setTimeout(res, 500)); // Initial delay
-      setColor('#25D366');
-      for (let i = 1; i <= 'WhatsApp'.length; i++) {
-        setText('WhatsApp'.substring(0, i));
-        await new Promise(res => setTimeout(res, 80));
-      }
-      await new Promise(res => setTimeout(res, 1000)); // Pause
+    useEffect(() => {
+      isMounted.current = true;
+      const sequence = async () => {
+        while (isMounted.current) {
+          // 1. Type WhatsApp
+          setPart1('');
+          setPart2('');
+          const whatsAppText = "WhatsApp";
+          for (let i = 1; i <= whatsAppText.length; i++) {
+              if(!isMounted.current) return;
+              setPart1(whatsAppText.substring(0, i));
+              await new Promise(res => setTimeout(res, 80));
+          }
+          await new Promise(res => setTimeout(res, 1200));
+          if(!isMounted.current) return;
+  
+          // 2. Delete App
+          for (let i = "App".length; i >= 1; i--) {
+            if(!isMounted.current) return;
+            setPart1("Whats" + "App".substring(0, i-1));
+            await new Promise(res => setTimeout(res, 120));
+          }
+          setPart1("Whats");
+          await new Promise(res => setTimeout(res, 400));
+          if(!isMounted.current) return;
+          
+          // 3. Type Shop
+          const shopText = 'Shop';
+          let tempShopText = '';
+          for (const char of shopText) {
+              if(!isMounted.current) return;
+              tempShopText += char;
+              setPart2(tempShopText);
+              await new Promise(res => setTimeout(res, 150));
+          }
+          await new Promise(res => setTimeout(res, 2500));
+          if(!isMounted.current) return;
 
-      // 2. Backspace effect
-      for (let i = 'WhatsApp'.length; i >= 'Whats'.length; i--) {
-        setText('WhatsApp'.substring(0, i));
-        await new Promise(res => setTimeout(res, 100));
-      }
-       await new Promise(res => setTimeout(res, 300));
-
-      // 3. Typing "Shop"
-      setColor('hsl(var(--primary))'); // Brand color
-      let currentText = 'Whats';
-      for (const char of 'Shop') {
-        currentText += char;
-        setText(currentText);
-        await new Promise(res => setTimeout(res, 120));
+          // 4. Delete WhatShop
+          const fullText = "WhatShop";
+           for (let i = fullText.length; i >= 0; i--) {
+            if(!isMounted.current) return;
+            setPart1(fullText.substring(0, i));
+            setPart2('');
+            await new Promise(res => setTimeout(res, 60));
+          }
+          await new Promise(res => setTimeout(res, 500));
+          if(!isMounted.current) return;
+        }
+      };
+  
+      sequence();
+  
+      return () => {
+        isMounted.current = false;
       }
       
-      // 4. Final pulse and notify parent
-       await new Promise(res => setTimeout(res, 500));
-      onAnimationComplete();
-    };
+    }, []);
+  
+    return (
+        <h2 
+          className="font-headline text-4xl md:text-6xl tracking-tighter leading-tight font-bold transition-colors duration-500"
+          style={{ minHeight: '70px' }}
+        >
+          <span style={{ color: '#25D366' }}>{part1}</span>
+          <span style={{ color: 'hsl(var(--primary))' }}>{part2}</span>
+          <span className="animate-ping" style={{color: 'hsl(var(--muted-foreground))'}}>|</span>
+        </h2>
+    );
+};
 
-    sequence();
-  }, [onAnimationComplete]);
+const AnimatedSubheadline = () => {
+    const [part1, setPart1] = useState('');
+    const [part2, setPart2] = useState('');
+    const isMounted = useRef(true);
+  
+    useEffect(() => {
+      isMounted.current = true;
+      const sequence = async () => {
+        while (isMounted.current) {
+          // 1. Type WhatsApp
+          setPart1('');
+          setPart2('');
+          const whatsAppText = "WhatsApp";
+          for (let i = 1; i <= whatsAppText.length; i++) {
+              if(!isMounted.current) return;
+              setPart1(whatsAppText.substring(0, i));
+              await new Promise(res => setTimeout(res, 80));
+          }
+          await new Promise(res => setTimeout(res, 1200));
+          if(!isMounted.current) return;
+  
+          // 2. Delete App
+          for (let i = "App".length; i >= 1; i--) {
+            if(!isMounted.current) return;
+            setPart1("Whats" + "App".substring(0, i-1));
+            await new Promise(res => setTimeout(res, 120));
+          }
+          setPart1("Whats");
+          await new Promise(res => setTimeout(res, 400));
+          if(!isMounted.current) return;
+          
+          // 3. Type Shop
+          const shopText = 'Shop';
+          let tempShopText = '';
+          for (const char of shopText) {
+              if(!isMounted.current) return;
+              tempShopText += char;
+              setPart2(tempShopText);
+              await new Promise(res => setTimeout(res, 150));
+          }
+          await new Promise(res => setTimeout(res, 2500));
+          if(!isMounted.current) return;
 
-  return (
-      <h2 
-        className="font-headline text-5xl md:text-7xl tracking-tighter leading-tight font-bold transition-colors duration-500"
-        style={{ color: color, minHeight: '80px' }}
-      >
-        {text}
-        <span className="animate-ping">|</span>
-      </h2>
-  );
+          // 4. Delete WhatShop
+          const fullText = "WhatShop";
+           for (let i = fullText.length; i >= 0; i--) {
+            if(!isMounted.current) return;
+            setPart1(fullText.substring(0, i));
+            setPart2('');
+            await new Promise(res => setTimeout(res, 60));
+          }
+          await new Promise(res => setTimeout(res, 500));
+          if(!isMounted.current) return;
+        }
+      };
+  
+      sequence();
+  
+      return () => {
+        isMounted.current = false;
+      }
+      
+    }, []);
+
+    return (
+         <h3 className="text-xl md:text-2xl text-muted-foreground">
+            Ab lijiye direct orders customer ke <span style={{ color: '#25D366' }}>{part1}</span><span style={{ color: 'hsl(var(--primary))' }}>{part2}</span> se.
+        </h3>
+    );
 };
 
 
 export default function Home() {
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [animationFinished, setAnimationFinished] = useState(false);
+  const [animationFinished, setAnimationFinished] = useState(true); // Always show content now
 
   const testimonials = [
     {
@@ -180,15 +277,25 @@ export default function Home() {
     <div className="flex flex-col min-h-screen overflow-x-hidden bg-background">
       <main className="flex-grow">
         {/* Hero Section */}
-        <section className="w-full py-20 md:py-32">
-          <div className="container px-4 md:px-6 text-center">
+        <section className="relative w-full min-h-screen flex flex-col justify-center items-center py-12 md:py-20 overflow-hidden">
+          <video 
+            src="/Animated_Hero_Video_for_Website.mp4" 
+            autoPlay 
+            loop 
+            muted 
+            playsInline
+            className="absolute top-0 left-0 w-full h-full object-cover -z-10 opacity-20"
+          />
+          <div className="absolute inset-0 bg-gradient-to-t from-background via-background/50 to-transparent -z-10"></div>
+          
+          <div className="container px-4 md:px-6 text-center z-10">
             <div className="max-w-4xl mx-auto flex flex-col items-center">
                <h1 className="font-headline text-5xl md:text-7xl tracking-tighter leading-tight text-foreground">
                 Your Business. Your Customers. Your Control.
               </h1>
 
               <div className="my-6 h-16 md:h-20 flex items-center justify-center">
-                <AnimatedWhatShop onAnimationComplete={() => setAnimationFinished(true)} />
+                <AnimatedWhatShop />
               </div>
 
               <AnimatePresence>
@@ -199,11 +306,9 @@ export default function Home() {
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ duration: 0.8, ease: "easeOut" }}
                   >
-                    <h3 className="text-xl md:text-2xl text-muted-foreground mt-4">
-                        Ab lijiye direct orders customer ke WhatsApp se.
-                    </h3>
+                    <AnimatedSubheadline />
                      <h2 className="text-2xl md:text-4xl font-bold tracking-tight text-foreground mt-6">
-                        Cut Commission. Boost Profits by <span className="text-primary">25%+.</span>
+                        Cut Commission. Boost Profits by <span className="text-green-500">25%+.</span>
                     </h2>
                     <button 
                         onClick={() => setIsModalOpen(true)}
@@ -229,7 +334,7 @@ export default function Home() {
           <div className="grid grid-cols-2 gap-4 text-center sm:grid-cols-3 md:grid-cols-5 md:gap-8">
             <div className="rounded-lg border bg-secondary p-6 md:p-8 shadow-sm transition-all duration-300 hover:shadow-lg hover:-translate-y-2">
               <h3 className="text-4xl sm:text-5xl font-bold text-primary">
-                <AnimatedNumber value={30} suffix="%" />+
+                <AnimatedNumber value={25} suffix="%" />+
               </h3>
               <p className="mt-2 text-muted-foreground text-sm">Commission Saved</p>
             </div>
@@ -475,8 +580,8 @@ export default function Home() {
                   ].map(item => (
                     <TableRow key={item.feature}>
                       <TableCell className="font-medium text-foreground">{item.feature}</TableCell>
-                      <TableCell className="text-center font-bold text-primary"><CheckCircle className="inline-block mr-2 h-5 w-5" />{item.servizephyr}</TableCell>
-                      <TableCell className="text-center text-muted-foreground">{item.aggregators}</TableCell>
+                      <TableCell className="text-center font-bold text-green-500"><CheckCircle className="inline-block mr-2 h-5 w-5" />{item.servizephyr}</TableCell>
+                      <TableCell className="text-center text-primary font-bold">{item.aggregators}</TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
