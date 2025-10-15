@@ -250,8 +250,9 @@ const CheckoutPageInternal = () => {
                 throw new Error(orderCreationResult.message || "Failed to create order.");
             }
             
+            const { firestore_order_id, razorpay_order_id } = orderCreationResult;
+
             if (selectedPaymentMethod === 'razorpay') {
-                const { razorpay_order_id } = orderCreationResult;
                 const options = {
                     key: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID,
                     amount: grandTotal * 100,
@@ -261,20 +262,17 @@ const CheckoutPageInternal = () => {
                     order_id: razorpay_order_id,
                     handler: function (response) {
                         localStorage.removeItem(`cart_${restaurantId}`);
-                        router.push(`/order/placed?restaurantId=${restaurantId}`);
+                        router.push(`/track/${firestore_order_id}`);
                     },
                     prefill: { name: name.trim(), contact: cartData.phone },
                     theme: { color: "#4f46e5" }
                 };
                 
-                // ** THE FIX **: Close our modal *before* opening Razorpay's modal
                 setIsModalOpen(false);
                 
-                // Allow a tiny delay for the modal to close visually before Razorpay opens
                 setTimeout(() => {
                     const rzp1 = new window.Razorpay(options);
                     rzp1.on('payment.failed', function (response) {
-                        // Re-open our modal to show the error if payment fails
                         setIsModalOpen(true);
                         setError(`Payment Failed: ${response.error.description}`);
                         setLoading(false);
@@ -284,7 +282,7 @@ const CheckoutPageInternal = () => {
 
             } else { // COD
                  localStorage.removeItem(`cart_${restaurantId}`);
-                 router.push(`/order/placed?restaurantId=${restaurantId}`);
+                 router.push(`/track/${firestore_order_id}`);
                  setIsModalOpen(false);
             }
 

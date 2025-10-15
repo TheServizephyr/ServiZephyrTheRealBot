@@ -3,20 +3,26 @@
 
 import React, { Suspense } from 'react';
 import { motion } from 'framer-motion';
-import { CheckCircle, ArrowLeft } from 'lucide-react';
+import { CheckCircle, ArrowLeft, Navigation } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useRouter, useSearchParams } from 'next/navigation';
 
 const OrderPlacedContent = () => {
     const router = useRouter();
     const searchParams = useSearchParams();
-    const restaurantId = searchParams.get('restaurantId');
+    const orderId = searchParams.get('orderId'); // Assuming orderId is passed
 
     const handleBackToMenu = () => {
-        if (restaurantId) {
-            router.push(`/order/${restaurantId}`);
+        // Fallback if restaurantId is not available
+        router.push('/');
+    };
+
+    const handleTrackOrder = () => {
+        if (orderId) {
+            router.push(`/track/${orderId}`);
         } else {
-            router.push('/');
+            // Fallback or show an error
+            alert("Could not find order ID to track.");
         }
     };
 
@@ -43,18 +49,26 @@ const OrderPlacedContent = () => {
                 animate={{ y: 0, opacity: 1 }}
                 transition={{ delay: 0.5 }}
             >
-                Thank you for your order. We have received it and will start preparing it right away. You will receive updates on WhatsApp.
+                Thank you for your order. We have received it and will start preparing it right away. You can track its live status now.
             </motion.p>
             <motion.div
+                className="flex flex-col sm:flex-row gap-4 mt-8"
                 initial={{ y: 20, opacity: 0 }}
                 animate={{ y: 0, opacity: 1 }}
                 transition={{ delay: 0.6 }}
             >
                 <Button 
-                    onClick={handleBackToMenu}
-                    className="mt-8 flex items-center gap-2 px-6 py-3 rounded-md bg-primary hover:bg-primary/90 text-primary-foreground text-lg font-medium"
+                    onClick={handleTrackOrder}
+                    className="flex items-center gap-2 px-6 py-3 rounded-md bg-primary hover:bg-primary/90 text-primary-foreground text-lg font-medium"
                 >
-                    <ArrowLeft className="w-5 h-5" /> Back to Menu
+                    <Navigation className="w-5 h-5" /> Track Your Order
+                </Button>
+                <Button 
+                    onClick={handleBackToMenu}
+                    variant="outline"
+                    className="flex items-center gap-2 px-6 py-3 rounded-md text-lg font-medium"
+                >
+                    <ArrowLeft className="w-5 h-5" /> Back to Home
                 </Button>
             </motion.div>
         </div>
@@ -69,5 +83,3 @@ export default function OrderPlacedPage() {
         </Suspense>
     );
 }
-
-    
