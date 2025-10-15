@@ -134,13 +134,13 @@ export default function Home() {
           <div className="container px-4 md:px-6 text-center">
             <div className="max-w-4xl mx-auto">
               <h1 className="font-headline text-5xl md:text-7xl tracking-tighter leading-tight text-foreground">
-                Apna Restaurant, Apne Rules.
+                Your Business. Your Customers. Your Control.
               </h1>
               <h2 className="font-headline text-5xl md:text-7xl tracking-tighter leading-tight text-foreground mt-2">
-                30% Commission ko Good Bye Kahein.
+                Say goodbye to 30% commissions.
               </h2>
               <p className="max-w-2xl mx-auto mt-6 text-lg text-muted-foreground font-body">
-                ServiZephyr aapke WhatsApp ko ek powerful profit machine mein badal deta hai. Paayein apna personal bot, smart dashboard, aur marketing tools.
+                ServiZephyr turns your WhatsApp into a powerful profit machine. Get your own personal bot, smart dashboard, and marketing tools.
               </p>
               <div className="mt-8 flex flex-col items-center gap-4">
                 <button 
