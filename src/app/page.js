@@ -32,7 +32,7 @@ import {
   TabsList,
   TabsTrigger,
 } from "@/components/ui/tabs"
-import placeholderData from './lib/placeholder-images.json'
+import placeholderData from '@/app/lib/placeholder-images.json'
 import AuthModal from '@/components/AuthModal'
 
 
@@ -81,72 +81,139 @@ const AnimatedNumber = ({ value, suffix = '', prefix = '' }) => {
   );
 };
 
-const AnimatedWhatShop = ({ onAnimationComplete }) => {
-  const [textParts, setTextParts] = useState({ part1: '', part2: '' });
-  const isMounted = useRef(true);
+const AnimatedWhatShop = () => {
+    const [part1, setPart1] = useState(''); // "Whats"
+    const [part2, setPart2] = useState(''); // "App" or "Shop"
+  
+    useEffect(() => {
+      let isMounted = true;
+      const sequence = async () => {
+        while (isMounted) {
+          // 1. Type WhatsApp
+          setPart2('');
+          for (let i = 1; i <= "WhatsApp".length; i++) {
+              if(!isMounted) return;
+              setPart1("WhatsApp".substring(0, i));
+              await new Promise(res => setTimeout(res, 80));
+          }
+          await new Promise(res => setTimeout(res, 1200));
+          if(!isMounted) return;
+  
+          // 2. Delete App
+          for (let i = "App".length; i >= 1; i--) {
+            if(!isMounted) return;
+            setPart1("Whats" + "App".substring(0, i-1));
+            await new Promise(res => setTimeout(res, 120));
+          }
+          setPart1("Whats");
+          await new Promise(res => setTimeout(res, 400));
+          if(!isMounted) return;
+          
+          // 3. Type Shop
+          for (let i = 1; i <= "Shop".length; i++) {
+              if(!isMounted) return;
+              setPart2("Shop".substring(0, i));
+              await new Promise(res => setTimeout(res, 150));
+          }
+          await new Promise(res => setTimeout(res, 2500));
+          if(!isMounted) return;
 
-  useEffect(() => {
-    isMounted.current = true;
-    const sequence = async () => {
-      while(isMounted.current) {
-        // Reset state for re-animation
-        if (isMounted.current) setTextParts({ part1: '', part2: '' });
-        await new Promise(res => setTimeout(res, 500));
-
-        // 1. Type "WhatsApp" in green
-        let tempWhatsAppText = '';
-        for (const char of 'WhatsApp') {
-          if (!isMounted.current) return;
-          tempWhatsAppText += char;
-          setTextParts({ part1: tempWhatsAppText, part2: '' });
-          await new Promise(res => setTimeout(res, 80));
+          // 4. Delete WhatShop
+          const fullText = "WhatShop";
+           for (let i = fullText.length; i >= 0; i--) {
+            if(!isMounted) return;
+            setPart1(fullText.substring(0, i));
+            setPart2('');
+            await new Promise(res => setTimeout(res, 60));
+          }
+          await new Promise(res => setTimeout(res, 500));
+          if(!isMounted) return;
         }
-        await new Promise(res => setTimeout(res, 1200));
-
-        // 2. Backspace "app"
-        for (let i = 'WhatsApp'.length; i >= 'Whats'.length; i--) {
-          if (!isMounted.current) return;
-          setTextParts({ part1: 'WhatsApp'.substring(0, i), part2: '' });
-          await new Promise(res => setTimeout(res, 120));
-        }
-        await new Promise(res => setTimeout(res, 400));
-        
-        // 3. Type "Shop" in yellow
-        let tempShopText = '';
-        for (const char of 'Shop') {
-            if (!isMounted.current) return;
-            tempShopText += char;
-            setTextParts(prev => ({ ...prev, part2: tempShopText }));
-            await new Promise(res => setTimeout(res, 150));
-        }
-        
-        // Hold the final word
-        await new Promise(res => setTimeout(res, 2500));
-        
-        // Fade out before restarting
-        setTextParts({ part1: ' ', part2: '' }); // Clear text to fade out
-        await new Promise(res => setTimeout(res, 500));
+      };
+  
+      sequence();
+  
+      return () => {
+        isMounted = false;
       }
-    };
+      
+    }, []);
+  
+    return (
+        <h2 
+          className="font-headline text-4xl md:text-6xl tracking-tighter leading-tight font-bold transition-colors duration-500"
+          style={{ minHeight: '70px' }}
+        >
+          <span style={{ color: '#25D366' }}>{part1}</span>
+          <span style={{ color: 'hsl(var(--primary))' }}>{part2}</span>
+          <span className="animate-ping" style={{color: 'hsl(var(--muted-foreground))'}}>|</span>
+        </h2>
+    );
+};
 
-    sequence();
+const AnimatedSubheadline = () => {
+    const [part1, setPart1] = useState(''); // "Whats"
+    const [part2, setPart2] = useState(''); // "App" or "Shop"
+  
+    useEffect(() => {
+      let isMounted = true;
+      const sequence = async () => {
+        while (isMounted) {
+          // 1. Type WhatsApp
+          setPart2('');
+          for (let i = 1; i <= "WhatsApp".length; i++) {
+              if(!isMounted) return;
+              setPart1("WhatsApp".substring(0, i));
+              await new Promise(res => setTimeout(res, 80));
+          }
+          await new Promise(res => setTimeout(res, 1200));
+          if(!isMounted) return;
+  
+          // 2. Delete App
+          for (let i = "App".length; i >= 1; i--) {
+            if(!isMounted) return;
+            setPart1("Whats" + "App".substring(0, i-1));
+            await new Promise(res => setTimeout(res, 120));
+          }
+          setPart1("Whats");
+          await new Promise(res => setTimeout(res, 400));
+          if(!isMounted) return;
+          
+          // 3. Type Shop
+          for (let i = 1; i <= "Shop".length; i++) {
+              if(!isMounted) return;
+              setPart2("Shop".substring(0, i));
+              await new Promise(res => setTimeout(res, 150));
+          }
+          await new Promise(res => setTimeout(res, 2500));
+          if(!isMounted) return;
 
-    return () => {
-      isMounted.current = false;
-    }
-    
-  }, []);
+          // 4. Delete WhatShop
+          const fullText = "WhatShop";
+           for (let i = fullText.length; i >= 0; i--) {
+            if(!isMounted) return;
+            setPart1(fullText.substring(0, i));
+            setPart2('');
+            await new Promise(res => setTimeout(res, 60));
+          }
+          await new Promise(res => setTimeout(res, 500));
+          if(!isMounted) return;
+        }
+      };
+  
+      sequence();
+  
+      return () => {
+        isMounted = false;
+      }
+      
+    }, []);
 
-  return (
-      <h2 
-        className="font-headline text-4xl md:text-6xl tracking-tighter leading-tight font-bold transition-colors duration-500"
-        style={{ minHeight: '70px' }}
-      >
-        <span style={{ color: '#25D366' }}>{textParts.part1}</span>
-        <span style={{ color: 'hsl(var(--primary))' }}>{textParts.part2}</span>
-        { (textParts.part1 || textParts.part2) && <span className="animate-ping" style={{color: 'hsl(var(--primary))'}}>|</span>}
-      </h2>
-  );
+    return (
+         <h3 className="text-xl md:text-2xl text-muted-foreground">
+            Ab lijiye direct orders customer ke <span style={{ color: '#25D366' }}>{part1}</span><span style={{ color: 'hsl(var(--primary))' }}>{part2}</span> se.
+        </h3>
+    );
 };
 
 
@@ -206,7 +273,7 @@ export default function Home() {
               </h1>
 
               <div className="my-6 h-16 md:h-20 flex items-center justify-center">
-                <AnimatedWhatShop onAnimationComplete={() => {}} />
+                <AnimatedWhatShop />
               </div>
 
               <AnimatePresence>
@@ -217,9 +284,7 @@ export default function Home() {
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ duration: 0.8, ease: "easeOut" }}
                   >
-                    <h3 className="text-xl md:text-2xl text-muted-foreground">
-                        Ab lijiye direct orders customer ke WhatsApp se.
-                    </h3>
+                    <AnimatedSubheadline />
                      <h2 className="text-2xl md:text-4xl font-bold tracking-tight text-foreground mt-6">
                         Cut Commission. Boost Profits by <span className="text-green-500">25%+.</span>
                     </h2>
@@ -247,7 +312,7 @@ export default function Home() {
           <div className="grid grid-cols-2 gap-4 text-center sm:grid-cols-3 md:grid-cols-5 md:gap-8">
             <div className="rounded-lg border bg-secondary p-6 md:p-8 shadow-sm transition-all duration-300 hover:shadow-lg hover:-translate-y-2">
               <h3 className="text-4xl sm:text-5xl font-bold text-primary">
-                <AnimatedNumber value={30} suffix="%" />+
+                <AnimatedNumber value={25} suffix="%" />+
               </h3>
               <p className="mt-2 text-muted-foreground text-sm">Commission Saved</p>
             </div>
@@ -478,8 +543,8 @@ export default function Home() {
                 <TableHeader>
                   <TableRow>
                     <TableHead className="w-[40%] text-lg text-foreground">Feature</TableHead>
-                    <TableHead className="text-center text-lg text-primary font-bold">ServiZephyr</TableHead>
-                    <TableHead className="text-center text-lg text-muted-foreground">Food Aggregators</TableHead>
+                    <TableHead className="text-center text-lg text-green-500 font-bold">ServiZephyr</TableHead>
+                    <TableHead className="text-center text-lg text-primary font-bold">Food Aggregators</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -493,8 +558,8 @@ export default function Home() {
                   ].map(item => (
                     <TableRow key={item.feature}>
                       <TableCell className="font-medium text-foreground">{item.feature}</TableCell>
-                      <TableCell className="text-center font-bold text-primary"><CheckCircle className="inline-block mr-2 h-5 w-5" />{item.servizephyr}</TableCell>
-                      <TableCell className="text-center text-muted-foreground">{item.aggregators}</TableCell>
+                      <TableCell className="text-center font-bold text-green-500"><CheckCircle className="inline-block mr-2 h-5 w-5" />{item.servizephyr}</TableCell>
+                      <TableCell className="text-center text-primary">{item.aggregators}</TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
