@@ -82,59 +82,65 @@ const AnimatedNumber = ({ value, suffix = '', prefix = '' }) => {
 };
 
 const AnimatedWhatShop = () => {
-    const [part1, setPart1] = useState(''); // "Whats"
-    const [part2, setPart2] = useState(''); // "App" or "Shop"
-  
+    const [part1, setPart1] = useState('');
+    const [part2, setPart2] = useState('');
+    const isMounted = useRef(true);
+
     useEffect(() => {
-      let isMounted = true;
+      isMounted.current = true;
       const sequence = async () => {
-        while (isMounted) {
+        while (isMounted.current) {
           // 1. Type WhatsApp
+          setPart1('');
           setPart2('');
-          for (let i = 1; i <= "WhatsApp".length; i++) {
-              if(!isMounted) return;
-              setPart1("WhatsApp".substring(0, i));
+          const whatsAppText = "WhatsApp";
+          for (let i = 1; i <= whatsAppText.length; i++) {
+              if(!isMounted.current) return;
+              setPart1(whatsAppText.substring(0, i));
               await new Promise(res => setTimeout(res, 80));
           }
           await new Promise(res => setTimeout(res, 1200));
-          if(!isMounted) return;
+          if(!isMounted.current) return;
   
           // 2. Delete App
           for (let i = "App".length; i >= 1; i--) {
-            if(!isMounted) return;
+            if(!isMounted.current) return;
             setPart1("Whats" + "App".substring(0, i-1));
             await new Promise(res => setTimeout(res, 120));
           }
           setPart1("Whats");
           await new Promise(res => setTimeout(res, 400));
-          if(!isMounted) return;
+          if(!isMounted.current) return;
           
           // 3. Type Shop
-          for (let i = 1; i <= "Shop".length; i++) {
-              if(!isMounted) return;
-              setPart2("Shop".substring(0, i));
+          const shopText = 'Shop';
+          let tempShopText = '';
+          for (const char of shopText) {
+              if(!isMounted.current) return;
+              tempShopText += char;
+              setPart2(tempShopText);
               await new Promise(res => setTimeout(res, 150));
           }
           await new Promise(res => setTimeout(res, 2500));
-          if(!isMounted) return;
+          if(!isMounted.current) return;
 
           // 4. Delete WhatShop
           const fullText = "WhatShop";
            for (let i = fullText.length; i >= 0; i--) {
-            if(!isMounted) return;
+            if(!isMounted.current) return;
             setPart1(fullText.substring(0, i));
             setPart2('');
             await new Promise(res => setTimeout(res, 60));
           }
           await new Promise(res => setTimeout(res, 500));
-          if(!isMounted) return;
+          if(!isMounted.current) return;
         }
       };
   
       sequence();
   
       return () => {
-        isMounted = false;
+        isMounted.current = false;
       }
       
     }, []);
@@ -152,59 +158,65 @@ const AnimatedWhatShop = () => {
 };
 
 const AnimatedSubheadline = () => {
-    const [part1, setPart1] = useState(''); // "Whats"
-    const [part2, setPart2] = useState(''); // "App" or "Shop"
+    const [part1, setPart1] = useState('');
+    const [part2, setPart2] = useState('');
+    const isMounted = useRef(true);
   
     useEffect(() => {
-      let isMounted = true;
+      isMounted.current = true;
       const sequence = async () => {
-        while (isMounted) {
+        while (isMounted.current) {
           // 1. Type WhatsApp
+          setPart1('');
           setPart2('');
-          for (let i = 1; i <= "WhatsApp".length; i++) {
-              if(!isMounted) return;
-              setPart1("WhatsApp".substring(0, i));
+          const whatsAppText = "WhatsApp";
+          for (let i = 1; i <= whatsAppText.length; i++) {
+              if(!isMounted.current) return;
+              setPart1(whatsAppText.substring(0, i));
               await new Promise(res => setTimeout(res, 80));
           }
           await new Promise(res => setTimeout(res, 1200));
-          if(!isMounted) return;
+          if(!isMounted.current) return;
   
           // 2. Delete App
           for (let i = "App".length; i >= 1; i--) {
-            if(!isMounted) return;
+            if(!isMounted.current) return;
             setPart1("Whats" + "App".substring(0, i-1));
             await new Promise(res => setTimeout(res, 120));
           }
           setPart1("Whats");
           await new Promise(res => setTimeout(res, 400));
-          if(!isMounted) return;
+          if(!isMounted.current) return;
           
           // 3. Type Shop
-          for (let i = 1; i <= "Shop".length; i++) {
-              if(!isMounted) return;
-              setPart2("Shop".substring(0, i));
+          const shopText = 'Shop';
+          let tempShopText = '';
+          for (const char of shopText) {
+              if(!isMounted.current) return;
+              tempShopText += char;
+              setPart2(tempShopText);
               await new Promise(res => setTimeout(res, 150));
           }
           await new Promise(res => setTimeout(res, 2500));
-          if(!isMounted) return;
+          if(!isMounted.current) return;
 
           // 4. Delete WhatShop
           const fullText = "WhatShop";
            for (let i = fullText.length; i >= 0; i--) {
-            if(!isMounted) return;
+            if(!isMounted.current) return;
             setPart1(fullText.substring(0, i));
             setPart2('');
             await new Promise(res => setTimeout(res, 60));
           }
           await new Promise(res => setTimeout(res, 500));
-          if(!isMounted) return;
+          if(!isMounted.current) return;
         }
       };
   
       sequence();
   
       return () => {
-        isMounted = false;
+        isMounted.current = false;
       }
       
     }, []);
@@ -559,7 +571,7 @@ export default function Home() {
                     <TableRow key={item.feature}>
                       <TableCell className="font-medium text-foreground">{item.feature}</TableCell>
                       <TableCell className="text-center font-bold text-green-500"><CheckCircle className="inline-block mr-2 h-5 w-5" />{item.servizephyr}</TableCell>
-                      <TableCell className="text-center text-primary">{item.aggregators}</TableCell>
+                      <TableCell className="text-center text-primary font-bold">{item.aggregators}</TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
