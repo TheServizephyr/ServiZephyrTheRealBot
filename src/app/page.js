@@ -286,7 +286,6 @@ export default function Home() {
             playsInline
             className="absolute top-0 left-0 w-full h-full object-cover -z-10 opacity-20"
           />
-          <div className="absolute inset-0 bg-gradient-to-t from-background via-background/50 to-transparent -z-10"></div>
           
           <div className="container px-4 md:px-6 text-center z-10">
             <div className="max-w-4xl mx-auto flex flex-col items-center">
