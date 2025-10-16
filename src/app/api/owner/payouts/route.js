@@ -76,13 +76,16 @@ export async function GET(req) {
         const key_secret = process.env.RAZORPAY_KEY_SECRET;
         const credentials = Buffer.from(`${key_id}:${key_secret}`).toString('base64');
         
-        let path = `/v1/accounts/${razorpayAccountId}/settlements`;
-        const queryParams = new URLSearchParams();
+        // ** THE FIX: Using v2 Transfers API instead of v1 Settlements API **
+        const queryParams = new URLSearchParams({
+            'recipient_account_id': razorpayAccountId
+        });
         if (from) queryParams.append('from', from);
         if (to) queryParams.append('to', to);
-        if (queryParams.toString()) path += `?${queryParams.toString()}`;
+        
+        const path = `/v2/transfers?${queryParams.toString()}`;
 
-        const fetchSettlementsOptions = {
+        const fetchTransfersOptions = {
             hostname: 'api.razorpay.com',
             port: 443,
             path: path,
@@ -90,20 +93,28 @@ export async function GET(req) {
             headers: { 'Authorization': `Basic ${credentials}` }
         };
         
-        const settlementsData = await makeRazorpayRequest(fetchSettlementsOptions);
+        const transfersData = await makeRazorpayRequest(fetchTransfersOptions);
         
-        const payouts = settlementsData.items || [];
+        // Process transfers data into a payout format
+        const payouts = (transfersData.items || []).map(transfer => ({
+            id: transfer.id,
+            amount: transfer.amount,
+            currency: transfer.currency,
+            status: transfer.status,
+            utr: transfer.settlement_utr,
+            created_at: transfer.created_at,
+        }));
         
-        // Calculate summary data
-        const total = payouts.reduce((sum, p) => sum + p.amount, 0);
+        // Calculate summary data from processed payouts
+        const total = payouts.filter(p => p.status === 'processed').reduce((sum, p) => sum + p.amount, 0);
         const lastPayout = payouts.length > 0 ? payouts[0].amount : 0;
+        const pending = payouts.filter(p => p.status === 'pending').reduce((sum, p) => sum + p.amount, 0);
 
-        // NOTE: 'Pending' amount is more complex and usually comes from a different Razorpay API
-        // (like account balance). For now, we'll return 0.
+
         const summary = {
             total: total / 100, // Convert from paisa to rupees
             lastPayout: lastPayout / 100,
-            pending: 0,
+            pending: pending / 100,
         };
 
         return NextResponse.json({ payouts, summary }, { status: 200 });
