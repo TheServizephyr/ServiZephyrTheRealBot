@@ -274,7 +274,7 @@ export default function Home() {
 
   return (
     <>
-      <main className="bg-background overflow-x-hidden">
+      <main className="bg-background">
         {/* Hero Section */}
         <section className="relative w-full flex flex-col justify-center items-center py-20 md:py-32">
           <video 
