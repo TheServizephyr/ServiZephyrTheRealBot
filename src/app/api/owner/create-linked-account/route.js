@@ -119,7 +119,7 @@ export async function POST(req) {
             phone: userData.phone,
             profile: {
                 category: "food_beverage",
-                subcategory: "dhabas_and_restaurants",
+                subcategory: "qsr",
                 addresses: {
                     registered: {
                         street1: restaurantData.address.street,
