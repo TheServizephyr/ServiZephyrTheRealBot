@@ -1,10 +1,34 @@
-
-
 import { NextResponse } from 'next/server';
 import { getFirestore } from '@/lib/firebase-admin';
 import { sendNewOrderToOwner } from '@/lib/notifications';
 import crypto from 'crypto';
-import axios from 'axios';
+import https from 'https';
+
+async function makeRazorpayRequest(options, payload) {
+    return new Promise((resolve, reject) => {
+        const req = https.request(options, (res) => {
+            let data = '';
+            res.on('data', (chunk) => { data += chunk; });
+            res.on('end', () => {
+                console.log(`[Webhook Transfer] Razorpay Response Status: ${res.statusCode}`);
+                console.log(`[Webhook Transfer] Raw response from Razorpay:`, data);
+                try {
+                    const parsedData = JSON.parse(data);
+                    if (res.statusCode >= 200 && res.statusCode < 300) {
+                        resolve(parsedData);
+                    } else {
+                        reject(parsedData);
+                    }
+                } catch (e) {
+                     reject({ error: { description: `Failed to parse Razorpay response. Raw data: ${data}` } });
+                }
+            });
+        });
+        req.on('error', (e) => reject({ error: { description: e.message } }));
+        req.write(payload);
+        req.end();
+    });
+}
 
 
 export async function POST(req) {
@@ -71,41 +95,44 @@ export async function POST(req) {
                     const restaurantData = restaurantDoc.data();
                     const linkedAccountId = restaurantData.razorpayAccountId;
 
-                    // --- START: RAZORPAY ROUTE TRANSFER LOGIC (METHOD 2: USING PAYMENT ID) ---
+                    // --- START: RAZORPAY ROUTE TRANSFER LOGIC ---
                     // Step 4: Check if the restaurant has a valid Linked Account ID
                     if (linkedAccountId && linkedAccountId.startsWith('acc_')) {
                         const key_id = process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID;
                         const key_secret = process.env.RAZORPAY_KEY_SECRET;
                         const credentials = Buffer.from(`${key_id}:${key_secret}`).toString('base64');
-
-                        // Step 5: Prepare the payload for the transfer API
-                        const transferPayload = {
+                        
+                        const transferPayload = JSON.stringify({
                             transfers: [{
                                 account: linkedAccountId,
                                 amount: paymentAmount, // Use the full payment amount
                                 currency: "INR"
                             }]
+                        });
+                        
+                        const transferOptions = {
+                            hostname: 'api.razorpay.com',
+                            port: 443,
+                            path: `/v1/payments/${paymentId}/transfers`,
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'Authorization': `Basic ${credentials}`,
+                            }
                         };
-
+                        
                         try {
-                            // Step 6: Make the API call to Razorpay to transfer funds using the payment_id
+                            // Step 5: Make the API call to Razorpay to transfer funds
                             console.log(`[Webhook] Attempting to transfer ${paymentAmount} to ${linkedAccountId} for payment ${paymentId}`);
-                            await axios.post(`https://api.razorpay.com/v1/payments/${paymentId}/transfers`, transferPayload, {
-                                headers: {
-                                    'Authorization': `Basic ${credentials}`,
-                                    'Content-Type': 'application/json'
-                                }
-                            });
-                             console.log(`[Webhook] Successfully initiated transfer for payment ${paymentId} to account ${linkedAccountId}.`);
+                            await makeRazorpayRequest(transferOptions, transferPayload);
+                            console.log(`[Webhook] Successfully initiated transfer for payment ${paymentId} to account ${linkedAccountId}.`);
                         } catch (transferError) {
-                            console.error(`[Webhook] CRITICAL: Failed to process transfer for payment ${paymentId}. Error:`, transferError.response ? transferError.response.data : transferError.message);
-                            // In a real app, you would add this to a retry queue
+                            console.error(`[Webhook] CRITICAL: Failed to process transfer for payment ${paymentId}. Error:`, JSON.stringify(transferError, null, 2));
                         }
                     } else {
-                        console.warn(`[Webhook] Restaurant ${orderData.restaurantId} does not have a valid Linked Account ID (acc_...). Skipping transfer.`);
+                        console.warn(`[Webhook] Restaurant ${orderData.restaurantId} does not have a valid Linked Account ID. Skipping transfer.`);
                     }
                     // --- END: RAZORPAY ROUTE TRANSFER LOGIC ---
-
 
                     // Trigger WhatsApp notification to the owner
                     if (restaurantData.ownerPhone && restaurantData.botPhoneNumberId) {
