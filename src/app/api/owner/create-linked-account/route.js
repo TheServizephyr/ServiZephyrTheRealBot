@@ -1,4 +1,5 @@
 
+
 'use server';
 
 import { NextResponse } from 'next/server';
@@ -107,12 +108,13 @@ export async function POST(req) {
             }
         };
 
-        // --- STEP 1: Create a Linked Account ---
-        console.log("[API LOG] Step 1: Creating Razorpay Linked Account...");
+        // --- STEP 1: Create a Linked Account (using 'route' type) ---
+        console.log("[API LOG] Step 1: Creating Razorpay Route Account...");
         const accountPayload = JSON.stringify({
-            type: "linked",
+            type: "route", // CORRECTED from "linked" to "route"
             email: userData.email,
-            legal_business_name: beneficiaryName, // Use the name from the form, must match bank records
+            legal_business_name: beneficiaryName,
+            business_type: "proprietorship", // Added as per typical use case
             contact_name: userData.name,
             phone: userData.phone,
             profile: {
@@ -138,7 +140,7 @@ export async function POST(req) {
 
         const linkedAccount = await makeRazorpayRequest(createAccountOptions, accountPayload);
         const accountId = linkedAccount.id;
-        console.log(`[API LOG] Step 1 SUCCESS. Linked Account ID: ${accountId}`);
+        console.log(`[API LOG] Step 1 SUCCESS. Route Account ID: ${accountId}`);
 
 
         // --- STEP 2: Create a Stakeholder ---
