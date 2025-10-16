@@ -274,21 +274,21 @@ export default function Home() {
 
   return (
     <>
-    <div className="flex flex-col min-h-screen overflow-x-hidden bg-background">
+    <div className="flex flex-col overflow-x-hidden bg-background">
       <main className="flex-grow">
         {/* Hero Section */}
-        <section className="relative w-full min-h-screen flex flex-col justify-center items-center py-12 md:py-20 overflow-hidden">
+        <section className="relative w-full flex flex-col justify-center items-center py-20 md:py-32 overflow-hidden">
           <video 
             src="/Animated_Hero_Video_for_Website.mp4" 
             autoPlay 
             loop 
             muted 
             playsInline
-            className="absolute top-0 left-0 w-full h-full object-cover -z-10 opacity-20"
+            className="absolute top-0 left-0 w-full h-full object-cover z-0 opacity-20"
           />
-          <div className="absolute inset-0 bg-gradient-to-t from-background via-background/50 to-transparent -z-10"></div>
+          <div className="absolute inset-0 bg-gradient-to-r from-background via-transparent to-background z-10"></div>
           
-          <div className="container px-4 md:px-6 text-center z-10">
+          <div className="relative container px-4 md:px-6 text-center z-20">
             <div className="max-w-4xl mx-auto flex flex-col items-center">
                <h1 className="font-headline text-5xl md:text-7xl tracking-tighter leading-tight text-foreground">
                 Your Business. Your Customers. Your Control.
