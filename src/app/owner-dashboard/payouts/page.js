@@ -27,6 +27,7 @@ const formatCurrency = (value, currency = 'INR') => {
 
 const formatDate = (dateString) => {
     if (!dateString) return 'N/A';
+    // Razorpay gives timestamp in seconds, so multiply by 1000
     return format(new Date(dateString * 1000), 'dd MMM, yyyy - hh:mm a');
 };
 
@@ -287,4 +288,3 @@ export default function PayoutsPage() {
         </div>
     );
 }
-
