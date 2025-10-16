@@ -286,9 +286,9 @@ export default function Home() {
             playsInline
             className="absolute top-0 left-0 w-full h-full object-cover z-0 opacity-20"
           />
-          <div className="absolute inset-0 bg-gradient-to-r from-background via-transparent to-background z-0"></div>
+          <div className="absolute inset-0 bg-gradient-to-r from-background via-transparent to-background z-10"></div>
           
-          <div className="relative container px-4 md:px-6 text-center z-10">
+          <div className="relative container px-4 md:px-6 text-center z-20">
             <div className="max-w-4xl mx-auto flex flex-col items-center">
                <h1 className="font-headline text-5xl md:text-7xl tracking-tighter leading-tight text-foreground">
                 Your Business. Your Customers. Your Control.
