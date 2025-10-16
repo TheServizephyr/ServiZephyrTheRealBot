@@ -54,16 +54,16 @@ export default function AdminAnalyticsPage() {
 
   return (
     <motion.div variants={containerVariants} initial="hidden" animate="visible" className="space-y-6">
-      <div className="flex justify-between items-center">
-        <h1 className="text-3xl font-bold tracking-tight">Platform Analytics</h1>
-        <div className="flex items-center gap-4">
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+        <h1 className="text-2xl md:text-3xl font-bold tracking-tight">Platform Analytics</h1>
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-4 w-full sm:w-auto">
            <Popover>
             <PopoverTrigger asChild>
               <Button
                 id="date"
                 variant={"outline"}
                 className={cn(
-                  "w-[300px] justify-start text-left font-normal",
+                  "w-full sm:w-[300px] justify-start text-left font-normal",
                   !date && "text-muted-foreground"
                 )}
               >
@@ -92,7 +92,7 @@ export default function AdminAnalyticsPage() {
               />
             </PopoverContent>
           </Popover>
-          <Button variant="outline"><Download className="mr-2 h-4 w-4"/> Export Data</Button>
+          <Button variant="outline" className="w-full sm:w-auto"><Download className="mr-2 h-4 w-4"/> Export Data</Button>
         </div>
       </div>
       
@@ -139,10 +139,10 @@ export default function AdminAnalyticsPage() {
                 <CardHeader><CardTitle>Top 10 Performing Restaurants</CardTitle></CardHeader>
                 <CardContent className="h-[300px]">
                     <ResponsiveContainer>
-                        <BarChart data={topRestaurants} layout="vertical">
+                        <BarChart data={topRestaurants} layout="vertical" margin={{ top: 5, right: 20, left: 20, bottom: 5 }}>
                            <CartesianGrid strokeDasharray="3 3" />
                            <XAxis type="number" tickFormatter={(v) => `₹${v/1000}k`} />
-                           <YAxis type="category" dataKey="name" width={100} />
+                           <YAxis type="category" dataKey="name" width={100} tick={{fontSize: 12}} />
                            <Tooltip formatter={(value) => `₹${value.toLocaleString()}`} />
                            <Bar dataKey="revenue" fill="hsl(var(--primary))" />
                         </BarChart>
@@ -155,10 +155,10 @@ export default function AdminAnalyticsPage() {
                 <CardHeader><CardTitle>Top 10 Ordered Items</CardTitle></CardHeader>
                 <CardContent className="h-[300px]">
                      <ResponsiveContainer>
-                        <BarChart data={topItems} layout="vertical">
+                        <BarChart data={topItems} layout="vertical" margin={{ top: 5, right: 20, left: 20, bottom: 5 }}>
                            <CartesianGrid strokeDasharray="3 3" />
                            <XAxis type="number" />
-                           <YAxis type="category" dataKey="name" width={100} />
+                           <YAxis type="category" dataKey="name" width={100} tick={{fontSize: 12}}/>
                            <Tooltip />
                            <Bar dataKey="orders" fill="hsl(var(--primary))" />
                         </BarChart>

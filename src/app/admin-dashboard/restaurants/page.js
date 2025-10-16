@@ -1,4 +1,5 @@
 
+
 'use client';
 
 import { useState, useEffect } from 'react';
@@ -141,9 +142,9 @@ const RestaurantRow = ({ restaurant, onUpdateStatus }) => {
     />
     <TableRow>
       <TableCell className="font-medium">{restaurant.name}</TableCell>
-      <TableCell>{restaurant.ownerName}</TableCell>
-      <TableCell className="text-muted-foreground">{restaurant.ownerEmail}</TableCell>
-      <TableCell>{new Date(restaurant.onboarded).toLocaleDateString()}</TableCell>
+      <TableCell className="hidden md:table-cell">{restaurant.ownerName}</TableCell>
+      <TableCell className="hidden lg:table-cell text-muted-foreground">{restaurant.ownerEmail}</TableCell>
+      <TableCell className="hidden md:table-cell">{new Date(restaurant.onboarded).toLocaleDateString()}</TableCell>
       <TableCell>
         <span className={`px-2 py-1 text-xs font-semibold rounded-full ${statusClasses[restaurant.status]}`}>
           {restaurant.status}
@@ -284,12 +285,12 @@ export default function AdminRestaurantsPage() {
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-6">
       <h1 className="text-3xl font-bold tracking-tight">Restaurant Management</h1>
       <Tabs defaultValue="pending">
-        <div className="flex justify-between items-center mb-4">
-          <TabsList>
-            <TabsTrigger value="Pending">Pending Approval</TabsTrigger>
-            <TabsTrigger value="Approved">Approved</TabsTrigger>
-            <TabsTrigger value="Suspended">Suspended</TabsTrigger>
-            <TabsTrigger value="Rejected">Rejected</TabsTrigger>
+        <div className="flex flex-col md:flex-row justify-between items-center mb-4 gap-4">
+          <TabsList className="w-full md:w-auto">
+            <TabsTrigger value="Pending" className="flex-1 md:flex-initial">Pending</TabsTrigger>
+            <TabsTrigger value="Approved" className="flex-1 md:flex-initial">Approved</TabsTrigger>
+            <TabsTrigger value="Suspended" className="flex-1 md:flex-initial">Suspended</TabsTrigger>
+            <TabsTrigger value="Rejected" className="flex-1 md:flex-initial">Rejected</TabsTrigger>
           </TabsList>
           <div className="relative w-full max-w-sm">
              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" size={20} />
@@ -302,14 +303,14 @@ export default function AdminRestaurantsPage() {
           </div>
         </div>
         <Card>
-          <CardContent className="p-0">
+          <CardContent className="p-0 overflow-x-auto">
             <Table>
               <TableHeader>
                 <TableRow>
                   <TableHead>Restaurant Name</TableHead>
-                  <TableHead>Owner Name</TableHead>
-                  <TableHead>Owner Email</TableHead>
-                  <TableHead>Onboarding Date</TableHead>
+                  <TableHead className="hidden md:table-cell">Owner Name</TableHead>
+                  <TableHead className="hidden lg:table-cell">Owner Email</TableHead>
+                  <TableHead className="hidden md:table-cell">Onboarding</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead className="text-right">Actions</TableHead>
                 </TableRow>

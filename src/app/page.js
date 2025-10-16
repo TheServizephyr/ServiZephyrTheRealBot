@@ -147,7 +147,7 @@ const AnimatedWhatShop = () => {
   
     return (
         <h2 
-          className="font-headline text-4xl md:text-6xl tracking-tighter leading-tight font-bold transition-colors duration-500"
+          className="font-headline text-4xl sm:text-5xl md:text-6xl tracking-tighter leading-tight font-bold transition-colors duration-500"
           style={{ minHeight: '70px' }}
         >
           <span style={{ color: '#25D366' }}>{part1}</span>
@@ -285,11 +285,11 @@ export default function Home() {
             playsInline
             className="absolute top-0 left-0 w-full h-full object-cover z-0 opacity-20"
           />
-          <div className="absolute inset-0 bg-gradient-to-r from-background/30 via-background/70 to-background/30 z-10"></div>
+          <div className="absolute inset-0 bg-gradient-to-r from-background/90 via-transparent to-background/90 z-10"></div>
           
           <div className="relative container px-4 md:px-6 text-center z-20">
             <div className="max-w-4xl mx-auto flex flex-col items-center">
-               <h1 className="font-headline text-5xl md:text-7xl tracking-tighter leading-tight text-foreground">
+               <h1 className="font-headline text-4xl sm:text-5xl md:text-7xl tracking-tighter leading-tight text-foreground">
                 Your Business. Your Customers. Your Control.
               </h1>
 
@@ -306,7 +306,7 @@ export default function Home() {
                     transition={{ duration: 0.8, ease: "easeOut" }}
                   >
                     <AnimatedSubheadline />
-                     <h2 className="text-2xl md:text-4xl font-bold tracking-tight text-foreground mt-6">
+                     <h2 className="text-xl sm:text-2xl md:text-4xl font-bold tracking-tight text-foreground mt-6">
                         Cut Commission. Boost Profits by <span className="text-green-500">25%+.</span>
                     </h2>
                     <button 

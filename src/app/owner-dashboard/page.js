@@ -1,4 +1,5 @@
 
+
 "use client";
 
 import React, { useState, useEffect, Suspense } from 'react';
@@ -92,7 +93,7 @@ const LiveOrderFeed = ({ orders, isLoading }) => {
               )}
             >
               <div>
-                <p className="font-semibold text-foreground">{order.id}</p>
+                <p className="font-semibold text-foreground text-sm truncate max-w-[120px] sm:max-w-none">{order.id}</p>
                 <p className="text-sm text-muted-foreground">{order.customer}</p>
               </div>
               <div className="text-right">

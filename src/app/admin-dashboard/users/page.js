@@ -39,14 +39,14 @@ const UserRow = ({ user, onUpdateStatus }) => {
             <span className="font-medium">{user.name}</span>
         </div>
       </TableCell>
-      <TableCell className="text-muted-foreground">{user.email}</TableCell>
-      <TableCell className="text-muted-foreground">{user.phone}</TableCell>
+      <TableCell className="hidden md:table-cell text-muted-foreground">{user.email}</TableCell>
+      <TableCell className="hidden lg:table-cell text-muted-foreground">{user.phone}</TableCell>
       <TableCell>
           <span className={`px-2 py-1 text-xs font-semibold rounded-full ${roleClasses[user.role]}`}>
             {user.role}
         </span>
       </TableCell>
-      <TableCell>{user.joinDate ? new Date(user.joinDate).toLocaleDateString() : 'N/A'}</TableCell>
+      <TableCell className="hidden md:table-cell">{user.joinDate ? new Date(user.joinDate).toLocaleDateString() : 'N/A'}</TableCell>
       <TableCell>
         <span className={`px-2 py-1 text-xs font-semibold rounded-full ${statusClasses[user.status]}`}>
           {user.status}
@@ -158,10 +158,10 @@ export default function AdminUsersPage() {
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-6">
       <h1 className="text-3xl font-bold tracking-tight">User Management</h1>
       <Tabs defaultValue="owners">
-        <div className="flex justify-between items-center mb-4">
-          <TabsList>
-            <TabsTrigger value="owners">Owners</TabsTrigger>
-            <TabsTrigger value="customers">Customers</TabsTrigger>
+        <div className="flex flex-col md:flex-row justify-between items-center mb-4 gap-4">
+          <TabsList className="w-full md:w-auto">
+            <TabsTrigger value="owners" className="flex-1 md:flex-initial">Owners</TabsTrigger>
+            <TabsTrigger value="customers" className="flex-1 md:flex-initial">Customers</TabsTrigger>
           </TabsList>
           <div className="relative w-full max-w-sm">
              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" size={20} />
@@ -174,15 +174,15 @@ export default function AdminUsersPage() {
           </div>
         </div>
         <Card>
-          <CardContent className="p-0">
+          <CardContent className="p-0 overflow-x-auto">
             <Table>
               <TableHeader>
                 <TableRow>
                   <TableHead>User</TableHead>
-                  <TableHead>Email</TableHead>
-                  <TableHead>Phone</TableHead>
+                  <TableHead className="hidden md:table-cell">Email</TableHead>
+                  <TableHead className="hidden lg:table-cell">Phone</TableHead>
                   <TableHead>Role</TableHead>
-                  <TableHead>Join Date</TableHead>
+                  <TableHead className="hidden md:table-cell">Join Date</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead className="text-right">Actions</TableHead>
                 </TableRow>

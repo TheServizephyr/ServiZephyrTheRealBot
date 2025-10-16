@@ -1,4 +1,5 @@
 
+
 'use client';
 
 import { useState, useEffect } from 'react';
@@ -136,8 +137,8 @@ function AdminLayoutContent({ children }) {
 
       <div className="flex-1 flex flex-col overflow-hidden">
         {/* Top Bar */}
-        <header className="flex items-center justify-between h-16 px-6 bg-card border-b border-border shrink-0">
-          <div className="flex items-center gap-4">
+        <header className="flex items-center justify-between h-16 px-4 md:px-6 bg-card border-b border-border shrink-0">
+          <div className="flex items-center gap-2 md:gap-4">
             <Button
               variant="ghost"
               size="icon"
@@ -146,9 +147,9 @@ function AdminLayoutContent({ children }) {
             >
               <Menu />
             </Button>
-            <h2 className="text-lg font-semibold">Admin Panel</h2>
+            <h2 className="text-md md:text-lg font-semibold">Admin Panel</h2>
           </div>
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-2 md:gap-4">
             <Button
               variant="ghost"
               size="icon"
@@ -188,7 +189,7 @@ function AdminLayoutContent({ children }) {
         </header>
 
         {/* Main Content */}
-        <main className="flex-1 overflow-y-auto p-6">{children}</main>
+        <main className="flex-1 overflow-y-auto p-4 md:p-6">{children}</main>
       </div>
     </div>
   );

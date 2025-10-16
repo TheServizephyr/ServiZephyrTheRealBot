@@ -130,7 +130,7 @@ const ActionButton = ({ status, onNext, onRevert, orderId, onReject, isUpdating,
 
     if (isUpdating) {
         return (
-            <div className="flex items-center justify-center gap-2 h-9 text-muted-foreground text-sm">
+            <div className="flex items-center justify-center gap-2 h-9 text-muted-foreground text-sm w-full">
                 <Loader2 className="h-4 w-4 animate-spin" />
                 Processing...
             </div>
@@ -169,7 +169,7 @@ const ActionButton = ({ status, onNext, onRevert, orderId, onReject, isUpdating,
     const ActionIcon = action.icon;
 
     return (
-        <div className="flex items-center gap-2">
+        <div className="flex flex-col sm:flex-row items-stretch gap-2 w-full">
             <Button
                 onClick={() => onNext(nextStatus)}
                 size="sm"
@@ -178,31 +178,33 @@ const ActionButton = ({ status, onNext, onRevert, orderId, onReject, isUpdating,
                 <ActionIcon size={16} className="mr-2" />
                 {action.text}
             </Button>
-            {isConfirmable && (
-                 <Button
-                    onClick={onReject}
-                    variant="destructive"
-                    size="sm"
-                    className="h-9"
-                >
-                    <X size={16} className="mr-2" />
-                    Reject
-                </Button>
-            )}
-             <Button onClick={onPrintClick} variant="outline" size="icon" className="h-9 w-9">
-                <Printer size={16} />
-             </Button>
-            {prevStatus && (
-                 <Button
-                    onClick={() => onRevert(prevStatus)}
-                    variant="ghost"
-                    size="icon"
-                    className="h-9 w-9 text-muted-foreground hover:bg-muted hover:text-foreground"
-                    title={`Revert to ${prevStatus}`}
-                 >
-                    <Undo size={16} />
-                </Button>
-            )}
+            <div className="flex gap-2">
+                {isConfirmable && (
+                     <Button
+                        onClick={onReject}
+                        variant="destructive"
+                        size="sm"
+                        className="h-9 flex-1"
+                    >
+                        <X size={16} className="mr-2" />
+                        Reject
+                    </Button>
+                )}
+                 <Button onClick={onPrintClick} variant="outline" size="icon" className="h-9 w-9">
+                    <Printer size={16} />
+                 </Button>
+                {prevStatus && (
+                     <Button
+                        onClick={() => onRevert(prevStatus)}
+                        variant="ghost"
+                        size="icon"
+                        className="h-9 w-9 text-muted-foreground hover:bg-muted hover:text-foreground"
+                        title={`Revert to ${prevStatus}`}
+                     >
+                        <Undo size={16} />
+                    </Button>
+                )}
+            </div>
         </div>
     );
 };
@@ -419,8 +421,8 @@ export default function LiveOrdersPage() {
                         <tr className="bg-muted/30">
                             <SortableHeader column="priority" sortConfig={sortConfig} onSort={handleSort}>Priority</SortableHeader>
                             <SortableHeader column="id" sortConfig={sortConfig} onSort={handleSort}>Order Details</SortableHeader>
-                            <th className="p-4 text-left text-sm font-semibold text-muted-foreground">Order Items</th>
-                            <SortableHeader column="orderDate" sortConfig={sortConfig} onSort={handleSort}>Time Elapsed</SortableHeader>
+                            <th className="p-4 text-left text-sm font-semibold text-muted-foreground hidden lg:table-cell">Items</th>
+                            <SortableHeader column="orderDate" sortConfig={sortConfig} onSort={handleSort}>Time</SortableHeader>
                             <SortableHeader column="status" sortConfig={sortConfig} onSort={handleSort}>Status</SortableHeader>
                             <th className="p-4 text-left text-sm font-semibold text-muted-foreground">Actions</th>
                         </tr>
@@ -432,10 +434,10 @@ export default function LiveOrdersPage() {
                                     <tr key={i} className="animate-pulse">
                                         <td className="p-4"><div className="h-5 bg-muted rounded w-3/4"></div></td>
                                         <td className="p-4"><div className="h-5 bg-muted rounded w-1/2"></div></td>
-                                        <td className="p-4"><div className="h-5 bg-muted rounded w-full"></div></td>
+                                        <td className="p-4 hidden lg:table-cell"><div className="h-5 bg-muted rounded w-full"></div></td>
                                         <td className="p-4"><div className="h-5 bg-muted rounded w-1/4"></div></td>
                                         <td className="p-4"><div className="h-5 bg-muted rounded w-1/3"></div></td>
-                                        <td className="p-4"><div className="h-5 bg-muted rounded w-full"></div></td>
+                                        <td className="p-4"><div className="h-8 bg-muted rounded w-full"></div></td>
                                     </tr>
                                 ))
                             ) : sortedOrders.map(order => (
@@ -450,7 +452,7 @@ export default function LiveOrdersPage() {
                                 >
                                     <td className="p-4"><PriorityStars score={order.priority} /></td>
                                     <td className="p-4">
-                                        <div className="font-bold text-foreground">{order.id}</div>
+                                        <div className="font-bold text-foreground text-sm truncate max-w-[100px] sm:max-w-none">{order.id}</div>
                                         <div className="text-sm text-muted-foreground">{order.customer}</div>
                                          {order.paymentDetails?.method === 'cod' ? (
                                             <div className="mt-1 flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full bg-yellow-500/20 text-yellow-400 border border-yellow-500/30 w-fit">
@@ -462,7 +464,7 @@ export default function LiveOrdersPage() {
                                             </div>
                                         )}
                                     </td>
-                                    <td className="p-4 text-sm text-muted-foreground">
+                                    <td className="p-4 text-sm text-muted-foreground hidden lg:table-cell">
                                         <ul className="space-y-1">
                                             {(order.items || []).map(item => (
                                                 <li key={item.name}>{item.qty}x {item.name}</li>
@@ -477,7 +479,7 @@ export default function LiveOrdersPage() {
                                             {order.status}
                                         </span>
                                     </td>
-                                    <td className="p-4 w-[300px]">
+                                    <td className="p-4 w-auto md:w-[320px]">
                                         <ActionButton
                                             orderId={order.id}
                                             status={order.status}

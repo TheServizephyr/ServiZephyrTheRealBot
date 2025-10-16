@@ -22,20 +22,20 @@ export default function OnboardingGuidePage() {
     return (
         <div className="bg-background text-foreground">
             <div className="container mx-auto max-w-4xl px-4 py-12 sm:py-16">
-                <h1 className="font-headline text-4xl sm:text-5xl font-bold tracking-tighter mb-4 text-center">
+                <h1 className="font-headline text-3xl sm:text-4xl md:text-5xl font-bold tracking-tighter mb-4 text-center">
                     How to Connect Your WhatsApp Bot
                 </h1>
                  <p className="text-center text-lg text-muted-foreground mb-12">A Step-by-Step Guide for Restaurant Owners</p>
 
                 <div className="prose prose-lg dark:prose-invert mx-auto text-muted-foreground">
-                    <h2 className="text-3xl font-bold text-foreground">Welcome to ServiZephyr! Chaliye 5 Minute Mein Apna WhatsApp Bot Launch Karte Hain.</h2>
+                    <h2 className="text-2xl sm:text-3xl font-bold text-foreground">Welcome to ServiZephyr! Chaliye 5 Minute Mein Apna WhatsApp Bot Launch Karte Hain.</h2>
                     <p>
                         Mubarak ho! Aapne ServiZephyr ke saath judkar apne business ko aage badhane ka sahi faisla liya hai. Yeh guide aapko aaram se, step-by-step batayegi ki aap kaise sirf 5-10 minute mein apna khud ka WhatsApp Ordering Bot live kar sakte hain. Aapko kisi technical knowledge ki zaroorat nahi hai.
                     </p>
 
                     <hr className="my-12" />
 
-                    <h2 className="text-3xl font-bold text-foreground">Part 1: Apne Bot Ko Dashboard Se Connect Karein (The Main Step)</h2>
+                    <h2 className="text-2xl sm:text-3xl font-bold text-foreground">Part 1: Apne Bot Ko Dashboard Se Connect Karein (The Main Step)</h2>
                     
                     <GuideStep
                         title="Step 1: 'Connect Bot' Button Dhoondhein"
@@ -67,7 +67,7 @@ export default function OnboardingGuidePage() {
 
                     <hr className="my-12" />
 
-                    <h2 className="text-3xl font-bold text-foreground">Part 2: Zaroori Agle Kadam (Bot Ko Power Dene Ke Liye)</h2>
+                    <h2 className="text-2xl sm:text-3xl font-bold text-foreground">Part 2: Zaroori Agle Kadam (Bot Ko Power Dene Ke Liye)</h2>
                     
                     <GuideStep
                         title="Business Verification Kyun Zaroori Hai?"
@@ -83,7 +83,7 @@ export default function OnboardingGuidePage() {
                     
                     <hr className="my-12" />
                     
-                    <h2 className="text-3xl font-bold text-foreground">Part 3: Apne Message Templates Kaise Banayein?</h2>
+                    <h2 className="text-2xl sm:text-3xl font-bold text-foreground">Part 3: Apne Message Templates Kaise Banayein?</h2>
                     
                     <GuideStep
                         title="Step 1: Template Manager Par Jaayein"
@@ -111,7 +111,7 @@ export default function OnboardingGuidePage() {
 
                     <hr className="my-12" />
 
-                     <h2 className="text-3xl font-bold text-foreground">Ab Aap Taiyar Hain!</h2>
+                     <h2 className="text-2xl sm:text-3xl font-bold text-foreground">Ab Aap Taiyar Hain!</h2>
                      <p>
                         Aapka bot ab poori tarah se taiyar hai. Ab aap apne ServiZephyr dashboard se menu set up kar sakte hain, QR code generate kar sakte hain, aur commission-free orders lena shuru kar sakte hain. Agar aapko koi bhi dikkat aaye, to <a href='mailto:support@servizephyr.com' className='text-primary hover:underline'>support@servizephyr.com</a> par hamein email karne mein hichkichayein nahi.
                      </p>
