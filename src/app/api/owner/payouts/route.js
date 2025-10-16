@@ -39,7 +39,7 @@ async function verifyOwnerAndGetRestaurant(req) {
     return { razorpayAccountId: restaurantData.razorpayAccountId };
 }
 
-// Helper to make Razorpay API requests
+// Helper to make Razorpay API requests, now with header support
 async function makeRazorpayRequest(options) {
     return new Promise((resolve, reject) => {
         const req = https.request(options, (res) => {
@@ -76,27 +76,48 @@ export async function GET(req) {
         const key_secret = process.env.RAZORPAY_KEY_SECRET;
         const credentials = Buffer.from(`${key_id}:${key_secret}`).toString('base64');
         
-        // ** THE FIX: Using v2 Transfers API instead of v1 Settlements API **
-        const queryParams = new URLSearchParams({
-            'recipient_account_id': razorpayAccountId
-        });
-        if (from) queryParams.append('from', from);
-        if (to) queryParams.append('to', to);
-        
-        const path = `/v2/transfers?${queryParams.toString()}`;
+        // ** THE FIX: Fetch all payments for the linked account first, then get transfers for each. **
+        const paymentQueryParams = new URLSearchParams();
+        if (from) paymentQueryParams.append('from', from);
+        if (to) paymentQueryParams.append('to', to);
 
-        const fetchTransfersOptions = {
+        const paymentsPath = `/v1/payments?${paymentQueryParams.toString()}`;
+
+        // ** CRITICAL FIX: Add the 'X-Razorpay-Account' header to specify the linked account **
+        const fetchPaymentsOptions = {
             hostname: 'api.razorpay.com',
             port: 443,
-            path: path,
+            path: paymentsPath,
             method: 'GET',
-            headers: { 'Authorization': `Basic ${credentials}` }
+            headers: { 
+                'Authorization': `Basic ${credentials}`,
+                'X-Razorpay-Account': razorpayAccountId 
+            }
         };
         
-        const transfersData = await makeRazorpayRequest(fetchTransfersOptions);
+        const paymentsData = await makeRazorpayRequest(fetchPaymentsOptions);
         
+        const transferPromises = paymentsData.items.map(async (payment) => {
+            const transferPath = `/v1/payments/${payment.id}/transfers`;
+            const fetchTransfersOptions = {
+                hostname: 'api.razorpay.com',
+                port: 443,
+                path: transferPath,
+                method: 'GET',
+                headers: { 'Authorization': `Basic ${credentials}` }
+            };
+            return makeRazorpayRequest(fetchTransfersOptions);
+        });
+
+        const transfersResults = await Promise.all(transferPromises);
+        const allTransfers = transfersResults.flatMap(result => result.items || []);
+        
+        // Filter transfers to only include those made to our specific linked account
+        const relevantTransfers = allTransfers.filter(t => t.recipient === razorpayAccountId);
+
+
         // Process transfers data into a payout format
-        const payouts = (transfersData.items || []).map(transfer => ({
+        const payouts = relevantTransfers.map(transfer => ({
             id: transfer.id,
             amount: transfer.amount,
             currency: transfer.currency,
