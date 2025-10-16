@@ -119,11 +119,11 @@ export async function POST(req) {
             phone: userData.phone,
             profile: {
                 category: "food_beverage",
-                subcategory: "restaurant",
+                subcategory: "dhabas_and_restaurants",
                 addresses: {
                     registered: {
                         street1: restaurantData.address.street,
-                        street2: restaurantData.address.street, // Using street for street2 as well
+                        street2: restaurantData.address.street,
                         city: restaurantData.address.city,
                         state: restaurantData.address.state,
                         postal_code: restaurantData.address.postalCode,
@@ -149,7 +149,9 @@ export async function POST(req) {
         const stakeholderPayload = JSON.stringify({
             name: userData.name,
             email: userData.email,
-            phone: userData.phone,
+            phone: {
+                primary: userData.phone,
+            }
         });
 
         const createStakeholderOptions = {
