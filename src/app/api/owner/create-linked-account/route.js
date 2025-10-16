@@ -3,7 +3,7 @@
 
 import { NextResponse } from 'next/server';
 import { getAuth, getFirestore } from '@/lib/firebase-admin';
-import https from 'https:';
+import https from 'https';
 
 // Helper to make Razorpay API requests
 async function makeRazorpayRequest(options, payload = null) {
