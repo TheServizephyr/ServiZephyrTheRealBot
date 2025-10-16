@@ -274,9 +274,9 @@ export default function Home() {
 
   return (
     <>
-      <main className="overflow-x-hidden bg-background">
+      <main className="bg-background overflow-x-hidden">
         {/* Hero Section */}
-        <section className="relative w-full flex flex-col justify-center items-center py-20 md:py-32 overflow-hidden">
+        <section className="relative w-full flex flex-col justify-center items-center py-20 md:py-32">
           <video 
             src="/Animated_Hero_Video_for_Website.mp4" 
             autoPlay 
