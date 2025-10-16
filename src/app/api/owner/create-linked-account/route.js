@@ -123,6 +123,7 @@ export async function POST(req) {
                 addresses: {
                     registered: {
                         street1: restaurantData.address,
+                        street2: restaurantData.address,
                         city: "Ghaziabad", // Example, fetch from data if available
                         state: "Uttar Pradesh", // Example
                         postal_code: "201206", // Example
