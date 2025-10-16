@@ -118,12 +118,12 @@ export async function POST(req) {
             contact_name: userData.name,
             phone: userData.phone,
             profile: {
-                category: "food_beverage",
-                subcategory: "food_and_beverages", // <-- YEH HAI BADLAAV
+                category: "FOOD",
+                subcategory: "restaurant", // <-- YEH HAI FINAL, SAHI BADLAAV
                 addresses: {
                     registered: {
                         street1: restaurantData.address.street,
-                        street2: restaurantData.address.street, // Using street1 for street2 as well
+                        street2: restaurantData.address.street,
                         city: restaurantData.address.city,
                         state: restaurantData.address.state,
                         postal_code: restaurantData.address.postalCode,
