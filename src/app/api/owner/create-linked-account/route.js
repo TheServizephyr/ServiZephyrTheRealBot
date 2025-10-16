@@ -134,7 +134,6 @@ export async function POST(req) {
             ...baseOptions,
             path: '/v2/accounts',
             method: 'POST',
-            headers: { ...baseOptions.headers, 'Content-Length': accountPayload.length }
         };
 
         const linkedAccount = await makeRazorpayRequest(createAccountOptions, accountPayload);
@@ -154,7 +153,6 @@ export async function POST(req) {
             ...baseOptions,
             path: `/v2/accounts/${accountId}/stakeholders`,
             method: 'POST',
-            headers: { ...baseOptions.headers, 'Content-Length': stakeholderPayload.length }
         };
         const stakeholder = await makeRazorpayRequest(createStakeholderOptions, stakeholderPayload);
         console.log(`[API LOG] Step 2 SUCCESS. Stakeholder ID: ${stakeholder.id}`);
@@ -172,7 +170,6 @@ export async function POST(req) {
             ...baseOptions,
             path: `/v2/accounts/${accountId}/products`,
             method: 'POST',
-            headers: { ...baseOptions.headers, 'Content-Length': productRequestPayload.length }
         };
         const product = await makeRazorpayRequest(requestProductOptions, productRequestPayload);
         const productId = product.id;
@@ -198,7 +195,6 @@ export async function POST(req) {
             ...baseOptions,
             path: `/v2/accounts/${accountId}/products/${productId}`,
             method: 'PATCH',
-            headers: { ...baseOptions.headers, 'Content-Length': updateProductPayload.length }
         };
         await makeRazorpayRequest(updateProductOptions, updateProductPayload);
         console.log(`[API LOG] Step 4 SUCCESS. Product configuration updated and activated.`);
