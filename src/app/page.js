@@ -277,7 +277,7 @@ export default function Home() {
     <div className="flex flex-col min-h-screen overflow-x-hidden bg-background">
       <main className="flex-grow">
         {/* Hero Section */}
-        <section className="relative w-full min-h-screen flex flex-col justify-center items-center py-12 md:py-20 overflow-hidden">
+        <section className="relative w-full flex flex-col justify-center items-center py-20 md:py-32 overflow-hidden">
           <video 
             src="/Animated_Hero_Video_for_Website.mp4" 
             autoPlay 
