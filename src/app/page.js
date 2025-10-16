@@ -284,10 +284,10 @@ export default function Home() {
             loop 
             muted 
             playsInline
-            className="absolute top-0 left-0 w-full h-full object-cover -z-10 opacity-20"
+            className="absolute top-0 left-0 w-full h-full object-cover z-0 opacity-20"
           />
           
-          <div className="container px-4 md:px-6 text-center z-10">
+          <div className="relative container px-4 md:px-6 text-center z-10">
             <div className="max-w-4xl mx-auto flex flex-col items-center">
                <h1 className="font-headline text-5xl md:text-7xl tracking-tighter leading-tight text-foreground">
                 Your Business. Your Customers. Your Control.
