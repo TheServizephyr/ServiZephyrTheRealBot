@@ -111,10 +111,10 @@ export async function POST(req) {
         // --- STEP 1: Create a Linked Account (using 'route' type) ---
         console.log("[API LOG] Step 1: Creating Razorpay Route Account...");
         const accountPayload = JSON.stringify({
-            type: "route", // CORRECTED from "linked" to "route"
+            type: "route", 
             email: userData.email,
             legal_business_name: beneficiaryName,
-            business_type: "proprietorship", // Added as per typical use case
+            business_type: "proprietorship", 
             contact_name: userData.name,
             phone: userData.phone,
             profile: {
@@ -165,7 +165,6 @@ export async function POST(req) {
         const productRequestPayload = JSON.stringify({
             product_name: "route",
             tnc_accepted: true,
-            ip: "192.168.1.1" // Placeholder IP
         });
 
         const requestProductOptions = {
