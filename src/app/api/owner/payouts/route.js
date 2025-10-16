@@ -1,4 +1,3 @@
-
 'use server';
 
 import { NextResponse } from 'next/server';
@@ -47,14 +46,18 @@ async function makeRazorpayRequest(options) {
             res.on('data', (chunk) => { data += chunk; });
             res.on('end', () => {
                 try {
+                    // First, try to parse as JSON
                     const parsedData = JSON.parse(data);
                     if (res.statusCode >= 200 && res.statusCode < 300) {
                         resolve(parsedData);
                     } else {
+                        // If it's a JSON error from Razorpay, reject with it
                         reject(parsedData);
                     }
                 } catch (e) {
-                    reject({ error: { description: `Failed to parse Razorpay response. Raw data: ${data}` } });
+                    // If parsing fails, it might be a non-JSON error (like HTML)
+                    // Reject with a generic error, including the raw data for debugging
+                    reject({ error: { description: `Failed to parse Razorpay JSON response. Raw data: ${data}` } });
                 }
             });
         });
@@ -97,7 +100,12 @@ export async function GET(req) {
         
         const paymentsData = await makeRazorpayRequest(fetchPaymentsOptions);
         
+        if (!paymentsData.items || paymentsData.items.length === 0) {
+            return NextResponse.json({ payouts: [], summary: { total: 0, lastPayout: 0, pending: 0 } }, { status: 200 });
+        }
+        
         const transferPromises = paymentsData.items.map(async (payment) => {
+            if (payment.status !== 'captured') return { items: [] }; // Only look for transfers on captured payments
             const transferPath = `/v1/payments/${payment.id}/transfers`;
             const fetchTransfersOptions = {
                 hostname: 'api.razorpay.com',
@@ -106,7 +114,11 @@ export async function GET(req) {
                 method: 'GET',
                 headers: { 'Authorization': `Basic ${credentials}` }
             };
-            return makeRazorpayRequest(fetchTransfersOptions);
+            // Adding a catch here to prevent one failed transfer call from breaking the whole Promise.all
+            return makeRazorpayRequest(fetchTransfersOptions).catch(err => {
+                console.warn(`Could not fetch transfers for payment ${payment.id}:`, err?.error?.description || err.message);
+                return { items: [] }; // Return empty structure on error
+            });
         });
 
         const transfersResults = await Promise.all(transferPromises);
@@ -128,7 +140,11 @@ export async function GET(req) {
         
         // Calculate summary data from processed payouts
         const total = payouts.filter(p => p.status === 'processed').reduce((sum, p) => sum + p.amount, 0);
+        
+        // Sort payouts by date to find the latest one
+        payouts.sort((a, b) => b.created_at - a.created_at);
         const lastPayout = payouts.length > 0 ? payouts[0].amount : 0;
+        
         const pending = payouts.filter(p => p.status === 'pending').reduce((sum, p) => sum + p.amount, 0);
 
 
