@@ -181,15 +181,12 @@ export async function POST(req) {
         console.log(`[API LOG] Step 4: Activating 'route' for Product ${productId} with bank details...`);
         
         const updateProductPayload = JSON.stringify({
-            settlements: {
-                account_details: {
-                    bank_account: {
-                        beneficiary_name: beneficiaryName,
-                        account_number: accountNumber,
-                        ifsc_code: ifsc,
-                    }
-                }
-            }
+           tnc_accepted: true,
+           settlements: {
+                account_number: accountNumber,
+                ifsc_code: ifsc,
+                beneficiary_name: beneficiaryName,
+           }
         });
 
         const updateProductOptions = {
