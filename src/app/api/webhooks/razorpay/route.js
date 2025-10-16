@@ -19,6 +19,7 @@ export async function POST(req) {
         const body = await req.text();
         const signature = req.headers.get('x-razorpay-signature');
 
+        // Step 1: Validate the webhook signature to ensure it's from Razorpay
         const shasum = crypto.createHmac('sha256', secret);
         shasum.update(body);
         const digest = shasum.digest('hex');
@@ -30,6 +31,7 @@ export async function POST(req) {
 
         const eventData = JSON.parse(body);
         
+        // Step 2: Listen specifically for the 'payment.captured' event
         if (eventData.event === 'payment.captured') {
             const paymentEntity = eventData.payload.payment.entity;
             const razorpayOrderId = paymentEntity.order_id;
@@ -44,6 +46,7 @@ export async function POST(req) {
             const firestore = getFirestore();
             const ordersRef = firestore.collection('orders');
             
+            // Step 3: Find the order in our database using Razorpay's order_id
             const orderQuery = await ordersRef.where('paymentDetails.razorpay_order_id', '==', razorpayOrderId).limit(1).get();
 
             if (orderQuery.empty) {
@@ -54,6 +57,7 @@ export async function POST(req) {
             const orderDoc = orderQuery.docs[0];
             const orderData = orderDoc.data();
 
+            // Only process if the order is still in 'pending' state to avoid double processing
             if (orderData.status === 'pending') {
                 await orderDoc.ref.update({ 
                     status: 'paid',
@@ -67,12 +71,14 @@ export async function POST(req) {
                     const restaurantData = restaurantDoc.data();
                     const linkedAccountId = restaurantData.razorpayAccountId;
 
-                    // --- START: RAZORPAY ROUTE TRANSFER LOGIC ---
+                    // --- START: RAZORPAY ROUTE TRANSFER LOGIC (METHOD 2: USING PAYMENT ID) ---
+                    // Step 4: Check if the restaurant has a valid Linked Account ID
                     if (linkedAccountId && linkedAccountId.startsWith('acc_')) {
                         const key_id = process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID;
                         const key_secret = process.env.RAZORPAY_KEY_SECRET;
                         const credentials = Buffer.from(`${key_id}:${key_secret}`).toString('base64');
 
+                        // Step 5: Prepare the payload for the transfer API
                         const transferPayload = {
                             transfers: [{
                                 account: linkedAccountId,
@@ -82,6 +88,7 @@ export async function POST(req) {
                         };
 
                         try {
+                            // Step 6: Make the API call to Razorpay to transfer funds using the payment_id
                             console.log(`[Webhook] Attempting to transfer ${paymentAmount} to ${linkedAccountId} for payment ${paymentId}`);
                             await axios.post(`https://api.razorpay.com/v1/payments/${paymentId}/transfers`, transferPayload, {
                                 headers: {
