@@ -113,17 +113,17 @@ export async function POST(req) {
         const accountPayload = JSON.stringify({
             type: "route", 
             email: userData.email,
-            legal_business_name: beneficiaryName,
+            legal_business_name: restaurantData.name,
             business_type: "proprietorship", 
             contact_name: userData.name,
             phone: userData.phone,
             profile: {
                 category: "food_beverage",
-                subcategory: "qsr",
+                subcategory: "food_and_beverages", // <-- YEH HAI BADLAAV
                 addresses: {
                     registered: {
                         street1: restaurantData.address.street,
-                        street2: restaurantData.address.street,
+                        street2: restaurantData.address.street, // Using street1 for street2 as well
                         city: restaurantData.address.city,
                         state: restaurantData.address.state,
                         postal_code: restaurantData.address.postalCode,
