@@ -79,10 +79,14 @@ export async function POST(req) {
     
     try {
         const { restaurantRef, restaurantData, userData } = await verifyOwnerAndGetRestaurant(req, auth);
+        const { beneficiaryName, accountNumber, ifsc } = await req.json();
         
-        // Validation from Razorpay's email
+        // Validation from Razorpay's email & our new form
         if (!userData.email || !restaurantData.name || !userData.name || !userData.phone || !restaurantData.address) {
              return NextResponse.json({ message: 'User email, name, phone, restaurant name, and address are required to create a linked account.' }, { status: 400 });
+        }
+        if (!beneficiaryName || !accountNumber || !ifsc) {
+            return NextResponse.json({ message: 'Bank Account Holder Name, Account Number, and IFSC code are required.' }, { status: 400 });
         }
 
         const key_id = process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID;
@@ -108,7 +112,7 @@ export async function POST(req) {
         const accountPayload = JSON.stringify({
             type: "linked",
             email: userData.email,
-            legal_business_name: restaurantData.name, // Must match beneficiary name
+            legal_business_name: beneficiaryName, // Use the name from the form, must match bank records
             contact_name: userData.name,
             phone: userData.phone,
             profile: {
@@ -178,23 +182,13 @@ export async function POST(req) {
         // --- STEP 4: Update Product Configuration (Activate) ---
         console.log(`[API LOG] Step 4: Activating 'route' for Product ${productId} with bank details...`);
         
-        // IMPORTANT: Use environment variables for bank details for now.
-        // In a real app, you would collect this from the user via a secure form.
-        const bankAccountNumber = process.env.RAZORPAY_BENEFICIARY_ACCOUNT_NUMBER;
-        const bankIfsc = process.env.RAZORPAY_BENEFICIARY_IFSC;
-        const beneficiaryName = restaurantData.name; // Must match legal_business_name
-
-        if (!bankAccountNumber || !bankIfsc) {
-            throw new Error("Beneficiary bank details (account number, IFSC) are not configured on the server.");
-        }
-
         const updateProductPayload = JSON.stringify({
             settlements: {
                 account_details: {
                     bank_account: {
                         beneficiary_name: beneficiaryName,
-                        account_number: bankAccountNumber,
-                        ifsc_code: bankIfsc,
+                        account_number: accountNumber,
+                        ifsc_code: ifsc,
                     }
                 }
             }
@@ -206,7 +200,7 @@ export async function POST(req) {
             method: 'PATCH',
             headers: { ...baseOptions.headers, 'Content-Length': updateProductPayload.length }
         };
-        const activatedProduct = await makeRazorpayRequest(updateProductOptions, updateProductPayload);
+        await makeRazorpayRequest(updateProductOptions, updateProductPayload);
         console.log(`[API LOG] Step 4 SUCCESS. Product configuration updated and activated.`);
 
 
