@@ -36,20 +36,42 @@ export async function POST(req) {
                 key_id: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID,
                 key_secret: process.env.RAZORPAY_KEY_SECRET,
             });
+
+            // *** BUG FIX LOGIC STARTS HERE ***
+            // We now embed all order details inside Razorpay's order notes.
+            // The order will ONLY be created in Firestore when the payment is successful (via webhook).
+            const orderPayloadForNotes = {
+                customerDetails: { name, address, phone },
+                restaurantDetails: { restaurantId, restaurantName: restaurantDoc.data().name },
+                orderItems: items.map(item => ({ name: item.name, qty: item.quantity, price: item.price })),
+                billDetails: { coupon, loyaltyDiscount, grandTotal },
+                notes: notes || null,
+            };
             
             const razorpayOrderOptions = {
                 amount: Math.round(grandTotal * 100), // Amount in paisa
                 currency: 'INR',
                 receipt: `receipt_order_${nanoid()}`,
-                payment_capture: 1
+                payment_capture: 1,
+                notes: {
+                    servizephyr_order_payload: JSON.stringify(orderPayloadForNotes)
+                }
             };
+            // *** BUG FIX LOGIC ENDS HERE ***
 
             const razorpayOrder = await razorpay.orders.create(razorpayOrderOptions);
             razorpayOrderId = razorpayOrder.id;
-            console.log(`[Order API] Razorpay Order ${razorpayOrderId} created for amount ${grandTotal}.`);
+            console.log(`[Order API] Razorpay Order ${razorpayOrderId} created for amount ${grandTotal}. Firestore order creation will wait for payment confirmation.`);
+            
+            // For online payments, we stop here and return the razorpay order ID.
+            return NextResponse.json({ 
+                message: 'Razorpay order created. Awaiting payment confirmation.',
+                razorpay_order_id: razorpayOrderId,
+            }, { status: 200 });
         }
 
-        // --- FIRESTORE BATCH WRITE ---
+
+        // --- FIRESTORE BATCH WRITE FOR COD ---
         const batch = firestore.batch();
         
         const usersRef = firestore.collection('users');
@@ -67,7 +89,6 @@ export async function POST(req) {
             });
         }
         
-        // --- Calculate order details ---
         const subtotal = items.reduce((sum, item) => sum + (item.price * item.quantity), 0);
         const couponDiscountAmount = coupon?.discount || 0;
         const finalLoyaltyDiscount = loyaltyDiscount || 0;
@@ -101,7 +122,6 @@ export async function POST(req) {
              totalOrders: adminFirestore.FieldValue.increment(1),
         }, { merge: true });
         
-        // --- NEW: Increment coupon usage count ---
         if (coupon && coupon.id) {
             const couponRef = restaurantRef.collection('coupons').doc(coupon.id);
             batch.update(couponRef, {
@@ -123,20 +143,16 @@ export async function POST(req) {
             orderDate: adminFirestore.FieldValue.serverTimestamp(),
             notes: notes || null,
             paymentDetails: {
-                razorpay_payment_id: null,
-                razorpay_order_id: razorpayOrderId,
-                razorpay_signature: null,
                 method: paymentMethod,
             }
         });
         
-        console.log(`[Order API] Pending order ${newOrderRef.id} added to batch with payment method ${paymentMethod}.`);
+        console.log(`[Order API] COD order ${newOrderRef.id} added to batch.`);
 
         await batch.commit();
         
         return NextResponse.json({ 
-            message: 'Pending order created successfully.',
-            razorpay_order_id: razorpayOrderId,
+            message: 'COD order created successfully.',
             firestore_order_id: newOrderRef.id,
         }, { status: 200 });
 

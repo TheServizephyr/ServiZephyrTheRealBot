@@ -1,8 +1,10 @@
+
 import { NextResponse } from 'next/server';
 import { getFirestore } from '@/lib/firebase-admin';
 import { sendNewOrderToOwner } from '@/lib/notifications';
 import crypto from 'crypto';
 import https from 'https';
+import { firestore as adminFirestore } from 'firebase-admin';
 
 async function makeRazorpayRequest(options, payload) {
     return new Promise((resolve, reject) => {
@@ -10,8 +12,6 @@ async function makeRazorpayRequest(options, payload) {
             let data = '';
             res.on('data', (chunk) => { data += chunk; });
             res.on('end', () => {
-                console.log(`[Webhook Transfer] Razorpay Response Status: ${res.statusCode}`);
-                console.log(`[Webhook Transfer] Raw response from Razorpay:`, data);
                 try {
                     const parsedData = JSON.parse(data);
                     if (res.statusCode >= 200 && res.statusCode < 300) {
@@ -25,7 +25,9 @@ async function makeRazorpayRequest(options, payload) {
             });
         });
         req.on('error', (e) => reject({ error: { description: e.message } }));
-        req.write(payload);
+        if(payload) {
+          req.write(payload);
+        }
         req.end();
     });
 }
@@ -43,7 +45,6 @@ export async function POST(req) {
         const body = await req.text();
         const signature = req.headers.get('x-razorpay-signature');
 
-        // Step 1: Validate the webhook signature to ensure it's from Razorpay
         const shasum = crypto.createHmac('sha256', secret);
         shasum.update(body);
         const digest = shasum.digest('hex');
@@ -55,101 +56,144 @@ export async function POST(req) {
 
         const eventData = JSON.parse(body);
         
-        // Step 2: Listen specifically for the 'payment.captured' event
         if (eventData.event === 'payment.captured') {
             const paymentEntity = eventData.payload.payment.entity;
             const razorpayOrderId = paymentEntity.order_id;
             const paymentId = paymentEntity.id;
-            const paymentAmount = paymentEntity.amount; // Amount in paisa
+            const paymentAmount = paymentEntity.amount; 
             
             if (!razorpayOrderId) {
                 console.warn("[Webhook] 'order_id' not found in payment entity.");
                 return NextResponse.json({ status: 'ok' });
             }
-
-            const firestore = getFirestore();
-            const ordersRef = firestore.collection('orders');
             
-            // Step 3: Find the order in our database using Razorpay's order_id
-            const orderQuery = await ordersRef.where('paymentDetails.razorpay_order_id', '==', razorpayOrderId).limit(1).get();
+            const firestore = getFirestore();
 
-            if (orderQuery.empty) {
-                console.warn(`[Webhook] Order with Razorpay Order ID ${razorpayOrderId} not found in Firestore.`);
-                return NextResponse.json({ status: 'ok' });
+            // *** NEW LOGIC: Check if order already exists to prevent duplicates ***
+            const existingOrderQuery = await firestore.collection('orders').where('paymentDetails.razorpay_order_id', '==', razorpayOrderId).limit(1).get();
+            if (!existingOrderQuery.empty) {
+                console.log(`[Webhook] Order ${razorpayOrderId} already processed. Skipping.`);
+                return NextResponse.json({ status: 'ok', message: 'Order already exists.'});
             }
 
-            const orderDoc = orderQuery.docs[0];
-            const orderData = orderDoc.data();
+            // *** NEW LOGIC: Fetch order payload from Razorpay order notes ***
+            const key_id = process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID;
+            const key_secret = process.env.RAZORPAY_KEY_SECRET;
+            const credentials = Buffer.from(`${key_id}:${key_secret}`).toString('base64');
+            const fetchOrderOptions = {
+                hostname: 'api.razorpay.com',
+                port: 443,
+                path: `/v1/orders/${razorpayOrderId}`,
+                method: 'GET',
+                headers: { 'Authorization': `Basic ${credentials}` }
+            };
 
-            // Only process if the order is still in 'pending' state to avoid double processing
-            if (orderData.status === 'pending') {
-                await orderDoc.ref.update({ 
-                    status: 'paid',
-                    'paymentDetails.razorpay_payment_id': paymentId,
-                 });
-                console.log(`[Webhook] Order ${orderDoc.id} status updated to 'paid'.`);
+            const razorpayOrderDetails = await makeRazorpayRequest(fetchOrderOptions);
+            const orderPayloadString = razorpayOrderDetails.notes?.servizephyr_order_payload;
+            
+            if (!orderPayloadString) {
+                console.error(`[Webhook] CRITICAL: servizephyr_order_payload not found in notes for Razorpay Order ${razorpayOrderId}`);
+                return NextResponse.json({ status: 'error', message: 'Order payload not found in notes.' });
+            }
 
-                const restaurantDoc = await firestore.collection('restaurants').doc(orderData.restaurantId).get();
-                
-                if (restaurantDoc.exists) {
-                    const restaurantData = restaurantDoc.data();
-                    const linkedAccountId = restaurantData.razorpayAccountId;
+            const { customerDetails, restaurantDetails, orderItems, billDetails, notes } = JSON.parse(orderPayloadString);
+            
+            // --- ALL ORDER CREATION LOGIC IS NOW HERE ---
+            const batch = firestore.batch();
+            const usersRef = firestore.collection('users');
+            const existingUserQuery = await usersRef.where('phone', '==', customerDetails.phone).limit(1).get();
 
-                    // --- START: RAZORPAY ROUTE TRANSFER LOGIC ---
-                    // Step 4: Check if the restaurant has a valid Linked Account ID
-                    if (linkedAccountId && linkedAccountId.startsWith('acc_')) {
-                        const key_id = process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID;
-                        const key_secret = process.env.RAZORPAY_KEY_SECRET;
-                        const credentials = Buffer.from(`${key_id}:${key_secret}`).toString('base64');
-                        
-                        const transferPayload = JSON.stringify({
-                            transfers: [{
-                                account: linkedAccountId,
-                                amount: paymentAmount, // Use the full payment amount
-                                currency: "INR"
-                            }]
-                        });
-                        
-                        const transferOptions = {
-                            hostname: 'api.razorpay.com',
-                            port: 443,
-                            path: `/v1/payments/${paymentId}/transfers`,
-                            method: 'POST',
-                            headers: {
-                                'Content-Type': 'application/json',
-                                'Authorization': `Basic ${credentials}`,
-                            }
-                        };
-                        
-                        try {
-                            // Step 5: Make the API call to Razorpay to transfer funds
-                            console.log(`[Webhook] Attempting to transfer ${paymentAmount} to ${linkedAccountId} for payment ${paymentId}`);
-                            await makeRazorpayRequest(transferOptions, transferPayload);
-                            console.log(`[Webhook] Successfully initiated transfer for payment ${paymentId} to account ${linkedAccountId}.`);
-                        } catch (transferError) {
-                            console.error(`[Webhook] CRITICAL: Failed to process transfer for payment ${paymentId}. Error:`, JSON.stringify(transferError, null, 2));
-                        }
-                    } else {
-                        console.warn(`[Webhook] Restaurant ${orderData.restaurantId} does not have a valid Linked Account ID. Skipping transfer.`);
-                    }
-                    // --- END: RAZORPAY ROUTE TRANSFER LOGIC ---
-
-                    // Trigger WhatsApp notification to the owner
-                    if (restaurantData.ownerPhone && restaurantData.botPhoneNumberId) {
-                      await sendNewOrderToOwner({
-                          ownerPhone: restaurantData.ownerPhone,
-                          botPhoneNumberId: restaurantData.botPhoneNumberId,
-                          customerName: orderData.customerName,
-                          totalAmount: orderData.totalAmount,
-                          orderId: orderDoc.id
-                      });
-                    }
-
-                } else {
-                    console.error(`[Webhook] Restaurant ${orderData.restaurantId} not found for order ${orderDoc.id}. Cannot process transfer or send notification.`);
-                }
+            let userId;
+            if (!existingUserQuery.empty) {
+                userId = existingUserQuery.docs[0].id;
             } else {
-                 console.log(`[Webhook] Order ${orderDoc.id} status is already '${orderData.status}', no action taken.`);
+                const newUserRef = usersRef.doc();
+                userId = newUserRef.id;
+                batch.set(newUserRef, {
+                    name: customerDetails.name, phone: customerDetails.phone, addresses: [{ id: `addr_${Date.now()}`, full: customerDetails.address }],
+                    role: 'customer', createdAt: adminFirestore.FieldValue.serverTimestamp(),
+                });
+            }
+
+            const subtotal = orderItems.reduce((sum, item) => sum + (item.price * item.qty), 0);
+            const pointsEarned = Math.floor(subtotal / 100) * 10;
+            const pointsSpent = (billDetails.loyaltyDiscount || 0) > 0 ? billDetails.loyaltyDiscount / 0.5 : 0;
+            
+            const restaurantCustomerRef = firestore.collection('restaurants').doc(restaurantDetails.restaurantId).collection('customers').doc(userId);
+            batch.set(restaurantCustomerRef, {
+                name: customerDetails.name, phone: customerDetails.phone, status: 'claimed',
+                totalSpend: adminFirestore.FieldValue.increment(subtotal),
+                loyaltyPoints: adminFirestore.FieldValue.increment(pointsEarned - pointsSpent),
+                lastOrderDate: adminFirestore.FieldValue.serverTimestamp(),
+                totalOrders: adminFirestore.FieldValue.increment(1),
+            }, { merge: true });
+            
+            const newOrderRef = firestore.collection('orders').doc();
+            
+            const couponDiscountAmount = billDetails.coupon?.discount || 0;
+            const finalLoyaltyDiscount = billDetails.loyaltyDiscount || 0;
+            const finalDiscount = couponDiscountAmount + finalLoyaltyDiscount;
+            const taxableAmount = subtotal - finalDiscount;
+            const taxRate = 0.05;
+            const cgst = taxableAmount > 0 ? taxableAmount * taxRate : 0;
+            const sgst = taxableAmount > 0 ? taxableAmount * taxRate : 0;
+            const deliveryCharge = 30; // This should be fetched or stored more reliably
+
+            batch.set(newOrderRef, {
+                customerName: customerDetails.name, customerId: userId, customerAddress: customerDetails.address, customerPhone: customerDetails.phone,
+                restaurantId: restaurantDetails.restaurantId, restaurantName: restaurantDetails.restaurantName,
+                items: orderItems,
+                subtotal, coupon: billDetails.coupon, loyaltyDiscount: finalLoyaltyDiscount, discount: finalDiscount, cgst, sgst, deliveryCharge,
+                totalAmount: billDetails.grandTotal,
+                status: 'paid', // Order is created directly as 'paid'
+                priority: Math.floor(Math.random() * 5) + 1,
+                orderDate: adminFirestore.FieldValue.serverTimestamp(),
+                notes: notes || null,
+                paymentDetails: {
+                    razorpay_payment_id: paymentId,
+                    razorpay_order_id: razorpayOrderId,
+                    method: 'razorpay',
+                }
+            });
+            
+            await batch.commit();
+            console.log(`[Webhook] Successfully created Firestore order ${newOrderRef.id} from Razorpay Order ${razorpayOrderId}.`);
+
+            // --- TRANSFER AND NOTIFICATION LOGIC ---
+            const restaurantDoc = await firestore.collection('restaurants').doc(restaurantDetails.restaurantId).get();
+            if (restaurantDoc.exists) {
+                const restaurantData = restaurantDoc.data();
+                const linkedAccountId = restaurantData.razorpayAccountId;
+
+                if (linkedAccountId && linkedAccountId.startsWith('acc_')) {
+                    const transferPayload = JSON.stringify({ transfers: [{ account: linkedAccountId, amount: paymentAmount, currency: "INR" }] });
+                    const transferOptions = {
+                        hostname: 'api.razorpay.com',
+                        port: 443,
+                        path: `/v1/payments/${paymentId}/transfers`,
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json', 'Authorization': `Basic ${credentials}` }
+                    };
+                    
+                    try {
+                        await makeRazorpayRequest(transferOptions, transferPayload);
+                        console.log(`[Webhook] Initiated transfer for payment ${paymentId} to account ${linkedAccountId}.`);
+                    } catch (transferError) {
+                        console.error(`[Webhook] CRITICAL: Failed to process transfer for payment ${paymentId}. Error:`, JSON.stringify(transferError, null, 2));
+                    }
+                } else {
+                    console.warn(`[Webhook] Restaurant ${restaurantDetails.restaurantId} has no Linked Account. Skipping transfer.`);
+                }
+
+                if (restaurantData.ownerPhone && restaurantData.botPhoneNumberId) {
+                    await sendNewOrderToOwner({
+                        ownerPhone: restaurantData.ownerPhone,
+                        botPhoneNumberId: restaurantData.botPhoneNumberId,
+                        customerName: customerDetails.name,
+                        totalAmount: billDetails.grandTotal,
+                        orderId: newOrderRef.id
+                    });
+                }
             }
         }
 
