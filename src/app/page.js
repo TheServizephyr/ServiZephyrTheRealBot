@@ -274,8 +274,7 @@ export default function Home() {
 
   return (
     <>
-    <div className="flex flex-col overflow-x-hidden bg-background">
-      <main className="flex-grow">
+      <main className="overflow-x-hidden bg-background">
         {/* Hero Section */}
         <section className="relative w-full flex flex-col justify-center items-center py-20 md:py-32 overflow-hidden">
           <video 
@@ -660,8 +659,7 @@ export default function Home() {
         </motion.section>
 
       </main>
-    </div>
-    <AuthModal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} />
+      <AuthModal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} />
     </>
   )
 }
