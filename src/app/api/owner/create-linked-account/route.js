@@ -118,8 +118,8 @@ export async function POST(req) {
             contact_name: userData.name,
             phone: userData.phone,
             profile: {
-                category: "FOOD",
-                subcategory: "restaurant", // <-- YEH HAI FINAL, SAHI BADLAAV
+                category: "food",
+                subcategory: "restaurant",
                 addresses: {
                     registered: {
                         street1: restaurantData.address.street,
