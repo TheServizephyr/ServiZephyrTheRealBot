@@ -83,8 +83,8 @@ export async function POST(req) {
         const { beneficiaryName, accountNumber, ifsc } = await req.json();
         
         // Validation from Razorpay's email & our new form
-        if (!userData.email || !restaurantData.name || !userData.name || !userData.phone || !restaurantData.address) {
-             return NextResponse.json({ message: 'User email, name, phone, restaurant name, and address are required to create a linked account.' }, { status: 400 });
+        if (!userData.email || !restaurantData.name || !userData.name || !userData.phone || !restaurantData.address || !restaurantData.address.street) {
+             return NextResponse.json({ message: 'User email, name, phone, restaurant name, and a structured address are required.' }, { status: 400 });
         }
         if (!beneficiaryName || !accountNumber || !ifsc) {
             return NextResponse.json({ message: 'Bank Account Holder Name, Account Number, and IFSC code are required.' }, { status: 400 });
@@ -122,12 +122,12 @@ export async function POST(req) {
                 subcategory: "restaurant",
                 addresses: {
                     registered: {
-                        street1: restaurantData.address,
-                        street2: restaurantData.address,
-                        city: "Ghaziabad", // Example, fetch from data if available
-                        state: "Uttar Pradesh", // Example
-                        postal_code: "201206", // Example
-                        country: "IN"
+                        street1: restaurantData.address.street,
+                        street2: restaurantData.address.street, // Using street for street2 as well
+                        city: restaurantData.address.city,
+                        state: restaurantData.address.state,
+                        postal_code: restaurantData.address.postalCode,
+                        country: restaurantData.address.country || "IN"
                     }
                 }
             }

@@ -4,7 +4,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
-import { User, Briefcase, Shield, Store, Phone, Key, ArrowRight } from 'lucide-react';
+import { User, Briefcase, Shield, Store, Phone, Key, ArrowRight, MapPin } from 'lucide-react';
 import { auth, db } from '@/lib/firebase';
 import { doc, getDoc, serverTimestamp } from 'firebase/firestore';
 
@@ -34,7 +34,13 @@ export default function CompleteProfile() {
   const router = useRouter();
   const [role, setRole] = useState('');
   const [restaurantName, setRestaurantName] = useState('');
-  const [restaurantAddress, setRestaurantAddress] = useState('');
+  const [address, setAddress] = useState({
+      street: '',
+      city: 'Ghaziabad',
+      state: 'Uttar Pradesh',
+      postalCode: '201206',
+      country: 'IN'
+  });
   const [phone, setPhone] = useState('');
   const [secretKey, setSecretKey] = useState('');
   const [loading, setLoading] = useState(true);
@@ -73,6 +79,10 @@ export default function CompleteProfile() {
     const phoneRegex = /^\d{10}$/;
     return phoneRegex.test(number);
   }
+
+  const handleAddressChange = (field, value) => {
+      setAddress(prev => ({ ...prev, [field]: value }));
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -122,14 +132,14 @@ export default function CompleteProfile() {
 
         let restaurantData = null;
         if (role === 'owner') {
-             if (!restaurantName || !restaurantAddress) {
-                throw new Error("Restaurant name and address are required for owners.");
+             if (!restaurantName || !address.street || !address.city || !address.state || !address.postalCode) {
+                throw new Error("Restaurant name and full address are required for owners.");
              }
              restaurantData = {
                 name: restaurantName,
-                address: restaurantAddress,
+                address: address, // Send structured address object
                 ownerId: user.uid,
-                ownerPhone: normalizedPhone, // Store owner's phone here
+                ownerPhone: normalizedPhone,
                 approvalStatus: 'pending',
                 botPhoneNumberId: `REPLACE_WITH_BOT_ID_${restaurantName.replace(/\s+/g, '-').toLowerCase()}`
              };
@@ -186,13 +196,20 @@ export default function CompleteProfile() {
                 <input type="text" value={restaurantName} onChange={(e) => setRestaurantName(e.target.value)} required className="w-full pl-10 pr-4 py-2 rounded-md bg-input border border-border focus:ring-primary focus:border-primary" />
               </div>
             </div>
-            <div>
-              <label className="block text-sm font-medium text-muted-foreground mb-1">Restaurant Address</label>
-              <div className="relative">
-                 <Store className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
-                 <input type="text" value={restaurantAddress} onChange={(e) => setRestaurantAddress(e.target.value)} required className="w-full pl-10 pr-4 py-2 rounded-md bg-input border border-border focus:ring-primary focus:border-primary" />
-              </div>
+            
+            <div className="space-y-2 p-4 border border-dashed border-border rounded-lg">
+                <h4 className="font-semibold flex items-center gap-2"><MapPin size={16}/> Restaurant Address</h4>
+                <input type="text" value={address.street} onChange={(e) => handleAddressChange('street', e.target.value)} placeholder="Street Address" required className="w-full p-2 rounded-md bg-input border border-border" />
+                <div className="grid grid-cols-2 gap-2">
+                    <input type="text" value={address.city} onChange={(e) => handleAddressChange('city', e.target.value)} placeholder="City" required className="w-full p-2 rounded-md bg-input border border-border" />
+                    <input type="text" value={address.postalCode} onChange={(e) => handleAddressChange('postalCode', e.target.value)} placeholder="Postal Code" required className="w-full p-2 rounded-md bg-input border border-border" />
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                    <input type="text" value={address.state} onChange={(e) => handleAddressChange('state', e.target.value)} placeholder="State" required className="w-full p-2 rounded-md bg-input border border-border" />
+                    <input type="text" value={address.country} onChange={(e) => handleAddressChange('country', e.target.value)} placeholder="Country" required className="w-full p-2 rounded-md bg-input border border-border" />
+                </div>
             </div>
+
              <div>
               <label className="block text-sm font-medium text-muted-foreground mb-1">Your Mobile Number (10 digits)</label>
               <div className="relative">

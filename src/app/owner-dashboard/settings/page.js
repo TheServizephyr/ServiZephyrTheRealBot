@@ -3,7 +3,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { User, Mail, Phone, Shield, Edit, Save, XCircle, Bell, Trash2, KeyRound, Eye, EyeOff, FileText, Bot, Truck, Image as ImageIcon, Upload, X, IndianRupee } from 'lucide-react';
+import { User, Mail, Phone, Shield, Edit, Save, XCircle, Bell, Trash2, KeyRound, Eye, EyeOff, FileText, Bot, Truck, Image as ImageIcon, Upload, X, IndianRupee, MapPin } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
@@ -140,6 +140,14 @@ export default function SettingsPage() {
     const [showNewPass, setShowNewPass] = useState(false);
     const bannerInputRef = React.useRef(null);
 
+    const defaultAddress = {
+        street: '',
+        city: '',
+        state: '',
+        postalCode: '',
+        country: 'IN'
+    };
+
     useEffect(() => {
         const fetchUserData = async () => {
             const currentUser = getAuth().currentUser;
@@ -159,8 +167,13 @@ export default function SettingsPage() {
                 }
                 
                 const data = await response.json();
-                setUser(data);
-                setEditedUser({...data, bannerUrls: data.bannerUrls || []}); // Ensure bannerUrls is an array
+                const userData = {
+                    ...data,
+                    bannerUrls: data.bannerUrls || [],
+                    address: data.address && typeof data.address === 'object' ? data.address : defaultAddress
+                };
+                setUser(userData);
+                setEditedUser(userData);
             } catch (error) {
                 console.error("Error fetching user data:", error);
                 alert(error.message);
@@ -183,20 +196,28 @@ export default function SettingsPage() {
     const handleEditToggle = (section) => {
         if (section === 'profile') {
             if (isEditingProfile) {
-                setEditedUser({ ...user, ...editedUser, ...editedUser });
+                // When cancelling, revert changes
+                setEditedUser(user);
             }
             setIsEditingProfile(!isEditingProfile);
         } else if (section === 'media') {
             if (isEditingMedia) {
-                setEditedUser({ ...editedUser, logoUrl: user.logoUrl, bannerUrls: user.bannerUrls || [] });
+                setEditedUser(user);
             }
             setIsEditingMedia(!isEditingMedia);
         } else if (section === 'payment') {
             if (isEditingPayment) {
-                 setEditedUser({ ...editedUser, deliveryCharge: user.deliveryCharge, codEnabled: user.codEnabled });
+                 setEditedUser(user);
             }
             setIsEditingPayment(!isEditingPayment);
         }
+    };
+    
+    const handleAddressChange = (field, value) => {
+      setEditedUser(prev => ({
+          ...prev,
+          address: { ...prev.address, [field]: value }
+      }));
     };
 
     const handleBannerFileChange = (e) => {
@@ -227,6 +248,7 @@ export default function SettingsPage() {
                 gstin: editedUser.gstin,
                 fssai: editedUser.fssai,
                 botPhoneNumberId: editedUser.botPhoneNumberId,
+                address: editedUser.address, // Pass the structured address
             };
         } else if (section === 'media') {
             payload = {
@@ -257,8 +279,12 @@ export default function SettingsPage() {
             }
             
             const updatedUser = await response.json();
-            setUser(updatedUser);
-            setEditedUser(updatedUser);
+             const finalUser = {
+                ...updatedUser,
+                address: updatedUser.address && typeof updatedUser.address === 'object' ? updatedUser.address : defaultAddress
+            };
+            setUser(finalUser);
+            setEditedUser(finalUser);
             if (section === 'profile') setIsEditingProfile(false);
             if (section === 'media') setIsEditingMedia(false);
             if (section === 'payment') setIsEditingPayment(false);
@@ -376,6 +402,33 @@ export default function SettingsPage() {
                     </div>
                     {user.role === 'owner' && (
                         <>
+                           <div className="space-y-4 md:col-span-2 p-4 border border-dashed border-border rounded-lg">
+                                <h4 className="font-semibold flex items-center gap-2"><MapPin size={16}/> Restaurant Address</h4>
+                                <div>
+                                    <Label htmlFor="street">Street Address</Label>
+                                    <input id="street" type="text" value={editedUser.address.street} onChange={(e) => handleAddressChange('street', e.target.value)} placeholder="Street Address" required className="w-full mt-1 p-2 rounded-md bg-input border border-border" disabled={!isEditingProfile}/>
+                                </div>
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div>
+                                        <Label htmlFor="city">City</Label>
+                                        <input id="city" type="text" value={editedUser.address.city} onChange={(e) => handleAddressChange('city', e.target.value)} placeholder="City" required className="w-full mt-1 p-2 rounded-md bg-input border border-border" disabled={!isEditingProfile}/>
+                                    </div>
+                                    <div>
+                                        <Label htmlFor="postalCode">Postal Code</Label>
+                                        <input id="postalCode" type="text" value={editedUser.address.postalCode} onChange={(e) => handleAddressChange('postalCode', e.target.value)} placeholder="Postal Code" required className="w-full mt-1 p-2 rounded-md bg-input border border-border" disabled={!isEditingProfile}/>
+                                    </div>
+                                </div>
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div>
+                                        <Label htmlFor="state">State</Label>
+                                        <input id="state" type="text" value={editedUser.address.state} onChange={(e) => handleAddressChange('state', e.target.value)} placeholder="State" required className="w-full mt-1 p-2 rounded-md bg-input border border-border" disabled={!isEditingProfile}/>
+                                    </div>
+                                    <div>
+                                         <Label htmlFor="country">Country</Label>
+                                         <input id="country" type="text" value={editedUser.address.country} onChange={(e) => handleAddressChange('country', e.target.value)} placeholder="Country" required className="w-full mt-1 p-2 rounded-md bg-input border border-border" disabled={!isEditingProfile}/>
+                                    </div>
+                                </div>
+                            </div>
                             <div className="space-y-6">
                                 <div>
                                     <Label htmlFor="gstin" className="flex items-center gap-2"><FileText size={14}/> GSTIN</Label>

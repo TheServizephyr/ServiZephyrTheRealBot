@@ -26,6 +26,9 @@ export async function POST(req) {
         if (finalUserData.role === 'owner' && !restaurantData) {
             return NextResponse.json({ message: 'Restaurant data is required for owners.' }, { status: 400 });
         }
+        if (restaurantData && (!restaurantData.address || !restaurantData.address.street || !restaurantData.address.city)) {
+             return NextResponse.json({ message: 'A structured address is required for restaurants.' }, { status: 400 });
+        }
 
         const phone = finalUserData.phone;
 

@@ -83,6 +83,7 @@ export async function GET(req) {
                 marketing: true,
             },
             // Add restaurant-specific fields if they exist
+            address: restaurantData?.address || { street: '', city: '', state: '', postalCode: '', country: 'IN' },
             gstin: restaurantData?.gstin || '',
             fssai: restaurantData?.fssai || '',
             botPhoneNumberId: restaurantData?.botPhoneNumberId || '',
@@ -105,7 +106,7 @@ export async function PATCH(req) {
     try {
         const { userRef, userData, restaurantRef, restaurantData } = await verifyUserAndGetData(req);
         
-        const { name, phone, notifications, gstin, fssai, botPhoneNumberId, deliveryCharge, logoUrl, bannerUrls, codEnabled } = await req.json();
+        const { name, phone, notifications, gstin, fssai, botPhoneNumberId, deliveryCharge, logoUrl, bannerUrls, codEnabled, address } = await req.json();
 
         // --- Update User's Profile in 'users' collection ---
         const userUpdateData = {};
@@ -126,7 +127,8 @@ export async function PATCH(req) {
             if (deliveryCharge !== undefined) restaurantUpdateData.deliveryCharge = Number(deliveryCharge);
             if (logoUrl !== undefined) restaurantUpdateData.logoUrl = logoUrl;
             if (bannerUrls !== undefined) restaurantUpdateData.bannerUrls = bannerUrls;
-            if (codEnabled !== undefined) restaurantUpdateData.codEnabled = codEnabled; // Add this line
+            if (codEnabled !== undefined) restaurantUpdateData.codEnabled = codEnabled;
+            if (address !== undefined) restaurantUpdateData.address = address; // Save the structured address
 
             if (phone !== undefined && phone !== restaurantData?.ownerPhone) {
                 restaurantUpdateData.ownerPhone = phone;
@@ -153,6 +155,7 @@ export async function PATCH(req) {
             logoUrl: finalRestaurantData?.logoUrl || '',
             bannerUrls: finalRestaurantData?.bannerUrls || [],
             codEnabled: finalRestaurantData?.codEnabled || false,
+            address: finalRestaurantData?.address || { street: '', city: '', state: '', postalCode: '', country: 'IN' },
         };
 
         return NextResponse.json(responseData, { status: 200 });
