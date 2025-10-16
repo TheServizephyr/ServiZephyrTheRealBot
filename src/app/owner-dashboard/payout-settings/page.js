@@ -124,6 +124,7 @@ export default function PayoutSettingsPage() {
                 <p className="mt-2 max-w-md text-muted-foreground">Your Razorpay Linked Account ID is:</p>
                 <p className="mt-2 text-lg font-mono p-3 bg-muted rounded-md border border-border text-foreground">{accountId}</p>
                 <p className="mt-4 text-sm text-muted-foreground">You are all set to receive payouts. No further action is needed.</p>
+                 <Button onClick={() => router.push('/owner-dashboard/payouts')} className="mt-6">View My Payouts</Button>
             </motion.div>
         )
     }
@@ -136,7 +137,7 @@ export default function PayoutSettingsPage() {
         >
             <div className="max-w-4xl mx-auto">
                 <div className="mb-8">
-                    <h1 className="text-3xl font-bold tracking-tight">Payout Settings</h1>
+                    <h1 className="text-3xl font-bold tracking-tight">Onboarding & Payouts</h1>
                     <p className="text-muted-foreground mt-1">Link your bank account to receive payments from online orders.</p>
                 </div>
 

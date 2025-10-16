@@ -33,7 +33,8 @@ const menuItems = [
 
 const settingsItems = [
     { name: "Connections", icon: Bot, href: "/owner-dashboard/connections", featureId: "connections" },
-    { name: "Payouts", icon: Banknote, href: "/owner-dashboard/payout-settings", featureId: "payout-settings" },
+    { name: "Payouts", icon: Banknote, href: "/owner-dashboard/payouts", featureId: "payouts" },
+    { name: "Onboarding", icon: Settings, href: "/owner-dashboard/payout-settings", featureId: "payout-settings" },
     { name: "Settings", icon: Settings, href: "/owner-dashboard/settings", featureId: "settings" },
 ];
 
