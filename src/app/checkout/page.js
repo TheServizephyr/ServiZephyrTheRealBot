@@ -381,16 +381,16 @@ const CheckoutPageInternal = () => {
                                 >
                                     <IndianRupee size={40} className="text-primary flex-shrink-0"/>
                                     <div>
-                                        <h3 className="text-xl font-bold">Cash on Delivery (COD)</h3>
-                                        <p className="text-muted-foreground">Pay with cash when your order arrives</p>
+                                        <h3 className="text-xl font-bold">Pay on Delivery (POD)</h3>
+                                        <p className="text-muted-foreground">Pay with cash or UPI when your order arrives</p>
                                     </div>
                                 </motion.button>
                             ) : (
                                 <div className="w-full text-left p-6 bg-muted/50 border-2 border-dashed border-border rounded-lg flex items-center gap-6 opacity-60">
                                     <IndianRupee size={40} className="text-muted-foreground flex-shrink-0"/>
                                     <div>
-                                        <h3 className="text-xl font-bold text-muted-foreground">Cash on Delivery</h3>
-                                        <p className="text-muted-foreground">This restaurant is not currently accepting COD.</p>
+                                        <h3 className="text-xl font-bold text-muted-foreground">Pay on Delivery</h3>
+                                        <p className="text-muted-foreground">This restaurant is not currently accepting POD.</p>
                                     </div>
                                 </div>
                             )}

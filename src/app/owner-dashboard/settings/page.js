@@ -3,7 +3,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { User, Mail, Phone, Shield, Edit, Save, XCircle, Bell, Trash2, KeyRound, Eye, EyeOff, FileText, Bot, Truck, Image as ImageIcon, Upload, X, IndianRupee, MapPin } from 'lucide-react';
+import { User, Mail, Phone, Shield, Edit, Save, XCircle, Bell, Trash2, KeyRound, Eye, EyeOff, FileText, Bot, Truck, Image as ImageIcon, Upload, X, IndianRupee, MapPin, Wallet } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
@@ -235,6 +235,18 @@ export default function SettingsPage() {
         setEditedUser(prev => ({...prev, bannerUrls: prev.bannerUrls.filter((_, i) => i !== index)}));
     };
 
+    const handlePaymentToggle = (type, value) => {
+        if (!editedUser.onlinePaymentsEnabled && type === 'codEnabled' && !value) {
+            alert("At least one payment method must be enabled.");
+            return;
+        }
+        if (!editedUser.codEnabled && type === 'onlinePaymentsEnabled' && !value) {
+            alert("At least one payment method must be enabled.");
+            return;
+        }
+        setEditedUser({...editedUser, [type]: value});
+    };
+
     const handleSave = async (section) => {
         const currentUser = getAuth().currentUser;
         if (!currentUser || !editedUser) return;
@@ -259,6 +271,7 @@ export default function SettingsPage() {
             payload = {
                 deliveryCharge: editedUser.deliveryCharge,
                 codEnabled: editedUser.codEnabled,
+                onlinePaymentsEnabled: editedUser.onlinePaymentsEnabled,
             }
         }
 
@@ -526,11 +539,18 @@ export default function SettingsPage() {
                             <input id="deliveryCharge" type="number" value={editedUser.deliveryCharge} onChange={e => setEditedUser({...editedUser, deliveryCharge: e.target.value})} disabled={!isEditingPayment} className="mt-1 w-full max-w-xs p-2 border rounded-md bg-input border-border disabled:opacity-70 disabled:cursor-not-allowed" placeholder="e.g., 30"/>
                         </div>
                         <div className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
-                            <Label htmlFor="codEnabled" className="flex flex-col">
-                                <span>Enable Cash on Delivery (COD)</span>
-                                <span className="text-xs text-muted-foreground">Allow customers to pay with cash upon delivery.</span>
+                            <Label htmlFor="onlinePaymentsEnabled" className="flex flex-col">
+                                <span>Enable Online Payments</span>
+                                <span className="text-xs text-muted-foreground">Allow customers to pay via Razorpay (UPI, Cards, etc).</span>
                             </Label>
-                            <Switch id="codEnabled" checked={editedUser.codEnabled} onCheckedChange={(checked) => setEditedUser({...editedUser, codEnabled: checked})} disabled={!isEditingPayment} />
+                            <Switch id="onlinePaymentsEnabled" checked={editedUser.onlinePaymentsEnabled} onCheckedChange={(checked) => handlePaymentToggle('onlinePaymentsEnabled', checked)} disabled={!isEditingPayment} />
+                        </div>
+                        <div className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
+                            <Label htmlFor="codEnabled" className="flex flex-col">
+                                <span>Enable Pay on Delivery (POD)</span>
+                                <span className="text-xs text-muted-foreground">Allow customers to pay upon delivery (cash, UPI, etc).</span>
+                            </Label>
+                            <Switch id="codEnabled" checked={editedUser.codEnabled} onCheckedChange={(checked) => handlePaymentToggle('codEnabled', checked)} disabled={!isEditingPayment} />
                         </div>
                     </div>
                 </SectionCard>
