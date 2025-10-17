@@ -51,57 +51,47 @@ export const sendOrderStatusUpdateToCustomer = async ({ customerPhone, botPhoneN
     
     let templateName;
     let parameters = [];
+    let payloadComponents = [];
+
+    const capitalizedStatus = status.charAt(0).toUpperCase() + status.slice(1);
 
     switch (status) {
-        case 'confirmed':
-            templateName = 'order_confirmation';
-            parameters = [
-                { type: "text", text: customerName },
-                { type: "text", text: orderId.substring(0, 8) },
-                { type: "text", text: restaurantName },
-            ];
-            break;
-        
         case 'dispatched':
             templateName = 'order_out_for_delivery';
             parameters = [
                 { type: "text", text: customerName },
                 { type: "text", text: orderId.substring(0, 8) },
-                // **THE FIX**: Use a fallback if deliveryBoy name is not available
                 { type: "text", text: deliveryBoy?.name || 'Our delivery partner' },
                 { type: "text", text: orderId }, // For the tracking link button
             ];
+             payloadComponents.push({ type: "body", parameters: parameters });
+             payloadComponents.push({
+                type: "button",
+                sub_type: "url",
+                index: "0",
+                parameters: [
+                    { type: "text", text: orderId }
+                ]
+            });
             break;
-
+        
+        case 'confirmed':
         case 'preparing':
         case 'delivered':
+        case 'rejected':
             templateName = 'order_status_update';
-            const capitalizedStatus = status.charAt(0).toUpperCase() + status.slice(1);
             parameters = [
                 { type: "text", text: customerName },
                 { type: "text", text: orderId.substring(0, 8) },
                 { type: "text", text: restaurantName },
                 { type: "text", text: capitalizedStatus },
             ];
+            payloadComponents.push({ type: "body", parameters: parameters });
             break;
+
         default:
-            // Do not send notifications for 'pending' or other unhandled statuses
             console.log(`[Notification Lib] No template configured for status: ${status}. Skipping notification.`);
             return;
-    }
-
-    const payloadComponents = [{ type: "body", parameters: parameters }];
-    
-    // Add button component for dispatched status, which has a dynamic URL
-    if (status === 'dispatched') {
-        payloadComponents.push({
-            type: "button",
-            sub_type: "url",
-            index: "0",
-            parameters: [
-                { type: "text", text: orderId }
-            ]
-        });
     }
 
     const statusPayload = {
@@ -153,9 +143,3 @@ export const sendRestaurantStatusChangeNotification = async ({ ownerPhone, botPh
     
     await sendWhatsAppMessage(ownerPhoneWithCode, payload, botPhoneNumberId);
 }
-
-
-// **THE FIX**: This function is no longer needed as its logic is merged into sendOrderStatusUpdateToCustomer
-// export const sendOrderConfirmationToCustomer = async (params) => {
-//     await sendOrderStatusUpdateToCustomer({ ...params, status: 'confirmed' });
-// };

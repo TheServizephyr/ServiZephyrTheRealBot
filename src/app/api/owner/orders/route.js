@@ -133,7 +133,6 @@ export async function PATCH(req) {
 
         if (newStatus === 'dispatched' && deliveryBoyId) {
             updateData.deliveryBoyId = deliveryBoyId;
-            // Fetch delivery boy's data to send in notification
             const deliveryBoyRef = firestore.collection('restaurants').doc(restaurantId).collection('deliveryBoys').doc(deliveryBoyId);
             const deliveryBoySnap = await deliveryBoyRef.get();
             if (deliveryBoySnap.exists) {
@@ -141,7 +140,7 @@ export async function PATCH(req) {
             }
         }
         
-        const statusesThatNotifyCustomer = ['confirmed', 'preparing', 'dispatched', 'delivered'];
+        const statusesThatNotifyCustomer = ['confirmed', 'preparing', 'dispatched', 'delivered', 'rejected'];
         if (statusesThatNotifyCustomer.includes(newStatus)) {
             const orderData = orderDoc.data();
             const restaurantData = restaurantSnap.data();
@@ -152,7 +151,7 @@ export async function PATCH(req) {
                 orderId: orderId,
                 restaurantName: restaurantData.name,
                 status: newStatus,
-                deliveryBoy: deliveryBoyData // Pass rider data if available
+                deliveryBoy: deliveryBoyData
             }).catch(e => {
                 console.error(`[API LOG] Failed to send WhatsApp notification for order ${orderId} in the background:`, e.message);
             });
@@ -167,4 +166,5 @@ export async function PATCH(req) {
         return NextResponse.json({ message: `Backend Error: ${error.message}` }, { status: error.status || 500 });
     }
 }
+
 
