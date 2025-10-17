@@ -110,7 +110,7 @@ export async function PATCH(req) {
         const auth = await getAuth();
         const firestore = await getFirestore();
         const { restaurantId, restaurantSnap } = await verifyOwnerAndGetRestaurant(req, auth, firestore);
-        const { orderId, newStatus } = await req.json();
+        const { orderId, newStatus, deliveryBoyId } = await req.json();
 
         if (!orderId || !newStatus) {
             return NextResponse.json({ message: 'Order ID and new status are required.' }, { status: 400 });
@@ -128,28 +128,37 @@ export async function PATCH(req) {
             return NextResponse.json({ message: 'Access denied to this order.' }, { status: 403 });
         }
         
-        // --- NEW LOGIC: Send notification FIRST for faster perceived speed ---
+        const updateData = { status: newStatus };
+        let deliveryBoyData = null;
+
+        if (newStatus === 'dispatched' && deliveryBoyId) {
+            updateData.deliveryBoyId = deliveryBoyId;
+            // Fetch delivery boy's data to send in notification
+            const deliveryBoyRef = firestore.collection('restaurants').doc(restaurantId).collection('deliveryBoys').doc(deliveryBoyId);
+            const deliveryBoySnap = await deliveryBoyRef.get();
+            if (deliveryBoySnap.exists()) {
+                deliveryBoyData = deliveryBoySnap.data();
+            }
+        }
+        
         const statusesThatNotifyCustomer = ['confirmed', 'preparing', 'dispatched', 'delivered'];
         if (statusesThatNotifyCustomer.includes(newStatus)) {
             const orderData = orderDoc.data();
             const restaurantData = restaurantSnap.data();
-            // We call this first, but we DON'T wait for it to finish.
-            // This sends the API request to WhatsApp immediately.
             sendOrderStatusUpdateToCustomer({
                 customerPhone: orderData.customerPhone,
                 botPhoneNumberId: restaurantData.botPhoneNumberId,
                 customerName: orderData.customerName,
                 orderId: orderId,
                 restaurantName: restaurantData.name,
-                status: newStatus
+                status: newStatus,
+                deliveryBoy: deliveryBoyData // Pass rider data if available
             }).catch(e => {
-                // Log the error but don't block the main flow
                 console.error(`[API LOG] Failed to send WhatsApp notification for order ${orderId} in the background:`, e.message);
             });
         }
         
-        // Now, update the database status
-        await orderRef.update({ status: newStatus });
+        await orderRef.update(updateData);
 
         return NextResponse.json({ message: 'Order status updated successfully.' }, { status: 200 });
 

@@ -42,7 +42,7 @@ export const sendNewOrderToOwner = async ({ ownerPhone, botPhoneNumberId, custom
 };
 
 
-export const sendOrderStatusUpdateToCustomer = async ({ customerPhone, botPhoneNumberId, customerName, orderId, restaurantName, status }) => {
+export const sendOrderStatusUpdateToCustomer = async ({ customerPhone, botPhoneNumberId, customerName, orderId, restaurantName, status, deliveryBoy = null }) => {
     if (!customerPhone || !botPhoneNumberId) {
         console.warn(`[Notification Lib] Customer phone or Bot ID not found. Cannot send status update for order ${orderId}.`);
         return;
@@ -50,7 +50,7 @@ export const sendOrderStatusUpdateToCustomer = async ({ customerPhone, botPhoneN
     const customerPhoneWithCode = '91' + customerPhone;
     
     let templateName;
-    let parameters;
+    let parameters = [];
 
     switch (status) {
         case 'confirmed':
@@ -61,8 +61,18 @@ export const sendOrderStatusUpdateToCustomer = async ({ customerPhone, botPhoneN
                 { type: "text", text: restaurantName },
             ];
             break;
-        case 'preparing':
+        
         case 'dispatched':
+            templateName = 'order_out_for_delivery';
+            parameters = [
+                { type: "text", text: customerName },
+                { type: "text", text: orderId.substring(0, 8) },
+                { type: "text", text: deliveryBoy?.name || 'Our delivery partner' },
+                { type: "text", text: orderId }, // For the tracking link button
+            ];
+            break;
+
+        case 'preparing':
         case 'delivered':
             templateName = 'order_status_update';
             const capitalizedStatus = status.charAt(0).toUpperCase() + status.slice(1);
@@ -77,15 +87,24 @@ export const sendOrderStatusUpdateToCustomer = async ({ customerPhone, botPhoneN
             return;
     }
 
+    const payloadComponents = [{ type: "body", parameters: parameters }];
+    
+    // Add button component for dispatched status
+    if (status === 'dispatched') {
+        payloadComponents.push({
+            type: "button",
+            sub_type: "url",
+            index: "0",
+            parameters: [
+                { type: "text", text: orderId }
+            ]
+        });
+    }
+
     const statusPayload = {
         name: templateName,
         language: { code: "en" },
-        components: [
-            {
-                type: "body",
-                parameters: parameters,
-            }
-        ]
+        components: payloadComponents,
     };
     
     await sendWhatsAppMessage(customerPhoneWithCode, statusPayload, botPhoneNumberId);

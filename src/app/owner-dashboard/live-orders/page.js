@@ -10,7 +10,7 @@ import { auth } from '@/lib/firebase';
 import { cn } from "@/lib/utils";
 import { formatDistanceToNowStrict } from 'date-fns';
 import { useSearchParams } from 'next/navigation';
-import { Dialog, DialogContent } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose } from "@/components/ui/dialog";
 
 const statusConfig = {
   'pending': { color: 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30' },
@@ -117,11 +117,57 @@ const BillModal = ({ order, restaurant, onClose, onPrint }) => {
     );
 };
 
+const AssignRiderModal = ({ isOpen, onClose, onAssign, order, riders, isUpdating }) => {
+    const [selectedRiderId, setSelectedRiderId] = useState(null);
 
-const ActionButton = ({ status, onNext, onRevert, orderId, onReject, isUpdating, onPrintClick }) => {
-    // Corrected logic: 'paid' orders should also be 'confirmed' as the next step.
+    const handleAssign = () => {
+        if (selectedRiderId) {
+            onAssign(order.id, selectedRiderId);
+        }
+    };
+
+    return (
+        <Dialog open={isOpen} onOpenChange={onClose}>
+            <DialogContent className="bg-background border-border text-foreground">
+                <DialogHeader>
+                    <DialogTitle>Assign Rider for Order #{order?.id.substring(0, 5)}</DialogTitle>
+                    <DialogDescription>Select an available rider to dispatch this order.</DialogDescription>
+                </DialogHeader>
+                <div className="py-4 space-y-3 max-h-60 overflow-y-auto">
+                    {riders.length > 0 ? riders.map(rider => (
+                        <div
+                            key={rider.id}
+                            onClick={() => setSelectedRiderId(rider.id)}
+                            className={cn(
+                                "p-3 rounded-lg border cursor-pointer transition-all flex justify-between items-center",
+                                selectedRiderId === rider.id 
+                                    ? 'bg-primary/20 border-primary ring-2 ring-primary'
+                                    : 'bg-muted/50 border-border hover:bg-muted'
+                            )}
+                        >
+                            <p className="font-bold text-foreground">{rider.name}</p>
+                            <p className="text-sm text-muted-foreground">{rider.phone}</p>
+                        </div>
+                    )) : (
+                        <p className="text-center text-muted-foreground py-4">No available riders found. Please add riders in the 'Delivery' section.</p>
+                    )}
+                </div>
+                <DialogFooter>
+                    <DialogClose asChild><Button variant="secondary" disabled={isUpdating}>Cancel</Button></DialogClose>
+                    <Button onClick={handleAssign} disabled={!selectedRiderId || isUpdating} className="bg-primary hover:bg-primary/90">
+                        {isUpdating ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <Bike size={16} className="mr-2"/>}
+                        {isUpdating ? 'Assigning...' : 'Assign & Dispatch'}
+                    </Button>
+                </DialogFooter>
+            </DialogContent>
+        </Dialog>
+    );
+};
+
+
+const ActionButton = ({ status, onNext, onRevert, orderId, onReject, isUpdating, onPrintClick, onAssignClick }) => {
     const isConfirmable = status === 'pending' || status === 'paid';
-    const actionStatus = isConfirmable ? 'pending' : status; // Treat paid same as pending for flow
+    const actionStatus = isConfirmable ? 'pending' : status;
     const currentIndex = statusFlow.indexOf(actionStatus);
 
     const nextStatus = statusFlow[currentIndex + 1];
@@ -151,10 +197,10 @@ const ActionButton = ({ status, onNext, onRevert, orderId, onReject, isUpdating,
     }
     
     const actionConfig = {
-        'pending': { text: 'Confirm Order', icon: Check }, // Covers 'paid' as well
-        'confirmed': { text: 'Start Preparing', icon: CookingPot },
-        'preparing': { text: 'Out for Delivery', icon: Bike },
-        'dispatched': { text: 'Mark Delivered', icon: PartyPopper },
+        'pending': { text: 'Confirm Order', icon: Check, action: () => onNext(nextStatus) },
+        'confirmed': { text: 'Start Preparing', icon: CookingPot, action: () => onNext(nextStatus) },
+        'preparing': { text: 'Out for Delivery', icon: Bike, action: onAssignClick },
+        'dispatched': { text: 'Mark Delivered', icon: PartyPopper, action: () => onNext(nextStatus) },
     };
 
     const action = actionConfig[actionStatus];
@@ -171,7 +217,7 @@ const ActionButton = ({ status, onNext, onRevert, orderId, onReject, isUpdating,
     return (
         <div className="flex flex-col sm:flex-row items-stretch gap-2 w-full">
             <Button
-                onClick={() => onNext(nextStatus)}
+                onClick={action.action}
                 size="sm"
                 className="bg-primary hover:bg-primary/90 h-9 flex-grow"
             >
@@ -228,14 +274,16 @@ const SortableHeader = ({ children, column, sortConfig, onSort }) => {
 // Main Board Component
 export default function LiveOrdersPage() {
   const [orders, setOrders] = useState([]);
+  const [riders, setRiders] = useState([]);
   const [loading, setLoading] = useState(true);
   const [updatingOrderId, setUpdatingOrderId] = useState(null);
   const [sortConfig, setSortConfig] = useState({ key: 'orderDate', direction: 'desc' });
   const [billData, setBillData] = useState({ order: null, restaurant: null });
+  const [assignModalData, setAssignModalData] = useState({ isOpen: false, order: null });
   const searchParams = useSearchParams();
   const impersonatedOwnerId = searchParams.get('impersonate_owner_id');
 
-  const fetchOrders = async (isManualRefresh = false) => {
+  const fetchInitialData = async (isManualRefresh = false) => {
     if (!isManualRefresh) setLoading(true);
     
     try {
@@ -243,26 +291,35 @@ export default function LiveOrdersPage() {
         if (!user) throw new Error("Not authenticated");
         const idToken = await user.getIdToken();
 
-        let url = new URL('/api/owner/orders', window.location.origin);
+        let ordersUrl = new URL('/api/owner/orders', window.location.origin);
+        let ridersUrl = new URL('/api/owner/delivery', window.location.origin);
         if (impersonatedOwnerId) {
-            url.searchParams.append('impersonate_owner_id', impersonatedOwnerId);
+            ordersUrl.searchParams.append('impersonate_owner_id', impersonatedOwnerId);
+            ridersUrl.searchParams.append('impersonate_owner_id', impersonatedOwnerId);
         }
         
-        const res = await fetch(url.toString(), {
-            headers: { 'Authorization': `Bearer ${idToken}` }
-        });
-        if (!res.ok) throw new Error('Failed to fetch orders');
-        const data = await res.json();
+        const [ordersRes, ridersRes] = await Promise.all([
+            fetch(ordersUrl.toString(), { headers: { 'Authorization': `Bearer ${idToken}` } }),
+            fetch(ridersUrl.toString(), { headers: { 'Authorization': `Bearer ${idToken}` } })
+        ]);
+
+        if (!ordersRes.ok) throw new Error('Failed to fetch orders');
+        const ordersData = await ordersRes.json();
         
-        if (data.orders.length > orders.length && orders.length > 0 && !isManualRefresh) {
+        if (ridersRes.ok) {
+            const ridersData = await ridersRes.json();
+            setRiders(ridersData.boys.filter(boy => boy.status === 'Available'));
+        }
+
+        if (ordersData.orders.length > orders.length && orders.length > 0 && !isManualRefresh) {
             const sound = document.getElementById('notification-sound');
             if(sound) sound.play().catch(e => console.log("Audio play failed:", e));
         }
 
-        setOrders(data.orders || []);
+        setOrders(ordersData.orders || []);
     } catch (error) {
         console.error(error);
-        alert("Could not load orders: " + error.message);
+        alert("Could not load data: " + error.message);
     } finally {
         if(!isManualRefresh) setLoading(false);
     }
@@ -270,11 +327,11 @@ export default function LiveOrdersPage() {
   
   useEffect(() => {
     const unsubscribe = auth.onAuthStateChanged(user => {
-      if (user) fetchOrders();
+      if (user) fetchInitialData();
       else setLoading(false);
     });
 
-    const interval = setInterval(() => fetchOrders(true), 30000);
+    const interval = setInterval(() => fetchInitialData(true), 30000);
     return () => {
         unsubscribe();
         clearInterval(interval);
@@ -308,7 +365,7 @@ export default function LiveOrdersPage() {
     setUpdatingOrderId(orderId);
     try {
       await handleAPICall('PATCH', { orderId, newStatus });
-      await fetchOrders(true);
+      await fetchInitialData(true);
     } catch (error) {
       alert(`Error updating status: ${error.message}`);
     } finally {
@@ -316,12 +373,26 @@ export default function LiveOrdersPage() {
     }
   };
   
+  const handleAssignRider = async (orderId, riderId) => {
+    setUpdatingOrderId(orderId);
+    try {
+        await handleAPICall('PATCH', { orderId, newStatus: 'dispatched', deliveryBoyId: riderId });
+        await fetchInitialData(true);
+        setAssignModalData({ isOpen: false, order: null });
+    } catch (error) {
+        alert(`Error assigning rider: ${error.message}`);
+    } finally {
+        setUpdatingOrderId(null);
+    }
+  };
+
+
   const handleRejectOrder = async (orderId) => {
     if (!window.confirm("Are you sure you want to reject this order? It will be marked as 'rejected' but not permanently deleted.")) return;
     setUpdatingOrderId(orderId);
     try {
         await handleAPICall('PATCH', { orderId, newStatus: 'rejected' });
-        await fetchOrders(true);
+        await fetchInitialData(true);
     } catch (error) {
         alert(`Error rejecting order: ${error.message}`);
     } finally {
@@ -387,13 +458,24 @@ export default function LiveOrdersPage() {
                 onPrint={handlePrint}
             />
         )}
+
+        {assignModalData.isOpen && (
+            <AssignRiderModal
+                isOpen={assignModalData.isOpen}
+                onClose={() => setAssignModalData({ isOpen: false, order: null })}
+                onAssign={handleAssignRider}
+                order={assignModalData.order}
+                riders={riders}
+                isUpdating={!!updatingOrderId}
+            />
+        )}
         
         <div className="flex flex-col md:flex-row justify-between md:items-center mb-6">
             <div>
                 <h1 className="text-2xl md:text-3xl font-bold tracking-tight">Live Order Management</h1>
                 <p className="text-muted-foreground mt-1 text-sm md:text-base">A real-time, intelligent view of your kitchen's pulse.</p>
             </div>
-            <Button onClick={() => fetchOrders(true)} variant="outline" className="mt-2 sm:mt-0">
+            <Button onClick={() => fetchInitialData(true)} variant="outline" className="mt-2 sm:mt-0">
                 <RefreshCw size={16} className={cn(loading && "animate-spin")} />
                 <span className="ml-2">{loading ? 'Loading...' : 'Refresh'}</span>
             </Button>
@@ -448,8 +530,8 @@ export default function LiveOrdersPage() {
                                     </td>
                                     <td className="p-4 text-sm text-muted-foreground hidden lg:table-cell">
                                         <ul className="space-y-1">
-                                            {(order.items || []).map(item => (
-                                                <li key={item.name} className="whitespace-nowrap">{item.qty}x {item.name}</li>
+                                            {(order.items || []).map((item, index) => (
+                                                <li key={index} className="whitespace-nowrap">{item.qty}x {item.name}</li>
                                             ))}
                                         </ul>
                                     </td>
@@ -470,6 +552,7 @@ export default function LiveOrdersPage() {
                                             onRevert={(newStatus) => handleUpdateStatus(order.id, newStatus)}
                                             onReject={() => handleRejectOrder(order.id)}
                                             onPrintClick={() => handlePrintClick(order.id)}
+                                            onAssignClick={() => setAssignModalData({ isOpen: true, order: order })}
                                         />
                                     </td>
                                 </motion.tr>
@@ -490,4 +573,5 @@ export default function LiveOrdersPage() {
     </div>
   );
 }
+
 

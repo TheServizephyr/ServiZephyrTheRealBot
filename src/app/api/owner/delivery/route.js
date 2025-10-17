@@ -1,4 +1,5 @@
 
+
 import { NextResponse } from 'next/server';
 import { firestore as adminFirestore } from 'firebase-admin';
 import { getAuth, getFirestore } from '@/lib/firebase-admin';
@@ -14,7 +15,7 @@ async function verifyOwnerAndGetRestaurant(req, auth, firestore) {
     const uid = decodedToken.uid;
     
     // --- ADMIN IMPERSONATION & PERMISSION LOGIC ---
-    const url = new URL(req.headers.get('referer'));
+    const url = new URL(req.headers.get('referer') || 'http://localhost');
     const impersonatedOwnerId = url.searchParams.get('impersonate_owner_id');
     const userDoc = await firestore.collection('users').doc(uid).get();
 
