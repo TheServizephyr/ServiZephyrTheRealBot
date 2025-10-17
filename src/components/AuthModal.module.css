@@ -188,9 +188,9 @@
 }
 
 .msgError {
-  color: hsl(var(--destructive-foreground));
-  background-color: hsla(var(--destructive), 0.2);
-  border: 1px solid hsl(var(--destructive));
+  color: hsl(var(--destructive));
+  background-color: hsla(var(--destructive), 0.1);
+  border: 1px solid hsla(var(--destructive), 0.2);
 }
 
 .msgInfo {
