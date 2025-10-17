@@ -306,6 +306,16 @@
   background-color: var(--accent);
 }
 
+.logoutButton {
+    color: hsl(var(--destructive-foreground));
+    background-color: hsl(var(--destructive));
+}
+
+.logoutButton:hover {
+    background-color: hsl(var(--destructive) / 0.9);
+}
+
+
 .dropdownDivider {
   height: 1px;
   background-color: var(--border);

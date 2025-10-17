@@ -9,6 +9,7 @@ import styles from "./OwnerDashboard.module.css";
 import { useTheme } from "next-themes";
 import { auth } from "@/lib/firebase";
 import { useRouter } from "next/navigation";
+import { cn } from "@/lib/utils";
 
 export default function Navbar({ isSidebarOpen, setSidebarOpen }) {
   const [dropdownOpen, setDropdownOpen] = useState(false);
@@ -90,7 +91,7 @@ export default function Navbar({ isSidebarOpen, setSidebarOpen }) {
                   <User size={16} /> Profile
                 </a>
                 <div className={styles.dropdownDivider}></div>
-                <button onClick={handleLogout} className={styles.dropdownItem}>
+                <button onClick={handleLogout} className={cn(styles.dropdownItem, styles.logoutButton)}>
                   Logout
                 </button>
               </motion.div>
