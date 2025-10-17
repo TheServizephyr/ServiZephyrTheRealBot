@@ -50,31 +50,38 @@ export const sendOrderStatusUpdateToCustomer = async ({ customerPhone, botPhoneN
     const customerPhoneWithCode = '91' + customerPhone;
     
     let templateName;
-    let parameters = [];
     let components = [];
 
     const capitalizedStatus = status.charAt(0).toUpperCase() + status.slice(1);
 
     switch (status) {
         case 'dispatched':
-            templateName = 'order_out_for_delivery';
-            // Parameters for the body of the template
+            templateName = 'order_dispatch_v2'; // Using the new template name
             const bodyParams = [
                 { type: "text", text: customerName },
                 { type: "text", text: orderId.substring(0, 8) },
                 { type: "text", text: deliveryBoy?.name || 'Our delivery partner' },
+                { type: "text", text: deliveryBoy?.phone || '' } // New parameter for rider's phone
             ];
             components.push({ type: "body", parameters: bodyParams });
             
-            // Parameter for the URL button
+            // Button 1: Track Order (URL button)
             components.push({
                 type: "button",
                 sub_type: "url",
                 index: "0",
-                parameters: [
-                    { type: "text", text: orderId } // This text replaces the {{1}} in the button URL
-                ]
+                parameters: [{ type: "text", text: orderId }] 
             });
+
+            // Button 2: Call Rider (Phone number button)
+            if (deliveryBoy?.phone) {
+                components.push({
+                    type: "button",
+                    sub_type: "call",
+                    index: "1",
+                    parameters: [{ type: "text", text: deliveryBoy.phone }]
+                });
+            }
             break;
         
         case 'confirmed':
@@ -82,13 +89,13 @@ export const sendOrderStatusUpdateToCustomer = async ({ customerPhone, botPhoneN
         case 'delivered':
         case 'rejected':
             templateName = 'order_status_update';
-            parameters = [
+            const statusUpdateParams = [
                 { type: "text", text: customerName },
                 { type: "text", text: orderId.substring(0, 8) },
                 { type: "text", text: restaurantName },
                 { type: "text", text: capitalizedStatus },
             ];
-            components.push({ type: "body", parameters: parameters });
+            components.push({ type: "body", parameters: statusUpdateParams });
             break;
 
         default:
@@ -102,7 +109,11 @@ export const sendOrderStatusUpdateToCustomer = async ({ customerPhone, botPhoneN
         components: components,
     };
     
-    await sendWhatsAppMessage(customerPhoneWithCode, statusPayload, botPhoneNumberId);
+    try {
+      await sendWhatsAppMessage(customerPhoneWithCode, statusPayload, botPhoneNumberId);
+    } catch(e) {
+      console.error("[Notification Lib] Failed to send WhatsApp status update.", e);
+    }
 };
 
 export const sendRestaurantStatusChangeNotification = async ({ ownerPhone, botPhoneNumberId, newStatus, restaurantId }) => {
