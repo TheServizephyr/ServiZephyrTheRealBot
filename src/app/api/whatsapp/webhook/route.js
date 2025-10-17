@@ -44,6 +44,7 @@ export async function POST(request) {
         const firestore = getFirestore();
         const change = body.entry?.[0]?.changes?.[0];
         
+        // --- Handler for Owner's Button Clicks ---
         if (change?.value?.messages?.[0]?.interactive?.button_reply) {
             const message = change.value.messages[0];
             const buttonReply = message.interactive.button_reply;
@@ -91,6 +92,7 @@ export async function POST(request) {
                 // Optionally, notify the customer that the order was rejected
             }
         } 
+        // --- Handler for Customer's Text Messages ---
         else if (change?.value?.messages?.[0]?.text) {
             const message = change.value.messages[0];
             const fromWithCode = message.from; 
@@ -109,6 +111,14 @@ export async function POST(request) {
             const restaurantId = restaurantDoc.id;
             const restaurantData = restaurantDoc.data();
             const restaurantName = restaurantData.name;
+
+            // ** NEW ** Check if restaurant is open
+            if (!restaurantData.isOpen) {
+                const closedMessage = `We apologize, but ${restaurantName} is currently closed. Please check back later.`;
+                await sendWhatsAppMessage(fromWithCode, closedMessage, botPhoneNumberId);
+                return NextResponse.json({ message: 'Restaurant is closed' }, { status: 200 });
+            }
+
 
             const customerPhone = fromWithCode.startsWith('91') ? fromWithCode.substring(2) : fromWithCode;
             const usersRef = firestore.collection('users');

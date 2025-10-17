@@ -25,11 +25,12 @@ export async function GET(request, { params }) {
         const restaurantData = restaurantDoc.data();
 
         // ** NEW **: Check restaurant status
-        if (restaurantData.approvalStatus !== 'approved') {
+        if (restaurantData.approvalStatus !== 'approved' || !restaurantData.isOpen) {
             return NextResponse.json({ 
                 message: 'This restaurant is currently not accepting orders.',
                 restaurantName: restaurantData.name,
-                approvalStatus: restaurantData.approvalStatus
+                status: restaurantData.approvalStatus,
+                isOpen: restaurantData.isOpen,
             }, { status: 403 }); // Using 403 Forbidden is appropriate here
         }
         
@@ -101,7 +102,8 @@ export async function GET(request, { params }) {
             bannerUrls: bannerUrls,
             menu: menuData,
             coupons: allCoupons,
-            approvalStatus: restaurantData.approvalStatus // Also return status
+            approvalStatus: restaurantData.approvalStatus,
+            isOpen: restaurantData.isOpen,
         }, { status: 200 });
 
     } catch (error) {

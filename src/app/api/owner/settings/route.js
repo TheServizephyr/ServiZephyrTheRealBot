@@ -91,7 +91,8 @@ export async function GET(req) {
             deliveryCharge: restaurantData?.deliveryCharge === undefined ? 30 : restaurantData.deliveryCharge,
             logoUrl: restaurantData?.logoUrl || '',
             bannerUrls: restaurantData?.bannerUrls || [],
-            codEnabled: restaurantData?.codEnabled || false, // Add this line
+            codEnabled: restaurantData?.codEnabled || false,
+            isOpen: restaurantData?.isOpen === undefined ? true : restaurantData.isOpen,
         };
 
         return NextResponse.json(profileData, { status: 200 });
@@ -106,7 +107,7 @@ export async function PATCH(req) {
     try {
         const { userRef, userData, restaurantRef, restaurantData } = await verifyUserAndGetData(req);
         
-        const { name, phone, notifications, gstin, fssai, botPhoneNumberId, deliveryCharge, logoUrl, bannerUrls, codEnabled, address } = await req.json();
+        const { name, phone, notifications, gstin, fssai, botPhoneNumberId, deliveryCharge, logoUrl, bannerUrls, codEnabled, address, isOpen, onlinePaymentsEnabled } = await req.json();
 
         // --- Update User's Profile in 'users' collection ---
         const userUpdateData = {};
@@ -129,6 +130,8 @@ export async function PATCH(req) {
             if (bannerUrls !== undefined) restaurantUpdateData.bannerUrls = bannerUrls;
             if (codEnabled !== undefined) restaurantUpdateData.codEnabled = codEnabled;
             if (address !== undefined) restaurantUpdateData.address = address; // Save the structured address
+            if (isOpen !== undefined) restaurantUpdateData.isOpen = isOpen;
+            if (onlinePaymentsEnabled !== undefined) restaurantUpdateData.onlinePaymentsEnabled = onlinePaymentsEnabled;
 
             if (phone !== undefined && phone !== restaurantData?.ownerPhone) {
                 restaurantUpdateData.ownerPhone = phone;
@@ -155,6 +158,8 @@ export async function PATCH(req) {
             logoUrl: finalRestaurantData?.logoUrl || '',
             bannerUrls: finalRestaurantData?.bannerUrls || [],
             codEnabled: finalRestaurantData?.codEnabled || false,
+            onlinePaymentsEnabled: finalRestaurantData?.onlinePaymentsEnabled === undefined ? true : finalRestaurantData.onlinePaymentsEnabled,
+            isOpen: finalRestaurantData?.isOpen === undefined ? true : finalRestaurantData.isOpen,
             address: finalRestaurantData?.address || { street: '', city: '', state: '', postalCode: '', country: 'IN' },
         };
 
