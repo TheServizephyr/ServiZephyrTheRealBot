@@ -136,7 +136,6 @@ export async function POST(req) {
             subtotal, coupon, loyaltyDiscount, discount: finalDiscount, cgst, sgst, deliveryCharge,
             totalAmount: grandTotal,
             status: 'pending',
-            priority: Math.floor(Math.random() * 5) + 1,
             orderDate: adminFirestore.FieldValue.serverTimestamp(),
             notes: notes || null,
             paymentDetails: {

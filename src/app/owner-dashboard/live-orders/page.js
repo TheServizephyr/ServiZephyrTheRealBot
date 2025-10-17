@@ -4,7 +4,7 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Star, RefreshCw, ChevronUp, ChevronDown, Check, CookingPot, Bike, PartyPopper, Undo, Bell, PackageCheck, Printer, X, Loader2, IndianRupee, Wallet } from 'lucide-react';
+import { RefreshCw, ChevronUp, ChevronDown, Check, CookingPot, Bike, PartyPopper, Undo, Bell, PackageCheck, Printer, X, Loader2, IndianRupee, Wallet } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { auth } from '@/lib/firebase';
 import { cn } from "@/lib/utils";
@@ -209,21 +209,6 @@ const ActionButton = ({ status, onNext, onRevert, orderId, onReject, isUpdating,
     );
 };
 
-const PriorityStars = ({ score }) => (
-  <div className="flex items-center">
-    {[...Array(5)].map((_, i) => (
-      <Star
-        key={i}
-        size={16}
-        className={cn(
-          'transition-colors',
-          i < score ? 'text-primary fill-primary' : 'text-muted-foreground/50'
-        )}
-      />
-    ))}
-  </div>
-);
-
 const SortableHeader = ({ children, column, sortConfig, onSort }) => {
   const isSorted = sortConfig.key === column;
   const direction = isSorted ? sortConfig.direction : 'desc';
@@ -419,7 +404,6 @@ export default function LiveOrdersPage() {
                 <table className="w-full">
                     <thead>
                         <tr className="bg-muted/30">
-                            <SortableHeader column="priority" sortConfig={sortConfig} onSort={handleSort}>Priority</SortableHeader>
                             <SortableHeader column="id" sortConfig={sortConfig} onSort={handleSort}>Order Details</SortableHeader>
                             <th className="p-4 text-left text-sm font-semibold text-muted-foreground hidden lg:table-cell">Items</th>
                             <SortableHeader column="orderDate" sortConfig={sortConfig} onSort={handleSort}>Time</SortableHeader>
@@ -432,7 +416,6 @@ export default function LiveOrdersPage() {
                            {loading && sortedOrders.length === 0 ? (
                                 Array.from({length: 5}).map((_, i) => (
                                     <tr key={i} className="animate-pulse">
-                                        <td className="p-4"><div className="h-5 bg-muted rounded w-3/4"></div></td>
                                         <td className="p-4"><div className="h-5 bg-muted rounded w-1/2"></div></td>
                                         <td className="p-4 hidden lg:table-cell"><div className="h-5 bg-muted rounded w-full"></div></td>
                                         <td className="p-4"><div className="h-5 bg-muted rounded w-1/4"></div></td>
@@ -450,7 +433,6 @@ export default function LiveOrdersPage() {
                                     transition={{ duration: 0.3 }}
                                     className="hover:bg-muted/50"
                                 >
-                                    <td className="p-4"><PriorityStars score={order.priority} /></td>
                                     <td className="p-4">
                                         <div className="font-bold text-foreground text-sm truncate max-w-[100px] sm:max-w-none">{order.id}</div>
                                         <div className="text-sm text-muted-foreground">{order.customer}</div>
@@ -495,7 +477,7 @@ export default function LiveOrdersPage() {
                         </AnimatePresence>
                          { !loading && sortedOrders.length === 0 && (
                             <tr>
-                                <td colSpan="6" className="text-center p-16 text-muted-foreground">
+                                <td colSpan="5" className="text-center p-16 text-muted-foreground">
                                     <p className="text-lg font-semibold">All caught up!</p>
                                     <p>No live orders right now.</p>
                                 </td>
