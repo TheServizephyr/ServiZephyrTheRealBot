@@ -31,6 +31,8 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import { useWindowSize } from 'react-use';
+
 
 const SidebarLink = ({ href, icon: Icon, children, isCollapsed }) => {
   const pathname = usePathname();
@@ -52,30 +54,27 @@ const SidebarLink = ({ href, icon: Icon, children, isCollapsed }) => {
   );
 };
 
+const useIsMobile = () => {
+    const { width } = useWindowSize();
+    const [isMobile, setIsMobile] = useState(false);
+
+    useEffect(() => {
+        setIsMobile(width < 768);
+    }, [width]);
+
+    return isMobile;
+};
+
+
 function AdminLayoutContent({ children }) {
-  const [isSidebarOpen, setSidebarOpen] = useState(true);
-  const [isMobile, setIsMobile] = useState(null); // Changed from false to null
+  const isMobile = useIsMobile();
+  const [isSidebarOpen, setSidebarOpen] = useState(!isMobile);
   const { theme, setTheme } = useTheme();
 
-  useEffect(() => {
-    const checkScreenSize = () => {
-      const mobile = window.innerWidth < 768;
-      setIsMobile(mobile);
-      setSidebarOpen(!mobile); // Open if not mobile, closed if mobile
-    };
+   useEffect(() => {
+    setSidebarOpen(!isMobile);
+  }, [isMobile]);
 
-    checkScreenSize();
-    window.addEventListener('resize', checkScreenSize);
-    return () => window.removeEventListener('resize', checkScreenSize);
-  }, []);
-
-  if (isMobile === null) {
-      return (
-        <div className="flex h-screen items-center justify-center bg-background">
-            <div className="h-16 w-16 animate-spin rounded-full border-b-2 border-primary"></div>
-        </div>
-      );
-  }
 
   const isCollapsed = !isSidebarOpen && !isMobile;
 
