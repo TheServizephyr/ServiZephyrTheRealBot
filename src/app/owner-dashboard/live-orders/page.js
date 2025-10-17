@@ -116,12 +116,20 @@ const BillModal = ({ order, restaurant, onClose, onPrint }) => {
     );
 };
 
-const AssignRiderModal = ({ isOpen, onClose, onAssign, order, riders, isUpdating }) => {
+const AssignRiderModal = ({ isOpen, onClose, onAssign, order, riders }) => {
     const [selectedRiderId, setSelectedRiderId] = useState(null);
+    const [isSubmitting, setIsSubmitting] = useState(false);
 
-    const handleAssign = () => {
+    const handleAssign = async () => {
         if (selectedRiderId) {
-            onAssign(order.id, selectedRiderId);
+            setIsSubmitting(true);
+            try {
+                await onAssign(order.id, selectedRiderId);
+            } catch (error) {
+                // The parent's catch block will show an alert
+            } finally {
+                setIsSubmitting(false);
+            }
         }
     };
     
@@ -152,10 +160,10 @@ const AssignRiderModal = ({ isOpen, onClose, onAssign, order, riders, isUpdating
                     )}
                 </div>
                 <DialogFooter>
-                    <DialogClose asChild><Button variant="secondary" disabled={isUpdating}>Cancel</Button></DialogClose>
-                    <Button onClick={handleAssign} disabled={!selectedRiderId || isUpdating} className="bg-primary hover:bg-primary/90">
-                        {isUpdating ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <Bike size={16} className="mr-2"/>}
-                        {isUpdating ? 'Assigning...' : 'Assign & Dispatch'}
+                    <DialogClose asChild><Button variant="secondary" disabled={isSubmitting}>Cancel</Button></DialogClose>
+                    <Button onClick={handleAssign} disabled={!selectedRiderId || isSubmitting} className="bg-primary hover:bg-primary/90">
+                        {isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <Bike size={16} className="mr-2"/>}
+                        {isSubmitting ? 'Assigning...' : 'Assign &amp; Dispatch'}
                     </Button>
                 </DialogFooter>
             </DialogContent>
@@ -373,17 +381,14 @@ export default function LiveOrdersPage() {
   };
   
   const handleAssignRider = async (orderId, riderId) => {
-    if (!riderId) {
-        alert("Please select a rider.");
-        return;
-    }
     setUpdatingOrderId(orderId);
     try {
         await handleAPICall('PATCH', { orderId, newStatus: 'dispatched', deliveryBoyId: riderId });
         await fetchInitialData(true);
-        setAssignModalData({ isOpen: false, order: null });
+        setAssignModalData({ isOpen: false, order: null }); // Close modal on success
     } catch (error) {
         alert(`Error assigning rider: ${error.message}`);
+        setAssignModalData({ isOpen: false, order: null }); // Close modal on error too
     } finally {
         setUpdatingOrderId(null);
     }
@@ -469,7 +474,6 @@ export default function LiveOrdersPage() {
                 onAssign={handleAssignRider}
                 order={assignModalData.order}
                 riders={riders}
-                isUpdating={!!updatingOrderId}
             />
         )}
         
@@ -576,5 +580,3 @@ export default function LiveOrdersPage() {
     </div>
   );
 }
-
-    
