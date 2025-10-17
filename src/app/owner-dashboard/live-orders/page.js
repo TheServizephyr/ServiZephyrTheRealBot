@@ -125,7 +125,7 @@ const AssignRiderModal = ({ isOpen, onClose, onAssign, order, riders }) => {
             setIsSubmitting(true);
             try {
                 await onAssign(order.id, selectedRiderId);
-                // The parent component will handle closing the modal after successful assignment
+                onClose();
             } catch (error) {
                 // The parent's catch block will show an alert
             } finally {
@@ -382,14 +382,22 @@ export default function LiveOrdersPage() {
   };
   
   const handleAssignRider = async (orderId, riderId) => {
+    console.log(`[FE] handleAssignRider called for order ${orderId} with rider ${riderId}`);
     setUpdatingOrderId(orderId);
     try {
-        await handleAPICall('PATCH', { orderId, newStatus: 'dispatched', deliveryBoyId: riderId });
-        await fetchInitialData(true); // Re-fetch data to update UI
-        setAssignModalData({ isOpen: false, order: null }); // Close modal on success
+        console.log('[FE] Attempting to assign rider via API call...');
+        const response = await handleAPICall('PATCH', { orderId, newStatus: 'dispatched', deliveryBoyId: riderId });
+        console.log('[FE] API call successful, response:', response);
+        
+        console.log('[FE] Refreshing data...');
+        await fetchInitialData(true);
+        console.log('[FE] Data refreshed.');
+
+        setAssignModalData({ isOpen: false, order: null });
     } catch (error) {
+        console.error('[FE] Error assigning rider:', error);
         alert(`Error assigning rider: ${error.message}`);
-        setAssignModalData({ isOpen: false, order: null }); // Also close modal on error
+        setAssignModalData({ isOpen: false, order: null });
     } finally {
         setUpdatingOrderId(null);
     }
@@ -581,5 +589,3 @@ export default function LiveOrdersPage() {
     </div>
   );
 }
-
-    

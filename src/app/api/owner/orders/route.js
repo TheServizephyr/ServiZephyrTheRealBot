@@ -105,11 +105,14 @@ export async function GET(req) {
 
 
 export async function PATCH(req) {
+    console.log('[API][PATCH /orders] Request received.');
     try {
         const auth = getAuth();
         const firestore = await getFirestore();
         const { restaurantId, restaurantSnap } = await verifyOwnerAndGetRestaurant(req, auth, firestore);
         const { orderId, newStatus, deliveryBoyId } = await req.json();
+
+        console.log(`[API][PATCH /orders] Body:`, { orderId, newStatus, deliveryBoyId });
 
         if (!orderId || !newStatus) {
             return NextResponse.json({ message: 'Order ID and new status are required.' }, { status: 400 });
@@ -131,21 +134,30 @@ export async function PATCH(req) {
         let deliveryBoyData = null;
 
         if (newStatus === 'dispatched' && deliveryBoyId) {
+            console.log(`[API][PATCH /orders] Dispatch logic started for order ${orderId}, rider ${deliveryBoyId}.`);
             updateData.deliveryBoyId = deliveryBoyId;
             const deliveryBoyRef = firestore.collection('restaurants').doc(restaurantId).collection('deliveryBoys').doc(deliveryBoyId);
+            console.log(`[API][PATCH /orders] Rider ref path: ${deliveryBoyRef.path}`);
+            
             const deliveryBoySnap = await deliveryBoyRef.get();
-            if (deliveryBoySnap.exists()) {
+            console.log(`[API][PATCH /orders] Rider snap exists: ${deliveryBoySnap.exists}`);
+            
+            if (deliveryBoySnap.exists) {
                 deliveryBoyData = deliveryBoySnap.data();
+                console.log(`[API][PATCH /orders] Rider data found:`, deliveryBoyData);
             }
         }
         
+        console.log(`[API][PATCH /orders] Updating order ${orderId} with:`, updateData);
         await orderRef.update(updateData);
+        console.log(`[API][PATCH /orders] Order ${orderId} successfully updated in Firestore.`);
         
         const statusesThatNotifyCustomer = ['confirmed', 'preparing', 'dispatched', 'delivered', 'rejected'];
         if (statusesThatNotifyCustomer.includes(newStatus)) {
             const orderData = orderDoc.data();
             const restaurantData = restaurantSnap.data();
-            sendOrderStatusUpdateToCustomer({
+            
+            const notificationPayload = {
                 customerPhone: orderData.customerPhone,
                 botPhoneNumberId: restaurantData.botPhoneNumberId,
                 customerName: orderData.customerName,
@@ -153,18 +165,20 @@ export async function PATCH(req) {
                 restaurantName: restaurantData.name,
                 status: newStatus,
                 deliveryBoy: deliveryBoyData
-            }).catch(e => {
+            };
+            
+            console.log('[API][PATCH /orders] Preparing to send notification with payload:', notificationPayload);
+
+            sendOrderStatusUpdateToCustomer(notificationPayload).catch(e => {
                 console.error(`[API LOG] Failed to send WhatsApp notification for order ${orderId} in the background:`, e.message);
             });
         }
         
-
+        console.log(`[API][PATCH /orders] Request for order ${orderId} processed successfully.`);
         return NextResponse.json({ message: 'Order status updated successfully.' }, { status: 200 });
 
     } catch (error) {
-        console.error("PATCH ORDER ERROR:", error);
+        console.error("[API][PATCH /orders] CRITICAL ERROR:", error);
         return NextResponse.json({ message: `Backend Error: ${error.message}` }, { status: error.status || 500 });
     }
 }
-
-    
