@@ -144,6 +144,7 @@ export async function PATCH(req) {
         
         const { id, ...updateData } = boy;
 
+        // If a rider is marked as inactive, clear their location.
         if (updateData.status === 'Inactive') {
             updateData.location = null;
         }

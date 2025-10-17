@@ -12,6 +12,7 @@ import { cn } from "@/lib/utils";
 import { auth } from '@/lib/firebase';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend } from 'recharts';
 import { useSearchParams } from 'next/navigation';
+import { Switch } from '@/components/ui/switch';
 
 
 const StatusBadge = ({ status }) => {
@@ -365,6 +366,15 @@ export default function DeliveryPage() {
     const handleEdit = (boy) => { setSelectedBoy(boy); setAddModalOpen(true); };
     const handleAddNew = () => { setSelectedBoy(null); setAddModalOpen(true); };
     const handleAssignClick = (boy) => { setSelectedBoy(boy); setAssignModalOpen(true); };
+    
+    const handleStatusToggle = async (boy, newStatus) => {
+         try {
+            await handleApiCall('PATCH', { boy: { ...boy, status: newStatus } });
+            await fetchData(true);
+        } catch (error) {
+            alert(`Error updating status: ${error.message}`);
+        }
+    };
 
     return (
         <div className="p-4 md:p-6 text-white bg-gray-900 min-h-screen">
@@ -425,13 +435,26 @@ export default function DeliveryPage() {
                                         <Star size={12} className="text-yellow-400"/>
                                     </div>
                                 </div>
-                                <div className="mt-3 pt-3 border-t border-gray-700 flex justify-end gap-2 flex-wrap">
-                                    <Button variant="outline" size="sm" className="bg-gray-700 hover:bg-gray-600 border-gray-600" onClick={() => handleEdit(boy)}>
-                                        <Edit size={14} className="mr-1"/> Edit
-                                    </Button>
-                                    <Button size="sm" className="bg-green-600 hover:bg-green-700" disabled={boy.status !== 'Available'} onClick={() => handleAssignClick(boy)}>
-                                        <Bike size={14} className="mr-1"/> Assign Order
-                                    </Button>
+                                 <div className="mt-3 pt-3 border-t border-gray-700 flex justify-between items-center gap-2 flex-wrap">
+                                    <div className="flex items-center gap-2">
+                                        <Switch
+                                            checked={boy.status !== 'Inactive'}
+                                            onCheckedChange={(checked) => handleStatusToggle(boy, checked ? 'Available' : 'Inactive')}
+                                            disabled={boy.status === 'On Delivery'}
+                                            id={`switch-${boy.id}`}
+                                        />
+                                        <Label htmlFor={`switch-${boy.id}`} className="text-sm text-gray-400 cursor-pointer">
+                                            {boy.status !== 'Inactive' ? 'Active' : 'Inactive'}
+                                        </Label>
+                                    </div>
+                                    <div className="flex gap-2">
+                                        <Button variant="outline" size="sm" className="bg-gray-700 hover:bg-gray-600 border-gray-600" onClick={() => handleEdit(boy)}>
+                                            <Edit size={14} className="mr-1"/> Edit
+                                        </Button>
+                                        <Button size="sm" className="bg-green-600 hover:bg-green-700" disabled={boy.status !== 'Available'} onClick={() => handleAssignClick(boy)}>
+                                            <Bike size={14} className="mr-1"/> Assign Order
+                                        </Button>
+                                    </div>
                                 </div>
                             </motion.div>
                         ))}
