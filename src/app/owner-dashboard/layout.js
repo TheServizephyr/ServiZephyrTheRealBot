@@ -192,36 +192,36 @@ function OwnerDashboardContent({ children }) {
   const blockedContent = renderStatusScreen();
 
   return (
-    <>
+    <div className="flex h-screen flex-col bg-background">
       <Navbar
-          isSidebarOpen={isSidebarOpen}
-          setSidebarOpen={setSidebarOpen}
+        isSidebarOpen={isSidebarOpen}
+        setSidebarOpen={setSidebarOpen}
       />
-       <div className={styles.contentWrapper}>
-          <AnimatePresence>
-            {isSidebarOpen && isMobile && (
-              <motion.div
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                onClick={() => setSidebarOpen(false)}
-                className={styles.mobileOverlay}
-              />
-            )}
-          </AnimatePresence>
-          <Sidebar
-            isOpen={isSidebarOpen}
-            setIsOpen={setSidebarOpen}
-            isMobile={isMobile}
-            isCollapsed={!isSidebarOpen && !isMobile}
-            restrictedFeatures={restaurantStatus.restrictedFeatures}
-            status={restaurantStatus.status}
-          />
-          <main className={styles.mainContent}>
-              {blockedContent || children}
-          </main>
-        </div>
-    </>
+      <div className={styles.contentWrapper}>
+        <AnimatePresence>
+          {isSidebarOpen && isMobile && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setSidebarOpen(false)}
+              className={styles.mobileOverlay}
+            />
+          )}
+        </AnimatePresence>
+        <Sidebar
+          isOpen={isSidebarOpen}
+          setIsOpen={setSidebarOpen}
+          isMobile={isMobile}
+          isCollapsed={!isSidebarOpen && !isMobile}
+          restrictedFeatures={restaurantStatus.restrictedFeatures}
+          status={restaurantStatus.status}
+        />
+        <main className={styles.mainContent}>
+          {blockedContent || children}
+        </main>
+      </div>
+    </div>
   );
 }
 
