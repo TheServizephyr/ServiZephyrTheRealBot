@@ -1,4 +1,5 @@
 
+
 import { NextResponse } from 'next/server';
 import { firestore as adminFirestore } from 'firebase-admin';
 import { getAuth, getFirestore } from '@/lib/firebase-admin';
@@ -135,7 +136,6 @@ export async function PATCH(req) {
 
         if (newStatus === 'dispatched' && deliveryBoyId) {
             console.log(`[API][PATCH /orders] Dispatch logic started for order ${orderId}, rider ${deliveryBoyId}.`);
-            updateData.deliveryBoyId = deliveryBoyId;
             const deliveryBoyRef = firestore.collection('restaurants').doc(restaurantId).collection('deliveryBoys').doc(deliveryBoyId);
             console.log(`[API][PATCH /orders] Rider ref path: ${deliveryBoyRef.path}`);
             
@@ -144,6 +144,7 @@ export async function PATCH(req) {
             
             if (deliveryBoySnap.exists) {
                 deliveryBoyData = deliveryBoySnap.data();
+                updateData.deliveryBoyId = deliveryBoyId;
                 console.log(`[API][PATCH /orders] Rider data found:`, deliveryBoyData);
             }
         }
@@ -169,9 +170,12 @@ export async function PATCH(req) {
             
             console.log('[API][PATCH /orders] Preparing to send notification with payload:', notificationPayload);
 
-            sendOrderStatusUpdateToCustomer(notificationPayload).catch(e => {
-                console.error(`[API LOG] Failed to send WhatsApp notification for order ${orderId} in the background:`, e.message);
-            });
+            try {
+                await sendOrderStatusUpdateToCustomer(notificationPayload);
+            } catch (notificationError) {
+                // Log the error but don't crash the main process. The status is already updated.
+                console.error(`[API LOG] CRITICAL: Failed to send WhatsApp notification for order ${orderId}, but status was updated successfully. Error:`, notificationError.message);
+            }
         }
         
         console.log(`[API][PATCH /orders] Request for order ${orderId} processed successfully.`);
