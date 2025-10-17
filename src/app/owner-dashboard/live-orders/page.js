@@ -449,7 +449,7 @@ export default function LiveOrdersPage() {
                                     <td className="p-4 text-sm text-muted-foreground hidden lg:table-cell">
                                         <ul className="space-y-1">
                                             {(order.items || []).map(item => (
-                                                <li key={item.name}>{item.qty}x {item.name}</li>
+                                                <li key={item.name} className="whitespace-nowrap">{item.qty}x {item.name}</li>
                                             ))}
                                         </ul>
                                     </td>
@@ -490,3 +490,4 @@ export default function LiveOrdersPage() {
     </div>
   );
 }
+
