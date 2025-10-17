@@ -14,14 +14,11 @@ export const sendWhatsAppMessage = async (phoneNumber, payload, businessPhoneNum
     if (!ACCESS_TOKEN || !businessPhoneNumberId) {
         const errorMessage = "WhatsApp credentials (Access Token or Business Phone ID) are not configured in environment variables.";
         console.error(`[WhatsApp Lib] ${errorMessage}`);
-        // In a real app, you might want to throw an error or handle this more gracefully.
         return;
     }
 
-    // Determine the final payload structure
     let dataPayload;
     if (typeof payload === 'string') {
-        // If payload is a simple string, format it for a text message
         dataPayload = {
             messaging_product: 'whatsapp',
             to: phoneNumber,
@@ -29,7 +26,6 @@ export const sendWhatsAppMessage = async (phoneNumber, payload, businessPhoneNum
             text: { body: payload }
         };
     } else {
-        // If payload is an object, assume it's a pre-formatted template
         dataPayload = {
             messaging_product: 'whatsapp',
             to: phoneNumber,
@@ -48,15 +44,10 @@ export const sendWhatsAppMessage = async (phoneNumber, payload, businessPhoneNum
             },
             data: dataPayload
         });
-        // Log success only in non-production environments for cleaner logs
         if (process.env.NODE_ENV !== 'production') {
             console.log(`[WhatsApp Lib] Successfully initiated message to ${phoneNumber}. Response:`, JSON.stringify(response.data, null, 2));
         }
     } catch (error) {
         console.error(`[WhatsApp Lib] Failed to send message to ${phoneNumber}:`, error.response ? JSON.stringify(error.response.data, null, 2) : error.message);
-        // Optionally re-throw the error if the caller needs to handle it
-        // throw error;
     }
 };
-
-    

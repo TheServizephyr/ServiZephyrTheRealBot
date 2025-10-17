@@ -33,7 +33,6 @@ export async function POST(request) {
     try {
         const body = await request.json();
         
-        // Log the full body in non-production environments for easier debugging
         if (process.env.NODE_ENV !== 'production') {
             console.log("[Webhook] Request Body:", JSON.stringify(body, null, 2));
         }
@@ -45,12 +44,11 @@ export async function POST(request) {
         const firestore = getFirestore();
         const change = body.entry?.[0]?.changes?.[0];
         
-        // Handle button clicks from Owners (e.g., Accept/Reject Order)
         if (change?.value?.messages?.[0]?.interactive?.button_reply) {
             const message = change.value.messages[0];
             const buttonReply = message.interactive.button_reply;
             const buttonId = buttonReply.id;
-            const fromNumber = message.from; // Owner's number
+            const fromNumber = message.from; 
             const businessPhoneNumberId = change.value.metadata.phone_number_id;
             
             const [action, ...orderIdParts] = buttonId.split('_order_');
@@ -62,18 +60,21 @@ export async function POST(request) {
             }
 
             const orderRef = firestore.collection('orders').doc(orderId);
+            const orderDoc = await orderRef.get();
+
+            if (!orderDoc.exists) {
+                 await sendWhatsAppMessage(fromNumber, `⚠️ Action failed: Order with ID ${orderId} was not found.`, businessPhoneNumberId);
+                 return NextResponse.json({ message: 'Order not found' }, { status: 200 });
+            }
             
             if (action === 'accept') {
                 await orderRef.update({ status: 'confirmed' });
                 
-                const orderDoc = await orderRef.get();
-                if (orderDoc.exists) {
-                    const orderData = orderDoc.data();
-                    
-                    const restaurantDoc = await firestore.collection('restaurants').doc(orderData.restaurantId).get();
+                const orderData = orderDoc.data();
+                const restaurantDoc = await firestore.collection('restaurants').doc(orderData.restaurantId).get();
+                
+                if (restaurantDoc.exists) {
                     const restaurantData = restaurantDoc.data();
-                    
-                    // Notify customer that their order is confirmed
                     await sendOrderConfirmationToCustomer({
                         customerPhone: orderData.customerPhone,
                         botPhoneNumberId: businessPhoneNumberId,
@@ -82,21 +83,19 @@ export async function POST(request) {
                         restaurantName: restaurantData.name,
                     });
                 }
-                await sendWhatsAppMessage(fromNumber, `✅ Action complete: Order ${orderId} has been confirmed.`, businessPhoneNumberId);
+                await sendWhatsAppMessage(fromNumber, `✅ Action complete: Order ${orderId} has been confirmed. You can now start preparing it.`, businessPhoneNumberId);
 
             } else if (action === 'reject') {
-                // In a real app, you might move this to a 'rejected_orders' collection instead of deleting
-                await orderRef.delete();
-                await sendWhatsAppMessage(fromNumber, `✅ Action complete: Order ${orderId} has been rejected.`, businessPhoneNumberId);
+                await orderRef.update({ status: 'rejected' });
+                await sendWhatsAppMessage(fromNumber, `✅ Action complete: Order ${orderId} has been rejected. The customer will be notified.`, businessPhoneNumberId);
+                // Optionally, notify the customer that the order was rejected
             }
         } 
-        // Handle text messages from Customers (e.g., "Hi")
         else if (change?.value?.messages?.[0]?.text) {
             const message = change.value.messages[0];
-            const fromWithCode = message.from; // Customer's number with country code
+            const fromWithCode = message.from; 
             const botPhoneNumberId = change.value.metadata.phone_number_id;
 
-            // Find the restaurant associated with this bot
             const restaurantsRef = firestore.collection('restaurants');
             const restaurantQuery = await restaurantsRef.where('botPhoneNumberId', '==', botPhoneNumberId).limit(1).get();
 
@@ -111,7 +110,6 @@ export async function POST(request) {
             const restaurantData = restaurantDoc.data();
             const restaurantName = restaurantData.name;
 
-            // Check if the customer exists to personalize the message
             const customerPhone = fromWithCode.startsWith('91') ? fromWithCode.substring(2) : fromWithCode;
             const usersRef = firestore.collection('users');
             const userQuery = await usersRef.where('phone', '==', customerPhone).limit(1).get();
@@ -124,11 +122,9 @@ export async function POST(request) {
                 }
             }
 
-            // Create the unique ordering link for the customer
             const menuUrl = `https://servizephyr.com/order/${restaurantId}?phone=${customerPhone}`;
             const reply_body = `${welcomeMessage}\n\nWhat would you like to order today? You can view our full menu and place your order by clicking the link below:\n\n${menuUrl}`;
             
-            // Send the reply
             const customerPhoneForApi = '91' + customerPhone;
             await sendWhatsAppMessage(customerPhoneForApi, reply_body, botPhoneNumberId);
         }
@@ -137,7 +133,6 @@ export async function POST(request) {
 
     } catch (error) {
         console.error('[Webhook] Error processing POST request:', error);
-        // Acknowledge the request to prevent WhatsApp from resending, even if we fail.
         return NextResponse.json({ message: 'Error processing request, but acknowledged.' }, { status: 200 });
     }
 }

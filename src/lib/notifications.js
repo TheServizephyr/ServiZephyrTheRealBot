@@ -9,10 +9,10 @@ export const sendNewOrderToOwner = async ({ ownerPhone, botPhoneNumberId, custom
         return;
     }
     const ownerPhoneWithCode = '91' + ownerPhone;
-    const orderDetailsUrl = `https://servizephyr.com/owner-dashboard/bill/${orderId}`;
+    const orderDetailsUrl = `https://servizephyr.com/owner-dashboard/live-orders`;
 
     const notificationPayload = {
-        name: "new_order_notification",
+        name: "new_order_notification_v2",
         language: { code: "en" },
         components: [
             {
@@ -20,8 +20,7 @@ export const sendNewOrderToOwner = async ({ ownerPhone, botPhoneNumberId, custom
                 parameters: [
                     { type: "text", text: customerName },
                     { type: "text", text: `₹${totalAmount.toFixed(2)}` },
-                    { type: "text", text: orderId },
-                    { type: "text", text: orderDetailsUrl }
+                    { type: "text", text: orderId }
                 ]
             },
             {
@@ -56,7 +55,6 @@ export const sendOrderStatusUpdateToCustomer = async ({ customerPhone, botPhoneN
     switch (status) {
         case 'confirmed':
             templateName = 'order_confirmation';
-            // FIX: This template requires exactly 3 variables.
             parameters = [
                 { type: "text", text: customerName },
                 { type: "text", text: orderId.substring(0, 8) },
@@ -68,7 +66,6 @@ export const sendOrderStatusUpdateToCustomer = async ({ customerPhone, botPhoneN
         case 'delivered':
             templateName = 'order_status_update';
             const capitalizedStatus = status.charAt(0).toUpperCase() + status.slice(1);
-            // This template requires 4 variables.
             parameters = [
                 { type: "text", text: customerName },
                 { type: "text", text: orderId.substring(0, 8) },
@@ -77,7 +74,6 @@ export const sendOrderStatusUpdateToCustomer = async ({ customerPhone, botPhoneN
             ];
             break;
         default:
-            // Do not send notifications for other statuses like 'pending'
             return;
     }
 
@@ -95,7 +91,6 @@ export const sendOrderStatusUpdateToCustomer = async ({ customerPhone, botPhoneN
     await sendWhatsAppMessage(customerPhoneWithCode, statusPayload, botPhoneNumberId);
 };
 
-// This function is now part of sendOrderStatusUpdateToCustomer, but kept for legacy calls if any.
 export const sendOrderConfirmationToCustomer = async (params) => {
     await sendOrderStatusUpdateToCustomer({ ...params, status: 'confirmed' });
 };

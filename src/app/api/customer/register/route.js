@@ -4,6 +4,7 @@ import { getFirestore } from '@/lib/firebase-admin';
 import { NextResponse } from 'next/server';
 import Razorpay from 'razorpay';
 import { nanoid } from 'nanoid';
+import { sendNewOrderToOwner } from '@/lib/notifications';
 
 
 export async function POST(req) {
@@ -26,6 +27,8 @@ export async function POST(req) {
         }
         
         let razorpayOrderId = null;
+        const restaurantData = restaurantDoc.data();
+
         if (paymentMethod === 'razorpay') {
             if (!process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID || !process.env.RAZORPAY_KEY_SECRET) {
                 console.error("[Order API] Razorpay keys are not configured in environment variables.");
@@ -37,9 +40,6 @@ export async function POST(req) {
                 key_secret: process.env.RAZORPAY_KEY_SECRET,
             });
 
-            // *** BUG FIX LOGIC STARTS HERE ***
-            // We now embed all order details inside Razorpay's order notes.
-            // The order will ONLY be created in Firestore when the payment is successful (via webhook).
             const orderPayloadForNotes = {
                 customerDetails: { name, address, phone },
                 restaurantDetails: { restaurantId, restaurantName: restaurantDoc.data().name },
@@ -57,13 +57,11 @@ export async function POST(req) {
                     servizephyr_order_payload: JSON.stringify(orderPayloadForNotes)
                 }
             };
-            // *** BUG FIX LOGIC ENDS HERE ***
 
             const razorpayOrder = await razorpay.orders.create(razorpayOrderOptions);
             razorpayOrderId = razorpayOrder.id;
             console.log(`[Order API] Razorpay Order ${razorpayOrderId} created for amount ${grandTotal}. Firestore order creation will wait for payment confirmation.`);
             
-            // For online payments, we stop here and return the razorpay order ID.
             return NextResponse.json({ 
                 message: 'Razorpay order created. Awaiting payment confirmation.',
                 razorpay_order_id: razorpayOrderId,
@@ -98,7 +96,6 @@ export async function POST(req) {
         const cgst = taxableAmount > 0 ? taxableAmount * taxRate : 0;
         const sgst = taxableAmount > 0 ? taxableAmount * taxRate : 0;
         
-        const restaurantData = restaurantDoc.data();
         const deliveryCharge = (coupon?.code?.includes('FREE')) ? 0 : (restaurantData.deliveryCharge || 30);
         
         const pointsEarned = Math.floor(subtotal / 100) * 10;
@@ -150,6 +147,17 @@ export async function POST(req) {
         console.log(`[Order API] COD order ${newOrderRef.id} added to batch.`);
 
         await batch.commit();
+
+        // ** NEW: Send notification to restaurant owner **
+        if (restaurantData.ownerPhone && restaurantData.botPhoneNumberId) {
+            await sendNewOrderToOwner({
+                ownerPhone: restaurantData.ownerPhone,
+                botPhoneNumberId: restaurantData.botPhoneNumberId,
+                customerName: name,
+                totalAmount: grandTotal,
+                orderId: newOrderRef.id
+            });
+        }
         
         return NextResponse.json({ 
             message: 'COD order created successfully.',

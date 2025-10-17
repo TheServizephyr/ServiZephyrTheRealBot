@@ -69,14 +69,12 @@ export async function POST(req) {
             
             const firestore = getFirestore();
 
-            // *** NEW LOGIC: Check if order already exists to prevent duplicates ***
             const existingOrderQuery = await firestore.collection('orders').where('paymentDetails.razorpay_order_id', '==', razorpayOrderId).limit(1).get();
             if (!existingOrderQuery.empty) {
                 console.log(`[Webhook] Order ${razorpayOrderId} already processed. Skipping.`);
                 return NextResponse.json({ status: 'ok', message: 'Order already exists.'});
             }
 
-            // *** NEW LOGIC: Fetch order payload from Razorpay order notes ***
             const key_id = process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID;
             const key_secret = process.env.RAZORPAY_KEY_SECRET;
             const credentials = Buffer.from(`${key_id}:${key_secret}`).toString('base64');
@@ -98,7 +96,6 @@ export async function POST(req) {
 
             const { customerDetails, restaurantDetails, orderItems, billDetails, notes } = JSON.parse(orderPayloadString);
             
-            // --- ALL ORDER CREATION LOGIC IS NOW HERE ---
             const batch = firestore.batch();
             const usersRef = firestore.collection('users');
             const existingUserQuery = await usersRef.where('phone', '==', customerDetails.phone).limit(1).get();
@@ -137,7 +134,7 @@ export async function POST(req) {
             const taxRate = 0.05;
             const cgst = taxableAmount > 0 ? taxableAmount * taxRate : 0;
             const sgst = taxableAmount > 0 ? taxableAmount * taxRate : 0;
-            const deliveryCharge = 30; // This should be fetched or stored more reliably
+            const deliveryCharge = 30;
 
             batch.set(newOrderRef, {
                 customerName: customerDetails.name, customerId: userId, customerAddress: customerDetails.address, customerPhone: customerDetails.phone,
@@ -145,7 +142,7 @@ export async function POST(req) {
                 items: orderItems,
                 subtotal, coupon: billDetails.coupon, loyaltyDiscount: finalLoyaltyDiscount, discount: finalDiscount, cgst, sgst, deliveryCharge,
                 totalAmount: billDetails.grandTotal,
-                status: 'paid', // Order is created directly as 'paid'
+                status: 'paid',
                 priority: Math.floor(Math.random() * 5) + 1,
                 orderDate: adminFirestore.FieldValue.serverTimestamp(),
                 notes: notes || null,
@@ -159,7 +156,6 @@ export async function POST(req) {
             await batch.commit();
             console.log(`[Webhook] Successfully created Firestore order ${newOrderRef.id} from Razorpay Order ${razorpayOrderId}.`);
 
-            // --- TRANSFER AND NOTIFICATION LOGIC ---
             const restaurantDoc = await firestore.collection('restaurants').doc(restaurantDetails.restaurantId).get();
             if (restaurantDoc.exists) {
                 const restaurantData = restaurantDoc.data();
