@@ -66,6 +66,7 @@ export const sendOrderStatusUpdateToCustomer = async ({ customerPhone, botPhoneN
             components.push({ type: "body", parameters: bodyParams });
             
             // Button 1: Track Order (URL button)
+            // The API expects the dynamic part of the URL as the payload
             components.push({
                 type: "button",
                 sub_type: "url",
@@ -75,6 +76,7 @@ export const sendOrderStatusUpdateToCustomer = async ({ customerPhone, botPhoneN
 
             // Button 2: Call Rider (Phone number button)
             if (deliveryBoy?.phone) {
+                // The API expects just the phone number, without country code, as the payload
                 components.push({
                     type: "button",
                     sub_type: "call",
