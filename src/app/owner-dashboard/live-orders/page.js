@@ -120,9 +120,15 @@ const BillModal = ({ order, restaurant, onClose, onPrint }) => {
 const AssignRiderModal = ({ isOpen, onClose, onAssign, order, riders, isUpdating }) => {
     const [selectedRiderId, setSelectedRiderId] = useState(null);
 
-    const handleAssign = () => {
-        if (selectedRiderId) {
-            onAssign(order.id, selectedRiderId);
+    const handleAssign = async () => {
+        if (selectedRiderId && !isUpdating) {
+            try {
+                await onAssign(order.id, selectedRiderId);
+                onClose(); // Close modal on success
+            } catch (error) {
+                // Error is handled by the parent component's alert
+                // Modal remains open for another attempt
+            }
         }
     };
 
@@ -377,10 +383,11 @@ export default function LiveOrdersPage() {
     setUpdatingOrderId(orderId);
     try {
         await handleAPICall('PATCH', { orderId, newStatus: 'dispatched', deliveryBoyId: riderId });
-        setAssignModalData({ isOpen: false, order: null });
         await fetchInitialData(true);
     } catch (error) {
         alert(`Error assigning rider: ${error.message}`);
+        // Re-throw to be caught by the modal handler
+        throw error;
     } finally {
         setUpdatingOrderId(null);
     }
@@ -576,3 +583,6 @@ export default function LiveOrdersPage() {
 
 
 
+
+
+    
