@@ -135,7 +135,7 @@ export async function PATCH(req) {
             updateData.deliveryBoyId = deliveryBoyId;
             const deliveryBoyRef = firestore.collection('restaurants').doc(restaurantId).collection('deliveryBoys').doc(deliveryBoyId);
             const deliveryBoySnap = await deliveryBoyRef.get();
-            if (deliveryBoySnap.exists) {
+            if (deliveryBoySnap.exists()) {
                 deliveryBoyData = deliveryBoySnap.data();
             }
         }
@@ -166,5 +166,6 @@ export async function PATCH(req) {
         return NextResponse.json({ message: `Backend Error: ${error.message}` }, { status: error.status || 500 });
     }
 }
+
 
 

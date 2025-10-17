@@ -51,26 +51,28 @@ export const sendOrderStatusUpdateToCustomer = async ({ customerPhone, botPhoneN
     
     let templateName;
     let parameters = [];
-    let payloadComponents = [];
+    let components = [];
 
     const capitalizedStatus = status.charAt(0).toUpperCase() + status.slice(1);
 
     switch (status) {
         case 'dispatched':
             templateName = 'order_out_for_delivery';
-            parameters = [
+            // Parameters for the body of the template
+            const bodyParams = [
                 { type: "text", text: customerName },
                 { type: "text", text: orderId.substring(0, 8) },
                 { type: "text", text: deliveryBoy?.name || 'Our delivery partner' },
-                { type: "text", text: orderId }, // For the tracking link button
             ];
-             payloadComponents.push({ type: "body", parameters: parameters });
-             payloadComponents.push({
+            components.push({ type: "body", parameters: bodyParams });
+            
+            // Parameter for the URL button
+            components.push({
                 type: "button",
                 sub_type: "url",
                 index: "0",
                 parameters: [
-                    { type: "text", text: orderId }
+                    { type: "text", text: orderId } // This text replaces the {{1}} in the button URL
                 ]
             });
             break;
@@ -86,7 +88,7 @@ export const sendOrderStatusUpdateToCustomer = async ({ customerPhone, botPhoneN
                 { type: "text", text: restaurantName },
                 { type: "text", text: capitalizedStatus },
             ];
-            payloadComponents.push({ type: "body", parameters: parameters });
+            components.push({ type: "body", parameters: parameters });
             break;
 
         default:
@@ -97,7 +99,7 @@ export const sendOrderStatusUpdateToCustomer = async ({ customerPhone, botPhoneN
     const statusPayload = {
         name: templateName,
         language: { code: "en" },
-        components: payloadComponents,
+        components: components,
     };
     
     await sendWhatsAppMessage(customerPhoneWithCode, statusPayload, botPhoneNumberId);
