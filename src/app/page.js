@@ -565,7 +565,7 @@ export default function Home() {
                   <TableRow>
                     <TableHead className="w-[40%] text-lg text-foreground">Feature</TableHead>
                     <TableHead className="text-center text-lg text-green-500 font-bold">ServiZephyr</TableHead>
-                    <TableHead className="text-center text-lg text-muted-foreground">Food Aggregators</TableHead>
+                    <TableHead className="text-center text-lg text-yellow-500 font-bold">Food Aggregators</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
