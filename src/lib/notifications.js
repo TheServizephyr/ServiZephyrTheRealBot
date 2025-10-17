@@ -67,6 +67,7 @@ export const sendOrderStatusUpdateToCustomer = async ({ customerPhone, botPhoneN
             parameters = [
                 { type: "text", text: customerName },
                 { type: "text", text: orderId.substring(0, 8) },
+                // **THE FIX**: Use a fallback if deliveryBoy name is not available
                 { type: "text", text: deliveryBoy?.name || 'Our delivery partner' },
                 { type: "text", text: orderId }, // For the tracking link button
             ];
@@ -154,6 +155,7 @@ export const sendRestaurantStatusChangeNotification = async ({ ownerPhone, botPh
 }
 
 
-export const sendOrderConfirmationToCustomer = async (params) => {
-    await sendOrderStatusUpdateToCustomer({ ...params, status: 'confirmed' });
-};
+// **THE FIX**: This function is no longer needed as its logic is merged into sendOrderStatusUpdateToCustomer
+// export const sendOrderConfirmationToCustomer = async (params) => {
+//     await sendOrderStatusUpdateToCustomer({ ...params, status: 'confirmed' });
+// };

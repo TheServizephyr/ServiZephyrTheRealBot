@@ -3,7 +3,8 @@
 import { NextResponse } from 'next/server';
 import { getFirestore } from '@/lib/firebase-admin';
 import { sendWhatsAppMessage } from '@/lib/whatsapp';
-import { sendOrderConfirmationToCustomer } from '@/lib/notifications';
+// **THE FIX**: Removed unused import of sendOrderConfirmationToCustomer
+import { sendOrderStatusUpdateToCustomer } from '@/lib/notifications';
 
 
 const VERIFY_TOKEN = process.env.WHATSAPP_VERIFY_TOKEN;
@@ -79,12 +80,14 @@ export async function POST(request) {
                     
                     if (restaurantDoc.exists) {
                         const restaurantData = restaurantDoc.data();
-                        await sendOrderConfirmationToCustomer({
+                        // **THE FIX**: Call the main notification function directly
+                        await sendOrderStatusUpdateToCustomer({
                             customerPhone: orderData.customerPhone,
                             botPhoneNumberId: businessPhoneNumberId,
                             customerName: orderData.customerName,
                             orderId: orderId,
                             restaurantName: restaurantData.name,
+                            status: 'confirmed'
                         });
                     }
                     await sendWhatsAppMessage(fromNumber, `✅ Action complete: Order ${orderId} has been confirmed. You can now start preparing it.`, businessPhoneNumberId);
