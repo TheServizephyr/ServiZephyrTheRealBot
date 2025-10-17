@@ -122,13 +122,7 @@ const AssignRiderModal = ({ isOpen, onClose, onAssign, order, riders, isUpdating
 
     const handleAssign = async () => {
         if (selectedRiderId && !isUpdating) {
-            try {
-                await onAssign(order.id, selectedRiderId);
-                onClose(); // Close modal on success
-            } catch (error) {
-                // Error is handled by the parent component's alert
-                // Modal remains open for another attempt
-            }
+            await onAssign(order.id, selectedRiderId);
         }
     };
 
@@ -384,10 +378,9 @@ export default function LiveOrdersPage() {
     try {
         await handleAPICall('PATCH', { orderId, newStatus: 'dispatched', deliveryBoyId: riderId });
         await fetchInitialData(true);
+        setAssignModalData({ isOpen: false, order: null });
     } catch (error) {
         alert(`Error assigning rider: ${error.message}`);
-        // Re-throw to be caught by the modal handler
-        throw error;
     } finally {
         setUpdatingOrderId(null);
     }
