@@ -236,11 +236,11 @@ export default function SettingsPage() {
     };
 
     const handlePaymentToggle = (type, value) => {
-        if (!editedUser.onlinePaymentsEnabled && type === 'codEnabled' && !value) {
-            alert("At least one payment method must be enabled.");
-            return;
-        }
-        if (!editedUser.codEnabled && type === 'onlinePaymentsEnabled' && !value) {
+        // Prevent disabling the last active payment method
+        if (!value && (
+            (type === 'codEnabled' && !editedUser.onlinePaymentsEnabled) ||
+            (type === 'onlinePaymentsEnabled' && !editedUser.codEnabled)
+        )) {
             alert("At least one payment method must be enabled.");
             return;
         }
