@@ -91,6 +91,48 @@ export const sendOrderStatusUpdateToCustomer = async ({ customerPhone, botPhoneN
     await sendWhatsAppMessage(customerPhoneWithCode, statusPayload, botPhoneNumberId);
 };
 
+export const sendRestaurantStatusChangeNotification = async ({ ownerPhone, botPhoneNumberId, newStatus, restaurantId }) => {
+    if (!ownerPhone || !botPhoneNumberId) {
+        console.error(`[Notification Lib] Cannot send status change notification. Owner phone or Bot ID is missing.`);
+        return;
+    }
+    const ownerPhoneWithCode = '91' + ownerPhone;
+
+    const isOpen = newStatus;
+    const statusText = isOpen ? "OPEN" : "CLOSED";
+    const oppositeStatusText = isOpen ? "CLOSED" : "OPEN";
+    const revertPayload = `revert_status_${restaurantId}_${isOpen ? 'closed' : 'open'}`;
+    const retainPayload = `retain_status_${restaurantId}_${isOpen ? 'open' : 'closed'}`;
+
+    const payload = {
+        name: "restaurant_status_change_alert",
+        language: { code: "en" },
+        components: [
+            {
+                type: "body",
+                parameters: [
+                    { type: "text", text: statusText }
+                ]
+            },
+            {
+                type: "button",
+                sub_type: "quick_reply",
+                index: "0",
+                parameters: [{ type: "payload", payload: retainPayload }]
+            },
+            {
+                type: "button",
+                sub_type: "quick_reply",
+                index: "1",
+                parameters: [{ type: "payload", payload: revertPayload }]
+            }
+        ]
+    };
+    
+    await sendWhatsAppMessage(ownerPhoneWithCode, payload, botPhoneNumberId);
+}
+
+
 export const sendOrderConfirmationToCustomer = async (params) => {
     await sendOrderStatusUpdateToCustomer({ ...params, status: 'confirmed' });
 };

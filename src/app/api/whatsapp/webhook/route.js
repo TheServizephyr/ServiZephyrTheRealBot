@@ -1,4 +1,5 @@
 
+
 import { NextResponse } from 'next/server';
 import { getFirestore } from '@/lib/firebase-admin';
 import { sendWhatsAppMessage } from '@/lib/whatsapp';
@@ -44,7 +45,7 @@ export async function POST(request) {
         const firestore = getFirestore();
         const change = body.entry?.[0]?.changes?.[0];
         
-        // --- Handler for Owner's Button Clicks ---
+        // --- Handler for Button Clicks ---
         if (change?.value?.messages?.[0]?.interactive?.button_reply) {
             const message = change.value.messages[0];
             const buttonReply = message.interactive.button_reply;
@@ -52,44 +53,63 @@ export async function POST(request) {
             const fromNumber = message.from; 
             const businessPhoneNumberId = change.value.metadata.phone_number_id;
             
-            const [action, ...orderIdParts] = buttonId.split('_order_');
-            const orderId = orderIdParts.join('_order_'); 
-            
-            if (!orderId || !['accept', 'reject'].includes(action)) {
-                console.warn(`[Webhook] Invalid button ID format: ${buttonId}`);
-                return NextResponse.json({ message: 'Invalid button ID' }, { status: 200 });
-            }
+            const [action, ...payloadParts] = buttonId.split('_');
 
-            const orderRef = firestore.collection('orders').doc(orderId);
-            const orderDoc = await orderRef.get();
-
-            if (!orderDoc.exists) {
-                 await sendWhatsAppMessage(fromNumber, `⚠️ Action failed: Order with ID ${orderId} was not found.`, businessPhoneNumberId);
-                 return NextResponse.json({ message: 'Order not found' }, { status: 200 });
-            }
-            
-            if (action === 'accept') {
-                await orderRef.update({ status: 'confirmed' });
-                
-                const orderData = orderDoc.data();
-                const restaurantDoc = await firestore.collection('restaurants').doc(orderData.restaurantId).get();
-                
-                if (restaurantDoc.exists) {
-                    const restaurantData = restaurantDoc.data();
-                    await sendOrderConfirmationToCustomer({
-                        customerPhone: orderData.customerPhone,
-                        botPhoneNumberId: businessPhoneNumberId,
-                        customerName: orderData.customerName,
-                        orderId: orderId,
-                        restaurantName: restaurantData.name,
-                    });
+            // --- Handler for Order Accept/Reject ---
+            if (action === 'accept' || action === 'reject') {
+                const orderId = payloadParts.join('_').replace('order_', '');
+                if (!orderId) {
+                    console.warn(`[Webhook] Invalid order button ID format: ${buttonId}`);
+                    return NextResponse.json({ message: 'Invalid button ID' }, { status: 200 });
                 }
-                await sendWhatsAppMessage(fromNumber, `✅ Action complete: Order ${orderId} has been confirmed. You can now start preparing it.`, businessPhoneNumberId);
 
-            } else if (action === 'reject') {
-                await orderRef.update({ status: 'rejected' });
-                await sendWhatsAppMessage(fromNumber, `✅ Action complete: Order ${orderId} has been rejected. The customer will be notified.`, businessPhoneNumberId);
-                // Optionally, notify the customer that the order was rejected
+                const orderRef = firestore.collection('orders').doc(orderId);
+                const orderDoc = await orderRef.get();
+
+                if (!orderDoc.exists) {
+                     await sendWhatsAppMessage(fromNumber, `⚠️ Action failed: Order with ID ${orderId} was not found.`, businessPhoneNumberId);
+                     return NextResponse.json({ message: 'Order not found' }, { status: 200 });
+                }
+                
+                if (action === 'accept') {
+                    await orderRef.update({ status: 'confirmed' });
+                    
+                    const orderData = orderDoc.data();
+                    const restaurantDoc = await firestore.collection('restaurants').doc(orderData.restaurantId).get();
+                    
+                    if (restaurantDoc.exists) {
+                        const restaurantData = restaurantDoc.data();
+                        await sendOrderConfirmationToCustomer({
+                            customerPhone: orderData.customerPhone,
+                            botPhoneNumberId: businessPhoneNumberId,
+                            customerName: orderData.customerName,
+                            orderId: orderId,
+                            restaurantName: restaurantData.name,
+                        });
+                    }
+                    await sendWhatsAppMessage(fromNumber, `✅ Action complete: Order ${orderId} has been confirmed. You can now start preparing it.`, businessPhoneNumberId);
+
+                } else if (action === 'reject') {
+                    await orderRef.update({ status: 'rejected' });
+                    await sendWhatsAppMessage(fromNumber, `✅ Action complete: Order ${orderId} has been rejected. The customer will be notified.`, businessPhoneNumberId);
+                }
+            } 
+            // --- Handler for Restaurant Status Change ---
+            else if (action === 'retain' || action === 'revert') {
+                const [_, __, restaurantId, status] = payloadParts;
+                
+                if(!restaurantId || !status) {
+                    console.warn(`[Webhook] Invalid status button ID format: ${buttonId}`);
+                    return NextResponse.json({ message: 'Invalid button ID' }, { status: 200 });
+                }
+
+                if (action === 'revert') {
+                    const revertToOpen = status === 'open';
+                    await firestore.collection('restaurants').doc(restaurantId).update({ isOpen: revertToOpen });
+                    await sendWhatsAppMessage(fromNumber, `✅ Action reverted. Your restaurant has been set to **${revertToOpen ? 'OPEN' : 'CLOSED'}**.`, businessPhoneNumberId);
+                } else { // retain
+                    await sendWhatsAppMessage(fromNumber, `✅ Understood. Your restaurant status will remain **${status.toUpperCase()}**.`, businessPhoneNumberId);
+                }
             }
         } 
         // --- Handler for Customer's Text Messages ---

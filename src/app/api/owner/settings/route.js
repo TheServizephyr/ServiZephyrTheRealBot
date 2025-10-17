@@ -4,6 +4,7 @@ import { NextResponse } from 'next/server';
 import { getAuth } from '@/lib/firebase-admin';
 import { getFirestore } from 'firebase-admin/firestore';
 import { initializeApp, getApps } from 'firebase-admin/app';
+import { sendRestaurantStatusChangeNotification } from '@/lib/notifications';
 
 
 // This function now verifies the user and fetches both user and their restaurant data if they are an owner.
@@ -40,16 +41,19 @@ async function verifyUserAndGetData(req) {
     const userData = userDoc.data();
     let restaurantData = null;
     let restaurantRef = null;
+    let restaurantId = null;
 
     if (userData.role === 'owner' || (adminUserDoc.exists && adminUserDoc.data().role === 'admin' && impersonatedOwnerId)) {
         const restaurantsQuery = await firestore.collection('restaurants').where('ownerId', '==', finalUserId).limit(1).get();
         if (!restaurantsQuery.empty) {
-            restaurantRef = restaurantsQuery.docs[0].ref;
-            restaurantData = restaurantsQuery.docs[0].data();
+            const restaurantDoc = restaurantsQuery.docs[0];
+            restaurantRef = restaurantDoc.ref;
+            restaurantData = restaurantDoc.data();
+            restaurantId = restaurantDoc.id;
         }
     }
     
-    return { uid: finalUserId, userRef, userData, restaurantRef, restaurantData };
+    return { uid: finalUserId, userRef, userData, restaurantRef, restaurantData, restaurantId };
 }
 
 export async function GET(req) {
@@ -92,6 +96,7 @@ export async function GET(req) {
             logoUrl: restaurantData?.logoUrl || '',
             bannerUrls: restaurantData?.bannerUrls || [],
             codEnabled: restaurantData?.codEnabled || false,
+            onlinePaymentsEnabled: restaurantData?.onlinePaymentsEnabled === undefined ? true : restaurantData.onlinePaymentsEnabled,
             isOpen: restaurantData?.isOpen === undefined ? true : restaurantData.isOpen,
         };
 
@@ -105,7 +110,7 @@ export async function GET(req) {
 
 export async function PATCH(req) {
     try {
-        const { userRef, userData, restaurantRef, restaurantData } = await verifyUserAndGetData(req);
+        const { userRef, userData, restaurantRef, restaurantData, restaurantId } = await verifyUserAndGetData(req);
         
         const { name, phone, notifications, gstin, fssai, botPhoneNumberId, deliveryCharge, logoUrl, bannerUrls, codEnabled, address, isOpen, onlinePaymentsEnabled } = await req.json();
 
@@ -129,9 +134,20 @@ export async function PATCH(req) {
             if (logoUrl !== undefined) restaurantUpdateData.logoUrl = logoUrl;
             if (bannerUrls !== undefined) restaurantUpdateData.bannerUrls = bannerUrls;
             if (codEnabled !== undefined) restaurantUpdateData.codEnabled = codEnabled;
-            if (address !== undefined) restaurantUpdateData.address = address; // Save the structured address
-            if (isOpen !== undefined) restaurantUpdateData.isOpen = isOpen;
             if (onlinePaymentsEnabled !== undefined) restaurantUpdateData.onlinePaymentsEnabled = onlinePaymentsEnabled;
+            if (address !== undefined) restaurantUpdateData.address = address; // Save the structured address
+            
+            if (isOpen !== undefined && isOpen !== restaurantData?.isOpen) {
+                restaurantUpdateData.isOpen = isOpen;
+                
+                // Fire-and-forget the notification
+                sendRestaurantStatusChangeNotification({
+                    ownerPhone: restaurantData.ownerPhone,
+                    botPhoneNumberId: restaurantData.botPhoneNumberId,
+                    newStatus: isOpen,
+                    restaurantId: restaurantId,
+                }).catch(e => console.error("Failed to send status change notification:", e));
+            }
 
             if (phone !== undefined && phone !== restaurantData?.ownerPhone) {
                 restaurantUpdateData.ownerPhone = phone;
