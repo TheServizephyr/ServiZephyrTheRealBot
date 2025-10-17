@@ -84,12 +84,14 @@ export const sendOrderStatusUpdateToCustomer = async ({ customerPhone, botPhoneN
             ];
             break;
         default:
+            // Do not send notifications for 'pending' or other unhandled statuses
+            console.log(`[Notification Lib] No template configured for status: ${status}. Skipping notification.`);
             return;
     }
 
     const payloadComponents = [{ type: "body", parameters: parameters }];
     
-    // Add button component for dispatched status
+    // Add button component for dispatched status, which has a dynamic URL
     if (status === 'dispatched') {
         payloadComponents.push({
             type: "button",
