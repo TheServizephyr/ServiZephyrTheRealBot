@@ -133,7 +133,6 @@ export async function PATCH(req) {
 
         if (newStatus === 'dispatched' && deliveryBoyId) {
             updateData.deliveryBoyId = deliveryBoyId;
-            // CORRECTED: Fetching the delivery boy from the restaurant's sub-collection
             const deliveryBoyRef = firestore.collection('restaurants').doc(restaurantId).collection('deliveryBoys').doc(deliveryBoyId);
             const deliveryBoySnap = await deliveryBoyRef.get();
             if (deliveryBoySnap.exists()) {
@@ -168,6 +167,7 @@ export async function PATCH(req) {
         return NextResponse.json({ message: `Backend Error: ${error.message}` }, { status: error.status || 500 });
     }
 }
+
 
 
 
