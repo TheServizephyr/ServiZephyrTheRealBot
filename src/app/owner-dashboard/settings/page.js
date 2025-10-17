@@ -3,15 +3,75 @@
 
 import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { User, Mail, Phone, Shield, Edit, Save, XCircle, Bell, Trash2, KeyRound, Eye, EyeOff, FileText, Bot, Truck, Image as ImageIcon, Upload, X, IndianRupee, MapPin, Wallet } from 'lucide-react';
+import { User, Mail, Phone, Shield, Edit, Save, XCircle, Bell, Trash2, KeyRound, Eye, EyeOff, FileText, Bot, Truck, Image as ImageIcon, Upload, X, IndianRupee, MapPin, Wallet, ChevronsUpDown, Check } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose } from "@/components/ui/dialog";
 import { getAuth, updatePassword, EmailAuthProvider, reauthenticateWithCredential } from 'firebase/auth';
 import Image from 'next/image';
+import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
+import { Command, CommandInput, CommandEmpty, CommandGroup, CommandItem } from '@/components/ui/command';
+import { cn } from '@/lib/utils';
 
 // --- Sub-components for better structure ---
+
+const countries = [
+  { value: 'IN', label: 'India', flag: '🇮🇳' },
+  { value: 'US', label: 'United States', flag: '🇺🇸' },
+  { value: 'AE', label: 'United Arab Emirates', flag: '🇦🇪' },
+  { value: 'GB', label: 'United Kingdom', flag: '🇬🇧' },
+  { value: 'CA', label: 'Canada', flag: '🇨🇦' },
+];
+
+const CountrySelect = ({ value, onSelect, disabled }) => {
+    const [open, setOpen] = useState(false);
+    const selectedCountry = countries.find(c => c.value === value);
+
+    return (
+        <Popover open={open} onOpenChange={setOpen}>
+            <PopoverTrigger asChild>
+                <Button
+                    variant="outline"
+                    role="combobox"
+                    aria-expanded={open}
+                    className="w-full justify-between"
+                    disabled={disabled}
+                >
+                    {selectedCountry ? `${selectedCountry.flag} ${selectedCountry.label}` : "Select country..."}
+                    <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-[200px] p-0">
+                <Command>
+                    <CommandInput placeholder="Search country..." />
+                    <CommandEmpty>No country found.</CommandEmpty>
+                    <CommandGroup>
+                        {countries.map((country) => (
+                            <CommandItem
+                                key={country.value}
+                                value={country.label}
+                                onSelect={() => {
+                                    onSelect(country.value);
+                                    setOpen(false);
+                                }}
+                            >
+                                <Check
+                                    className={cn(
+                                        "mr-2 h-4 w-4",
+                                        value === country.value ? "opacity-100" : "opacity-0"
+                                    )}
+                                />
+                                {country.flag} {country.label}
+                            </CommandItem>
+                        ))}
+                    </CommandGroup>
+                </Command>
+            </PopoverContent>
+        </Popover>
+    );
+};
+
 
 const SectionCard = ({ title, description, children, footer }) => (
     <motion.div 
@@ -438,7 +498,7 @@ export default function SettingsPage() {
                                     </div>
                                     <div>
                                          <Label htmlFor="country">Country</Label>
-                                         <input id="country" type="text" value={editedUser.address.country} onChange={(e) => handleAddressChange('country', e.target.value)} placeholder="Country" required className="w-full mt-1 p-2 rounded-md bg-input border border-border" disabled={!isEditingProfile}/>
+                                         <CountrySelect value={editedUser.address.country} onSelect={(val) => handleAddressChange('country', val)} disabled={!isEditingProfile} />
                                     </div>
                                 </div>
                             </div>
@@ -639,3 +699,5 @@ export default function SettingsPage() {
         </div>
     );
 }
+
+    
