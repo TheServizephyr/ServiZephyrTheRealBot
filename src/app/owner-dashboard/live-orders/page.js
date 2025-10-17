@@ -1,5 +1,4 @@
 
-
 "use client";
 
 import React, { useState, useEffect, useMemo } from 'react';
@@ -120,12 +119,6 @@ const BillModal = ({ order, restaurant, onClose, onPrint }) => {
 const AssignRiderModal = ({ isOpen, onClose, onAssign, order, riders, isUpdating }) => {
     const [selectedRiderId, setSelectedRiderId] = useState(null);
 
-    const handleAssign = async () => {
-        if (selectedRiderId && !isUpdating) {
-            await onAssign(order.id, selectedRiderId);
-        }
-    };
-
     return (
         <Dialog open={isOpen} onOpenChange={onClose}>
             <DialogContent className="bg-background border-border text-foreground">
@@ -154,7 +147,7 @@ const AssignRiderModal = ({ isOpen, onClose, onAssign, order, riders, isUpdating
                 </div>
                 <DialogFooter>
                     <DialogClose asChild><Button variant="secondary" disabled={isUpdating}>Cancel</Button></DialogClose>
-                    <Button onClick={handleAssign} disabled={!selectedRiderId || isUpdating} className="bg-primary hover:bg-primary/90">
+                    <Button onClick={() => onAssign(order.id, selectedRiderId)} disabled={!selectedRiderId || isUpdating} className="bg-primary hover:bg-primary/90">
                         {isUpdating ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <Bike size={16} className="mr-2"/>}
                         {isUpdating ? 'Assigning...' : 'Assign & Dispatch'}
                     </Button>
@@ -374,11 +367,15 @@ export default function LiveOrdersPage() {
   };
   
   const handleAssignRider = async (orderId, riderId) => {
+    if (!riderId) {
+        alert("Please select a rider.");
+        return;
+    }
     setUpdatingOrderId(orderId);
     try {
         await handleAPICall('PATCH', { orderId, newStatus: 'dispatched', deliveryBoyId: riderId });
-        await fetchInitialData(true);
-        setAssignModalData({ isOpen: false, order: null });
+        await fetchInitialData(true); // Refresh data
+        setAssignModalData({ isOpen: false, order: null }); // Close modal on success
     } catch (error) {
         alert(`Error assigning rider: ${error.message}`);
     } finally {
@@ -573,9 +570,3 @@ export default function LiveOrdersPage() {
     </div>
   );
 }
-
-
-
-
-
-    
