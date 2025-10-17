@@ -56,34 +56,17 @@ export const sendOrderStatusUpdateToCustomer = async ({ customerPhone, botPhoneN
 
     switch (status) {
         case 'dispatched':
-            templateName = 'order_dispatch_v2'; // Using the new template name
+            templateName = 'order_dispatched_simple'; // Using the new, simpler template
+            const trackingUrl = `https://servizephyr.com/track/${orderId}`;
             const bodyParams = [
                 { type: "text", text: customerName },
                 { type: "text", text: orderId.substring(0, 8) },
+                { type: "text", text: restaurantName },
                 { type: "text", text: deliveryBoy?.name || 'Our delivery partner' },
-                { type: "text", text: deliveryBoy?.phone || '' } // New parameter for rider's phone
+                { type: "text", text: deliveryBoy?.phone || 'N/A' },
+                { type: "text", text: trackingUrl } // The full URL as the 6th variable
             ];
             components.push({ type: "body", parameters: bodyParams });
-            
-            // Button 1: Track Order (URL button)
-            // The API expects the dynamic part of the URL as the payload
-            components.push({
-                type: "button",
-                sub_type: "url",
-                index: "0",
-                parameters: [{ type: "text", text: orderId }] 
-            });
-
-            // Button 2: Call Rider (Phone number button)
-            if (deliveryBoy?.phone) {
-                // The API expects just the phone number, without country code, as the payload
-                components.push({
-                    type: "button",
-                    sub_type: "call",
-                    index: "1",
-                    parameters: [{ type: "text", text: deliveryBoy.phone }]
-                });
-            }
             break;
         
         case 'confirmed':
