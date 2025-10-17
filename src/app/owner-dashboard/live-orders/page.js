@@ -377,8 +377,8 @@ export default function LiveOrdersPage() {
     setUpdatingOrderId(orderId);
     try {
         await handleAPICall('PATCH', { orderId, newStatus: 'dispatched', deliveryBoyId: riderId });
-        await fetchInitialData(true);
         setAssignModalData({ isOpen: false, order: null });
+        await fetchInitialData(true);
     } catch (error) {
         alert(`Error assigning rider: ${error.message}`);
     } finally {
@@ -573,5 +573,6 @@ export default function LiveOrdersPage() {
     </div>
   );
 }
+
 
 
