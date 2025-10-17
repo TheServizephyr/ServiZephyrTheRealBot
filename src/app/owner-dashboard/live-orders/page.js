@@ -125,6 +125,7 @@ const AssignRiderModal = ({ isOpen, onClose, onAssign, order, riders }) => {
             setIsSubmitting(true);
             try {
                 await onAssign(order.id, selectedRiderId);
+                // The parent component will handle closing the modal after successful assignment
             } catch (error) {
                 // The parent's catch block will show an alert
             } finally {
@@ -163,7 +164,7 @@ const AssignRiderModal = ({ isOpen, onClose, onAssign, order, riders }) => {
                     <DialogClose asChild><Button variant="secondary" disabled={isSubmitting}>Cancel</Button></DialogClose>
                     <Button onClick={handleAssign} disabled={!selectedRiderId || isSubmitting} className="bg-primary hover:bg-primary/90">
                         {isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <Bike size={16} className="mr-2"/>}
-                        {isSubmitting ? 'Assigning...' : 'Assign &amp; Dispatch'}
+                        {isSubmitting ? 'Assigning...' : 'Assign & Dispatch'}
                     </Button>
                 </DialogFooter>
             </DialogContent>
@@ -384,11 +385,11 @@ export default function LiveOrdersPage() {
     setUpdatingOrderId(orderId);
     try {
         await handleAPICall('PATCH', { orderId, newStatus: 'dispatched', deliveryBoyId: riderId });
-        await fetchInitialData(true);
+        await fetchInitialData(true); // Re-fetch data to update UI
         setAssignModalData({ isOpen: false, order: null }); // Close modal on success
     } catch (error) {
         alert(`Error assigning rider: ${error.message}`);
-        setAssignModalData({ isOpen: false, order: null }); // Close modal on error too
+        setAssignModalData({ isOpen: false, order: null }); // Also close modal on error
     } finally {
         setUpdatingOrderId(null);
     }
@@ -580,3 +581,5 @@ export default function LiveOrdersPage() {
     </div>
   );
 }
+
+    

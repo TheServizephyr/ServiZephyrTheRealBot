@@ -107,7 +107,7 @@ export async function GET(req) {
 export async function PATCH(req) {
     try {
         const auth = getAuth();
-        const firestore = getFirestore();
+        const firestore = await getFirestore();
         const { restaurantId, restaurantSnap } = await verifyOwnerAndGetRestaurant(req, auth, firestore);
         const { orderId, newStatus, deliveryBoyId } = await req.json();
 
@@ -167,7 +167,4 @@ export async function PATCH(req) {
     }
 }
 
-
-
-
-
+    
