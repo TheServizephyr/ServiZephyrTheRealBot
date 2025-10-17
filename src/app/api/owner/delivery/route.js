@@ -59,17 +59,44 @@ export async function GET(req) {
         const { restaurantId } = await verifyOwnerAndGetRestaurant(req, auth, firestore);
 
         const boysRef = firestore.collection('restaurants').doc(restaurantId).collection('deliveryBoys');
-        const boysSnap = await boysRef.get();
-        const boys = boysSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-
         const ordersRef = firestore.collection('orders').where('restaurantId', '==', restaurantId);
-        const readyOrdersSnap = await ordersRef.where('status', '==', 'Ready for Dispatch').get();
+
+        // Fetch all boys and ready orders concurrently
+        const [boysSnap, readyOrdersSnap] = await Promise.all([
+            boysRef.get(),
+            ordersRef.where('status', '==', 'Ready for Dispatch').get()
+        ]);
+        
+        let boys = boysSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
         const readyOrders = readyOrdersSnap.docs.map(doc => ({
             id: doc.id,
             customer: doc.data().customerName,
             items: (doc.data().items || []).length
         }));
         
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+
+        // Fetch all delivered orders for today by all boys in this restaurant
+        const deliveredOrdersSnap = await ordersRef
+            .where('status', '==', 'delivered')
+            .where('orderDate', '>=', today)
+            .get();
+
+        const deliveriesByBoy = {};
+        deliveredOrdersSnap.docs.forEach(doc => {
+            const orderData = doc.data();
+            if (orderData.deliveryBoyId) {
+                deliveriesByBoy[orderData.deliveryBoyId] = (deliveriesByBoy[orderData.deliveryBoyId] || 0) + 1;
+            }
+        });
+
+        // Update boys data with today's delivery count
+        boys = boys.map(boy => ({
+            ...boy,
+            deliveriesToday: deliveriesByBoy[boy.id] || 0
+        }));
+
         const performance = {
             totalDeliveries: boys.reduce((sum, boy) => sum + (boy.deliveriesToday || 0), 0),
             avgDeliveryTime: boys.length > 0 ? Math.round(boys.reduce((sum, boy) => sum + (boy.avgDeliveryTime || 0), 0) / boys.length) : 0,

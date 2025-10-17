@@ -13,7 +13,7 @@ export const sendNewOrderToOwner = async ({ ownerPhone, botPhoneNumberId, custom
 
     const notificationPayload = {
         name: "new_order_notification_v2",
-        language: { code: "en" },
+        language: { code: "en_US" },
         components: [
             {
                 type: "body",
@@ -56,15 +56,15 @@ export const sendOrderStatusUpdateToCustomer = async ({ customerPhone, botPhoneN
 
     switch (status) {
         case 'dispatched':
-            templateName = 'order_dispatched_simple'; // Using the new, simpler template
+            templateName = 'order_dispatched_simple';
             const trackingUrl = `https://servizephyr.com/track/${orderId}`;
             const bodyParams = [
                 { type: "text", text: customerName },
                 { type: "text", text: orderId.substring(0, 8) },
                 { type: "text", text: restaurantName },
                 { type: "text", text: deliveryBoy?.name || 'Our delivery partner' },
-                { type: "text", text: deliveryBoy?.phone || 'N/A' },
-                { type: "text", text: trackingUrl } // The full URL as the 6th variable
+                { type: "text", text: deliveryBoy?.phone ? `+91${deliveryBoy.phone}`: 'N/A' },
+                { type: "text", text: trackingUrl }
             ];
             components.push({ type: "body", parameters: bodyParams });
             break;
@@ -90,7 +90,7 @@ export const sendOrderStatusUpdateToCustomer = async ({ customerPhone, botPhoneN
 
     const statusPayload = {
         name: templateName,
-        language: { code: "en" },
+        language: { code: "en_US" },
         components: components,
     };
     
@@ -98,6 +98,7 @@ export const sendOrderStatusUpdateToCustomer = async ({ customerPhone, botPhoneN
       await sendWhatsAppMessage(customerPhoneWithCode, statusPayload, botPhoneNumberId);
     } catch(e) {
       console.error("[Notification Lib] Failed to send WhatsApp status update.", e);
+      throw e;
     }
 };
 
@@ -110,13 +111,12 @@ export const sendRestaurantStatusChangeNotification = async ({ ownerPhone, botPh
 
     const isOpen = newStatus;
     const statusText = isOpen ? "OPEN" : "CLOSED";
-    const oppositeStatusText = isOpen ? "CLOSED" : "OPEN";
     const revertPayload = `revert_status_${restaurantId}_${isOpen ? 'closed' : 'open'}`;
     const retainPayload = `retain_status_${restaurantId}_${isOpen ? 'open' : 'closed'}`;
 
     const payload = {
         name: "restaurant_status_change_alert",
-        language: { code: "en" },
+        language: { code: "en_US" },
         components: [
             {
                 type: "body",
