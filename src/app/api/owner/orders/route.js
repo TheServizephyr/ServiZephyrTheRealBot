@@ -136,7 +136,7 @@ export async function PATCH(req) {
             // Fetch delivery boy's data to send in notification
             const deliveryBoyRef = firestore.collection('restaurants').doc(restaurantId).collection('deliveryBoys').doc(deliveryBoyId);
             const deliveryBoySnap = await deliveryBoyRef.get();
-            if (deliveryBoySnap.exists()) {
+            if (deliveryBoySnap.exists) {
                 deliveryBoyData = deliveryBoySnap.data();
             }
         }
