@@ -1,4 +1,3 @@
-
 'use client';
 
 import React, { useState, useEffect } from 'react';
@@ -13,7 +12,10 @@ import { doc, getDoc, GeoPoint } from 'firebase/firestore';
 import { useFirestore } from '@/firebase';
 import dynamic from 'next/dynamic';
 
-const LiveTrackingMap = dynamic(() => import('@/components/LiveTrackingMap'), { ssr: false });
+const LiveTrackingMap = dynamic(() => import('@/components/LiveTrackingMap'), { 
+    ssr: false,
+    loading: () => <div className="w-full h-full bg-muted flex items-center justify-center"><Loader2 className="animate-spin text-primary"/></div>
+});
 
 const statusConfig = {
   confirmed: { title: 'Order Confirmed', icon: <Check size={24} />, step: 1 },
@@ -105,22 +107,17 @@ export default function OrderTrackingPage() {
     const [error, setError] = useState(null);
     const [loading, setLoading] = useState(true);
 
-    // Real-time listener for the order
     const { data: orderData, isLoading: isOrderLoading, error: orderError } = useDoc(
         orderId ? doc(firestore, 'orders', orderId) : null
     );
 
-    // This effect now logs the specific error from the API
     useEffect(() => {
         if(orderError) {
             console.error("Firestore Order Hook Error:", orderError);
         }
     }, [orderError]);
     
-    // Fetch related data when order data is available
     useEffect(() => {
-        // This effect runs when the order data from useDoc is resolved (loaded).
-        // It's crucial to set loading to false even if orderData is null.
         if (!isOrderLoading) {
             if (orderData) {
                 setOrder(orderData);
@@ -137,21 +134,18 @@ export default function OrderTrackingPage() {
                         console.error("Error fetching related data:", err);
                         setError(err.message);
                     } finally {
-                        setLoading(false); // Set loading false after fetching related data or on error
+                        setLoading(false);
                     }
                 };
                 fetchRelatedData();
             } else {
-                // If useDoc returns no data (and is not loading), it means the order doesn't exist.
-                // Stop the main loading indicator.
                 setLoading(false);
             }
         }
     }, [orderData, isOrderLoading, firestore]);
     
-    // Real-time listener for the delivery boy
     const { data: deliveryBoyData } = useDoc(
-        order?.deliveryBoyId ? doc(firestore, 'deliveryBoys', order.deliveryBoyId) : null
+        (order?.deliveryBoyId && restaurant?.businessType === 'restaurant') ? doc(firestore, 'restaurants', order.restaurantId, 'deliveryBoys', order.deliveryBoyId) : null
     );
     
     useEffect(() => {
@@ -162,8 +156,6 @@ export default function OrderTrackingPage() {
 
 
     const handleRefresh = () => {
-        // This function can be expanded later if needed, but onSnapshot handles real-time.
-        // For now, it provides user feedback.
         setLoading(true);
         setTimeout(() => setLoading(false), 1000);
     };
@@ -195,10 +187,11 @@ export default function OrderTrackingPage() {
             </div>
         )
     }
-
-    const restaurantLocation = new GeoPoint(restaurant?.location?.latitude || 28.7041, restaurant?.location?.longitude || 77.1025);
-    const customerLocation = new GeoPoint(order.customerLocation?.latitude || 28.7041, order.customerLocation?.longitude || 77.1025);
-    const riderLocation = deliveryBoy?.location || null;
+    
+    // Ensure locations are GeoPoints before passing to map
+    const restaurantLocation = restaurant?.location instanceof GeoPoint ? restaurant.location : null;
+    const customerLocation = order.customerLocation instanceof GeoPoint ? order.customerLocation : null;
+    const riderLocation = deliveryBoy?.location instanceof GeoPoint ? deliveryBoy.location : null;
 
 
     return (
@@ -219,11 +212,15 @@ export default function OrderTrackingPage() {
                 </div>
 
                 <div className="flex-grow relative">
-                    <LiveTrackingMap 
-                        restaurantLocation={restaurantLocation}
-                        customerLocation={customerLocation}
-                        riderLocation={riderLocation}
-                    />
+                    {(restaurantLocation && customerLocation) ? (
+                        <LiveTrackingMap 
+                            restaurantLocation={restaurantLocation}
+                            customerLocation={customerLocation}
+                            riderLocation={riderLocation}
+                        />
+                    ) : (
+                         <div className="w-full h-full bg-muted flex items-center justify-center"><p>Location data is unavailable for this order.</p></div>
+                    )}
                 </div>
                 
                 <div className="p-4">
