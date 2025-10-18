@@ -1,5 +1,4 @@
 
-
 "use client";
 
 import React, { useState, useEffect, useMemo } from 'react';
@@ -778,7 +777,7 @@ export default function LiveOrdersPage() {
         </div>
 
         <Tabs defaultValue="All" value={activeFilter} onValueChange={setActiveFilter} className="w-full mb-6">
-            <TabsList className="flex w-full overflow-x-auto bg-muted p-1 h-auto justify-start">
+            <TabsList className="flex md:grid md:grid-cols-7 w-full overflow-x-auto bg-muted p-1 h-auto justify-start">
                 <TabsTrigger value="All">All</TabsTrigger>
                 <TabsTrigger value="New">New</TabsTrigger>
                 <TabsTrigger value="Confirmed">Confirmed</TabsTrigger>
@@ -919,4 +918,5 @@ export default function LiveOrdersPage() {
     
 
     
+
 
