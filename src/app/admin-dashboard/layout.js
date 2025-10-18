@@ -73,13 +73,6 @@ function AdminLayoutContent({ children }) {
   const { theme, setTheme } = useTheme();
   const router = useRouter();
 
-   useEffect(() => {
-    if (typeof window !== 'undefined') {
-        setIsMobile(window.innerWidth < 768);
-        setSidebarOpen(window.innerWidth >= 768);
-    }
-  }, []);
-
   useEffect(() => {
     if (!isMobile) {
       setSidebarOpen(true);
