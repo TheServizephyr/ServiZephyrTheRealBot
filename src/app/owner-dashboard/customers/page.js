@@ -33,6 +33,7 @@ const formatCurrency = (value) => `₹${Number(value || 0).toLocaleString('en-IN
 // --- HELPER FUNCTIONS FOR STATUS ---
 const getCustomerStatus = (customer) => {
     if (!customer || !customer.lastOrderDate) return 'New';
+    if(customer.status === 'claimed' && customer.totalOrders <= 2) return 'Claimed'; // Prioritize 'Claimed' for new-ish customers
     const lastOrderDate = customer.lastOrderDate.seconds ? new Date(customer.lastOrderDate.seconds * 1000) : new Date(customer.lastOrderDate);
     const daysSinceLastOrder = (new Date() - lastOrderDate) / (1000 * 60 * 60 * 24);
     
@@ -53,6 +54,9 @@ const CustomerBadge = ({ status }) => {
   }
   if (status === 'New') {
      return <span title="New Customer" className="flex items-center gap-1 text-xs text-blue-500 bg-blue-500/10 px-2 py-1 rounded-full"><Sparkles size={12} /> New</span>;
+  }
+  if (status === 'Claimed') {
+    return <span title="Claimed via Order" className="flex items-center gap-1 text-xs text-indigo-500 bg-indigo-500/10 px-2 py-1 rounded-full"><Sparkles size={12} /> Claimed</span>;
   }
   return <span title="Active Customer" className="flex items-center gap-1 text-xs text-green-500 bg-green-500/10 px-2 py-1 rounded-full"><Users size={12} /> Active</span>;
 };
@@ -475,6 +479,7 @@ export default function CustomersPage() {
     
     const filterButtons = [
         { label: 'All', value: 'All' },
+        { label: 'Claimed', value: 'Claimed', className: 'bg-indigo-500/10 text-indigo-500 hover:bg-indigo-500/20' },
         { label: 'Loyal', value: 'Loyal', className: 'bg-yellow-500/10 text-yellow-500 hover:bg-yellow-500/20' },
         { label: 'At Risk', value: 'At Risk', className: 'bg-red-500/10 text-red-500 hover:bg-red-500/20' },
         { label: 'New', value: 'New', className: 'bg-blue-500/10 text-blue-500 hover:bg-blue-500/20' },
@@ -579,6 +584,7 @@ export default function CustomersPage() {
                                 <SortableHeader column="lastOrderDate" sortConfig={sortConfig} onSort={handleSort}>Last Order</SortableHeader>
                                 <SortableHeader column="totalOrders" sortConfig={sortConfig} onSort={handleSort}>Total Orders</SortableHeader>
                                 <SortableHeader column="totalSpend" sortConfig={sortConfig} onSort={handleSort}>Total Spend</SortableHeader>
+                                <SortableHeader column="status" sortConfig={sortConfig} onSort={handleSort}>Status</SortableHeader>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-border">
@@ -589,6 +595,7 @@ export default function CustomersPage() {
                                         <td className="p-4"><div className="h-5 bg-muted rounded w-1/2"></div></td>
                                         <td className="p-4"><div className="h-5 bg-muted rounded w-1/4"></div></td>
                                         <td className="p-4"><div className="h-5 bg-muted rounded w-1/2"></div></td>
+                                        <td className="p-4"><div className="h-5 bg-muted rounded w-1/3"></div></td>
                                     </tr>
                                 ))
                             ) : filteredAndSortedCustomers.map(customer => (
@@ -602,7 +609,6 @@ export default function CustomersPage() {
                                         <div className="flex flex-col">
                                            <div className="flex items-center gap-3">
                                                {customer.name}
-                                               <CustomerBadge status={getCustomerStatus(customer)} />
                                            </div>
                                            <span className="text-xs text-muted-foreground">{customer.email}</span>
                                         </div>
@@ -610,11 +616,12 @@ export default function CustomersPage() {
                                     <td className="p-4 text-muted-foreground">{formatDate(customer.lastOrderDate)}</td>
                                     <td className="p-4 text-muted-foreground text-center">{customer.totalOrders}</td>
                                     <td className="p-4 font-semibold text-right">{formatCurrency(customer.totalSpend)}</td>
+                                    <td className="p-4"><CustomerBadge status={getCustomerStatus(customer)} /></td>
                                 </motion.tr>
                             ))}
                              { !loading && filteredAndSortedCustomers.length === 0 && (
                                 <tr>
-                                    <td colSpan="4" className="text-center p-8 text-muted-foreground">
+                                    <td colSpan="5" className="text-center p-8 text-muted-foreground">
                                         No customers found for this filter.
                                     </td>
                                 </tr>
@@ -638,5 +645,7 @@ export default function CustomersPage() {
     );
 }
 
+
+    
 
     
