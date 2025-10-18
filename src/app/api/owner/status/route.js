@@ -2,8 +2,8 @@
 import { NextResponse } from 'next/server';
 import { getAuth, getFirestore } from '@/lib/firebase-admin';
 
-// Helper to verify owner and get their first restaurant
-async function verifyOwnerAndGetRestaurant(req) {
+// Helper to verify owner and get their business
+async function verifyOwnerAndGetBusiness(req) {
     const auth = getAuth();
     const firestore = getFirestore();
     const authHeader = req.headers.get('authorization');
@@ -15,30 +15,42 @@ async function verifyOwnerAndGetRestaurant(req) {
     const uid = decodedToken.uid;
     
     const userDoc = await firestore.collection('users').doc(uid).get();
-    if (!userDoc.exists || userDoc.data().role !== 'owner') {
+    if (!userDoc.exists || (userDoc.data().role !== 'owner' && userDoc.data().role !== 'restaurant-owner' && userDoc.data().role !== 'shop-owner')) {
         throw { message: 'Access Denied: You do not have owner privileges.', status: 403 };
     }
     
+    // **THE FIX: Check both collections**
     const restaurantsQuery = await firestore.collection('restaurants').where('ownerId', '==', uid).limit(1).get();
-    if (restaurantsQuery.empty) {
-        // This can happen during profile completion, so we default to 'pending'
-        return { status: 'pending', restrictedFeatures: [], suspensionRemark: '' };
+    if (!restaurantsQuery.empty) {
+        const restaurantDoc = restaurantsQuery.docs[0];
+        const restaurantData = restaurantDoc.data();
+        return { 
+            status: restaurantData.approvalStatus || 'pending', 
+            restrictedFeatures: restaurantData.restrictedFeatures || [],
+            suspensionRemark: restaurantData.suspensionRemark || '',
+        };
     }
-    
-    const restaurantDoc = restaurantsQuery.docs[0];
-    const restaurantData = restaurantDoc.data();
-    
-    return { 
-        status: restaurantData.approvalStatus || 'pending', 
-        restrictedFeatures: restaurantData.restrictedFeatures || [],
-        suspensionRemark: restaurantData.suspensionRemark || '',
-    };
+
+    const shopsQuery = await firestore.collection('shops').where('ownerId', '==', uid).limit(1).get();
+    if (!shopsQuery.empty) {
+        const shopDoc = shopsQuery.docs[0];
+        const shopData = shopDoc.data();
+        return { 
+            status: shopData.approvalStatus || 'pending', 
+            restrictedFeatures: shopData.restrictedFeatures || [],
+            suspensionRemark: shopData.suspensionRemark || '',
+        };
+    }
+
+    // If neither is found, it's a new user who just completed profile but doc hasn't been created
+    // Or it could be an error. Let the client decide based on 404.
+    throw { message: 'No business associated with this owner.', status: 404 };
 }
 
 
 export async function GET(req) {
     try {
-        const { status, restrictedFeatures, suspensionRemark } = await verifyOwnerAndGetRestaurant(req);
+        const { status, restrictedFeatures, suspensionRemark } = await verifyOwnerAndGetBusiness(req);
         return NextResponse.json({ status, restrictedFeatures, suspensionRemark }, { status: 200 });
     } catch (error) {
         console.error("GET /api/owner/status ERROR:", error);

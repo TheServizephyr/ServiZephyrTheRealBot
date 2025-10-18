@@ -7,7 +7,6 @@ import Sidebar from "@/components/OwnerDashboard/Sidebar";
 import Navbar from "@/components/OwnerDashboard/Navbar";
 import styles from "@/components/OwnerDashboard/OwnerDashboard.module.css";
 import { AnimatePresence, motion } from "framer-motion";
-import Script from "next/script";
 import { ThemeProvider } from "@/components/ThemeProvider";
 import "../globals.css";
 import { auth } from "@/lib/firebase";
@@ -69,24 +68,6 @@ function OwnerDashboardContent({ children }) {
   const pathname = usePathname();
 
   useEffect(() => {
-    // Load Facebook SDK
-    window.fbAsyncInit = function() {
-      window.FB.init({
-        appId            : '1183141156381017',
-        xfbml            : true,
-        version          : 'v19.0'
-      });
-      window.FB.AppEvents.logPageView();
-    };
-    
-    (function(d, s, id){
-       var js, fjs = d.getElementsByTagName(s)[0];
-       if (d.getElementById(id)) {return;}
-       js = d.createElement(s); js.id = id;
-       js.src = "https://connect.facebook.net/en_US/sdk.js";
-       fjs.parentNode.insertBefore(js, fjs);
-     }(document, 'script', 'facebook-jssdk'));
-
     const checkScreenSize = () => {
       const mobile = window.innerWidth < 768;
       setIsMobile(mobile);
@@ -96,28 +77,28 @@ function OwnerDashboardContent({ children }) {
     window.addEventListener('resize', checkScreenSize);
     
     const fetchRestaurantStatus = async (user) => {
+        setLoading(true);
         try {
             const idToken = await user.getIdToken();
             const res = await fetch('/api/owner/status', {
                 headers: { 'Authorization': `Bearer ${idToken}` }
             });
+            const data = await res.json();
             if (res.ok) {
-                const data = await res.json();
                 setRestaurantStatus({
                     status: data.status,
                     restrictedFeatures: data.restrictedFeatures || [],
                     suspensionRemark: data.suspensionRemark || '',
                 });
             } else {
-                 const errorData = await res.json();
-                 // Distinguish between a real error and a "not found" which is normal for new users
-                 if(res.status === 404 && errorData.message.includes("No restaurant associated")) {
+                 if(res.status === 404 && data.message.includes("No business associated")) {
                     setRestaurantStatus({ status: 'pending', restrictedFeatures: [], suspensionRemark: '' });
                  } else {
                     setRestaurantStatus({ status: 'error', restrictedFeatures: [], suspensionRemark: '' });
                  }
             }
         } catch (e) {
+            console.error("Error fetching owner status:", e);
             setRestaurantStatus({ status: 'error', restrictedFeatures: [], suspensionRemark: '' });
         } finally {
             setLoading(false);
@@ -128,7 +109,6 @@ function OwnerDashboardContent({ children }) {
         if (user) {
             fetchRestaurantStatus(user);
         } else {
-            // No user found, redirect immediately
             setLoading(false);
             router.push('/');
         }
