@@ -1,4 +1,5 @@
 
+
 "use client";
 
 import {
@@ -47,7 +48,7 @@ const settingsItems = [
 
 
 export default function Sidebar({ isOpen, setIsOpen, isMobile, isCollapsed, restrictedFeatures = [], status }) {
-  const [businessType, setBusinessType] = useState(null);
+  const [businessType, setBusinessType] = useState('restaurant'); // Default to restaurant
 
   useEffect(() => {
     // --- THE FIX ---
@@ -66,9 +67,11 @@ export default function Sidebar({ isOpen, setIsOpen, isMobile, isCollapsed, rest
             const userDoc = await getDoc(userDocRef);
             if (userDoc.exists()) {
                 const fetchedType = userDoc.data().businessType || 'restaurant';
-                setBusinessType(fetchedType);
-                // Also update localStorage to keep it in sync
-                localStorage.setItem('businessType', fetchedType);
+                if (fetchedType !== storedBusinessType) {
+                  setBusinessType(fetchedType);
+                  // Also update localStorage to keep it in sync
+                  localStorage.setItem('businessType', fetchedType);
+                }
             }
         } catch (error) {
             console.error("Error fetching business type from Firestore:", error);
@@ -77,7 +80,15 @@ export default function Sidebar({ isOpen, setIsOpen, isMobile, isCollapsed, rest
         }
       }
     };
-    fetchBusinessType();
+    
+    // Auth listener to trigger fetch
+    const unsubscribe = auth.onAuthStateChanged((user) => {
+        if (user) {
+            fetchBusinessType();
+        }
+    });
+
+    return () => unsubscribe();
   }, []);
 
   const getIsDisabled = (featureId) => {

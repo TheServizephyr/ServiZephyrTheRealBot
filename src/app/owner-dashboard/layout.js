@@ -123,7 +123,7 @@ function OwnerDashboardContent({ children }) {
         // Trust localStorage first to prevent redirect flicker on page load.
         const storedRole = localStorage.getItem('role');
 
-        if (user && storedRole === 'owner') {
+        if (user && (storedRole === 'owner' || storedRole === 'restaurant-owner' || storedRole === 'shop-owner')) {
             fetchRestaurantStatus(user);
         } else if (user) {
             // User is logged in but not an owner, redirect

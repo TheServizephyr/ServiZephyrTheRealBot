@@ -1,4 +1,5 @@
 
+
 'use client';
 
 import { useState, useEffect } from 'react';
@@ -55,7 +56,7 @@ export default function CompleteProfile() {
 
           if (userRole && userRole !== 'none') {
             localStorage.setItem('role', userRole);
-            if (userRole === 'owner') {
+            if (userRole === 'owner' || userRole === 'restaurant-owner' || userRole === 'shop-owner') {
               // Ensure businessType is also stored for owner roles
               localStorage.setItem('businessType', businessType || 'restaurant');
               router.push('/owner-dashboard');
