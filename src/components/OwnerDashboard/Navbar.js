@@ -1,7 +1,6 @@
-
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import Image from "next/image";
 import { motion, AnimatePresence } from "framer-motion";
 import { Search, Bell, User, Sun, Moon, Menu, Store, X } from "lucide-react";
@@ -21,6 +20,7 @@ export default function Navbar({ isSidebarOpen, setSidebarOpen }) {
   const [loadingStatus, setLoadingStatus] = useState(true);
   const { theme, setTheme } = useTheme();
   const router = useRouter();
+  const dropdownRef = useRef(null);
 
   useEffect(() => {
     const fetchStatus = async () => {
@@ -41,6 +41,22 @@ export default function Navbar({ isSidebarOpen, setSidebarOpen }) {
     };
     fetchStatus();
   }, []);
+
+  // Effect to handle clicking outside the dropdown
+  useEffect(() => {
+    function handleClickOutside(event) {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
+        setDropdownOpen(false);
+      }
+    }
+    // Bind the event listener
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => {
+      // Unbind the event listener on clean up
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, [dropdownRef]);
+
 
   const handleLogout = async () => {
     try {
@@ -118,7 +134,7 @@ export default function Navbar({ isSidebarOpen, setSidebarOpen }) {
           <Bell size={22} />
         </button>
 
-        <div className="relative">
+        <div className="relative" ref={dropdownRef}>
           <button
             onClick={() => setDropdownOpen(!dropdownOpen)}
             className={`${styles.profileBtn} ${styles.iconButton}`}
@@ -152,13 +168,13 @@ export default function Navbar({ isSidebarOpen, setSidebarOpen }) {
                     />
                   </Label>
                 </div>
-                <div className={styles.dropdownDivider}></div>
+                 <div className={styles.dropdownDivider}></div>
                 <a href="/owner-dashboard/settings" className={styles.dropdownItem}>
-                  <User size={16} /> Profile
+                  <User size={16} /> <span className="font-semibold">Profile</span>
                 </a>
                 <div className={styles.dropdownDivider}></div>
                 <button onClick={handleLogout} className={cn(styles.dropdownItem, styles.logoutButton)}>
-                  Logout
+                  <span className="font-semibold">Logout</span>
                 </button>
               </MotionDiv>
             )}
