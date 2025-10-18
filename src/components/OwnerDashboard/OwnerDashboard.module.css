@@ -94,7 +94,7 @@
 .collapseBtn {
   position: absolute;
   top: 1rem;
-  left: 1rem;
+  left: 12px;
   width: 2.5rem;
   height: 2.5rem;
   border-radius: 0.5rem;
@@ -130,7 +130,7 @@
 }
 
 .menuGroup {
-  padding: 0 1rem;
+  padding: 0.5rem 1rem;
 }
 
 .menuGroupTitle {
@@ -165,6 +165,10 @@
   white-space: nowrap;
   overflow: hidden;
   position: relative;
+  justify-content: flex-start;
+}
+.sidebarLinkCollapsed {
+  justify-content: center;
 }
 
 .sidebarLink:hover {
