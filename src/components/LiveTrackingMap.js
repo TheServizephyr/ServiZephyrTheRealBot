@@ -4,7 +4,6 @@ import React, { useEffect, useMemo } from 'react';
 import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
-import { Loader2 } from 'lucide-react';
 
 // FIX: Default Leaflet icons can be broken in Next.js, so we re-set them.
 const iconDefault = L.icon({
@@ -72,7 +71,7 @@ const LiveTrackingMap = ({ restaurantLocation, customerLocation, riderLocation }
     if (!restaurantLocation || !customerLocation) {
         return (
             <div className="w-full h-full bg-muted flex items-center justify-center">
-                <p>Location data is unavailable for this order.</p>
+                <p className="text-muted-foreground">Location data is unavailable for this order.</p>
             </div>
         );
     }

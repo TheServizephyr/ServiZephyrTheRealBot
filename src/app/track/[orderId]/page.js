@@ -156,7 +156,6 @@ export default function OrderTrackingPage() {
                 } else {
                     setError('Associated business not found.');
                 }
-                // Once we have order and restaurant, we can stop the main loader
                 setLoading(false); 
             },
             (err) => {
@@ -166,7 +165,7 @@ export default function OrderTrackingPage() {
         );
 
         if (order.deliveryBoyId) {
-            const riderRef = doc(db, businessCollection, order.restaurantId, 'deliveryBoys', order.deliveryBoyId);
+            const riderRef = doc(db, 'deliveryBoys', order.deliveryBoyId);
             unsubRider = onSnapshot(riderRef,
                 (riderSnap) => {
                     setDeliveryBoy(riderSnap.exists() ? { id: riderSnap.id, ...riderSnap.data() } : null);
@@ -183,6 +182,33 @@ export default function OrderTrackingPage() {
         };
 
     }, [order]);
+
+
+    const restaurantLocation = useMemo(() => {
+        const loc = restaurant?.address?.location;
+        if (loc instanceof GeoPoint) {
+            return { latitude: loc.latitude, longitude: loc.longitude };
+        }
+        return null;
+    }, [restaurant]);
+
+    const customerLocation = useMemo(() => {
+        // Assuming customer address is on the order document.
+        // It might be nested, e.g., order.customerAddress.location
+        const loc = order?.customerAddress?.location; // Adjust path as needed
+        if (loc instanceof GeoPoint) {
+            return { latitude: loc.latitude, longitude: loc.longitude };
+        }
+        return null;
+    }, [order]);
+
+    const riderLocation = useMemo(() => {
+        const loc = deliveryBoy?.location;
+        if (loc instanceof GeoPoint) {
+            return { latitude: loc.latitude, longitude: loc.longitude };
+        }
+        return null;
+    }, [deliveryBoy]);
 
 
     if (loading) {
@@ -213,10 +239,6 @@ export default function OrderTrackingPage() {
         )
     }
     
-    const restaurantLocation = restaurant?.address?.location instanceof GeoPoint ? restaurant.address.location : null;
-    const customerLocation = order.customerAddress?.location instanceof GeoPoint ? order.customerAddress.location : null;
-    const riderLocation = deliveryBoy?.location instanceof GeoPoint ? deliveryBoy.location : null;
-
     const showRiderDetails = order.status === 'dispatched' || order.status === 'delivered';
 
 
