@@ -59,6 +59,7 @@ export async function GET(req) {
         
         const { searchParams } = new URL(req.url);
         const orderId = searchParams.get('id');
+        const customerId = searchParams.get('customerId');
         
         if (orderId) {
             const orderRef = firestore.collection('orders').doc(orderId);
@@ -77,10 +78,21 @@ export async function GET(req) {
                 orderData = { ...orderData, orderDate: orderData.orderDate.toDate().toISOString() };
             }
 
-
             const businessData = businessSnap.data();
+            
+            // If customerId is provided, fetch customer details as well
+            let customerData = null;
+            if (customerId) {
+                const businessCollectionName = businessData.businessType === 'shop' ? 'shops' : 'restaurants';
+                const customerRef = firestore.collection(businessCollectionName).doc(businessId).collection('customers').doc(customerId);
+                const customerSnap = await customerRef.get();
+                if (customerSnap.exists) {
+                    customerData = customerSnap.data();
+                }
+            }
 
-            return NextResponse.json({ order: orderData, restaurant: businessData }, { status: 200 });
+
+            return NextResponse.json({ order: orderData, restaurant: businessData, customer: customerData }, { status: 200 });
         }
 
         const ordersRef = firestore.collection('orders');
@@ -205,4 +217,5 @@ export async function PATCH(req) {
         return NextResponse.json({ message: `Backend Error: ${error.message}` }, { status: error.status || 500 });
     }
 }
+
 

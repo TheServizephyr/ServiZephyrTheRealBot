@@ -4,7 +4,7 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { RefreshCw, ChevronUp, ChevronDown, Check, CookingPot, Bike, PartyPopper, Undo, Bell, PackageCheck, Printer, X, Loader2, IndianRupee, Wallet, History, ClockIcon, User } from 'lucide-react';
+import { RefreshCw, ChevronUp, ChevronDown, Check, CookingPot, Bike, PartyPopper, Undo, Bell, PackageCheck, Printer, X, Loader2, IndianRupee, Wallet, History, ClockIcon, User, Phone, MapPin } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { auth } from '@/lib/firebase';
 import { cn } from "@/lib/utils";
@@ -303,6 +303,86 @@ const AssignRiderModal = ({ isOpen, onClose, onAssign, order, riders }) => {
     );
 };
 
+const OrderDetailModal = ({ data, isOpen, onClose }) => {
+    if (!isOpen || !data) return null;
+    const { order, customer } = data;
+    const orderDate = new Date(order.orderDate?.seconds ? order.orderDate.seconds * 1000 : order.orderDate);
+
+    return (
+        <Dialog open={isOpen} onOpenChange={onClose}>
+            <DialogContent className="max-w-2xl bg-card border-border text-foreground">
+                <DialogHeader>
+                    <DialogTitle>Details for Order #{order.id.substring(0, 8)}</DialogTitle>
+                </DialogHeader>
+                <Tabs defaultValue="order" className="w-full">
+                    <TabsList className="grid w-full grid-cols-2">
+                        <TabsTrigger value="order">Order Details</TabsTrigger>
+                        <TabsTrigger value="customer">Customer Details</TabsTrigger>
+                    </TabsList>
+                    <TabsContent value="order" className="mt-4 space-y-4 max-h-[60vh] overflow-y-auto p-1 pr-4">
+                        <div className="text-sm space-y-1">
+                            <p><strong>Order ID:</strong> <span className="font-mono">{order.id}</span></p>
+                            <p><strong>Time:</strong> {format(orderDate, 'dd/MM/yyyy, hh:mm a')}</p>
+                            <p><strong>Payment:</strong> <span className={cn("font-semibold", order.paymentDetails.method === 'cod' ? 'text-yellow-500' : 'text-green-400')}>{order.paymentDetails.method.toUpperCase()}</span></p>
+                        </div>
+                         <div className="space-y-2 border-t border-border pt-4">
+                            <h4 className="font-semibold">Items</h4>
+                             <ul className="list-disc pl-5 text-muted-foreground text-sm">
+                                {(order.items || []).map((item, index) => (
+                                    <li key={index} className="mb-1">{item.qty}x {item.name} - ₹{(item.qty * item.price).toFixed(2)}</li>
+                                ))}
+                            </ul>
+                        </div>
+                        {order.notes && (
+                             <div className="space-y-2 border-t border-border pt-4">
+                                <h4 className="font-semibold">Notes from Customer</h4>
+                                <p className="text-sm text-muted-foreground italic">"{order.notes}"</p>
+                            </div>
+                        )}
+                        <div className="space-y-1 border-t border-border pt-4 text-sm">
+                            <div className="flex justify-between"><span>Subtotal:</span> <span className="font-medium">₹{order.subtotal?.toFixed(2)}</span></div>
+                            {order.discount > 0 && <div className="flex justify-between text-green-400"><span>Discount:</span> <span className="font-medium">- ₹{order.discount?.toFixed(2)}</span></div>}
+                            <div className="flex justify-between"><span>Delivery:</span> <span>₹{order.deliveryCharge?.toFixed(2)}</span></div>
+                            <div className="flex justify-between"><span>Taxes (CGST+SGST):</span> <span>₹{(order.cgst + order.sgst).toFixed(2)}</span></div>
+                            <div className="border-t border-dashed my-2"></div>
+                            <div className="flex justify-between text-base font-bold"><span>Grand Total:</span> <span>₹{order.totalAmount?.toFixed(2)}</span></div>
+                        </div>
+                    </TabsContent>
+                    <TabsContent value="customer" className="mt-4 space-y-4 max-h-[60vh] overflow-y-auto p-1">
+                        <div className="space-y-2">
+                             <div className="flex items-center gap-3">
+                                <User size={16} className="text-muted-foreground"/>
+                                <span className="font-semibold">{customer.name}</span>
+                             </div>
+                             <div className="flex items-center gap-3">
+                                <Phone size={16} className="text-muted-foreground"/>
+                                <span>{customer.phone}</span>
+                             </div>
+                             <div className="flex items-start gap-3">
+                                <MapPin size={16} className="text-muted-foreground mt-1"/>
+                                <span className="flex-1">{order.customerAddress}</span>
+                             </div>
+                        </div>
+                        <div className="grid grid-cols-2 gap-4 border-t border-border pt-4">
+                           <div className="bg-muted p-3 rounded-lg text-center">
+                                <p className="text-xs text-muted-foreground">Total Spend</p>
+                                <p className="text-lg font-bold">₹{customer.totalSpend?.toLocaleString() || 0}</p>
+                           </div>
+                           <div className="bg-muted p-3 rounded-lg text-center">
+                                <p className="text-xs text-muted-foreground">Total Orders</p>
+                                <p className="text-lg font-bold">{customer.totalOrders || 0}</p>
+                           </div>
+                        </div>
+                        <Link href={`/owner-dashboard/customers?customerId=${order.customerId}`}>
+                            <Button variant="outline" className="w-full">View Full Customer Profile</Button>
+                        </Link>
+                    </TabsContent>
+                </Tabs>
+            </DialogContent>
+        </Dialog>
+    );
+};
+
 
 const ActionButton = ({ status, onNext, onRevert, order, onRejectClick, isUpdating, onPrintClick, onAssignClick }) => {
     const isConfirmable = status === 'pending' || status === 'paid';
@@ -420,6 +500,7 @@ export default function LiveOrdersPage() {
   const [billData, setBillData] = useState({ order: null, restaurant: null });
   const [assignModalData, setAssignModalData] = useState({ isOpen: false, order: null });
   const [rejectionModalData, setRejectionModalData] = useState({ isOpen: false, order: null });
+  const [detailModalData, setDetailModalData] = useState({ isOpen: false, data: null });
   const [activeFilter, setActiveFilter] = useState('All');
   const searchParams = useSearchParams();
   const impersonatedOwnerId = searchParams.get('impersonate_owner_id');
@@ -559,6 +640,18 @@ export default function LiveOrdersPage() {
       }
   };
 
+  const handleDetailClick = async (orderId, customerId) => {
+    try {
+      setUpdatingOrderId(orderId);
+      const data = await handleAPICall('GET', { id: orderId, customerId: customerId });
+      setDetailModalData({ isOpen: true, data });
+    } catch(e) {
+      alert("Could not load details: " + e.message);
+    } finally {
+      setUpdatingOrderId(null);
+    }
+  };
+
   const handlePrint = () => {
     window.print();
   };
@@ -613,6 +706,12 @@ export default function LiveOrdersPage() {
                 onPrint={handlePrint}
             />
         )}
+        
+        <OrderDetailModal
+            isOpen={detailModalData.isOpen}
+            onClose={() => setDetailModalData({ isOpen: false, data: null })}
+            data={detailModalData.data}
+        />
 
         {assignModalData.isOpen && (
             <AssignRiderModal
@@ -693,9 +792,9 @@ export default function LiveOrdersPage() {
                                         <div className="font-bold text-foreground text-sm truncate max-w-[100px] sm:max-w-none">{order.id}</div>
                                         <div className="flex items-center gap-2">
                                             <div className="text-sm text-muted-foreground">{order.customer}</div>
-                                            <Link href={`/owner-dashboard/customers?customerId=${order.customerId}`} title="View Customer Profile">
+                                             <button onClick={() => handleDetailClick(order.id, order.customerId)} title="View Customer & Order Details">
                                                 <User size={14} className="text-primary hover:text-primary/80 cursor-pointer"/>
-                                            </Link>
+                                            </button>
                                         </div>
                                          {order.paymentDetails?.method === 'cod' ? (
                                             <div className="mt-1 flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full bg-yellow-500/20 text-yellow-400 border border-yellow-500/30 w-fit">
