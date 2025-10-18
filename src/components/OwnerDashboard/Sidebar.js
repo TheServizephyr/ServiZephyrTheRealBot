@@ -15,10 +15,14 @@ import {
   Lock,
   Bot,
   MessageSquare,
-  Banknote
+  Banknote,
+  X,
+  Menu
 } from "lucide-react";
 import styles from "./OwnerDashboard.module.css";
 import SidebarLink from "./SidebarLink";
+import { motion } from 'framer-motion';
+
 
 const menuItems = [
   { name: "Dashboard", icon: LayoutDashboard, href: "/owner-dashboard", featureId: "dashboard" },
@@ -63,7 +67,14 @@ export default function Sidebar({ isOpen, setIsOpen, isMobile, isCollapsed, rest
             className={styles.collapseBtn}
             onClick={() => setIsOpen(prev => !prev)}
         >
-            {isCollapsed ? <ChevronRight size={20} /> : <ChevronLeft size={20} />}
+             <motion.div
+                key={isCollapsed ? 'menu' : 'close'}
+                initial={{ opacity: 0, scale: 0.5, rotate: -90 }}
+                animate={{ opacity: 1, scale: 1, rotate: 0 }}
+                transition={{ duration: 0.3, ease: 'easeOut' }}
+             >
+                {isCollapsed ? <Menu size={20} /> : <X size={20} />}
+            </motion.div>
         </button>
       )}
 

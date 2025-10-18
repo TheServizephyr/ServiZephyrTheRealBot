@@ -11,7 +11,7 @@ import Script from "next/script";
 import { ThemeProvider } from "@/components/ThemeProvider";
 import "../globals.css";
 import { auth } from "@/lib/firebase";
-import { AlertTriangle, HardHat, ShieldOff, Salad, XCircle, Lock, Mail, Phone, MessageSquare } from 'lucide-react';
+import { AlertTriangle, HardHat, ShieldOff, Salad, XCircle, Lock, Mail, Phone, MessageSquare, Menu, X } from 'lucide-react';
 import { Button } from "@/components/ui/button";
 import { usePathname, useRouter } from "next/navigation";
 
@@ -57,7 +57,7 @@ function FeatureLockScreen({ remark, featureId }) {
 
 
 function OwnerDashboardContent({ children }) {
-  const [isSidebarOpen, setSidebarOpen] = useState(false);
+  const [isSidebarOpen, setSidebarOpen] = useState(true);
   const [isMobile, setIsMobile] = useState(null);
   const [loading, setLoading] = useState(true);
   const [restaurantStatus, setRestaurantStatus] = useState({
@@ -156,7 +156,7 @@ function OwnerDashboardContent({ children }) {
       // Handle pending, rejected, error states
       switch(restaurantStatus.status) {
           case 'pending':
-              if (pathname.endsWith('/owner-dashboard/menu') || pathname.endsWith('/owner-dashboard/settings') || pathname.endsWith('/owner-dashboard/connections')) {
+              if (pathname.endsWith('/owner-dashboard/menu') || pathname.endsWith('/owner-dashboard/settings') || pathname.endsWith('/owner-dashboard/connections') || pathname.endsWith('/owner-dashboard/payout-settings')) {
                   return null;
               }
               icon = <HardHat className="h-16 w-16 text-yellow-400" />;
