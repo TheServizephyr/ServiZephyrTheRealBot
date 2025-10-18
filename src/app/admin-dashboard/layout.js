@@ -108,7 +108,7 @@ function AdminLayoutContent({ children }) {
                 Dashboard
               </SidebarLink>
               <SidebarLink href="/admin-dashboard/restaurants" icon={Store} isCollapsed={isCollapsed}>
-                Restaurants
+                Listings
               </SidebarLink>
               <SidebarLink href="/admin-dashboard/users" icon={Users} isCollapsed={isCollapsed}>
                 Users

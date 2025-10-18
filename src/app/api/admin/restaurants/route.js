@@ -92,6 +92,7 @@ export async function PATCH(req) {
             updateData.restrictedFeatures = restrictedFeatures || [];
             updateData.suspensionRemark = suspensionRemark || '';
         } else {
+            // Clear suspension details when moving to another status
             updateData.restrictedFeatures = [];
             updateData.suspensionRemark = '';
         }
