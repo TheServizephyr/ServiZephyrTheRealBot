@@ -10,6 +10,9 @@ import { cn } from "@/lib/utils";
 import { formatDistanceToNowStrict } from 'date-fns';
 import { useSearchParams } from 'next/navigation';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose } from "@/components/ui/dialog";
+import { Label } from '@/components/ui/label';
+import { Switch } from '@/components/ui/switch';
+
 
 const statusConfig = {
   'pending': { color: 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30' },
@@ -118,13 +121,25 @@ const BillModal = ({ order, restaurant, onClose, onPrint }) => {
 
 const AssignRiderModal = ({ isOpen, onClose, onAssign, order, riders }) => {
     const [selectedRiderId, setSelectedRiderId] = useState(null);
+    const [markAsActive, setMarkAsActive] = useState(false);
     const [isSubmitting, setIsSubmitting] = useState(false);
+
+    const selectedRider = useMemo(() => riders.find(r => r.id === selectedRiderId), [selectedRiderId, riders]);
+    const isSelectedRiderInactive = selectedRider?.status === 'Inactive';
+
+    useEffect(() => {
+        if (isOpen) {
+            setSelectedRiderId(null);
+            setMarkAsActive(false);
+            setIsSubmitting(false);
+        }
+    }, [isOpen]);
 
     const handleAssign = async () => {
         if (selectedRiderId) {
             setIsSubmitting(true);
             try {
-                await onAssign(order.id, selectedRiderId);
+                await onAssign(order.id, selectedRiderId, markAsActive);
                 onClose();
             } catch (error) {
                 // The parent's catch block will show an alert
@@ -139,7 +154,7 @@ const AssignRiderModal = ({ isOpen, onClose, onAssign, order, riders }) => {
             <DialogContent className="bg-background border-border text-foreground">
                 <DialogHeader>
                     <DialogTitle>Assign Rider for Order #{order?.id.substring(0, 5)}</DialogTitle>
-                    <DialogDescription>Select an available rider to dispatch this order.</DialogDescription>
+                    <DialogDescription>Select a rider to dispatch this order.</DialogDescription>
                 </DialogHeader>
                 <div className="py-4 space-y-3 max-h-60 overflow-y-auto">
                     {riders.length > 0 ? riders.map(rider => (
@@ -153,16 +168,37 @@ const AssignRiderModal = ({ isOpen, onClose, onAssign, order, riders }) => {
                                     : 'bg-muted/50 border-border hover:bg-muted'
                             )}
                         >
-                            <p className="font-bold text-foreground">{rider.name}</p>
-                            <p className="text-sm text-muted-foreground">{rider.phone}</p>
+                            <div>
+                                <p className="font-bold text-foreground">{rider.name}</p>
+                                <p className="text-sm text-muted-foreground">{rider.phone}</p>
+                            </div>
+                             {rider.status === 'Inactive' && <span className="text-xs font-semibold px-2 py-1 bg-red-500/10 text-red-500 rounded-full">Inactive</span>}
                         </div>
                     )) : (
-                        <p className="text-center text-muted-foreground py-4">No available riders found. Please add riders in the 'Delivery' section.</p>
+                        <p className="text-center text-muted-foreground py-4">No riders found. Please add riders in the 'Delivery' section.</p>
                     )}
                 </div>
+                 {isSelectedRiderInactive && (
+                    <motion.div
+                        initial={{ opacity: 0, y: -10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        className="bg-yellow-500/10 border border-yellow-500/20 p-4 rounded-lg flex items-center justify-between"
+                    >
+                        <div className="flex flex-col">
+                            <Label htmlFor="mark-active" className="font-semibold text-yellow-200">This rider is currently inactive.</Label>
+                            <span className="text-xs text-yellow-300/80">Toggle on to make them available and assign the order.</span>
+                        </div>
+                        <Switch
+                            id="mark-active"
+                            checked={markAsActive}
+                            onCheckedChange={setMarkAsActive}
+                            aria-label="Mark as Active & Assign"
+                        />
+                    </motion.div>
+                )}
                 <DialogFooter>
                     <DialogClose asChild><Button variant="secondary" disabled={isSubmitting}>Cancel</Button></DialogClose>
-                    <Button onClick={handleAssign} disabled={!selectedRiderId || isSubmitting} className="bg-primary hover:bg-primary/90">
+                    <Button onClick={handleAssign} disabled={!selectedRiderId || (isSelectedRiderInactive && !markAsActive) || isSubmitting} className="bg-primary hover:bg-primary/90">
                         {isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <Bike size={16} className="mr-2"/>}
                         {isSubmitting ? 'Assigning...' : 'Assign & Dispatch'}
                     </Button>
@@ -316,7 +352,8 @@ export default function LiveOrdersPage() {
         
         if (ridersRes.ok) {
             const ridersData = await ridersRes.json();
-            setRiders(ridersData.boys.filter(boy => boy.status === 'Available'));
+            // Now we get ALL riders to show in the modal
+            setRiders(ridersData.boys || []);
         }
 
         setOrders(ordersData.orders || []);
@@ -376,23 +413,23 @@ export default function LiveOrdersPage() {
     }
   };
   
-  const handleAssignRider = async (orderId, riderId) => {
-    console.log(`[FE] handleAssignRider called for order ${orderId} with rider ${riderId}`);
+  const handleAssignRider = async (orderId, riderId, activateRider) => {
     setUpdatingOrderId(orderId);
     try {
-        console.log('[FE] Attempting to assign rider via API call...');
-        const response = await handleAPICall('PATCH', { orderId, newStatus: 'dispatched', deliveryBoyId: riderId });
-        console.log('[FE] API call successful, response:', response);
+        if (activateRider) {
+             console.log(`Activating rider ${riderId}...`);
+             // We send a separate, non-blocking call to update the rider status
+             handleAPICall('PATCH', { boy: { id: riderId, status: 'Available' } }, '/api/owner/delivery');
+        }
         
-        console.log('[FE] Refreshing data...');
+        await handleAPICall('PATCH', { orderId, newStatus: 'dispatched', deliveryBoyId: riderId });
         await fetchInitialData(true);
-        console.log('[FE] Data refreshed.');
-
         setAssignModalData({ isOpen: false, order: null });
     } catch (error) {
-        console.error('[FE] Error assigning rider:', error);
         alert(`Error assigning rider: ${error.message}`);
         setAssignModalData({ isOpen: false, order: null });
+        // Re-throw to be caught by the modal's finally block
+        throw error;
     } finally {
         setUpdatingOrderId(null);
     }

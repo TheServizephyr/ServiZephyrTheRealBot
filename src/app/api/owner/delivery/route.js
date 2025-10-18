@@ -64,7 +64,7 @@ export async function GET(req) {
         // Fetch all boys and ready orders concurrently
         const [boysSnap, readyOrdersSnap] = await Promise.all([
             boysRef.get(),
-            ordersRef.where('status', '==', 'Ready for Dispatch').get()
+            ordersRef.where('status', '==', 'preparing').get()
         ]);
         
         let boys = boysSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
@@ -169,6 +169,7 @@ export async function PATCH(req) {
 
         const boyRef = firestore.collection('restaurants').doc(restaurantId).collection('deliveryBoys').doc(boy.id);
         
+        // Remove the id from the object to prevent it from being written to the doc
         const { id, ...updateData } = boy;
 
         // If a rider is marked as inactive, clear their location.

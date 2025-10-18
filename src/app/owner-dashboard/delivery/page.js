@@ -296,12 +296,12 @@ export default function DeliveryPage() {
     const searchParams = useSearchParams();
     const impersonatedOwnerId = searchParams.get('impersonate_owner_id');
 
-    const handleApiCall = async (method, body) => {
+    const handleApiCall = async (method, body, endpoint = '/api/owner/delivery') => {
         const user = auth.currentUser;
         if (!user) throw new Error("Authentication required.");
         const idToken = await user.getIdToken();
         
-        let url = new URL('/api/owner/delivery', window.location.origin);
+        let url = new URL(endpoint, window.location.origin);
         if (impersonatedOwnerId) {
             url.searchParams.append('impersonate_owner_id', impersonatedOwnerId);
         }
@@ -319,7 +319,7 @@ export default function DeliveryPage() {
     const fetchData = async (isManualRefresh = false) => {
         if (!isManualRefresh) setLoading(true);
         try {
-            const result = await handleApiCall('GET');
+            const result = await handleApiCall('GET', undefined, '/api/owner/delivery');
             setData(result);
         } catch (error) {
             console.error(error);
@@ -368,7 +368,7 @@ export default function DeliveryPage() {
     
     const handleStatusToggle = async (boy, newStatus) => {
          try {
-            await handleApiCall('PATCH', { boy: { ...boy, status: newStatus } });
+            await handleApiCall('PATCH', { boy: { ...boy, status: newStatus } }, '/api/owner/delivery');
             await fetchData(true);
         } catch (error) {
             alert(`Error updating status: ${error.message}`);
