@@ -15,17 +15,23 @@ import {
   Lock,
   Bot,
   MessageSquare,
-  Banknote
+  Banknote,
+  Package as PackageIcon // Using an alias to avoid name conflicts
 } from "lucide-react";
 import styles from "./OwnerDashboard.module.css";
 import SidebarLink from "./SidebarLink";
 import { motion } from 'framer-motion';
+import { useState, useEffect } from 'react';
+import { auth, db } from '@/lib/firebase';
+import { doc, getDoc } from 'firebase/firestore';
 
 
-const menuItems = [
+const getMenuItems = (businessType) => [
   { name: "Dashboard", icon: LayoutDashboard, href: "/owner-dashboard", featureId: "dashboard" },
   { name: "Live Orders", icon: ClipboardList, href: "/owner-dashboard/live-orders", featureId: "live-orders" },
-  { name: "Menu", icon: Salad, href: "/owner-dashboard/menu", featureId: "menu" },
+  businessType === 'shop' 
+    ? { name: "Items", icon: PackageIcon, href: "/owner-dashboard/menu", featureId: "menu" } 
+    : { name: "Menu", icon: Salad, href: "/owner-dashboard/menu", featureId: "menu" },
   { name: "Customers", icon: Users, href: "/owner-dashboard/customers", featureId: "customers" },
   { name: "Analytics", icon: BarChart2, href: "/owner-dashboard/analytics", featureId: "analytics" },
   { name: "Delivery", icon: Truck, href: "/owner-dashboard/delivery", featureId: "delivery" },
@@ -41,19 +47,33 @@ const settingsItems = [
 
 
 export default function Sidebar({ isOpen, setIsOpen, isMobile, isCollapsed, restrictedFeatures = [], status }) {
+  const [businessType, setBusinessType] = useState(null);
+
+  useEffect(() => {
+    const fetchBusinessType = async () => {
+      const user = auth.currentUser;
+      if (user) {
+        const userDocRef = doc(db, "users", user.uid);
+        const userDoc = await getDoc(userDocRef);
+        if (userDoc.exists()) {
+          setBusinessType(userDoc.data().businessType || 'restaurant'); // Default to restaurant
+        }
+      }
+    };
+    fetchBusinessType();
+  }, []);
 
   const getIsDisabled = (featureId) => {
-    // If restaurant is pending or rejected, only menu and settings are enabled.
     if (status === 'pending' || status === 'rejected') {
       return !['menu', 'settings', 'connections', 'payout-settings'].includes(featureId);
     }
-    // If suspended, check the restrictedFeatures list.
     if (status === 'suspended') {
       return restrictedFeatures.includes(featureId);
     }
-    // If approved or any other status, nothing is disabled.
     return false;
   };
+
+  const menuItems = getMenuItems(businessType);
 
   return (
     <aside
