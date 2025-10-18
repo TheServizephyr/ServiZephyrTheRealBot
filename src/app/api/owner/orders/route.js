@@ -141,7 +141,7 @@ export async function PATCH(req) {
             status: newStatus,
             statusHistory: adminFirestore.FieldValue.arrayUnion({
                 status: newStatus,
-                timestamp: adminFirestore.FieldValue.serverTimestamp()
+                timestamp: new Date()
             })
         };
         let deliveryBoyData = null;
