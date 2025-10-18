@@ -319,11 +319,6 @@ export default function LiveOrdersPage() {
             setRiders(ridersData.boys.filter(boy => boy.status === 'Available'));
         }
 
-        if (ordersData.orders.length > orders.length && orders.length > 0 && !isManualRefresh) {
-            const sound = document.getElementById('notification-sound');
-            if(sound) sound.play().catch(e => console.log("Audio play failed:", e));
-        }
-
         setOrders(ordersData.orders || []);
     } catch (error) {
         console.error(error);
@@ -465,7 +460,6 @@ export default function LiveOrdersPage() {
 
   return (
     <div className="p-4 md:p-6 text-foreground min-h-screen bg-background">
-        <audio id="notification-sound" src="/notification.mp3" preload="auto"></audio>
         
          {billData.order && (
             <BillModal 

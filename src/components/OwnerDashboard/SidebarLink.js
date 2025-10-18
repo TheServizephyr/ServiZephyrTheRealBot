@@ -6,6 +6,8 @@ import { usePathname } from "next/navigation";
 import { motion } from "framer-motion";
 import styles from "./OwnerDashboard.module.css";
 
+const MotionLink = motion(Link);
+
 export default function SidebarLink({ item, isCollapsed, isDisabled, disabledIcon: DisabledIcon }) {
   const pathname = usePathname();
   const isActive = pathname === item.href;
@@ -26,8 +28,7 @@ export default function SidebarLink({ item, isCollapsed, isDisabled, disabledIco
   };
   
   const content = (
-    <motion.div
-        variants={linkVariants}
+    <div
         className={`${styles.sidebarLink} ${isActive && !isDisabled ? styles.sidebarLinkActive : ""} ${isDisabled ? 'opacity-50 cursor-pointer' : ''}`}
         title={isDisabled ? `${item.name} is currently restricted` : item.name}
       >
@@ -45,7 +46,7 @@ export default function SidebarLink({ item, isCollapsed, isDisabled, disabledIco
         >
           {item.name}
         </motion.span>
-    </motion.div>
+    </div>
   );
 
   return (

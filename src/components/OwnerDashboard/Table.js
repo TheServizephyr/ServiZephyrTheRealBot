@@ -7,6 +7,8 @@ import { ListChecks, Undo2 } from "lucide-react";
 import { formatDistanceToNowStrict } from 'date-fns';
 import Link from 'next/link';
 
+const MotionTr = motion.tr;
+
 const statusFlow = ["pending", "confirmed", "preparing", "dispatched", "delivered"];
 
 const getStatusClass = (currentStatus) => {
@@ -124,7 +126,7 @@ export default function Table({ data = [], onStatusChange, loading }) {
               </tr>
             ) : (
               data.map((order, idx) => (
-                <motion.tr
+                <MotionTr
                   key={order.id}
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
@@ -148,7 +150,7 @@ export default function Table({ data = [], onStatusChange, loading }) {
                       onStatusChange={(newStatus) => onStatusChange(order.id, newStatus)}
                     />
                   </td>
-                </motion.tr>
+                </MotionTr>
               ))
             )}
           </tbody>

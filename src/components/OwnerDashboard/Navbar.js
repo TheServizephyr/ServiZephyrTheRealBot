@@ -13,6 +13,8 @@ import { cn } from "@/lib/utils";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 
+const MotionDiv = motion.div;
+
 export default function Navbar({ isSidebarOpen, setSidebarOpen }) {
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [restaurantStatus, setRestaurantStatus] = useState(true);
@@ -100,7 +102,7 @@ export default function Navbar({ isSidebarOpen, setSidebarOpen }) {
             className={styles.iconButton}
         >
             <AnimatePresence mode="wait">
-                <motion.div
+                <MotionDiv
                     key={theme}
                     initial={{ opacity: 0, rotate: -90, scale: 0.8 }}
                     animate={{ opacity: 1, rotate: 0, scale: 1 }}
@@ -108,7 +110,7 @@ export default function Navbar({ isSidebarOpen, setSidebarOpen }) {
                     transition={{ duration: 0.2 }}
                 >
                     {theme === 'dark' ? <Sun size={22} /> : <Moon size={22} />}
-                </motion.div>
+                </MotionDiv>
             </AnimatePresence>
         </button>
 
@@ -126,7 +128,7 @@ export default function Navbar({ isSidebarOpen, setSidebarOpen }) {
 
           <AnimatePresence>
             {dropdownOpen && (
-              <motion.div
+              <MotionDiv
                 className={styles.profileDropdown}
                 initial={{ opacity: 0, y: -10, scale: 0.95 }}
                 animate={{ opacity: 1, y: 0, scale: 1 }}
@@ -157,7 +159,7 @@ export default function Navbar({ isSidebarOpen, setSidebarOpen }) {
                 <button onClick={handleLogout} className={cn(styles.dropdownItem, styles.logoutButton)}>
                   Logout
                 </button>
-              </motion.div>
+              </MotionDiv>
             )}
           </AnimatePresence>
         </div>
