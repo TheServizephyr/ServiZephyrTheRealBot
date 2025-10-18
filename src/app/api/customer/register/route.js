@@ -1,4 +1,5 @@
 
+
 import { firestore as adminFirestore } from 'firebase-admin';
 import { getFirestore } from '@/lib/firebase-admin';
 import { NextResponse } from 'next/server';
@@ -10,7 +11,7 @@ import { sendNewOrderToOwner } from '@/lib/notifications';
 export async function POST(req) {
     try {
         const firestore = getFirestore();
-        const { name, address, phone, restaurantId, items, notes, coupon, loyaltyDiscount, grandTotal, paymentMethod, businessType } = await req.json();
+        const { name, address, phone, restaurantId, items, notes, coupon, loyaltyDiscount, grandTotal, paymentMethod, businessType = 'restaurant' } = await req.json();
 
         // --- VALIDATION ---
         if (!name || !address || !phone || !restaurantId || !items || !grandTotal || !paymentMethod) {

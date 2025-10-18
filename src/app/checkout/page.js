@@ -242,6 +242,7 @@ const CheckoutPageInternal = () => {
             loyaltyDiscount: 0, // Simplified
             grandTotal,
             paymentMethod: selectedPaymentMethod,
+            businessType: cartData.businessType || 'restaurant', // Pass businessType
         };
 
         try {
