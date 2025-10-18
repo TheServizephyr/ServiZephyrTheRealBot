@@ -304,13 +304,11 @@ const AssignRiderModal = ({ isOpen, onClose, onAssign, order, riders }) => {
 };
 
 const OrderDetailModal = ({ data, isOpen, onClose }) => {
-    if (!isOpen) return null;
-    
-    // THE FIX: Use optional chaining and provide a fallback object for destructuring.
-    // Also, add a specific check for the order object itself.
-    const { order, customer } = data || {};
-    if (!order) return null;
+    if (!isOpen || !data || !data.order) {
+        return null;
+    }
 
+    const { order, customer } = data;
     const orderDate = new Date(order.orderDate?.seconds ? order.orderDate.seconds * 1000 : order.orderDate);
 
     return (
@@ -888,4 +886,5 @@ export default function LiveOrdersPage() {
 }
 
     
+
 
