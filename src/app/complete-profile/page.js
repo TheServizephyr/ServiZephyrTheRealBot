@@ -55,12 +55,15 @@ export default function CompleteProfile() {
 
           if (userRole && userRole !== 'none') {
             localStorage.setItem('role', userRole);
-            if (userRole === 'restaurant-owner' || userRole === 'shop-owner') {
-              localStorage.setItem('businessType', businessType || (userRole === 'restaurant-owner' ? 'restaurant' : 'shop'));
+            if (userRole === 'owner') {
+              // Ensure businessType is also stored for owner roles
+              localStorage.setItem('businessType', businessType || 'restaurant');
               router.push('/owner-dashboard');
+            } else if (userRole === 'admin') {
+              router.push('/admin-dashboard');
+            } else {
+              router.push('/customer-dashboard');
             }
-            else if (userRole === 'admin') router.push('/admin-dashboard');
-            else router.push('/customer-dashboard');
           } else {
             const urlParams = new URLSearchParams(window.location.search);
             const phoneFromUrl = urlParams.get('phone');
@@ -120,6 +123,7 @@ export default function CompleteProfile() {
         }
         
         const isBusinessOwner = role === 'restaurant-owner' || role === 'shop-owner';
+        const businessType = isBusinessOwner ? (role === 'restaurant-owner' ? 'restaurant' : 'shop') : null;
 
         const finalUserData = {
             uid: user.uid,
@@ -127,7 +131,7 @@ export default function CompleteProfile() {
             name: user.displayName || 'New User',
             phone: normalizedPhone,
             role: role,
-            businessType: isBusinessOwner ? (role === 'restaurant-owner' ? 'restaurant' : 'shop') : null,
+            businessType: businessType,
             profilePictureUrl: user.photoURL || `https://picsum.photos/seed/${user.uid}/200/200`,
             notifications: {
                 newOrders: true,
@@ -171,9 +175,11 @@ export default function CompleteProfile() {
             throw new Error(result.message || 'An error occurred during profile setup.');
         }
 
+        // --- THE FIX ---
+        // Save role AND businessType to localStorage before redirecting
         localStorage.setItem('role', role);
         if (isBusinessOwner) {
-          localStorage.setItem('businessType', finalUserData.businessType);
+          localStorage.setItem('businessType', businessType);
           router.push('/owner-dashboard');
         } else if (role === 'admin') {
           router.push('/admin-dashboard');

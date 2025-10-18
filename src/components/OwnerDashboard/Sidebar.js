@@ -50,13 +50,30 @@ export default function Sidebar({ isOpen, setIsOpen, isMobile, isCollapsed, rest
   const [businessType, setBusinessType] = useState(null);
 
   useEffect(() => {
+    // --- THE FIX ---
+    // First, try to get the businessType from localStorage for a faster UI response.
+    // This is crucial after the user completes their profile and is redirected.
+    const storedBusinessType = localStorage.getItem('businessType');
+    if (storedBusinessType) {
+      setBusinessType(storedBusinessType);
+    }
+
     const fetchBusinessType = async () => {
       const user = auth.currentUser;
       if (user) {
-        const userDocRef = doc(db, "users", user.uid);
-        const userDoc = await getDoc(userDocRef);
-        if (userDoc.exists()) {
-          setBusinessType(userDoc.data().businessType || 'restaurant'); // Default to restaurant
+        try {
+            const userDocRef = doc(db, "users", user.uid);
+            const userDoc = await getDoc(userDocRef);
+            if (userDoc.exists()) {
+                const fetchedType = userDoc.data().businessType || 'restaurant';
+                setBusinessType(fetchedType);
+                // Also update localStorage to keep it in sync
+                localStorage.setItem('businessType', fetchedType);
+            }
+        } catch (error) {
+            console.error("Error fetching business type from Firestore:", error);
+            // Fallback to default if Firestore fails but localStorage had a value
+            if (!storedBusinessType) setBusinessType('restaurant');
         }
       }
     };
@@ -130,3 +147,5 @@ export default function Sidebar({ isOpen, setIsOpen, isMobile, isCollapsed, rest
     </aside>
   );
 }
+
+    
