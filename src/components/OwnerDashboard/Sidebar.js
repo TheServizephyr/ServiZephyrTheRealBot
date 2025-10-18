@@ -77,6 +77,10 @@ export default function Sidebar({ isOpen, setIsOpen, isMobile, isCollapsed, rest
             </motion.div>
         </button>
       )}
+      
+       <div className={styles.sidebarHeader}>
+          {/* This div is now mainly for spacing to accommodate the new button position */}
+       </div>
 
       <nav className={styles.sidebarNav}>
         <div className={styles.menuGroup}>
