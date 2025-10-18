@@ -1,4 +1,5 @@
 
+
 import { NextResponse } from 'next/server';
 import { getAuth, getFirestore } from '@/lib/firebase-admin';
 import { firestore as adminFirestore } from 'firebase-admin';
@@ -40,7 +41,7 @@ export async function POST(req) {
         const unclaimedProfileSnap = await unclaimedProfileRef.get(); // Await the get() call
         let mergedUserData = { ...finalUserData };
 
-        if (unclaimedProfileSnap.exists) { // Now .exists is a function
+        if (unclaimedProfileSnap.exists) { // Now .exists is a property, not a function
             console.log(`[PROFILE COMPLETION] Unclaimed profile for ${phone} found. Merging data.`);
             const unclaimedData = unclaimedProfileSnap.data();
             // Merge addresses, prioritizing unclaimed data if new user has none.
@@ -77,6 +78,7 @@ export async function POST(req) {
              
              const finalBusinessData = {
                 ...businessData,
+                businessType: businessType, // Ensure businessType is stored
                 razorpayAccountId: '', 
              };
              batch.set(businessRef, finalBusinessData);

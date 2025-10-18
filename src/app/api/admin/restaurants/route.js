@@ -2,52 +2,63 @@
 import { NextResponse } from 'next/server';
 import { getFirestore, getAuth } from '@/lib/firebase-admin';
 
+async function fetchCollection(firestore, collectionName) {
+    const snapshot = await firestore.collection(collectionName).get();
+    const auth = getAuth();
+    
+    const promises = snapshot.docs.map(async (doc) => {
+        const data = doc.data();
+        
+        if (!data || Object.keys(data).length === 0) {
+            console.warn(`[API] Skipping empty document in ${collectionName} with ID: ${doc.id}`);
+            return null;
+        }
+
+        const status = data.approvalStatus || 'pending';
+        const capitalizedStatus = status.charAt(0).toUpperCase() + status.slice(1);
+
+        const business = {
+            id: doc.id,
+            name: data.name || 'Unnamed Business',
+            ownerId: data.ownerId,
+            ownerName: 'N/A', 
+            ownerEmail: 'N/A', 
+            onboarded: data.createdAt?.toDate?.()?.toISOString() || new Date().toISOString(),
+            status: capitalizedStatus,
+            restrictedFeatures: data.restrictedFeatures || [],
+            businessType: data.businessType || (collectionName === 'restaurants' ? 'restaurant' : 'shop'),
+        };
+
+        if (business.ownerId) {
+            try {
+                const userRecord = await auth.getUser(business.ownerId);
+                business.ownerName = userRecord.displayName || 'No Name';
+                business.ownerEmail = userRecord.email;
+            } catch(e) {
+                console.warn(`[API] Could not find user for ownerId: ${business.ownerId} in ${business.name}.`);
+            }
+        }
+        return business;
+    });
+
+    return (await Promise.all(promises)).filter(Boolean);
+}
+
 export async function GET(req) {
     try {
         const firestore = getFirestore();
-        const restaurantsSnap = await firestore.collection('restaurants').get();
         
-        const restaurantPromises = restaurantsSnap.docs.map(async (doc) => {
-            const data = doc.data();
-            
-            if (!data || Object.keys(data).length === 0) {
-                console.warn(`[API] Skipping empty document with ID: ${doc.id}`);
-                return null;
-            }
+        const [restaurants, shops] = await Promise.all([
+            fetchCollection(firestore, 'restaurants'),
+            fetchCollection(firestore, 'shops')
+        ]);
+        
+        const allListings = [...restaurants, ...shops];
+        
+        // Sort by onboarding date as a default
+        allListings.sort((a, b) => new Date(b.onboarded) - new Date(a.onboarded));
 
-            // Standardize the status field. Default to 'Pending' if missing.
-            const status = data.approvalStatus || 'pending';
-            const capitalizedStatus = status.charAt(0).toUpperCase() + status.slice(1);
-
-            const restaurant = {
-                id: doc.id,
-                name: data.name || 'Unnamed Restaurant',
-                ownerId: data.ownerId,
-                ownerName: 'N/A', 
-                ownerEmail: 'N/A', 
-                onboarded: data.createdAt?.toDate?.()?.toISOString() || new Date().toISOString(),
-                status: capitalizedStatus,
-                restrictedFeatures: data.restrictedFeatures || [],
-            };
-
-            // This check prevents crash if ownerId is missing
-            if (restaurant.ownerId) {
-                try {
-                    const userRecord = await getAuth().getUser(restaurant.ownerId);
-                    restaurant.ownerName = userRecord.displayName || 'No Name';
-                    restaurant.ownerEmail = userRecord.email;
-                } catch(e) {
-                    // Log a warning but don't crash the entire API call
-                    console.warn(`[API] Could not find user for ownerId: ${restaurant.ownerId} in restaurant ${restaurant.name}. Proceeding without owner details.`);
-                }
-            }
-            return restaurant;
-        });
-
-        // Filter out any null values that resulted from empty docs or errors
-        const restaurants = (await Promise.all(restaurantPromises)).filter(Boolean);
-
-        return NextResponse.json({ restaurants }, { status: 200 });
+        return NextResponse.json({ restaurants: allListings }, { status: 200 });
 
     } catch (error) {
         console.error("GET /api/admin/restaurants ERROR:", error);
@@ -58,10 +69,10 @@ export async function GET(req) {
 
 export async function PATCH(req) {
     try {
-        const { restaurantId, status, restrictedFeatures, suspensionRemark } = await req.json();
+        const { restaurantId, businessType, status, restrictedFeatures, suspensionRemark } = await req.json();
 
-        if (!restaurantId || !status) {
-            return NextResponse.json({ message: 'Missing required fields' }, { status: 400 });
+        if (!restaurantId || !businessType || !status) {
+            return NextResponse.json({ message: 'Missing required fields: restaurantId, businessType, status' }, { status: 400 });
         }
 
         const validStatuses = ['Approved', 'Suspended', 'Rejected'];
@@ -70,7 +81,8 @@ export async function PATCH(req) {
         }
 
         const firestore = getFirestore();
-        const restaurantRef = firestore.collection('restaurants').doc(restaurantId);
+        const collectionName = businessType === 'restaurant' ? 'restaurants' : 'shops';
+        const restaurantRef = firestore.collection(collectionName).doc(restaurantId);
         
         const updateData = {
             approvalStatus: status.toLowerCase(),
@@ -80,14 +92,13 @@ export async function PATCH(req) {
             updateData.restrictedFeatures = restrictedFeatures || [];
             updateData.suspensionRemark = suspensionRemark || '';
         } else {
-            // When reactivating or rejecting, remove restrictions and remark
             updateData.restrictedFeatures = [];
             updateData.suspensionRemark = '';
         }
         
         await restaurantRef.set(updateData, { merge: true });
         
-        return NextResponse.json({ message: 'Restaurant status updated successfully' }, { status: 200 });
+        return NextResponse.json({ message: 'Business status updated successfully' }, { status: 200 });
 
     } catch (error) {
         console.error("PATCH /api/admin/restaurants ERROR:", error);

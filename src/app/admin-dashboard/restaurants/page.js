@@ -10,7 +10,7 @@ import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Input } from '@/components/ui/input';
-import { Check, X, MoreVertical, Eye, Pause, Play, Search, RefreshCw, ShieldCheck, Edit } from 'lucide-react';
+import { Check, X, MoreVertical, Eye, Pause, Play, Search, RefreshCw, ShieldCheck, Edit, Store, ShoppingCart } from 'lucide-react';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -27,7 +27,7 @@ const SuspensionModal = ({ isOpen, onOpenChange, onConfirm, restaurantName, init
     const features = [
         { id: 'dashboard', label: 'Dashboard' },
         { id: 'live-orders', label: 'Live Order Management' },
-        { id: 'menu', label: 'Menu Management' },
+        { id: 'menu', label: 'Menu/Item Management' },
         { id: 'analytics', label: 'Analytics & Reports' },
         { id: 'customers', label: 'Customer Hub' },
         { id: 'delivery', label: 'Delivery Management' },
@@ -102,7 +102,7 @@ const SuspensionModal = ({ isOpen, onOpenChange, onConfirm, restaurantName, init
                             placeholder="e.g., Menu not updated as per policy."
                             className="mt-2"
                         />
-                         <p className="text-xs text-muted-foreground mt-1">This message will be shown to the restaurant owner.</p>
+                         <p className="text-xs text-muted-foreground mt-1">This message will be shown to the business owner.</p>
                     </div>
                 </div>
                 <DialogFooter>
@@ -124,9 +124,16 @@ const RestaurantRow = ({ restaurant, onUpdateStatus }) => {
     Suspended: 'bg-red-500/10 text-red-400',
     Rejected: 'bg-gray-500/10 text-gray-400',
   };
+
+  const businessTypeConfig = {
+      restaurant: { icon: Store, color: 'text-primary' },
+      shop: { icon: ShoppingCart, color: 'text-blue-400'}
+  }
+  const BusinessIcon = businessTypeConfig[restaurant.businessType]?.icon || Store;
+  const businessIconColor = businessTypeConfig[restaurant.businessType]?.color || 'text-primary';
   
   const handleSuspensionConfirm = (restrictedFeatures, suspensionRemark) => {
-    onUpdateStatus(restaurant.id, 'Suspended', { restrictedFeatures, suspensionRemark });
+    onUpdateStatus(restaurant.id, restaurant.businessType, 'Suspended', { restrictedFeatures, suspensionRemark });
     setIsSuspensionModalOpen(false);
   };
 
@@ -141,7 +148,12 @@ const RestaurantRow = ({ restaurant, onUpdateStatus }) => {
         initialRestrictedFeatures={restaurant.restrictedFeatures || []}
     />
     <TableRow>
-      <TableCell className="font-medium">{restaurant.name}</TableCell>
+      <TableCell className="font-medium">
+        <div className="flex items-center gap-2">
+            <BusinessIcon className={`h-4 w-4 ${businessIconColor}`} />
+            <span>{restaurant.name}</span>
+        </div>
+      </TableCell>
       <TableCell className="hidden md:table-cell">{restaurant.ownerName}</TableCell>
       <TableCell className="hidden lg:table-cell text-muted-foreground">{restaurant.ownerEmail}</TableCell>
       <TableCell className="hidden md:table-cell">{new Date(restaurant.onboarded).toLocaleDateString()}</TableCell>
@@ -153,10 +165,10 @@ const RestaurantRow = ({ restaurant, onUpdateStatus }) => {
       <TableCell className="text-right">
         {restaurant.status === 'Pending' && (
           <div className="flex gap-2 justify-end">
-            <Button variant="outline" size="sm" className="border-green-500 text-green-500 hover:bg-green-500/10 hover:text-green-500" onClick={() => onUpdateStatus(restaurant.id, 'Approved')}>
+            <Button variant="outline" size="sm" className="border-green-500 text-green-500 hover:bg-green-500/10 hover:text-green-500" onClick={() => onUpdateStatus(restaurant.id, restaurant.businessType, 'Approved')}>
               <Check className="mr-2 h-4 w-4" /> Approve
             </Button>
-            <Button variant="outline" size="sm" className="border-red-500 text-red-500 hover:bg-red-500/10 hover:text-red-500" onClick={() => onUpdateStatus(restaurant.id, 'Rejected')}>
+            <Button variant="outline" size="sm" className="border-red-500 text-red-500 hover:bg-red-500/10 hover:text-red-500" onClick={() => onUpdateStatus(restaurant.id, restaurant.businessType, 'Rejected')}>
               <X className="mr-2 h-4 w-4" /> Reject
             </Button>
           </div>
@@ -184,14 +196,14 @@ const RestaurantRow = ({ restaurant, onUpdateStatus }) => {
                 <Button variant="outline" size="sm" className="border-yellow-500 text-yellow-500 hover:bg-yellow-500/10 hover:text-yellow-500" onClick={() => setIsSuspensionModalOpen(true)}>
                     <Edit className="mr-2 h-4 w-4" /> Edit Suspension
                 </Button>
-                <Button variant="outline" size="sm" className="border-green-500 text-green-500 hover:bg-green-500/10 hover:text-green-500" onClick={() => onUpdateStatus(restaurant.id, 'Approved')}>
+                <Button variant="outline" size="sm" className="border-green-500 text-green-500 hover:bg-green-500/10 hover:text-green-500" onClick={() => onUpdateStatus(restaurant.id, restaurant.businessType, 'Approved')}>
                     <ShieldCheck className="mr-2 h-4 w-4" /> Re-activate
                 </Button>
             </div>
         )}
         {restaurant.status === 'Rejected' && (
-          <Button variant="outline" size="sm" className="border-green-500 text-green-500 hover:bg-green-500/10 hover:text-green-500" onClick={() => onUpdateStatus(restaurant.id, 'Approved')}>
-            <ShieldCheck className="mr-2 h-4 w-4" /> Re-activate
+          <Button variant="outline" size="sm" className="border-green-500 text-green-500 hover:bg-green-500/10 hover:text-green-500" onClick={() => onUpdateStatus(restaurant.id, restaurant.businessType, 'Approved')}>
+            <ShieldCheck className="mr-2 h-4 w-4" /> Re-consider
           </Button>
         )}
       </TableCell>
@@ -213,7 +225,7 @@ export default function AdminRestaurantsPage() {
         const response = await fetch('/api/admin/restaurants');
         if (!response.ok) {
             const errorData = await response.json();
-            throw new Error(errorData.message || 'Failed to fetch restaurants');
+            throw new Error(errorData.message || 'Failed to fetch listings');
         }
         const data = await response.json();
         setRestaurants(data.restaurants);
@@ -228,12 +240,12 @@ export default function AdminRestaurantsPage() {
     fetchRestaurants();
   }, []);
 
-  const handleUpdateStatus = async (restaurantId, newStatus, suspensionDetails = {}) => {
+  const handleUpdateStatus = async (restaurantId, businessType, newStatus, suspensionDetails = {}) => {
     try {
         const res = await fetch('/api/admin/restaurants', {
             method: 'PATCH',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ restaurantId, status: newStatus, ...suspensionDetails }),
+            body: JSON.stringify({ restaurantId, businessType, status: newStatus, ...suspensionDetails }),
         });
         if (!res.ok) {
             const errorData = await res.json();
@@ -273,7 +285,7 @@ export default function AdminRestaurantsPage() {
       return (
          <TableRow>
           <TableCell colSpan={6} className="text-center p-8 text-muted-foreground">
-            No restaurants found for this status.
+            No listings found for this status.
           </TableCell>
         </TableRow>
       )
@@ -283,7 +295,7 @@ export default function AdminRestaurantsPage() {
 
   return (
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-6">
-      <h1 className="text-3xl font-bold tracking-tight">Restaurant Management</h1>
+      <h1 className="text-3xl font-bold tracking-tight">Listings Management</h1>
       <Tabs defaultValue="pending">
         <div className="flex flex-col md:flex-row justify-between items-center mb-4 gap-4">
           <TabsList className="w-full md:w-auto">
@@ -295,7 +307,7 @@ export default function AdminRestaurantsPage() {
           <div className="relative w-full max-w-sm">
              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" size={20} />
              <Input 
-                placeholder="Search restaurant..."
+                placeholder="Search by business name..."
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 className="pl-10"
@@ -307,7 +319,7 @@ export default function AdminRestaurantsPage() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Restaurant Name</TableHead>
+                  <TableHead>Business Name</TableHead>
                   <TableHead className="hidden md:table-cell">Owner Name</TableHead>
                   <TableHead className="hidden lg:table-cell">Owner Email</TableHead>
                   <TableHead className="hidden md:table-cell">Onboarding</TableHead>
