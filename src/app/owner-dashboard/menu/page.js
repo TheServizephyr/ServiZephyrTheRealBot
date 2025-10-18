@@ -448,7 +448,7 @@ const AddItemModal = ({ isOpen, setIsOpen, onSave, editingItem, allCategories })
                     <DialogHeader>
                         <DialogTitle>{editingItem ? 'Edit Menu Item' : 'Add New Menu Item'}</DialogTitle>
                         <DialogDescription>
-                            {editingItem ? 'Update the details for this dish.' : "Fill in the details for the new dish. Click save when you're done."}
+                            {editingItem ? 'Update the details for this item.' : "Fill in the details for the new item. Click save when you're done."}
                         </DialogDescription>
                     </DialogHeader>
                     <div className="grid md:grid-cols-2 gap-x-8 gap-y-4 py-4 max-h-[70vh] overflow-y-auto pr-4">
@@ -881,6 +881,11 @@ export default function MenuPage() {
         }
     }
   };
+  
+  const pageTitle = businessType === 'shop' ? 'Item Catalog' : 'Menu Management';
+  const pageDescription = businessType === 'shop' ? 'Organize categories, manage products, and control availability.' : 'Organize categories, reorder items, and manage availability.';
+  const searchPlaceholder = businessType === 'shop' ? 'Search for a product...' : 'Search for a dish...';
+
 
   if (loading) {
     return (
@@ -909,8 +914,8 @@ export default function MenuPage() {
       {/* Header */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
-            <h1 className="text-3xl md:text-4xl font-bold tracking-tight text-foreground">Menu Management</h1>
-            <p className="text-muted-foreground mt-1">Organize categories, reorder items, and manage availability.</p>
+            <h1 className="text-3xl md:text-4xl font-bold tracking-tight text-foreground">{pageTitle}</h1>
+            <p className="text-muted-foreground mt-1">{pageDescription}</p>
         </div>
         <div className="flex gap-2">
             <MotionButton
@@ -938,7 +943,7 @@ export default function MenuPage() {
       <div className="flex flex-col md:flex-row justify-between items-center gap-4 p-3 bg-card border border-border rounded-xl">
         <div className="flex items-center gap-2 w-full max-w-sm">
             <Search size={20} className="text-muted-foreground"/>
-            <input placeholder="Search for a dish..." className="w-full bg-transparent focus:outline-none placeholder-muted-foreground text-foreground"/>
+            <input placeholder={searchPlaceholder} className="w-full bg-transparent focus:outline-none placeholder-muted-foreground text-foreground"/>
         </div>
       </div>
       
