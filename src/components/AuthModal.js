@@ -94,7 +94,7 @@ export default function AuthModal({ isOpen, onClose }) {
   
       setTimeout(() => {
         closeModal();
-        if (role === "restaurant-owner" || role === "shop-owner") {
+        if (role === "owner" || role === "restaurant-owner" || role === "shop-owner") {
           console.log("[DEBUG] AuthModal: Redirecting to /owner-dashboard.");
           router.push("/owner-dashboard");
         } else if (role === "admin") {

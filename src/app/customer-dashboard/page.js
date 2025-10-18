@@ -15,18 +15,17 @@ export default function CustomerDashboard() {
     const unsubscribe = auth.onAuthStateChanged((currentUser) => {
       if (currentUser) {
         setUser(currentUser);
+        // Also check role from localStorage for quick feedback
+        const role = localStorage.getItem('role');
+        if (role && role !== 'customer') {
+            // Redirect if role is not customer
+            router.push('/');
+        }
       } else {
         router.push('/');
       }
       setLoading(false);
     });
-
-    // Also check role from localStorage for quick feedback
-    const role = localStorage.getItem('role');
-    if (role && role !== 'customer') {
-        // Redirect if role is not customer
-        router.push('/');
-    }
 
 
     return () => unsubscribe();
