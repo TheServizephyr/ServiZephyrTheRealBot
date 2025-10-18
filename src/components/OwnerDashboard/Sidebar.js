@@ -15,8 +15,7 @@ import {
   Lock,
   Bot,
   MessageSquare,
-  Banknote,
-  Menu
+  Banknote
 } from "lucide-react";
 import styles from "./OwnerDashboard.module.css";
 import SidebarLink from "./SidebarLink";
@@ -72,7 +71,7 @@ export default function Sidebar({ isOpen, setIsOpen, isMobile, isCollapsed, rest
                 animate={{ opacity: 1, scale: 1, rotate: 0 }}
                 transition={{ duration: 0.3, ease: 'easeOut' }}
              >
-                {isCollapsed ? <Menu size={20} /> : <ChevronLeft size={20} />}
+                {isCollapsed ? <ChevronRight size={20} /> : <ChevronLeft size={20} />}
             </motion.div>
         </button>
       )}
