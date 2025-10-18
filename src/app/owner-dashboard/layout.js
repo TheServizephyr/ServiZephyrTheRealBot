@@ -174,7 +174,12 @@ function OwnerDashboardContent({ children }) {
              icon = <AlertTriangle className="h-16 w-16 text-red-500" />;
              title = "Could Not Verify Status";
              message = "We couldn't verify your restaurant's status. This could be a temporary issue. Please refresh or contact support.";
-             actions = <Button onClick={() => window.location.reload()}>Refresh</Button>
+             actions = (
+                <div className="flex gap-4">
+                    <Button onClick={() => window.location.reload()}>Refresh</Button>
+                    <Button variant="outline" onClick={() => router.push('/contact')}>Contact Support</Button>
+                </div>
+            );
       }
 
       return (
