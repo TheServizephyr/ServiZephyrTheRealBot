@@ -85,12 +85,21 @@ export async function POST(req) {
             // New user via COD, create an unclaimed profile, NOT a main user profile.
             const unclaimedUserRef = firestore.collection('unclaimed_profiles').doc(phone);
             userId = phone; // Use phone as temporary ID
+            
+            const newOrderedFrom = {
+                restaurantId: restaurantId,
+                restaurantName: businessData.name
+            };
+
             batch.set(unclaimedUserRef, {
                 name: name, 
                 phone: phone, 
                 addresses: [{ id: `addr_${Date.now()}`, full: address }],
                 createdAt: adminFirestore.FieldValue.serverTimestamp(),
+                // NEW: Store the origin restaurant
+                orderedFrom: adminFirestore.FieldValue.arrayUnion(newOrderedFrom)
             }, { merge: true });
+
         } else {
             // Existing verified user
             userId = existingUserQuery.docs[0].id;

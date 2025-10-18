@@ -49,6 +49,22 @@ export async function POST(req) {
             const existingAddresses = finalUserData.addresses || [];
             const unclaimedAddresses = unclaimedData.addresses || [];
             mergedUserData.addresses = [...existingAddresses, ...unclaimedAddresses];
+
+            // NEW: Logic to create joined_restaurants subcollection
+            if (unclaimedData.orderedFrom && Array.isArray(unclaimedData.orderedFrom)) {
+                const masterUserRefForSubcollection = firestore.collection('users').doc(uid);
+                unclaimedData.orderedFrom.forEach(restaurantInfo => {
+                    if (restaurantInfo.restaurantId && restaurantInfo.restaurantName) {
+                        const userRestaurantLinkRef = masterUserRefForSubcollection.collection('joined_restaurants').doc(restaurantInfo.restaurantId);
+                        batch.set(userRestaurantLinkRef, {
+                            restaurantName: restaurantInfo.restaurantName,
+                            joinedAt: adminFirestore.FieldValue.serverTimestamp(),
+                            // You can add more initial data if needed, like totalSpend: 0
+                        }, { merge: true });
+                         console.log(`[PROFILE COMPLETION] Linking user ${uid} to restaurant ${restaurantInfo.restaurantId}.`);
+                    }
+                });
+            }
             
             batch.delete(unclaimedProfileRef);
             console.log(`[PROFILE COMPLETION] Unclaimed profile for ${phone} marked for deletion.`);

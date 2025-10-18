@@ -4,7 +4,7 @@
 
 import { useState, useMemo, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ChevronUp, ChevronDown, Star, AlertTriangle, Sparkles, X, History, Gift, StickyNote, IndianRupee, Mail, Users, UserPlus, Repeat, Crown, Search, Filter } from 'lucide-react';
+import { ChevronUp, ChevronDown, Star, AlertTriangle, Sparkles, X, History, Gift, StickyNote, IndianRupee, Mail, Users, UserPlus, Repeat, Crown, Search, Filter, ShieldCheck } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose } from "@/components/ui/dialog";
 import { Label } from '@/components/ui/label';
@@ -61,7 +61,7 @@ const CustomerBadge = ({ status }) => {
      return <span title="New Customer" className="flex items-center gap-1 text-xs text-blue-500 bg-blue-500/10 px-2 py-1 rounded-full"><Sparkles size={12} /> New</span>;
   }
   if (status === 'Claimed') {
-    return <span title="Claimed via Order" className="flex items-center gap-1 text-xs text-indigo-500 bg-indigo-500/10 px-2 py-1 rounded-full"><Sparkles size={12} /> Claimed</span>;
+    return <span title="Claimed via Order" className="flex items-center gap-1 text-xs text-indigo-500 bg-indigo-500/10 px-2 py-1 rounded-full"><ShieldCheck size={12} /> Claimed</span>;
   }
   return <span title="Active Customer" className="flex items-center gap-1 text-xs text-green-500 bg-green-500/10 px-2 py-1 rounded-full"><Users size={12} /> Active</span>;
 };
