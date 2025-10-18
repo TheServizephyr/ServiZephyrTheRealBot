@@ -1,11 +1,12 @@
+
 'use server';
 
 import { NextResponse } from 'next/server';
 import { getAuth, getFirestore } from '@/lib/firebase-admin';
 import https from 'https';
 
-// Helper to verify owner and get their restaurant details
-async function verifyOwnerAndGetRestaurant(req) {
+// Helper to verify owner and get their business details
+async function verifyOwnerAndGetBusiness(req) {
     const auth = getAuth();
     const firestore = getFirestore();
     const authHeader = req.headers.get('authorization');
@@ -23,19 +24,28 @@ async function verifyOwnerAndGetRestaurant(req) {
     let finalUserId = uid;
     if (adminUserDoc.exists && adminUserDoc.data().role === 'admin' && impersonatedOwnerId) {
         finalUserId = impersonatedOwnerId;
+    } else {
+        const userDoc = await firestore.collection('users').doc(uid).get();
+        if (!userDoc.exists || (userDoc.data().role !== 'owner' && userDoc.data().role !== 'restaurant-owner' && userDoc.data().role !== 'shop-owner')) {
+             throw { message: 'Access Denied: You do not have sufficient privileges.', status: 403 };
+        }
     }
 
     const restaurantsQuery = await firestore.collection('restaurants').where('ownerId', '==', finalUserId).limit(1).get();
-    if (restaurantsQuery.empty) {
-        throw { message: 'No restaurant associated with this owner.', status: 404 };
-    }
-
-    const restaurantData = restaurantsQuery.docs[0].data();
-    if (!restaurantData.razorpayAccountId) {
-        throw { message: 'Razorpay account is not linked. Please link your account in the onboarding settings.', status: 404 };
+    if (!restaurantsQuery.empty) {
+        const businessData = restaurantsQuery.docs[0].data();
+        if (!businessData.razorpayAccountId) throw { message: 'Razorpay account is not linked.', status: 404 };
+        return { razorpayAccountId: businessData.razorpayAccountId };
     }
     
-    return { razorpayAccountId: restaurantData.razorpayAccountId };
+    const shopsQuery = await firestore.collection('shops').where('ownerId', '==', finalUserId).limit(1).get();
+     if (!shopsQuery.empty) {
+        const businessData = shopsQuery.docs[0].data();
+        if (!businessData.razorpayAccountId) throw { message: 'Razorpay account is not linked.', status: 404 };
+        return { razorpayAccountId: businessData.razorpayAccountId };
+    }
+    
+    throw { message: 'No business associated with this owner.', status: 404 };
 }
 
 // Helper to make Razorpay API requests, now with header support
@@ -69,7 +79,7 @@ async function makeRazorpayRequest(options) {
 
 export async function GET(req) {
     try {
-        const { razorpayAccountId } = await verifyOwnerAndGetRestaurant(req);
+        const { razorpayAccountId } = await verifyOwnerAndGetBusiness(req);
         
         const { searchParams } = new URL(req.url);
         const from = searchParams.get('from');

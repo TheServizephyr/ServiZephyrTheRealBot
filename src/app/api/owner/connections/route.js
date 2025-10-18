@@ -1,4 +1,5 @@
 
+
 import { NextResponse } from 'next/server';
 import { getAuth, getFirestore } from '@/lib/firebase-admin';
 
@@ -22,7 +23,7 @@ async function verifyOwner(req, auth, firestore) {
         return impersonatedOwnerId;
     }
 
-    if (!userDoc.exists || userDoc.data().role !== 'owner') {
+    if (!userDoc.exists || (userDoc.data().role !== 'owner' && userDoc.data().role !== 'restaurant-owner' && userDoc.data().role !== 'shop-owner')) {
         throw { message: 'Access Denied: You do not have owner privileges.', status: 403 };
     }
     
@@ -39,20 +40,37 @@ export async function GET(req) {
             .where('ownerId', '==', ownerId)
             .where('botStatus', '==', 'Connected')
             .get();
+            
+        const shopsQuery = await firestore.collection('shops')
+            .where('ownerId', '==', ownerId)
+            .where('botStatus', '==', 'Connected')
+            .get();
 
-        if (restaurantsQuery.empty) {
+        if (restaurantsQuery.empty && shopsQuery.empty) {
             return NextResponse.json({ connections: [] }, { status: 200 });
         }
-
-        const connections = restaurantsQuery.docs.map(doc => {
+        
+        const restaurantConnections = restaurantsQuery.docs.map(doc => {
             const data = doc.data();
             return {
                 id: doc.id,
                 restaurantName: data.name,
-                whatsAppNumber: data.botPhoneNumberId, // This is the ID, but we'll display it as the number
+                whatsAppNumber: data.botPhoneNumberId,
                 status: data.botStatus
             };
         });
+        
+        const shopConnections = shopsQuery.docs.map(doc => {
+            const data = doc.data();
+            return {
+                id: doc.id,
+                restaurantName: data.name,
+                whatsAppNumber: data.botPhoneNumberId,
+                status: data.botStatus
+            };
+        });
+
+        const connections = [...restaurantConnections, ...shopConnections];
 
         return NextResponse.json({ connections }, { status: 200 });
 

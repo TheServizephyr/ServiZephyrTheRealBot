@@ -3,8 +3,8 @@ import { NextResponse } from 'next/server';
 import { firestore as adminFirestore } from 'firebase-admin';
 import { getAuth, getFirestore } from '@/lib/firebase-admin';
 
-// Helper to verify owner and get their first restaurant ID
-async function verifyOwnerAndGetRestaurant(req, auth, firestore) {
+// Helper to verify owner and get their first business ID
+async function verifyOwnerAndGetBusiness(req, auth, firestore) {
     const authHeader = req.headers.get('authorization');
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
         throw { message: 'Authorization token not found or invalid.', status: 401 };
@@ -13,7 +13,7 @@ async function verifyOwnerAndGetRestaurant(req, auth, firestore) {
     const decodedToken = await auth.verifyIdToken(token);
     const uid = decodedToken.uid;
     
-    // --- ADMIN IMPERSONATION & PERMISSION LOGIC ---
+    // Admin impersonation logic
     const url = new URL(req.headers.get('referer'));
     const impersonatedOwnerId = url.searchParams.get('impersonate_owner_id');
     const userDoc = await firestore.collection('users').doc(uid).get();
@@ -25,29 +25,27 @@ async function verifyOwnerAndGetRestaurant(req, auth, firestore) {
     const userData = userDoc.data();
     const userRole = userData.role;
 
-    // If admin is impersonating, find the restaurant for the impersonated owner
+    let targetOwnerId = uid;
     if (userRole === 'admin' && impersonatedOwnerId) {
         console.log(`[API Impersonation] Admin ${uid} is viewing data for owner ${impersonatedOwnerId}.`);
-        const restaurantsQuery = await firestore.collection('restaurants').where('ownerId', '==', impersonatedOwnerId).limit(1).get();
-        if (restaurantsQuery.empty) {
-            throw { message: 'Impersonated owner does not have an associated restaurant.', status: 404 };
-        }
-        const restaurantId = restaurantsQuery.docs[0].id;
-        return { uid: impersonatedOwnerId, restaurantId, isAdmin: true };
-    }
-
-    // If the user is a standard owner, find their restaurant
-    if (userRole === 'owner') {
-        const restaurantsQuery = await firestore.collection('restaurants').where('ownerId', '==', uid).limit(1).get();
-        if (restaurantsQuery.empty) {
-            throw { message: 'No restaurant associated with this owner.', status: 404 };
-        }
-        const restaurantId = restaurantsQuery.docs[0].id;
-        return { uid, restaurantId };
+        targetOwnerId = impersonatedOwnerId;
+    } else if (userRole !== 'owner' && userRole !== 'restaurant-owner' && userRole !== 'shop-owner') {
+        throw { message: 'Access Denied: You do not have sufficient privileges.', status: 403 };
     }
     
-    // If not an admin impersonating or an owner, deny access
-    throw { message: 'Access Denied: You do not have sufficient privileges.', status: 403 };
+    const restaurantsQuery = await firestore.collection('restaurants').where('ownerId', '==', targetOwnerId).limit(1).get();
+    if (!restaurantsQuery.empty) {
+        const doc = restaurantsQuery.docs[0];
+        return { uid: targetOwnerId, businessId: doc.id, collectionName: 'restaurants', isAdmin: userRole === 'admin' };
+    }
+
+    const shopsQuery = await firestore.collection('shops').where('ownerId', '==', targetOwnerId).limit(1).get();
+    if (!shopsQuery.empty) {
+        const doc = shopsQuery.docs[0];
+        return { uid: targetOwnerId, businessId: doc.id, collectionName: 'shops', isAdmin: userRole === 'admin' };
+    }
+    
+    throw { message: 'No business associated with this owner.', status: 404 };
 }
 
 
@@ -55,9 +53,9 @@ export async function GET(req) {
     try {
         const auth = await getAuth();
         const firestore = await getFirestore();
-        const { restaurantId } = await verifyOwnerAndGetRestaurant(req, auth, firestore);
+        const { businessId, collectionName } = await verifyOwnerAndGetBusiness(req, auth, firestore);
 
-        const customersRef = firestore.collection('restaurants').doc(restaurantId).collection('customers');
+        const customersRef = firestore.collection(collectionName).doc(businessId).collection('customers');
         const customersSnap = await customersRef.orderBy('totalSpend', 'desc').get();
 
         const customers = customersSnap.docs.map(doc => {
@@ -65,7 +63,6 @@ export async function GET(req) {
             return { 
                 id: doc.id, 
                 ...data,
-                // Ensure date is ISO string for client
                 lastOrderDate: data.lastOrderDate?.toDate().toISOString()
             };
         });
@@ -73,7 +70,6 @@ export async function GET(req) {
         const totalCustomers = customers.length;
         const topSpender = customers.length > 0 ? customers.reduce((prev, current) => ((prev.totalSpend || 0) > (current.totalSpend || 0)) ? prev : current, {}) : {};
         
-        // This calculation would be more complex in a real app, here simplified
         const newThisMonth = customers.filter(c => {
             if (!c.lastOrderDate) return false;
             const lastOrder = new Date(c.lastOrderDate);
@@ -103,7 +99,7 @@ export async function PATCH(req) {
     try {
         const auth = await getAuth();
         const firestore = await getFirestore();
-        const { restaurantId } = await verifyOwnerAndGetRestaurant(req, auth, firestore);
+        const { businessId, collectionName } = await verifyOwnerAndGetBusiness(req, auth, firestore);
         
         const { customerId, notes } = await req.json();
 
@@ -111,15 +107,13 @@ export async function PATCH(req) {
             return NextResponse.json({ message: 'Customer ID and notes are required.' }, { status: 400 });
         }
 
-        // The customerId is the UID of the user. We are updating the record in the restaurant's sub-collection.
-        const customerRef = firestore.collection('restaurants').doc(restaurantId).collection('customers').doc(customerId);
+        const customerRef = firestore.collection(collectionName).doc(businessId).collection('customers').doc(customerId);
         
         const customerSnap = await customerRef.get();
         if (!customerSnap.exists) {
-            return NextResponse.json({ message: 'Customer not found in this restaurant.' }, { status: 404 });
+            return NextResponse.json({ message: 'Customer not found in this business.' }, { status: 404 });
         }
 
-        // Only update the notes field in the restaurant's sub-collection.
         await customerRef.update({ notes: notes });
 
         return NextResponse.json({ message: 'Customer notes updated successfully.' }, { status: 200 });

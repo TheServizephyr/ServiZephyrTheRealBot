@@ -3,8 +3,8 @@ import { NextResponse } from 'next/server';
 import { firestore as adminFirestore } from 'firebase-admin';
 import { getAuth, getFirestore } from '@/lib/firebase-admin';
 
-// Helper to verify owner and get their first restaurant ID
-async function verifyOwnerAndGetRestaurant(req, auth, firestore) {
+// Helper to verify owner and get their first business ID
+async function verifyOwnerAndGetBusiness(req, auth, firestore) {
     const authHeader = req.headers.get('authorization');
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
         throw { message: 'Authorization token not found or invalid.', status: 401 };
@@ -25,48 +25,44 @@ async function verifyOwnerAndGetRestaurant(req, auth, firestore) {
     const userData = userDoc.data();
     const userRole = userData.role;
 
-    // If admin is impersonating, find the restaurant for the impersonated owner
+    let targetOwnerId = uid;
     if (userRole === 'admin' && impersonatedOwnerId) {
-        console.log(`[API Impersonation] Admin ${uid} is viewing data for owner ${impersonatedOwnerId}.`);
-        const restaurantsQuery = await firestore.collection('restaurants').where('ownerId', '==', impersonatedOwnerId).limit(1).get();
-        if (restaurantsQuery.empty) {
-            throw { message: 'Impersonated owner does not have an associated restaurant.', status: 404 };
-        }
-        const restaurantSnap = restaurantsQuery.docs[0];
-        return { uid: impersonatedOwnerId, restaurantId: restaurantSnap.id, restaurantSnap, isAdmin: true };
+        console.log(`[API Impersonation] Admin ${uid} is managing data for owner ${impersonatedOwnerId}.`);
+        targetOwnerId = impersonatedOwnerId;
+    } else if (userRole !== 'owner' && userRole !== 'restaurant-owner' && userRole !== 'shop-owner') {
+        throw { message: 'Access Denied: You do not have sufficient privileges.', status: 403 };
     }
 
-    // If the user is a standard owner, find their restaurant
-    if (userRole === 'owner') {
-        const restaurantsQuery = await firestore.collection('restaurants').where('ownerId', '==', uid).limit(1).get();
-        if (restaurantsQuery.empty) {
-            throw { message: 'No restaurant associated with this owner.', status: 404 };
-        }
-        const restaurantSnap = restaurantsQuery.docs[0];
-        return { uid, restaurantId: restaurantSnap.id, restaurantSnap };
+    const restaurantsQuery = await firestore.collection('restaurants').where('ownerId', '==', targetOwnerId).limit(1).get();
+    if (!restaurantsQuery.empty) {
+        const doc = restaurantsQuery.docs[0];
+        return { uid: targetOwnerId, businessId: doc.id, businessSnap: doc, collectionName: 'restaurants', isAdmin: userRole === 'admin' };
+    }
+
+    const shopsQuery = await firestore.collection('shops').where('ownerId', '==', targetOwnerId).limit(1).get();
+    if (!shopsQuery.empty) {
+        const doc = shopsQuery.docs[0];
+        return { uid: targetOwnerId, businessId: doc.id, businessSnap: doc, collectionName: 'shops', isAdmin: userRole === 'admin' };
     }
     
-    // If not an admin impersonating or an owner, deny access
-    throw { message: 'Access Denied: You do not have sufficient privileges.', status: 403 };
+    throw { message: 'No business associated with this owner.', status: 404 };
 }
 
 export async function GET(req) {
     try {
         const auth = await getAuth();
         const firestore = await getFirestore();
-        const { restaurantId, restaurantSnap } = await verifyOwnerAndGetRestaurant(req, auth, firestore);
+        const { businessId, businessSnap, collectionName } = await verifyOwnerAndGetBusiness(req, auth, firestore);
 
-        const menuRef = firestore.collection('restaurants').doc(restaurantId).collection('menu');
+        const menuRef = firestore.collection(collectionName).doc(businessId).collection('menu');
         const menuSnap = await menuRef.get();
 
         let menuData = {};
-        const restaurantData = restaurantSnap.data();
-        // Custom categories are now objects {id: string, title: string}
-        const customCategories = restaurantData.customCategories || [];
+        const businessData = businessSnap.data();
+        const customCategories = businessData.customCategories || [];
 
         const defaultCategoryKeys = ["momos", "burgers", "rolls", "soup", "tandoori-item", "starters", "main-course", "tandoori-khajana", "rice", "noodles", "pasta", "raita", "desserts", "beverages"];
         
-        // Combine default keys with custom category IDs
         const allCategoryKeys = [...new Set([...defaultCategoryKeys, ...customCategories.map(c => c.id)])];
 
         allCategoryKeys.forEach(key => {
@@ -78,7 +74,6 @@ export async function GET(req) {
             if (item.categoryId && menuData.hasOwnProperty(item.categoryId)) {
                 menuData[item.categoryId].push({ id: doc.id, ...item });
             } else if (item.categoryId) {
-                // This case handles if a category exists in an item but not in the combined list (edge case)
                 menuData[item.categoryId] = [{ id: doc.id, ...item }];
             }
         });
@@ -103,8 +98,8 @@ export async function POST(req) {
         const firestore = await getFirestore();
         console.log("[API LOG] Firebase Admin SDK initialized.");
 
-        const { restaurantId, restaurantSnap } = await verifyOwnerAndGetRestaurant(req, auth, firestore);
-        console.log(`[API LOG] Owner verified for restaurant ID: ${restaurantId}`);
+        const { businessId, businessSnap, collectionName } = await verifyOwnerAndGetBusiness(req, auth, firestore);
+        console.log(`[API LOG] Owner verified for business ID: ${businessId}`);
 
         const { item, categoryId, newCategory, isEditing } = await req.json();
         console.log("[API LOG] Request body parsed:", { isEditing, categoryId, newCategory: !!newCategory });
@@ -115,33 +110,29 @@ export async function POST(req) {
         }
 
         const batch = firestore.batch();
-        const menuRef = firestore.collection('restaurants').doc(restaurantId).collection('menu');
+        const menuRef = firestore.collection(collectionName).doc(businessId).collection('menu');
         
         let finalCategoryId = categoryId;
 
-        // --- BATCH LOGIC ---
-        // Step 1: Handle new category creation if applicable
         if (newCategory && newCategory.trim() !== '') {
             console.log(`[API LOG] New category detected: "${newCategory}"`);
             const formattedId = newCategory.trim().toLowerCase().replace(/\s+/g, '-');
             finalCategoryId = formattedId;
             
-            const restaurantRef = restaurantSnap.ref;
-            const restaurantData = restaurantSnap.data();
-            const currentCategories = restaurantData.customCategories || [];
+            const businessRef = businessSnap.ref;
+            const businessData = businessSnap.data();
+            const currentCategories = businessData.customCategories || [];
             
             if (!currentCategories.some(cat => cat.id === formattedId)) {
                 console.log(`[API LOG] Category "${formattedId}" does not exist. Adding to batch.`);
                 const newCategoryObject = { id: formattedId, title: newCategory.trim() };
                 const updatedCategories = [...currentCategories, newCategoryObject];
-                batch.update(restaurantRef, { customCategories: updatedCategories });
+                batch.update(businessRef, { customCategories: updatedCategories });
             } else {
                 console.log(`[API LOG] Category "${formattedId}" already exists.`);
             }
         }
         
-        // Step 2: Prepare the menu item data
-        console.log("[API LOG] Preparing final item data.");
         const finalItem = {
             ...item,
             categoryId: finalCategoryId,
@@ -151,7 +142,6 @@ export async function POST(req) {
 
         let newItemId = item.id;
         
-        // Step 3: Add the item operation (create or update) to the batch
         if (isEditing) {
             console.log(`[API LOG] Editing item ID: ${item.id}. Adding update to batch.`);
             if (!item.id) {
@@ -179,7 +169,6 @@ export async function POST(req) {
             console.log(`[API LOG] New item with ID ${newItemId} added to batch.`);
         }
 
-        // Step 4: Commit the entire batch
         console.log("[API LOG] Committing batch...");
         await batch.commit();
         console.log("[API LOG] Batch commit successful!");
@@ -200,14 +189,14 @@ export async function DELETE(req) {
     try {
         const auth = await getAuth();
         const firestore = await getFirestore();
-        const { restaurantId } = await verifyOwnerAndGetRestaurant(req, auth, firestore);
+        const { businessId, collectionName } = await verifyOwnerAndGetBusiness(req, auth, firestore);
         const { itemId } = await req.json();
 
         if (!itemId) {
             return NextResponse.json({ message: 'Item ID is required.' }, { status: 400 });
         }
 
-        const itemRef = firestore.collection('restaurants').doc(restaurantId).collection('menu').doc(itemId);
+        const itemRef = firestore.collection(collectionName).doc(businessId).collection('menu').doc(itemId);
         await itemRef.delete();
 
         return NextResponse.json({ message: 'Item deleted successfully.' }, { status: 200 });
@@ -222,10 +211,10 @@ export async function PATCH(req) {
     try {
         const auth = await getAuth();
         const firestore = await getFirestore();
-        const { restaurantId } = await verifyOwnerAndGetRestaurant(req, auth, firestore);
+        const { businessId, collectionName } = await verifyOwnerAndGetBusiness(req, auth, firestore);
         const { itemIds, action, updates } = await req.json();
         
-        const menuRef = firestore.collection('restaurants').doc(restaurantId).collection('menu');
+        const menuRef = firestore.collection(collectionName).doc(businessId).collection('menu');
 
         // Handle single item availability toggle
         if (updates && updates.id) {

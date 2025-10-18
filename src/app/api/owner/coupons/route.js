@@ -3,8 +3,8 @@ import { NextResponse } from 'next/server';
 import { firestore as adminFirestore } from 'firebase-admin';
 import { getAuth, getFirestore } from '@/lib/firebase-admin';
 
-// Helper to verify owner and get their first restaurant ID
-async function verifyOwnerAndGetRestaurant(req, auth, firestore) {
+// Helper to verify owner and get their first business ID
+async function verifyOwnerAndGetBusiness(req, auth, firestore) {
     const authHeader = req.headers.get('authorization');
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
         throw { message: 'Authorization token not found or invalid.', status: 401 };
@@ -13,7 +13,7 @@ async function verifyOwnerAndGetRestaurant(req, auth, firestore) {
     const decodedToken = await auth.verifyIdToken(token);
     const uid = decodedToken.uid;
     
-    // --- ADMIN IMPERSONATION & PERMISSION LOGIC ---
+    // Admin impersonation logic
     const url = new URL(req.headers.get('referer'));
     const impersonatedOwnerId = url.searchParams.get('impersonate_owner_id');
     const userDoc = await firestore.collection('users').doc(uid).get();
@@ -25,29 +25,27 @@ async function verifyOwnerAndGetRestaurant(req, auth, firestore) {
     const userData = userDoc.data();
     const userRole = userData.role;
 
-    // If admin is impersonating, find the restaurant for the impersonated owner
+    let targetOwnerId = uid;
     if (userRole === 'admin' && impersonatedOwnerId) {
-        console.log(`[API Impersonation] Admin ${uid} is viewing data for owner ${impersonatedOwnerId}.`);
-        const restaurantsQuery = await firestore.collection('restaurants').where('ownerId', '==', impersonatedOwnerId).limit(1).get();
-        if (restaurantsQuery.empty) {
-            throw { message: 'Impersonated owner does not have an associated restaurant.', status: 404 };
-        }
-        const restaurantId = restaurantsQuery.docs[0].id;
-        return { uid: impersonatedOwnerId, restaurantId, isAdmin: true };
-    }
-
-    // If the user is a standard owner, find their restaurant
-    if (userRole === 'owner') {
-        const restaurantsQuery = await firestore.collection('restaurants').where('ownerId', '==', uid).limit(1).get();
-        if (restaurantsQuery.empty) {
-            throw { message: 'No restaurant associated with this owner.', status: 404 };
-        }
-        const restaurantId = restaurantsQuery.docs[0].id;
-        return { uid, restaurantId };
+        console.log(`[API Impersonation] Admin ${uid} is managing data for owner ${impersonatedOwnerId}.`);
+        targetOwnerId = impersonatedOwnerId;
+    } else if (userRole !== 'owner' && userRole !== 'restaurant-owner' && userRole !== 'shop-owner') {
+        throw { message: 'Access Denied: You do not have sufficient privileges.', status: 403 };
     }
     
-    // If not an admin impersonating or an owner, deny access
-    throw { message: 'Access Denied: You do not have sufficient privileges.', status: 403 };
+    const restaurantsQuery = await firestore.collection('restaurants').where('ownerId', '==', targetOwnerId).limit(1).get();
+    if (!restaurantsQuery.empty) {
+        const doc = restaurantsQuery.docs[0];
+        return { uid: targetOwnerId, businessId: doc.id, collectionName: 'restaurants', isAdmin: userRole === 'admin' };
+    }
+
+    const shopsQuery = await firestore.collection('shops').where('ownerId', '==', targetOwnerId).limit(1).get();
+    if (!shopsQuery.empty) {
+        const doc = shopsQuery.docs[0];
+        return { uid: targetOwnerId, businessId: doc.id, collectionName: 'shops', isAdmin: userRole === 'admin' };
+    }
+    
+    throw { message: 'No business associated with this owner.', status: 404 };
 }
 
 
@@ -55,9 +53,9 @@ export async function GET(req) {
     try {
         const auth = await getAuth();
         const firestore = await getFirestore();
-        const { restaurantId } = await verifyOwnerAndGetRestaurant(req, auth, firestore);
+        const { businessId, collectionName } = await verifyOwnerAndGetBusiness(req, auth, firestore);
 
-        const couponsRef = firestore.collection('restaurants').doc(restaurantId).collection('coupons');
+        const couponsRef = firestore.collection(collectionName).doc(businessId).collection('coupons');
         const couponsSnap = await couponsRef.orderBy('expiryDate', 'desc').get();
         
         let coupons = couponsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
@@ -75,7 +73,7 @@ export async function POST(req) {
     try {
         const auth = await getAuth();
         const firestore = await getFirestore();
-        const { restaurantId } = await verifyOwnerAndGetRestaurant(req, auth, firestore);
+        const { businessId, collectionName } = await verifyOwnerAndGetBusiness(req, auth, firestore);
         const { coupon } = await req.json();
 
         // Updated Validation
@@ -84,7 +82,7 @@ export async function POST(req) {
             return NextResponse.json({ message: 'Missing required coupon data.' }, { status: 400 });
         }
 
-        const couponsCollectionRef = firestore.collection('restaurants').doc(restaurantId).collection('coupons');
+        const couponsCollectionRef = firestore.collection(collectionName).doc(businessId).collection('coupons');
         const newCouponRef = couponsCollectionRef.doc();
         
         const newCouponData = {
@@ -111,14 +109,14 @@ export async function PATCH(req) {
     try {
         const auth = await getAuth();
         const firestore = await getFirestore();
-        const { restaurantId } = await verifyOwnerAndGetRestaurant(req, auth, firestore);
+        const { businessId, collectionName } = await verifyOwnerAndGetBusiness(req, auth, firestore);
         const { coupon } = await req.json();
 
         if (!coupon || !coupon.id) {
             return NextResponse.json({ message: 'Coupon ID is required for updating.' }, { status: 400 });
         }
 
-        const couponRef = firestore.collection('restaurants').doc(restaurantId).collection('coupons').doc(coupon.id);
+        const couponRef = firestore.collection(collectionName).doc(businessId).collection('coupons').doc(coupon.id);
         
         const { id, timesUsed, createdAt, ...updateData } = coupon;
 
@@ -150,14 +148,14 @@ export async function DELETE(req) {
     try {
         const auth = await getAuth();
         const firestore = await getFirestore();
-        const { restaurantId } = await verifyOwnerAndGetRestaurant(req, auth, firestore);
+        const { businessId, collectionName } = await verifyOwnerAndGetBusiness(req, auth, firestore);
         const { couponId } = await req.json();
 
         if (!couponId) {
             return NextResponse.json({ message: 'Coupon ID is required.' }, { status: 400 });
         }
 
-        const couponRef = firestore.collection('restaurants').doc(restaurantId).collection('coupons').doc(couponId);
+        const couponRef = firestore.collection(collectionName).doc(businessId).collection('coupons').doc(couponId);
         await couponRef.delete();
 
         return NextResponse.json({ message: 'Coupon deleted successfully.' }, { status: 200 });

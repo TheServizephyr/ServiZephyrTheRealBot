@@ -29,17 +29,23 @@ async function verifyOwnerAndGetRestaurant(req, auth, firestore) {
     if (userRole === 'admin' && impersonatedOwnerId) {
         console.log(`[API Impersonation] Admin ${uid} is viewing analytics for owner ${impersonatedOwnerId}.`);
         targetOwnerId = impersonatedOwnerId;
-    } else if (userRole !== 'owner') {
+    } else if (userRole !== 'owner' && userRole !== 'restaurant-owner' && userRole !== 'shop-owner') {
         throw { message: 'Access Denied: You do not have sufficient privileges.', status: 403 };
     }
 
     const restaurantsQuery = await firestore.collection('restaurants').where('ownerId', '==', targetOwnerId).limit(1).get();
-    if (restaurantsQuery.empty) {
-        throw { message: 'No restaurant associated with this owner.', status: 404 };
+    if (!restaurantsQuery.empty) {
+        const restaurantDoc = restaurantsQuery.docs[0];
+        return { restaurantId: restaurantDoc.id, restaurantData: restaurantDoc.data(), businessType: 'restaurant' };
+    }
+
+    const shopsQuery = await firestore.collection('shops').where('ownerId', '==', targetOwnerId).limit(1).get();
+    if (!shopsQuery.empty) {
+        const shopDoc = shopsQuery.docs[0];
+        return { restaurantId: shopDoc.id, restaurantData: shopDoc.data(), businessType: 'shop' };
     }
     
-    const restaurantDoc = restaurantsQuery.docs[0];
-    return { restaurantId: restaurantDoc.id, restaurantData: restaurantDoc.data() };
+    throw { message: 'No business associated with this owner.', status: 404 };
 }
 
 
@@ -47,7 +53,7 @@ export async function GET(req) {
     try {
         const auth = getAuth();
         const firestore = getFirestore();
-        const { restaurantId, restaurantData } = await verifyOwnerAndGetRestaurant(req, auth, firestore);
+        const { restaurantId, restaurantData, businessType } = await verifyOwnerAndGetRestaurant(req, auth, firestore);
 
         const url = new URL(req.url, `http://${req.headers.host}`);
         const filter = url.searchParams.get('filter') || 'This Month';
@@ -89,12 +95,13 @@ export async function GET(req) {
 
         // --- 1. Fetch Sales Data ---
         const ordersRef = firestore.collection('orders').where('restaurantId', '==', restaurantId);
+        const businessCollectionName = businessType === 'restaurant' ? 'restaurants' : 'shops';
         
         const [currentOrdersSnap, prevOrdersSnap, allMenuSnap, allCustomersSnap, rejectedOrdersSnap] = await Promise.all([
             ordersRef.where('orderDate', '>=', startDate).where('orderDate', '<=', endDate).where('status', '!=', 'rejected').get(),
             ordersRef.where('orderDate', '>=', prevStartDate).where('orderDate', '<', startDate).where('status', '!=', 'rejected').get(),
-            firestore.collection('restaurants').doc(restaurantId).collection('menu').get(),
-            firestore.collection('restaurants').doc(restaurantId).collection('customers').get(),
+            firestore.collection(businessCollectionName).doc(restaurantId).collection('menu').get(),
+            firestore.collection(businessCollectionName).doc(restaurantId).collection('customers').get(),
             ordersRef.where('orderDate', '>=', startDate).where('orderDate', '<=', endDate).where('status', '==', 'rejected').get(),
         ]);
         

@@ -6,7 +6,7 @@ import { getAuth, getFirestore } from '@/lib/firebase-admin';
 import { sendOrderStatusUpdateToCustomer } from '@/lib/notifications';
 
 
-async function verifyOwnerAndGetRestaurant(req, auth, firestore) {
+async function verifyOwnerAndGetBusiness(req, auth, firestore) {
     const authHeader = req.headers.get('authorization');
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
         throw { message: 'Authorization token not found or invalid.', status: 401 };
@@ -26,26 +26,27 @@ async function verifyOwnerAndGetRestaurant(req, auth, firestore) {
     const userData = userDoc.data();
     const userRole = userData.role;
 
+    let targetOwnerId = uid;
     if (userRole === 'admin' && impersonatedOwnerId) {
         console.log(`[API Impersonation] Admin ${uid} is viewing data for owner ${impersonatedOwnerId}.`);
-        const restaurantsQuery = await firestore.collection('restaurants').where('ownerId', '==', impersonatedOwnerId).limit(1).get();
-        if (restaurantsQuery.empty) {
-            throw { message: 'Impersonated owner does not have an associated restaurant.', status: 404 };
-        }
-        const restaurantSnap = restaurantsQuery.docs[0];
-        return { uid: impersonatedOwnerId, restaurantId: restaurantSnap.id, restaurantSnap, isAdmin: true };
+        targetOwnerId = impersonatedOwnerId;
+    } else if (userRole !== 'owner' && userRole !== 'restaurant-owner' && userRole !== 'shop-owner') {
+        throw { message: 'Access Denied: You do not have sufficient privileges.', status: 403 };
     }
 
-    if (userRole === 'owner') {
-        const restaurantsQuery = await firestore.collection('restaurants').where('ownerId', '==', uid).limit(1).get();
-        if (restaurantsQuery.empty) {
-            throw { message: 'No restaurant associated with this owner.', status: 404 };
-        }
-        const restaurantDoc = restaurantsQuery.docs[0];
-        return { uid, restaurantId: restaurantDoc.id, restaurantSnap: restaurantDoc };
+    const restaurantsQuery = await firestore.collection('restaurants').where('ownerId', '==', targetOwnerId).limit(1).get();
+    if (!restaurantsQuery.empty) {
+        const doc = restaurantsQuery.docs[0];
+        return { uid: targetOwnerId, businessId: doc.id, businessSnap: doc, isAdmin: userRole === 'admin' };
+    }
+
+    const shopsQuery = await firestore.collection('shops').where('ownerId', '==', targetOwnerId).limit(1).get();
+    if (!shopsQuery.empty) {
+        const doc = shopsQuery.docs[0];
+        return { uid: targetOwnerId, businessId: doc.id, businessSnap: doc, isAdmin: userRole === 'admin' };
     }
     
-    throw { message: 'Access Denied: You do not have sufficient privileges.', status: 403 };
+    throw { message: 'No business associated with this owner.', status: 404 };
 }
 
 
@@ -54,7 +55,7 @@ export async function GET(req) {
         const auth = await getAuth();
         const firestore = await getFirestore();
         
-        const { uid, restaurantId, restaurantSnap } = await verifyOwnerAndGetRestaurant(req, auth, firestore);
+        const { uid, businessId, businessSnap } = await verifyOwnerAndGetBusiness(req, auth, firestore);
         
         const { searchParams } = new URL(req.url);
         const orderId = searchParams.get('id');
@@ -68,7 +69,7 @@ export async function GET(req) {
             }
             
             let orderData = orderDoc.data();
-            if (orderData.restaurantId !== restaurantId) {
+            if (orderData.restaurantId !== businessId) {
                 return NextResponse.json({ message: 'Access denied to this order.' }, { status: 403 });
             }
             
@@ -77,13 +78,13 @@ export async function GET(req) {
             }
 
 
-            const restaurantData = restaurantSnap.data();
+            const businessData = businessSnap.data();
 
-            return NextResponse.json({ order: orderData, restaurant: restaurantData }, { status: 200 });
+            return NextResponse.json({ order: orderData, restaurant: businessData }, { status: 200 });
         }
 
         const ordersRef = firestore.collection('orders');
-        const ordersSnap = await ordersRef.where('restaurantId', '==', restaurantId).orderBy('orderDate', 'desc').get();
+        const ordersSnap = await ordersRef.where('restaurantId', '==', businessId).orderBy('orderDate', 'desc').get();
 
         const orders = ordersSnap.docs.map(doc => {
             const data = doc.data();
@@ -110,7 +111,7 @@ export async function PATCH(req) {
     try {
         const auth = getAuth();
         const firestore = await getFirestore();
-        const { restaurantId, restaurantSnap } = await verifyOwnerAndGetRestaurant(req, auth, firestore);
+        const { businessId, businessSnap } = await verifyOwnerAndGetBusiness(req, auth, firestore);
         const { orderId, newStatus, deliveryBoyId } = await req.json();
 
         console.log(`[API][PATCH /orders] Body:`, { orderId, newStatus, deliveryBoyId });
@@ -127,7 +128,7 @@ export async function PATCH(req) {
         const orderRef = firestore.collection('orders').doc(orderId);
         
         const orderDoc = await orderRef.get();
-        if (!orderDoc.exists || orderDoc.data().restaurantId !== restaurantId) {
+        if (!orderDoc.exists || orderDoc.data().restaurantId !== businessId) {
             return NextResponse.json({ message: 'Access denied to this order.' }, { status: 403 });
         }
         
@@ -136,7 +137,7 @@ export async function PATCH(req) {
 
         if (newStatus === 'dispatched' && deliveryBoyId) {
             console.log(`[API][PATCH /orders] Dispatch logic started for order ${orderId}, rider ${deliveryBoyId}.`);
-            const deliveryBoyRef = firestore.collection('restaurants').doc(restaurantId).collection('deliveryBoys').doc(deliveryBoyId);
+            const deliveryBoyRef = businessSnap.ref.collection('deliveryBoys').doc(deliveryBoyId);
             console.log(`[API][PATCH /orders] Rider ref path: ${deliveryBoyRef.path}`);
             
             const deliveryBoySnap = await deliveryBoyRef.get();
@@ -156,14 +157,14 @@ export async function PATCH(req) {
         const statusesThatNotifyCustomer = ['confirmed', 'preparing', 'dispatched', 'delivered', 'rejected'];
         if (statusesThatNotifyCustomer.includes(newStatus)) {
             const orderData = orderDoc.data();
-            const restaurantData = restaurantSnap.data();
+            const businessData = businessSnap.data();
             
             const notificationPayload = {
                 customerPhone: orderData.customerPhone,
-                botPhoneNumberId: restaurantData.botPhoneNumberId,
+                botPhoneNumberId: businessData.botPhoneNumberId,
                 customerName: orderData.customerName,
                 orderId: orderId,
-                restaurantName: restaurantData.name,
+                restaurantName: businessData.name,
                 status: newStatus,
                 deliveryBoy: deliveryBoyData
             };

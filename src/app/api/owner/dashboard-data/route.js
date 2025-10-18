@@ -5,8 +5,8 @@ import { getAuth, getFirestore } from '@/lib/firebase-admin';
 
 export const dynamic = 'force-dynamic';
 
-// Helper to verify owner and get their first restaurant ID
-async function verifyOwnerAndGetRestaurant(req, auth, firestore) {
+// Helper to verify owner and get their first business ID
+async function verifyOwnerAndGetBusiness(req, auth, firestore) {
     const authHeader = req.headers.get('authorization');
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
         throw { message: 'Authorization token not found or invalid.', status: 401 };
@@ -27,29 +27,27 @@ async function verifyOwnerAndGetRestaurant(req, auth, firestore) {
     const userData = userDoc.data();
     const userRole = userData.role;
 
-    // If admin is impersonating, find the restaurant for the impersonated owner
+    let targetOwnerId = uid;
     if (userRole === 'admin' && impersonatedOwnerId) {
         console.log(`[API Impersonation] Admin ${uid} is viewing data for owner ${impersonatedOwnerId}.`);
-        const restaurantsQuery = await firestore.collection('restaurants').where('ownerId', '==', impersonatedOwnerId).limit(1).get();
-        if (restaurantsQuery.empty) {
-            throw { message: 'Impersonated owner does not have an associated restaurant.', status: 404 };
-        }
-        const restaurantId = restaurantsQuery.docs[0].id;
-        return { uid: impersonatedOwnerId, restaurantId, isAdmin: true };
+        targetOwnerId = impersonatedOwnerId;
+    } else if (userRole !== 'owner' && userRole !== 'restaurant-owner' && userRole !== 'shop-owner') {
+        throw { message: 'Access Denied: You do not have sufficient privileges.', status: 403 };
     }
 
-    // If the user is a standard owner, find their restaurant
-    if (userRole === 'owner') {
-        const restaurantsQuery = await firestore.collection('restaurants').where('ownerId', '==', uid).limit(1).get();
-        if (restaurantsQuery.empty) {
-            throw { message: 'No restaurant associated with this owner.', status: 404 };
-        }
-        const restaurantId = restaurantsQuery.docs[0].id;
-        return { uid, restaurantId };
+    const restaurantsQuery = await firestore.collection('restaurants').where('ownerId', '==', targetOwnerId).limit(1).get();
+    if (!restaurantsQuery.empty) {
+        const doc = restaurantsQuery.docs[0];
+        return { uid: targetOwnerId, businessId: doc.id, collectionName: 'restaurants', isAdmin: userRole === 'admin' };
+    }
+
+    const shopsQuery = await firestore.collection('shops').where('ownerId', '==', targetOwnerId).limit(1).get();
+    if (!shopsQuery.empty) {
+        const doc = shopsQuery.docs[0];
+        return { uid: targetOwnerId, businessId: doc.id, collectionName: 'shops', isAdmin: userRole === 'admin' };
     }
     
-    // If not an admin impersonating or an owner, deny access
-    throw { message: 'Access Denied: You do not have sufficient privileges.', status: 403 };
+    throw { message: 'No business associated with this owner.', status: 404 };
 }
 
 
@@ -57,7 +55,7 @@ export async function GET(req) {
     try {
         const auth = await getAuth();
         const firestore = await getFirestore();
-        const { restaurantId } = await verifyOwnerAndGetRestaurant(req, auth, firestore);
+        const { businessId, collectionName } = await verifyOwnerAndGetBusiness(req, auth, firestore);
 
         const url = new URL(req.url);
         const filter = url.searchParams.get('filter') || 'Today';
@@ -81,14 +79,13 @@ export async function GET(req) {
                 break;
         }
 
-        // Now we query orders specific to the owner's restaurant
-        const ordersRef = firestore.collection('orders').where('restaurantId', '==', restaurantId);
-        const customersRef = firestore.collection('restaurants').doc(restaurantId).collection('customers');
+        const ordersRef = firestore.collection('orders').where('restaurantId', '==', businessId);
+        const customersRef = firestore.collection(collectionName).doc(businessId).collection('customers');
         
         const [currentOrdersSnap, prevOrdersSnap, newCustomersSnap, topItemsSnap, rejectedOrdersSnap] = await Promise.all([
             ordersRef.where('orderDate', '>=', startDate).where('status', '!=', 'rejected').get(),
             ordersRef.where('orderDate', '>=', prevStartDate).where('orderDate', '<', startDate).where('status', '!=', 'rejected').get(),
-            customersRef.where('joinedAt', '>=', startDate).get(), // Assuming 'joinedAt' exists
+            customersRef.where('joinedAt', '>=', startDate).get(), 
             ordersRef.where('orderDate', '>=', startDate).limit(50).get(),
             ordersRef.where('orderDate', '>=', startDate).where('status', '==', 'rejected').get()
         ]);
@@ -119,7 +116,7 @@ export async function GET(req) {
             orders: currentOrders.length,
             ordersChange: calcChange(currentOrders.length, prevOrdersSnap.size),
             newCustomers: newCustomersSnap.size,
-            newCustomersChange: 0, // This logic would need more historical data
+            newCustomersChange: 0,
             avgOrderValue: avgOrderValue,
             avgOrderValueChange: calcChange(avgOrderValue, prevAvgOrderValue),
             todayRejections: rejectedOrdersSnap.size,
@@ -153,14 +150,13 @@ export async function GET(req) {
             });
         });
 
-        // Add 'Bestseller' logic
-        const menuRef = firestore.collection('restaurants').doc(restaurantId).collection('menu');
+        const menuRef = firestore.collection(collectionName).doc(businessId).collection('menu');
         const menuSnap = await menuRef.get();
         const menuItems = menuSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 
         const topSellingNames = Object.entries(itemCounts)
             .sort(([,a],[,b]) => b - a)
-            .slice(0, 3) // Top 3 items
+            .slice(0, 3)
             .map(([name]) => name);
 
         const topItems = menuItems

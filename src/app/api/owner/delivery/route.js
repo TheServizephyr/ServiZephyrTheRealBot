@@ -4,8 +4,8 @@ import { NextResponse } from 'next/server';
 import { firestore as adminFirestore } from 'firebase-admin';
 import { getAuth, getFirestore } from '@/lib/firebase-admin';
 
-// Helper to verify owner and get their first restaurant ID
-async function verifyOwnerAndGetRestaurant(req, auth, firestore) {
+// Helper to verify owner and get their first business ID
+async function verifyOwnerAndGetBusiness(req, auth, firestore) {
     const authHeader = req.headers.get('authorization');
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
         throw { message: 'Authorization token not found or invalid.', status: 401 };
@@ -26,29 +26,27 @@ async function verifyOwnerAndGetRestaurant(req, auth, firestore) {
     const userData = userDoc.data();
     const userRole = userData.role;
 
-    // If admin is impersonating, find the restaurant for the impersonated owner
+    let targetOwnerId = uid;
     if (userRole === 'admin' && impersonatedOwnerId) {
         console.log(`[API Impersonation] Admin ${uid} is viewing data for owner ${impersonatedOwnerId}.`);
-        const restaurantsQuery = await firestore.collection('restaurants').where('ownerId', '==', impersonatedOwnerId).limit(1).get();
-        if (restaurantsQuery.empty) {
-            throw { message: 'Impersonated owner does not have an associated restaurant.', status: 404 };
-        }
-        const restaurantId = restaurantsQuery.docs[0].id;
-        return { uid: impersonatedOwnerId, restaurantId, isAdmin: true };
+        targetOwnerId = impersonatedOwnerId;
+    } else if (userRole !== 'owner' && userRole !== 'restaurant-owner' && userRole !== 'shop-owner') {
+        throw { message: 'Access Denied: You do not have sufficient privileges.', status: 403 };
     }
 
-    // If the user is a standard owner, find their restaurant
-    if (userRole === 'owner') {
-        const restaurantsQuery = await firestore.collection('restaurants').where('ownerId', '==', uid).limit(1).get();
-        if (restaurantsQuery.empty) {
-            throw { message: 'No restaurant associated with this owner.', status: 404 };
-        }
-        const restaurantId = restaurantsQuery.docs[0].id;
-        return { uid, restaurantId };
+    const restaurantsQuery = await firestore.collection('restaurants').where('ownerId', '==', targetOwnerId).limit(1).get();
+    if (!restaurantsQuery.empty) {
+        const doc = restaurantsQuery.docs[0];
+        return { uid: targetOwnerId, businessId: doc.id, collectionName: 'restaurants', isAdmin: userRole === 'admin' };
+    }
+
+    const shopsQuery = await firestore.collection('shops').where('ownerId', '==', targetOwnerId).limit(1).get();
+    if (!shopsQuery.empty) {
+        const doc = shopsQuery.docs[0];
+        return { uid: targetOwnerId, businessId: doc.id, collectionName: 'shops', isAdmin: userRole === 'admin' };
     }
     
-    // If not an admin impersonating or an owner, deny access
-    throw { message: 'Access Denied: You do not have sufficient privileges.', status: 403 };
+    throw { message: 'No business associated with this owner.', status: 404 };
 }
 
 
@@ -56,10 +54,10 @@ export async function GET(req) {
     try {
         const auth = await getAuth();
         const firestore = await getFirestore();
-        const { restaurantId } = await verifyOwnerAndGetRestaurant(req, auth, firestore);
+        const { businessId, collectionName } = await verifyOwnerAndGetBusiness(req, auth, firestore);
 
-        const boysRef = firestore.collection('restaurants').doc(restaurantId).collection('deliveryBoys');
-        const ordersRef = firestore.collection('orders').where('restaurantId', '==', restaurantId);
+        const boysRef = firestore.collection(collectionName).doc(businessId).collection('deliveryBoys');
+        const ordersRef = firestore.collection('orders').where('restaurantId', '==', businessId);
 
         // Fetch all boys and ready orders concurrently
         const [boysSnap, readyOrdersSnap] = await Promise.all([
@@ -125,14 +123,14 @@ export async function POST(req) {
     try {
         const auth = await getAuth();
         const firestore = await getFirestore();
-        const { restaurantId } = await verifyOwnerAndGetRestaurant(req, auth, firestore);
+        const { businessId, collectionName } = await verifyOwnerAndGetBusiness(req, auth, firestore);
         const { boy } = await req.json();
 
         if (!boy || !boy.name || !boy.phone) {
             return NextResponse.json({ message: 'Missing required delivery boy data.' }, { status: 400 });
         }
 
-        const newBoyRef = firestore.collection('restaurants').doc(restaurantId).collection('deliveryBoys').doc();
+        const newBoyRef = firestore.collection(collectionName).doc(businessId).collection('deliveryBoys').doc();
         
         const newBoyData = {
             ...boy,
@@ -160,14 +158,14 @@ export async function PATCH(req) {
     try {
         const auth = await getAuth();
         const firestore = await getFirestore();
-        const { restaurantId } = await verifyOwnerAndGetRestaurant(req, auth, firestore);
+        const { businessId, collectionName } = await verifyOwnerAndGetBusiness(req, auth, firestore);
         const { boy } = await req.json();
 
         if (!boy || !boy.id) {
             return NextResponse.json({ message: 'Boy ID is required for updating.' }, { status: 400 });
         }
 
-        const boyRef = firestore.collection('restaurants').doc(restaurantId).collection('deliveryBoys').doc(boy.id);
+        const boyRef = firestore.collection(collectionName).doc(businessId).collection('deliveryBoys').doc(boy.id);
         
         // Remove the id from the object to prevent it from being written to the doc
         const { id, ...updateData } = boy;

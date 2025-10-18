@@ -3,8 +3,8 @@ import { NextResponse } from 'next/server';
 import { getAuth, getFirestore } from '@/lib/firebase-admin';
 import axios from 'axios';
 
-// Helper to verify owner and get their first restaurant ID
-async function verifyOwnerAndGetRestaurantRef(req, auth, firestore) {
+// Helper to verify owner and get their first business Ref
+async function verifyOwnerAndGetBusinessRef(req, auth, firestore) {
     const authHeader = req.headers.get('authorization');
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
         throw { message: 'Authorization token not found or invalid.', status: 401 };
@@ -14,18 +14,21 @@ async function verifyOwnerAndGetRestaurantRef(req, auth, firestore) {
     const uid = decodedToken.uid;
     
     const userDoc = await firestore.collection('users').doc(uid).get();
-    if (!userDoc.exists || userDoc.data().role !== 'owner') {
+    if (!userDoc.exists || (userDoc.data().role !== 'owner' && userDoc.data().role !== 'restaurant-owner' && userDoc.data().role !== 'shop-owner')) {
         throw { message: 'Access Denied: You do not have owner privileges.', status: 403 };
     }
     
-    // For this flow, we assume the owner manages one primary restaurant.
-    // A more complex system might ask the owner which restaurant to connect.
     const restaurantsQuery = await firestore.collection('restaurants').where('ownerId', '==', uid).limit(1).get();
-    if (restaurantsQuery.empty) {
-        throw { message: 'No restaurant associated with this owner. Please complete your profile first.', status: 404 };
+    if (!restaurantsQuery.empty) {
+        return restaurantsQuery.docs[0].ref;
     }
     
-    return restaurantsQuery.docs[0].ref;
+    const shopsQuery = await firestore.collection('shops').where('ownerId', '==', uid).limit(1).get();
+    if (!shopsQuery.empty) {
+        return shopsQuery.docs[0].ref;
+    }
+
+    throw { message: 'No business associated with this owner. Please complete your profile first.', status: 404 };
 }
 
 export async function POST(req) {
@@ -33,15 +36,13 @@ export async function POST(req) {
     const firestore = getFirestore();
 
     try {
-        // Step 2.2: Secure the Endpoint
-        const restaurantRef = await verifyOwnerAndGetRestaurantRef(req, auth, firestore);
+        const businessRef = await verifyOwnerAndGetBusinessRef(req, auth, firestore);
 
         const { code } = await req.json();
         if (!code) {
             return NextResponse.json({ message: 'Authorization code is missing.' }, { status: 400 });
         }
 
-        // **FIX:** Use the same public environment variable as the frontend.
         const appId = process.env.NEXT_PUBLIC_FACEBOOK_APP_ID;
         const appSecret = process.env.FACEBOOK_APP_SECRET;
         console.log("DEBUG: App ID being used is:", process.env.NEXT_PUBLIC_FACEBOOK_APP_ID);
@@ -51,7 +52,6 @@ export async function POST(req) {
             return NextResponse.json({ message: 'Server configuration error. Please contact support.' }, { status: 500 });
         }
 
-        // Step 2.3: Exchange the Authorization Code for a User Access Token
         const tokenResponse = await axios.get('https://graph.facebook.com/v19.0/oauth/access_token', {
             params: {
                 client_id: appId,
@@ -65,8 +65,6 @@ export async function POST(req) {
             throw new Error("Could not retrieve User Access Token from Facebook.");
         }
 
-        // Step 2.4: Get the Bot's Details (The Handshake)
-        // Debug the token to get the embedded signup session details
         const debugResponse = await axios.get('https://graph.facebook.com/debug_token', {
             params: {
                 input_token: userAccessToken,
@@ -82,7 +80,6 @@ export async function POST(req) {
         
         const waba_id = embeddedSignupData[0];
 
-        // Get phone number ID using the WABA ID
         const phoneNumbersResponse = await axios.get(`https://graph.facebook.com/v19.0/${waba_id}/phone_numbers`, {
              params: {
                 access_token: userAccessToken
@@ -95,16 +92,14 @@ export async function POST(req) {
 
         const phone_number_id = phoneNumbersResponse.data.data[0].id;
         
-        // Step 2.5: Save the Credentials to Firestore
         const updateData = {
             botPhoneNumberId: phone_number_id,
             wabaId: waba_id,
-            botStatus: 'Connected', // Update status
+            botStatus: 'Connected',
         };
 
-        await restaurantRef.set(updateData, { merge: true });
+        await businessRef.set(updateData, { merge: true });
 
-        // Step 2.6: Send a Success Response
         return NextResponse.json({ message: 'WhatsApp bot connected successfully!' }, { status: 200 });
 
     } catch (error) {
