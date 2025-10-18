@@ -14,6 +14,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
 
 const statusConfig = {
@@ -417,6 +418,7 @@ export default function LiveOrdersPage() {
   const [billData, setBillData] = useState({ order: null, restaurant: null });
   const [assignModalData, setAssignModalData] = useState({ isOpen: false, order: null });
   const [rejectionModalData, setRejectionModalData] = useState({ isOpen: false, order: null });
+  const [activeFilter, setActiveFilter] = useState('All');
   const searchParams = useSearchParams();
   const impersonatedOwnerId = searchParams.get('impersonate_owner_id');
 
@@ -568,8 +570,17 @@ export default function LiveOrdersPage() {
     setSortConfig({ key, direction });
   };
   
-  const sortedOrders = useMemo(() => {
+  const filteredAndSortedOrders = useMemo(() => {
     let sortableItems = [...orders];
+
+    if (activeFilter !== 'All') {
+        if (activeFilter === 'New') {
+            sortableItems = sortableItems.filter(order => order.status === 'pending' || order.status === 'paid');
+        } else {
+            sortableItems = sortableItems.filter(order => order.status === activeFilter.toLowerCase());
+        }
+    }
+    
     sortableItems.sort((a, b) => {
       const key = sortConfig.key;
       let valA = a[key];
@@ -587,7 +598,7 @@ export default function LiveOrdersPage() {
       return 0;
     });
     return sortableItems;
-  }, [orders, sortConfig]);
+  }, [orders, sortConfig, activeFilter]);
 
   return (
     <div className="p-4 md:p-6 text-foreground min-h-screen bg-background">
@@ -631,6 +642,16 @@ export default function LiveOrdersPage() {
             </Button>
         </div>
 
+        <Tabs defaultValue="All" value={activeFilter} onValueChange={setActiveFilter} className="w-full mb-6">
+            <TabsList className="grid w-full grid-cols-3 md:grid-cols-5">
+                <TabsTrigger value="All">All</TabsTrigger>
+                <TabsTrigger value="New">New</TabsTrigger>
+                <TabsTrigger value="Confirmed">Confirmed</TabsTrigger>
+                <TabsTrigger value="Preparing">Preparing</TabsTrigger>
+                <TabsTrigger value="Dispatched">Dispatched</TabsTrigger>
+            </TabsList>
+        </Tabs>
+
         <div className="bg-card border border-border rounded-xl overflow-hidden">
             <div className="overflow-x-auto">
                 <table className="w-full">
@@ -645,7 +666,7 @@ export default function LiveOrdersPage() {
                     </thead>
                     <tbody className="divide-y divide-border">
                         <AnimatePresence>
-                           {loading && sortedOrders.length === 0 ? (
+                           {loading && filteredAndSortedOrders.length === 0 ? (
                                 Array.from({length: 5}).map((_, i) => (
                                     <tr key={i} className="animate-pulse">
                                         <td className="p-4"><div className="h-5 bg-muted rounded w-1/2"></div></td>
@@ -655,7 +676,7 @@ export default function LiveOrdersPage() {
                                         <td className="p-4"><div className="h-8 bg-muted rounded w-full"></div></td>
                                     </tr>
                                 ))
-                            ) : sortedOrders.map(order => (
+                            ) : filteredAndSortedOrders.map(order => (
                                 <motion.tr
                                     key={order.id}
                                     layout
@@ -703,16 +724,15 @@ export default function LiveOrdersPage() {
                                             onRejectClick={(order) => setRejectionModalData({ isOpen: true, order: order })}
                                             onPrintClick={() => handlePrintClick(order.id)}
                                             onAssignClick={() => setAssignModalData({ isOpen: true, order: order })}
-                                        />
-                                    </td>
-                                </motion.tr>
+                                        </td>
+                                    </motion.tr>
                             ))}
                         </AnimatePresence>
-                         { !loading && sortedOrders.length === 0 && (
+                         { !loading && filteredAndSortedOrders.length === 0 && (
                             <tr>
                                 <td colSpan="5" className="text-center p-16 text-muted-foreground">
                                     <p className="text-lg font-semibold">All caught up!</p>
-                                    <p>No live orders right now.</p>
+                                    <p>No orders with this status right now.</p>
                                 </td>
                             </tr>
                         )}
@@ -723,3 +743,5 @@ export default function LiveOrdersPage() {
     </div>
   );
 }
+
+    
