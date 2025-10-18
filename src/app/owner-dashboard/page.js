@@ -4,7 +4,7 @@
 
 import React, { useState, useEffect, Suspense } from 'react';
 import { motion } from 'framer-motion';
-import { Plus, Tag, XCircle, ArrowUpRight, IndianRupee, Hash, Users, ListFilter, Bot } from 'lucide-react';
+import { Plus, Tag, XCircle, ArrowUpRight, IndianRupee, Hash, Users, ListFilter, Bot, Ban } from 'lucide-react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { cn } from '@/lib/utils';
 import { auth } from '@/lib/firebase';
@@ -18,7 +18,7 @@ const formatCurrency = (value) => `₹${Number(value).toLocaleString('en-IN')}`;
 // --- Individual Components Defined in One File ---
 
 // 1. Summary Stat Card Component
-const StatCard = ({ title, value, icon, change, isCurrency = false, isLoading = false }) => {
+const StatCard = ({ title, value, icon, change, isCurrency = false, isLoading = false, isRejection = false }) => {
   const Icon = icon;
   
   if (isLoading) {
@@ -33,25 +33,29 @@ const StatCard = ({ title, value, icon, change, isCurrency = false, isLoading = 
   
   return (
     <motion.div
-      className="bg-card border border-border rounded-xl p-5 flex flex-col justify-between"
+      className={cn("bg-card border border-border rounded-xl p-5 flex flex-col justify-between", isRejection && "bg-red-500/10 border-red-500/50")}
       whileHover={{ scale: 1.03, backgroundColor: 'hsl(var(--muted))' }}
     >
       <div className="flex justify-between items-center">
         <span className="text-sm font-medium text-muted-foreground">{title}</span>
-        <Icon className="text-muted-foreground" size={20} />
+        <Icon className={cn("text-muted-foreground", isRejection && "text-red-400")} size={20} />
       </div>
       <div className="mt-2">
         <span className="text-2xl md:text-3xl font-bold text-foreground">
           {isCurrency ? formatCurrency(value) : Number(value).toLocaleString('en-IN')}
         </span>
       </div>
-      <div className="mt-3 flex items-center text-xs">
-        <span className={cn('flex items-center', change > 0 ? 'text-green-400' : 'text-red-400')}>
-          <ArrowUpRight size={14} className={cn('mr-1', change < 0 && 'rotate-180')} />
-          {Math.abs(change)}%
-        </span>
-        <span className="text-muted-foreground ml-1">vs last period</span>
-      </div>
+       { !isRejection ? (
+            <div className="mt-3 flex items-center text-xs">
+                <span className={cn('flex items-center', change > 0 ? 'text-green-400' : 'text-red-400')}>
+                    <ArrowUpRight size={14} className={cn('mr-1', change < 0 && 'rotate-180')} />
+                    {Math.abs(change)}%
+                </span>
+                <span className="text-muted-foreground ml-1">vs last period</span>
+            </div>
+        ) : (
+            <div className="mt-3 text-xs text-muted-foreground">in selected period</div>
+        )}
     </motion.div>
   );
 };
@@ -326,11 +330,12 @@ function PageContent() {
         }}
       >
         {/* Summary Cards */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-6">
           <StatCard isLoading={loading} title="Sales" value={dashboardData?.stats.sales || 0} icon={IndianRupee} change={dashboardData?.stats.salesChange || 0} isCurrency />
           <StatCard isLoading={loading} title="Total Orders" value={dashboardData?.stats.orders || 0} icon={Hash} change={dashboardData?.stats.ordersChange || 0} />
           <StatCard isLoading={loading} title="New Customers" value={dashboardData?.stats.newCustomers || 0} icon={Users} change={dashboardData?.stats.newCustomersChange || 0} />
           <StatCard isLoading={loading} title="Average Order Value" value={dashboardData?.stats.avgOrderValue || 0} icon={ListFilter} change={dashboardData?.stats.avgOrderValueChange || 0} isCurrency />
+          <StatCard isLoading={loading} title="Today's Rejections" value={dashboardData?.stats.todayRejections || 0} icon={Ban} isRejection={true} />
         </div>
 
         {/* Live Feed and Sales Chart */}

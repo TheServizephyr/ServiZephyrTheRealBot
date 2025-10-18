@@ -1,4 +1,5 @@
 
+
 import { NextResponse } from 'next/server';
 import { getAuth, getFirestore } from '@/lib/firebase-admin';
 
@@ -84,11 +85,12 @@ export async function GET(req) {
         const ordersRef = firestore.collection('orders').where('restaurantId', '==', restaurantId);
         const customersRef = firestore.collection('restaurants').doc(restaurantId).collection('customers');
         
-        const [currentOrdersSnap, prevOrdersSnap, newCustomersSnap, topItemsSnap] = await Promise.all([
-            ordersRef.where('orderDate', '>=', startDate).get(),
-            ordersRef.where('orderDate', '>=', prevStartDate).where('orderDate', '<', startDate).get(),
+        const [currentOrdersSnap, prevOrdersSnap, newCustomersSnap, topItemsSnap, rejectedOrdersSnap] = await Promise.all([
+            ordersRef.where('orderDate', '>=', startDate).where('status', '!=', 'rejected').get(),
+            ordersRef.where('orderDate', '>=', prevStartDate).where('orderDate', '<', startDate).where('status', '!=', 'rejected').get(),
             customersRef.where('joinedAt', '>=', startDate).get(), // Assuming 'joinedAt' exists
-            ordersRef.where('orderDate', '>=', startDate).limit(50).get()
+            ordersRef.where('orderDate', '>=', startDate).limit(50).get(),
+            ordersRef.where('orderDate', '>=', startDate).where('status', '==', 'rejected').get()
         ]);
 
         let sales = 0;
@@ -120,6 +122,7 @@ export async function GET(req) {
             newCustomersChange: 0, // This logic would need more historical data
             avgOrderValue: avgOrderValue,
             avgOrderValueChange: calcChange(avgOrderValue, prevAvgOrderValue),
+            todayRejections: rejectedOrdersSnap.size,
         };
 
         const liveOrdersSnap = await ordersRef.where('status', 'in', ['pending', 'confirmed']).orderBy('orderDate', 'desc').limit(3).get();
@@ -173,7 +176,7 @@ export async function GET(req) {
 
     } catch (error) {
         console.error("DASHBOARD DATA FETCH ERROR:", error);
-        const zeroStats = { sales: 0, salesChange: 0, orders: 0, ordersChange: 0, newCustomers: 0, newCustomersChange: 0, avgOrderValue: 0, avgOrderValueChange: 0 };
+        const zeroStats = { sales: 0, salesChange: 0, orders: 0, ordersChange: 0, newCustomers: 0, newCustomersChange: 0, avgOrderValue: 0, avgOrderValueChange: 0, todayRejections: 0 };
         return NextResponse.json({ message: `Backend Error: ${error.message}`, stats: zeroStats, liveOrders: [], salesChart: [], topItems: [] }, { status: error.status || 500 });
     }
 }

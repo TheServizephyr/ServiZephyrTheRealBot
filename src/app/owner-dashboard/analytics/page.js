@@ -1,10 +1,11 @@
 
+
 "use client";
 
 import { useState, useMemo, useEffect } from 'react';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, LineChart, Line, PieChart, Pie, Cell, Sector, ScatterChart, Scatter, Legend, ReferenceLine, AreaChart, Area } from 'recharts';
 import { motion, AnimatePresence } from 'framer-motion';
-import { IndianRupee, Hash, Users, Star, TrendingDown, GitCommitHorizontal, AlertTriangle, Lightbulb, ChefHat, ShoppingBasket, DollarSign, ArrowRight, TrendingUp, Filter, Calendar as CalendarIcon, ArrowDown, ArrowUp, UserPlus, FileBarChart, CalendarDays, X, Gift, Crown, Clock, Sparkles, Wand2, Ticket, Percent, Loader2 } from 'lucide-react';
+import { IndianRupee, Hash, Users, Star, TrendingDown, GitCommitHorizontal, AlertTriangle, Lightbulb, ChefHat, ShoppingBasket, DollarSign, ArrowRight, TrendingUp, Filter, Calendar as CalendarIcon, ArrowDown, ArrowUp, UserPlus, FileBarChart, CalendarDays, X, Gift, Crown, Clock, Sparkles, Wand2, Ticket, Percent, Loader2, Ban } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import NextImage from 'next/image';
 import { cn } from "@/lib/utils";
@@ -34,7 +35,7 @@ const SalesOverview = ({ data, loading }) => {
         setModalData({ isOpen: true, title, data, type });
     }
 
-    const KpiCard = ({ title, value, change, icon: Icon, isCurrency = false, data, modalTitle, modalType }) => {
+    const KpiCard = ({ title, value, change, icon: Icon, isCurrency = false, data, modalTitle, modalType, isRejection = false }) => {
         if(loading) {
             return (
                 <div className="bg-card border border-border p-5 rounded-xl animate-pulse">
@@ -44,23 +45,26 @@ const SalesOverview = ({ data, loading }) => {
                 </div>
             )
         }
-        const changeColor = change > 0 ? 'text-green-400' : 'text-red-400';
+        const changeColor = isRejection ? 'text-muted-foreground' : (change > 0 ? 'text-green-400' : 'text-red-400');
         const ChangeIcon = change > 0 ? ArrowUp : ArrowDown;
         return (
             <motion.div 
-                className="bg-card border border-border p-5 rounded-xl cursor-pointer"
+                className={cn("bg-card border border-border p-5 rounded-xl", data && "cursor-pointer")}
                 whileHover={{ y: -5, boxShadow: "0 4px 15px hsla(var(--primary), 0.2)" }}
                 onClick={() => data && openModal(modalTitle, data, modalType)}
             >
                 <div className="flex items-center justify-between">
                     <p className="text-sm text-muted-foreground">{title}</p>
-                    <Icon className="text-muted-foreground" />
+                    <Icon className={cn("text-muted-foreground", isRejection && "text-red-500")} />
                 </div>
                 <p className="text-3xl font-bold mt-2 text-foreground">{isCurrency ? formatCurrency(value) : Number(value).toLocaleString('en-IN')}</p>
-                <div className={`flex items-center text-xs mt-1 ${changeColor}`}>
-                    <ChangeIcon size={12} className="mr-1" />
-                    {Math.abs(change).toFixed(1)}% vs last period
-                </div>
+                {change !== undefined && !isRejection && (
+                    <div className={`flex items-center text-xs mt-1 ${changeColor}`}>
+                        <ChangeIcon size={12} className="mr-1" />
+                        {Math.abs(change).toFixed(1)}% vs last period
+                    </div>
+                )}
+                 {isRejection && <div className="text-xs mt-1 text-muted-foreground">in selected period</div>}
             </motion.div>
         );
     };
@@ -90,10 +94,10 @@ const SalesOverview = ({ data, loading }) => {
         </div>
     );
     
-    const PaymentMethodsChart = () => {
-        const [activeIndex, setActiveIndex] = useState(0);
-
-        if (loading) {
+    const RejectionReasonChart = () => {
+        const COLORS = ['#ef4444', '#f97316', '#eab308', '#84cc16', '#22c55e', '#14b8a6'];
+        
+        if(loading) {
             return (
                  <div className="bg-card border border-border p-5 rounded-xl h-[300px] animate-pulse">
                     <div className="h-6 bg-muted w-3/4 mb-4"></div>
@@ -104,39 +108,27 @@ const SalesOverview = ({ data, loading }) => {
             )
         }
 
+        if (!data?.rejectionReasons || data.rejectionReasons.length === 0) {
+            return (
+                 <div className="bg-card border border-border p-5 rounded-xl h-[300px] flex flex-col items-center justify-center">
+                    <h3 className="text-lg font-semibold mb-4 text-card-foreground">Order Rejection Reasons</h3>
+                    <p className="text-muted-foreground text-sm">No rejections in this period. Great job!</p>
+                 </div>
+            )
+        }
+
         return (
             <div className="bg-card border border-border p-5 rounded-xl h-[300px]">
-                 <h3 className="text-lg font-semibold mb-4 text-card-foreground">Payment Methods</h3>
-                 <ResponsiveContainer width="100%" height="100%">
+                 <h3 className="text-lg font-semibold mb-4 text-card-foreground">Order Rejection Reasons</h3>
+                 <ResponsiveContainer width="100%" height="90%">
                     <PieChart>
-                         <Pie
-                            activeIndex={activeIndex}
-                            activeShape={(props) => {
-                                const { cx, cy, innerRadius, outerRadius, fill, payload } = props;
-                                return (
-                                    <g>
-                                        <text x={cx} y={cy} dy={8} textAnchor="middle" fill="hsl(var(--card-foreground))" className="font-bold">{payload.name}</text>
-                                        <Sector
-                                            cx={cx} cy={cy} innerRadius={innerRadius} outerRadius={outerRadius + 5}
-                                            startAngle={props.startAngle} endAngle={props.endAngle} fill={fill}
-                                        />
-                                    </g>
-                                );
-                            }}
-                            data={data?.paymentMethods || []} cx="50%" cy="50%" innerRadius={60} outerRadius={80}
-                            fill="hsl(var(--primary))" paddingAngle={5} dataKey="value"
-                            onMouseEnter={(_, index) => setActiveIndex(index)}
-                         >
-                            <Cell fill="hsl(var(--primary))" />
-                            <Cell fill="hsl(var(--secondary))" />
+                         <Pie data={data?.rejectionReasons} cx="50%" cy="50%" labelLine={false} outerRadius={80} fill="#8884d8" dataKey="value" nameKey="name">
+                            {data.rejectionReasons.map((entry, index) => (
+                                <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                            ))}
                          </Pie>
-                         <Tooltip content={({ active, payload }) => {
-                             if (active && payload && payload.length) {
-                                return <div className="bg-popover border border-border p-2 rounded-lg text-popover-foreground text-sm">{`${payload[0].name}: ${payload[0].value.toFixed(1)}%`}</div>
-                             }
-                             return null;
-                         }} />
-                         <Legend iconType="circle" formatter={(value) => <span className="text-muted-foreground">{value}</span>}/>
+                         <Tooltip contentStyle={{ backgroundColor: 'hsl(var(--popover))', border: '1px solid hsl(var(--border))' }}/>
+                         <Legend iconType="circle" layout="vertical" align="right" verticalAlign="middle" formatter={(value) => <span className="text-muted-foreground text-sm">{value}</span>}/>
                     </PieChart>
                  </ResponsiveContainer>
             </div>
@@ -171,18 +163,19 @@ const SalesOverview = ({ data, loading }) => {
     return (
         <div className="space-y-6">
             <ModalContent />
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6">
                 <KpiCard title="Total Revenue" value={data?.kpis?.totalRevenue || 0} change={data?.kpis?.revenueChange || 0} icon={IndianRupee} isCurrency={true} modalTitle="Revenue Details" modalType="revenue" loading={loading}/>
                 <KpiCard title="Total Orders" value={data?.kpis?.totalOrders || 0} change={data?.kpis?.ordersChange || 0} icon={ShoppingBasket} modalTitle="Order Details" modalType="orders" loading={loading}/>
                 <KpiCard title="Average Order Value" value={data?.kpis?.avgOrderValue || 0} change={data?.kpis?.avgValueChange || 0} icon={FileBarChart} isCurrency={true} modalTitle="Order Value Details" modalType="orders" loading={loading}/>
                 <KpiCard title="New Customers" value={data?.kpis?.newCustomers || 0} change={data?.kpis?.customersChange || 0} icon={UserPlus} modalTitle="New Customer Details" modalType="customers" loading={loading}/>
+                <KpiCard title="Total Rejections" value={data?.kpis?.totalRejections || 0} icon={Ban} isRejection={true} loading={loading}/>
             </div>
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                 <div className="lg:col-span-2">
                     <SalesTrendChart />
                 </div>
                 <div className="lg:col-span-1">
-                    <PaymentMethodsChart />
+                    <RejectionReasonChart />
                 </div>
             </div>
         </div>

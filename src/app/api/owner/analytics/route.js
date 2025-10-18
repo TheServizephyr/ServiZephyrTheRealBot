@@ -1,6 +1,9 @@
 
+
 import { NextResponse } from 'next/server';
 import { getAuth, getFirestore } from '@/lib/firebase-admin';
+import { format } from 'date-fns';
+
 
 async function verifyOwnerAndGetRestaurant(req, auth, firestore) {
     const authHeader = req.headers.get('authorization');
@@ -87,11 +90,12 @@ export async function GET(req) {
         // --- 1. Fetch Sales Data ---
         const ordersRef = firestore.collection('orders').where('restaurantId', '==', restaurantId);
         
-        const [currentOrdersSnap, prevOrdersSnap, allMenuSnap, allCustomersSnap] = await Promise.all([
-            ordersRef.where('orderDate', '>=', startDate).where('orderDate', '<=', endDate).get(),
-            ordersRef.where('orderDate', '>=', prevStartDate).where('orderDate', '<', startDate).get(),
+        const [currentOrdersSnap, prevOrdersSnap, allMenuSnap, allCustomersSnap, rejectedOrdersSnap] = await Promise.all([
+            ordersRef.where('orderDate', '>=', startDate).where('orderDate', '<=', endDate).where('status', '!=', 'rejected').get(),
+            ordersRef.where('orderDate', '>=', prevStartDate).where('orderDate', '<', startDate).where('status', '!=', 'rejected').get(),
             firestore.collection('restaurants').doc(restaurantId).collection('menu').get(),
-            firestore.collection('restaurants').doc(restaurantId).collection('customers').get()
+            firestore.collection('restaurants').doc(restaurantId).collection('customers').get(),
+            ordersRef.where('orderDate', '>=', startDate).where('orderDate', '<=', endDate).where('status', '==', 'rejected').get(),
         ]);
         
         // --- 2. Process Sales Overview ---
@@ -115,6 +119,17 @@ export async function GET(req) {
             return ((current - previous) / previous) * 100;
         };
 
+        // --- NEW: Process Rejection Data ---
+        const totalRejections = rejectedOrdersSnap.size;
+        const rejectionReasons = {};
+        rejectedOrdersSnap.forEach(doc => {
+            const reason = doc.data().rejectionReason || 'Other';
+            rejectionReasons[reason] = (rejectionReasons[reason] || 0) + 1;
+        });
+
+        const rejectionReasonsData = Object.entries(rejectionReasons).map(([name, value]) => ({ name, value }));
+
+
         const salesData = {
             kpis: {
                 totalRevenue: currentSales,
@@ -123,9 +138,11 @@ export async function GET(req) {
                 revenueChange: calcChange(currentSales, prevSales),
                 ordersChange: calcChange(currentOrdersCount, prevOrdersSnap.size),
                 avgValueChange: calcChange(currentOrdersCount > 0 ? currentSales / currentOrdersCount : 0, prevOrdersSnap.size > 0 ? prevSales / prevOrdersSnap.size : 0),
+                totalRejections, // ADDED
             },
             salesTrend,
-            paymentMethods: [{ name: 'Online', value: 70 }, { name: 'COD', value: 30 }] // Dummy for now
+            paymentMethods: [{ name: 'Online', value: 70 }, { name: 'COD', value: 30 }], // Dummy for now
+            rejectionReasons: rejectionReasonsData, // ADDED
         };
 
         // --- 3. Process Menu Analytics ---
