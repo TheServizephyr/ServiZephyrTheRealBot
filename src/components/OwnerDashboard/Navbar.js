@@ -135,8 +135,8 @@ export default function Navbar({ isSidebarOpen, setSidebarOpen }) {
                 exit={{ opacity: 0, y: -10, scale: 0.95 }}
                 transition={{ duration: 0.2, ease: "easeInOut" }}
               >
-                <div className="p-3 border-b border-border">
-                  <Label htmlFor="restaurant-status" className="flex items-center justify-between cursor-pointer text-black">
+                <div className="p-3">
+                  <Label htmlFor="restaurant-status" className="flex items-center justify-between cursor-pointer">
                     <div className="flex flex-col">
                       <span className="font-semibold text-black">Restaurant Status</span>
                        <span className={`text-xs ${restaurantStatus ? 'text-green-500' : 'text-red-500'}`}>
@@ -152,6 +152,7 @@ export default function Navbar({ isSidebarOpen, setSidebarOpen }) {
                     />
                   </Label>
                 </div>
+                <div className={styles.dropdownDivider}></div>
                 <a href="/owner-dashboard/settings" className={styles.dropdownItem}>
                   <User size={16} /> Profile
                 </a>
