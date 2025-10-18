@@ -42,7 +42,7 @@ export const sendNewOrderToOwner = async ({ ownerPhone, botPhoneNumberId, custom
 };
 
 
-export const sendOrderStatusUpdateToCustomer = async ({ customerPhone, botPhoneNumberId, customerName, orderId, restaurantName, status, deliveryBoy = null }) => {
+export const sendOrderStatusUpdateToCustomer = async ({ customerPhone, botPhoneNumberId, customerName, orderId, restaurantName, status, deliveryBoy = null, businessType = 'restaurant' }) => {
     if (!customerPhone || !botPhoneNumberId) {
         console.warn(`[Notification Lib] Customer phone or Bot ID not found. Cannot send status update for order ${orderId}.`);
         return;
@@ -53,6 +53,19 @@ export const sendOrderStatusUpdateToCustomer = async ({ customerPhone, botPhoneN
     let components = [];
 
     const capitalizedStatus = status.charAt(0).toUpperCase() + status.slice(1);
+    
+    const statusMessages = {
+        restaurant: {
+            preparing: "Food is being prepared",
+        },
+        shop: {
+            preparing: "Your items are being packed",
+        }
+    };
+    
+    // Get the right message or default to a generic "preparing"
+    const preparingMessage = statusMessages[businessType]?.preparing || "Your order is being prepared";
+
 
     switch (status) {
         case 'dispatched':
@@ -70,7 +83,6 @@ export const sendOrderStatusUpdateToCustomer = async ({ customerPhone, botPhoneN
             break;
         
         case 'confirmed':
-        case 'preparing':
         case 'delivered':
         case 'rejected':
             templateName = 'order_status_update';
@@ -81,6 +93,17 @@ export const sendOrderStatusUpdateToCustomer = async ({ customerPhone, botPhoneN
                 { type: "text", text: capitalizedStatus },
             ];
             components.push({ type: "body", parameters: statusUpdateParams });
+            break;
+        
+        case 'preparing':
+            templateName = 'order_status_update';
+             const preparingParams = [
+                { type: "text", text: customerName },
+                { type: "text", text: orderId.substring(0, 8) },
+                { type: "text", text: restaurantName },
+                { type: "text", text: preparingMessage },
+            ];
+            components.push({ type: "body", parameters: preparingParams });
             break;
 
         default:

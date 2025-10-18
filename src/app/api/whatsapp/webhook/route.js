@@ -31,6 +31,22 @@ export async function GET(request) {
   }
 }
 
+async function getBusiness(firestore, botPhoneNumberId) {
+    const restaurantsQuery = await firestore.collection('restaurants').where('botPhoneNumberId', '==', botPhoneNumberId).limit(1).get();
+    if (!restaurantsQuery.empty) {
+        const doc = restaurantsQuery.docs[0];
+        return { id: doc.id, data: doc.data() };
+    }
+    
+    const shopsQuery = await firestore.collection('shops').where('botPhoneNumberId', '==', botPhoneNumberId).limit(1).get();
+    if (!shopsQuery.empty) {
+        const doc = shopsQuery.docs[0];
+        return { id: doc.id, data: doc.data() };
+    }
+    
+    return null;
+}
+
 export async function POST(request) {
     try {
         const body = await request.json();
@@ -72,24 +88,28 @@ export async function POST(request) {
                      return NextResponse.json({ message: 'Order not found' }, { status: 200 });
                 }
                 
+                const orderData = orderDoc.data();
+                const business = await getBusiness(firestore, businessPhoneNumberId);
+                
+                if (!business) {
+                     console.error(`[Webhook] No business found for Bot Phone Number ID: ${businessPhoneNumberId}`);
+                     await sendWhatsAppMessage(fromNumber, `⚠️ Action failed: Could not identify the business associated with this bot.`, businessPhoneNumberId);
+                     return NextResponse.json({ message: 'Business not found' }, { status: 404 });
+                }
+
                 if (action === 'accept') {
                     await orderRef.update({ status: 'confirmed' });
                     
-                    const orderData = orderDoc.data();
-                    const restaurantDoc = await firestore.collection('restaurants').doc(orderData.restaurantId).get();
+                    await sendOrderStatusUpdateToCustomer({
+                        customerPhone: orderData.customerPhone,
+                        botPhoneNumberId: businessPhoneNumberId,
+                        customerName: orderData.customerName,
+                        orderId: orderId,
+                        restaurantName: business.data.name,
+                        status: 'confirmed',
+                        businessType: business.data.businessType || 'restaurant',
+                    });
                     
-                    if (restaurantDoc.exists) {
-                        const restaurantData = restaurantDoc.data();
-                        // **THE FIX**: Call the main notification function directly
-                        await sendOrderStatusUpdateToCustomer({
-                            customerPhone: orderData.customerPhone,
-                            botPhoneNumberId: businessPhoneNumberId,
-                            customerName: orderData.customerName,
-                            orderId: orderId,
-                            restaurantName: restaurantData.name,
-                            status: 'confirmed'
-                        });
-                    }
                     await sendWhatsAppMessage(fromNumber, `✅ Action complete: Order ${orderId} has been confirmed. You can now start preparing it.`, businessPhoneNumberId);
 
                 } else if (action === 'reject') {
@@ -99,19 +119,23 @@ export async function POST(request) {
             } 
             // --- Handler for Restaurant Status Change ---
             else if (action === 'retain' || action === 'revert') {
-                const [_, __, restaurantId, status] = payloadParts;
+                const [_, __, businessId, status] = payloadParts;
                 
-                if(!restaurantId || !status) {
+                if(!businessId || !status) {
                     console.warn(`[Webhook] Invalid status button ID format: ${buttonId}`);
                     return NextResponse.json({ message: 'Invalid button ID' }, { status: 200 });
                 }
 
+                const business = await getBusiness(firestore, businessPhoneNumberId);
+                if (!business) return NextResponse.json({ message: 'Business not found' }, { status: 404 });
+                const collectionName = business.data.businessType === 'shop' ? 'shops' : 'restaurants';
+
                 if (action === 'revert') {
                     const revertToOpen = status === 'open';
-                    await firestore.collection('restaurants').doc(restaurantId).update({ isOpen: revertToOpen });
-                    await sendWhatsAppMessage(fromNumber, `✅ Action reverted. Your restaurant has been set to **${revertToOpen ? 'OPEN' : 'CLOSED'}**.`, businessPhoneNumberId);
+                    await firestore.collection(collectionName).doc(businessId).update({ isOpen: revertToOpen });
+                    await sendWhatsAppMessage(fromNumber, `✅ Action reverted. Your business has been set to **${revertToOpen ? 'OPEN' : 'CLOSED'}**.`, businessPhoneNumberId);
                 } else { // retain
-                    await sendWhatsAppMessage(fromNumber, `✅ Understood. Your restaurant status will remain **${status.toUpperCase()}**.`, businessPhoneNumberId);
+                    await sendWhatsAppMessage(fromNumber, `✅ Understood. Your business status will remain **${status.toUpperCase()}**.`, businessPhoneNumberId);
                 }
             }
         } 
@@ -121,25 +145,22 @@ export async function POST(request) {
             const fromWithCode = message.from; 
             const botPhoneNumberId = change.value.metadata.phone_number_id;
 
-            const restaurantsRef = firestore.collection('restaurants');
-            const restaurantQuery = await restaurantsRef.where('botPhoneNumberId', '==', botPhoneNumberId).limit(1).get();
-
-            if (restaurantQuery.empty) {
-                console.error(`[Webhook] No restaurant found for Bot Phone Number ID: ${botPhoneNumberId}`);
-                await sendWhatsAppMessage(fromWithCode, "We're sorry, we couldn't identify the restaurant you're trying to reach.", botPhoneNumberId);
-                return NextResponse.json({ message: 'Restaurant not found' }, { status: 404 });
+            const business = await getBusiness(firestore, botPhoneNumberId);
+            
+            if (!business) {
+                console.error(`[Webhook] No business found for Bot Phone Number ID: ${botPhoneNumberId}`);
+                await sendWhatsAppMessage(fromWithCode, "We're sorry, we couldn't identify the business you're trying to reach.", botPhoneNumberId);
+                return NextResponse.json({ message: 'Business not found' }, { status: 404 });
             }
             
-            const restaurantDoc = restaurantQuery.docs[0];
-            const restaurantId = restaurantDoc.id;
-            const restaurantData = restaurantDoc.data();
-            const restaurantName = restaurantData.name;
+            const businessData = business.data;
+            const businessId = business.id;
+            const businessName = businessData.name;
 
-            // ** NEW ** Check if restaurant is open
-            if (!restaurantData.isOpen) {
-                const closedMessage = `We apologize, but ${restaurantName} is currently closed. Please check back later.`;
+            if (!businessData.isOpen) {
+                const closedMessage = `We apologize, but ${businessName} is currently closed. Please check back later.`;
                 await sendWhatsAppMessage(fromWithCode, closedMessage, botPhoneNumberId);
-                return NextResponse.json({ message: 'Restaurant is closed' }, { status: 200 });
+                return NextResponse.json({ message: 'Business is closed' }, { status: 200 });
             }
 
 
@@ -147,15 +168,15 @@ export async function POST(request) {
             const usersRef = firestore.collection('users');
             const userQuery = await usersRef.where('phone', '==', customerPhone).limit(1).get();
             
-            let welcomeMessage = `Welcome to ${restaurantName}! 😃`;
+            let welcomeMessage = `Welcome to ${businessName}! 😃`;
             if (!userQuery.empty) {
                 const user = userQuery.docs[0].data();
                 if(user.name) {
-                    welcomeMessage = `Welcome back to ${restaurantName}, ${user.name}! 🥳`;
+                    welcomeMessage = `Welcome back to ${businessName}, ${user.name}! 🥳`;
                 }
             }
 
-            const menuUrl = `https://servizephyr.com/order/${restaurantId}?phone=${customerPhone}`;
+            const menuUrl = `https://servizephyr.com/order/${businessId}?phone=${customerPhone}`;
             const reply_body = `${welcomeMessage}\n\nWhat would you like to order today? You can view our full menu and place your order by clicking the link below:\n\n${menuUrl}`;
             
             const customerPhoneForApi = '91' + customerPhone;

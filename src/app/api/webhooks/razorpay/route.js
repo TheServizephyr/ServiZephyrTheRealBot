@@ -1,4 +1,5 @@
 
+
 import { NextResponse } from 'next/server';
 import { getFirestore } from '@/lib/firebase-admin';
 import { sendNewOrderToOwner } from '@/lib/notifications';
@@ -94,7 +95,7 @@ export async function POST(req) {
                 return NextResponse.json({ status: 'error', message: 'Order payload not found in notes.' });
             }
 
-            const { customerDetails, restaurantDetails, orderItems, billDetails, notes } = JSON.parse(orderPayloadString);
+            const { customerDetails, restaurantDetails, orderItems, billDetails, notes, businessType } = JSON.parse(orderPayloadString);
             
             const batch = firestore.batch();
             const usersRef = firestore.collection('users');
@@ -116,7 +117,9 @@ export async function POST(req) {
             const pointsEarned = Math.floor(subtotal / 100) * 10;
             const pointsSpent = (billDetails.loyaltyDiscount || 0) > 0 ? billDetails.loyaltyDiscount / 0.5 : 0;
             
-            const restaurantCustomerRef = firestore.collection('restaurants').doc(restaurantDetails.restaurantId).collection('customers').doc(userId);
+            const businessCollectionName = businessType === 'shop' ? 'shops' : 'restaurants';
+            const restaurantCustomerRef = firestore.collection(businessCollectionName).doc(restaurantDetails.restaurantId).collection('customers').doc(userId);
+            
             batch.set(restaurantCustomerRef, {
                 name: customerDetails.name, phone: customerDetails.phone, status: 'claimed',
                 totalSpend: adminFirestore.FieldValue.increment(subtotal),
@@ -139,6 +142,7 @@ export async function POST(req) {
             batch.set(newOrderRef, {
                 customerName: customerDetails.name, customerId: userId, customerAddress: customerDetails.address, customerPhone: customerDetails.phone,
                 restaurantId: restaurantDetails.restaurantId, restaurantName: restaurantDetails.restaurantName,
+                businessType: businessType,
                 items: orderItems,
                 subtotal, coupon: billDetails.coupon, loyaltyDiscount: finalLoyaltyDiscount, discount: finalDiscount, cgst, sgst, deliveryCharge,
                 totalAmount: billDetails.grandTotal,
@@ -155,10 +159,10 @@ export async function POST(req) {
             await batch.commit();
             console.log(`[Webhook] Successfully created Firestore order ${newOrderRef.id} from Razorpay Order ${razorpayOrderId}.`);
 
-            const restaurantDoc = await firestore.collection('restaurants').doc(restaurantDetails.restaurantId).get();
-            if (restaurantDoc.exists) {
-                const restaurantData = restaurantDoc.data();
-                const linkedAccountId = restaurantData.razorpayAccountId;
+            const businessDoc = await firestore.collection(businessCollectionName).doc(restaurantDetails.restaurantId).get();
+            if (businessDoc.exists) {
+                const businessData = businessDoc.data();
+                const linkedAccountId = businessData.razorpayAccountId;
 
                 if (linkedAccountId && linkedAccountId.startsWith('acc_')) {
                     const transferPayload = JSON.stringify({ transfers: [{ account: linkedAccountId, amount: paymentAmount, currency: "INR" }] });
@@ -180,10 +184,10 @@ export async function POST(req) {
                     console.warn(`[Webhook] Restaurant ${restaurantDetails.restaurantId} has no Linked Account. Skipping transfer.`);
                 }
 
-                if (restaurantData.ownerPhone && restaurantData.botPhoneNumberId) {
+                if (businessData.ownerPhone && businessData.botPhoneNumberId) {
                     await sendNewOrderToOwner({
-                        ownerPhone: restaurantData.ownerPhone,
-                        botPhoneNumberId: restaurantData.botPhoneNumberId,
+                        ownerPhone: businessData.ownerPhone,
+                        botPhoneNumberId: businessData.botPhoneNumberId,
                         customerName: customerDetails.name,
                         totalAmount: billDetails.grandTotal,
                         orderId: newOrderRef.id

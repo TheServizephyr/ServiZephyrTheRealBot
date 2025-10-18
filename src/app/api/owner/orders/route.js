@@ -112,9 +112,9 @@ export async function PATCH(req) {
         const auth = getAuth();
         const firestore = await getFirestore();
         const { businessId, businessSnap } = await verifyOwnerAndGetBusiness(req, auth, firestore);
-        const { orderId, newStatus, deliveryBoyId } = await req.json();
+        const { orderId, newStatus, deliveryBoyId, rejectionReason } = await req.json();
 
-        console.log(`[API][PATCH /orders] Body:`, { orderId, newStatus, deliveryBoyId });
+        console.log(`[API][PATCH /orders] Body:`, { orderId, newStatus, deliveryBoyId, rejectionReason });
 
         if (!orderId || !newStatus) {
             return NextResponse.json({ message: 'Order ID and new status are required.' }, { status: 400 });
@@ -135,9 +135,15 @@ export async function PATCH(req) {
         const updateData = { status: newStatus };
         let deliveryBoyData = null;
 
+        if (newStatus === 'rejected' && rejectionReason) {
+            updateData.rejectionReason = rejectionReason;
+        }
+
         if (newStatus === 'dispatched' && deliveryBoyId) {
             console.log(`[API][PATCH /orders] Dispatch logic started for order ${orderId}, rider ${deliveryBoyId}.`);
-            const deliveryBoyRef = businessSnap.ref.collection('deliveryBoys').doc(deliveryBoyId);
+            const businessCollectionName = businessSnap.data().businessType === 'shop' ? 'shops' : 'restaurants';
+            const deliveryBoyRef = firestore.collection(businessCollectionName).doc(businessId).collection('deliveryBoys').doc(deliveryBoyId);
+
             console.log(`[API][PATCH /orders] Rider ref path: ${deliveryBoyRef.path}`);
             
             const deliveryBoySnap = await deliveryBoyRef.get();
@@ -166,7 +172,8 @@ export async function PATCH(req) {
                 orderId: orderId,
                 restaurantName: businessData.name,
                 status: newStatus,
-                deliveryBoy: deliveryBoyData
+                deliveryBoy: deliveryBoyData,
+                businessType: businessData.businessType || 'restaurant', // Pass business type
             };
             
             console.log('[API][PATCH /orders] Preparing to send notification with payload:', notificationPayload);
