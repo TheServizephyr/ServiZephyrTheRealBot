@@ -166,7 +166,6 @@
   overflow: hidden;
   position: relative;
   width: 100%;
-  padding: 0 0.75rem;
 }
 
 .sidebarLinkInner {
@@ -296,7 +295,7 @@
   position: absolute;
   top: calc(100% + 12px);
   right: 0;
-  background-color: var(--card);
+  background-color: #ffffff; /* Plain white opaque background */
   border-radius: 0.5rem;
   box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1), 0 4px 6px -2px rgba(0,0,0,0.05);
   border: 1px solid var(--border);
@@ -311,7 +310,7 @@
   gap: 0.75rem;
   padding: 0.6rem 0.75rem;
   border-radius: 0.25rem;
-  color: var(--popover-foreground);
+  color: #000000; /* Black text for readability on white background */
   font-size: 0.875rem;
   transition: background-color 0.2s;
   cursor: pointer;
@@ -326,12 +325,12 @@
 }
 
 .logoutButton {
-    color: hsl(var(--destructive-foreground));
-    background-color: hsl(var(--destructive));
+    /* Styles are now inherited from .dropdownItem */
 }
 
 .logoutButton:hover {
-    background-color: hsl(var(--destructive) / 0.9);
+    background-color: hsl(var(--destructive) / 0.1);
+    color: hsl(var(--destructive));
 }
 
 

@@ -136,9 +136,9 @@ export default function Navbar({ isSidebarOpen, setSidebarOpen }) {
                 transition={{ duration: 0.2, ease: "easeInOut" }}
               >
                 <div className="p-3 border-b border-border">
-                  <Label htmlFor="restaurant-status" className="flex items-center justify-between cursor-pointer">
+                  <Label htmlFor="restaurant-status" className="flex items-center justify-between cursor-pointer text-black">
                     <div className="flex flex-col">
-                      <span className="font-semibold text-foreground">Restaurant Status</span>
+                      <span className="font-semibold text-black">Restaurant Status</span>
                        <span className={`text-xs ${restaurantStatus ? 'text-green-500' : 'text-red-500'}`}>
                           {restaurantStatus ? 'Open for orders' : 'Closed'}
                        </span>
