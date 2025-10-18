@@ -1,6 +1,4 @@
 
-
-
 import { NextResponse } from 'next/server';
 import { getAuth, getFirestore } from '@/lib/firebase-admin';
 import { firestore as adminFirestore } from 'firebase-admin';
@@ -50,22 +48,43 @@ export async function POST(req) {
             const unclaimedAddresses = unclaimedData.addresses || [];
             mergedUserData.addresses = [...existingAddresses, ...unclaimedAddresses];
 
-            // NEW: Logic to create joined_restaurants subcollection
+            // NEW & CORRECTED: Handle moving customer data from phone ID to UID
             if (unclaimedData.orderedFrom && Array.isArray(unclaimedData.orderedFrom)) {
-                const masterUserRefForSubcollection = firestore.collection('users').doc(uid);
-                unclaimedData.orderedFrom.forEach(restaurantInfo => {
+                for (const restaurantInfo of unclaimedData.orderedFrom) {
                     if (restaurantInfo.restaurantId && restaurantInfo.restaurantName) {
-                        const userRestaurantLinkRef = masterUserRefForSubcollection.collection('joined_restaurants').doc(restaurantInfo.restaurantId);
-                        batch.set(userRestaurantLinkRef, {
-                            restaurantName: restaurantInfo.restaurantName,
-                            joinedAt: adminFirestore.FieldValue.serverTimestamp(),
-                            // You can add more initial data if needed, like totalSpend: 0
-                        }, { merge: true });
-                         console.log(`[PROFILE COMPLETION] Linking user ${uid} to restaurant ${restaurantInfo.restaurantId}.`);
+                        const restaurantId = restaurantInfo.restaurantId;
+                        const businessTypeForCollection = restaurantInfo.businessType || 'restaurants';
+                        const collectionPath = businessTypeForCollection === 'shop' ? 'shops' : 'restaurants';
+
+                        const oldCustomerRef = firestore.collection(collectionPath).doc(restaurantId).collection('customers').doc(phone);
+                        const newCustomerRef = firestore.collection(collectionPath).doc(restaurantId).collection('customers').doc(uid);
+                        
+                        const oldCustomerSnap = await oldCustomerRef.get();
+                        
+                        let oldCustomerData = {};
+                        if (oldCustomerSnap.exists) {
+                            oldCustomerData = oldCustomerSnap.data();
+                            // Delete the old record keyed by phone number
+                            batch.delete(oldCustomerRef);
+                            console.log(`[PROFILE COMPLETION] Marked old customer record at ${oldCustomerRef.path} for deletion.`);
+                        }
+                        
+                        // Create or merge data into the new record keyed by UID
+                        const newCustomerPayload = {
+                            ...oldCustomerData,
+                            name: finalUserData.name, // Update with master profile name
+                            email: finalUserData.email, // Add email
+                            status: 'verified', // Mark as verified
+                            lastSeen: adminFirestore.FieldValue.serverTimestamp()
+                        };
+
+                        batch.set(newCustomerRef, newCustomerPayload, { merge: true });
+                        console.log(`[PROFILE COMPLETION] Marked new/updated customer record at ${newCustomerRef.path} for creation.`);
                     }
-                });
+                }
             }
             
+            // Delete the unclaimed profile after processing
             batch.delete(unclaimedProfileRef);
             console.log(`[PROFILE COMPLETION] Unclaimed profile for ${phone} marked for deletion.`);
         }
@@ -102,6 +121,3 @@ export async function POST(req) {
         return NextResponse.json({ message: `Backend Error: ${error.message}` }, { status: 500 });
     }
 }
-
-
-    
