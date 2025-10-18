@@ -22,9 +22,10 @@ export async function POST(req) {
         if (userDoc.exists) {
             const userData = userDoc.data();
             const role = userData.role;
+            const businessType = userData.businessType || null; // Get businessType
             if (role) {
                 // User has a role, login is successful.
-                return NextResponse.json({ role }, { status: 200 });
+                return NextResponse.json({ role, businessType }, { status: 200 }); // Return businessType as well
             } else {
                  // This case is unlikely if profile completion is enforced, but good to have.
                  return NextResponse.json({ message: 'Role not found for this user.' }, { status: 404 });

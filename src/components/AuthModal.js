@@ -78,14 +78,17 @@ export default function AuthModal({ isOpen, onClose }) {
       }
       
       // If the response is OK, the backend found a role.
-      const { role } = data;
+      const { role, businessType } = data;
       setMsg(`✅ Login successful! Redirecting to ${role} dashboard...`);
       setMsgType("success");
-      localStorage.setItem("role", role); 
+      localStorage.setItem("role", role);
+      if (businessType) {
+        localStorage.setItem("businessType", businessType);
+      }
   
       setTimeout(() => {
         closeModal();
-        if (role === "owner") {
+        if (role === "restaurant-owner" || role === "shop-owner") {
           router.push("/owner-dashboard");
         } else if (role === "admin") {
           router.push("/admin-dashboard");
