@@ -37,10 +37,10 @@ export async function POST(req) {
 
         // --- MERGE UNCLAIMED PROFILE LOGIC ---
         const unclaimedProfileRef = firestore.collection('unclaimed_profiles').doc(phone);
-        const unclaimedProfileSnap = await unclaimedProfileRef.get();
+        const unclaimedProfileSnap = await unclaimedProfileRef.get(); // Await the get() call
         let mergedUserData = { ...finalUserData };
 
-        if (unclaimedProfileSnap.exists()) {
+        if (unclaimedProfileSnap.exists) { // Now .exists is a function
             console.log(`[PROFILE COMPLETION] Unclaimed profile for ${phone} found. Merging data.`);
             const unclaimedData = unclaimedProfileSnap.data();
             // Merge addresses, prioritizing unclaimed data if new user has none.
@@ -52,7 +52,7 @@ export async function POST(req) {
             batch.delete(unclaimedProfileRef);
             console.log(`[PROFILE COMPLETION] Unclaimed profile for ${phone} marked for deletion.`);
 
-            // ** NEW ** Update status in all restaurants/shops where user was 'unclaimed'
+            // Update status in all restaurants/shops where user was 'unclaimed'
              const allRestaurants = await firestore.collection('restaurants').get();
              allRestaurants.forEach(async (restaurantDoc) => {
                  const restaurantCustomerRef = restaurantDoc.ref.collection('customers').doc(phone);
