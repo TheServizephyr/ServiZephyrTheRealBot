@@ -1,4 +1,5 @@
 
+
 "use client";
 
 import React, { useState, useEffect, useMemo } from 'react';
@@ -182,11 +183,11 @@ const AssignRiderModal = ({ isOpen, onClose, onAssign, order, riders }) => {
                     <motion.div
                         initial={{ opacity: 0, y: -10 }}
                         animate={{ opacity: 1, y: 0 }}
-                        className="bg-yellow-500/10 border border-yellow-500/20 p-4 rounded-lg flex items-center justify-between"
+                        className="bg-destructive/10 border border-destructive/20 p-4 rounded-lg flex items-center justify-between"
                     >
                         <div className="flex flex-col">
-                            <Label htmlFor="mark-active" className="font-semibold text-yellow-200">This rider is currently inactive.</Label>
-                            <span className="text-xs text-yellow-300/80">Toggle on to make them available and assign the order.</span>
+                            <Label htmlFor="mark-active" className="font-semibold text-destructive">This rider is currently inactive.</Label>
+                            <span className="text-xs text-destructive/80">Toggle on to make them available and assign the order.</span>
                         </div>
                         <Switch
                             id="mark-active"
