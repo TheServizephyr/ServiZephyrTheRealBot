@@ -1,15 +1,13 @@
-
 'use client';
 
 import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { Check, CookingPot, Bike, Home, Star, Phone, MapPin, Navigation, RefreshCw, Loader2, ArrowLeft } from 'lucide-react';
+import { Check, CookingPot, Bike, Home, Star, Phone, Navigation, RefreshCw, Loader2, ArrowLeft } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { useParams, useRouter } from 'next/navigation';
-import { useDoc } from '@/firebase/firestore/use-doc';
-import { doc, getDoc, GeoPoint } from 'firebase/firestore';
+import { doc, onSnapshot, GeoPoint } from 'firebase/firestore';
 import { useFirestore } from '@/firebase';
 import dynamic from 'next/dynamic';
 
@@ -19,8 +17,9 @@ const LiveTrackingMap = dynamic(() => import('@/components/LiveTrackingMap'), {
 });
 
 const statusConfig = {
+  pending: { title: 'Order Placed', icon: <Check size={24} />, step: 0 },
   confirmed: { title: 'Order Confirmed', icon: <Check size={24} />, step: 1 },
-  preparing: { title: 'Food is being prepared', icon: <CookingPot size={24} />, step: 2 },
+  preparing: { title: 'Preparing', icon: <CookingPot size={24} />, step: 2 },
   dispatched: { title: 'Out for Delivery', icon: <Bike size={24} />, step: 3 },
   delivered: { title: 'Delivered', icon: <Home size={24} />, step: 4 },
 };
@@ -29,13 +28,13 @@ const StatusTimeline = ({ currentStatus }) => {
     const currentStep = statusConfig[currentStatus]?.step || 0;
   
     return (
-      <div className="flex justify-between items-center w-full px-4 pt-4">
+      <div className="flex justify-between items-center w-full px-2 sm:px-4 pt-4">
         {Object.values(statusConfig).map(({ title, icon, step }) => {
           const isCompleted = step <= currentStep;
           const isCurrent = step === currentStep;
           return (
             <React.Fragment key={step}>
-              <div className="flex flex-col items-center text-center">
+              <div className="flex flex-col items-center text-center w-16">
                 <motion.div
                   className={`w-12 h-12 rounded-full flex items-center justify-center border-2 transition-all duration-500 ${
                     isCompleted ? 'bg-primary border-primary text-primary-foreground' : 'bg-card border-border text-muted-foreground'
@@ -50,7 +49,7 @@ const StatusTimeline = ({ currentStatus }) => {
                 </p>
               </div>
               {step < 4 && (
-                <div className="flex-1 h-1 mx-2 rounded-full bg-border">
+                <div className="flex-1 h-1 mx-1 sm:mx-2 rounded-full bg-border">
                   <motion.div
                     className="h-full bg-primary rounded-full"
                     initial={{ width: '0%' }}
@@ -74,7 +73,7 @@ const RiderDetails = ({ rider }) => {
                 <div className="flex items-center gap-4">
                     <Avatar className="h-14 w-14 border-2 border-primary">
                         <AvatarImage src={rider.photoUrl || `https://picsum.photos/seed/${rider.id}/100`} />
-                        <AvatarFallback>{rider.name.charAt(0)}</AvatarFallback>
+                        <AvatarFallback>{rider.name?.charAt(0) || 'R'}</AvatarFallback>
                     </Avatar>
                     <div>
                         <p className="font-bold text-lg text-foreground">{rider.name}</p>
@@ -84,10 +83,10 @@ const RiderDetails = ({ rider }) => {
                     </div>
                 </div>
                 <div className="flex gap-2">
-                    <Button variant="outline" size="icon" className="h-11 w-11">
+                    <Button asChild variant="outline" size="icon" className="h-11 w-11">
                         <a href={`tel:${rider.phone}`}><Phone /></a>
                     </Button>
-                     <Button size="icon" className="h-11 w-11 bg-primary text-primary-foreground">
+                     <Button asChild size="icon" className="h-11 w-11 bg-primary text-primary-foreground">
                         <a href={`https://www.google.com/maps/dir/?api=1&destination=${rider.location?.latitude},${rider.location?.longitude}`} target="_blank" rel="noopener noreferrer"><Navigation /></a>
                     </Button>
                 </div>
@@ -101,39 +100,107 @@ export default function OrderTrackingPage() {
     const { orderId } = useParams();
     const router = useRouter();
     const firestore = useFirestore();
-    const [isLoading, setIsLoading] = useState(true);
+
+    const [order, setOrder] = useState(null);
+    const [restaurant, setRestaurant] = useState(null);
+    const [deliveryBoy, setDeliveryBoy] = useState(null);
+    const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
 
-    const { data: order, isLoading: isOrderLoading, error: orderError } = useDoc(
-        orderId ? doc(firestore, 'orders', orderId) : null
-    );
-
-    const { data: restaurant, isLoading: isRestaurantLoading, error: restaurantError } = useDoc(
-        (order?.restaurantId) ? doc(firestore, 'restaurants', order.restaurantId) : null
-    );
-
-    const { data: deliveryBoy, isLoading: isDeliveryBoyLoading, error: deliveryBoyError } = useDoc(
-      (order?.deliveryBoyId && restaurant?.businessType !== 'shop') ? doc(firestore, 'restaurants', order.restaurantId, 'deliveryBoys', order.deliveryBoyId) : null
-    );
-
     useEffect(() => {
-        // Master loading state: it's loading if the primary record (order) is loading,
-        // or if the secondary record (restaurant) is loading AFTER we have the order.
-        if (isOrderLoading) {
-            setIsLoading(true);
-        } else if (order && isRestaurantLoading) {
-            setIsLoading(true);
-        } else {
-            setIsLoading(false);
+        if (!orderId || !firestore) return;
+
+        setLoading(true);
+        setError(null);
+        let unsubscribeOrder;
+
+        try {
+            const orderRef = doc(firestore, 'orders', orderId);
+            unsubscribeOrder = onSnapshot(orderRef, 
+                (orderSnap) => {
+                    if (orderSnap.exists()) {
+                        const orderData = orderSnap.data();
+                        setOrder({ id: orderSnap.id, ...orderData });
+                    } else {
+                        setError('Order not found.');
+                        setLoading(false);
+                    }
+                }, 
+                (err) => {
+                    console.error("Order snapshot error:", err);
+                    setError('Failed to load order details.');
+                    setLoading(false);
+                }
+            );
+        } catch (err) {
+            console.error("Error setting up order listener:", err);
+            setError("Could not initialize order tracking.");
+            setLoading(false);
         }
 
-        if (orderError) setError(orderError.message);
-        if (restaurantError) setError(restaurantError.message);
-        if (deliveryBoyError) console.warn("Delivery boy data error:", deliveryBoyError.message);
+        return () => {
+            if (unsubscribeOrder) unsubscribeOrder();
+        };
 
-    }, [isOrderLoading, isRestaurantLoading, order, orderError, restaurantError, deliveryBoyError]);
+    }, [orderId, firestore]);
 
-    if (isLoading) {
+    useEffect(() => {
+        if (!order || !firestore) return;
+
+        let unsubscribeRestaurant;
+        let unsubscribeRider;
+
+        const fetchSecondaryData = () => {
+            const businessCollection = order.businessType === 'shop' ? 'shops' : 'restaurants';
+            const restaurantRef = doc(firestore, businessCollection, order.restaurantId);
+
+            unsubscribeRestaurant = onSnapshot(restaurantRef, 
+                (restaurantSnap) => {
+                    if (restaurantSnap.exists()) {
+                        setRestaurant({ id: restaurantSnap.id, ...restaurantSnap.data() });
+                        
+                        if (order.deliveryBoyId) {
+                            const riderRef = doc(firestore, businessCollection, order.restaurantId, 'deliveryBoys', order.deliveryBoyId);
+                            unsubscribeRider = onSnapshot(riderRef, 
+                                (riderSnap) => {
+                                    if (riderSnap.exists()) {
+                                        setDeliveryBoy({ id: riderSnap.id, ...riderSnap.data() });
+                                    } else {
+                                        setDeliveryBoy(null);
+                                    }
+                                },
+                                (err) => {
+                                    console.warn("Rider snapshot error:", err);
+                                    setDeliveryBoy(null);
+                                }
+                            );
+                        } else {
+                             setDeliveryBoy(null);
+                        }
+                    } else {
+                        setError('Associated restaurant/shop not found.');
+                    }
+                    setLoading(false);
+                },
+                (err) => {
+                    console.error("Restaurant/Shop snapshot error:", err);
+                    setError('Failed to load business details.');
+                    setLoading(false);
+                }
+            );
+        };
+
+        fetchSecondaryData();
+
+        return () => {
+            if (unsubscribeRestaurant) unsubscribeRestaurant();
+            if (unsubscribeRider) unsubscribeRider();
+        };
+
+    }, [order, firestore]);
+
+
+    if (loading) {
         return (
             <div className="min-h-screen bg-background flex flex-col items-center justify-center text-center p-4">
                 <Loader2 className="w-16 h-16 text-primary animate-spin" />
@@ -162,7 +229,7 @@ export default function OrderTrackingPage() {
     }
     
     // Ensure locations are GeoPoints before passing to map
-    const restaurantLocation = restaurant?.location instanceof GeoPoint ? restaurant.location : null;
+    const restaurantLocation = restaurant?.address?.location instanceof GeoPoint ? restaurant.address.location : null;
     const customerLocation = order.customerLocation instanceof GeoPoint ? order.customerLocation : null;
     const riderLocation = deliveryBoy?.location instanceof GeoPoint ? deliveryBoy.location : null;
 
@@ -184,7 +251,7 @@ export default function OrderTrackingPage() {
                     <StatusTimeline currentStatus={order.status} />
                 </div>
 
-                <div className="flex-grow relative">
+                <div className="flex-grow relative h-64 md:h-auto">
                     {(restaurantLocation && customerLocation) ? (
                         <LiveTrackingMap 
                             restaurantLocation={restaurantLocation}
@@ -203,4 +270,3 @@ export default function OrderTrackingPage() {
         </div>
     );
 }
-
