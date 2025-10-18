@@ -4,7 +4,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { PlusCircle, GripVertical, Trash2, Edit, Image as ImageIcon, Search, X, Utensils, Pizza, Soup, Drumstick, Salad, CakeSlice, GlassWater, ChevronDown, IndianRupee, Upload, Copy, FileJson, XCircle } from "lucide-react";
+import { PlusCircle, GripVertical, Trash2, Edit, Image as ImageIcon, Search, X, Utensils, Pizza, Soup, Drumstick, Salad, CakeSlice, GlassWater, ChevronDown, IndianRupee, Upload, Copy, FileJson, XCircle, ShoppingBag, Laptop, BookOpen, ToyBrick } from "lucide-react";
 import Image from "next/image";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose } from "@/components/ui/dialog";
@@ -17,21 +17,32 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { useSearchParams } from "next/navigation";
 
 
-const defaultCategoryConfig = {
-  "starters": { title: "Starters", icon: Utensils },
-  "momos": { title: "Momos", icon: Drumstick },
-  "burgers": { title: "Burgers", icon: Pizza },
-  "rolls": { title: "Rolls", icon: Salad },
+const restaurantCategoryConfig = {
+  "starters": { title: "Starters", icon: Salad },
+  "main-course": { title: "Main Course", icon: Pizza },
+  "beverages": { title: "Beverages", icon: GlassWater },
+  "desserts": { title: "Desserts", icon: CakeSlice },
   "soup": { title: "Soup", icon: Soup },
   "tandoori-item": { title: "Tandoori Items", icon: Drumstick },
-  "main-course": { title: "Main Course", icon: Utensils },
-  "tandoori-khajana": { title: "Tandoori Khajana", icon: Utensils },
+  "momos": { title: "Momos", icon: Drumstick },
+  "burgers": { title: "Burgers", icon: Pizza },
+  "rolls": { title: "Rolls", icon: Utensils },
+  "tandoori-khajana": { title: "Tandoori Khajana", icon: Drumstick },
   "rice": { title: "Rice", icon: Utensils },
   "noodles": { title: "Noodles", icon: Utensils },
   "pasta": { title: "Pasta", icon: Utensils },
   "raita": { title: "Raita", icon: Utensils },
-  "desserts": { title: "Desserts", icon: CakeSlice },
-  "beverages": { title: "Beverages", icon: GlassWater },
+};
+
+const shopCategoryConfig = {
+  "electronics": { title: "Electronics", icon: Laptop },
+  "groceries": { title: "Groceries", icon: ShoppingBag },
+  "clothing": { title: "Clothing", icon: Utensils }, // Placeholder, can be changed
+  "books": { title: "Books", icon: BookOpen },
+  "home-appliances": { title: "Home Appliances", icon: Utensils },
+  "toys-games": { title: "Toys & Games", icon: ToyBrick },
+  "beauty-personal-care": { title: "Beauty & Personal Care", icon: Utensils },
+  "sports-outdoors": { title: "Sports & Outdoors", icon: Utensils },
 };
 
 
@@ -257,7 +268,7 @@ const AddItemModal = ({ isOpen, setIsOpen, onSave, editingItem, allCategories })
                     name: "",
                     description: "",
                     portions: [{ name: 'Full', price: '' }],
-                    categoryId: "starters",
+                    categoryId: sortedCategories[0]?.id || "starters",
                     isVeg: true,
                     isAvailable: true,
                     imageUrl: "",
@@ -707,11 +718,12 @@ const MotionButton = motion(Button);
 export default function MenuPage() {
   const [menu, setMenu] = useState({});
   const [customCategories, setCustomCategories] = useState([]);
+  const [businessType, setBusinessType] = useState('restaurant');
   const [loading, setLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isBulkModalOpen, setIsBulkModalOpen] = useState(false);
   const [editingItem, setEditingItem] = useState(null);
-  const [openCategory, setOpenCategory] = useState("starters");
+  const [openCategory, setOpenCategory] = useState(null);
   const [selectedItems, setSelectedItems] = useState([]);
   const searchParams = useSearchParams();
   const impersonatedOwnerId = searchParams.get('impersonate_owner_id');
@@ -744,6 +756,10 @@ export default function MenuPage() {
         const data = await handleApiCall('/api/owner/menu', 'GET');
         setMenu(data.menu || {});
         setCustomCategories(data.customCategories || []);
+        setBusinessType(data.businessType || 'restaurant');
+        if (data.menu && Object.keys(data.menu).length > 0) {
+            setOpenCategory(Object.keys(data.menu)[0]);
+        }
     } catch (error) {
         console.error("Error fetching menu:", error);
         alert("Could not fetch menu. " + error.message);
@@ -760,7 +776,7 @@ export default function MenuPage() {
     return () => unsubscribe();
   }, [impersonatedOwnerId]);
   
-  const allCategories = { ...defaultCategoryConfig };
+  const allCategories = { ...(businessType === 'restaurant' ? restaurantCategoryConfig : shopCategoryConfig) };
   customCategories.forEach(cat => {
     if (!allCategories[cat.id]) {
       allCategories[cat.id] = { title: cat.title, icon: Utensils };
@@ -795,8 +811,8 @@ export default function MenuPage() {
   const handleEditItem = (item) => {
     const categoryId = Object.keys(menu).find(key => 
         (menu[key] || []).some(i => i.id === item.id)
-    ) || "starters";
-    setEditingItem({ ...item, categoryId });
+    );
+    setEditingItem({ ...item, categoryId: categoryId || Object.keys(allCategories)[0] });
     setIsModalOpen(true);
   };
   
@@ -937,14 +953,14 @@ export default function MenuPage() {
           }).map(categoryId => {
             const config = allCategories[categoryId];
             const items = menu[categoryId] || [];
-            if (!config) return null;
+            if (!config || items.length === 0 && !customCategories.some(c => c.id === categoryId)) return null;
             
             return (
                 <MenuCategory
                     key={categoryId}
                     categoryId={categoryId}
                     title={config.title}
-                    icon={config.icon}
+                    icon={config.icon || Utensils}
                     items={items}
                     onDeleteItem={handleDeleteItem}
                     onEditItem={handleEditItem}

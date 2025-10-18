@@ -1,4 +1,5 @@
 
+
 import { NextResponse } from 'next/server';
 import { firestore as adminFirestore } from 'firebase-admin';
 import { getAuth, getFirestore } from '@/lib/firebase-admin';
@@ -61,7 +62,13 @@ export async function GET(req) {
         const businessData = businessSnap.data();
         const customCategories = businessData.customCategories || [];
 
-        const defaultCategoryKeys = ["momos", "burgers", "rolls", "soup", "tandoori-item", "starters", "main-course", "tandoori-khajana", "rice", "noodles", "pasta", "raita", "desserts", "beverages"];
+        // Determine which default categories to use based on business type
+        const businessType = businessData.businessType || (collectionName === 'restaurants' ? 'restaurant' : 'shop');
+        
+        const defaultRestaurantCategories = ["momos", "burgers", "rolls", "soup", "tandoori-item", "starters", "main-course", "tandoori-khajana", "rice", "noodles", "pasta", "raita", "desserts", "beverages"];
+        const defaultShopCategories = ["electronics", "groceries", "clothing", "books", "home-appliances", "toys-games", "beauty-personal-care", "sports-outdoors"];
+        
+        const defaultCategoryKeys = businessType === 'restaurant' ? defaultRestaurantCategories : defaultShopCategories;
         
         const allCategoryKeys = [...new Set([...defaultCategoryKeys, ...customCategories.map(c => c.id)])];
 
@@ -82,7 +89,7 @@ export async function GET(req) {
             menuData[key].sort((a, b) => (a.order || 0) - (b.order || 0));
         });
 
-        return NextResponse.json({ menu: menuData, customCategories: customCategories }, { status: 200 });
+        return NextResponse.json({ menu: menuData, customCategories: customCategories, businessType: businessType }, { status: 200 });
 
     } catch (error) {
         console.error("GET MENU ERROR:", error);
