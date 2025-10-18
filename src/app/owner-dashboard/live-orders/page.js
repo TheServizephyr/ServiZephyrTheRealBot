@@ -4,7 +4,7 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { RefreshCw, ChevronUp, ChevronDown, Check, CookingPot, Bike, PartyPopper, Undo, Bell, PackageCheck, Printer, X, Loader2, IndianRupee, Wallet } from 'lucide-react';
+import { RefreshCw, ChevronUp, ChevronDown, Check, CookingPot, Bike, PartyPopper, Undo, Bell, PackageCheck, Printer, X, Loader2, IndianRupee, Wallet, History, ClockIcon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { auth } from '@/lib/firebase';
 import { cn } from "@/lib/utils";
@@ -15,6 +15,7 @@ import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 
 
 const statusConfig = {
@@ -710,9 +711,33 @@ export default function LiveOrdersPage() {
                                         {format(new Date(order.orderDate?.seconds ? order.orderDate.seconds * 1000 : order.orderDate), 'dd/MM/yyyy, hh:mm a')}
                                     </td>
                                     <td className="p-4">
-                                        <span className={cn('px-2 py-1 text-xs font-semibold rounded-full border flex items-center gap-2 w-fit capitalize', statusConfig[order.status]?.color)}>
-                                            {order.status}
-                                        </span>
+                                        <Popover>
+                                            <PopoverTrigger asChild>
+                                                <button className={cn('flex items-center gap-2 text-xs font-semibold rounded-full border px-3 py-1 w-fit capitalize transition-transform hover:scale-105', statusConfig[order.status]?.color)}>
+                                                    {order.status}
+                                                </button>
+                                            </PopoverTrigger>
+                                            <PopoverContent className="w-80">
+                                                <div className="grid gap-4">
+                                                    <div className="space-y-2">
+                                                        <h4 className="font-medium leading-none flex items-center gap-2"><History size={16} /> Status History</h4>
+                                                        <div className="text-sm text-muted-foreground space-y-2">
+                                                            {(order.statusHistory || []).length > 0 ? (
+                                                                [...order.statusHistory].reverse().map((h, i) => (
+                                                                    <div key={i} className="flex items-center gap-2">
+                                                                        <ClockIcon size={12} />
+                                                                        <span className="font-semibold capitalize">{h.status}:</span>
+                                                                        <span>{format(new Date(h.timestamp), 'hh:mm:ss a')}</span>
+                                                                    </div>
+                                                                ))
+                                                            ) : (
+                                                                <p>No history available.</p>
+                                                            )}
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </PopoverContent>
+                                        </Popover>
                                     </td>
                                     <td className="p-4 w-auto md:w-[320px]">
                                         <ActionButton
@@ -744,6 +769,3 @@ export default function LiveOrdersPage() {
     </div>
   );
 }
-
-
-    

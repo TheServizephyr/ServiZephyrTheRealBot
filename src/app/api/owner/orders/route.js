@@ -88,12 +88,17 @@ export async function GET(req) {
 
         const orders = ordersSnap.docs.map(doc => {
             const data = doc.data();
+            const statusHistory = (data.statusHistory || []).map(h => ({
+                ...h,
+                timestamp: h.timestamp?.toDate ? h.timestamp.toDate().toISOString() : h.timestamp,
+            }));
             return { 
                 id: doc.id, 
                 ...data,
                 orderDate: data.orderDate?.toDate ? data.orderDate.toDate().toISOString() : data.orderDate,
                 customer: data.customerName,
                 amount: data.totalAmount,
+                statusHistory,
             };
         });
 
@@ -132,7 +137,13 @@ export async function PATCH(req) {
             return NextResponse.json({ message: 'Access denied to this order.' }, { status: 403 });
         }
         
-        const updateData = { status: newStatus };
+        const updateData = { 
+            status: newStatus,
+            statusHistory: adminFirestore.FieldValue.arrayUnion({
+                status: newStatus,
+                timestamp: adminFirestore.FieldValue.serverTimestamp()
+            })
+        };
         let deliveryBoyData = null;
 
         if (newStatus === 'rejected' && rejectionReason) {
