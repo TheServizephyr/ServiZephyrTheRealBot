@@ -1,5 +1,6 @@
 
 
+
 import { NextResponse } from 'next/server';
 import { getAuth, getFirestore } from '@/lib/firebase-admin';
 import { firestore as adminFirestore } from 'firebase-admin';
@@ -38,31 +39,19 @@ export async function POST(req) {
 
         // --- MERGE UNCLAIMED PROFILE LOGIC ---
         const unclaimedProfileRef = firestore.collection('unclaimed_profiles').doc(phone);
-        const unclaimedProfileSnap = await unclaimedProfileRef.get(); // Await the get() call
+        const unclaimedProfileSnap = await unclaimedProfileRef.get();
         let mergedUserData = { ...finalUserData };
 
-        if (unclaimedProfileSnap.exists) { // Now .exists is a property, not a function
+        if (unclaimedProfileSnap.exists) { 
             console.log(`[PROFILE COMPLETION] Unclaimed profile for ${phone} found. Merging data.`);
             const unclaimedData = unclaimedProfileSnap.data();
-            // Merge addresses, prioritizing unclaimed data if new user has none.
+            
             const existingAddresses = finalUserData.addresses || [];
             const unclaimedAddresses = unclaimedData.addresses || [];
             mergedUserData.addresses = [...existingAddresses, ...unclaimedAddresses];
             
-            // Delete the unclaimed profile after merging
             batch.delete(unclaimedProfileRef);
             console.log(`[PROFILE COMPLETION] Unclaimed profile for ${phone} marked for deletion.`);
-
-            // Update status in all restaurants/shops where user was 'unclaimed'
-             const allRestaurants = await firestore.collection('restaurants').get();
-             allRestaurants.forEach(async (restaurantDoc) => {
-                 const restaurantCustomerRef = restaurantDoc.ref.collection('customers').doc(phone);
-                 const customerSnap = await restaurantCustomerRef.get();
-                 if (customerSnap.exists && customerSnap.data().status === 'unclaimed') {
-                     batch.update(restaurantCustomerRef, { status: 'verified', userId: uid });
-                     console.log(`[PROFILE COMPLETION] Updated user status to 'verified' in restaurant ${restaurantDoc.id}`);
-                 }
-             });
         }
         // --- END MERGE LOGIC ---
 
@@ -78,7 +67,6 @@ export async function POST(req) {
              
              const finalBusinessData = {
                 ...businessData,
-                businessType: businessType, // Ensure businessType is stored
                 razorpayAccountId: '', 
              };
              batch.set(businessRef, finalBusinessData);
@@ -98,3 +86,6 @@ export async function POST(req) {
         return NextResponse.json({ message: `Backend Error: ${error.message}` }, { status: 500 });
     }
 }
+
+
+    

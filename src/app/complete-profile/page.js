@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useState, useEffect } from 'react';
@@ -19,7 +20,7 @@ const getUserRoleFromFirestore = async (uid) => {
     try {
         const userSnap = await getDoc(userRef);
         if (userSnap.exists()) {
-            return userSnap.data().role;
+            return userSnap.data(); // Return full user data
         }
     } catch (e) {
         console.warn("Could not read user role, likely due to security rules for new user.");
@@ -48,11 +49,16 @@ export default function CompleteProfile() {
     const unsubscribe = auth.onAuthStateChanged(async (user) => {
       if (user) {
         try {
-          const userRole = await getUserRoleFromFirestore(user.uid);
+          const userData = await getUserRoleFromFirestore(user.uid);
+          const userRole = userData?.role;
+          const businessType = userData?.businessType;
 
-          if (userRole && userRole !== 'none') { // 'none' is a placeholder during transition
+          if (userRole && userRole !== 'none') {
             localStorage.setItem('role', userRole);
-            if (userRole === 'restaurant-owner' || userRole === 'shop-owner') router.push('/owner-dashboard');
+            if (userRole === 'restaurant-owner' || userRole === 'shop-owner') {
+              localStorage.setItem('businessType', businessType || (userRole === 'restaurant-owner' ? 'restaurant' : 'shop'));
+              router.push('/owner-dashboard');
+            }
             else if (userRole === 'admin') router.push('/admin-dashboard');
             else router.push('/customer-dashboard');
           } else {
@@ -95,7 +101,6 @@ export default function CompleteProfile() {
     
     const normalizedPhone = phone.slice(-10);
 
-    // **THE FIX**: Phone number is now required for all roles
     if (!validatePhoneNumber(normalizedPhone)) {
         setError('Please enter a valid 10-digit mobile number.');
         setLoading(false);
@@ -116,7 +121,6 @@ export default function CompleteProfile() {
         
         const isBusinessOwner = role === 'restaurant-owner' || role === 'shop-owner';
 
-        // --- START: PAYLOAD PREPARATION ---
         const finalUserData = {
             uid: user.uid,
             email: user.email,
@@ -143,14 +147,11 @@ export default function CompleteProfile() {
                 ownerId: user.uid,
                 ownerPhone: normalizedPhone,
                 approvalStatus: 'pending',
-                botPhoneNumberId: `REPLACE_WITH_BOT_ID_${businessName.replace(/\s+/g, '-').toLowerCase()}`
+                botPhoneNumberId: `REPLACE_WITH_BOT_ID_${businessName.replace(/\s+/g, '-').toLowerCase()}`,
+                businessType: finalUserData.businessType,
              };
         }
         
-        // --- END: PAYLOAD PREPARATION ---
-
-
-        // --- API CALL ---
         const idToken = await user.getIdToken();
         const res = await fetch('/api/auth/complete-profile', {
             method: 'POST',
@@ -171,9 +172,8 @@ export default function CompleteProfile() {
         }
 
         localStorage.setItem('role', role);
-        localStorage.setItem('businessType', finalUserData.businessType);
-        
         if (isBusinessOwner) {
+          localStorage.setItem('businessType', finalUserData.businessType);
           router.push('/owner-dashboard');
         } else if (role === 'admin') {
           router.push('/admin-dashboard');
@@ -341,3 +341,5 @@ export default function CompleteProfile() {
     </div>
   );
 }
+
+    
