@@ -1,5 +1,4 @@
 
-
 "use client";
 
 import React, { useState, useEffect, useMemo } from 'react';
@@ -403,7 +402,7 @@ const SortableHeader = ({ children, column, sortConfig, onSort }) => {
         {children}
         {isSorted && <Icon size={16} />}
       </div>
-    </th>
+    </SortableHeader>
   );
 };
 
@@ -724,8 +723,9 @@ export default function LiveOrdersPage() {
                                             onRejectClick={(order) => setRejectionModalData({ isOpen: true, order: order })}
                                             onPrintClick={() => handlePrintClick(order.id)}
                                             onAssignClick={() => setAssignModalData({ isOpen: true, order: order })}
-                                        </td>
-                                    </motion.tr>
+                                        />
+                                    </td>
+                                </motion.tr>
                             ))}
                         </AnimatePresence>
                          { !loading && filteredAndSortedOrders.length === 0 && (
@@ -743,5 +743,3 @@ export default function LiveOrdersPage() {
     </div>
   );
 }
-
-    
