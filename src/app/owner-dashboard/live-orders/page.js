@@ -644,12 +644,13 @@ export default function LiveOrdersPage() {
         </div>
 
         <Tabs defaultValue="All" value={activeFilter} onValueChange={setActiveFilter} className="w-full mb-6">
-            <TabsList className="grid w-full grid-cols-3 md:grid-cols-5">
+            <TabsList className="grid w-full grid-cols-3 md:grid-cols-6">
                 <TabsTrigger value="All">All</TabsTrigger>
                 <TabsTrigger value="New">New</TabsTrigger>
                 <TabsTrigger value="Confirmed">Confirmed</TabsTrigger>
                 <TabsTrigger value="Preparing">Preparing</TabsTrigger>
                 <TabsTrigger value="Dispatched">Dispatched</TabsTrigger>
+                <TabsTrigger value="Delivered">Delivered</TabsTrigger>
             </TabsList>
         </Tabs>
 
@@ -769,3 +770,5 @@ export default function LiveOrdersPage() {
     </div>
   );
 }
+
+    
