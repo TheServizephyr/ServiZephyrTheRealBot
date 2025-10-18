@@ -17,7 +17,7 @@ import {
   Moon,
 } from 'lucide-react';
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useTheme } from 'next-themes';
 import { ThemeProvider } from '@/components/ThemeProvider';
@@ -32,6 +32,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { useWindowSize } from 'react-use';
+import { auth } from '@/lib/firebase';
 
 
 const SidebarLink = ({ href, icon: Icon, children, isCollapsed }) => {
@@ -68,17 +69,39 @@ const useIsMobile = () => {
 
 function AdminLayoutContent({ children }) {
   const isMobile = useIsMobile();
-  const [isSidebarOpen, setSidebarOpen] = useState(!isMobile);
+  const [isSidebarOpen, setSidebarOpen] = useState(false);
   const { theme, setTheme } = useTheme();
+  const router = useRouter();
 
    useEffect(() => {
     if (typeof window !== 'undefined') {
-        setSidebarOpen(!isMobile);
+        setIsMobile(window.innerWidth < 768);
+        setSidebarOpen(window.innerWidth >= 768);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!isMobile) {
+      setSidebarOpen(true);
+    } else {
+      setSidebarOpen(false);
     }
   }, [isMobile]);
 
 
   const isCollapsed = !isSidebarOpen && !isMobile;
+  
+  const handleLogout = async () => {
+    try {
+      await auth.signOut();
+      localStorage.removeItem('role');
+      localStorage.removeItem('token');
+      router.push('/');
+    } catch (error) {
+      console.error("Logout failed:", error);
+      alert("Could not log out. Please try again.");
+    }
+  };
 
   return (
     <div className="flex h-screen bg-background text-foreground">
@@ -183,7 +206,7 @@ function AdminLayoutContent({ children }) {
                 <DropdownMenuItem>Profile</DropdownMenuItem>
                 <DropdownMenuItem>Settings</DropdownMenuItem>
                 <DropdownMenuSeparator />
-                <DropdownMenuItem>Log out</DropdownMenuItem>
+                <DropdownMenuItem onClick={handleLogout}>Log out</DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
           </div>
