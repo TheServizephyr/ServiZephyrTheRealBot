@@ -601,13 +601,15 @@ const BulkAddModal = ({ isOpen, setIsOpen, onSave, businessType }) => {
     const itemName = isShop ? 'Product name' : 'Dish name';
     const placeholderText = isShop ? '[PASTE YOUR PRODUCT LIST HERE]' : '[PASTE YOUR MENU TEXT HERE]';
     const instructionsText = isShop ? 'your product list' : 'your menu text';
+    const categoryExample = isShop ? "'electronics'" : "'main-course'";
+    const defaultCategory = isShop ? "general" : "main-course";
 
     const aiPrompt = `You are an expert data extractor. Convert the following ${contextType} text into a structured JSON array. Each object in the array must strictly follow this format:
 {
   "name": "string (${itemName})",
   "description": "string (Optional item description)",
   "imageUrl": "string (Optional URL to the item image)",
-  "categoryId": "string (Lowercase, dash-separated, e.g., 'main-course', 'electronics')",
+  "categoryId": "string (Lowercase, dash-separated, e.g., ${categoryExample})",
   "isVeg": "boolean (true for vegetarian, false for non-vegetarian, default to true if unsure)",
   "portions": [
     { "name": "string (e.g., 'Full', 'Half', 'Regular', '500g')", "price": "number" }
@@ -627,7 +629,7 @@ const BulkAddModal = ({ isOpen, setIsOpen, onSave, businessType }) => {
 
 Important Rules:
 - If an item has only one price, create a single entry in the 'portions' array with the name "Full".
-- If a category is not obvious, use a sensible default like '${isShop ? 'general' : 'main-course'}'.
+- If a category is not obvious, use a sensible default like '${defaultCategory}'.
 - The 'isVeg' flag is more for restaurants; for shops, you can default it to true.
 - The 'imageUrl' is optional. If not present, the system will use a placeholder.
 - The final output must be ONLY the JSON array, with no extra text or explanations.
@@ -1014,4 +1016,6 @@ export default function MenuPage() {
     </div>
   );
 }
+
+
 
