@@ -1,6 +1,6 @@
 
 
-"use client";
+'use client';
 
 import { useState, useEffect } from "react";
 import Sidebar from "@/components/OwnerDashboard/Sidebar";
@@ -57,8 +57,8 @@ function FeatureLockScreen({ remark, featureId }) {
 
 
 function OwnerDashboardContent({ children }) {
+  const [isMobile, setIsMobile] = useState(false);
   const [isSidebarOpen, setSidebarOpen] = useState(true);
-  const [isMobile, setIsMobile] = useState(null);
   const [loading, setLoading] = useState(true);
   const [restaurantStatus, setRestaurantStatus] = useState({
       status: null,
@@ -140,7 +140,7 @@ function OwnerDashboardContent({ children }) {
     };
   }, [router]);
 
-  if (loading || isMobile === null) {
+  if (loading) {
     return (
       <div className="flex h-screen items-center justify-center bg-background">
         <div className="h-16 w-16 animate-spin rounded-full border-b-2 border-primary"></div>
