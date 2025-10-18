@@ -7,13 +7,16 @@ export async function GET(req) {
     try {
         const firestore = getFirestore();
 
-        // 1. Pending Approvals
-        const pendingSnap = await firestore.collection('restaurants').where('approvalStatus', '==', 'pending').count().get();
-        const pendingApprovals = pendingSnap.data().count;
+        // 1. Pending Approvals from both collections
+        const pendingRestaurantsSnap = await firestore.collection('restaurants').where('approvalStatus', '==', 'pending').count().get();
+        const pendingShopsSnap = await firestore.collection('shops').where('approvalStatus', '==', 'pending').count().get();
+        const pendingApprovals = pendingRestaurantsSnap.data().count + pendingShopsSnap.data().count;
 
-        // 2. Total Restaurants
+
+        // 2. Total Listings from both collections
         const totalRestoSnap = await firestore.collection('restaurants').count().get();
-        const totalRestaurants = totalRestoSnap.data().count;
+        const totalShopsSnap = await firestore.collection('shops').count().get();
+        const totalListings = totalRestoSnap.data().count + totalShopsSnap.data().count;
 
         // 3. Total Users
         const totalUsersSnap = await firestore.collection('users').count().get();
@@ -31,10 +34,17 @@ export async function GET(req) {
         const recentUsersSnap = await firestore.collection('users').orderBy('createdAt', 'desc').limit(4).get();
         const recentSignups = recentUsersSnap.docs.map(doc => {
             const data = doc.data();
-            // SAFETY NET: Use current time if createdAt is missing
             const signupTime = data.createdAt?.toDate?.()?.toISOString() || new Date().toISOString();
+            
+            let userType = 'User';
+            if (data.role === 'owner' || data.role === 'restaurant-owner') {
+                userType = 'Restaurant';
+            } else if (data.role === 'shop-owner') {
+                userType = 'Shop';
+            }
+
             return {
-                type: data.role === 'owner' ? 'Restaurant' : 'User',
+                type: userType,
                 name: data.name || 'Unnamed User',
                 time: signupTime,
             };
@@ -63,7 +73,7 @@ export async function GET(req) {
 
         return NextResponse.json({
             pendingApprovals,
-            totalRestaurants,
+            totalListings,
             totalUsers,
             todayOrders,
             todayRevenue,
@@ -76,3 +86,5 @@ export async function GET(req) {
         return NextResponse.json({ message: 'Internal Server Error', error: error.message }, { status: 500 });
     }
 }
+
+    

@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useState, useEffect } from 'react';
@@ -103,7 +104,7 @@ export default function AdminDashboardPage() {
           className="bg-yellow-500/10 border-yellow-500/50 cursor-pointer lg:col-span-1"
           isLoading={loading}
         />
-        <StatCard title="Total Restaurants" value={data?.totalRestaurants || 0} icon={Store} isLoading={loading}/>
+        <StatCard title="Total Listings" value={data?.totalListings || 0} icon={Store} isLoading={loading}/>
         <StatCard title="Total Users" value={data?.totalUsers || 0} icon={Users} isLoading={loading}/>
         <StatCard title="Today's Orders" value={data?.todayOrders || 0} icon={ShoppingCart} isLoading={loading}/>
         <StatCard title="Today's Revenue" value={data?.todayRevenue || 0} icon={IndianRupee} isCurrency isLoading={loading}/>
@@ -147,7 +148,7 @@ export default function AdminDashboardPage() {
                 {(data?.recentSignups || []).map((signup, i) => (
                   <div key={i} className="flex items-center">
                     <div className="p-3 bg-muted rounded-full mr-4">
-                      {signup.type === 'Restaurant' ? (
+                      {signup.type === 'Restaurant' || signup.type === 'Shop' ? (
                         <Store className="h-5 w-5 text-primary" />
                       ) : (
                         <Users className="h-5 w-5 text-muted-foreground" />
@@ -169,3 +170,5 @@ export default function AdminDashboardPage() {
     </motion.div>
   );
 }
+
+    
