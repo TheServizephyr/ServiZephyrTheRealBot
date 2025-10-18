@@ -63,6 +63,7 @@ const RejectOrderModal = ({ order, isOpen, onClose, onConfirm }) => {
         { value: "restaurant_closed", label: "Restaurant is currently closed" },
         { value: "customer_request", label: "Customer requested cancellation" },
         { value: "invalid_details", label: "Invalid address or phone number" },
+        { value: "undeliverable_address", label: "Address not deliverable" },
         { value: "other", label: "Other" },
     ];
 
