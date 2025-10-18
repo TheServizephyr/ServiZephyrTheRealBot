@@ -68,6 +68,7 @@ function OwnerDashboardContent({ children }) {
   const pathname = usePathname();
 
   useEffect(() => {
+    console.log("[DEBUG] OwnerLayout: useEffect running.");
     const checkScreenSize = () => {
       const mobile = window.innerWidth < 768;
       setIsMobile(mobile);
@@ -77,6 +78,7 @@ function OwnerDashboardContent({ children }) {
     window.addEventListener('resize', checkScreenSize);
     
     const fetchRestaurantStatus = async (user) => {
+        console.log("[DEBUG] OwnerLayout: fetchRestaurantStatus called.");
         setLoading(true);
         try {
             const idToken = await user.getIdToken();
@@ -84,6 +86,8 @@ function OwnerDashboardContent({ children }) {
                 headers: { 'Authorization': `Bearer ${idToken}` }
             });
             const data = await res.json();
+            console.log(`[DEBUG] OwnerLayout: /api/owner/status responded with status ${res.status} and data:`, data);
+            
             if (res.ok) {
                 setRestaurantStatus({
                     status: data.status,
@@ -92,23 +96,28 @@ function OwnerDashboardContent({ children }) {
                 });
             } else {
                  if(res.status === 404 && data.message.includes("No business associated")) {
+                    console.log("[DEBUG] OwnerLayout: No business found, treating as 'pending'.");
                     setRestaurantStatus({ status: 'pending', restrictedFeatures: [], suspensionRemark: '' });
                  } else {
+                    console.error("[DEBUG] OwnerLayout: API error, setting status to 'error'.");
                     setRestaurantStatus({ status: 'error', restrictedFeatures: [], suspensionRemark: '' });
                  }
             }
         } catch (e) {
-            console.error("Error fetching owner status:", e);
+            console.error("[DEBUG] OwnerLayout: CRITICAL error fetching owner status:", e);
             setRestaurantStatus({ status: 'error', restrictedFeatures: [], suspensionRemark: '' });
         } finally {
+            console.log("[DEBUG] OwnerLayout: fetchRestaurantStatus finished, setting loading to false.");
             setLoading(false);
         }
     }
     
     const unsubscribe = auth.onAuthStateChanged(user => {
         if (user) {
+            console.log("[DEBUG] OwnerLayout: onAuthStateChanged fired, user found. Fetching status.");
             fetchRestaurantStatus(user);
         } else {
+            console.log("[DEBUG] OwnerLayout: onAuthStateChanged fired, NO user found. Redirecting to home.");
             setLoading(false);
             router.push('/');
         }
@@ -124,18 +133,26 @@ function OwnerDashboardContent({ children }) {
     return (
       <div className="flex h-screen items-center justify-center bg-background">
         <div className="h-16 w-16 animate-spin rounded-full border-b-2 border-primary"></div>
+        <p className="ml-4 text-lg">Verifying your dashboard...</p>
       </div>
     );
   }
   
   const renderStatusScreen = () => {
       const featureId = pathname.split('/').pop();
-      if (restaurantStatus.status === 'approved') return null; 
+      console.log(`[DEBUG] OwnerLayout: renderStatusScreen called. Current status: '${restaurantStatus.status}', Feature ID: '${featureId}'`);
+
+      if (restaurantStatus.status === 'approved') {
+          console.log("[DEBUG] OwnerLayout: Status is 'approved'. No status screen to render.");
+          return null;
+      }
 
       if (restaurantStatus.status === 'suspended') {
         if (restaurantStatus.restrictedFeatures.includes(featureId)) {
+          console.log(`[DEBUG] OwnerLayout: Feature '${featureId}' is restricted. Showing lock screen.`);
           return <FeatureLockScreen remark={restaurantStatus.suspensionRemark} featureId={featureId} />;
         }
+        console.log(`[DEBUG] OwnerLayout: Status is 'suspended' but feature '${featureId}' is NOT restricted. Allowing access.`);
         return null; // Not this specific feature, so allow render
       }
       
@@ -145,20 +162,24 @@ function OwnerDashboardContent({ children }) {
       switch(restaurantStatus.status) {
           case 'pending':
               if (pathname.endsWith('/owner-dashboard/menu') || pathname.endsWith('/owner-dashboard/settings') || pathname.endsWith('/owner-dashboard/connections') || pathname.endsWith('/owner-dashboard/payout-settings')) {
+                  console.log("[DEBUG] OwnerLayout: Status is 'pending', but allowing access to menu/settings.");
                   return null;
               }
+              console.log("[DEBUG] OwnerLayout: Status is 'pending', showing 'Under Review' screen.");
               icon = <HardHat className="h-16 w-16 text-yellow-400" />;
               title = "Application Under Review";
               message = "Your other dashboard features are being reviewed. You can set up your menu and settings while you wait.";
               actions = <Button onClick={() => router.push('/owner-dashboard/menu')}><Salad className="mr-2 h-4 w-4"/> Go to Menu</Button>
               break;
           case 'rejected':
+              console.log("[DEBUG] OwnerLayout: Status is 'rejected'. Showing rejection screen.");
               icon = <XCircle className="h-16 w-16 text-red-500" />;
               title = "Application Rejected";
               message = "Unfortunately, your application did not meet our criteria at this time. Please contact support for more information.";
               actions = <Button onClick={() => router.push('/contact')}>Contact Support</Button>
               break;
           default: // Error or other states
+             console.log(`[DEBUG] OwnerLayout: Status is '${restaurantStatus.status}'. Showing error screen.`);
              icon = <AlertTriangle className="h-16 w-16 text-red-500" />;
              title = "Could Not Verify Status";
              message = "We couldn't verify your restaurant's status. This could be a temporary issue. Please refresh or contact support.";

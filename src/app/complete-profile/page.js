@@ -17,14 +17,17 @@ const cardVariants = {
 
 const getUserRoleFromFirestore = async (uid) => {
     if (!uid) return null;
+    console.log(`[DEBUG] complete-profile: getUserRoleFromFirestore called for UID: ${uid}`);
     const userRef = doc(db, "users", uid);
     try {
         const userSnap = await getDoc(userRef);
         if (userSnap.exists()) {
+            console.log("[DEBUG] complete-profile: User doc found in Firestore:", userSnap.data());
             return userSnap.data(); // Return full user data
         }
+        console.log("[DEBUG] complete-profile: User doc NOT found in Firestore.");
     } catch (e) {
-        console.warn("Could not read user role, likely due to security rules for new user.");
+        console.warn("[DEBUG] complete-profile: Could not read user role, likely due to security rules for new user.", e);
     }
     return null;
 };
@@ -47,14 +50,18 @@ export default function CompleteProfile() {
   const [error, setError] = useState('');
 
   useEffect(() => {
+    console.log("[DEBUG] complete-profile: useEffect running.");
     const unsubscribe = auth.onAuthStateChanged(async (user) => {
       if (user) {
+        console.log("[DEBUG] complete-profile: onAuthStateChanged fired. User found:", user.email);
         try {
           const userData = await getUserRoleFromFirestore(user.uid);
           const userRole = userData?.role;
           const businessType = userData?.businessType;
+          console.log(`[DEBUG] complete-profile: Fetched role from Firestore: '${userRole}', BusinessType: '${businessType}'`);
 
           if (userRole && userRole !== 'none') {
+            console.log(`[DEBUG] complete-profile: User has a valid role ('${userRole}'). Redirecting...`);
             localStorage.setItem('role', userRole);
             if (userRole === 'owner' || userRole === 'restaurant-owner' || userRole === 'shop-owner') {
               // Ensure businessType is also stored for owner roles
@@ -66,16 +73,19 @@ export default function CompleteProfile() {
               router.push('/customer-dashboard');
             }
           } else {
+            console.log("[DEBUG] complete-profile: User has no role or role is 'none'. Staying on page.");
             const urlParams = new URLSearchParams(window.location.search);
             const phoneFromUrl = urlParams.get('phone');
             setPhone(user.phoneNumber || phoneFromUrl || '');
             setLoading(false);
           }
         } catch (error) {
+          console.error("[DEBUG] complete-profile: Error in auth logic.", error);
           setError("Could not verify user status. Please try again.");
           setLoading(false);
         }
       } else {
+        console.log("[DEBUG] complete-profile: onAuthStateChanged fired. No user found. Redirecting to home.");
         router.push('/');
       }
     });
@@ -96,6 +106,7 @@ export default function CompleteProfile() {
     e.preventDefault();
     setError('');
     setLoading(true);
+    console.log("[DEBUG] complete-profile: handleSubmit triggered.");
 
     if (!role) {
       setError('Please select a role.');
@@ -157,6 +168,7 @@ export default function CompleteProfile() {
              };
         }
         
+        console.log("[DEBUG] complete-profile: Calling /api/auth/complete-profile with payload:", { finalUserData, businessData, businessType });
         const idToken = await user.getIdToken();
         const res = await fetch('/api/auth/complete-profile', {
             method: 'POST',
@@ -172,6 +184,7 @@ export default function CompleteProfile() {
         });
 
         const result = await res.json();
+        console.log("[DEBUG] complete-profile: API response:", result);
         if (!res.ok) {
             throw new Error(result.message || 'An error occurred during profile setup.');
         }
@@ -189,7 +202,7 @@ export default function CompleteProfile() {
         }
 
     } catch (err) {
-      console.error("Profile completion error:", err);
+      console.error("[DEBUG] complete-profile: Profile completion error:", err);
       setError(err.message);
       setLoading(false);
     }

@@ -44,14 +44,17 @@ export default function AuthModal({ isOpen, onClose }) {
     setLoading(true);
     setMsg("Opening Google sign-in...");
     setMsgType("info");
+    console.log("[DEBUG] AuthModal: handleGoogleLogin started.");
     try {
       const result = await signInWithPopup(auth, googleProvider);
       const user = result.user;
+      console.log("[DEBUG] AuthModal: Google sign-in successful. User:", user.email);
       
       setMsg("Verifying user details...");
       
       // Correctly check the user's role from our backend
       const idToken = await user.getIdToken();
+      console.log("[DEBUG] AuthModal: Got ID token. Calling /api/auth/check-role...");
       const res = await fetch('/api/auth/check-role', {
           method: 'POST',
           headers: {
@@ -60,10 +63,12 @@ export default function AuthModal({ isOpen, onClose }) {
       });
   
       const data = await res.json();
+      console.log(`[DEBUG] AuthModal: Received response from check-role API. Status: ${res.status}, Data:`, data);
   
       if (!res.ok) {
           // If the backend returns a 404, it's a new user.
           if(res.status === 404) {
+               console.log("[DEBUG] AuthModal: User not found (404), treating as new user.");
                setMsg("✅ New user detected! Redirecting to complete your profile...");
                setMsgType("success");
                localStorage.setItem("role", "none"); 
@@ -79,6 +84,7 @@ export default function AuthModal({ isOpen, onClose }) {
       
       // If the response is OK, the backend found a role.
       const { role, businessType } = data;
+      console.log(`[DEBUG] AuthModal: Role found: '${role}', BusinessType: '${businessType}'. Redirecting...`);
       setMsg(`✅ Login successful! Redirecting to ${role} dashboard...`);
       setMsgType("success");
       localStorage.setItem("role", role);
@@ -89,11 +95,14 @@ export default function AuthModal({ isOpen, onClose }) {
       setTimeout(() => {
         closeModal();
         if (role === "restaurant-owner" || role === "shop-owner") {
+          console.log("[DEBUG] AuthModal: Redirecting to /owner-dashboard.");
           router.push("/owner-dashboard");
         } else if (role === "admin") {
+          console.log("[DEBUG] AuthModal: Redirecting to /admin-dashboard.");
           router.push("/admin-dashboard");
         }
         else {
+          console.log("[DEBUG] AuthModal: Redirecting to /customer-dashboard.");
           router.push("/customer-dashboard");
         }
       }, 1500);
@@ -117,6 +126,7 @@ export default function AuthModal({ isOpen, onClose }) {
         } else {
             errorMessage = err.message;
         }
+        console.error("[DEBUG] AuthModal: Login failed.", err);
         setMsg(`❌ Login Failed: ${errorMessage}`);
         setMsgType("error");
         setLoading(false);
