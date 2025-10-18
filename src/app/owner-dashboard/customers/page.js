@@ -63,7 +63,7 @@ const SortableHeader = ({ children, column, sortConfig, onSort }) => {
   const Icon = direction === 'asc' ? ChevronUp : ChevronDown;
 
   return (
-    <th onClick={() => onSort(column)} className="cursor-pointer p-4 text-left text-sm font-semibold text-gray-400 hover:bg-gray-800 transition-colors">
+    <th onClick={() => onSort(column)} className="cursor-pointer p-4 text-left text-sm font-semibold text-muted-foreground hover:bg-muted transition-colors">
       <div className="flex items-center gap-2">
         {children}
         {isSorted && <Icon size={16} />}
@@ -118,7 +118,7 @@ const CouponModal = ({ isOpen, setIsOpen, onSave, customer }) => {
 
     return (
         <Dialog open={isOpen} onOpenChange={setIsOpen}>
-            <DialogContent className="sm:max-w-lg bg-gray-900 border-gray-700 text-white">
+            <DialogContent className="sm:max-w-lg bg-card border-border text-foreground">
                 <form onSubmit={handleSubmit}>
                     <DialogHeader>
                         <DialogTitle className="flex items-center gap-2 text-xl">
@@ -131,22 +131,22 @@ const CouponModal = ({ isOpen, setIsOpen, onSave, customer }) => {
                          <div>
                             <Label htmlFor="code">Coupon Code</Label>
                             <div className="flex items-center gap-2 mt-1">
-                                <input id="code" value={coupon.code} onChange={e => handleChange('code', e.target.value.toUpperCase())} placeholder="e.g., SAVE20" className="p-2 border rounded-md bg-gray-800 border-gray-600 w-full" />
+                                <input id="code" value={coupon.code} onChange={e => handleChange('code', e.target.value.toUpperCase())} placeholder="e.g., SAVE20" className="p-2 border rounded-md bg-input border-border w-full" />
                                 <Button type="button" variant="outline" onClick={generateRandomCode}><Wand2 size={16} className="mr-2"/> Generate</Button>
                             </div>
                         </div>
                          <div>
                             <Label htmlFor="description">Description</Label>
-                            <textarea id="description" value={coupon.description} onChange={e => handleChange('description', e.target.value)} rows={2} placeholder="e.g., A special thanks for being a loyal customer." className="mt-1 p-2 border rounded-md bg-gray-800 border-gray-600 w-full" />
+                            <textarea id="description" value={coupon.description} onChange={e => handleChange('description', e.target.value)} rows={2} placeholder="e.g., A special thanks for being a loyal customer." className="mt-1 p-2 border rounded-md bg-input border-border w-full" />
                         </div>
                         <div className="grid grid-cols-2 gap-4">
                             <div>
                                 <Label htmlFor="value">Discount Value (₹ or %)</Label>
-                                <input id="value" type="number" value={coupon.value} onChange={e => handleChange('value', e.target.value)} placeholder="e.g., 100 or 20" className="mt-1 p-2 border rounded-md bg-gray-800 border-gray-600 w-full" />
+                                <input id="value" type="number" value={coupon.value} onChange={e => handleChange('value', e.target.value)} placeholder="e.g., 100 or 20" className="mt-1 p-2 border rounded-md bg-input border-border w-full" />
                             </div>
                             <div>
                                 <Label htmlFor="minOrder">Minimum Order (₹)</Label>
-                                <input id="minOrder" type="number" value={coupon.minOrder} onChange={e => handleChange('minOrder', e.target.value)} placeholder="e.g., 500" className="mt-1 p-2 border rounded-md bg-gray-800 border-gray-600 w-full" />
+                                <input id="minOrder" type="number" value={coupon.minOrder} onChange={e => handleChange('minOrder', e.target.value)} placeholder="e.g., 500" className="mt-1 p-2 border rounded-md bg-input border-border w-full" />
                             </div>
                         </div>
                          <div>
@@ -165,7 +165,7 @@ const CouponModal = ({ isOpen, setIsOpen, onSave, customer }) => {
 
                     <DialogFooter className="pt-4">
                         <DialogClose asChild><Button type="button" variant="secondary" disabled={isSaving}>Cancel</Button></DialogClose>
-                        <Button type="submit" className="bg-indigo-600 hover:bg-indigo-700" disabled={isSaving}>
+                        <Button type="submit" className="bg-primary hover:bg-primary/90" disabled={isSaving}>
                             {isSaving ? 'Sending...' : 'Send Reward'}
                         </Button>
                     </DialogFooter>
@@ -211,38 +211,38 @@ const CustomerDetailPanel = ({ customer, onClose, onSaveNotes, onSendReward }) =
       animate={{ x: 0 }}
       exit={{ x: '100%' }}
       transition={{ type: 'spring', stiffness: 300, damping: 30 }}
-      className="fixed top-0 right-0 h-full w-full max-w-lg bg-gray-900 border-l border-gray-700 shadow-2xl z-50 flex flex-col"
+      className="fixed top-0 right-0 h-full w-full max-w-lg bg-card border-l border-border shadow-2xl z-50 flex flex-col"
     >
       {/* Header */}
-      <div className="p-6 border-b border-gray-700 flex justify-between items-start">
+      <div className="p-6 border-b border-border flex justify-between items-start">
         <div>
-          <h2 className="text-2xl font-bold text-white">{customer.name}</h2>
-          <p className="text-sm text-gray-400 flex items-center gap-2 mt-1"><Mail size={14} /> {customer.email}</p>
+          <h2 className="text-2xl font-bold text-foreground">{customer.name}</h2>
+          <p className="text-sm text-muted-foreground flex items-center gap-2 mt-1"><Mail size={14} /> {customer.email}</p>
           <div className="mt-3"><CustomerBadge status={getCustomerStatus(customer)} /></div>
         </div>
-        <Button variant="ghost" size="icon" onClick={onClose} className="text-gray-400 hover:bg-gray-700 hover:text-white">
+        <Button variant="ghost" size="icon" onClick={onClose} className="text-muted-foreground hover:bg-muted hover:text-foreground">
           <X size={24} />
         </Button>
       </div>
 
        {/* Quick Stats */}
-      <div className="grid grid-cols-3 gap-px bg-gray-700">
-        <div className="bg-gray-800 p-4 text-center">
-            <p className="text-xs text-gray-400">Total Spend</p>
-            <p className="text-xl font-bold text-white">{formatCurrency(customer.totalSpend)}</p>
+      <div className="grid grid-cols-3 gap-px bg-border">
+        <div className="bg-background p-4 text-center">
+            <p className="text-xs text-muted-foreground">Total Spend</p>
+            <p className="text-xl font-bold text-foreground">{formatCurrency(customer.totalSpend)}</p>
         </div>
-        <div className="bg-gray-800 p-4 text-center">
-            <p className="text-xs text-gray-400">Total Orders</p>
-            <p className="text-xl font-bold text-white">{customer.totalOrders}</p>
+        <div className="bg-background p-4 text-center">
+            <p className="text-xs text-muted-foreground">Total Orders</p>
+            <p className="text-xl font-bold text-foreground">{customer.totalOrders}</p>
         </div>
-        <div className="bg-gray-800 p-4 text-center">
-            <p className="text-xs text-gray-400">Last Order</p>
-            <p className="text-xl font-bold text-white">{formatDate(customer.lastOrderDate)}</p>
+        <div className="bg-background p-4 text-center">
+            <p className="text-xs text-muted-foreground">Last Order</p>
+            <p className="text-xl font-bold text-foreground">{formatDate(customer.lastOrderDate)}</p>
         </div>
       </div>
 
       {/* Tabs */}
-      <div className="border-b border-gray-700">
+      <div className="border-b border-border">
         <nav className="flex -mb-px">
           {tabs.map(tab => (
             <button
@@ -250,8 +250,8 @@ const CustomerDetailPanel = ({ customer, onClose, onSaveNotes, onSendReward }) =
               onClick={() => setActiveTab(tab.id)}
               className={`flex-1 py-4 px-1 text-center border-b-2 text-sm font-medium flex items-center justify-center gap-2 ${
                 activeTab === tab.id
-                  ? 'border-indigo-500 text-indigo-400'
-                  : 'border-transparent text-gray-400 hover:text-white hover:border-gray-500'
+                  ? 'border-primary text-primary'
+                  : 'border-transparent text-muted-foreground hover:text-foreground hover:border-border'
               }`}
             >
               <tab.icon size={16} /> {tab.label}
@@ -272,25 +272,25 @@ const CustomerDetailPanel = ({ customer, onClose, onSaveNotes, onSendReward }) =
           >
             {activeTab === 'history' && (
               <div className="space-y-4">
-                <h3 className="font-semibold text-white">All Orders ({customer.orderHistory?.length || 0})</h3>
+                <h3 className="font-semibold text-foreground">All Orders ({customer.orderHistory?.length || 0})</h3>
                 {customer.orderHistory && customer.orderHistory.length > 0 ? customer.orderHistory.map(order => (
-                  <div key={order.id} className="bg-gray-800 p-3 rounded-lg flex justify-between items-center">
+                  <div key={order.id} className="bg-muted p-3 rounded-lg flex justify-between items-center">
                     <div>
-                      <p className="font-semibold text-white">{order.id}</p>
-                      <p className="text-xs text-gray-400">{formatDate(order.date)}</p>
+                      <p className="font-semibold text-foreground">{order.id}</p>
+                      <p className="text-xs text-muted-foreground">{formatDate(order.date)}</p>
                     </div>
-                    <p className="font-bold text-lg text-white">{formatCurrency(order.amount)}</p>
+                    <p className="font-bold text-lg text-foreground">{formatCurrency(order.amount)}</p>
                   </div>
-                )) : <p className="text-gray-400 text-center py-4">No order history available.</p>}
+                )) : <p className="text-muted-foreground text-center py-4">No order history available.</p>}
               </div>
             )}
             {activeTab === 'actions' && (
               <div className="space-y-4">
-                 <h3 className="font-semibold text-white">Engage with {customer.name}</h3>
-                 <div className="bg-gray-800 p-4 rounded-lg">
-                    <h4 className="font-semibold text-indigo-400">Send a Custom Discount</h4>
-                    <p className="text-sm text-gray-400 mt-1 mb-3">Reward their loyalty with a special coupon.</p>
-                    <Button onClick={() => onSendReward(customer)} className="w-full bg-indigo-600 hover:bg-indigo-700">
+                 <h3 className="font-semibold text-foreground">Engage with {customer.name}</h3>
+                 <div className="bg-muted p-4 rounded-lg">
+                    <h4 className="font-semibold text-primary">Send a Custom Discount</h4>
+                    <p className="text-sm text-muted-foreground mt-1 mb-3">Reward their loyalty with a special coupon.</p>
+                    <Button onClick={() => onSendReward(customer)} className="w-full bg-primary hover:bg-primary/90">
                         <Gift size={16} className="mr-2"/> Create & Send Reward
                     </Button>
                  </div>
@@ -298,16 +298,16 @@ const CustomerDetailPanel = ({ customer, onClose, onSaveNotes, onSendReward }) =
             )}
             {activeTab === 'notes' && (
                <div>
-                 <h3 className="font-semibold text-white mb-2">Private Notes</h3>
+                 <h3 className="font-semibold text-foreground mb-2">Private Notes</h3>
                  <textarea 
                     value={notes}
                     onChange={(e) => setNotes(e.target.value)}
                     rows={8} 
-                    className="w-full p-3 bg-gray-800 border border-gray-600 rounded-lg text-white focus:ring-indigo-500 focus:border-indigo-500" 
+                    className="w-full p-3 bg-input border border-border rounded-lg text-foreground focus:ring-primary focus:border-primary" 
                     placeholder={`e.g., Prefers window seat, always orders extra sauce...`}
                  />
                  <div className="mt-4 flex justify-end">
-                    <Button onClick={handleSave} className="bg-indigo-600 hover:bg-indigo-700" disabled={isSaving}>
+                    <Button onClick={handleSave} className="bg-primary hover:bg-primary/90" disabled={isSaving}>
                         {isSaving ? 'Saving...' : 'Save Notes'}
                     </Button>
                  </div>
@@ -321,22 +321,22 @@ const CustomerDetailPanel = ({ customer, onClose, onSaveNotes, onSendReward }) =
 };
 
 const StatCard = ({ icon: Icon, title, value, detail, isLoading }) => (
-    <div className={`bg-gray-800/50 p-5 rounded-xl border border-gray-700 flex items-start gap-4 ${isLoading ? 'animate-pulse' : ''}`}>
-        <div className="bg-gray-900 p-3 rounded-lg">
-            <Icon className={`h-6 w-6 text-indigo-400 ${isLoading ? 'invisible' : ''}`} />
+    <div className={cn("bg-card p-5 rounded-xl border border-border flex items-start gap-4", isLoading && 'animate-pulse')}>
+        <div className="bg-muted p-3 rounded-lg">
+            <Icon className={cn("h-6 w-6 text-primary", isLoading && 'invisible')} />
         </div>
         <div>
             {isLoading ? (
                 <>
-                  <div className="h-4 bg-gray-700 rounded w-24 mb-2"></div>
-                  <div className="h-8 bg-gray-700 rounded w-16 mb-2"></div>
-                  <div className="h-3 bg-gray-700 rounded w-32"></div>
+                  <div className="h-4 bg-muted rounded w-24 mb-2"></div>
+                  <div className="h-8 bg-muted rounded w-16 mb-2"></div>
+                  <div className="h-3 bg-muted rounded w-32"></div>
                 </>
             ) : (
                 <>
-                  <p className="text-sm text-gray-400">{title}</p>
-                  <p className="text-2xl font-bold text-white">{value}</p>
-                  <p className="text-xs text-gray-500">{detail}</p>
+                  <p className="text-sm text-muted-foreground">{title}</p>
+                  <p className="text-2xl font-bold text-foreground">{value}</p>
+                  <p className="text-xs text-muted-foreground">{detail}</p>
                 </>
             )}
         </div>
@@ -362,12 +362,12 @@ export default function CustomersPage() {
         if (!user) throw new Error("Authentication required.");
         const idToken = await user.getIdToken();
         
-        let url = endpoint;
+        let url = new URL(endpoint, window.location.origin)
         if (impersonatedOwnerId) {
-            url += `?impersonate_owner_id=${impersonatedOwnerId}`;
+            url.searchParams.append('impersonate_owner_id', impersonatedOwnerId);
         }
         
-        const res = await fetch(url, {
+        const res = await fetch(url.toString(), {
             method,
             headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${idToken}` },
             body: JSON.stringify(body),
@@ -397,10 +397,10 @@ export default function CustomersPage() {
             else setLoading(false);
         });
         return () => unsubscribe();
-    }, []);
+    }, [impersonatedOwnerId]);
     
     const vipCustomers = useMemo(() => {
-        return [...customers].sort((a, b) => b.totalSpend - a.totalSpend).slice(0, 5);
+        return [...customers].sort((a, b) => (b.totalSpend || 0) - (a.totalSpend || 0)).slice(0, 5);
     }, [customers]);
 
     const handleSendReward = (customer) => {
@@ -482,12 +482,12 @@ export default function CustomersPage() {
     ];
 
     return (
-        <div className="p-4 md:p-6 text-white relative min-h-screen bg-gray-900">
+        <div className="p-4 md:p-6 text-foreground relative min-h-screen bg-background">
              {rewardCustomer && <CouponModal isOpen={isCouponModalOpen} setIsOpen={setCouponModalOpen} customer={rewardCustomer} onSave={handleSaveReward} />}
 
             <div>
                 <h1 className="text-3xl font-bold tracking-tight">Customer Hub</h1>
-                <p className="text-gray-400 mt-1">Manage, analyze, and engage with your customers.</p>
+                <p className="text-muted-foreground mt-1">Manage, analyze, and engage with your customers.</p>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 my-6">
@@ -499,35 +499,35 @@ export default function CustomersPage() {
 
             <section className="my-8">
                 <h3 className="text-xl font-bold mb-4">❤️ Your VIP Lounge</h3>
-                <div className="bg-gray-800/50 border border-gray-700 rounded-xl overflow-hidden">
+                <div className="bg-card border border-border rounded-xl overflow-hidden">
                     <div className="overflow-x-auto">
                         <table className="w-full text-left">
-                            <thead className="bg-gray-800">
+                            <thead className="bg-muted/50">
                                 <tr>
-                                    <th className="p-4 text-sm font-semibold text-gray-400">Rank</th>
-                                    <th className="p-4 text-sm font-semibold text-gray-400">Customer</th>
-                                    <th className="p-4 text-sm font-semibold text-gray-400">Total Spend</th>
-                                    <th className="p-4 text-sm font-semibold text-gray-400">Total Orders</th>
-                                    <th className="p-4 text-sm font-semibold text-gray-400 text-center">Action</th>
+                                    <th className="p-4 text-sm font-semibold text-muted-foreground">Rank</th>
+                                    <th className="p-4 text-sm font-semibold text-muted-foreground">Customer</th>
+                                    <th className="p-4 text-sm font-semibold text-muted-foreground">Total Spend</th>
+                                    <th className="p-4 text-sm font-semibold text-muted-foreground">Total Orders</th>
+                                    <th className="p-4 text-sm font-semibold text-muted-foreground text-center">Action</th>
                                 </tr>
                             </thead>
-                            <tbody className="divide-y divide-gray-700">
+                            <tbody className="divide-y divide-border">
                                 {loading ? Array.from({length: 5}).map((_, i) => (
                                     <tr key={i} className="animate-pulse">
-                                        <td className="p-4"><div className="h-5 bg-gray-700 rounded w-1/4"></div></td>
-                                        <td className="p-4"><div className="h-5 bg-gray-700 rounded w-3/4"></div></td>
-                                        <td className="p-4"><div className="h-5 bg-gray-700 rounded w-1/2"></div></td>
-                                        <td className="p-4"><div className="h-5 bg-gray-700 rounded w-1/4"></div></td>
-                                        <td className="p-4 flex justify-center"><div className="h-8 bg-gray-700 rounded w-3/4"></div></td>
+                                        <td className="p-4"><div className="h-5 bg-muted rounded w-1/4"></div></td>
+                                        <td className="p-4"><div className="h-5 bg-muted rounded w-3/4"></div></td>
+                                        <td className="p-4"><div className="h-5 bg-muted rounded w-1/2"></div></td>
+                                        <td className="p-4"><div className="h-5 bg-muted rounded w-1/4"></div></td>
+                                        <td className="p-4 flex justify-center"><div className="h-8 bg-muted rounded w-3/4"></div></td>
                                     </tr>
                                 )) : vipCustomers.map((cust, i) => (
-                                    <tr key={cust.id} className="hover:bg-gray-700/50 transition-colors">
+                                    <tr key={cust.id} className="hover:bg-muted transition-colors">
                                         <td className="p-4"><span className="font-bold text-lg">{i + 1}</span></td>
                                         <td className="p-4 font-semibold">{cust.name}</td>
                                         <td className="p-4 text-green-400 font-bold">{formatCurrency(cust.totalSpend)}</td>
                                         <td className="p-4 text-center">{cust.totalOrders}</td>
                                         <td className="p-4 text-center">
-                                            <Button size="sm" className="bg-indigo-600 hover:bg-indigo-500" onClick={() => handleSendReward(cust)}>
+                                            <Button size="sm" className="bg-primary hover:bg-primary/90" onClick={() => handleSendReward(cust)}>
                                                 <Gift size={16} className="mr-2"/> Send Reward
                                             </Button>
                                         </td>
@@ -540,19 +540,19 @@ export default function CustomersPage() {
             </section>
 
 
-            <div className="my-6 p-4 bg-gray-800/50 rounded-xl border border-gray-700 flex flex-col md:flex-row gap-4 justify-between items-center">
+            <div className="my-6 p-4 bg-card rounded-xl border border-border flex flex-col md:flex-row gap-4 justify-between items-center">
                 <div className="relative w-full md:w-auto">
-                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" size={20} />
                     <input 
                         type="text" 
                         placeholder="Search by name or email..." 
-                        className="bg-gray-900 border border-gray-600 rounded-lg w-full md:w-80 pl-10 pr-4 py-2 focus:ring-2 focus:ring-indigo-500 outline-none"
+                        className="bg-input border border-border rounded-lg w-full md:w-80 pl-10 pr-4 py-2 focus:ring-2 focus:ring-primary outline-none"
                         value={searchQuery}
                         onChange={(e) => setSearchQuery(e.target.value)}
                     />
                 </div>
                 <div className="flex items-center gap-2">
-                     <Filter size={16} className="text-gray-400"/>
+                     <Filter size={16} className="text-muted-foreground"/>
                     <span className="text-sm font-medium">Filter by segment:</span>
                     <div className="flex items-center gap-2 flex-wrap">
                         {filterButtons.map(btn => (
@@ -561,7 +561,7 @@ export default function CustomersPage() {
                              variant="secondary" 
                              size="sm" 
                              onClick={() => setActiveFilter(btn.value)}
-                             className={cn('bg-gray-700 hover:bg-gray-600', btn.className, activeFilter === btn.value && 'ring-2 ring-indigo-500')}
+                             className={cn('bg-muted hover:bg-muted/80', btn.className, activeFilter === btn.value && 'ring-2 ring-primary')}
                            >
                             {btn.label}
                            </Button>
@@ -570,32 +570,32 @@ export default function CustomersPage() {
                 </div>
             </div>
 
-            <div className="bg-gray-800/50 border border-gray-700 rounded-xl overflow-hidden">
+            <div className="bg-card border border-border rounded-xl overflow-hidden">
                 <div className="overflow-x-auto">
                     <table className="w-full">
                         <thead>
-                            <tr className="bg-gray-800">
+                            <tr className="bg-muted/50">
                                 <SortableHeader column="name" sortConfig={sortConfig} onSort={handleSort}>Customer</SortableHeader>
                                 <SortableHeader column="lastOrderDate" sortConfig={sortConfig} onSort={handleSort}>Last Order</SortableHeader>
                                 <SortableHeader column="totalOrders" sortConfig={sortConfig} onSort={handleSort}>Total Orders</SortableHeader>
                                 <SortableHeader column="totalSpend" sortConfig={sortConfig} onSort={handleSort}>Total Spend</SortableHeader>
                             </tr>
                         </thead>
-                        <tbody className="divide-y divide-gray-700/50">
+                        <tbody className="divide-y divide-border">
                             {loading ? (
                                 Array.from({length: 5}).map((_, i) => (
                                     <tr key={i} className="animate-pulse">
-                                        <td className="p-4"><div className="h-5 bg-gray-700 rounded w-3/4"></div></td>
-                                        <td className="p-4"><div className="h-5 bg-gray-700 rounded w-1/2"></div></td>
-                                        <td className="p-4"><div className="h-5 bg-gray-700 rounded w-1/4"></div></td>
-                                        <td className="p-4"><div className="h-5 bg-gray-700 rounded w-1/2"></div></td>
+                                        <td className="p-4"><div className="h-5 bg-muted rounded w-3/4"></div></td>
+                                        <td className="p-4"><div className="h-5 bg-muted rounded w-1/2"></div></td>
+                                        <td className="p-4"><div className="h-5 bg-muted rounded w-1/4"></div></td>
+                                        <td className="p-4"><div className="h-5 bg-muted rounded w-1/2"></div></td>
                                     </tr>
                                 ))
                             ) : filteredAndSortedCustomers.map(customer => (
                                 <motion.tr 
                                     key={customer.id} 
                                     onClick={() => setSelectedCustomer(customer)}
-                                    className="cursor-pointer hover:bg-gray-700/50 transition-colors"
+                                    className="cursor-pointer hover:bg-muted transition-colors"
                                     whileHover={{scale: 1.01}}
                                 >
                                     <td className="p-4 font-medium">
@@ -604,17 +604,17 @@ export default function CustomersPage() {
                                                {customer.name}
                                                <CustomerBadge status={getCustomerStatus(customer)} />
                                            </div>
-                                           <span className="text-xs text-gray-400">{customer.email}</span>
+                                           <span className="text-xs text-muted-foreground">{customer.email}</span>
                                         </div>
                                     </td>
-                                    <td className="p-4 text-gray-300">{formatDate(customer.lastOrderDate)}</td>
-                                    <td className="p-4 text-gray-300 text-center">{customer.totalOrders}</td>
+                                    <td className="p-4 text-muted-foreground">{formatDate(customer.lastOrderDate)}</td>
+                                    <td className="p-4 text-muted-foreground text-center">{customer.totalOrders}</td>
                                     <td className="p-4 font-semibold text-right">{formatCurrency(customer.totalSpend)}</td>
                                 </motion.tr>
                             ))}
                              { !loading && filteredAndSortedCustomers.length === 0 && (
                                 <tr>
-                                    <td colSpan="4" className="text-center p-8 text-gray-400">
+                                    <td colSpan="4" className="text-center p-8 text-muted-foreground">
                                         No customers found for this filter.
                                     </td>
                                 </tr>
@@ -638,3 +638,5 @@ export default function CustomersPage() {
     );
 }
 
+
+    
