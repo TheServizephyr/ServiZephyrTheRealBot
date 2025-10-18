@@ -8,7 +8,7 @@ import { RefreshCw, ChevronUp, ChevronDown, Check, CookingPot, Bike, PartyPopper
 import { Button } from '@/components/ui/button';
 import { auth } from '@/lib/firebase';
 import { cn } from "@/lib/utils";
-import { formatDistanceToNowStrict } from 'date-fns';
+import { format } from 'date-fns';
 import { useSearchParams } from 'next/navigation';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose } from "@/components/ui/dialog";
 import { Label } from '@/components/ui/label';
@@ -707,7 +707,7 @@ export default function LiveOrdersPage() {
                                         </ul>
                                     </td>
                                     <td className="p-4 text-sm text-muted-foreground">
-                                        {formatDistanceToNowStrict(new Date(order.orderDate?.seconds ? order.orderDate.seconds * 1000 : order.orderDate))} ago
+                                        {format(new Date(order.orderDate?.seconds ? order.orderDate.seconds * 1000 : order.orderDate), 'dd/MM/yyyy, hh:mm a')}
                                     </td>
                                     <td className="p-4">
                                         <span className={cn('px-2 py-1 text-xs font-semibold rounded-full border flex items-center gap-2 w-fit capitalize', statusConfig[order.status]?.color)}>
@@ -744,3 +744,6 @@ export default function LiveOrdersPage() {
     </div>
   );
 }
+
+
+    
