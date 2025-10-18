@@ -109,7 +109,13 @@ function OwnerDashboardContent({ children }) {
                     suspensionRemark: data.suspensionRemark || '',
                 });
             } else {
-                setRestaurantStatus({ status: 'error', restrictedFeatures: [], suspensionRemark: '' });
+                 const errorData = await res.json();
+                 // Distinguish between a real error and a "not found" which is normal for new users
+                 if(res.status === 404 && errorData.message.includes("No restaurant associated")) {
+                    setRestaurantStatus({ status: 'pending', restrictedFeatures: [], suspensionRemark: '' });
+                 } else {
+                    setRestaurantStatus({ status: 'error', restrictedFeatures: [], suspensionRemark: '' });
+                 }
             }
         } catch (e) {
             setRestaurantStatus({ status: 'error', restrictedFeatures: [], suspensionRemark: '' });
@@ -119,17 +125,11 @@ function OwnerDashboardContent({ children }) {
     }
     
     const unsubscribe = auth.onAuthStateChanged(user => {
-        // ** THE FIX **
-        // Trust localStorage first to prevent redirect flicker on page load.
-        const storedRole = localStorage.getItem('role');
-
-        if (user && (storedRole === 'owner' || storedRole === 'restaurant-owner' || storedRole === 'shop-owner')) {
+        if (user) {
             fetchRestaurantStatus(user);
-        } else if (user) {
-            // User is logged in but not an owner, redirect
-            router.push('/');
         } else {
-            // No user found, redirect
+            // No user found, redirect immediately
+            setLoading(false);
             router.push('/');
         }
     });
