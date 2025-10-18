@@ -315,6 +315,9 @@ export default function Home() {
                     >
                       Start Your Free Trial
                     </button>
+                    <Link href="/order/ashwani's-restaurant?phone=9027872803" className="mt-4 text-sm text-muted-foreground hover:text-primary underline">
+                      Test Order Page
+                    </Link>
                   </motion.div>
                 )}
               </AnimatePresence>
@@ -564,8 +567,8 @@ export default function Home() {
                 <TableHeader>
                   <TableRow>
                     <TableHead className="w-[40%] text-lg text-foreground">Feature</TableHead>
-                    <TableHead className="text-center text-lg text-green-500 font-bold">ServiZephyr</TableHead>
-                    <TableHead className="text-center text-lg text-yellow-500 font-bold">Food Aggregators</TableHead>
+                    <TableHead className="text-center text-lg text-primary font-bold">ServiZephyr</TableHead>
+                    <TableHead className="text-center text-lg text-muted-foreground">Food Aggregators</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
