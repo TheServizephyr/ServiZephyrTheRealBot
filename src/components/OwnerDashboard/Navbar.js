@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useState, useEffect, useRef } from "react";
@@ -104,11 +105,6 @@ export default function Navbar({ isSidebarOpen, setSidebarOpen }) {
         <div className="hidden md:block">
             <Image src="/logo.png" alt="Logo" width={150} height={40} />
         </div>
-        {/* Search Bar */}
-        <div className={styles.searchBar}>
-            <Search className={styles.searchIcon} size={20} />
-            <input type="text" placeholder="Search..." />
-        </div>
       </div>
 
       {/* Right side actions */}
@@ -184,3 +180,5 @@ export default function Navbar({ isSidebarOpen, setSidebarOpen }) {
     </header>
   );
 }
+
+    

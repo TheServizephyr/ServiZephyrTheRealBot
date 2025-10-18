@@ -4,7 +4,7 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { RefreshCw, ChevronUp, ChevronDown, Check, CookingPot, Bike, PartyPopper, Undo, Bell, PackageCheck, Printer, X, Loader2, IndianRupee, Wallet, History, ClockIcon, User, Phone, MapPin } from 'lucide-react';
+import { RefreshCw, ChevronUp, ChevronDown, Check, CookingPot, Bike, PartyPopper, Undo, Bell, PackageCheck, Printer, X, Loader2, IndianRupee, Wallet, History, ClockIcon, User, Phone, MapPin, Search } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { auth } from '@/lib/firebase';
 import { cn } from "@/lib/utils";
@@ -511,6 +511,7 @@ export default function LiveOrdersPage() {
   const [rejectionModalData, setRejectionModalData] = useState({ isOpen: false, order: null });
   const [detailModalData, setDetailModalData] = useState({ isOpen: false, data: null });
   const [activeFilter, setActiveFilter] = useState('All');
+  const [searchQuery, setSearchQuery] = useState('');
   const searchParams = useSearchParams();
   const impersonatedOwnerId = searchParams.get('impersonate_owner_id');
 
@@ -685,6 +686,19 @@ export default function LiveOrdersPage() {
         }
     }
     
+    if (searchQuery) {
+        const lowercasedQuery = searchQuery.toLowerCase();
+        sortableItems = sortableItems.filter(order => {
+            const matchesId = order.id.toLowerCase().includes(lowercasedQuery);
+            const matchesCustomerName = (order.customer || '').toLowerCase().includes(lowercasedQuery);
+            const matchesCustomerPhone = (order.customerPhone || '').includes(searchQuery);
+            const matchesCustomerAddress = (order.customerAddress || '').toLowerCase().includes(lowercasedQuery);
+            const matchesItems = (order.items || []).some(item => item.name.toLowerCase().includes(lowercasedQuery));
+            
+            return matchesId || matchesCustomerName || matchesCustomerPhone || matchesCustomerAddress || matchesItems;
+        });
+    }
+
     sortableItems.sort((a, b) => {
       const key = sortConfig.key;
       let valA = a[key];
@@ -702,7 +716,7 @@ export default function LiveOrdersPage() {
       return 0;
     });
     return sortableItems;
-  }, [orders, sortConfig, activeFilter]);
+  }, [orders, sortConfig, activeFilter, searchQuery]);
 
   return (
     <div className="p-4 md:p-6 text-foreground min-h-screen bg-background">
@@ -741,15 +755,27 @@ export default function LiveOrdersPage() {
             />
         )}
         
-        <div className="flex flex-col md:flex-row justify-between md:items-center mb-6">
+        <div className="flex flex-col md:flex-row justify-between md:items-center mb-6 gap-4">
             <div>
                 <h1 className="text-2xl md:text-3xl font-bold tracking-tight">Live Order Management</h1>
                 <p className="text-muted-foreground mt-1 text-sm md:text-base">A real-time, intelligent view of your kitchen's pulse.</p>
             </div>
-            <Button onClick={() => fetchInitialData(true)} variant="outline" className="mt-2 sm:mt-0">
-                <RefreshCw size={16} className={cn(loading && "animate-spin")} />
-                <span className="ml-2">{loading ? 'Loading...' : 'Refresh'}</span>
-            </Button>
+             <div className="flex items-center gap-4 w-full md:w-auto">
+                <div className="relative flex-grow md:flex-grow-0">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                    <input
+                        type="text"
+                        placeholder="Search orders..."
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                        className="w-full md:w-64 pl-10 pr-4 py-2 h-10 rounded-md bg-input border border-border"
+                    />
+                </div>
+                <Button onClick={() => fetchInitialData(true)} variant="outline" className="flex-shrink-0">
+                    <RefreshCw size={16} className={cn(loading && "animate-spin")} />
+                    <span className="ml-2 hidden sm:inline">{loading ? 'Loading...' : 'Refresh'}</span>
+                </Button>
+            </div>
         </div>
 
         <Tabs defaultValue="All" value={activeFilter} onValueChange={setActiveFilter} className="w-full mb-6">
@@ -872,8 +898,8 @@ export default function LiveOrdersPage() {
                          { !loading && filteredAndSortedOrders.length === 0 && (
                             <tr>
                                 <td colSpan="5" className="text-center p-16 text-muted-foreground">
-                                    <p className="text-lg font-semibold">All caught up!</p>
-                                    <p>No orders with this status right now.</p>
+                                    <p className="text-lg font-semibold">No orders found.</p>
+                                    <p>Try adjusting your filters or search term.</p>
                                 </td>
                             </tr>
                         )}
@@ -889,5 +915,7 @@ export default function LiveOrdersPage() {
 
 
 
+
+    
 
     
