@@ -119,9 +119,17 @@ function OwnerDashboardContent({ children }) {
     }
     
     const unsubscribe = auth.onAuthStateChanged(user => {
-        if (user) {
+        // ** THE FIX **
+        // Trust localStorage first to prevent redirect flicker on page load.
+        const storedRole = localStorage.getItem('role');
+
+        if (user && storedRole === 'owner') {
             fetchRestaurantStatus(user);
+        } else if (user) {
+            // User is logged in but not an owner, redirect
+            router.push('/');
         } else {
+            // No user found, redirect
             router.push('/');
         }
     });
