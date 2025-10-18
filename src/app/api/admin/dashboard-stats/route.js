@@ -37,10 +37,12 @@ export async function GET(req) {
             const signupTime = data.createdAt?.toDate?.()?.toISOString() || new Date().toISOString();
             
             let userType = 'User';
-            if (data.role === 'owner' || data.role === 'restaurant-owner') {
+            if (data.businessType === 'restaurant') {
                 userType = 'Restaurant';
-            } else if (data.role === 'shop-owner') {
+            } else if (data.businessType === 'shop') {
                 userType = 'Shop';
+            } else if (data.role === 'customer') {
+                userType = 'Customer'
             }
 
             return {
@@ -86,5 +88,3 @@ export async function GET(req) {
         return NextResponse.json({ message: 'Internal Server Error', error: error.message }, { status: 500 });
     }
 }
-
-    

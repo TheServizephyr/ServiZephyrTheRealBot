@@ -7,24 +7,12 @@ import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { AlertCircle, Store, Users, IndianRupee, ShoppingCart, RefreshCw } from 'lucide-react';
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
 import { format } from 'date-fns';
+import { Button } from '@/components/ui/button';
+import Link from 'next/link';
 
-const StatCard = ({ title, value, icon: Icon, isCurrency = false, className = '', isLoading }) => {
-  if (isLoading) {
-    return (
-      <Card className={`animate-pulse ${className}`}>
-        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-          <div className="h-4 bg-muted rounded w-3/4"></div>
-          <div className="h-5 w-5 bg-muted rounded-full"></div>
-        </CardHeader>
-        <CardContent>
-          <div className="h-8 bg-muted rounded w-1/2"></div>
-        </CardContent>
-      </Card>
-    );
-  }
-
-  return (
-    <Card className={`hover:border-primary transition-colors ${className}`}>
+const StatCard = ({ title, value, icon: Icon, isCurrency = false, className = '', isLoading, href }) => {
+  const cardContent = (
+    <Card className={cn("hover:border-primary transition-colors h-full", className, href && "cursor-pointer")}>
       <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
         <CardTitle className="text-sm font-medium text-muted-foreground">{title}</CardTitle>
         <Icon className="h-5 w-5 text-muted-foreground" />
@@ -36,6 +24,24 @@ const StatCard = ({ title, value, icon: Icon, isCurrency = false, className = ''
       </CardContent>
     </Card>
   );
+
+  if (isLoading) {
+    return (
+      <div className={`animate-pulse bg-card border border-border rounded-xl p-5 h-[108px]`}>
+        <div className="flex justify-between items-center">
+            <div className="h-4 bg-muted rounded w-3/4"></div>
+            <div className="h-5 w-5 bg-muted rounded-full"></div>
+        </div>
+        <div className="h-8 bg-muted rounded w-1/2 mt-4"></div>
+      </div>
+    );
+  }
+  
+  if (href) {
+    return <Link href={href} className="w-full h-full">{cardContent}</Link>;
+  }
+
+  return cardContent;
 };
 
 export default function AdminDashboardPage() {
@@ -47,7 +53,6 @@ export default function AdminDashboardPage() {
     setLoading(true);
     setError(null);
     try {
-      // NOTE: In a real app, you'd use a library like SWR or React Query
       const res = await fetch('/api/admin/dashboard-stats');
       if (!res.ok) {
         throw new Error('Failed to fetch dashboard data');
@@ -77,10 +82,13 @@ export default function AdminDashboardPage() {
 
   if (error) {
     return (
-        <div className="text-center p-8 text-destructive">
-            <h2 className="text-lg font-bold">Error</h2>
+        <div className="text-center p-8 text-destructive bg-destructive/10 rounded-lg">
+            <h2 className="text-lg font-bold">Error Loading Dashboard</h2>
             <p>{error}</p>
-            <button onClick={fetchData} className="mt-4 px-4 py-2 bg-primary text-primary-foreground rounded-md">Try Again</button>
+            <Button onClick={fetchData} className="mt-4">
+                <RefreshCw className="mr-2 h-4 w-4" />
+                Try Again
+            </Button>
         </div>
     );
   }
@@ -101,8 +109,9 @@ export default function AdminDashboardPage() {
           title="Pending Approvals"
           value={data?.pendingApprovals || 0}
           icon={AlertCircle}
-          className="bg-yellow-500/10 border-yellow-500/50 cursor-pointer lg:col-span-1"
+          className="bg-yellow-500/10 border-yellow-500/50"
           isLoading={loading}
+          href="/admin-dashboard/restaurants"
         />
         <StatCard title="Total Listings" value={data?.totalListings || 0} icon={Store} isLoading={loading}/>
         <StatCard title="Total Users" value={data?.totalUsers || 0} icon={Users} isLoading={loading}/>
@@ -145,11 +154,13 @@ export default function AdminDashboardPage() {
                 </div>
               ) : (
               <div className="space-y-4">
-                {(data?.recentSignups || []).map((signup, i) => (
+                {(data?.recentSignups || []).length > 0 ? data.recentSignups.map((signup, i) => (
                   <div key={i} className="flex items-center">
                     <div className="p-3 bg-muted rounded-full mr-4">
-                      {signup.type === 'Restaurant' || signup.type === 'Shop' ? (
+                      {signup.type === 'Restaurant' ? (
                         <Store className="h-5 w-5 text-primary" />
+                      ) : signup.type === 'Shop' ? (
+                        <ShoppingCart className="h-5 w-5 text-blue-400" />
                       ) : (
                         <Users className="h-5 w-5 text-muted-foreground" />
                       )}
@@ -160,7 +171,7 @@ export default function AdminDashboardPage() {
                     </div>
                     <div className="text-sm text-muted-foreground">{format(new Date(signup.time), "p")}</div>
                   </div>
-                ))}
+                )) : <p className="text-sm text-muted-foreground text-center pt-8">No recent sign-ups found.</p>}
               </div>
               )}
             </CardContent>
@@ -170,5 +181,3 @@ export default function AdminDashboardPage() {
     </motion.div>
   );
 }
-
-    
