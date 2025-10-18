@@ -29,7 +29,7 @@ export default function SidebarLink({ item, isCollapsed, isDisabled, disabledIco
             title={isDisabled ? `${item.name} is currently restricted` : item.name}
           >
               <div className={styles.sidebarLinkInner}>
-                <div className={cn(styles.linkIcon, isCollapsed && styles.collapsedIcon)}>
+                <div className={cn(styles.linkIcon)}>
                     {isDisabled && DisabledIcon ? (
                         <DisabledIcon size={22} />
                     ) : (
