@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { motion } from 'framer-motion';
 import { Check, CookingPot, Bike, Home, Star, Phone, Navigation, RefreshCw, Loader2, ArrowLeft } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -8,7 +8,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { useParams, useRouter } from 'next/navigation';
 import { doc, onSnapshot, GeoPoint } from 'firebase/firestore';
-import { useFirestore } from '@/firebase';
+import { db } from '@/lib/firebase';
 import dynamic from 'next/dynamic';
 
 const LiveTrackingMap = dynamic(() => import('@/components/LiveTrackingMap'), { 
@@ -18,18 +18,22 @@ const LiveTrackingMap = dynamic(() => import('@/components/LiveTrackingMap'), {
 
 const statusConfig = {
   pending: { title: 'Order Placed', icon: <Check size={24} />, step: 0 },
+  paid: { title: 'Order Placed', icon: <Check size={24} />, step: 0 },
   confirmed: { title: 'Order Confirmed', icon: <Check size={24} />, step: 1 },
   preparing: { title: 'Preparing', icon: <CookingPot size={24} />, step: 2 },
   dispatched: { title: 'Out for Delivery', icon: <Bike size={24} />, step: 3 },
   delivered: { title: 'Delivered', icon: <Home size={24} />, step: 4 },
+  rejected: { title: 'Rejected', icon: <Home size={24} />, step: 4, isError: true },
 };
 
 const StatusTimeline = ({ currentStatus }) => {
-    const currentStep = statusConfig[currentStatus]?.step || 0;
+    const activeStatus = (currentStatus === 'paid' || currentStatus === 'rejected') ? 'pending' : currentStatus;
+    const currentStep = statusConfig[activeStatus]?.step || 0;
   
     return (
       <div className="flex justify-between items-center w-full px-2 sm:px-4 pt-4">
-        {Object.values(statusConfig).map(({ title, icon, step }) => {
+        {Object.values(statusConfig).filter(s => !s.isError).map(({ title, icon, step }) => {
+          if(title === 'Rejected') return null;
           const isCompleted = step <= currentStep;
           const isCurrent = step === currentStep;
           return (
@@ -99,7 +103,6 @@ const RiderDetails = ({ rider }) => {
 export default function OrderTrackingPage() {
     const { orderId } = useParams();
     const router = useRouter();
-    const firestore = useFirestore();
 
     const [order, setOrder] = useState(null);
     const [restaurant, setRestaurant] = useState(null);
@@ -108,103 +111,85 @@ export default function OrderTrackingPage() {
     const [error, setError] = useState(null);
 
     useEffect(() => {
-        if (!orderId || !firestore) return;
-
-        setLoading(true);
-        setError(null);
-        let unsubscribeOrder;
-
-        try {
-            const orderRef = doc(firestore, 'orders', orderId);
-            unsubscribeOrder = onSnapshot(orderRef, 
-                (orderSnap) => {
-                    if (orderSnap.exists()) {
-                        const orderData = orderSnap.data();
-                        setOrder({ id: orderSnap.id, ...orderData });
-                    } else {
-                        setError('Order not found.');
-                        setLoading(false);
-                    }
-                }, 
-                (err) => {
-                    console.error("Order snapshot error:", err);
-                    setError('Failed to load order details.');
-                    setLoading(false);
-                }
-            );
-        } catch (err) {
-            console.error("Error setting up order listener:", err);
-            setError("Could not initialize order tracking.");
+        if (!orderId) {
+            setError("No order ID provided.");
             setLoading(false);
+            return;
+        }
+
+        const orderRef = doc(db, 'orders', orderId);
+
+        const unsubscribeOrder = onSnapshot(orderRef, 
+            (orderSnap) => {
+                if (!orderSnap.exists()) {
+                    setError('Order not found.');
+                    setLoading(false);
+                    return;
+                }
+                const orderData = { id: orderSnap.id, ...orderSnap.data() };
+                setOrder(orderData);
+            },
+            (err) => {
+                console.error("Order snapshot error:", err);
+                setError('Failed to load order details.');
+                setLoading(false);
+            }
+        );
+
+        return () => unsubscribeOrder();
+    }, [orderId]);
+
+
+    useEffect(() => {
+        if (!order) return;
+
+        let unsubRestaurant;
+        let unsubRider;
+
+        const businessCollection = order.businessType === 'shop' ? 'shops' : 'restaurants';
+        const restaurantRef = doc(db, businessCollection, order.restaurantId);
+
+        unsubRestaurant = onSnapshot(restaurantRef, 
+            (restaurantSnap) => {
+                if (restaurantSnap.exists()) {
+                    setRestaurant({ id: restaurantSnap.id, ...restaurantSnap.data() });
+                } else {
+                    setError('Associated business not found.');
+                }
+                // Once we have order and restaurant, we can stop the main loader
+                setLoading(false); 
+            },
+            (err) => {
+                setError('Failed to load business details.');
+                setLoading(false);
+            }
+        );
+
+        if (order.deliveryBoyId) {
+            const riderRef = doc(db, businessCollection, order.restaurantId, 'deliveryBoys', order.deliveryBoyId);
+            unsubRider = onSnapshot(riderRef,
+                (riderSnap) => {
+                    setDeliveryBoy(riderSnap.exists() ? { id: riderSnap.id, ...riderSnap.data() } : null);
+                },
+                (err) => console.warn("Rider snapshot error:", err)
+            );
+        } else {
+            setDeliveryBoy(null);
         }
 
         return () => {
-            if (unsubscribeOrder) unsubscribeOrder();
+            if (unsubRestaurant) unsubRestaurant();
+            if (unsubRider) unsubRider();
         };
 
-    }, [orderId, firestore]);
-
-    useEffect(() => {
-        if (!order || !firestore) return;
-
-        let unsubscribeRestaurant;
-        let unsubscribeRider;
-
-        const fetchSecondaryData = () => {
-            const businessCollection = order.businessType === 'shop' ? 'shops' : 'restaurants';
-            const restaurantRef = doc(firestore, businessCollection, order.restaurantId);
-
-            unsubscribeRestaurant = onSnapshot(restaurantRef, 
-                (restaurantSnap) => {
-                    if (restaurantSnap.exists()) {
-                        setRestaurant({ id: restaurantSnap.id, ...restaurantSnap.data() });
-                        
-                        if (order.deliveryBoyId) {
-                            const riderRef = doc(firestore, businessCollection, order.restaurantId, 'deliveryBoys', order.deliveryBoyId);
-                            unsubscribeRider = onSnapshot(riderRef, 
-                                (riderSnap) => {
-                                    if (riderSnap.exists()) {
-                                        setDeliveryBoy({ id: riderSnap.id, ...riderSnap.data() });
-                                    } else {
-                                        setDeliveryBoy(null);
-                                    }
-                                },
-                                (err) => {
-                                    console.warn("Rider snapshot error:", err);
-                                    setDeliveryBoy(null);
-                                }
-                            );
-                        } else {
-                             setDeliveryBoy(null);
-                        }
-                    } else {
-                        setError('Associated restaurant/shop not found.');
-                    }
-                    setLoading(false);
-                },
-                (err) => {
-                    console.error("Restaurant/Shop snapshot error:", err);
-                    setError('Failed to load business details.');
-                    setLoading(false);
-                }
-            );
-        };
-
-        fetchSecondaryData();
-
-        return () => {
-            if (unsubscribeRestaurant) unsubscribeRestaurant();
-            if (unsubscribeRider) unsubscribeRider();
-        };
-
-    }, [order, firestore]);
+    }, [order]);
 
 
     if (loading) {
         return (
             <div className="min-h-screen bg-background flex flex-col items-center justify-center text-center p-4">
                 <Loader2 className="w-16 h-16 text-primary animate-spin" />
-                <h1 className="text-2xl font-bold mt-4">Loading Your Order...</h1>
+                <h1 className="text-2xl font-bold mt-4">Finding Your Order...</h1>
             </div>
         );
     }
@@ -228,10 +213,11 @@ export default function OrderTrackingPage() {
         )
     }
     
-    // Ensure locations are GeoPoints before passing to map
     const restaurantLocation = restaurant?.address?.location instanceof GeoPoint ? restaurant.address.location : null;
-    const customerLocation = order.customerLocation instanceof GeoPoint ? order.customerLocation : null;
+    const customerLocation = order.customerAddress?.location instanceof GeoPoint ? order.customerAddress.location : null;
     const riderLocation = deliveryBoy?.location instanceof GeoPoint ? deliveryBoy.location : null;
+
+    const showRiderDetails = order.status === 'dispatched' || order.status === 'delivered';
 
 
     return (
@@ -252,19 +238,15 @@ export default function OrderTrackingPage() {
                 </div>
 
                 <div className="flex-grow relative h-64 md:h-auto">
-                    {(restaurantLocation && customerLocation) ? (
-                        <LiveTrackingMap 
-                            restaurantLocation={restaurantLocation}
-                            customerLocation={customerLocation}
-                            riderLocation={riderLocation}
-                        />
-                    ) : (
-                         <div className="w-full h-full bg-muted flex items-center justify-center"><p>Location data is unavailable for this order.</p></div>
-                    )}
+                    <LiveTrackingMap 
+                        restaurantLocation={restaurantLocation}
+                        customerLocation={customerLocation}
+                        riderLocation={riderLocation}
+                    />
                 </div>
                 
                 <div className="p-4">
-                    <RiderDetails rider={deliveryBoy} />
+                   {showRiderDetails && <RiderDetails rider={deliveryBoy} />}
                 </div>
             </main>
         </div>
