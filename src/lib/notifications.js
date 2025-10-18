@@ -13,7 +13,7 @@ export const sendNewOrderToOwner = async ({ ownerPhone, botPhoneNumberId, custom
 
     const notificationPayload = {
         name: "new_order_notification_v2",
-        language: { code: "en_US" },
+        language: { code: "en" },
         components: [
             {
                 type: "body",
@@ -90,7 +90,7 @@ export const sendOrderStatusUpdateToCustomer = async ({ customerPhone, botPhoneN
 
     const statusPayload = {
         name: templateName,
-        language: { code: "en_US" },
+        language: { code: "en" },
         components: components,
     };
     
@@ -116,7 +116,7 @@ export const sendRestaurantStatusChangeNotification = async ({ ownerPhone, botPh
 
     const payload = {
         name: "restaurant_status_change_alert",
-        language: { code: "en_US" },
+        language: { code: "en" },
         components: [
             {
                 type: "body",
