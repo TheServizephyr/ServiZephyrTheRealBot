@@ -5,53 +5,46 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { motion } from "framer-motion";
 import styles from "./OwnerDashboard.module.css";
+import { cn } from "@/lib/utils";
 
-const MotionLink = motion(Link);
 
 export default function SidebarLink({ item, isCollapsed, isDisabled, disabledIcon: DisabledIcon }) {
   const pathname = usePathname();
   const isActive = pathname === item.href;
 
-  const linkVariants = {
-    expanded: { paddingLeft: "1.25rem", paddingRight: "1.25rem" },
-    collapsed: { paddingLeft: "1.5rem", paddingRight: "1.5rem" },
-  };
-
-  const iconVariants = {
-    expanded: { marginRight: "1rem" },
-    collapsed: { marginRight: "0rem" },
-  };
-
   const textVariants = {
-    expanded: { opacity: 1, width: "auto" },
-    collapsed: { opacity: 0, width: 0 },
+    expanded: { opacity: 1, width: "auto", transition: { duration: 0.2, delay: 0.1 } },
+    collapsed: { opacity: 0, width: 0, transition: { duration: 0.1 } },
   };
   
-  const content = (
-    <div
-        className={`${styles.sidebarLink} ${isActive && !isDisabled ? styles.sidebarLinkActive : ""} ${isDisabled ? 'opacity-50 cursor-pointer' : ''}`}
-        title={isDisabled ? `${item.name} is currently restricted` : item.name}
-      >
-        <motion.div variants={iconVariants}>
-            {isDisabled && DisabledIcon ? (
-                <DisabledIcon className={styles.linkIcon} size={22} />
-            ) : (
-                <item.icon className={styles.linkIcon} size={22} />
-            )}
-        </motion.div>
-        <motion.span
-          variants={textVariants}
-          transition={{ duration: 0.2 }}
-          className={styles.linkText}
-        >
-          {item.name}
-        </motion.span>
-    </div>
-  );
-
   return (
-    <Link href={item.href} passHref>
-      {content}
-    </Link>
+      <Link href={item.href} passHref legacyBehavior>
+          <a
+            className={cn(
+                styles.sidebarLink,
+                isActive && !isDisabled && styles.sidebarLinkActive,
+                isDisabled && 'opacity-50 cursor-not-allowed',
+                isCollapsed && styles.sidebarLinkCollapsed,
+            )}
+            title={isDisabled ? `${item.name} is currently restricted` : item.name}
+          >
+              <div className={styles.sidebarLinkInner}>
+                <div className={cn(styles.linkIcon, isCollapsed && styles.collapsedIcon)}>
+                    {isDisabled && DisabledIcon ? (
+                        <DisabledIcon size={22} />
+                    ) : (
+                        <item.icon size={22} />
+                    )}
+                </div>
+                <motion.span
+                  variants={textVariants}
+                  animate={isCollapsed ? "collapsed" : "expanded"}
+                  className={styles.linkText}
+                >
+                  {item.name}
+                </motion.span>
+              </div>
+          </a>
+      </Link>
   );
 }
