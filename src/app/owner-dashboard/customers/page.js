@@ -32,9 +32,14 @@ const formatCurrency = (value) => `₹${Number(value || 0).toLocaleString('en-IN
 
 // --- HELPER FUNCTIONS FOR STATUS ---
 const getCustomerStatus = (customer) => {
-    if (!customer || !customer.lastOrderDate) return 'New';
-    if(customer.status === 'claimed' && customer.totalOrders <= 2) return 'Claimed'; // Prioritize 'Claimed' for new-ish customers
-    const lastOrderDate = customer.lastOrderDate.seconds ? new Date(customer.lastOrderDate.seconds * 1000) : new Date(customer.lastOrderDate);
+    if (!customer) return 'New';
+    
+    // Unclaimed is the most base status
+    if(customer.status === 'unclaimed') return 'Claimed';
+
+    const lastOrderDate = customer.lastOrderDate?.seconds ? new Date(customer.lastOrderDate.seconds * 1000) : new Date(customer.lastOrderDate);
+    if (isNaN(lastOrderDate.getTime())) return 'New';
+
     const daysSinceLastOrder = (new Date() - lastOrderDate) / (1000 * 60 * 60 * 24);
     
     if (customer.totalOrders > 10) return 'Loyal';
@@ -584,7 +589,7 @@ export default function CustomersPage() {
                                 <SortableHeader column="lastOrderDate" sortConfig={sortConfig} onSort={handleSort}>Last Order</SortableHeader>
                                 <SortableHeader column="totalOrders" sortConfig={sortConfig} onSort={handleSort}>Total Orders</SortableHeader>
                                 <SortableHeader column="totalSpend" sortConfig={sortConfig} onSort={handleSort}>Total Spend</SortableHeader>
-                                <SortableHeader column="status" sortConfig={sortConfig} onSort={handleSort}>Status</SortableHeader>
+                                <th className="p-4 text-left text-sm font-semibold text-muted-foreground">Status</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-border">
@@ -610,7 +615,7 @@ export default function CustomersPage() {
                                            <div className="flex items-center gap-3">
                                                {customer.name}
                                            </div>
-                                           <span className="text-xs text-muted-foreground">{customer.email}</span>
+                                           <span className="text-xs text-muted-foreground">{customer.email || customer.phone}</span>
                                         </div>
                                     </td>
                                     <td className="p-4 text-muted-foreground">{formatDate(customer.lastOrderDate)}</td>
@@ -644,8 +649,3 @@ export default function CustomersPage() {
         </div>
     );
 }
-
-
-    
-
-    

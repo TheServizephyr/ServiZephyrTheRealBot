@@ -35,10 +35,39 @@ export async function POST(req) {
         const phone = finalUserData.phone;
         const batch = firestore.batch();
 
-        const mergedUserData = { ...finalUserData };
+        // --- MERGE UNCLAIMED PROFILE LOGIC ---
+        const unclaimedProfileRef = firestore.collection('unclaimed_profiles').doc(phone);
+        const unclaimedProfileSnap = await unclaimedProfileRef.get();
+        let mergedUserData = { ...finalUserData };
+
+        if (unclaimedProfileSnap.exists()) {
+            console.log(`[PROFILE COMPLETION] Unclaimed profile for ${phone} found. Merging data.`);
+            const unclaimedData = unclaimedProfileSnap.data();
+            // Merge addresses, prioritizing unclaimed data if new user has none.
+            const existingAddresses = finalUserData.addresses || [];
+            const unclaimedAddresses = unclaimedData.addresses || [];
+            mergedUserData.addresses = [...existingAddresses, ...unclaimedAddresses];
+            
+            // Delete the unclaimed profile after merging
+            batch.delete(unclaimedProfileRef);
+            console.log(`[PROFILE COMPLETION] Unclaimed profile for ${phone} marked for deletion.`);
+
+            // ** NEW ** Update status in all restaurants/shops where user was 'unclaimed'
+             const allRestaurants = await firestore.collection('restaurants').get();
+             allRestaurants.forEach(async (restaurantDoc) => {
+                 const restaurantCustomerRef = restaurantDoc.ref.collection('customers').doc(phone);
+                 const customerSnap = await restaurantCustomerRef.get();
+                 if (customerSnap.exists && customerSnap.data().status === 'unclaimed') {
+                     batch.update(restaurantCustomerRef, { status: 'verified', userId: uid });
+                     console.log(`[PROFILE COMPLETION] Updated user status to 'verified' in restaurant ${restaurantDoc.id}`);
+                 }
+             });
+        }
+        // --- END MERGE LOGIC ---
+
 
         const masterUserRef = firestore.collection('users').doc(uid);
-        batch.set(masterUserRef, mergedUserData);
+        batch.set(masterUserRef, mergedUserData, { merge: true });
         console.log(`[PROFILE COMPLETION] Step 1: Master user profile for UID ${uid} added to batch.`);
 
         if (isBusinessOwner && businessData) {

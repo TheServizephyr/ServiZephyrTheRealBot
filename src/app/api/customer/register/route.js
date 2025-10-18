@@ -10,7 +10,7 @@ import { sendNewOrderToOwner } from '@/lib/notifications';
 export async function POST(req) {
     try {
         const firestore = getFirestore();
-        const { name, address, phone, restaurantId, items, notes, coupon, loyaltyDiscount, grandTotal, paymentMethod } = await req.json();
+        const { name, address, phone, restaurantId, items, notes, coupon, loyaltyDiscount, grandTotal, paymentMethod, businessType } = await req.json();
 
         // --- VALIDATION ---
         if (!name || !address || !phone || !restaurantId || !items || !grandTotal || !paymentMethod) {
@@ -19,15 +19,16 @@ export async function POST(req) {
         if (!/^\d{10}$/.test(phone)) {
             return NextResponse.json({ message: 'Invalid phone number format. Must be 10 digits.' }, { status: 400 });
         }
-
-        const restaurantRef = firestore.collection('restaurants').doc(restaurantId);
-        const restaurantDoc = await restaurantRef.get();
-        if (!restaurantDoc.exists) {
-            return NextResponse.json({ message: 'This restaurant does not exist.' }, { status: 404 });
+        
+        const collectionName = businessType === 'shop' ? 'shops' : 'restaurants';
+        const businessRef = firestore.collection(collectionName).doc(restaurantId);
+        const businessDoc = await businessRef.get();
+        if (!businessDoc.exists) {
+            return NextResponse.json({ message: 'This business does not exist.' }, { status: 404 });
         }
         
         let razorpayOrderId = null;
-        const restaurantData = restaurantDoc.data();
+        const businessData = businessDoc.data();
 
         if (paymentMethod === 'razorpay') {
             if (!process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID || !process.env.RAZORPAY_KEY_SECRET) {
@@ -42,10 +43,11 @@ export async function POST(req) {
 
             const orderPayloadForNotes = {
                 customerDetails: { name, address, phone },
-                restaurantDetails: { restaurantId, restaurantName: restaurantDoc.data().name },
+                restaurantDetails: { restaurantId, restaurantName: businessData.name },
                 orderItems: items.map(item => ({ name: item.name, qty: item.quantity, price: item.price })),
                 billDetails: { coupon, loyaltyDiscount, grandTotal },
                 notes: notes || null,
+                businessType: businessType
             };
             
             const razorpayOrderOptions = {
@@ -76,15 +78,21 @@ export async function POST(req) {
         const existingUserQuery = await usersRef.where('phone', '==', phone).limit(1).get();
 
         let userId;
-        if (!existingUserQuery.empty) {
-            userId = existingUserQuery.docs[0].id;
+        let isNewUser = existingUserQuery.empty;
+
+        if (isNewUser) {
+            // New user via COD, create an unclaimed profile, NOT a main user profile.
+            const unclaimedUserRef = firestore.collection('unclaimed_profiles').doc(phone);
+            userId = phone; // Use phone as temporary ID
+            batch.set(unclaimedUserRef, {
+                name: name, 
+                phone: phone, 
+                addresses: [{ id: `addr_${Date.now()}`, full: address }],
+                createdAt: adminFirestore.FieldValue.serverTimestamp(),
+            }, { merge: true });
         } else {
-            const newUserRef = usersRef.doc();
-            userId = newUserRef.id;
-            batch.set(newUserRef, {
-                name: name, phone: phone, addresses: [{ id: `addr_${Date.now()}`, full: address }],
-                role: 'customer', createdAt: adminFirestore.FieldValue.serverTimestamp(),
-            });
+            // Existing verified user
+            userId = existingUserQuery.docs[0].id;
         }
         
         const subtotal = items.reduce((sum, item) => sum + (item.price * item.quantity), 0);
@@ -96,31 +104,35 @@ export async function POST(req) {
         const cgst = taxableAmount > 0 ? taxableAmount * taxRate : 0;
         const sgst = taxableAmount > 0 ? taxableAmount * taxRate : 0;
         
-        const deliveryCharge = (coupon?.code?.includes('FREE')) ? 0 : (restaurantData.deliveryCharge || 30);
+        const deliveryCharge = (coupon?.code?.includes('FREE')) ? 0 : (businessData.deliveryCharge || 30);
         
         const pointsEarned = Math.floor(subtotal / 100) * 10;
         const pointsSpent = finalLoyaltyDiscount > 0 ? finalLoyaltyDiscount / 0.5 : 0;
 
-        const restaurantCustomerRef = restaurantRef.collection('customers').doc(userId);
+        const restaurantCustomerRef = businessRef.collection('customers').doc(userId);
         batch.set(restaurantCustomerRef, {
-            name: name, phone: phone, status: 'claimed',
+            name: name, phone: phone, 
+            status: isNewUser ? 'unclaimed' : 'verified', // Set status based on user existence
             totalSpend: adminFirestore.FieldValue.increment(subtotal),
             loyaltyPoints: adminFirestore.FieldValue.increment(pointsEarned - pointsSpent),
             lastOrderDate: adminFirestore.FieldValue.serverTimestamp(),
             totalOrders: adminFirestore.FieldValue.increment(1),
         }, { merge: true });
-
-        const userRestaurantLinkRef = usersRef.doc(userId).collection('joined_restaurants').doc(restaurantId);
-        batch.set(userRestaurantLinkRef, {
-             restaurantName: restaurantData.name, joinedAt: adminFirestore.FieldValue.serverTimestamp(),
-             totalSpend: adminFirestore.FieldValue.increment(subtotal),
-             loyaltyPoints: adminFirestore.FieldValue.increment(pointsEarned - pointsSpent),
-             lastOrderDate: adminFirestore.FieldValue.serverTimestamp(),
-             totalOrders: adminFirestore.FieldValue.increment(1),
-        }, { merge: true });
+        
+        // Only create joined_restaurants if it's a verified user
+        if (!isNewUser) {
+            const userRestaurantLinkRef = usersRef.doc(userId).collection('joined_restaurants').doc(restaurantId);
+            batch.set(userRestaurantLinkRef, {
+                 restaurantName: businessData.name, joinedAt: adminFirestore.FieldValue.serverTimestamp(),
+                 totalSpend: adminFirestore.FieldValue.increment(subtotal),
+                 loyaltyPoints: adminFirestore.FieldValue.increment(pointsEarned - pointsSpent),
+                 lastOrderDate: adminFirestore.FieldValue.serverTimestamp(),
+                 totalOrders: adminFirestore.FieldValue.increment(1),
+            }, { merge: true });
+        }
         
         if (coupon && coupon.id) {
-            const couponRef = restaurantRef.collection('coupons').doc(coupon.id);
+            const couponRef = businessRef.collection('coupons').doc(coupon.id);
             batch.update(couponRef, {
                 timesUsed: adminFirestore.FieldValue.increment(1)
             });
@@ -131,7 +143,8 @@ export async function POST(req) {
         const newOrderRef = firestore.collection('orders').doc();
         batch.set(newOrderRef, {
             customerName: name, customerId: userId, customerAddress: address, customerPhone: phone,
-            restaurantId: restaurantId, restaurantName: restaurantData.name,
+            restaurantId: restaurantId, restaurantName: businessData.name,
+            businessType,
             items: items.map(item => ({ name: item.name, qty: item.quantity, price: item.price })),
             subtotal, coupon, loyaltyDiscount, discount: finalDiscount, cgst, sgst, deliveryCharge,
             totalAmount: grandTotal,
@@ -143,15 +156,14 @@ export async function POST(req) {
             }
         });
         
-        console.log(`[Order API] COD order ${newOrderRef.id} added to batch.`);
+        console.log(`[Order API] COD order ${newOrderRef.id} added to batch for user ${userId}.`);
 
         await batch.commit();
 
-        // ** NEW: Send notification to restaurant owner **
-        if (restaurantData.ownerPhone && restaurantData.botPhoneNumberId) {
+        if (businessData.ownerPhone && businessData.botPhoneNumberId) {
             await sendNewOrderToOwner({
-                ownerPhone: restaurantData.ownerPhone,
-                botPhoneNumberId: restaurantData.botPhoneNumberId,
+                ownerPhone: businessData.ownerPhone,
+                botPhoneNumberId: businessData.botPhoneNumberId,
                 customerName: name,
                 totalAmount: grandTotal,
                 orderId: newOrderRef.id
