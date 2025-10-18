@@ -637,7 +637,7 @@ export default function LiveOrdersPage() {
                     <thead>
                         <tr className="bg-muted/30">
                             <SortableHeader column="id" sortConfig={sortConfig} onSort={handleSort}>Order Details</SortableHeader>
-                            <th className="p-4 text-left text-sm font-semibold text-muted-foreground hidden lg:table-cell">Items</th>
+                            <th className="p-4 text-left text-sm font-semibold text-muted-foreground hidden md:table-cell">Items</th>
                             <SortableHeader column="orderDate" sortConfig={sortConfig} onSort={handleSort}>Time</SortableHeader>
                             <SortableHeader column="status" sortConfig={sortConfig} onSort={handleSort}>Status</SortableHeader>
                             <th className="p-4 text-left text-sm font-semibold text-muted-foreground">Actions</th>
@@ -649,7 +649,7 @@ export default function LiveOrdersPage() {
                                 Array.from({length: 5}).map((_, i) => (
                                     <tr key={i} className="animate-pulse">
                                         <td className="p-4"><div className="h-5 bg-muted rounded w-1/2"></div></td>
-                                        <td className="p-4 hidden lg:table-cell"><div className="h-5 bg-muted rounded w-full"></div></td>
+                                        <td className="p-4 hidden md:table-cell"><div className="h-5 bg-muted rounded w-full"></div></td>
                                         <td className="p-4"><div className="h-5 bg-muted rounded w-1/4"></div></td>
                                         <td className="p-4"><div className="h-5 bg-muted rounded w-1/3"></div></td>
                                         <td className="p-4"><div className="h-8 bg-muted rounded w-full"></div></td>
@@ -678,7 +678,7 @@ export default function LiveOrdersPage() {
                                             </div>
                                         )}
                                     </td>
-                                    <td className="p-4 text-sm text-muted-foreground hidden lg:table-cell">
+                                    <td className="p-4 text-sm text-muted-foreground hidden md:table-cell">
                                         <ul className="space-y-1">
                                             {(order.items || []).map((item, index) => (
                                                 <li key={index} className="whitespace-nowrap">{item.qty}x {item.name}</li>
