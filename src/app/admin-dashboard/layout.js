@@ -72,7 +72,9 @@ function AdminLayoutContent({ children }) {
   const { theme, setTheme } = useTheme();
 
    useEffect(() => {
-    setSidebarOpen(!isMobile);
+    if (typeof window !== 'undefined') {
+        setSidebarOpen(!isMobile);
+    }
   }, [isMobile]);
 
 
