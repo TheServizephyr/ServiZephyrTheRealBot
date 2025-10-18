@@ -13,6 +13,7 @@ import { useSearchParams } from 'next/navigation';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose } from "@/components/ui/dialog";
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
+import { Textarea } from '@/components/ui/textarea';
 
 
 const statusConfig = {
@@ -26,6 +27,95 @@ const statusConfig = {
 };
 
 const statusFlow = ['pending', 'confirmed', 'preparing', 'dispatched', 'delivered'];
+
+const RejectOrderModal = ({ order, isOpen, onClose, onConfirm }) => {
+    const [reason, setReason] = useState('');
+    const [otherReason, setOtherReason] = useState('');
+    const [isSubmitting, setIsSubmitting] = useState(false);
+
+    useEffect(() => {
+        if (isOpen) {
+            setReason('');
+            setOtherReason('');
+            setIsSubmitting(false);
+        }
+    }, [isOpen]);
+
+    const handleConfirm = async () => {
+        const finalReason = reason === 'other' ? otherReason : reason;
+        if (!finalReason) {
+            alert("Please select or enter a reason for rejection.");
+            return;
+        }
+        setIsSubmitting(true);
+        try {
+            await onConfirm(order.id, finalReason);
+            onClose();
+        } catch (error) {
+            // alert handled in parent
+        } finally {
+            setIsSubmitting(false);
+        }
+    };
+    
+    const rejectionReasons = [
+        { value: "item_unavailable", label: "Item(s) out of stock" },
+        { value: "restaurant_closed", label: "Restaurant is currently closed" },
+        { value: "customer_request", label: "Customer requested cancellation" },
+        { value: "invalid_details", label: "Invalid address or phone number" },
+        { value: "other", label: "Other" },
+    ];
+
+    return (
+        <Dialog open={isOpen} onOpenChange={onClose}>
+            <DialogContent className="bg-background border-border text-foreground">
+                <DialogHeader>
+                    <DialogTitle>Reject Order #{order?.id.substring(0, 5)}</DialogTitle>
+                    <DialogDescription>
+                        Are you sure you want to reject this order? This action cannot be undone. The customer will be notified.
+                    </DialogDescription>
+                </DialogHeader>
+                <div className="py-4 space-y-4">
+                    <div>
+                        <Label htmlFor="rejection-reason">Reason for Rejection</Label>
+                        <select
+                            id="rejection-reason"
+                            value={reason}
+                            onChange={(e) => setReason(e.target.value)}
+                            className="mt-1 w-full p-2 border rounded-md bg-input border-border focus:ring-primary focus:border-primary"
+                        >
+                            <option value="" disabled>Select a reason...</option>
+                            {rejectionReasons.map(r => (
+                                <option key={r.value} value={r.value}>{r.label}</option>
+                            ))}
+                        </select>
+                    </div>
+                    {reason === 'other' && (
+                        <motion.div
+                            initial={{ opacity: 0, height: 0 }}
+                            animate={{ opacity: 1, height: 'auto' }}
+                        >
+                            <Label htmlFor="other-reason">Please specify the reason</Label>
+                            <Textarea
+                                id="other-reason"
+                                value={otherReason}
+                                onChange={(e) => setOtherReason(e.target.value)}
+                                className="mt-1"
+                                placeholder="e.g., Unable to process payment, weather conditions, etc."
+                            />
+                        </motion.div>
+                    )}
+                </div>
+                <DialogFooter>
+                    <DialogClose asChild><Button variant="secondary" disabled={isSubmitting}>Cancel</Button></DialogClose>
+                    <Button variant="destructive" onClick={handleConfirm} disabled={isSubmitting || !reason || (reason === 'other' && !otherReason.trim())}>
+                        {isSubmitting ? "Rejecting..." : "Confirm Rejection"}
+                    </Button>
+                </DialogFooter>
+            </DialogContent>
+        </Dialog>
+    );
+};
 
 // --- Bill Modal Component ---
 const BillModal = ({ order, restaurant, onClose, onPrint }) => {
@@ -210,7 +300,7 @@ const AssignRiderModal = ({ isOpen, onClose, onAssign, order, riders }) => {
 };
 
 
-const ActionButton = ({ status, onNext, onRevert, orderId, onReject, isUpdating, onPrintClick, onAssignClick }) => {
+const ActionButton = ({ status, onNext, onRevert, order, onRejectClick, isUpdating, onPrintClick, onAssignClick }) => {
     const isConfirmable = status === 'pending' || status === 'paid';
     const actionStatus = isConfirmable ? 'pending' : status;
     const currentIndex = statusFlow.indexOf(actionStatus);
@@ -272,7 +362,7 @@ const ActionButton = ({ status, onNext, onRevert, orderId, onReject, isUpdating,
             <div className="flex gap-2">
                 {isConfirmable && (
                      <Button
-                        onClick={onReject}
+                        onClick={() => onRejectClick(order)}
                         variant="destructive"
                         size="sm"
                         className="h-9 flex-1"
@@ -325,6 +415,7 @@ export default function LiveOrdersPage() {
   const [sortConfig, setSortConfig] = useState({ key: 'orderDate', direction: 'desc' });
   const [billData, setBillData] = useState({ order: null, restaurant: null });
   const [assignModalData, setAssignModalData] = useState({ isOpen: false, order: null });
+  const [rejectionModalData, setRejectionModalData] = useState({ isOpen: false, order: null });
   const searchParams = useSearchParams();
   const impersonatedOwnerId = searchParams.get('impersonate_owner_id');
 
@@ -437,14 +528,15 @@ export default function LiveOrdersPage() {
   };
 
 
-  const handleRejectOrder = async (orderId) => {
-    if (!window.confirm("Are you sure you want to reject this order? It will be marked as 'rejected' but not permanently deleted.")) return;
+  const handleRejectOrder = async (orderId, reason) => {
     setUpdatingOrderId(orderId);
     try {
-        await handleAPICall('PATCH', { orderId, newStatus: 'rejected' });
+        // Here you would also pass the reason to the backend
+        await handleAPICall('PATCH', { orderId, newStatus: 'rejected', rejectionReason: reason });
         await fetchInitialData(true);
     } catch (error) {
         alert(`Error rejecting order: ${error.message}`);
+        throw error; // Re-throw so modal knows it failed
     } finally {
         setUpdatingOrderId(null);
     }
@@ -515,6 +607,15 @@ export default function LiveOrdersPage() {
                 onAssign={handleAssignRider}
                 order={assignModalData.order}
                 riders={riders}
+            />
+        )}
+
+        {rejectionModalData.isOpen && (
+            <RejectOrderModal
+                isOpen={rejectionModalData.isOpen}
+                onClose={() => setRejectionModalData({ isOpen: false, order: null })}
+                onConfirm={handleRejectOrder}
+                order={rejectionModalData.order}
             />
         )}
         
@@ -593,12 +694,12 @@ export default function LiveOrdersPage() {
                                     </td>
                                     <td className="p-4 w-auto md:w-[320px]">
                                         <ActionButton
-                                            orderId={order.id}
+                                            order={order}
                                             status={order.status}
                                             isUpdating={updatingOrderId === order.id}
                                             onNext={(newStatus) => handleUpdateStatus(order.id, newStatus)}
                                             onRevert={(newStatus) => handleUpdateStatus(order.id, newStatus)}
-                                            onReject={() => handleRejectOrder(order.id)}
+                                            onRejectClick={(order) => setRejectionModalData({ isOpen: true, order: order })}
                                             onPrintClick={() => handlePrintClick(order.id)}
                                             onAssignClick={() => setAssignModalData({ isOpen: true, order: order })}
                                         />
