@@ -1,5 +1,4 @@
 
-
 "use client";
 
 import { useState, useMemo, useEffect } from 'react';
@@ -17,9 +16,9 @@ import { Switch } from '@/components/ui/switch';
 
 const StatusBadge = ({ status }) => {
     const statusConfig = {
-        'Available': 'bg-green-500/20 text-green-400 border-green-500/30',
-        'On Delivery': 'bg-blue-500/20 text-blue-400 border-blue-500/30',
-        'Inactive': 'bg-gray-500/20 text-gray-400 border-gray-500/30',
+        'Available': 'bg-green-500/10 text-green-400 border-green-500/20',
+        'On Delivery': 'bg-blue-500/10 text-blue-400 border-blue-500/20',
+        'Inactive': 'bg-muted text-muted-foreground border-border',
     };
     return (
         <span className={cn('px-2 py-1 text-xs font-semibold rounded-full border', statusConfig[status] || statusConfig['Inactive'])}>
@@ -62,23 +61,23 @@ const AddBoyModal = ({ isOpen, setIsOpen, onSave, boy }) => {
 
     return (
         <Dialog open={isOpen} onOpenChange={setIsOpen}>
-            <DialogContent className="bg-gray-900 border-gray-700 text-white">
+            <DialogContent className="bg-card border-border text-foreground">
                 <DialogHeader>
-                    <DialogTitle>{boy ? 'Edit Delivery Boy' : 'Add New Delivery Boy'}</DialogTitle>
+                    <DialogTitle>{boy ? 'Edit Delivery Rider' : 'Add New Delivery Rider'}</DialogTitle>
                 </DialogHeader>
                 <div className="grid gap-4 py-4">
                     <div className="grid grid-cols-4 items-center gap-4">
                         <Label htmlFor="name" className="text-right">Name</Label>
-                        <input id="name" value={name} onChange={e => setName(e.target.value)} className="col-span-3 p-2 border rounded-md bg-gray-800 border-gray-600" />
+                        <input id="name" value={name} onChange={e => setName(e.target.value)} className="col-span-3 p-2 border rounded-md bg-input border-border" />
                     </div>
                     <div className="grid grid-cols-4 items-center gap-4">
                         <Label htmlFor="phone" className="text-right">Phone</Label>
-                        <input id="phone" value={phone} onChange={e => setPhone(e.target.value)} className="col-span-3 p-2 border rounded-md bg-gray-800 border-gray-600" />
+                        <input id="phone" value={phone} onChange={e => setPhone(e.target.value)} className="col-span-3 p-2 border rounded-md bg-input border-border" />
                     </div>
                 </div>
                 <DialogFooter>
                     <DialogClose asChild><Button variant="secondary" disabled={isSaving}>Cancel</Button></DialogClose>
-                    <Button onClick={handleSubmit} className="bg-indigo-600 hover:bg-indigo-700" disabled={isSaving}>
+                    <Button onClick={handleSubmit} disabled={isSaving}>
                         {isSaving ? 'Saving...' : 'Save'}
                     </Button>
                 </DialogFooter>
@@ -108,13 +107,13 @@ const AssignOrderModal = ({ isOpen, setIsOpen, onAssign, boyName, readyOrders })
     
     return (
         <Dialog open={isOpen} onOpenChange={setIsOpen}>
-            <DialogContent className="bg-gray-900 border-gray-700 text-white">
+            <DialogContent className="bg-card border-border text-foreground">
                 <DialogHeader>
                     <DialogTitle>Assign Order to {boyName}</DialogTitle>
                     <DialogDescription>Select an order that is ready for dispatch.</DialogDescription>
                 </DialogHeader>
                 <div className="py-4 space-y-3 max-h-60 overflow-y-auto">
-                    <h4 className="font-semibold text-gray-300">Ready Orders:</h4>
+                    <h4 className="font-semibold text-muted-foreground">Ready Orders:</h4>
                     {readyOrders && readyOrders.length > 0 ? readyOrders.map(order => (
                         <div 
                             key={order.id}
@@ -122,21 +121,21 @@ const AssignOrderModal = ({ isOpen, setIsOpen, onAssign, boyName, readyOrders })
                             className={cn(
                                 "p-3 rounded-lg border cursor-pointer transition-all",
                                 selectedOrder === order.id 
-                                  ? 'bg-indigo-500/30 border-indigo-400 ring-2 ring-indigo-400'
-                                  : 'bg-gray-800 border-gray-700 hover:bg-gray-700'
+                                  ? 'bg-primary/10 border-primary ring-2 ring-primary'
+                                  : 'bg-muted/50 border-border hover:bg-muted'
                             )}
                         >
                             <div className="flex justify-between items-center">
                                 <p className="font-bold">{order.id}</p>
-                                <p className="text-sm text-gray-300">for {order.customer}</p>
-                                <p className="text-xs text-gray-400">{order.items} items</p>
+                                <p className="text-sm text-muted-foreground">for {order.customer}</p>
+                                <p className="text-xs text-muted-foreground">{order.items} items</p>
                             </div>
                         </div>
-                    )) : <p className="text-center text-gray-400">No orders are ready.</p>}
+                    )) : <p className="text-center text-muted-foreground">No orders are ready.</p>}
                 </div>
                  <DialogFooter>
                     <DialogClose asChild><Button variant="secondary" disabled={isSaving}>Cancel</Button></DialogClose>
-                    <Button onClick={handleAssign} disabled={!selectedOrder || isSaving} className="bg-indigo-600 hover:bg-indigo-700">
+                    <Button onClick={handleAssign} disabled={!selectedOrder || isSaving}>
                         {isSaving ? 'Assigning...' : 'Confirm Assignment'}
                     </Button>
                 </DialogFooter>
@@ -147,22 +146,22 @@ const AssignOrderModal = ({ isOpen, setIsOpen, onAssign, boyName, readyOrders })
 
 const PerformanceCard = ({ title, value, icon: Icon, onClick, isLoading }) => (
     <div
-      className={cn("bg-gray-800/50 p-4 rounded-lg flex items-center gap-4 border border-gray-700", onClick && "cursor-pointer hover:bg-gray-700/50 transition-colors", isLoading && 'animate-pulse')}
+      className={cn("bg-card p-4 rounded-lg flex items-center gap-4 border border-border", onClick && "cursor-pointer hover:bg-muted transition-colors", isLoading && 'animate-pulse')}
       onClick={onClick}
     >
-        <div className="bg-gray-900 p-3 rounded-full text-indigo-400">
+        <div className="bg-muted p-3 rounded-full text-primary">
             <Icon size={24} />
         </div>
         <div>
             {isLoading ? (
                 <>
-                    <div className="h-4 bg-gray-700 rounded w-24 mb-2"></div>
-                    <div className="h-6 bg-gray-700 rounded w-16"></div>
+                    <div className="h-4 bg-muted-foreground/20 rounded w-24 mb-2"></div>
+                    <div className="h-6 bg-muted-foreground/20 rounded w-16"></div>
                 </>
             ) : (
                 <>
-                    <p className="text-sm text-gray-400">{title}</p>
-                    <p className="text-xl font-bold text-white">{value}</p>
+                    <p className="text-sm text-muted-foreground">{title}</p>
+                    <p className="text-xl font-bold text-foreground">{value}</p>
                 </>
             )}
         </div>
@@ -175,7 +174,7 @@ const SortableHeader = ({ children, column, sortConfig, onSort }) => {
     const Icon = direction === 'asc' ? ChevronUp : ChevronDown;
   
     return (
-      <th onClick={() => onSort(column)} className="cursor-pointer p-4 text-left text-sm font-semibold text-gray-400 hover:bg-gray-800 transition-colors">
+      <th onClick={() => onSort(column)} className="cursor-pointer p-4 text-left text-sm font-semibold text-muted-foreground hover:bg-muted transition-colors">
         <div className="flex items-center gap-2">
           {children}
           {isSorted && <Icon size={16} />}
@@ -219,14 +218,14 @@ const DeliveryAnalytics = ({ boysData, weeklyData, isLoading }) => {
              <h2 className="text-2xl font-bold tracking-tight">Delivery Analytics Hub</h2>
             <section>
                  <h3 className="text-xl font-bold mb-4 flex items-center gap-2"><BarChartIcon/> Team's Weekly Performance</h3>
-                 <div className="bg-gray-800/50 border border-gray-700 rounded-xl p-5 h-[300px]">
+                 <div className="bg-card border border-border rounded-xl p-5 h-[300px]">
                     <ResponsiveContainer width="100%" height="100%">
                         <BarChart data={weeklyData}>
-                             <CartesianGrid strokeDasharray="3 3" stroke="rgba(255, 255, 255, 0.1)" />
-                             <XAxis dataKey="day" fontSize={12} tickLine={false} axisLine={false} tick={{ fill: '#9CA3AF' }} />
-                             <YAxis fontSize={12} tickLine={false} axisLine={false} tick={{ fill: '#9CA3AF' }} />
-                             <Tooltip contentStyle={{ backgroundColor: '#1F2937', border: '1px solid #374151' }} formatter={(value) => [value, "Deliveries"]}/>
-                             <Bar dataKey="deliveries" fill="rgba(129, 140, 248, 0.6)" name="Total Deliveries" radius={[4, 4, 0, 0]} />
+                             <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                             <XAxis dataKey="day" fontSize={12} tickLine={false} axisLine={false} tick={{ fill: 'hsl(var(--muted-foreground))' }} />
+                             <YAxis fontSize={12} tickLine={false} axisLine={false} tick={{ fill: 'hsl(var(--muted-foreground))' }} />
+                             <Tooltip contentStyle={{ backgroundColor: 'hsl(var(--popover))', border: '1px solid hsl(var(--border))' }} formatter={(value) => [value, "Deliveries"]}/>
+                             <Bar dataKey="deliveries" fill="hsl(var(--primary))" name="Total Deliveries" radius={[4, 4, 0, 0]} />
                         </BarChart>
                     </ResponsiveContainer>
                  </div>
@@ -235,39 +234,39 @@ const DeliveryAnalytics = ({ boysData, weeklyData, isLoading }) => {
                 <div className="flex justify-between items-center mb-4">
                      <h3 className="text-xl font-bold">Rider Deep Dive</h3>
                      <div className="relative w-full md:w-auto max-w-xs">
-                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" size={20} />
                         <input 
                             type="text" 
                             placeholder="Search rider..." 
-                            className="bg-gray-800 border border-gray-600 rounded-lg w-full pl-10 pr-4 py-2 focus:ring-2 focus:ring-indigo-500 outline-none"
+                            className="bg-input border border-border rounded-lg w-full pl-10 pr-4 py-2 focus:ring-2 focus:ring-primary outline-none"
                             value={searchQuery}
                             onChange={(e) => setSearchQuery(e.target.value)}
                         />
                     </div>
                 </div>
-                <div className="bg-gray-800/50 border border-gray-700 rounded-xl overflow-hidden">
+                <div className="bg-card border border-border rounded-xl overflow-hidden">
                     <div className="overflow-x-auto">
                         <table className="w-full">
                             <thead>
-                                <tr className="bg-gray-800">
+                                <tr className="bg-muted/50">
                                     <SortableHeader column="name" sortConfig={sortConfig} onSort={handleSort}>Rider</SortableHeader>
                                     <SortableHeader column="totalDeliveries" sortConfig={sortConfig} onSort={handleSort}>Total Deliveries</SortableHeader>
                                     <SortableHeader column="avgDeliveryTime" sortConfig={sortConfig} onSort={handleSort}>Avg. Time (min)</SortableHeader>
                                     <SortableHeader column="avgRating" sortConfig={sortConfig} onSort={handleSort}>Avg. Rating</SortableHeader>
-                                    <th className="p-4 text-left text-sm font-semibold text-gray-400">Status</th>
+                                    <th className="p-4 text-left text-sm font-semibold text-muted-foreground">Status</th>
                                 </tr>
                             </thead>
-                            <tbody className="divide-y divide-gray-700/50">
+                            <tbody className="divide-y divide-border">
                                 {isLoading ? Array.from({length:3}).map((_, i) => (
                                     <tr key={i} className="animate-pulse">
-                                        <td className="p-4"><div className="h-5 bg-gray-700 rounded"></div></td>
-                                        <td className="p-4"><div className="h-5 bg-gray-700 rounded"></div></td>
-                                        <td className="p-4"><div className="h-5 bg-gray-700 rounded"></div></td>
-                                        <td className="p-4"><div className="h-5 bg-gray-700 rounded"></div></td>
-                                        <td className="p-4"><div className="h-5 bg-gray-700 rounded"></div></td>
+                                        <td className="p-4"><div className="h-5 bg-muted rounded"></div></td>
+                                        <td className="p-4"><div className="h-5 bg-muted rounded"></div></td>
+                                        <td className="p-4"><div className="h-5 bg-muted rounded"></div></td>
+                                        <td className="p-4"><div className="h-5 bg-muted rounded"></div></td>
+                                        <td className="p-4"><div className="h-5 bg-muted rounded"></div></td>
                                     </tr>
                                 )) : filteredAndSortedRiders.map(boy => (
-                                    <tr key={boy.id} className="hover:bg-gray-700/50 transition-colors">
+                                    <tr key={boy.id} className="hover:bg-muted transition-colors">
                                         <td className="p-4 font-medium">{boy.name}</td>
                                         <td className="p-4 text-center font-bold text-lg">{boy.totalDeliveries || 0}</td>
                                         <td className="p-4 text-center">{boy.avgDeliveryTime || 0}</td>
@@ -377,7 +376,7 @@ export default function DeliveryPage() {
     };
 
     return (
-        <div className="p-4 md:p-6 text-white bg-gray-900 min-h-screen">
+        <div className="p-4 md:p-6 text-foreground bg-background min-h-screen">
             <AddBoyModal isOpen={isAddModalOpen} setIsOpen={setAddModalOpen} onSave={handleSaveBoy} boy={selectedBoy} />
             {selectedBoy && <AssignOrderModal isOpen={isAssignModalOpen} setIsOpen={setAssignModalOpen} onAssign={handleConfirmAssignment} boyName={selectedBoy.name} readyOrders={data.readyOrders}/>}
             
@@ -385,13 +384,13 @@ export default function DeliveryPage() {
                 <div className="flex flex-col md:flex-row justify-between md:items-center gap-4">
                     <div>
                         <h1 className="text-2xl md:text-3xl font-bold tracking-tight">Delivery Command Center</h1>
-                        <p className="text-gray-400 mt-1 text-sm md:text-base">Monitor and manage your delivery team in real-time.</p>
+                        <p className="text-muted-foreground mt-1 text-sm md:text-base">Monitor and manage your delivery team in real-time.</p>
                     </div>
                     <div className="flex-shrink-0 flex gap-4">
-                        <Button onClick={() => fetchData(true)} variant="outline" className="bg-gray-800 border-gray-700 hover:bg-gray-700">
+                        <Button onClick={() => fetchData(true)} variant="outline">
                             <RefreshCw size={16} className={cn("mr-2", loading && "animate-spin")} /> Refresh
                         </Button>
-                         <Button onClick={handleAddNew} className="bg-indigo-600 hover:bg-indigo-700">
+                         <Button onClick={handleAddNew}>
                             <UserPlus size={16} className="mr-2"/> Add Rider
                         </Button>
                     </div>
@@ -403,39 +402,39 @@ export default function DeliveryPage() {
                     <PerformanceCard title="Top Performer" value={data.performance?.topPerformer?.name || 'N/A'} icon={Trophy} isLoading={loading} />
                 </div>
                 
-                <div className="bg-gray-800/50 rounded-xl p-4 flex flex-col border border-gray-700">
+                <div className="bg-card rounded-xl p-4 flex flex-col border border-border">
                      <h3 className="text-lg font-semibold mb-4">Delivery Team ({data.boys?.length || 0})</h3>
                      <div className="overflow-y-auto space-y-3">
                         {loading ? Array.from({length:3}).map((_, i) => (
-                            <div key={i} className="p-3 bg-gray-800 rounded-lg border border-gray-700 animate-pulse h-28"></div>
+                            <div key={i} className="p-3 bg-muted rounded-lg border border-border animate-pulse h-28"></div>
                         )) : (data.boys || []).map(boy => (
                             <motion.div
                                 key={boy.id}
                                 layout
-                                className="p-3 bg-gray-800 rounded-lg border border-gray-700"
+                                className="p-3 bg-muted/50 rounded-lg border border-border"
                             >
                                 <div className="flex justify-between items-start">
                                     <div>
-                                        <p className="font-bold text-white">{boy.name}</p>
-                                        <p className="text-xs text-gray-400 flex items-center gap-1 mt-1"><Phone size={12}/>{boy.phone}</p>
+                                        <p className="font-bold text-foreground">{boy.name}</p>
+                                        <p className="text-xs text-muted-foreground flex items-center gap-1 mt-1"><Phone size={12}/>{boy.phone}</p>
                                     </div>
                                     <StatusBadge status={boy.status} />
                                 </div>
-                                <div className="mt-3 grid grid-cols-3 gap-2 text-center text-xs text-gray-300 bg-gray-900/50 p-2 rounded-md">
+                                <div className="mt-3 grid grid-cols-3 gap-2 text-center text-xs text-muted-foreground bg-background p-2 rounded-md">
                                     <div>
-                                        <p className="font-semibold">{boy.deliveriesToday || 0}</p>
-                                        <p className="text-gray-400">Today</p>
+                                        <p className="font-semibold text-foreground">{boy.deliveriesToday || 0}</p>
+                                        <p>Today</p>
                                     </div>
-                                    <div className="flex items-center justify-center gap-1">
-                                        <p className="font-semibold">{(boy.avgDeliveryTime || 0)} min</p>
-                                        <p className="text-gray-400">Avg Time</p>
+                                    <div className="flex flex-col items-center justify-center gap-1">
+                                        <p className="font-semibold text-foreground">{(boy.avgDeliveryTime || 0)} min</p>
+                                        <p>Avg Time</p>
                                     </div>
-                                    <div className="flex items-center justify-center gap-1">
-                                        <p className="font-semibold">{(boy.avgRating || 0).toFixed(1)}</p>
+                                    <div className="flex flex-col items-center justify-center gap-1">
+                                        <p className="font-semibold text-foreground">{(boy.avgRating || 0).toFixed(1)}</p>
                                         <Star size={12} className="text-yellow-400"/>
                                     </div>
                                 </div>
-                                 <div className="mt-3 pt-3 border-t border-gray-700 flex justify-between items-center gap-2 flex-wrap">
+                                 <div className="mt-3 pt-3 border-t border-border flex justify-between items-center gap-2 flex-wrap">
                                     <div className="flex items-center gap-2">
                                         <Switch
                                             checked={boy.status !== 'Inactive'}
@@ -443,15 +442,15 @@ export default function DeliveryPage() {
                                             disabled={boy.status === 'On Delivery'}
                                             id={`switch-${boy.id}`}
                                         />
-                                        <Label htmlFor={`switch-${boy.id}`} className="text-sm text-gray-400 cursor-pointer">
+                                        <Label htmlFor={`switch-${boy.id}`} className="text-sm text-muted-foreground cursor-pointer">
                                             {boy.status !== 'Inactive' ? 'Active' : 'Inactive'}
                                         </Label>
                                     </div>
                                     <div className="flex gap-2">
-                                        <Button variant="outline" size="sm" className="bg-gray-700 hover:bg-gray-600 border-gray-600" onClick={() => handleEdit(boy)}>
+                                        <Button variant="outline" size="sm" onClick={() => handleEdit(boy)}>
                                             <Edit size={14} className="mr-1"/> Edit
                                         </Button>
-                                        <Button size="sm" className="bg-green-600 hover:bg-green-700" disabled={boy.status !== 'Available'} onClick={() => handleAssignClick(boy)}>
+                                        <Button size="sm" disabled={boy.status !== 'Available'} onClick={() => handleAssignClick(boy)}>
                                             <Bike size={14} className="mr-1"/> Assign Order
                                         </Button>
                                     </div>
@@ -459,7 +458,7 @@ export default function DeliveryPage() {
                             </motion.div>
                         ))}
                          {!loading && (!data.boys || data.boys.length === 0) && (
-                            <p className="text-center text-gray-500 py-10">No delivery boys added yet.</p>
+                            <p className="text-center text-muted-foreground py-10">No delivery riders added yet.</p>
                          )}
                     </div>
                 </div>
