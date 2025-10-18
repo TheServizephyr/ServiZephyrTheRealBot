@@ -226,6 +226,8 @@ const MenuCategory = ({ categoryId, title, icon, items, onDeleteItem, onEditItem
     );
 };
 
+
+
 const AddItemModal = ({ isOpen, setIsOpen, onSave, editingItem, allCategories }) => {
     const [item, setItem] = useState(null);
     const [isSaving, setIsSaving] = useState(false);
@@ -446,7 +448,7 @@ const AddItemModal = ({ isOpen, setIsOpen, onSave, editingItem, allCategories })
             <DialogContent className="sm:max-w-4xl bg-card border-border text-foreground">
                 <form onSubmit={handleSubmit}>
                     <DialogHeader>
-                        <DialogTitle>{editingItem ? 'Edit Menu Item' : 'Add New Menu Item'}</DialogTitle>
+                        <DialogTitle>{editingItem ? 'Edit Item' : 'Add New Item'}</DialogTitle>
                         <DialogDescription>
                             {editingItem ? 'Update the details for this item.' : "Fill in the details for the new item. Click save when you're done."}
                         </DialogDescription>
@@ -589,20 +591,26 @@ const AddItemModal = ({ isOpen, setIsOpen, onSave, editingItem, allCategories })
     );
 };
 
-const BulkAddModal = ({ isOpen, setIsOpen, onSave }) => {
+const BulkAddModal = ({ isOpen, setIsOpen, onSave, businessType }) => {
     const [jsonText, setJsonText] = useState('');
     const [isSaving, setIsSaving] = useState(false);
     const [copySuccess, setCopySuccess] = useState('');
 
-    const aiPrompt = `You are an expert menu data extractor. Convert the following restaurant menu text into a structured JSON array. Each object in the array must strictly follow this format:
+    const isShop = businessType === 'shop';
+    const contextType = isShop ? 'product catalog' : 'restaurant menu';
+    const itemName = isShop ? 'Product name' : 'Dish name';
+    const placeholderText = isShop ? '[PASTE YOUR PRODUCT LIST HERE]' : '[PASTE YOUR MENU TEXT HERE]';
+    const instructionsText = isShop ? 'your product list' : 'your menu text';
+
+    const aiPrompt = `You are an expert data extractor. Convert the following ${contextType} text into a structured JSON array. Each object in the array must strictly follow this format:
 {
-  "name": "string (Dish name)",
-  "description": "string (Optional dish description)",
-  "imageUrl": "string (Optional URL to the dish image)",
-  "categoryId": "string (Lowercase, dash-separated, e.g., 'main-course', 'starters', 'beverages')",
-  "isVeg": "boolean (true for vegetarian, false for non-vegetarian)",
+  "name": "string (${itemName})",
+  "description": "string (Optional item description)",
+  "imageUrl": "string (Optional URL to the item image)",
+  "categoryId": "string (Lowercase, dash-separated, e.g., 'main-course', 'electronics')",
+  "isVeg": "boolean (true for vegetarian, false for non-vegetarian, default to true if unsure)",
   "portions": [
-    { "name": "string (e.g., 'Full', 'Half', 'Regular')", "price": "number" }
+    { "name": "string (e.g., 'Full', 'Half', 'Regular', '500g')", "price": "number" }
   ],
   "tags": ["string", "... (Optional array of tags like 'Bestseller', 'Spicy')"],
   "addOnGroups": [
@@ -618,15 +626,15 @@ const BulkAddModal = ({ isOpen, setIsOpen, onSave }) => {
 }
 
 Important Rules:
-- If a dish has only one price, create a single entry in the 'portions' array with the name "Full".
-- If a category is not obvious, use a sensible default like 'main-course'.
-- If veg/non-veg status is not clear, assume 'isVeg: true'.
+- If an item has only one price, create a single entry in the 'portions' array with the name "Full".
+- If a category is not obvious, use a sensible default like '${isShop ? 'general' : 'main-course'}'.
+- The 'isVeg' flag is more for restaurants; for shops, you can default it to true.
 - The 'imageUrl' is optional. If not present, the system will use a placeholder.
 - The final output must be ONLY the JSON array, with no extra text or explanations.
 
-Here is the menu text:
+Here is the text:
 ---
-[PASTE YOUR MENU TEXT HERE]
+${placeholderText}
 ---`;
 
     const handleCopy = () => {
@@ -674,7 +682,7 @@ Here is the menu text:
                         <ol className="list-decimal list-inside space-y-2 text-sm text-muted-foreground">
                             <li>Copy the AI prompt provided.</li>
                             <li>Go to an AI tool like ChatGPT or Gemini.</li>
-                            <li>Paste the prompt, and then paste your menu text where it says `[PASTE YOUR MENU TEXT HERE]`.</li>
+                            <li>Paste the prompt, and then paste ${instructionsText} where it says \`${placeholderText}\`.</li>
                             <li>The AI will generate a JSON array. Copy the entire JSON code.</li>
                             <li>Paste the copied JSON code into the text area on this page.</li>
                             <li>Click "Upload & Save Items".</li>
@@ -885,6 +893,7 @@ export default function MenuPage() {
   const pageTitle = businessType === 'shop' ? 'Item Catalog' : 'Menu Management';
   const pageDescription = businessType === 'shop' ? 'Organize categories, manage products, and control availability.' : 'Organize categories, reorder items, and manage availability.';
   const searchPlaceholder = businessType === 'shop' ? 'Search for a product...' : 'Search for a dish...';
+  const addNewText = businessType === 'shop' ? 'Add New Product' : 'Add New Dish';
 
 
   if (loading) {
@@ -909,6 +918,7 @@ export default function MenuPage() {
         isOpen={isBulkModalOpen}
         setIsOpen={setIsBulkModalOpen}
         onSave={handleBulkSave}
+        businessType={businessType}
       />
 
       {/* Header */}
@@ -934,7 +944,7 @@ export default function MenuPage() {
                 whileTap={{ scale: 0.95 }}
             >
                 <PlusCircle size={20} className="mr-2" />
-                Add New Item
+                {addNewText}
             </MotionButton>
         </div>
       </div>
@@ -1004,3 +1014,4 @@ export default function MenuPage() {
     </div>
   );
 }
+
