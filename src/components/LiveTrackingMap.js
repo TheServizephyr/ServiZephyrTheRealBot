@@ -12,7 +12,7 @@ const LiveTrackingMap = ({ restaurantLocation, customerLocation, riderLocation }
     return (
         <div className="w-full h-full bg-muted flex flex-col items-center justify-center text-center p-4">
              <Loader2 className="h-8 w-8 text-primary animate-spin mb-4" />
-            <p className="font-semibold text-foreground">Live Map Temporarily Unavailable</p>
+            <p className="font-semibold text-foreground">Map feature is temporarily unavailable</p>
             <p className="text-sm text-muted-foreground">We are working on resolving an issue with our mapping service.</p>
         </div>
     );

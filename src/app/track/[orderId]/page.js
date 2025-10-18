@@ -101,67 +101,39 @@ export default function OrderTrackingPage() {
     const { orderId } = useParams();
     const router = useRouter();
     const firestore = useFirestore();
-
-    const [order, setOrder] = useState(null);
-    const [restaurant, setRestaurant] = useState(null);
-    const [deliveryBoy, setDeliveryBoy] = useState(null);
+    const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState(null);
-    const [loading, setLoading] = useState(true);
 
-    const { data: orderData, isLoading: isOrderLoading, error: orderError } = useDoc(
+    const { data: order, isLoading: isOrderLoading, error: orderError } = useDoc(
         orderId ? doc(firestore, 'orders', orderId) : null
     );
 
-    useEffect(() => {
-        if(orderError) {
-            console.error("Firestore Order Hook Error:", orderError);
-        }
-    }, [orderError]);
-    
-    useEffect(() => {
-        if (!isOrderLoading) {
-            if (orderData) {
-                setOrder(orderData);
-                const fetchRelatedData = async () => {
-                    try {
-                        const restaurantRef = doc(firestore, 'restaurants', orderData.restaurantId);
-                        const restaurantSnap = await getDoc(restaurantRef);
-                        if (restaurantSnap.exists()) {
-                            setRestaurant({ id: restaurantSnap.id, ...restaurantSnap.data()});
-                        } else {
-                            throw new Error("Restaurant not found");
-                        }
-                    } catch (err) {
-                        console.error("Error fetching related data:", err);
-                        setError(err.message);
-                    } finally {
-                        setLoading(false);
-                    }
-                };
-                fetchRelatedData();
-            } else {
-                setLoading(false);
-            }
-        }
-    }, [orderData, isOrderLoading, firestore]);
-    
-    const { data: deliveryBoyData } = useDoc(
-        (order?.deliveryBoyId && restaurant?.businessType === 'restaurant') ? doc(firestore, 'restaurants', order.restaurantId, 'deliveryBoys', order.deliveryBoyId) : null
+    const { data: restaurant, isLoading: isRestaurantLoading, error: restaurantError } = useDoc(
+        (order?.restaurantId) ? doc(firestore, 'restaurants', order.restaurantId) : null
     );
-    
+
+    const { data: deliveryBoy, isLoading: isDeliveryBoyLoading, error: deliveryBoyError } = useDoc(
+      (order?.deliveryBoyId && restaurant?.businessType !== 'shop') ? doc(firestore, 'restaurants', order.restaurantId, 'deliveryBoys', order.deliveryBoyId) : null
+    );
+
     useEffect(() => {
-        if(deliveryBoyData){
-            setDeliveryBoy(deliveryBoyData);
+        // Master loading state: it's loading if the primary record (order) is loading,
+        // or if the secondary record (restaurant) is loading AFTER we have the order.
+        if (isOrderLoading) {
+            setIsLoading(true);
+        } else if (order && isRestaurantLoading) {
+            setIsLoading(true);
+        } else {
+            setIsLoading(false);
         }
-    }, [deliveryBoyData]);
 
+        if (orderError) setError(orderError.message);
+        if (restaurantError) setError(restaurantError.message);
+        if (deliveryBoyError) console.warn("Delivery boy data error:", deliveryBoyError.message);
 
-    const handleRefresh = () => {
-        setLoading(true);
-        setTimeout(() => setLoading(false), 1000);
-    };
+    }, [isOrderLoading, isRestaurantLoading, order, orderError, restaurantError, deliveryBoyError]);
 
-    if (isOrderLoading || loading) {
+    if (isLoading) {
         return (
             <div className="min-h-screen bg-background flex flex-col items-center justify-center text-center p-4">
                 <Loader2 className="w-16 h-16 text-primary animate-spin" />
@@ -170,11 +142,11 @@ export default function OrderTrackingPage() {
         );
     }
 
-    if (orderError || error) {
+    if (error) {
         return (
              <div className="min-h-screen bg-background flex flex-col items-center justify-center text-center p-4">
                 <h1 className="text-2xl font-bold text-destructive">Error Loading Order</h1>
-                <p className="text-muted-foreground mt-2">{orderError?.message || error}</p>
+                <p className="text-muted-foreground mt-2">{error}</p>
                  <Button onClick={() => router.back()} className="mt-6"><ArrowLeft className="mr-2 h-4 w-4"/> Go Back</Button>
             </div>
         )
@@ -202,8 +174,8 @@ export default function OrderTrackingPage() {
                     <p className="text-xs text-muted-foreground">Tracking Order</p>
                     <h1 className="font-bold text-lg">{orderId}</h1>
                 </div>
-                <Button onClick={handleRefresh} variant="outline" size="icon">
-                    <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
+                <Button onClick={() => window.location.reload()} variant="outline" size="icon">
+                    <RefreshCw className="h-4 w-4" />
                 </Button>
             </header>
 
@@ -231,3 +203,4 @@ export default function OrderTrackingPage() {
         </div>
     );
 }
+
