@@ -4,7 +4,7 @@
 
 import { useState, useMemo, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ChevronUp, ChevronDown, Star, AlertTriangle, Sparkles, X, History, Gift, StickyNote, IndianRupee, Mail, Users, UserPlus, Repeat, Crown, Search, Filter, ShieldCheck } from 'lucide-react';
+import { ChevronUp, ChevronDown, Star, AlertTriangle, Sparkles, X, History, Gift, StickyNote, IndianRupee, Mail, Users, UserPlus, Repeat, Crown, Search, Filter, ShieldCheck, User } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose } from "@/components/ui/dialog";
 import { Label } from '@/components/ui/label';
@@ -14,7 +14,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Calendar } from '@/components/ui/calendar';
 import { format } from 'date-fns';
 import { Calendar as CalendarIcon, Wand2, Ticket, Percent, Truck } from 'lucide-react';
-import { useSearchParams } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 
 
 const formatDate = (dateString) => {
@@ -337,9 +337,9 @@ const StatCard = ({ icon: Icon, title, value, detail, isLoading }) => (
         <div>
             {isLoading ? (
                 <>
-                  <div className="h-4 bg-muted rounded w-24 mb-2"></div>
-                  <div className="h-8 bg-muted rounded w-16 mb-2"></div>
-                  <div className="h-3 bg-muted rounded w-32"></div>
+                  <div className="h-4 bg-muted-foreground/20 rounded w-24 mb-2"></div>
+                  <div className="h-8 bg-muted-foreground/20 rounded w-16 mb-2"></div>
+                  <div className="h-3 bg-muted-foreground/20 rounded w-32"></div>
                 </>
             ) : (
                 <>
@@ -364,6 +364,7 @@ export default function CustomersPage() {
     const [isCouponModalOpen, setCouponModalOpen] = useState(false);
     const [rewardCustomer, setRewardCustomer] = useState(null);
     const searchParams = useSearchParams();
+    const router = useRouter();
     const impersonatedOwnerId = searchParams.get('impersonate_owner_id');
 
     const handleApiCall = async (endpoint, method, body) => {
@@ -402,12 +403,31 @@ export default function CustomersPage() {
         };
 
         const unsubscribe = auth.onAuthStateChanged(user => {
-            if (user) fetchCustomers();
-            else setLoading(false);
+            if (user) {
+                fetchCustomers();
+            } else {
+                setLoading(false);
+                router.push('/');
+            }
         });
         return () => unsubscribe();
-    }, [impersonatedOwnerId]);
+    }, [impersonatedOwnerId, router]);
     
+    // Effect to handle opening customer panel from URL
+    useEffect(() => {
+        const customerIdFromUrl = searchParams.get('customerId');
+        if (customerIdFromUrl && customers.length > 0) {
+            const customerToSelect = customers.find(c => c.id === customerIdFromUrl);
+            if (customerToSelect) {
+                setSelectedCustomer(customerToSelect);
+                // Optional: remove the query param from URL without reloading the page
+                const newUrl = window.location.pathname;
+                window.history.replaceState({}, '', newUrl);
+            }
+        }
+    }, [searchParams, customers]);
+
+
     const vipCustomers = useMemo(() => {
         return [...customers].sort((a, b) => (b.totalSpend || 0) - (a.totalSpend || 0)).slice(0, 5);
     }, [customers]);
@@ -649,3 +669,4 @@ export default function CustomersPage() {
         </div>
     );
 }
+
