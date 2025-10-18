@@ -17,7 +17,8 @@ export async function POST(req) {
         if (!name || !address || !phone || !restaurantId || !items || !grandTotal || !paymentMethod) {
             return NextResponse.json({ message: 'Missing required fields for order creation.' }, { status: 400 });
         }
-        if (!/^\d{10}$/.test(phone)) {
+        const normalizedPhone = phone.length > 10 ? phone.slice(-10) : phone;
+        if (!/^\d{10}$/.test(normalizedPhone)) {
             return NextResponse.json({ message: 'Invalid phone number format. Must be 10 digits.' }, { status: 400 });
         }
         
@@ -43,7 +44,7 @@ export async function POST(req) {
             });
 
             const orderPayloadForNotes = {
-                customerDetails: { name, address, phone },
+                customerDetails: { name, address, phone: normalizedPhone },
                 restaurantDetails: { restaurantId, restaurantName: businessData.name },
                 orderItems: items.map(item => ({ name: item.name, qty: item.quantity, price: item.price })),
                 billDetails: { coupon, loyaltyDiscount, grandTotal },
@@ -65,9 +66,13 @@ export async function POST(req) {
             razorpayOrderId = razorpayOrder.id;
             console.log(`[Order API] Razorpay Order ${razorpayOrderId} created for amount ${grandTotal}. Firestore order creation will wait for payment confirmation.`);
             
+             // Create the Firestore order doc ID ahead of time for COD consistency
+            const firestoreOrderId = firestore.collection('orders').doc().id;
+            
             return NextResponse.json({ 
                 message: 'Razorpay order created. Awaiting payment confirmation.',
                 razorpay_order_id: razorpayOrderId,
+                firestore_order_id: firestoreOrderId, // Send this to the client
             }, { status: 200 });
         }
 
@@ -76,29 +81,30 @@ export async function POST(req) {
         const batch = firestore.batch();
         
         const usersRef = firestore.collection('users');
-        const existingUserQuery = await usersRef.where('phone', '==', phone).limit(1).get();
+        const existingUserQuery = await usersRef.where('phone', '==', normalizedPhone).limit(1).get();
 
         let userId;
         let isNewUser = existingUserQuery.empty;
 
         if (isNewUser) {
-            // New user via COD, create an unclaimed profile, NOT a main user profile.
-            const unclaimedUserRef = firestore.collection('unclaimed_profiles').doc(phone);
-            userId = phone; // Use phone as temporary ID
+            // New user via COD, check for/create an unclaimed profile.
+            const unclaimedUserRef = firestore.collection('unclaimed_profiles').doc(normalizedPhone);
+            userId = normalizedPhone; // Use phone as temporary ID
             
             const newOrderedFrom = {
                 restaurantId: restaurantId,
-                restaurantName: businessData.name
+                restaurantName: businessData.name,
+                businessType: businessType, // Save businessType here
             };
 
             batch.set(unclaimedUserRef, {
                 name: name, 
-                phone: phone, 
+                phone: normalizedPhone, 
                 addresses: [{ id: `addr_${Date.now()}`, full: address }],
                 createdAt: adminFirestore.FieldValue.serverTimestamp(),
-                // NEW: Store the origin restaurant
                 orderedFrom: adminFirestore.FieldValue.arrayUnion(newOrderedFrom)
             }, { merge: true });
+            console.log(`[Order API] New unclaimed profile created/updated for ${normalizedPhone}`);
 
         } else {
             // Existing verified user
@@ -121,7 +127,7 @@ export async function POST(req) {
 
         const restaurantCustomerRef = businessRef.collection('customers').doc(userId);
         batch.set(restaurantCustomerRef, {
-            name: name, phone: phone, 
+            name: name, phone: normalizedPhone, 
             status: isNewUser ? 'unclaimed' : 'verified', // Set status based on user existence
             totalSpend: adminFirestore.FieldValue.increment(subtotal),
             loyaltyPoints: adminFirestore.FieldValue.increment(pointsEarned - pointsSpent),
@@ -152,7 +158,7 @@ export async function POST(req) {
 
         const newOrderRef = firestore.collection('orders').doc();
         batch.set(newOrderRef, {
-            customerName: name, customerId: userId, customerAddress: address, customerPhone: phone,
+            customerName: name, customerId: userId, customerAddress: address, customerPhone: normalizedPhone,
             restaurantId: restaurantId, restaurantName: businessData.name,
             businessType,
             items: items.map(item => ({ name: item.name, qty: item.quantity, price: item.price })),

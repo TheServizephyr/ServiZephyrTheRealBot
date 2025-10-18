@@ -32,16 +32,16 @@ export async function POST(req) {
              return NextResponse.json({ message: 'A structured address is required for businesses.' }, { status: 400 });
         }
 
-        const phone = finalUserData.phone;
+        const normalizedPhone = finalUserData.phone.slice(-10);
         const batch = firestore.batch();
 
         // --- MERGE UNCLAIMED PROFILE LOGIC ---
-        const unclaimedProfileRef = firestore.collection('unclaimed_profiles').doc(phone);
-        const unclaimedProfileSnap = await unclaimedProfileRef.get();
+        const unclaimedProfileRef = firestore.collection('unclaimed_profiles').doc(normalizedPhone);
+        const unclaimedProfileSnap = await unclaimedProfileRef.get(); // Await the get() call
         let mergedUserData = { ...finalUserData };
 
         if (unclaimedProfileSnap.exists) { 
-            console.log(`[PROFILE COMPLETION] Unclaimed profile for ${phone} found. Merging data.`);
+            console.log(`[PROFILE COMPLETION] Unclaimed profile for ${normalizedPhone} found. Merging data.`);
             const unclaimedData = unclaimedProfileSnap.data();
             
             const existingAddresses = finalUserData.addresses || [];
@@ -51,12 +51,11 @@ export async function POST(req) {
             // NEW & CORRECTED: Handle moving customer data from phone ID to UID
             if (unclaimedData.orderedFrom && Array.isArray(unclaimedData.orderedFrom)) {
                 for (const restaurantInfo of unclaimedData.orderedFrom) {
-                    if (restaurantInfo.restaurantId && restaurantInfo.restaurantName) {
+                    if (restaurantInfo.restaurantId) {
                         const restaurantId = restaurantInfo.restaurantId;
-                        const businessTypeForCollection = restaurantInfo.businessType || 'restaurants';
-                        const collectionPath = businessTypeForCollection === 'shop' ? 'shops' : 'restaurants';
+                        const collectionPath = restaurantInfo.businessType === 'shop' ? 'shops' : 'restaurants';
 
-                        const oldCustomerRef = firestore.collection(collectionPath).doc(restaurantId).collection('customers').doc(phone);
+                        const oldCustomerRef = firestore.collection(collectionPath).doc(restaurantId).collection('customers').doc(normalizedPhone);
                         const newCustomerRef = firestore.collection(collectionPath).doc(restaurantId).collection('customers').doc(uid);
                         
                         const oldCustomerSnap = await oldCustomerRef.get();
@@ -80,13 +79,24 @@ export async function POST(req) {
 
                         batch.set(newCustomerRef, newCustomerPayload, { merge: true });
                         console.log(`[PROFILE COMPLETION] Marked new/updated customer record at ${newCustomerRef.path} for creation.`);
+                        
+                        // Also create the entry in the user's `joined_restaurants` subcollection
+                        const userRestaurantLinkRef = firestore.collection('users').doc(uid).collection('joined_restaurants').doc(restaurantId);
+                         batch.set(userRestaurantLinkRef, {
+                            restaurantName: restaurantInfo.restaurantName, 
+                            joinedAt: adminFirestore.FieldValue.serverTimestamp(),
+                            totalSpend: oldCustomerData.totalSpend || 0,
+                            loyaltyPoints: oldCustomerData.loyaltyPoints || 0,
+                            lastOrderDate: oldCustomerData.lastOrderDate,
+                            totalOrders: oldCustomerData.totalOrders || 0,
+                        }, { merge: true });
                     }
                 }
             }
             
             // Delete the unclaimed profile after processing
             batch.delete(unclaimedProfileRef);
-            console.log(`[PROFILE COMPLETION] Unclaimed profile for ${phone} marked for deletion.`);
+            console.log(`[PROFILE COMPLETION] Unclaimed profile for ${normalizedPhone} marked for deletion.`);
         }
         // --- END MERGE LOGIC ---
 

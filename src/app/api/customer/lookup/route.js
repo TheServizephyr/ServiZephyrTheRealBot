@@ -11,35 +11,41 @@ export async function POST(req) {
             return NextResponse.json({ message: 'Phone number is required.' }, { status: 400 });
         }
         
-        // Normalize phone to 10 digits
-        const normalizedPhone = phone.startsWith('91') ? phone.substring(2) : phone;
+        // Normalize phone to 10 digits if it starts with 91
+        const normalizedPhone = phone.length > 10 ? phone.slice(-10) : phone;
         
         const usersRef = firestore.collection('users');
         const userQuery = await usersRef.where('phone', '==', normalizedPhone).limit(1).get();
 
-        if (userQuery.empty) {
-            return NextResponse.json({ message: 'User not found.' }, { status: 404 });
+        // 1. Check for a verified, master user profile first
+        if (!userQuery.empty) {
+            const userDoc = userQuery.docs[0];
+            const userData = userDoc.data();
+            
+            const responseData = {
+                name: userData.name,
+                addresses: userData.addresses || [],
+                isVerified: true, // Mark that this is a master profile
+            };
+            return NextResponse.json(responseData, { status: 200 });
         }
         
-        const userDoc = userQuery.docs[0];
-        const userData = userDoc.data();
+        // 2. If no master profile, check for an unclaimed profile
+        const unclaimedProfileRef = firestore.collection('unclaimed_profiles').doc(normalizedPhone);
+        const unclaimedProfileSnap = await unclaimedProfileRef.get();
         
-        // Find the restaurant the user might have points in.
-        // This is a simplification. A real-world scenario might need the restaurantId.
-        const joinedRestaurantsRef = userDoc.ref.collection('joined_restaurants');
-        const restaurantsSnap = await joinedRestaurantsRef.limit(1).get();
-        let loyaltyPoints = 0;
-        if (!restaurantsSnap.empty) {
-            loyaltyPoints = restaurantsSnap.docs[0].data().loyaltyPoints || 0;
+        if (unclaimedProfileSnap.exists) {
+            const unclaimedData = unclaimedProfileSnap.data();
+            const responseData = {
+                name: unclaimedData.name,
+                addresses: unclaimedData.addresses || [],
+                isVerified: false, // Mark that this is an unclaimed profile
+            };
+             return NextResponse.json(responseData, { status: 200 });
         }
-
-        const responseData = {
-            name: userData.name,
-            addresses: userData.addresses || [], // Ensure addresses is always an array
-            loyaltyPoints: loyaltyPoints // Send loyalty points to the frontend
-        };
         
-        return NextResponse.json(responseData, { status: 200 });
+        // 3. If neither exists, the user is completely new.
+        return NextResponse.json({ message: 'User not found.' }, { status: 404 });
 
     } catch (error) {
         console.error('CUSTOMER LOOKUP ERROR:', error);

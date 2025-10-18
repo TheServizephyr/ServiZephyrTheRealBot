@@ -151,7 +151,6 @@ const CheckoutPageInternal = () => {
     // Fetch user details when modal is about to open
     useEffect(() => {
         const fetchUserData = async () => {
-            // **THE FIX**: Use the authoritative phone from state (set from URL)
             if (isModalOpen && cartData?.phone) {
                 setLoading(true);
                 setError('');
@@ -173,6 +172,7 @@ const CheckoutPageInternal = () => {
                         }
                         setIsExistingUser(true);
                     } else {
+                        // User not found in either collection, treat as completely new
                         setIsExistingUser(false);
                         setIsAddingNew(true);
                         setName('');
@@ -258,6 +258,7 @@ const CheckoutPageInternal = () => {
                 throw new Error(orderCreationResult.message || "Failed to create order.");
             }
             
+            // This is the Firestore order ID, NOT the Razorpay one
             const { firestore_order_id, razorpay_order_id } = orderCreationResult;
 
             if (selectedPaymentMethod === 'razorpay') {
@@ -270,6 +271,9 @@ const CheckoutPageInternal = () => {
                     order_id: razorpay_order_id,
                     handler: function (response) {
                         localStorage.removeItem(`cart_${restaurantId}`);
+                        // The webhook will create the Firestore order, but we can redirect immediately.
+                        // We need an ID to track, so we have to generate one on the client or have the API return it.
+                        // For now, let's assume the API returns the ID it will use.
                         router.push(`/track/${firestore_order_id}`);
                     },
                     prefill: { name: name.trim(), contact: cartData.phone },
