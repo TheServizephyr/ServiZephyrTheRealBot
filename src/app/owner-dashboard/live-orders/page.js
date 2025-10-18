@@ -1,4 +1,5 @@
 
+
 "use client";
 
 import React, { useState, useEffect, useMemo } from 'react';
@@ -402,7 +403,7 @@ const SortableHeader = ({ children, column, sortConfig, onSort }) => {
         {children}
         {isSorted && <Icon size={16} />}
       </div>
-    </SortableHeader>
+    </th>
   );
 };
 
