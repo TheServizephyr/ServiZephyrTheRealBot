@@ -304,8 +304,13 @@ const AssignRiderModal = ({ isOpen, onClose, onAssign, order, riders }) => {
 };
 
 const OrderDetailModal = ({ data, isOpen, onClose }) => {
-    if (!isOpen || !data) return null;
-    const { order, customer } = data;
+    if (!isOpen) return null;
+    
+    // THE FIX: Use optional chaining and provide a fallback object for destructuring.
+    // Also, add a specific check for the order object itself.
+    const { order, customer } = data || {};
+    if (!order) return null;
+
     const orderDate = new Date(order.orderDate?.seconds ? order.orderDate.seconds * 1000 : order.orderDate);
 
     return (
@@ -349,33 +354,39 @@ const OrderDetailModal = ({ data, isOpen, onClose }) => {
                         </div>
                     </TabsContent>
                     <TabsContent value="customer" className="mt-4 space-y-4 max-h-[60vh] overflow-y-auto p-1">
-                        <div className="space-y-2">
-                             <div className="flex items-center gap-3">
-                                <User size={16} className="text-muted-foreground"/>
-                                <span className="font-semibold">{customer.name}</span>
-                             </div>
-                             <div className="flex items-center gap-3">
-                                <Phone size={16} className="text-muted-foreground"/>
-                                <span>{customer.phone}</span>
-                             </div>
-                             <div className="flex items-start gap-3">
-                                <MapPin size={16} className="text-muted-foreground mt-1"/>
-                                <span className="flex-1">{order.customerAddress}</span>
-                             </div>
-                        </div>
-                        <div className="grid grid-cols-2 gap-4 border-t border-border pt-4">
-                           <div className="bg-muted p-3 rounded-lg text-center">
-                                <p className="text-xs text-muted-foreground">Total Spend</p>
-                                <p className="text-lg font-bold">₹{customer.totalSpend?.toLocaleString() || 0}</p>
-                           </div>
-                           <div className="bg-muted p-3 rounded-lg text-center">
-                                <p className="text-xs text-muted-foreground">Total Orders</p>
-                                <p className="text-lg font-bold">{customer.totalOrders || 0}</p>
-                           </div>
-                        </div>
-                        <Link href={`/owner-dashboard/customers?customerId=${order.customerId}`}>
-                            <Button variant="outline" className="w-full">View Full Customer Profile</Button>
-                        </Link>
+                        {customer ? (
+                            <>
+                                <div className="space-y-2">
+                                     <div className="flex items-center gap-3">
+                                        <User size={16} className="text-muted-foreground"/>
+                                        <span className="font-semibold">{customer.name}</span>
+                                     </div>
+                                     <div className="flex items-center gap-3">
+                                        <Phone size={16} className="text-muted-foreground"/>
+                                        <span>{customer.phone}</span>
+                                     </div>
+                                     <div className="flex items-start gap-3">
+                                        <MapPin size={16} className="text-muted-foreground mt-1"/>
+                                        <span className="flex-1">{order.customerAddress}</span>
+                                     </div>
+                                </div>
+                                <div className="grid grid-cols-2 gap-4 border-t border-border pt-4">
+                                   <div className="bg-muted p-3 rounded-lg text-center">
+                                        <p className="text-xs text-muted-foreground">Total Spend</p>
+                                        <p className="text-lg font-bold">₹{customer.totalSpend?.toLocaleString() || 0}</p>
+                                   </div>
+                                   <div className="bg-muted p-3 rounded-lg text-center">
+                                        <p className="text-xs text-muted-foreground">Total Orders</p>
+                                        <p className="text-lg font-bold">{customer.totalOrders || 0}</p>
+                                   </div>
+                                </div>
+                                <Link href={`/owner-dashboard/customers?customerId=${order.customerId}`}>
+                                    <Button variant="outline" className="w-full">View Full Customer Profile</Button>
+                                </Link>
+                            </>
+                        ) : (
+                            <p className="text-muted-foreground text-center py-8">Customer details could not be loaded.</p>
+                        )}
                     </TabsContent>
                 </Tabs>
             </DialogContent>
@@ -833,7 +844,7 @@ export default function LiveOrdersPage() {
                                                                     <div key={i} className="flex items-center gap-2">
                                                                         <ClockIcon size={12} />
                                                                         <span className="font-semibold capitalize">{h.status}:</span>
-                                                                        <span>{format(new Date(h.timestamp), 'hh:mm:ss a')}</span>
+                                                                        <span>{format(new Date(h.timestamp?.seconds ? h.timestamp.seconds * 1000 : h.timestamp), 'hh:mm:ss a')}</span>
                                                                     </div>
                                                                 ))
                                                             ) : (
@@ -877,3 +888,4 @@ export default function LiveOrdersPage() {
 }
 
     
+
