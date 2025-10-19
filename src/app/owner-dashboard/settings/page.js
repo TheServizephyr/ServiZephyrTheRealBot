@@ -3,7 +3,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { User, Mail, Phone, Shield, Edit, Save, XCircle, Bell, Trash2, KeyRound, Eye, EyeOff, FileText, Bot, Truck, Image as ImageIcon, Upload, X, IndianRupee, MapPin, Wallet, ChevronsUpDown, Check, ShoppingBag } from 'lucide-react';
+import { User, Mail, Phone, Shield, Edit, Save, XCircle, Bell, Trash2, KeyRound, Eye, EyeOff, FileText, Bot, Truck, Image as ImageIcon, Upload, X, IndianRupee, MapPin, Wallet, ChevronsUpDown, Check, ShoppingBag, Store } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
@@ -495,6 +495,10 @@ export default function SettingsPage() {
                             <Label htmlFor="fullName" className="flex items-center gap-2"><User size={14}/> Full Name</Label>
                             <input id="fullName" value={editedUser.name} onChange={e => setEditedUser({...editedUser, name: e.target.value})} disabled={!isEditingProfile} className="mt-1 w-full p-2 border rounded-md bg-input border-border disabled:opacity-70 disabled:cursor-not-allowed" />
                         </div>
+                         <div>
+                            <Label htmlFor="restaurantName" className="flex items-center gap-2"><Store size={14}/> Restaurant Name</Label>
+                            <input id="restaurantName" value={editedUser.restaurantName} onChange={e => setEditedUser({...editedUser, restaurantName: e.target.value})} disabled={!isEditingProfile} className="mt-1 w-full p-2 border rounded-md bg-input border-border disabled:opacity-70 disabled:cursor-not-allowed" />
+                        </div>
                         <div>
                             <Label htmlFor="email" className="flex items-center gap-2"><Mail size={14}/> Email Address</Label>
                             <input id="email" value={user.email} disabled className="mt-1 w-full p-2 border rounded-md bg-input border-border disabled:opacity-50 disabled:cursor-not-allowed" />
@@ -775,7 +779,5 @@ export default function SettingsPage() {
         </div>
     );
 }
-
-    
 
     
