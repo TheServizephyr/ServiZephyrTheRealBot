@@ -1,6 +1,7 @@
+
 import { NextResponse } from 'next/server';
 
-const MAPPLS_API_KEY = process.env.MAPPLS_API_KEY; // Correct variable for backend
+const MAPPLS_API_KEY = process.env.MAPPLS_API_KEY;
 
 export async function GET(req) {
     console.log("[API geocode] Request received for Reverse Geocoding.");
@@ -17,15 +18,15 @@ export async function GET(req) {
         return NextResponse.json({ message: "Latitude and longitude are required." }, { status: 400 });
     }
 
-    // CORRECTED URL and removed access_token from query
-    const url = `https://apis.mappls.com/apis/O/rev_geocode?lat=${lat}&lng=${lng}`;
+    // CORRECTED: Use the search.mappls.com URL for reverse geocoding REST API
+    const url = `https://search.mappls.com/search/address/rev-geocode?lat=${lat}&lng=${lng}`;
 
     try {
         console.log(`[API geocode] Calling Mappls Reverse Geocode API: ${url}`);
         const response = await fetch(url, {
             method: 'GET',
             headers: {
-                // CORRECTED: Key sent in Authorization header for REST API
+                // CORRECTED: Send the key in the Authorization header for REST API calls
                 'Authorization': `bearer ${MAPPLS_API_KEY}`
             }
         });

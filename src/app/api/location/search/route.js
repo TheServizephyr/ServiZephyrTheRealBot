@@ -1,6 +1,7 @@
+
 import { NextResponse } from 'next/server';
 
-const MAPPLS_API_KEY = process.env.MAPPLS_API_KEY; // Correct variable for backend
+const MAPPLS_API_KEY = process.env.MAPPLS_API_KEY;
 
 export async function GET(req) {
     console.log("[API search] Request received.");
@@ -16,7 +17,7 @@ export async function GET(req) {
         return NextResponse.json({ message: "Search query is required." }, { status: 400 });
     }
 
-    // CORRECTED URL and removed access_token from query
+    // CORRECTED: Use the atlas.mappls.com URL for autosuggest REST API
     const url = `https://atlas.mappls.com/api/places/search/json?query=${encodeURIComponent(query)}`;
 
     try {
@@ -24,7 +25,7 @@ export async function GET(req) {
         const response = await fetch(url, {
             method: 'GET',
             headers: {
-                 // CORRECTED: Key sent in Authorization header for REST API
+                 // CORRECTED: Send the key in the Authorization header for REST API calls
                 'Authorization': `bearer ${MAPPLS_API_KEY}`
             }
         });
