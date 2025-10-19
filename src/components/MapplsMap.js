@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useEffect, useRef } from 'react';
@@ -35,7 +36,6 @@ const MapplsMap = ({ onMapLoad, initialCenter, onPinDragEnd }) => {
                     console.log("[MapplsMap] Map instance loaded successfully.");
                     setMapInitialized(true);
 
-                    // Add the draggable marker
                     markerInstance.current = new window.mappls.Marker({
                         map: mapInstance.current,
                         position: centerPoint,
@@ -43,7 +43,6 @@ const MapplsMap = ({ onMapLoad, initialCenter, onPinDragEnd }) => {
                         icon_html: `<div style="font-size: 2.5rem; color: #ef4444;">📍</div>`
                     });
 
-                    // Add drag end listener
                     if (onPinDragEnd) {
                         markerInstance.current.on('dragend', () => {
                             const newPosition = markerInstance.current.getPosition();
@@ -63,6 +62,7 @@ const MapplsMap = ({ onMapLoad, initialCenter, onPinDragEnd }) => {
     }, [scriptsLoaded, mapInitialized, initialCenter, onMapLoad, onPinDragEnd, apiKey]);
 
     if (!apiKey) {
+        console.error("[MapplsMap] CRITICAL: NEXT_PUBLIC_MAPPLS_API_KEY is not defined.");
         return (
              <div className="w-full h-full bg-destructive/10 flex items-center justify-center">
                 <p className="text-destructive font-semibold">Mappls API Key is missing.</p>

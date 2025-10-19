@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useState, useEffect, Suspense, useRef } from 'react';
@@ -53,7 +54,6 @@ const LocationPageInternal = () => {
                 console.error("[LocationPage] Geolocation error:", err);
                 setError('Could not get your location. Please search manually or allow location access.');
                 setLoading(false);
-                // Fallback to a default location if user denies permission
                 setMapCenter({ lat: 28.6139, lng: 77.2090 });
             },
             { enableHighAccuracy: true }
@@ -61,6 +61,7 @@ const LocationPageInternal = () => {
     };
 
     useEffect(() => {
+        console.log("[LocationPage] Initial mount, calling getCurrentLocation.");
         getCurrentLocation();
     }, []);
 
@@ -71,8 +72,10 @@ const LocationPageInternal = () => {
         setError('');
         try {
             const res = await fetch(`/api/location/geocode?lat=${coords.lat}&lng=${coords.lng}`);
-            if (!res.ok) throw new Error('Failed to fetch address details.');
+            console.log(`[LocationPage] /api/location/geocode response status: ${res.status}`);
             const data = await res.json();
+            if (!res.ok) throw new Error(data.message || 'Failed to fetch address details.');
+            
             console.log("[LocationPage] Reverse geocode result:", data);
             
             setAddressDetails({
@@ -109,6 +112,7 @@ const LocationPageInternal = () => {
                 console.log("[LocationPage] Searching for:", searchQuery);
                 try {
                     const res = await fetch(`/api/location/search?query=${searchQuery}`);
+                    console.log(`[LocationPage] /api/location/search response status: ${res.status}`);
                     if (!res.ok) throw new Error('Search failed.');
                     const data = await res.json();
                     console.log("[LocationPage] Search suggestions:", data);
@@ -131,7 +135,7 @@ const LocationPageInternal = () => {
         setSearchQuery(suggestion.placeName);
         setSuggestions([]);
         const coords = { lat: suggestion.latitude, lng: suggestion.longitude };
-        setMapCenter(coords); // This will trigger map re-centering via useEffect on map instance
+        setMapCenter(coords); 
         reverseGeocode(coords);
     };
 
@@ -181,6 +185,7 @@ const LocationPageInternal = () => {
                         initialCenter={mapCenter}
                         onPinDragEnd={reverseGeocode}
                         onMapLoad={(map, marker) => {
+                            console.log("[LocationPage] MapplsMap loaded, setting map and marker instances.");
                             setMapInstance(map);
                             setMarkerInstance(marker);
                         }}

@@ -10,7 +10,6 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { useParams, useRouter } from 'next/navigation';
 import dynamic from 'next/dynamic';
 
-// Dynamically import the map component to prevent SSR issues
 const LiveTrackingMap = dynamic(() => import('@/components/LiveTrackingMap'), { 
     ssr: false,
     loading: () => <div className="w-full h-full bg-muted flex items-center justify-center"><Loader2 className="animate-spin text-primary"/></div>
@@ -123,10 +122,11 @@ export default function OrderTrackingPage() {
             setLoading(false);
             return;
         }
-        setLoading(true);
+        if (!loading) setLoading(true); // Show loader on manual refresh
         try {
             console.log(`[TrackPage] Fetching data for order: ${orderId}`);
             const res = await fetch(`/api/order/status/${orderId}`);
+             console.log(`[TrackPage] API response status: ${res.status}`);
             if (!res.ok) {
                 const errData = await res.json();
                 throw new Error(errData.message || 'Failed to fetch order status.');
@@ -143,8 +143,12 @@ export default function OrderTrackingPage() {
     };
     
     useEffect(() => {
+        console.log("[TrackPage] Initial fetch.");
         fetchData(); // Initial fetch
-        const interval = setInterval(fetchData, 30000); // Poll every 30 seconds
+        const interval = setInterval(() => {
+            console.log("[TrackPage] Interval fetch.");
+            fetchData()
+        }, 30000); // Poll every 30 seconds
         return () => clearInterval(interval);
     }, [orderId]);
 
@@ -153,10 +157,12 @@ export default function OrderTrackingPage() {
         const customerLoc = orderData?.order?.customerLocation;
         const riderLoc = orderData?.deliveryBoy?.location;
 
+        console.log("[TrackPage] Memoizing locations:", { restaurantLoc, customerLoc, riderLoc });
+
         return {
-            restaurantLocation: restaurantLoc ? { latitude: restaurantLoc.latitude, longitude: restaurantLoc.longitude } : null,
-            customerLocation: customerLoc ? { latitude: customerLoc.latitude, longitude: customerLoc.longitude } : null,
-            riderLocation: riderLoc ? { latitude: riderLoc.latitude, longitude: riderLoc.longitude } : null,
+            restaurantLocation: restaurantLoc ? { latitude: restaurantLoc._latitude, longitude: restaurantLoc._longitude } : null,
+            customerLocation: customerLoc ? { latitude: customerLoc._latitude, longitude: customerLoc._longitude } : null,
+            riderLocation: riderLoc ? { latitude: riderLoc._latitude, longitude: riderLoc._longitude } : null,
         };
     }, [orderData]);
 
@@ -198,7 +204,7 @@ export default function OrderTrackingPage() {
                     <p className="text-xs text-muted-foreground">Tracking Order</p>
                     <h1 className="font-bold text-lg">{orderId}</h1>
                 </div>
-                <Button onClick={() => fetchData()} variant="outline" size="icon" disabled={loading}>
+                <Button onClick={fetchData} variant="outline" size="icon" disabled={loading}>
                     <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
                 </Button>
             </header>

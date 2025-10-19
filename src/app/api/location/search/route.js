@@ -14,21 +14,22 @@ export async function GET(req) {
     }
 
     if (!query) {
+        console.warn("[API search] Search query is missing.");
         return NextResponse.json({ message: "Search query is required." }, { status: 400 });
     }
 
-    // CORRECTED: Use the atlas.mappls.com endpoint for REST API search calls
     const url = `https://atlas.mappls.com/api/places/search/json?query=${encodeURIComponent(query)}`;
+    console.log("[API search] Calling Mappls AutoSuggest API:", url);
 
     try {
-        console.log(`[API search] Calling Mappls AutoSuggest API...`);
         const response = await fetch(url, {
             method: 'GET',
             headers: {
-                 // CORRECTED: Send API key in Authorization header for backend calls
                 'Authorization': `bearer ${MAPPLS_API_KEY}`
             }
         });
+        
+        console.log(`[API search] Mappls response status: ${response.status}`);
         const data = await response.json();
 
         if (!response.ok) {
@@ -41,7 +42,7 @@ export async function GET(req) {
         return NextResponse.json(data, { status: 200 });
 
     } catch (error) {
-        console.error("[API search] Error calling Mappls API:", error.message);
+        console.error("[API search] CRITICAL Error calling Mappls API:", error.message);
         return NextResponse.json({ message: "Failed to fetch search results from Mappls.", error: error.message }, { status: 500 });
     }
 }

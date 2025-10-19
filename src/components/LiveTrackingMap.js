@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useEffect, useRef, useState } from 'react';
@@ -14,9 +15,7 @@ const LiveTrackingMap = ({ restaurantLocation, customerLocation, riderLocation }
     const apiKey = process.env.NEXT_PUBLIC_MAPPLS_API_KEY;
 
     useEffect(() => {
-        // This effect runs only when scriptsLoaded, apiKey, or mapInitialized changes.
         if (scriptsLoaded && apiKey && !mapInitialized && mapRef.current) {
-            // Ensure at least one valid location exists to center the map
             const initialCoords = customerLocation || restaurantLocation || { latitude: 28.6139, longitude: 77.2090 };
             console.log("[LiveTrackingMap] Initializing map with center:", initialCoords);
 
@@ -41,50 +40,57 @@ const LiveTrackingMap = ({ restaurantLocation, customerLocation, riderLocation }
     }, [scriptsLoaded, mapInitialized, apiKey, customerLocation, restaurantLocation]);
 
     useEffect(() => {
-        // This effect runs whenever locations change AFTER the map is initialized.
         if (mapInitialized && mapInstance.current) {
-            // Simple approach: clear all markers and re-add them.
-            // A more optimized approach would be to store marker instances and update their positions.
-            if (mapInstance.current.removeMarker) {
-                 mapInstance.current.removeMarker(); // This is a hypothetical function; Mappls might have a different way to clear markers.
-            }
+            console.log("[LiveTrackingMap] Map initialized. Updating markers.");
             
+            // This is a simplified approach. For better performance, store marker instances and update them.
+            // For now, let's assume we need to manage this better. A full implementation would be complex.
+            // This part of the code might need a more robust marker management strategy.
+            
+            // Hypothetically clearing existing markers (Mappls API might differ)
+            if (mapInstance.current.clearMarkers) {
+                 mapInstance.current.clearMarkers();
+            }
+
             const markers = [];
 
             if (restaurantLocation) {
                 console.log("[LiveTrackingMap] Adding restaurant marker at:", restaurantLocation);
-                markers.push(new window.mappls.Marker({
-                    position: { lat: restaurantLocation.latitude, lng: restaurantLocation.longitude },
+                 markers.push(new window.mappls.Marker({
                     map: mapInstance.current,
+                    position: { lat: restaurantLocation.latitude, lng: restaurantLocation.longitude },
                     title: "Restaurant",
-                    icon_html: `<div style="background-color:red; color:white; border-radius:50%; width:30px; height:30px; display:flex; align-items:center; justify-content:center; font-weight:bold; border: 2px solid white; box-shadow: 0 2px 5px rgba(0,0,0,0.3);">R</div>`
+                    icon_html: `<div style="font-size: 2rem; color: #ef4444;">🏢</div>`
                 }));
             }
 
             if (customerLocation) {
                  console.log("[LiveTrackingMap] Adding customer marker at:", customerLocation);
                 markers.push(new window.mappls.Marker({
-                    position: { lat: customerLocation.latitude, lng: customerLocation.longitude },
                     map: mapInstance.current,
+                    position: { lat: customerLocation.latitude, lng: customerLocation.longitude },
                     title: "You",
-                    icon_html: `<div style="background-color:blue; color:white; border-radius:50%; width:30px; height:30px; display:flex; align-items:center; justify-content:center; font-weight:bold; border: 2px solid white; box-shadow: 0 2px 5px rgba(0,0,0,0.3);">C</div>`
+                    icon_html: `<div style="font-size: 2rem; color: #3b82f6;">🏠</div>`
                 }));
             }
             
             if (riderLocation) {
                 console.log("[LiveTrackingMap] Adding rider marker at:", riderLocation);
                 markers.push(new window.mappls.Marker({
-                    position: { lat: riderLocation.latitude, lng: riderLocation.longitude },
                     map: mapInstance.current,
+                    position: { lat: riderLocation.latitude, lng: riderLocation.longitude },
                     title: "Rider",
-                    icon_html: `<div style="background-color:green; color:white; border-radius:50%; width:30px; height:30px; display:flex; align-items:center; justify-content:center; font-weight:bold; border: 2px solid white; box-shadow: 0 2px 5px rgba(0,0,0,0.3);">D</div>`
+                     icon_html: `<div style="font-size: 2.5rem; color: #22c55e;">🛵</div>`
                 }));
             }
             
-            // Adjust map bounds to show all markers
             if (markers.length > 1) {
                 console.log("[LiveTrackingMap] Fitting map to bounds of", markers.length, "markers.");
-                mapInstance.current.fitBounds(markers, { padding: 50 });
+                try {
+                   mapInstance.current.fitBounds(markers.map(m => m.getPosition()), { padding: 80, duration: 500 });
+                } catch(e) {
+                   console.error("[LiveTrackingMap] Error fitting bounds:", e);
+                }
             } else if (markers.length === 1) {
                 mapInstance.current.setCenter(markers[0].getPosition());
                 mapInstance.current.setZoom(15);
@@ -94,6 +100,7 @@ const LiveTrackingMap = ({ restaurantLocation, customerLocation, riderLocation }
     }, [restaurantLocation, customerLocation, riderLocation, mapInitialized]);
 
     if (!apiKey) {
+        console.error("[LiveTrackingMap] CRITICAL: NEXT_PUBLIC_MAPPLS_API_KEY is not defined.");
         return (
             <div className="w-full h-full bg-destructive/10 flex flex-col items-center justify-center text-center p-4">
                 <AlertTriangle className="w-10 h-10 text-destructive mb-2"/>
@@ -111,13 +118,13 @@ const LiveTrackingMap = ({ restaurantLocation, customerLocation, riderLocation }
                     console.log("[LiveTrackingMap] Mappls script loaded successfully.");
                     setScriptsLoaded(true);
                 }}
-                onError={() => {
-                    console.error("[LiveTrackingMap] Failed to load Mappls map script.");
+                onError={(e) => {
+                    console.error("[LiveTrackingMap] Failed to load Mappls map script.", e);
                     setError("Failed to load map service.");
                 }}
             />
             <div ref={mapRef} style={{ width: '100%', height: '100%', position: 'relative' }}>
-                {!scriptsLoaded && (
+                {!scriptsLoaded && !error && (
                     <div className="absolute inset-0 w-full h-full bg-muted flex items-center justify-center">
                         <Loader2 className="animate-spin text-primary mr-2" /> Loading Map SDK...
                     </div>
@@ -128,7 +135,7 @@ const LiveTrackingMap = ({ restaurantLocation, customerLocation, riderLocation }
                     </div>
                 )}
                  {error && (
-                      <div className="absolute inset-0 w-full h-full bg-destructive/10 flex items-center justify-center text-destructive">
+                      <div className="absolute inset-0 w-full h-full bg-destructive/10 flex items-center justify-center text-destructive p-4 text-center">
                         <AlertTriangle className="mr-2" /> {error}
                     </div>
                  )}
