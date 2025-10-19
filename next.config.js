@@ -6,9 +6,6 @@ if (process.env.NODE_ENV !== 'production') {
 }
 
 const nextConfig = {
-  env: {
-    MAPPLS_API_KEY: process.env.NEXT_PUBLIC_MAPPLS_API_KEY,
-  },
   output: 'standalone',
   images: {
     remotePatterns: [
