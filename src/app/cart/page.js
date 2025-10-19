@@ -267,16 +267,16 @@ const CartPageInternal = () => {
                                           )}
                                         </div>
                                         <div className="flex items-center gap-2">
-                                            <Button size="icon" variant="outline" className="h-7 w-7" onClick={() => handleUpdateCart(item, 'decrement')}>-</Button>
+                                            <Button size="icon" variant="outline" className="h-7 w-7 hover:bg-red-500/10 hover:text-red-500 hover:border-red-500" onClick={() => handleUpdateCart(item, 'decrement')}>-</Button>
                                             <span className="font-bold w-5 text-center">{item.quantity}</span>
-                                            <Button size="icon" variant="outline" className="h-7 w-7" onClick={() => handleUpdateCart(item, 'increment')}>+</Button>
+                                            <Button size="icon" variant="outline" className="h-7 w-7 hover:bg-green-500/10 hover:text-green-500 hover:border-green-500" onClick={() => handleUpdateCart(item, 'increment')}>+</Button>
                                         </div>
                                         <p className="w-20 text-right font-bold">₹{item.totalPrice * item.quantity}</p>
                                     </motion.div>
                                 ))}
                             </div>
 
-                            <Button variant="outline" onClick={handleGoBack} className="w-full mt-4 border-primary text-primary hover:bg-primary/10 hover:text-primary">
+                            <Button variant="outline" onClick={handleGoBack} className="w-full mt-4 border-green-500 text-green-500 bg-green-500/10 hover:bg-green-500/20">
                                 <PlusCircle className="mr-2 h-4 w-4" /> Add more items
                             </Button>
                             
