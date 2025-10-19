@@ -25,6 +25,7 @@ import { motion } from 'framer-motion';
 import { useState, useEffect } from 'react';
 import { auth, db } from '@/lib/firebase';
 import { doc, getDoc } from 'firebase/firestore';
+import Image from 'next/image';
 
 
 const getMenuItems = (businessType) => [
@@ -125,7 +126,7 @@ export default function Sidebar({ isOpen, setIsOpen, isMobile, isCollapsed, rest
       )}
       
        <div className={styles.sidebarHeader}>
-          {/* This div is now mainly for spacing to accommodate the new button position */}
+          <Image src="/logo.png" alt="Logo" width={150} height={40} className="transition-opacity duration-300" style={{opacity: isCollapsed ? 0 : 1}}/>
        </div>
 
       <nav className={styles.sidebarNav}>
@@ -158,5 +159,3 @@ export default function Sidebar({ isOpen, setIsOpen, isMobile, isCollapsed, rest
     </aside>
   );
 }
-
-    
