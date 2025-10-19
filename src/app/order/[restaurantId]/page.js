@@ -397,7 +397,7 @@ const OrderPageInternal = () => {
       };
 
       fetchMenuData();
-    }, [restaurantId, phone, searchParams]); // Re-run if phone or URL params change
+    }, [restaurantId, phone, searchParams]);
     
     // --- CART PERSISTENCE ---
     useEffect(() => {
@@ -416,7 +416,7 @@ const OrderPageInternal = () => {
         if (newNotes !== undefined) {
             setNotes(newNotes);
         }
-        const cartData = {
+        const cartDataToSave = {
             cart: newCart,
             notes: newNotes !== undefined ? newNotes : notes,
             restaurantId,
@@ -428,7 +428,7 @@ const OrderPageInternal = () => {
             deliveryEnabled: restaurantData.deliveryEnabled,
             pickupEnabled: restaurantData.pickupEnabled,
         };
-        localStorage.setItem(`cart_${restaurantId}`, JSON.stringify(cartData));
+        localStorage.setItem(`cart_${restaurantId}`, JSON.stringify(cartDataToSave));
     };
 
 
