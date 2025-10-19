@@ -6,10 +6,6 @@ if (process.env.NODE_ENV !== 'production') {
 }
 
 const nextConfig = {
-  // Expose server-side runtime variables
-  serverRuntimeConfig: {
-    mapplsApiKey: process.env.NEXT_PUBLIC_MAPPLS_API_KEY,
-  },
   output: 'standalone',
   images: {
     remotePatterns: [

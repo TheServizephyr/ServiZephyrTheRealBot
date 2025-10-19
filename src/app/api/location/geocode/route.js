@@ -1,10 +1,7 @@
 import { NextResponse } from 'next/server';
 import axios from 'axios';
-import getConfig from 'next/config';
 
-// Use serverRuntimeConfig to get the API key on the server
-const { serverRuntimeConfig } = getConfig();
-const MAPPLS_API_KEY = serverRuntimeConfig.mapplsApiKey;
+const MAPPLS_API_KEY = process.env.NEXT_PUBLIC_MAPPLS_API_KEY;
 
 export async function GET(req) {
     console.log("[API geocode] Request received.");
@@ -13,8 +10,8 @@ export async function GET(req) {
     const lng = searchParams.get('lng');
 
     if (!MAPPLS_API_KEY) {
-        console.error("[API geocode] Mappls API Key is not configured in next.config.js serverRuntimeConfig.");
-        return NextResponse.json({ message: "Server configuration error." }, { status: 500 });
+        console.error("[API geocode] Mappls API Key is not configured. Check NEXT_PUBLIC_MAPPLS_API_KEY in your environment variables.");
+        return NextResponse.json({ message: "Server configuration error: Mappls API Key is missing." }, { status: 500 });
     }
 
     if (!lat || !lng) {
@@ -36,7 +33,8 @@ export async function GET(req) {
             return NextResponse.json({ message: "No address found for this location." }, { status: 404 });
         }
     } catch (error) {
-        console.error("[API geocode] Error calling Mappls API:", error.response ? error.response.data : error.message);
-        return NextResponse.json({ message: "Failed to fetch address from Mappls." }, { status: 500 });
+        const errorData = error.response ? error.response.data : { message: error.message };
+        console.error("[API geocode] Error calling Mappls API:", errorData);
+        return NextResponse.json({ message: "Failed to fetch address from Mappls.", error: errorData }, { status: error.response?.status || 500 });
     }
 }
