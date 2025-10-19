@@ -1,4 +1,5 @@
 
+
 'use client';
 
 import React, { useState, useEffect, Suspense, useMemo } from 'react';
@@ -329,6 +330,8 @@ const OrderPageInternal = () => {
         deliveryCharge: 0,
         menu: {},
         coupons: [],
+        deliveryEnabled: true,
+        pickupEnabled: false,
     });
     const [loyaltyPoints, setLoyaltyPoints] = useState(0);
     const [loading, setLoading] = useState(true);
@@ -381,6 +384,8 @@ const OrderPageInternal = () => {
               deliveryCharge: data.deliveryCharge || 0,
               menu: data.menu || {},
               coupons: data.coupons || [],
+              deliveryEnabled: data.deliveryEnabled,
+              pickupEnabled: data.pickupEnabled,
           });
 
         } catch (err) {
@@ -420,6 +425,8 @@ const OrderPageInternal = () => {
             coupons: restaurantData.coupons,
             loyaltyPoints,
             deliveryCharge: restaurantData.deliveryCharge,
+            deliveryEnabled: restaurantData.deliveryEnabled,
+            pickupEnabled: restaurantData.pickupEnabled,
         };
         localStorage.setItem(`cart_${restaurantId}`, JSON.stringify(cartData));
     };
