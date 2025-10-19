@@ -667,13 +667,10 @@ export default function LiveOrdersPage() {
 
   const handleDetailClick = async (orderId, customerId) => {
     try {
-      setUpdatingOrderId(orderId);
       const data = await handleAPICall('GET', { id: orderId, customerId: customerId });
       setDetailModalData({ isOpen: true, data });
     } catch(e) {
       alert("Could not load details: " + e.message);
-    } finally {
-      setUpdatingOrderId(null);
     }
   };
 
