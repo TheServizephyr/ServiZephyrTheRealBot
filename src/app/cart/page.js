@@ -47,6 +47,11 @@ const CartPageInternal = () => {
     const [phone, setPhone] = useState(initialPhone);
     const [isBillExpanded, setIsBillExpanded] = useState(false);
 
+    // State for coupon popover
+    const [isCouponPopoverOpen, setCouponPopoverOpen] = useState(false);
+    const [tempSelectedCoupons, setTempSelectedCoupons] = useState([]);
+    const [showAppliedAnimation, setShowAppliedAnimation] = useState(false);
+
 
     useEffect(() => {
         if (!restaurantId) return;
@@ -65,13 +70,21 @@ const CartPageInternal = () => {
             setCartData(parsedData);
             setCart(parsedData.cart || []);
             setNotes(parsedData.notes || '');
-            setAppliedCoupons(parsedData.appliedCoupons || []); // Load applied coupons
+            setAppliedCoupons(parsedData.appliedCoupons || []); 
         } else {
             setCart([]);
             setAppliedCoupons([]);
         }
 
     }, [restaurantId, phoneFromUrl, phoneFromStorage]);
+
+     useEffect(() => {
+        // When the popover opens, sync the temp state with the actual applied coupons
+        if (isCouponPopoverOpen) {
+            setTempSelectedCoupons(appliedCoupons);
+        }
+    }, [isCouponPopoverOpen, appliedCoupons]);
+
 
     const updateCartInStorage = (newCart, newNotes, newCoupons) => {
         const currentData = cartData || {};
@@ -80,7 +93,7 @@ const CartPageInternal = () => {
             cart: newCart, 
             notes: newNotes, 
             phone: phone,
-            appliedCoupons: newCoupons // Save applied coupons
+            appliedCoupons: newCoupons 
         };
         setCartData(updatedData);
         localStorage.setItem(`cart_${restaurantId}`, JSON.stringify(updatedData));
@@ -174,28 +187,41 @@ const CartPageInternal = () => {
         return { cgst: tax, sgst: tax, grandTotal: total };
     }, [subtotal, totalDiscount, finalDeliveryCharge]);
 
-    const handleApplyCoupon = (couponToApply) => {
-        let newCoupons;
-        const isApplied = appliedCoupons.some(c => c.id === couponToApply.id);
+    const handleToggleCouponInPopover = (couponToToggle) => {
+        let newTempCoupons;
+        const isApplied = tempSelectedCoupons.some(c => c.id === couponToToggle.id);
 
         if (isApplied) {
-            newCoupons = appliedCoupons.filter(c => c.id !== couponToApply.id);
+            newTempCoupons = tempSelectedCoupons.filter(c => c.id !== couponToToggle.id);
         } else {
-            if (subtotal < couponToApply.minOrder) {
-                alert(`You need to spend at least ₹${couponToApply.minOrder} to use this coupon.`);
+            if (subtotal < couponToToggle.minOrder) {
+                alert(`You need to spend at least ₹${couponToToggle.minOrder} to use this coupon.`);
                 return;
             }
-            const isSpecial = !!couponToApply.customerId;
-            let currentCoupons = [...appliedCoupons];
+            const isSpecial = !!couponToToggle.customerId;
+            let currentTempCoupons = [...tempSelectedCoupons];
             if (!isSpecial) {
-                currentCoupons = currentCoupons.filter(c => !!c.customerId); // Remove other normal coupons
+                // Remove other normal coupons if this is a normal one
+                currentTempCoupons = currentTempCoupons.filter(c => !!c.customerId);
             }
-            newCoupons = [...currentCoupons, couponToApply];
+            newTempCoupons = [...currentTempCoupons, couponToToggle];
         }
         
-        setAppliedCoupons(newCoupons);
-        updateCartInStorage(cart, notes, newCoupons); // Update storage with new coupon list
+        setTempSelectedCoupons(newTempCoupons);
     };
+
+    const handleConfirmCouponSelection = () => {
+        setAppliedCoupons(tempSelectedCoupons);
+        updateCartInStorage(cart, notes, tempSelectedCoupons);
+
+        // Animation and close logic
+        setShowAppliedAnimation(true);
+        setTimeout(() => {
+            setShowAppliedAnimation(false);
+            setCouponPopoverOpen(false);
+        }, 800);
+    };
+
 
     const allCoupons = cartData?.coupons || [];
     const specialCoupons = allCoupons.filter(c => c.customerId);
@@ -302,7 +328,7 @@ const CartPageInternal = () => {
                         </div>
                         
                         <div className="p-4 mt-4 bg-card rounded-lg border border-border">
-                             <Popover>
+                             <Popover open={isCouponPopoverOpen} onOpenChange={setCouponPopoverOpen}>
                                 <PopoverTrigger asChild>
                                   <Button variant="outline" className="w-full justify-start text-left font-normal">
                                       <Ticket className="mr-2 h-4 w-4" />
@@ -310,18 +336,19 @@ const CartPageInternal = () => {
                                   </Button>
                                 </PopoverTrigger>
                                 <PopoverContent className="w-80 p-0" align="start">
-                                     <div className="p-4">
+                                     <div className="p-4 border-b border-border">
                                         <h4 className="font-medium leading-none">Available Coupons</h4>
+                                        <p className="text-sm text-muted-foreground">Select one normal and any special coupons.</p>
                                      </div>
-                                     <div className="max-h-60 overflow-y-auto space-y-2 p-4 pt-0">
+                                     <div className="max-h-60 overflow-y-auto space-y-2 p-4">
                                       {specialCoupons.length > 0 && (
                                           <div className="space-y-2">
                                               <p className="text-sm font-semibold flex items-center gap-2 text-primary"><Sparkles size={16}/> Special for you</p>
                                               {specialCoupons.map(coupon => (
-                                                  <div key={coupon.id} onClick={() => handleApplyCoupon(coupon)} className={cn("p-2 rounded-md border-2 cursor-pointer", appliedCoupons.some(c=>c.id === coupon.id) ? "border-primary bg-primary/10" : "border-dashed border-primary/50 bg-background")}>
+                                                  <div key={coupon.id} onClick={() => handleToggleCouponInPopover(coupon)} className={cn("p-2 rounded-md border-2 cursor-pointer", tempSelectedCoupons.some(c=>c.id === coupon.id) ? "border-primary bg-primary/10" : "border-dashed border-primary/50 bg-background")}>
                                                       <div className="flex justify-between items-center">
                                                           <p className="font-bold text-foreground">{coupon.code}</p>
-                                                          {appliedCoupons.some(c=>c.id === coupon.id) && <Check size={16} className="text-primary" />}
+                                                          {tempSelectedCoupons.some(c=>c.id === coupon.id) && <Check size={16} className="text-primary" />}
                                                       </div>
                                                       <p className="text-xs text-muted-foreground">{coupon.description}</p>
                                                   </div>
@@ -331,15 +358,39 @@ const CartPageInternal = () => {
                                       )}
                                       
                                       {normalCoupons.length > 0 ? normalCoupons.map(coupon => (
-                                          <div key={coupon.id} onClick={() => handleApplyCoupon(coupon)} className={cn("p-2 rounded-md border-2 cursor-pointer", appliedCoupons.some(c=>c.id === coupon.id) ? "border-primary bg-primary/10" : "border-border bg-background")}>
+                                          <div key={coupon.id} onClick={() => handleToggleCouponInPopover(coupon)} className={cn("p-2 rounded-md border-2 cursor-pointer", tempSelectedCoupons.some(c=>c.id === coupon.id) ? "border-primary bg-primary/10" : "border-border bg-background")}>
                                               <div className="flex justify-between items-center">
                                                   <p className="font-bold text-foreground">{coupon.code}</p>
-                                                  {appliedCoupons.some(c=>c.id === coupon.id) && <Check size={16} className="text-primary" />}
+                                                  {tempSelectedCoupons.some(c=>c.id === coupon.id) && <Check size={16} className="text-primary" />}
                                               </div>
                                               <p className="text-xs text-muted-foreground">{coupon.description}</p>
                                           </div>
-                                      )) : (specialCoupons.length === 0 && <p className="text-xs text-muted-foreground text-center">No coupons available.</p>)}
-
+                                      )) : (specialCoupons.length === 0 && <p className="text-xs text-muted-foreground text-center py-4">No coupons available right now.</p>)}
+                                     </div>
+                                     <div className="p-4 border-t border-border">
+                                        <Button onClick={handleConfirmCouponSelection} className="w-full relative overflow-hidden" disabled={showAppliedAnimation}>
+                                             <AnimatePresence>
+                                                {showAppliedAnimation ? (
+                                                    <motion.div
+                                                        key="applied"
+                                                        initial={{ y: '100%', opacity: 0 }}
+                                                        animate={{ y: 0, opacity: 1 }}
+                                                        exit={{ y: '-100%', opacity: 0 }}
+                                                        className="absolute inset-0 flex items-center justify-center bg-green-500"
+                                                    >
+                                                        <Check className="mr-2" /> Applied!
+                                                    </motion.div>
+                                                ) : (
+                                                    <motion.span
+                                                        key="apply"
+                                                        initial={{ y: 0 }}
+                                                        exit={{ y: '100%' }}
+                                                    >
+                                                        Apply Coupons
+                                                    </motion.span>
+                                                )}
+                                            </AnimatePresence>
+                                        </Button>
                                      </div>
                                 </PopoverContent>
                             </Popover>
