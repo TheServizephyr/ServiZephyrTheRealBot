@@ -350,27 +350,31 @@ const OrderPageInternal = () => {
 
     // --- LOCATION & DATA FETCHING ---
     useEffect(() => {
-        console.log("[OrderPage] useEffect for location and data fetching triggered.");
+        console.log("[OrderPage] useEffect for data fetching triggered.");
         const phone = phoneFromUrl || localStorage.getItem('lastKnownPhone');
-        const locationStr = localStorage.getItem('customerLocation');
 
         if (phone && !localStorage.getItem('lastKnownPhone')) {
             localStorage.setItem('lastKnownPhone', phone);
         }
-
+        
+        // Temporarily store a dummy location if none exists to bypass the check
+        let locationStr = localStorage.getItem('customerLocation');
         if (!locationStr) {
-            console.log("[OrderPage] No location found in localStorage. Redirecting to /location.");
-            router.push(`/location?restaurantId=${restaurantId}&returnUrl=${encodeURIComponent(window.location.pathname + window.location.search)}`);
-            return;
+            const dummyLocation = {
+                full: "Ghaziabad, Uttar Pradesh",
+                lat: 28.6692,
+                lng: 77.4538,
+            };
+            locationStr = JSON.stringify(dummyLocation);
+            localStorage.setItem('customerLocation', locationStr);
         }
 
         try {
             const parsedLocation = JSON.parse(locationStr);
             setCustomerLocation(parsedLocation);
         } catch (e) {
-            console.error("[OrderPage] Failed to parse location from localStorage. Redirecting.", e);
-            router.push(`/location?restaurantId=${restaurantId}`);
-            return;
+            console.error("[OrderPage] Failed to parse location from localStorage.", e);
+            // Don't redirect, just log the error
         }
 
         const fetchMenuData = async () => {

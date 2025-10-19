@@ -87,35 +87,17 @@ const CheckoutModal = ({ isOpen, onClose, onConfirm, grandTotal, loading, name, 
                                 <Label htmlFor="checkout-name">Full Name</Label>
                                 <div className="relative mt-1">
                                     <User className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
-                                    <input id="checkout-name" type="text" value={name} onChange={(e) => onNameChange(e.target.value)} required className="w-full pl-10 pr-4 py-2 rounded-md bg-input border border-border" placeholder="Enter your full name" disabled={isExistingUser && !isAddingNew} />
+                                    <input id="checkout-name" type="text" value={name} onChange={(e) => onNameChange(e.target.value)} required className="w-full pl-10 pr-4 py-2 rounded-md bg-input border border-border" placeholder="Enter your full name" />
                                 </div>
                             </div>
                            
-                            {isExistingUser && savedAddresses.length > 0 ? (
-                                <div>
-                                    <Label>Select Address</Label>
-                                    <AddressSelectionCombobox
-                                        savedAddresses={savedAddresses}
-                                        selectedAddress={selectedAddress}
-                                        onSelectAddress={(addr) => {
-                                            onSelectAddress(addr);
-                                            onSetIsAddingNew(false);
-                                        }}
-                                        onAddNew={() => onSetIsAddingNew(true)}
-                                        disabled={loading}
-                                    />
+                            <div>
+                                <Label htmlFor="checkout-address">Delivery Address</Label>
+                                <div className="relative mt-1">
+                                    <Home className="absolute left-3 top-3 h-5 w-5 text-muted-foreground" />
+                                    <textarea id="checkout-address" value={address} onChange={(e) => onAddressChange(e.target.value)} required rows={3} className="w-full pl-10 pr-4 py-2 rounded-md bg-input border-border" placeholder="Enter your full delivery address" />
                                 </div>
-                            ) : null}
-
-                            {(isAddingNew || !isExistingUser || savedAddresses.length === 0) && (
-                                 <div>
-                                    <Label htmlFor="checkout-address">Delivery Address</Label>
-                                    <div className="relative mt-1">
-                                        <Home className="absolute left-3 top-3 h-5 w-5 text-muted-foreground" />
-                                        <textarea id="checkout-address" value={address} onChange={(e) => onAddressChange(e.target.value)} required rows={3} className="w-full pl-10 pr-4 py-2 rounded-md bg-input border-border" placeholder="Enter your full delivery address" />
-                                    </div>
-                                </div>
-                            )}
+                            </div>
 
                             {error && <p className="text-red-500 text-sm text-center pt-2">{error}</p>}
                         </>
@@ -175,6 +157,18 @@ const CheckoutPageInternal = () => {
                 setCart(updatedData.cart || []);
                 setAppliedCoupons(updatedData.appliedCoupons || []);
                 setCartData(updatedData);
+
+                 // Check for location data
+                const locationStr = localStorage.getItem('customerLocation');
+                if (locationStr) {
+                    try {
+                        const parsedLocation = JSON.parse(locationStr);
+                        setAddress(parsedLocation.full || '');
+                    } catch (e) {
+                        console.error("Could not parse customer location from storage.");
+                    }
+                }
+
             } else {
                 router.push(`/order/${restaurantId}`);
                 return;
@@ -215,26 +209,15 @@ const CheckoutPageInternal = () => {
                     if (res.ok) {
                         const data = await res.json();
                         setName(data.name);
-                        setSavedAddresses(data.addresses);
-                        if (data.addresses && data.addresses.length > 0) {
-                            setSelectedAddress(data.addresses[0].full);
-                            setIsAddingNew(false);
-                        } else {
-                            setIsAddingNew(true);
-                        }
+                        // Do not set address from here anymore, as it's pre-filled
                         setIsExistingUser(true);
                     } else {
                         setIsExistingUser(false);
-                        setIsAddingNew(true);
                         setName('');
-                        setAddress('');
-                        setSavedAddresses([]);
-                        setSelectedAddress('');
                     }
                 } catch (err) {
                     setError('Could not fetch user details. Please enter manually.');
                     setIsExistingUser(false);
-                    setIsAddingNew(true);
                 } finally {
                     setLoading(false);
                 }
@@ -286,8 +269,7 @@ const CheckoutPageInternal = () => {
     };
 
     const handleConfirmOrder = async () => {
-        // **THE FIX**: Correctly use the 'address' from the state when adding a new address.
-        const finalAddress = cartData?.deliveryType === 'pickup' ? 'Self Pickup' : (isAddingNew ? address : selectedAddress);
+        const finalAddress = cartData?.deliveryType === 'pickup' ? 'Self Pickup' : address;
         
         if (!finalAddress || !name.trim()) {
             setError('Please enter your name and address.');
@@ -492,7 +474,3 @@ const CheckoutPage = () => (
 );
 
 export default CheckoutPage;
-
-    
-
-    
