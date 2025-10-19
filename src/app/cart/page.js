@@ -276,7 +276,7 @@ const CartPageInternal = () => {
                                 ))}
                             </div>
 
-                            <Button variant="outline" onClick={handleGoBack} className="w-full mt-4">
+                            <Button variant="outline" onClick={handleGoBack} className="w-full mt-4 border-primary text-primary hover:bg-primary/10 hover:text-primary">
                                 <PlusCircle className="mr-2 h-4 w-4" /> Add more items
                             </Button>
                             
