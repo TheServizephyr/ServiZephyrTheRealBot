@@ -102,26 +102,40 @@ export async function POST(req) {
             const existingUserQuery = await usersRef.where('phone', '==', customerDetails.phone).limit(1).get();
 
             let userId;
-            if (!existingUserQuery.empty) {
-                userId = existingUserQuery.docs[0].id;
+            const isNewUser = existingUserQuery.empty;
+
+            if (isNewUser) {
+                const unclaimedUserRef = firestore.collection('unclaimed_profiles').doc(customerDetails.phone);
+                userId = customerDetails.phone; // Use phone as temporary ID for unclaimed profiles
+                 batch.set(unclaimedUserRef, {
+                    name: customerDetails.name, 
+                    phone: customerDetails.phone, 
+                    addresses: [{ id: `addr_${Date.now()}`, full: customerDetails.address }],
+                    createdAt: adminFirestore.FieldValue.serverTimestamp(),
+                    orderedFrom: adminFirestore.FieldValue.arrayUnion({
+                        restaurantId: restaurantDetails.restaurantId,
+                        restaurantName: restaurantDetails.restaurantName,
+                        businessType: businessType,
+                    })
+                }, { merge: true });
+
             } else {
-                const newUserRef = usersRef.doc();
-                userId = newUserRef.id;
-                batch.set(newUserRef, {
-                    name: customerDetails.name, phone: customerDetails.phone, addresses: [{ id: `addr_${Date.now()}`, full: customerDetails.address }],
-                    role: 'customer', createdAt: adminFirestore.FieldValue.serverTimestamp(),
-                });
+                userId = existingUserQuery.docs[0].id;
             }
 
-            const subtotal = orderItems.reduce((sum, item) => sum + (item.price * item.qty), 0);
+            // THE FIX: Use subtotal from the reliable billDetails object from the notes
+            const subtotal = billDetails.subtotal || 0;
+            const loyaltyDiscount = billDetails.loyaltyDiscount || 0;
+            
             const pointsEarned = Math.floor(subtotal / 100) * 10;
-            const pointsSpent = (billDetails.loyaltyDiscount || 0) > 0 ? billDetails.loyaltyDiscount / 0.5 : 0;
+            const pointsSpent = loyaltyDiscount > 0 ? loyaltyDiscount / 0.5 : 0;
             
             const businessCollectionName = businessType === 'shop' ? 'shops' : 'restaurants';
             const restaurantCustomerRef = firestore.collection(businessCollectionName).doc(restaurantDetails.restaurantId).collection('customers').doc(userId);
             
             batch.set(restaurantCustomerRef, {
-                name: customerDetails.name, phone: customerDetails.phone, status: 'claimed',
+                name: customerDetails.name, phone: customerDetails.phone, 
+                status: isNewUser ? 'unclaimed' : 'verified',
                 totalSpend: adminFirestore.FieldValue.increment(subtotal),
                 loyaltyPoints: adminFirestore.FieldValue.increment(pointsEarned - pointsSpent),
                 lastOrderDate: adminFirestore.FieldValue.serverTimestamp(),
@@ -130,18 +144,6 @@ export async function POST(req) {
             
             const newOrderRef = firestore.collection('orders').doc();
             
-            const couponDiscountAmount = billDetails.coupon?.discount || 0;
-            const finalLoyaltyDiscount = billDetails.loyaltyDiscount || 0;
-            const finalDiscount = couponDiscountAmount + finalLoyaltyDiscount;
-            const taxableAmount = subtotal - finalDiscount;
-            const taxRate = 0.05;
-            const cgst = taxableAmount > 0 ? taxableAmount * taxRate : 0;
-            const sgst = taxableAmount > 0 ? taxableAmount * taxRate : 0;
-            
-            const isPickup = billDetails.deliveryType === 'pickup';
-            const hasFreeDelivery = billDetails.coupon?.code?.includes('FREE');
-            const deliveryCharge = (isPickup || hasFreeDelivery) ? 0 : 30; // Assuming 30 is default, could be fetched from restaurant doc
-
             batch.set(newOrderRef, {
                 customerName: customerDetails.name, customerId: userId, customerAddress: customerDetails.address, customerPhone: customerDetails.phone,
                 restaurantId: restaurantDetails.restaurantId, restaurantName: restaurantDetails.restaurantName,
@@ -150,7 +152,14 @@ export async function POST(req) {
                 pickupTime: billDetails.pickupTime || '',
                 tipAmount: billDetails.tipAmount || 0,
                 items: orderItems,
-                subtotal, coupon: billDetails.coupon, loyaltyDiscount: finalLoyaltyDiscount, discount: finalDiscount, cgst, sgst, deliveryCharge,
+                // Use all values from the reliable billDetails
+                subtotal: billDetails.subtotal, 
+                coupon: billDetails.coupon, 
+                loyaltyDiscount: billDetails.loyaltyDiscount, 
+                discount: (billDetails.coupon?.discount || 0) + (billDetails.loyaltyDiscount || 0), 
+                cgst: billDetails.cgst, 
+                sgst: billDetails.sgst, 
+                deliveryCharge: billDetails.deliveryCharge,
                 totalAmount: billDetails.grandTotal,
                 status: 'paid',
                 orderDate: adminFirestore.FieldValue.serverTimestamp(),

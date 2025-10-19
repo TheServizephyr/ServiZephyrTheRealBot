@@ -14,7 +14,7 @@ export async function POST(req) {
         const { name, address, phone, restaurantId, items, notes, coupon, loyaltyDiscount, grandTotal, paymentMethod, businessType = 'restaurant', deliveryType = 'delivery', pickupTime = '', tipAmount = 0, subtotal, cgst, sgst, deliveryCharge } = await req.json();
 
         // --- VALIDATION ---
-        if (!name || !address || !phone || !restaurantId || !items || !grandTotal || !paymentMethod || subtotal === undefined || grandTotal === undefined) {
+        if (!name || !address || !phone || !restaurantId || !items || grandTotal === undefined || subtotal === undefined) {
             return NextResponse.json({ message: 'Missing required fields for order creation. Bill details are mandatory.' }, { status: 400 });
         }
         const normalizedPhone = phone.length > 10 ? phone.slice(-10) : phone;
@@ -43,11 +43,23 @@ export async function POST(req) {
                 key_secret: process.env.RAZORPAY_KEY_SECRET,
             });
 
+            // CORRECTED: The webhook needs all this data, so we must pass it in the notes.
             const orderPayloadForNotes = {
                 customerDetails: { name, address, phone: normalizedPhone },
                 restaurantDetails: { restaurantId, restaurantName: businessData.name },
-                orderItems: items.map(item => ({ name: item.name, qty: item.quantity, price: item.price })),
-                billDetails: { coupon, loyaltyDiscount, grandTotal, deliveryType, tipAmount, pickupTime },
+                items: items,
+                billDetails: { 
+                    coupon, 
+                    loyaltyDiscount, 
+                    grandTotal, 
+                    deliveryType, 
+                    tipAmount, 
+                    pickupTime, 
+                    subtotal, // Pass all amounts
+                    cgst, 
+                    sgst, 
+                    deliveryCharge 
+                },
                 notes: notes || null,
                 businessType: businessType
             };
