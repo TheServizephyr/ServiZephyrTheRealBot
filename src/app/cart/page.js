@@ -303,11 +303,8 @@ const CartPageInternal = () => {
     const specialCoupons = allCoupons.filter(c => c.customerId);
     const normalCoupons = allCoupons.filter(c => !c.customerId);
 
-    // ** NEW **: Conditional rendering logic for delivery/pickup switcher
-    const showDelivery = cartData?.deliveryEnabled ?? true;
-    const showPickup = cartData?.pickupEnabled ?? false;
-    const showSwitcher = showDelivery && showPickup;
-
+    const isDeliveryEnabled = cartData?.deliveryEnabled ?? true;
+    const isPickupEnabled = cartData?.pickupEnabled ?? false;
 
     if (!cartData || !restaurantId) {
         return (
@@ -362,19 +359,34 @@ const CartPageInternal = () => {
                     </div>
                 ) : (
                     <>
-                        {showSwitcher && (
-                            <div className="p-4 bg-card rounded-lg border border-border">
-                                <div className="flex bg-muted p-1 rounded-lg">
-                                    <button onClick={() => handleDeliveryTypeChange('delivery')} className={cn("flex-1 p-2 rounded-md flex items-center justify-center gap-2 font-semibold transition-all", deliveryType === 'delivery' && 'bg-background shadow-sm')}>
-                                        <Bike size={16} /> Delivery
-                                    </button>
-                                    <button onClick={() => handleDeliveryTypeChange('pickup')} className={cn("flex-1 p-2 rounded-md flex items-center justify-center gap-2 font-semibold transition-all", deliveryType === 'pickup' && 'bg-background shadow-sm')}>
-                                        <Store size={16} /> Pickup
-                                    </button>
-                                </div>
+                        <div className="p-4 bg-card rounded-lg border border-border">
+                            <div className="flex bg-muted p-1 rounded-lg">
+                                <button 
+                                    onClick={() => isDeliveryEnabled && handleDeliveryTypeChange('delivery')} 
+                                    className={cn(
+                                        "flex-1 p-2 rounded-md flex items-center justify-center gap-2 font-semibold transition-all",
+                                        deliveryType === 'delivery' && 'bg-background shadow-sm',
+                                        !isDeliveryEnabled && 'opacity-50 cursor-not-allowed'
+                                    )}
+                                    disabled={!isDeliveryEnabled}
+                                    title={!isDeliveryEnabled ? "Delivery not available" : ""}
+                                >
+                                    <Bike size={16} /> Delivery
+                                </button>
+                                <button 
+                                    onClick={() => isPickupEnabled && handleDeliveryTypeChange('pickup')} 
+                                    className={cn(
+                                        "flex-1 p-2 rounded-md flex items-center justify-center gap-2 font-semibold transition-all",
+                                        deliveryType === 'pickup' && 'bg-background shadow-sm',
+                                        !isPickupEnabled && 'opacity-50 cursor-not-allowed'
+                                    )}
+                                    disabled={!isPickupEnabled}
+                                    title={!isPickupEnabled ? "Pickup not available" : ""}
+                                >
+                                    <Store size={16} /> Pickup
+                                </button>
                             </div>
-                        )}
-
+                        </div>
 
                         <div className="bg-card p-4 rounded-lg border border-border mt-4">
                             <div className="flex justify-between items-center mb-3">
@@ -602,3 +614,6 @@ const CartPage = () => (
 
 export default CartPage;
 
+
+
+    
