@@ -401,7 +401,7 @@ const CartPageInternal = () => {
                                   onChange={handleNotesChange}
                                   placeholder="Add cooking instructions... (e.g. No onion, less spicy etc.)"
                                   rows={2}
-                                  className="w-full pl-7 pr-4 py-2 rounded-md bg-input border-border text-sm focus:ring-1 focus:ring-primary"
+                                  className="w-full pl-7 pr-4 py-2 rounded-md bg-input border border-foreground text-sm focus:ring-1 focus:ring-primary"
                                 />
                             </div>
                         </div>
@@ -571,3 +571,6 @@ export default CartPage;
 
 
 
+
+
+    
