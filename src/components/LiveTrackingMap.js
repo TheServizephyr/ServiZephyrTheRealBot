@@ -1,4 +1,3 @@
-
 'use client';
 
 import React, { useEffect, useRef, useState } from 'react';
@@ -107,7 +106,7 @@ const LiveTrackingMap = ({ restaurantLocation, customerLocation, riderLocation }
     return (
         <>
             <Script
-                src={`https://apis.mappls.com/advancedmaps/api/${apiKey}/map_sdk?layer=vector`}
+                src={`https://sdk.mappls.com/map/sdk/web?v=3.0&access_token=${apiKey}`}
                 onLoad={() => {
                     console.log("[LiveTrackingMap] Mappls script loaded successfully.");
                     setScriptsLoaded(true);
