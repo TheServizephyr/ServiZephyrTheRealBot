@@ -504,7 +504,7 @@ const OrderPageInternal = () => {
     const subtotal = useMemo(() => cart.reduce((sum, item) => sum + item.totalPrice * item.quantity, 0), [cart]);
 
     const handleAddToCart = useCallback((item, portion, selectedAddOns, totalPrice) => {
-        const cartItemId = `${item.id}-${portion.name}-${selectedAddOns.map(a => a.name).sort().join('-')}`;
+        const cartItemId = `${item.id}-${portion.name}-${(selectedAddOns || []).map(a => a.name).sort().join('-')}`;
         
         setCart(currentCart => {
             const existingItemIndex = currentCart.findIndex(cartItem => cartItem.cartItemId === cartItemId);
