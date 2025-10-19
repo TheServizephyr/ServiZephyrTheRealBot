@@ -1,7 +1,10 @@
 import { NextResponse } from 'next/server';
 import axios from 'axios';
+import getConfig from 'next/config';
 
-const MAPPLS_API_KEY = process.env.NEXT_PUBLIC_MAPPLS_API_KEY;
+// Use serverRuntimeConfig to get the API key on the server
+const { serverRuntimeConfig } = getConfig();
+const MAPPLS_API_KEY = serverRuntimeConfig.mapplsApiKey;
 
 export async function GET(req) {
     console.log("[API geocode] Request received.");
@@ -10,7 +13,7 @@ export async function GET(req) {
     const lng = searchParams.get('lng');
 
     if (!MAPPLS_API_KEY) {
-        console.error("[API geocode] Mappls API Key is not configured.");
+        console.error("[API geocode] Mappls API Key is not configured in next.config.js serverRuntimeConfig.");
         return NextResponse.json({ message: "Server configuration error." }, { status: 500 });
     }
 
@@ -21,12 +24,12 @@ export async function GET(req) {
     const url = `https://apis.mappls.com/advancedmaps/v1/${MAPPLS_API_KEY}/rev_geocode?lat=${lat}&lng=${lng}`;
 
     try {
-        console.log(`[API geocode] Calling Mappls Reverse Geocode API: ${url}`);
+        console.log(`[API geocode] Calling Mappls Reverse Geocode API.`);
         const response = await axios.get(url);
         
         if (response.data && response.data.results && response.data.results.length > 0) {
             const result = response.data.results[0];
-            console.log("[API geocode] Mappls response successful:", result);
+            console.log("[API geocode] Mappls response successful:", result.formatted_address);
             return NextResponse.json(result, { status: 200 });
         } else {
             console.warn("[API geocode] Mappls API returned no results.");
