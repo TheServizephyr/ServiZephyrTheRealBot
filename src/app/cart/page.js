@@ -1,4 +1,5 @@
 
+
 'use client';
 
 import React, { useState, useEffect, useMemo, Suspense } from 'react';
@@ -118,8 +119,16 @@ const CartPageInternal = () => {
             setCart(parsedData.cart || []);
             setNotes(parsedData.notes || '');
             setAppliedCoupons(parsedData.appliedCoupons || []);
-            // Load saved delivery type, tip, etc.
-            setDeliveryType(parsedData.deliveryType || 'delivery');
+            
+            // Set initial delivery type based on restaurant settings
+            if (parsedData.deliveryEnabled && !parsedData.pickupEnabled) {
+                setDeliveryType('delivery');
+            } else if (!parsedData.deliveryEnabled && parsedData.pickupEnabled) {
+                setDeliveryType('pickup');
+            } else {
+                setDeliveryType(parsedData.deliveryType || 'delivery');
+            }
+
             setTipAmount(parsedData.tipAmount || 0);
             setPickupTime(parsedData.pickupTime || '');
         } else {
@@ -294,6 +303,11 @@ const CartPageInternal = () => {
     const specialCoupons = allCoupons.filter(c => c.customerId);
     const normalCoupons = allCoupons.filter(c => !c.customerId);
 
+    // ** NEW **: Conditional rendering logic for delivery/pickup switcher
+    const showDelivery = cartData?.deliveryEnabled ?? true;
+    const showPickup = cartData?.pickupEnabled ?? false;
+    const showSwitcher = showDelivery && showPickup;
+
 
     if (!cartData || !restaurantId) {
         return (
@@ -348,16 +362,19 @@ const CartPageInternal = () => {
                     </div>
                 ) : (
                     <>
-                        <div className="p-4 bg-card rounded-lg border border-border">
-                            <div className="flex bg-muted p-1 rounded-lg">
-                                <button onClick={() => handleDeliveryTypeChange('delivery')} className={cn("flex-1 p-2 rounded-md flex items-center justify-center gap-2 font-semibold transition-all", deliveryType === 'delivery' && 'bg-background shadow-sm')}>
-                                    <Bike size={16} /> Delivery
-                                </button>
-                                <button onClick={() => handleDeliveryTypeChange('pickup')} className={cn("flex-1 p-2 rounded-md flex items-center justify-center gap-2 font-semibold transition-all", deliveryType === 'pickup' && 'bg-background shadow-sm')}>
-                                    <Store size={16} /> Pickup
-                                </button>
+                        {showSwitcher && (
+                            <div className="p-4 bg-card rounded-lg border border-border">
+                                <div className="flex bg-muted p-1 rounded-lg">
+                                    <button onClick={() => handleDeliveryTypeChange('delivery')} className={cn("flex-1 p-2 rounded-md flex items-center justify-center gap-2 font-semibold transition-all", deliveryType === 'delivery' && 'bg-background shadow-sm')}>
+                                        <Bike size={16} /> Delivery
+                                    </button>
+                                    <button onClick={() => handleDeliveryTypeChange('pickup')} className={cn("flex-1 p-2 rounded-md flex items-center justify-center gap-2 font-semibold transition-all", deliveryType === 'pickup' && 'bg-background shadow-sm')}>
+                                        <Store size={16} /> Pickup
+                                    </button>
+                                </div>
                             </div>
-                        </div>
+                        )}
+
 
                         <div className="bg-card p-4 rounded-lg border border-border mt-4">
                             <div className="flex justify-between items-center mb-3">
@@ -584,3 +601,4 @@ const CartPage = () => (
 );
 
 export default CartPage;
+

@@ -1,4 +1,5 @@
 
+
 import { NextResponse } from 'next/server';
 import { getFirestore } from '@/lib/firebase-admin';
 
@@ -14,20 +15,28 @@ export async function GET(request, { params }) {
             return NextResponse.json({ message: 'Restaurant ID is missing.' }, { status: 400 });
         }
         
-        const restaurantRef = firestore.collection('restaurants').doc(restaurantId);
-        let restaurantDoc = await restaurantRef.get();
-
-        // If restaurant doesn't exist, return a 404.
+        // ** THE FIX: Check both collections
+        let restaurantDoc;
+        let businessType = 'restaurant';
+        
+        restaurantDoc = await firestore.collection('restaurants').doc(restaurantId).get();
         if (!restaurantDoc.exists) {
-            return NextResponse.json({ message: `Restaurant with ID ${restaurantId} not found.` }, { status: 404 });
+            restaurantDoc = await firestore.collection('shops').doc(restaurantId).get();
+            businessType = 'shop';
+        }
+
+        // If it doesn't exist in either, return 404.
+        if (!restaurantDoc.exists) {
+            return NextResponse.json({ message: `Business with ID ${restaurantId} not found.` }, { status: 404 });
         }
         
+        const restaurantRef = restaurantDoc.ref;
         const restaurantData = restaurantDoc.data();
 
         // ** NEW **: Check restaurant status
         if (restaurantData.approvalStatus !== 'approved' || !restaurantData.isOpen) {
             return NextResponse.json({ 
-                message: 'This restaurant is currently not accepting orders.',
+                message: 'This business is currently not accepting orders.',
                 restaurantName: restaurantData.name,
                 status: restaurantData.approvalStatus,
                 isOpen: restaurantData.isOpen,
@@ -53,15 +62,18 @@ export async function GET(request, { params }) {
 
         const [menuSnap, generalCouponsSnap, customerCouponsSnap] = await Promise.all(promises);
 
-        const restaurantName = restaurantData.name;
-        const deliveryCharge = restaurantData.deliveryCharge || 0; // Default to 0 if not set
-        const logoUrl = restaurantData.logoUrl || '';
-        const bannerUrls = restaurantData.bannerUrls || [];
-
         // Process Menu
         const menuData = {};
-        const categoryKeys = ["starters", "main-course", "desserts", "beverages", "momos", "burgers", "rolls", "soup", "tandoori-item", "tandoori-khajana", "rice", "noodles", "pasta", "raita"];
-        categoryKeys.forEach(key => { menuData[key] = []; });
+        const defaultRestaurantCategories = ["momos", "burgers", "rolls", "soup", "tandoori-item", "starters", "main-course", "tandoori-khajana", "rice", "noodles", "pasta", "raita", "desserts", "beverages"];
+        const defaultShopCategories = ["electronics", "groceries", "clothing", "books", "home-appliances", "toys-games", "beauty-personal-care", "sports-outdoors"];
+        const customCategories = restaurantData.customCategories || [];
+        
+        const defaultCategoryKeys = businessType === 'restaurant' ? defaultRestaurantCategories : defaultShopCategories;
+        const allCategoryKeys = [...new Set([...defaultCategoryKeys, ...customCategories.map(c => c.id)])];
+
+        allCategoryKeys.forEach(key => {
+            menuData[key] = [];
+        });
 
         menuSnap.docs.forEach(doc => {
             const item = doc.data();
@@ -96,14 +108,22 @@ export async function GET(request, { params }) {
 
         // Return all public data together
         return NextResponse.json({ 
-            restaurantName: restaurantName,
-            deliveryCharge: deliveryCharge,
-            logoUrl: logoUrl,
-            bannerUrls: bannerUrls,
+            restaurantName: restaurantData.name,
+            deliveryCharge: restaurantData.deliveryCharge,
+            logoUrl: restaurantData.logoUrl,
+            bannerUrls: restaurantData.bannerUrls,
             menu: menuData,
             coupons: allCoupons,
+            businessType: restaurantData.businessType || 'restaurant',
+            // ** NEW **: Pass all order and payment settings to the client
             approvalStatus: restaurantData.approvalStatus,
             isOpen: restaurantData.isOpen,
+            deliveryEnabled: restaurantData.deliveryEnabled === undefined ? true : restaurantData.deliveryEnabled,
+            pickupEnabled: restaurantData.pickupEnabled === undefined ? false : restaurantData.pickupEnabled,
+            deliveryOnlinePaymentEnabled: restaurantData.deliveryOnlinePaymentEnabled === undefined ? true : restaurantData.deliveryOnlinePaymentEnabled,
+            deliveryCodEnabled: restaurantData.deliveryCodEnabled === undefined ? true : restaurantData.deliveryCodEnabled,
+            pickupOnlinePaymentEnabled: restaurantData.pickupOnlinePaymentEnabled === undefined ? true : restaurantData.pickupOnlinePaymentEnabled,
+            pickupPodEnabled: restaurantData.pickupPodEnabled === undefined ? true : restaurantData.pickupPodEnabled,
         }, { status: 200 });
 
     } catch (error) {
