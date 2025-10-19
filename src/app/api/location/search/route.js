@@ -17,7 +17,7 @@ export async function GET(req) {
         return NextResponse.json({ message: "Search query is required." }, { status: 400 });
     }
 
-    // URL without access_token query parameter, using the correct endpoint for REST API
+    // CORRECTED: Use the atlas.mappls.com endpoint for REST API search calls
     const url = `https://atlas.mappls.com/api/places/search/json?query=${encodeURIComponent(query)}`;
 
     try {
@@ -25,22 +25,19 @@ export async function GET(req) {
         const response = await fetch(url, {
             method: 'GET',
             headers: {
-                 // Key sent in Authorization header
+                 // CORRECTED: Send API key in Authorization header for backend calls
                 'Authorization': `bearer ${MAPPLS_API_KEY}`
             }
         });
         const data = await response.json();
 
         if (!response.ok) {
-             // Updated error handling for Mappls REST API structure
             const errorMessage = data?.error || data?.errorMessage || 'An unknown error occurred with Mappls API.';
             console.error(`[API search] Mappls API error: ${response.status}`, errorMessage);
             throw new Error(errorMessage);
         }
 
         console.log("[API search] Mappls response successful.");
-        // The autosuggest API returns `suggestedLocations`. The main search API returns `suggestedLocations`.
-        // The new endpoint returns `suggestedLocations` for autosuggest-like behavior. We will return the whole data object.
         return NextResponse.json(data, { status: 200 });
 
     } catch (error) {

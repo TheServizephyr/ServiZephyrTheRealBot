@@ -18,13 +18,17 @@ export async function GET(req) {
         return NextResponse.json({ message: "Latitude and longitude are required." }, { status: 400 });
     }
 
-    // CORRECTED URL and authentication method as per documentation
-    const url = `https://search.mappls.com/search/address/rev-geocode?lat=${lat}&lng=${lng}&access_token=${MAPPLS_API_KEY}`;
+    // CORRECTED: Use the apis.mappls.com endpoint for REST API calls
+    const url = `https://apis.mappls.com/apis/O/rev_geocode?lat=${lat}&lng=${lng}`;
 
     try {
-        console.log(`[API geocode] Calling Mappls Reverse Geocode API: ${url}`);
+        console.log(`[API geocode] Calling Mappls Reverse Geocode API.`);
         const response = await fetch(url, {
             method: 'GET',
+            headers: {
+                // CORRECTED: Send API key in Authorization header for backend calls
+                'Authorization': `bearer ${MAPPLS_API_KEY}`
+            }
         });
         const data = await response.json();
 
@@ -33,8 +37,7 @@ export async function GET(req) {
             console.log("[API geocode] Mappls response successful:", result.formatted_address);
             return NextResponse.json(result, { status: 200 });
         } else {
-            // Updated error handling for Mappls REST API structure
-            const errorMessage = data?.error || data?.errorMessage || "No address found or API error.";
+            const errorMessage = data?.error?.message || data?.errorMessage || data?.error || "No address found or API error.";
             console.warn(`[API geocode] Mappls API returned status ${response.status} with message:`, errorMessage);
             return NextResponse.json({ message: errorMessage }, { status: response.status === 200 ? 404 : response.status });
         }
