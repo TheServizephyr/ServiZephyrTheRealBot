@@ -18,34 +18,39 @@ export async function GET(req) {
         return NextResponse.json({ message: "Latitude and longitude are required." }, { status: 400 });
     }
 
-    // URL without access_token query parameter, using the correct endpoint for REST API
-    const url = `https://apis.mappls.com/apis/O/rev_geocode?lat=${lat}&lng=${lng}`;
+    // CORRECTED: Using the correct URL and access_token parameter for the REST API
+    const url = `https://search.mappls.com/search/address/rev-geocode?lat=${lat}&lng=${lng}&access_token=${MAPPLS_API_KEY}`;
 
     try {
         console.log(`[API geocode] Calling Mappls Reverse Geocode API: ${url}`);
         const response = await fetch(url, {
-            method: 'GET',
-            headers: {
-                // Key sent in Authorization header as per REST API docs
-                'Authorization': `bearer ${MAPPLS_API_KEY}`
-            }
+            method: 'GET'
         });
         
         console.log(`[API geocode] Mappls response status: ${response.status}`);
-        const data = await response.json();
+        
+        // Handling non-JSON responses from Mappls (like HTML error pages)
+        const responseText = await response.text();
+        let data;
+        try {
+            data = JSON.parse(responseText);
+        } catch (e) {
+            console.error(`[API geocode] CRITICAL Error parsing Mappls JSON response. Raw text: ${responseText}`);
+            throw new Error(`Mappls returned non-JSON response: ${responseText.substring(0, 100)}`);
+        }
 
         if (response.ok && data && data.results && data.results.length > 0) {
             const result = data.results[0];
             console.log("[API geocode] Mappls response successful:", result.formatted_address);
             return NextResponse.json(result, { status: 200 });
         } else {
-            const errorMessage = data?.error || data?.errorMessage || `Mappls returned status ${response.status}`;
+            const errorMessage = data?.error || `Mappls returned status ${response.status}`;
             console.warn(`[API geocode] Mappls API returned an error:`, errorMessage);
-            return NextResponse.json({ message: errorMessage }, { status: response.status });
+            // Return status 404 if results are empty but response is otherwise ok
+            return NextResponse.json({ message: errorMessage }, { status: (response.status === 200 && !data.results) ? 404 : response.status });
         }
     } catch (error) {
-        // This catch block will handle JSON parsing errors if Mappls returns HTML
-        console.error(`[API geocode] CRITICAL Error calling Mappls API: ${error.message}`);
+        console.error(`[API geocode] CRITICAL Error calling Mappls API:`, error);
         return NextResponse.json({ message: "Failed to fetch address from Mappls.", error: error.message }, { status: 500 });
     }
 }
