@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useState, useEffect } from "react";
@@ -63,6 +64,7 @@ function OwnerDashboardContent({ children }) {
       suspensionRemark: ''
   });
   const [restaurantName, setRestaurantName] = useState('My Dashboard');
+  const [restaurantLogo, setRestaurantLogo] = useState(null);
   const router = useRouter();
   const pathname = usePathname();
 
@@ -101,10 +103,11 @@ function OwnerDashboardContent({ children }) {
                 setRestaurantStatus({ status: 'error', restrictedFeatures: [], suspensionRemark: '' });
             }
             
-            // Handle settings (for name)
+            // Handle settings (for name and logo)
              if (settingsRes.ok) {
                 const settingsData = await settingsRes.json();
                 setRestaurantName(settingsData.restaurantName || 'My Dashboard');
+                setRestaurantLogo(settingsData.logoUrl || null);
             }
 
         } catch (e) {
@@ -213,29 +216,22 @@ function OwnerDashboardContent({ children }) {
   return (
     <div className="flex h-screen bg-background text-foreground">
       {/* Sidebar */}
-      <AnimatePresence>
-        {(isSidebarOpen || !isMobile) && (
-          <motion.aside
-            key="sidebar"
-            initial={isMobile ? { x: '-100%' } : { width: '260px' }}
-            animate={isMobile ? (isSidebarOpen ? { x: 0 } : { x: '-100%' }) : { width: isCollapsed ? '80px' : '260px' }}
-            exit={isMobile ? { x: '-100%' } : { width: '80px' }}
-            transition={{ type: 'spring', stiffness: 300, damping: 30 }}
-            className={`fixed md:relative h-full z-50 bg-card border-r border-border flex flex-col ${
-              isMobile && !isSidebarOpen ? 'hidden' : ''
-            }`}
-          >
-             <Sidebar
-              isOpen={isSidebarOpen}
-              setIsOpen={setSidebarOpen}
-              isMobile={isMobile}
-              isCollapsed={isCollapsed}
-              restrictedFeatures={restaurantStatus.restrictedFeatures}
-              status={restaurantStatus.status}
-            />
-          </motion.aside>
-        )}
-      </AnimatePresence>
+      <motion.aside 
+        className="fixed md:relative h-full z-50 bg-card border-r border-border flex flex-col"
+        animate={isMobile ? (isSidebarOpen ? { x: 0 } : { x: '-100%' }) : { width: isCollapsed ? '80px' : '260px' }}
+        transition={{ type: 'spring', stiffness: 300, damping: 30 }}
+        initial={false}
+      >
+        <Sidebar
+          isOpen={isSidebarOpen}
+          setIsOpen={setSidebarOpen}
+          isMobile={isMobile}
+          isCollapsed={isCollapsed}
+          restrictedFeatures={restaurantStatus.restrictedFeatures}
+          status={restaurantStatus.status}
+        />
+      </motion.aside>
+
        {isMobile && isSidebarOpen && (
           <div
             className="fixed inset-0 bg-black/60 z-40"
@@ -246,11 +242,14 @@ function OwnerDashboardContent({ children }) {
 
       <div className="flex-1 flex flex-col overflow-hidden">
         {/* Top Bar */}
-        <Navbar
-            isSidebarOpen={isSidebarOpen}
-            setSidebarOpen={setSidebarOpen}
-            restaurantName={restaurantName}
-        />
+        <header className="flex items-center justify-between h-[65px] px-4 md:px-6 bg-card border-b border-border shrink-0">
+             <Navbar
+                isSidebarOpen={isSidebarOpen}
+                setSidebarOpen={setSidebarOpen}
+                restaurantName={restaurantName}
+                restaurantLogo={restaurantLogo}
+            />
+        </header>
         {/* Main Content */}
         <main className="flex-1 overflow-y-auto p-4 md:p-6">
           {blockedContent || children}

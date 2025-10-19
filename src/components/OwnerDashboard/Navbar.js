@@ -15,7 +15,7 @@ import { Switch } from "@/components/ui/switch";
 
 const MotionDiv = motion.div;
 
-export default function Navbar({ isSidebarOpen, setSidebarOpen, restaurantName }) {
+export default function Navbar({ isSidebarOpen, setSidebarOpen, restaurantName, restaurantLogo }) {
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [restaurantStatus, setRestaurantStatus] = useState(true);
   const [loadingStatus, setLoadingStatus] = useState(true);
@@ -94,8 +94,8 @@ export default function Navbar({ isSidebarOpen, setSidebarOpen, restaurantName }
   };
 
   return (
-    <header className={styles.navbar}>
-      <div className={styles.navLeft}>
+    <div className="flex items-center justify-between w-full">
+      <div className="flex items-center gap-2">
         <button
           className={`${styles.iconButton} md:hidden`}
           onClick={() => setSidebarOpen(!isSidebarOpen)}
@@ -103,7 +103,12 @@ export default function Navbar({ isSidebarOpen, setSidebarOpen, restaurantName }
           <Menu size={22} />
         </button>
         <div className="flex items-center gap-4">
-             <h2 className="text-lg md:text-xl font-bold text-foreground tracking-tight">{restaurantName}</h2>
+            {restaurantLogo && (
+              <div className="relative w-10 h-10 rounded-full overflow-hidden border-2 border-border">
+                <Image src={restaurantLogo} alt="Restaurant Logo" layout="fill" objectFit="cover" />
+              </div>
+            )}
+             <h2 className="text-xl md:text-2xl font-bold text-foreground tracking-tight">{restaurantName}</h2>
         </div>
       </div>
 
@@ -177,6 +182,6 @@ export default function Navbar({ isSidebarOpen, setSidebarOpen, restaurantName }
           </AnimatePresence>
         </div>
       </div>
-    </header>
+    </div>
   );
 }
