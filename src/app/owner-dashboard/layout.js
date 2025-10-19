@@ -64,6 +64,7 @@ function OwnerDashboardContent({ children }) {
       restrictedFeatures: [],
       suspensionRemark: ''
   });
+  const [restaurantName, setRestaurantName] = useState('My Dashboard');
   const router = useRouter();
   const pathname = usePathname();
 
@@ -77,34 +78,39 @@ function OwnerDashboardContent({ children }) {
     checkScreenSize();
     window.addEventListener('resize', checkScreenSize);
     
-    const fetchRestaurantStatus = async (user) => {
+    const fetchRestaurantData = async (user) => {
         console.log("[DEBUG] OwnerLayout: fetchRestaurantStatus called.");
         setLoading(true);
         try {
             const idToken = await user.getIdToken();
-            const res = await fetch('/api/owner/status', {
-                headers: { 'Authorization': `Bearer ${idToken}` }
-            });
-            const data = await res.json();
-            console.log(`[DEBUG] OwnerLayout: /api/owner/status responded with status ${res.status} and data:`, data);
-            
-            if (res.ok) {
+            const [statusRes, settingsRes] = await Promise.all([
+                fetch('/api/owner/status', { headers: { 'Authorization': `Bearer ${idToken}` } }),
+                fetch('/api/owner/settings', { headers: { 'Authorization': `Bearer ${idToken}` } })
+            ]);
+
+            // Handle status
+            const statusData = await statusRes.json();
+            console.log(`[DEBUG] OwnerLayout: /api/owner/status responded with status ${statusRes.status} and data:`, statusData);
+            if (statusRes.ok) {
                 setRestaurantStatus({
-                    status: data.status,
-                    restrictedFeatures: data.restrictedFeatures || [],
-                    suspensionRemark: data.suspensionRemark || '',
+                    status: statusData.status,
+                    restrictedFeatures: statusData.restrictedFeatures || [],
+                    suspensionRemark: statusData.suspensionRemark || '',
                 });
+            } else if (statusRes.status === 404 && statusData.message.includes("No business associated")) {
+                setRestaurantStatus({ status: 'pending', restrictedFeatures: [], suspensionRemark: '' });
             } else {
-                 if(res.status === 404 && data.message.includes("No business associated")) {
-                    console.log("[DEBUG] OwnerLayout: No business found, treating as 'pending'.");
-                    setRestaurantStatus({ status: 'pending', restrictedFeatures: [], suspensionRemark: '' });
-                 } else {
-                    console.error("[DEBUG] OwnerLayout: API error, setting status to 'error'.");
-                    setRestaurantStatus({ status: 'error', restrictedFeatures: [], suspensionRemark: '' });
-                 }
+                setRestaurantStatus({ status: 'error', restrictedFeatures: [], suspensionRemark: '' });
             }
+            
+            // Handle settings (for name)
+             if (settingsRes.ok) {
+                const settingsData = await settingsRes.json();
+                setRestaurantName(settingsData.name || 'My Dashboard');
+            }
+
         } catch (e) {
-            console.error("[DEBUG] OwnerLayout: CRITICAL error fetching owner status:", e);
+            console.error("[DEBUG] OwnerLayout: CRITICAL error fetching owner data:", e);
             setRestaurantStatus({ status: 'error', restrictedFeatures: [], suspensionRemark: '' });
         } finally {
             console.log("[DEBUG] OwnerLayout: fetchRestaurantStatus finished, setting loading to false.");
@@ -115,7 +121,7 @@ function OwnerDashboardContent({ children }) {
     const unsubscribe = auth.onAuthStateChanged(user => {
         if (user) {
             console.log("[DEBUG] OwnerLayout: onAuthStateChanged fired, user found. Fetching status.");
-            fetchRestaurantStatus(user);
+            fetchRestaurantData(user);
         } else {
             console.log("[DEBUG] OwnerLayout: onAuthStateChanged fired, NO user found. Redirecting to home.");
             setLoading(false);
@@ -210,6 +216,7 @@ function OwnerDashboardContent({ children }) {
       <Navbar
         isSidebarOpen={isSidebarOpen}
         setSidebarOpen={setSidebarOpen}
+        restaurantName={restaurantName}
       />
       <div className={styles.contentWrapper}>
         <AnimatePresence>

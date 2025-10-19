@@ -15,7 +15,7 @@ import { Switch } from "@/components/ui/switch";
 
 const MotionDiv = motion.div;
 
-export default function Navbar({ isSidebarOpen, setSidebarOpen }) {
+export default function Navbar({ isSidebarOpen, setSidebarOpen, restaurantName }) {
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [restaurantStatus, setRestaurantStatus] = useState(true);
   const [loadingStatus, setLoadingStatus] = useState(true);
@@ -102,8 +102,9 @@ export default function Navbar({ isSidebarOpen, setSidebarOpen }) {
         >
           <Menu size={22} />
         </button>
-        <div className="hidden md:block">
-            <Image src="/logo.png" alt="Logo" width={150} height={40} />
+        <div className="flex items-center gap-4">
+             <Image src="/logo.png" alt="Logo" width={40} height={40} />
+             <h2 className="text-md md:text-lg font-bold text-foreground">{restaurantName}</h2>
         </div>
       </div>
 
@@ -180,5 +181,3 @@ export default function Navbar({ isSidebarOpen, setSidebarOpen }) {
     </header>
   );
 }
-
-    
