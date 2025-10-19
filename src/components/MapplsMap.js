@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useEffect, useRef } from 'react';
@@ -73,7 +74,7 @@ const MapplsMap = ({ onMapLoad, initialCenter, onPinDragEnd }) => {
     return (
         <>
             <Script
-                src={`https://sdk.mappls.com/map/sdk/web?v=3.0&access_token=${apiKey}`}
+                src={`https://apis.mappls.com/advancedmaps/api/${apiKey}/map_sdk?layer=vector`}
                 onLoad={handleScriptLoad}
                 onError={() => console.error("[MapplsMap] Failed to load Mappls script.")}
             />
