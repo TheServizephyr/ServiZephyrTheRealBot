@@ -119,18 +119,21 @@ const CartPageInternal = () => {
             setCart(parsedData.cart || []);
             setNotes(parsedData.notes || '');
             setAppliedCoupons(parsedData.appliedCoupons || []);
-            
-            // Set initial delivery type based on restaurant settings
-            if (parsedData.deliveryEnabled && !parsedData.pickupEnabled) {
+            setTipAmount(parsedData.tipAmount || 0);
+            setPickupTime(parsedData.pickupTime || '');
+
+            // **THE FIX**: Set initial delivery type based on saved cart settings first,
+            // then fall back to restaurant capabilities.
+            if (parsedData.deliveryType) {
+                setDeliveryType(parsedData.deliveryType);
+            } else if (parsedData.deliveryEnabled && !parsedData.pickupEnabled) {
                 setDeliveryType('delivery');
             } else if (!parsedData.deliveryEnabled && parsedData.pickupEnabled) {
                 setDeliveryType('pickup');
             } else {
-                setDeliveryType(parsedData.deliveryType || 'delivery');
+                setDeliveryType('delivery'); // Default if both are available
             }
 
-            setTipAmount(parsedData.tipAmount || 0);
-            setPickupTime(parsedData.pickupTime || '');
         } else {
             setCart([]);
             setAppliedCoupons([]);
