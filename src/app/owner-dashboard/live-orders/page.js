@@ -799,7 +799,7 @@ export default function LiveOrdersPage() {
         </div>
 
         <Tabs defaultValue="All" value={activeFilter} onValueChange={setActiveFilter} className="w-full mb-6">
-            <TabsList className="md:grid md:grid-cols-9 w-full overflow-x-auto bg-muted p-1 h-auto">
+            <TabsList className="grid grid-cols-5 md:grid-cols-9 w-full bg-muted p-1 h-auto">
                 <TabsTrigger value="All">All</TabsTrigger>
                 <TabsTrigger value="New">New</TabsTrigger>
                 <TabsTrigger value="Confirmed">Confirmed</TabsTrigger>
@@ -943,6 +943,7 @@ export default function LiveOrdersPage() {
     
 
     
+
 
 
 
