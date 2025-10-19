@@ -3,7 +3,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { User, Mail, Phone, Shield, Edit, Save, XCircle, Bell, Trash2, KeyRound, Eye, EyeOff, FileText, Bot, Truck, Image as ImageIcon, Upload, X, IndianRupee, MapPin, Wallet, ChevronsUpDown, Check } from 'lucide-react';
+import { User, Mail, Phone, Shield, Edit, Save, XCircle, Bell, Trash2, KeyRound, Eye, EyeOff, FileText, Bot, Truck, Image as ImageIcon, Upload, X, IndianRupee, MapPin, Wallet, ChevronsUpDown, Check, ShoppingBag } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
@@ -296,15 +296,39 @@ export default function SettingsPage() {
     };
 
     const handlePaymentToggle = (type, value) => {
-        // Prevent disabling the last active payment method
-        if (!value && (
-            (type === 'codEnabled' && !editedUser.onlinePaymentsEnabled) ||
-            (type === 'onlinePaymentsEnabled' && !editedUser.codEnabled)
-        )) {
-            alert("At least one payment method must be enabled.");
-            return;
-        }
-        setEditedUser({...editedUser, [type]: value});
+        setEditedUser(prev => {
+            const newState = { ...prev, [type]: value };
+
+            // Prevent disabling both Delivery and Pickup
+            if (type === 'deliveryEnabled' && !value && !newState.pickupEnabled) {
+                alert("At least one order type (Delivery or Pickup) must be enabled.");
+                return prev;
+            }
+            if (type === 'pickupEnabled' && !value && !newState.deliveryEnabled) {
+                alert("At least one order type (Delivery or Pickup) must be enabled.");
+                return prev;
+            }
+
+            // Prevent disabling both Online and POD for an active order type
+            if (type === 'deliveryOnlinePaymentEnabled' && !value && !newState.deliveryCodEnabled && newState.deliveryEnabled) {
+                alert("At least one payment method must be enabled for Delivery.");
+                return prev;
+            }
+             if (type === 'deliveryCodEnabled' && !value && !newState.deliveryOnlinePaymentEnabled && newState.deliveryEnabled) {
+                alert("At least one payment method must be enabled for Delivery.");
+                return prev;
+            }
+             if (type === 'pickupOnlinePaymentEnabled' && !value && !newState.pickupPodEnabled && newState.pickupEnabled) {
+                alert("At least one payment method must be enabled for Pickup.");
+                return prev;
+            }
+            if (type === 'pickupPodEnabled' && !value && !newState.pickupOnlinePaymentEnabled && newState.pickupEnabled) {
+                alert("At least one payment method must be enabled for Pickup.");
+                return prev;
+            }
+
+            return newState;
+        });
     };
 
     const handleSave = async (section) => {
@@ -330,8 +354,15 @@ export default function SettingsPage() {
         } else if (section === 'payment') {
             payload = {
                 deliveryCharge: editedUser.deliveryCharge,
-                codEnabled: editedUser.codEnabled,
-                onlinePaymentsEnabled: editedUser.onlinePaymentsEnabled,
+                isOpen: editedUser.isOpen, // This was already here for store open/close
+                // New fields for order types
+                deliveryEnabled: editedUser.deliveryEnabled,
+                pickupEnabled: editedUser.pickupEnabled,
+                // New fields for payment options
+                deliveryOnlinePaymentEnabled: editedUser.deliveryOnlinePaymentEnabled,
+                deliveryCodEnabled: editedUser.deliveryCodEnabled,
+                pickupOnlinePaymentEnabled: editedUser.pickupOnlinePaymentEnabled,
+                pickupPodEnabled: editedUser.pickupPodEnabled
             }
         }
 
@@ -525,6 +556,88 @@ export default function SettingsPage() {
 
             {user.role === 'owner' && (
             <>
+                 <SectionCard
+                    title="Order & Delivery Settings"
+                    description="Configure how you accept orders from customers."
+                    footer={
+                        <div className="flex justify-end gap-3">
+                            {isEditingPayment ? (
+                                <>
+                                    <Button variant="secondary" onClick={() => handleEditToggle('payment')}><XCircle className="mr-2 h-4 w-4"/> Cancel</Button>
+                                    <Button onClick={() => handleSave('payment')} className="bg-primary hover:bg-primary/90 text-primary-foreground"><Save className="mr-2 h-4 w-4"/> Save Settings</Button>
+                                </>
+                            ) : (
+                                <Button onClick={() => handleEditToggle('payment')}><Edit className="mr-2 h-4 w-4"/> Edit Order Settings</Button>
+                            )}
+                        </div>
+                    }
+                >
+                    <div className="space-y-6">
+                        <div>
+                             <Label className="font-semibold text-lg">Order Types</Label>
+                             <p className="text-sm text-muted-foreground mb-4">Choose which types of orders your business will accept.</p>
+                             <div className="grid md:grid-cols-2 gap-4">
+                                <div className="flex items-center justify-between p-4 bg-muted/50 rounded-lg">
+                                    <Label htmlFor="deliveryEnabled" className="flex flex-col">
+                                        <span className="font-semibold flex items-center gap-2"><Truck size={16}/> Accept Delivery Orders</span>
+                                    </Label>
+                                    <Switch id="deliveryEnabled" checked={editedUser.deliveryEnabled} onCheckedChange={(checked) => handlePaymentToggle('deliveryEnabled', checked)} disabled={!isEditingPayment} />
+                                </div>
+                                 <div className="flex items-center justify-between p-4 bg-muted/50 rounded-lg">
+                                    <Label htmlFor="pickupEnabled" className="flex flex-col">
+                                        <span className="font-semibold flex items-center gap-2"><ShoppingBag size={16}/> Accept Pickup Orders</span>
+                                    </Label>
+                                    <Switch id="pickupEnabled" checked={editedUser.pickupEnabled} onCheckedChange={(checked) => handlePaymentToggle('pickupEnabled', checked)} disabled={!isEditingPayment} />
+                                </div>
+                            </div>
+                        </div>
+
+                         <div className="border-t border-border pt-6">
+                             <Label className="font-semibold text-lg">Payment Methods</Label>
+                              <p className="text-sm text-muted-foreground mb-4">Configure payment options for each order type.</p>
+                             <div className="grid md:grid-cols-2 gap-6">
+                                {/* Delivery Payment Options */}
+                                <div className={cn("space-y-4 p-4 border rounded-lg", !editedUser.deliveryEnabled && "opacity-50")}>
+                                     <h4 className="font-bold">For Delivery</h4>
+                                      <div className="flex items-center justify-between">
+                                        <Label htmlFor="deliveryOnlinePaymentEnabled" className="flex flex-col">
+                                            <span className="font-semibold flex items-center gap-2"><Wallet size={16}/> Enable Online Payments</span>
+                                        </Label>
+                                        <Switch id="deliveryOnlinePaymentEnabled" checked={editedUser.deliveryOnlinePaymentEnabled} onCheckedChange={(checked) => handlePaymentToggle('deliveryOnlinePaymentEnabled', checked)} disabled={!isEditingPayment || !editedUser.deliveryEnabled} />
+                                    </div>
+                                    <div className="flex items-center justify-between">
+                                        <Label htmlFor="deliveryCodEnabled" className="flex flex-col">
+                                            <span className="font-semibold flex items-center gap-2"><IndianRupee size={16}/> Enable Pay on Delivery (POD)</span>
+                                        </Label>
+                                        <Switch id="deliveryCodEnabled" checked={editedUser.deliveryCodEnabled} onCheckedChange={(checked) => handlePaymentToggle('deliveryCodEnabled', checked)} disabled={!isEditingPayment || !editedUser.deliveryEnabled} />
+                                    </div>
+                                </div>
+                                {/* Pickup Payment Options */}
+                                <div className={cn("space-y-4 p-4 border rounded-lg", !editedUser.pickupEnabled && "opacity-50")}>
+                                     <h4 className="font-bold">For Pickup</h4>
+                                     <div className="flex items-center justify-between">
+                                        <Label htmlFor="pickupOnlinePaymentEnabled" className="flex flex-col">
+                                            <span className="font-semibold flex items-center gap-2"><Wallet size={16}/> Enable Online Payments</span>
+                                        </Label>
+                                        <Switch id="pickupOnlinePaymentEnabled" checked={editedUser.pickupOnlinePaymentEnabled} onCheckedChange={(checked) => handlePaymentToggle('pickupOnlinePaymentEnabled', checked)} disabled={!isEditingPayment || !editedUser.pickupEnabled} />
+                                    </div>
+                                    <div className="flex items-center justify-between">
+                                        <Label htmlFor="pickupPodEnabled" className="flex flex-col">
+                                            <span className="font-semibold flex items-center gap-2"><IndianRupee size={16}/> Enable Pay at Store</span>
+                                        </Label>
+                                        <Switch id="pickupPodEnabled" checked={editedUser.pickupPodEnabled} onCheckedChange={(checked) => handlePaymentToggle('pickupPodEnabled', checked)} disabled={!isEditingPayment || !editedUser.pickupEnabled} />
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                         <div className="border-t border-border pt-6">
+                            <Label htmlFor="deliveryCharge" className="font-semibold text-lg flex items-center gap-2"><Truck size={14}/> Base Delivery Charge</Label>
+                            <p className="text-sm text-muted-foreground mb-2">Set a default delivery fee. You can create 'Free Delivery' coupons to override this.</p>
+                            <input id="deliveryCharge" type="number" value={editedUser.deliveryCharge} onChange={e => setEditedUser({...editedUser, deliveryCharge: e.target.value})} disabled={!isEditingPayment} className="mt-1 w-full max-w-xs p-2 border rounded-md bg-input border-border disabled:opacity-70 disabled:cursor-not-allowed" placeholder="e.g., 30"/>
+                        </div>
+                    </div>
+                </SectionCard>
                 <SectionCard
                     title="Media & Branding"
                     description="Upload your restaurant's logo and banner images."
@@ -574,43 +687,6 @@ export default function SettingsPage() {
                                     </>
                                 )}
                             </div>
-                        </div>
-                    </div>
-                </SectionCard>
-                <SectionCard
-                    title="Payment Settings"
-                    description="Manage delivery charges and payment methods for your customers."
-                     footer={
-                        <div className="flex justify-end gap-3">
-                            {isEditingPayment ? (
-                                <>
-                                    <Button variant="secondary" onClick={() => handleEditToggle('payment')}><XCircle className="mr-2 h-4 w-4"/> Cancel</Button>
-                                    <Button onClick={() => handleSave('payment')} className="bg-primary hover:bg-primary/90 text-primary-foreground"><Save className="mr-2 h-4 w-4"/> Save Settings</Button>
-                                </>
-                            ) : (
-                                <Button onClick={() => handleEditToggle('payment')}><Edit className="mr-2 h-4 w-4"/> Edit Payment Settings</Button>
-                            )}
-                        </div>
-                    }
-                >
-                    <div className="space-y-6">
-                        <div>
-                            <Label htmlFor="deliveryCharge" className="flex items-center gap-2"><Truck size={14}/> Base Delivery Charge (₹)</Label>
-                            <input id="deliveryCharge" type="number" value={editedUser.deliveryCharge} onChange={e => setEditedUser({...editedUser, deliveryCharge: e.target.value})} disabled={!isEditingPayment} className="mt-1 w-full max-w-xs p-2 border rounded-md bg-input border-border disabled:opacity-70 disabled:cursor-not-allowed" placeholder="e.g., 30"/>
-                        </div>
-                        <div className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
-                            <Label htmlFor="onlinePaymentsEnabled" className="flex flex-col">
-                                <span>Enable Online Payments</span>
-                                <span className="text-xs text-muted-foreground">Allow customers to pay via Razorpay (UPI, Cards, etc).</span>
-                            </Label>
-                            <Switch id="onlinePaymentsEnabled" checked={editedUser.onlinePaymentsEnabled} onCheckedChange={(checked) => handlePaymentToggle('onlinePaymentsEnabled', checked)} disabled={!isEditingPayment} />
-                        </div>
-                        <div className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
-                            <Label htmlFor="codEnabled" className="flex flex-col">
-                                <span>Enable Pay on Delivery (POD)</span>
-                                <span className="text-xs text-muted-foreground">Allow customers to pay upon delivery (cash, UPI, etc).</span>
-                            </Label>
-                            <Switch id="codEnabled" checked={editedUser.codEnabled} onCheckedChange={(checked) => handlePaymentToggle('codEnabled', checked)} disabled={!isEditingPayment} />
                         </div>
                     </div>
                 </SectionCard>
@@ -699,5 +775,7 @@ export default function SettingsPage() {
         </div>
     );
 }
+
+    
 
     

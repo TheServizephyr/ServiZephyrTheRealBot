@@ -97,8 +97,14 @@ export async function GET(req) {
             deliveryCharge: businessData?.deliveryCharge === undefined ? 30 : businessData.deliveryCharge,
             logoUrl: businessData?.logoUrl || '',
             bannerUrls: businessData?.bannerUrls || [],
-            codEnabled: businessData?.codEnabled || false,
-            onlinePaymentsEnabled: businessData?.onlinePaymentsEnabled === undefined ? true : businessData.onlinePaymentsEnabled,
+            // New order type fields
+            deliveryEnabled: businessData?.deliveryEnabled === undefined ? true : businessData.deliveryEnabled,
+            pickupEnabled: businessData?.pickupEnabled === undefined ? false : businessData.pickupEnabled,
+            // New payment method fields
+            deliveryOnlinePaymentEnabled: businessData?.deliveryOnlinePaymentEnabled === undefined ? true : businessData.deliveryOnlinePaymentEnabled,
+            deliveryCodEnabled: businessData?.deliveryCodEnabled === undefined ? true : businessData.deliveryCodEnabled,
+            pickupOnlinePaymentEnabled: businessData?.pickupOnlinePaymentEnabled === undefined ? true : businessData.pickupOnlinePaymentEnabled,
+            pickupPodEnabled: businessData?.pickupPodEnabled === undefined ? true : businessData.pickupPodEnabled,
             isOpen: businessData?.isOpen === undefined ? true : businessData.isOpen,
         };
 
@@ -114,13 +120,13 @@ export async function PATCH(req) {
     try {
         const { userRef, userData, businessRef, businessData, businessId } = await verifyUserAndGetData(req);
         
-        const { name, phone, notifications, gstin, fssai, botPhoneNumberId, deliveryCharge, logoUrl, bannerUrls, codEnabled, address, isOpen, onlinePaymentsEnabled } = await req.json();
+        const updates = await req.json();
 
         // --- Update User's Profile in 'users' collection ---
         const userUpdateData = {};
-        if (name !== undefined) userUpdateData.name = name;
-        if (phone !== undefined) userUpdateData.phone = phone;
-        if (notifications !== undefined) userUpdateData.notifications = notifications;
+        if (updates.name !== undefined) userUpdateData.name = updates.name;
+        if (updates.phone !== undefined) userUpdateData.phone = updates.phone;
+        if (updates.notifications !== undefined) userUpdateData.notifications = updates.notifications;
 
         if (Object.keys(userUpdateData).length > 0) {
             await userRef.update(userUpdateData);
@@ -129,29 +135,35 @@ export async function PATCH(req) {
         // --- Update Business Profile ---
         if (businessRef) {
             const businessUpdateData = {};
-            if (gstin !== undefined) businessUpdateData.gstin = gstin;
-            if (fssai !== undefined) businessUpdateData.fssai = fssai;
-            if (botPhoneNumberId !== undefined) businessUpdateData.botPhoneNumberId = botPhoneNumberId;
-            if (deliveryCharge !== undefined) businessUpdateData.deliveryCharge = Number(deliveryCharge);
-            if (logoUrl !== undefined) businessUpdateData.logoUrl = logoUrl;
-            if (bannerUrls !== undefined) businessUpdateData.bannerUrls = bannerUrls;
-            if (codEnabled !== undefined) businessUpdateData.codEnabled = codEnabled;
-            if (onlinePaymentsEnabled !== undefined) businessUpdateData.onlinePaymentsEnabled = onlinePaymentsEnabled;
-            if (address !== undefined) businessUpdateData.address = address; 
+            if (updates.gstin !== undefined) businessUpdateData.gstin = updates.gstin;
+            if (updates.fssai !== undefined) businessUpdateData.fssai = updates.fssai;
+            if (updates.botPhoneNumberId !== undefined) businessUpdateData.botPhoneNumberId = updates.botPhoneNumberId;
+            if (updates.deliveryCharge !== undefined) businessUpdateData.deliveryCharge = Number(updates.deliveryCharge);
+            if (updates.logoUrl !== undefined) businessUpdateData.logoUrl = updates.logoUrl;
+            if (updates.bannerUrls !== undefined) businessUpdateData.bannerUrls = updates.bannerUrls;
+            if (updates.address !== undefined) businessUpdateData.address = updates.address; 
             
-            if (isOpen !== undefined && isOpen !== businessData?.isOpen) {
-                businessUpdateData.isOpen = isOpen;
+            // Order & Payment Settings
+            if (updates.deliveryEnabled !== undefined) businessUpdateData.deliveryEnabled = updates.deliveryEnabled;
+            if (updates.pickupEnabled !== undefined) businessUpdateData.pickupEnabled = updates.pickupEnabled;
+            if (updates.deliveryOnlinePaymentEnabled !== undefined) businessUpdateData.deliveryOnlinePaymentEnabled = updates.deliveryOnlinePaymentEnabled;
+            if (updates.deliveryCodEnabled !== undefined) businessUpdateData.deliveryCodEnabled = updates.deliveryCodEnabled;
+            if (updates.pickupOnlinePaymentEnabled !== undefined) businessUpdateData.pickupOnlinePaymentEnabled = updates.pickupOnlinePaymentEnabled;
+            if (updates.pickupPodEnabled !== undefined) businessUpdateData.pickupPodEnabled = updates.pickupPodEnabled;
+            
+            if (updates.isOpen !== undefined && updates.isOpen !== businessData?.isOpen) {
+                businessUpdateData.isOpen = updates.isOpen;
                 
                 sendRestaurantStatusChangeNotification({
                     ownerPhone: businessData.ownerPhone,
                     botPhoneNumberId: businessData.botPhoneNumberId,
-                    newStatus: isOpen,
+                    newStatus: updates.isOpen,
                     restaurantId: businessId,
                 }).catch(e => console.error("Failed to send status change notification:", e));
             }
 
-            if (phone !== undefined && phone !== businessData?.ownerPhone) {
-                businessUpdateData.ownerPhone = phone;
+            if (updates.phone !== undefined && updates.phone !== businessData?.ownerPhone) {
+                businessUpdateData.ownerPhone = updates.phone;
             }
             
             if (Object.keys(businessUpdateData).length > 0) {
@@ -174,8 +186,13 @@ export async function PATCH(req) {
             deliveryCharge: finalBusinessData?.deliveryCharge === undefined ? 30 : finalBusinessData.deliveryCharge,
             logoUrl: finalBusinessData?.logoUrl || '',
             bannerUrls: finalBusinessData?.bannerUrls || [],
-            codEnabled: finalBusinessData?.codEnabled || false,
-            onlinePaymentsEnabled: finalBusinessData?.onlinePaymentsEnabled === undefined ? true : finalBusinessData.onlinePaymentsEnabled,
+            // New order and payment fields
+            deliveryEnabled: finalBusinessData?.deliveryEnabled === undefined ? true : finalBusinessData.deliveryEnabled,
+            pickupEnabled: finalBusinessData?.pickupEnabled === undefined ? false : finalBusinessData.pickupEnabled,
+            deliveryOnlinePaymentEnabled: finalBusinessData?.deliveryOnlinePaymentEnabled === undefined ? true : finalBusinessData.deliveryOnlinePaymentEnabled,
+            deliveryCodEnabled: finalBusinessData?.deliveryCodEnabled === undefined ? true : finalBusinessData.deliveryCodEnabled,
+            pickupOnlinePaymentEnabled: finalBusinessData?.pickupOnlinePaymentEnabled === undefined ? true : finalBusinessData.pickupOnlinePaymentEnabled,
+            pickupPodEnabled: finalBusinessData?.pickupPodEnabled === undefined ? true : finalBusinessData.pickupPodEnabled,
             isOpen: finalBusinessData?.isOpen === undefined ? true : finalBusinessData.isOpen,
             address: finalBusinessData?.address || { street: '', city: '', state: '', postalCode: '', country: 'IN' },
         };
@@ -187,3 +204,5 @@ export async function PATCH(req) {
         return NextResponse.json({ message: `Backend Error: ${error.message}` }, { status: error.status || 500 });
     }
 }
+
+    
