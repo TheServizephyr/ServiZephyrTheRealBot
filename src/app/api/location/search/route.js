@@ -18,7 +18,7 @@ export async function GET(req) {
     }
     
     // CORRECTED URL and parameters as per Autosuggest API documentation
-    const url = `https://search.mappls.com/search/places/autosuggest/json`;
+    const url = `https://atlas.mappls.com/api/places/search/json`;
 
     try {
         console.log(`[API search] Calling Mappls AutoSuggest API at: ${url}`);
