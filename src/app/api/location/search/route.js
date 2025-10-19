@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import axios from 'axios';
 
-const MAPPLS_API_KEY = process.env.MAPPLS_API_KEY;
+const MAPPLS_API_KEY = process.env.NEXT_PUBLIC_MAPPLS_API_KEY;
 
 export async function GET(req) {
     console.log("[API search] Request received.");
