@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import axios from 'axios';
 
+// This API now uses a server-side-only environment variable for security.
 const MAPPLS_API_KEY = process.env.MAPPLS_API_KEY;
 
 export async function GET(req) {
@@ -10,7 +11,7 @@ export async function GET(req) {
     const lng = searchParams.get('lng');
 
     if (!MAPPLS_API_KEY) {
-        console.error("[API geocode] Mappls API Key is not configured. Check MAPPLS_API_KEY in your environment variables via next.config.js.");
+        console.error("[API geocode] Mappls API Key is not configured for the backend. Check MAPPLS_API_KEY in your environment variables.");
         return NextResponse.json({ message: "Server configuration error: Mappls API Key is missing." }, { status: 500 });
     }
 
