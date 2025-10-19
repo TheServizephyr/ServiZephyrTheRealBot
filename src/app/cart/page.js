@@ -89,7 +89,7 @@ const CartPageInternal = () => {
             if (action === 'increment') {
                 newCart[existingItemIndex].quantity++;
             } else if (action === 'decrement') {
-                if (newCart[existingItemIndex].quantity === 1) {
+                if (newCart[existingItem-Index].quantity === 1) {
                     newCart.splice(existingItemIndex, 1);
                 } else {
                     newCart[existingItemIndex].quantity--;
@@ -253,6 +253,9 @@ const CartPageInternal = () => {
                                         key={item.cartItemId}
                                         className="flex items-center gap-4"
                                     >
+                                        <div className={`w-4 h-4 border ${item.isVeg ? 'border-green-500' : 'border-red-500'} flex items-center justify-center flex-shrink-0`}>
+                                            <div className={`w-2 h-2 ${item.isVeg ? 'bg-green-500' : 'bg-red-500'} rounded-full`}></div>
+                                        </div>
                                         <div className="flex-grow">
                                           <p className="font-semibold text-foreground">{item.name}</p>
                                           <p className="text-xs text-muted-foreground">{item.portion.name}</p>
