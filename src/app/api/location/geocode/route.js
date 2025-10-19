@@ -18,7 +18,6 @@ export async function GET(req) {
         return NextResponse.json({ message: "Latitude and longitude are required." }, { status: 400 });
     }
 
-    // CORRECTED: Use the search.mappls.com URL for reverse geocoding REST API
     const url = `https://search.mappls.com/search/address/rev-geocode?lat=${lat}&lng=${lng}`;
 
     try {
@@ -26,7 +25,6 @@ export async function GET(req) {
         const response = await fetch(url, {
             method: 'GET',
             headers: {
-                // CORRECTED: Send the key in the Authorization header for REST API calls
                 'Authorization': `bearer ${MAPPLS_API_KEY}`
             }
         });

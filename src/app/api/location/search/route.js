@@ -17,7 +17,6 @@ export async function GET(req) {
         return NextResponse.json({ message: "Search query is required." }, { status: 400 });
     }
 
-    // CORRECTED: Use the atlas.mappls.com URL for autosuggest REST API
     const url = `https://atlas.mappls.com/api/places/search/json?query=${encodeURIComponent(query)}`;
 
     try {
@@ -25,7 +24,6 @@ export async function GET(req) {
         const response = await fetch(url, {
             method: 'GET',
             headers: {
-                 // CORRECTED: Send the key in the Authorization header for REST API calls
                 'Authorization': `bearer ${MAPPLS_API_KEY}`
             }
         });
@@ -40,7 +38,6 @@ export async function GET(req) {
         }
 
         console.log("[API search] Mappls response successful.");
-        // The autosuggest response structure is typically { "suggestedLocations": [...] }
         return NextResponse.json(data.suggestedLocations || [], { status: 200 });
 
     } catch (error) {
