@@ -106,7 +106,7 @@ function OwnerDashboardContent({ children }) {
             // Handle settings (for name)
              if (settingsRes.ok) {
                 const settingsData = await settingsRes.json();
-                setRestaurantName(settingsData.name || 'My Dashboard');
+                setRestaurantName(settingsData.restaurantName || 'My Dashboard');
             }
 
         } catch (e) {
