@@ -25,6 +25,7 @@ import { motion } from 'framer-motion';
 import { useState, useEffect } from 'react';
 import { auth, db } from '@/lib/firebase';
 import { doc, getDoc } from 'firebase/firestore';
+import Image from 'next/image';
 
 
 const getMenuItems = (businessType) => [
@@ -106,7 +107,10 @@ export default function Sidebar({ isOpen, setIsOpen, isMobile, isCollapsed, rest
   return (
     <>
       <div className={`flex items-center shrink-0 border-b border-border justify-between ${isCollapsed ? 'h-[65px] justify-center' : 'h-[65px] px-6'}`}>
-        {!isCollapsed && <h1 className="text-xl font-bold text-primary">ServiZephyr</h1>}
+        <div className="flex items-center gap-2">
+            <Image src="/logo.png" alt="Logo" width={isCollapsed ? 32 : 40} height={isCollapsed ? 32 : 40} />
+            {!isCollapsed && <h1 className="text-xl font-bold text-primary">ServiZephyr</h1>}
+        </div>
         <button className="hidden md:flex p-2 rounded-full hover:bg-muted" onClick={() => setIsOpen(prev => !prev)}>
             <ChevronLeft className={`transition-transform duration-300 ${isCollapsed ? 'rotate-180' : ''}`} />
         </button>
