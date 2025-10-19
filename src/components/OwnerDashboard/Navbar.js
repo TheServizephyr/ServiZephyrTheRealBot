@@ -103,8 +103,7 @@ export default function Navbar({ isSidebarOpen, setSidebarOpen, restaurantName }
           <Menu size={22} />
         </button>
         <div className="flex items-center gap-4">
-             <Image src="/logo.png" alt="Logo" width={40} height={40} />
-             <h2 className="text-md md:text-lg font-bold text-foreground">{restaurantName}</h2>
+             <h2 className="text-lg md:text-xl font-bold text-foreground tracking-tight">{restaurantName}</h2>
         </div>
       </div>
 
