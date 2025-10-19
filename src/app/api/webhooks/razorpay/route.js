@@ -137,12 +137,18 @@ export async function POST(req) {
             const taxRate = 0.05;
             const cgst = taxableAmount > 0 ? taxableAmount * taxRate : 0;
             const sgst = taxableAmount > 0 ? taxableAmount * taxRate : 0;
-            const deliveryCharge = 30;
+            
+            const isPickup = billDetails.deliveryType === 'pickup';
+            const hasFreeDelivery = billDetails.coupon?.code?.includes('FREE');
+            const deliveryCharge = (isPickup || hasFreeDelivery) ? 0 : 30; // Assuming 30 is default, could be fetched from restaurant doc
 
             batch.set(newOrderRef, {
                 customerName: customerDetails.name, customerId: userId, customerAddress: customerDetails.address, customerPhone: customerDetails.phone,
                 restaurantId: restaurantDetails.restaurantId, restaurantName: restaurantDetails.restaurantName,
                 businessType: businessType,
+                deliveryType: billDetails.deliveryType || 'delivery',
+                pickupTime: billDetails.pickupTime || '',
+                tipAmount: billDetails.tipAmount || 0,
                 items: orderItems,
                 subtotal, coupon: billDetails.coupon, loyaltyDiscount: finalLoyaltyDiscount, discount: finalDiscount, cgst, sgst, deliveryCharge,
                 totalAmount: billDetails.grandTotal,

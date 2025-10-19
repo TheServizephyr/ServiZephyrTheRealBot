@@ -1,9 +1,10 @@
 
+
 "use client";
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { RefreshCw, ChevronUp, ChevronDown, Check, CookingPot, Bike, PartyPopper, Undo, Bell, PackageCheck, Printer, X, Loader2, IndianRupee, Wallet, History, ClockIcon, User, Phone, MapPin, Search } from 'lucide-react';
+import { RefreshCw, ChevronUp, ChevronDown, Check, CookingPot, Bike, PartyPopper, Undo, Bell, PackageCheck, Printer, X, Loader2, IndianRupee, Wallet, History, ClockIcon, User, Phone, MapPin, Search, ShoppingBag } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { auth } from '@/lib/firebase';
 import { cn } from "@/lib/utils";
@@ -23,12 +24,16 @@ const statusConfig = {
   'paid': { color: 'bg-green-500/20 text-green-400 border-green-500/30' },
   'confirmed': { color: 'bg-blue-500/20 text-blue-400 border-blue-500/30' },
   'preparing': { color: 'bg-orange-500/20 text-orange-400 border-orange-500/30' },
+  'ready_for_pickup': { color: 'bg-purple-500/20 text-purple-400 border-purple-500/30' },
   'dispatched': { color: 'bg-indigo-500/20 text-indigo-400 border-indigo-500/30' },
   'delivered': { color: 'bg-green-500/20 text-green-400 border-green-500/30' },
+  'picked_up': { color: 'bg-green-500/20 text-green-400 border-green-500/30' },
   'rejected': { color: 'bg-red-500/20 text-red-400 border-red-500/30' },
 };
 
-const statusFlow = ['pending', 'confirmed', 'preparing', 'dispatched', 'delivered'];
+const deliveryStatusFlow = ['pending', 'confirmed', 'preparing', 'dispatched', 'delivered'];
+const pickupStatusFlow = ['pending', 'confirmed', 'preparing', 'ready_for_pickup', 'picked_up'];
+
 
 const RejectOrderModal = ({ order, isOpen, onClose, onConfirm }) => {
     const [reason, setReason] = useState('');
@@ -177,7 +182,7 @@ const BillModal = ({ order, restaurant, onClose, onPrint }) => {
                          {totalDiscount > 0 && <div className="flex justify-between"><span className="font-semibold">DISCOUNT</span><span>- {totalDiscount.toFixed(2)}</span></div>}
                          <div className="flex justify-between"><span className="font-semibold">CGST (5%)</span><span>{cgst.toFixed(2)}</span></div>
                          <div className="flex justify-between"><span className="font-semibold">SGST (5%)</span><span>{sgst.toFixed(2)}</span></div>
-                         <div className="flex justify-between"><span className="font-semibold">Delivery Charge</span><span>{deliveryCharge.toFixed(2)}</span></div>
+                         {order.deliveryType !== 'pickup' && <div className="flex justify-between"><span className="font-semibold">Delivery Charge</span><span>{deliveryCharge.toFixed(2)}</span></div>}
                     </div>
                     
                     <div className="flex justify-between font-bold text-lg pt-2 mt-2 border-t-2 border-dashed border-black">
@@ -326,6 +331,7 @@ const OrderDetailModal = ({ data, isOpen, onClose }) => {
                             <p><strong>Order ID:</strong> <span className="font-mono">{order.id}</span></p>
                             <p><strong>Time:</strong> {format(orderDate, 'dd/MM/yyyy, hh:mm a')}</p>
                             <p><strong>Payment:</strong> <span className={cn("font-semibold", order.paymentDetails.method === 'cod' ? 'text-yellow-500' : 'text-green-400')}>{order.paymentDetails.method.toUpperCase()}</span></p>
+                            <p><strong>Type:</strong> <span className="font-semibold capitalize">{order.deliveryType || 'delivery'}</span></p>
                         </div>
                          <div className="space-y-2 border-t border-border pt-4">
                             <h4 className="font-semibold">Items</h4>
@@ -344,8 +350,8 @@ const OrderDetailModal = ({ data, isOpen, onClose }) => {
                         <div className="space-y-1 border-t border-border pt-4 text-sm">
                             <div className="flex justify-between"><span>Subtotal:</span> <span className="font-medium">₹{order.subtotal?.toFixed(2)}</span></div>
                             {order.discount > 0 && <div className="flex justify-between text-green-400"><span>Discount:</span> <span className="font-medium">- ₹{order.discount?.toFixed(2)}</span></div>}
-                            <div className="flex justify-between"><span>Delivery:</span> <span>₹{order.deliveryCharge?.toFixed(2)}</span></div>
-                            <div className="flex justify-between"><span>Taxes (CGST+SGST):</span> <span>₹{(order.cgst + order.sgst).toFixed(2)}</span></div>
+                            {order.deliveryType !== 'pickup' && <div className="flex justify-between"><span>Delivery:</span> <span>₹{order.deliveryCharge?.toFixed(2)}</span></div>}
+                            <div className="flex justify-between"><span>Taxes (CGST+SGST):</span> <span>₹{((order.cgst || 0) + (order.sgst || 0)).toFixed(2)}</span></div>
                             <div className="border-t border-dashed my-2"></div>
                             <div className="flex justify-between text-base font-bold"><span>Grand Total:</span> <span>₹{order.totalAmount?.toFixed(2)}</span></div>
                         </div>
@@ -393,13 +399,14 @@ const OrderDetailModal = ({ data, isOpen, onClose }) => {
 
 
 const ActionButton = ({ status, onNext, onRevert, order, onRejectClick, isUpdating, onPrintClick, onAssignClick }) => {
-    const isConfirmable = status === 'pending' || status === 'paid';
-    const actionStatus = isConfirmable ? 'pending' : status;
+    const isPickup = order.deliveryType === 'pickup';
+    const statusFlow = isPickup ? pickupStatusFlow : deliveryStatusFlow;
+    
+    // Normalize 'paid' status to 'pending' for flow logic
+    const actionStatus = (status === 'paid' || status === 'picked_up') ? statusFlow[0] : status;
     const currentIndex = statusFlow.indexOf(actionStatus);
-
-    const nextStatus = statusFlow[currentIndex + 1];
-    const prevStatus = currentIndex > 1 ? statusFlow[currentIndex - 1] : (status === 'confirmed' ? 'pending' : null);
-
+    
+    const isFinalStatus = status === 'delivered' || status === 'rejected' || status === 'picked_up';
 
     if (isUpdating) {
         return (
@@ -410,11 +417,11 @@ const ActionButton = ({ status, onNext, onRevert, order, onRejectClick, isUpdati
         );
     }
 
-    if (status === 'delivered' || status === 'rejected') {
+    if (isFinalStatus) {
         return (
             <div className="flex items-center gap-2">
-                <span className={`text-sm font-semibold ${status === 'delivered' ? 'text-green-400' : 'text-red-400'}`}>
-                    Order {status.charAt(0).toUpperCase() + status.slice(1)}
+                <span className={`text-sm font-semibold ${status === 'rejected' ? 'text-red-400' : 'text-green-400'}`}>
+                    Order {status.charAt(0).toUpperCase() + status.slice(1).replace('_', ' ')}
                 </span>
                  <Button onClick={onPrintClick} variant="outline" size="icon" className="h-9 w-9">
                     <Printer size={16} />
@@ -423,10 +430,22 @@ const ActionButton = ({ status, onNext, onRevert, order, onRejectClick, isUpdati
         );
     }
     
+    const nextStatus = statusFlow[currentIndex + 1];
+    let prevStatus = null;
+    if(currentIndex > 1) { // Can't revert from 'confirmed' to 'pending' as it might be 'paid'
+        prevStatus = statusFlow[currentIndex - 1];
+    } else if (status === 'confirmed') {
+        prevStatus = 'pending';
+    }
+
+
     const actionConfig = {
         'pending': { text: 'Confirm Order', icon: Check, action: () => onNext(nextStatus) },
         'confirmed': { text: 'Start Preparing', icon: CookingPot, action: () => onNext(nextStatus) },
-        'preparing': { text: 'Out for Delivery', icon: Bike, action: onAssignClick },
+        'preparing': isPickup
+            ? { text: 'Ready for Pickup', icon: PackageCheck, action: () => onNext(nextStatus) }
+            : { text: 'Out for Delivery', icon: Bike, action: onAssignClick },
+        'ready_for_pickup': { text: 'Mark as Picked Up', icon: PartyPopper, action: () => onNext(nextStatus) },
         'dispatched': { text: 'Mark Delivered', icon: PartyPopper, action: () => onNext(nextStatus) },
     };
 
@@ -440,6 +459,7 @@ const ActionButton = ({ status, onNext, onRevert, order, onRejectClick, isUpdati
         );
     }
     const ActionIcon = action.icon;
+    const isConfirmable = status === 'pending' || status === 'paid';
 
     return (
         <div className="flex flex-col sm:flex-row items-stretch gap-2 w-full">
@@ -539,7 +559,6 @@ export default function LiveOrdersPage() {
         
         if (ridersRes.ok) {
             const ridersData = await ridersRes.json();
-            // Now we get ALL riders to show in the modal
             setRiders(ridersData.boys || []);
         }
 
@@ -605,7 +624,6 @@ export default function LiveOrdersPage() {
     try {
         if (activateRider) {
              console.log(`Activating rider ${riderId}...`);
-             // We send a separate, non-blocking call to update the rider status
              handleAPICall('PATCH', { boy: { id: riderId, status: 'Available' } }, '/api/owner/delivery');
         }
         
@@ -615,7 +633,6 @@ export default function LiveOrdersPage() {
     } catch (error) {
         alert(`Error assigning rider: ${error.message}`);
         setAssignModalData({ isOpen: false, order: null });
-        // Re-throw to be caught by the modal's finally block
         throw error;
     } finally {
         setUpdatingOrderId(null);
@@ -676,12 +693,17 @@ export default function LiveOrdersPage() {
   const filteredAndSortedOrders = useMemo(() => {
     let sortableItems = [...orders];
 
-    if (activeFilter !== 'All') {
-        if (activeFilter === 'New') {
-            sortableItems = sortableItems.filter(order => order.status === 'pending' || order.status === 'paid');
-        } else {
-            sortableItems = sortableItems.filter(order => order.status === activeFilter.toLowerCase());
-        }
+    const filterMap = {
+        'All': () => true,
+        'New': order => order.status === 'pending' || order.status === 'paid',
+        'Ready for Pickup': order => order.status === 'ready_for_pickup',
+        'Picked Up': order => order.status === 'picked_up'
+    };
+
+    if (filterMap[activeFilter]) {
+        sortableItems = sortableItems.filter(filterMap[activeFilter]);
+    } else if (activeFilter !== 'All') {
+        sortableItems = sortableItems.filter(order => order.status === activeFilter.toLowerCase());
     }
     
     if (searchQuery) {
@@ -777,13 +799,15 @@ export default function LiveOrdersPage() {
         </div>
 
         <Tabs defaultValue="All" value={activeFilter} onValueChange={setActiveFilter} className="w-full mb-6">
-            <TabsList className="flex md:grid md:grid-cols-7 w-full overflow-x-auto bg-muted p-1 h-auto justify-start">
+            <TabsList className="flex md:grid md:grid-cols-9 w-full overflow-x-auto bg-muted p-1 h-auto justify-start">
                 <TabsTrigger value="All">All</TabsTrigger>
                 <TabsTrigger value="New">New</TabsTrigger>
                 <TabsTrigger value="Confirmed">Confirmed</TabsTrigger>
                 <TabsTrigger value="Preparing">Preparing</TabsTrigger>
+                <TabsTrigger value="Ready for Pickup">Ready for Pickup</TabsTrigger>
                 <TabsTrigger value="Dispatched">Dispatched</TabsTrigger>
                 <TabsTrigger value="Delivered">Delivered</TabsTrigger>
+                <TabsTrigger value="Picked Up">Picked Up</TabsTrigger>
                 <TabsTrigger value="Rejected">Rejected</TabsTrigger>
             </TabsList>
         </Tabs>
@@ -830,15 +854,16 @@ export default function LiveOrdersPage() {
                                                 <User size={14} className="text-primary hover:text-primary/80 cursor-pointer"/>
                                             </button>
                                         </div>
-                                         {order.paymentDetails?.method === 'cod' ? (
-                                            <div className="mt-1 flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full bg-yellow-500/20 text-yellow-400 border border-yellow-500/30 w-fit">
-                                                <IndianRupee size={12}/> COD
-                                            </div>
-                                        ) : (
-                                            <div className="mt-1 flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full bg-green-500/20 text-green-400 border border-green-500/30 w-fit">
-                                               <Wallet size={12}/> PAID
-                                            </div>
-                                        )}
+                                        <div className="mt-1 flex items-center gap-2">
+                                            {order.deliveryType === 'pickup' 
+                                                ? <div className="flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full bg-purple-500/20 text-purple-400 border border-purple-500/30 w-fit"><ShoppingBag size={12}/> Pickup</div>
+                                                : <div className="flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full bg-blue-500/20 text-blue-400 border border-blue-500/30 w-fit"><Bike size={12}/> Delivery</div>
+                                            }
+                                            {order.paymentDetails?.method === 'cod' 
+                                                ? <div className="flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full bg-yellow-500/20 text-yellow-400 border border-yellow-500/30 w-fit"><IndianRupee size={12}/> COD</div>
+                                                : <div className="flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full bg-green-500/20 text-green-400 border border-green-500/30 w-fit"><Wallet size={12}/> PAID</div>
+                                            }
+                                        </div>
                                     </td>
                                     <td className="p-4 text-sm text-muted-foreground hidden md:table-cell">
                                         <ul className="space-y-1">
@@ -854,7 +879,7 @@ export default function LiveOrdersPage() {
                                         <Popover>
                                             <PopoverTrigger asChild>
                                                 <button className={cn('flex items-center gap-2 text-xs font-semibold rounded-full border px-3 py-1 w-fit capitalize transition-transform hover:scale-105', statusConfig[order.status]?.color)}>
-                                                    {order.status}
+                                                    {order.status.replace('_', ' ')}
                                                 </button>
                                             </PopoverTrigger>
                                             <PopoverContent className="w-80">
@@ -918,6 +943,7 @@ export default function LiveOrdersPage() {
     
 
     
+
 
 
 

@@ -189,8 +189,12 @@ const CheckoutPageInternal = () => {
     }, [isModalOpen, cartData?.phone]);
     
     const subtotal = useMemo(() => cart.reduce((sum, item) => sum + item.totalPrice * item.quantity, 0), [cart]);
+    
+    const { totalDiscount, finalDeliveryCharge, cgst, sgst, grandTotal } = useMemo(() => {
+        if (!cartData) return { totalDiscount: 0, finalDeliveryCharge: 0, cgst: 0, sgst: 0, grandTotal: subtotal };
 
-    const { totalDiscount, finalDeliveryCharge, grandTotal } = useMemo(() => {
+        const isPickup = cartData.deliveryType === 'pickup';
+
         let couponDiscountValue = 0;
         appliedCoupons.forEach(coupon => {
             if (subtotal >= coupon.minOrder) {
@@ -203,14 +207,22 @@ const CheckoutPageInternal = () => {
         });
         
         const hasFreeDelivery = appliedCoupons.some(c => c.type === 'free_delivery' && subtotal >= c.minOrder);
-        const deliveryCharge = hasFreeDelivery ? 0 : (cartData?.deliveryCharge || 0);
+        const deliveryCharge = (isPickup || hasFreeDelivery) ? 0 : (cartData.deliveryCharge || 0);
+
+        const tip = isPickup ? 0 : (cartData.tipAmount || 0);
 
         const taxableAmount = subtotal - couponDiscountValue;
         const tax = taxableAmount > 0 ? taxableAmount * 0.05 : 0;
-        const finalGrandTotal = taxableAmount + deliveryCharge + (tax * 2);
+        const finalGrandTotal = taxableAmount + deliveryCharge + (tax * 2) + tip;
         
-        return { totalDiscount: couponDiscountValue, finalDeliveryCharge: deliveryCharge, grandTotal: finalGrandTotal };
-    }, [cart, appliedCoupons, subtotal, cartData?.deliveryCharge]);
+        return { 
+            totalDiscount: couponDiscountValue, 
+            finalDeliveryCharge: deliveryCharge, 
+            cgst: tax,
+            sgst: tax,
+            grandTotal: finalGrandTotal
+        };
+    }, [cartData, cart, appliedCoupons, subtotal]);
 
 
     const handlePaymentMethodSelect = (method) => {
@@ -219,7 +231,7 @@ const CheckoutPageInternal = () => {
     };
 
     const handleConfirmOrder = async () => {
-        const finalAddress = isAddingNew ? address : selectedAddress;
+        const finalAddress = cartData?.deliveryType === 'pickup' ? 'Self Pickup' : (isAddingNew ? address : selectedAddress);
         if (!finalAddress || !name.trim()) {
             setError('Please enter your name and address.');
             return;
@@ -241,13 +253,20 @@ const CheckoutPageInternal = () => {
             items: finalItems,
             notes: cartData.notes || '',
             coupon: appliedCoupons.length > 0 ? {
-                code: appliedCoupons[0].code, // Simplified, assumes one coupon
+                code: appliedCoupons.map(c => c.code).join(', '),
                 discount: totalDiscount,
             } : null,
             loyaltyDiscount: 0,
             grandTotal,
             paymentMethod: selectedPaymentMethod,
             businessType: cartData.businessType || 'restaurant',
+            deliveryType: cartData.deliveryType || 'delivery',
+            pickupTime: cartData.pickupTime || '',
+            tipAmount: cartData.tipAmount || 0,
+            subtotal,
+            cgst,
+            sgst,
+            deliveryCharge: finalDeliveryCharge,
         };
 
         try {

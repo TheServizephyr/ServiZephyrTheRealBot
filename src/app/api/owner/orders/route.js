@@ -137,7 +137,7 @@ export async function PATCH(req) {
             return NextResponse.json({ message: 'Order ID and new status are required.' }, { status: 400 });
         }
         
-        const validStatuses = ["pending", "paid", "confirmed", "preparing", "dispatched", "delivered", "rejected"];
+        const validStatuses = ["pending", "paid", "confirmed", "preparing", "dispatched", "delivered", "rejected", "ready_for_pickup", "picked_up"];
         if(!validStatuses.includes(newStatus)) {
             return NextResponse.json({ message: 'Invalid status provided.' }, { status: 400 });
         }
@@ -183,7 +183,7 @@ export async function PATCH(req) {
         await orderRef.update(updateData);
         console.log(`[API][PATCH /orders] Order ${orderId} successfully updated in Firestore.`);
         
-        const statusesThatNotifyCustomer = ['confirmed', 'preparing', 'dispatched', 'delivered', 'rejected'];
+        const statusesThatNotifyCustomer = ['confirmed', 'preparing', 'dispatched', 'delivered', 'rejected', 'ready_for_pickup', 'picked_up'];
         if (statusesThatNotifyCustomer.includes(newStatus)) {
             const orderData = orderDoc.data();
             const businessData = businessSnap.data();
@@ -217,5 +217,6 @@ export async function PATCH(req) {
         return NextResponse.json({ message: `Backend Error: ${error.message}` }, { status: error.status || 500 });
     }
 }
+
 
 

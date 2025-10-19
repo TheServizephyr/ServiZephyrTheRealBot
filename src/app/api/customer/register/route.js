@@ -11,7 +11,7 @@ import { sendNewOrderToOwner } from '@/lib/notifications';
 export async function POST(req) {
     try {
         const firestore = getFirestore();
-        const { name, address, phone, restaurantId, items, notes, coupon, loyaltyDiscount, grandTotal, paymentMethod, businessType = 'restaurant' } = await req.json();
+        const { name, address, phone, restaurantId, items, notes, coupon, loyaltyDiscount, grandTotal, paymentMethod, businessType = 'restaurant', deliveryType = 'delivery', pickupTime = '', tipAmount = 0 } = await req.json();
 
         // --- VALIDATION ---
         if (!name || !address || !phone || !restaurantId || !items || !grandTotal || !paymentMethod) {
@@ -47,7 +47,7 @@ export async function POST(req) {
                 customerDetails: { name, address, phone: normalizedPhone },
                 restaurantDetails: { restaurantId, restaurantName: businessData.name },
                 orderItems: items.map(item => ({ name: item.name, qty: item.quantity, price: item.price })),
-                billDetails: { coupon, loyaltyDiscount, grandTotal },
+                billDetails: { coupon, loyaltyDiscount, grandTotal, deliveryType, tipAmount, pickupTime },
                 notes: notes || null,
                 businessType: businessType
             };
@@ -111,16 +111,10 @@ export async function POST(req) {
             userId = existingUserQuery.docs[0].id;
         }
         
-        const subtotal = items.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+        const { subtotal, cgst, sgst } = req.body;
         const couponDiscountAmount = coupon?.discount || 0;
         const finalLoyaltyDiscount = loyaltyDiscount || 0;
         const finalDiscount = couponDiscountAmount + finalLoyaltyDiscount;
-        const taxableAmount = subtotal - finalDiscount;
-        const taxRate = 0.05;
-        const cgst = taxableAmount > 0 ? taxableAmount * taxRate : 0;
-        const sgst = taxableAmount > 0 ? taxableAmount * taxRate : 0;
-        
-        const deliveryCharge = (coupon?.code?.includes('FREE')) ? 0 : (businessData.deliveryCharge || 30);
         
         const pointsEarned = Math.floor(subtotal / 100) * 10;
         const pointsSpent = finalLoyaltyDiscount > 0 ? finalLoyaltyDiscount / 0.5 : 0;
@@ -161,8 +155,11 @@ export async function POST(req) {
             customerName: name, customerId: userId, customerAddress: address, customerPhone: normalizedPhone,
             restaurantId: restaurantId, restaurantName: businessData.name,
             businessType,
-            items: items.map(item => ({ name: item.name, qty: item.quantity, price: item.price })),
-            subtotal, coupon, loyaltyDiscount, discount: finalDiscount, cgst, sgst, deliveryCharge,
+            deliveryType,
+            pickupTime,
+            tipAmount,
+            items: items,
+            subtotal, coupon, loyaltyDiscount, discount: finalDiscount, cgst, sgst, deliveryCharge: req.body.deliveryCharge,
             totalAmount: grandTotal,
             status: 'pending',
             orderDate: adminFirestore.FieldValue.serverTimestamp(),
