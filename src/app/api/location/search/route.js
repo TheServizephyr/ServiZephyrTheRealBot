@@ -17,33 +17,33 @@ export async function GET(req) {
         return NextResponse.json({ message: "Search query is required." }, { status: 400 });
     }
 
-    // URL without access_token query parameter
-    const url = `https://atlas.mappls.com/api/places/search/json?query=${encodeURIComponent(query)}`; // Use atlas.mappls.com and correct endpoint
+    // URL without access_token query parameter, using the correct endpoint for REST API
+    const url = `https://atlas.mappls.com/api/places/search/json?query=${encodeURIComponent(query)}`;
 
     try {
-        console.log(`[API search] Calling Mappls AutoSuggest API...`);
+        console.log(`[API search] Calling Mappls AutoSuggest API: ${url}`);
         const response = await fetch(url, {
             method: 'GET',
             headers: {
-                 // Key sent in Authorization header
+                 // Key sent in Authorization header as per REST API docs
                 'Authorization': `bearer ${MAPPLS_API_KEY}`
             }
         });
+        
+        console.log(`[API search] Mappls response status: ${response.status}`);
         const data = await response.json();
 
         if (!response.ok) {
-             // Updated error handling for Mappls REST API structure
-            const errorMessage = data?.error || data?.errorMessage || 'An unknown error occurred with Mappls API.';
-            console.error(`[API search] Mappls API error: ${response.status}`, errorMessage);
-            throw new Error(errorMessage);
+            const errorMessage = data?.error || data?.errorMessage || `Mappls returned status ${response.status}`;
+            console.error(`[API search] Mappls API error:`, errorMessage);
+            return NextResponse.json({ message: errorMessage }, { status: response.status });
         }
 
         console.log("[API search] Mappls response successful.");
-        // The autosuggest API seems to return 'suggestedLocations'
-        return NextResponse.json({ suggestedLocations: data.suggestedLocations || data.copResults || [] }, { status: 200 });
+        return NextResponse.json(data.suggestedLocations || [], { status: 200 });
 
     } catch (error) {
-        console.error("[API search] Error calling Mappls API:", error.message);
+        console.error(`[API search] CRITICAL Error calling Mappls API: ${error.message}`);
         return NextResponse.json({ message: "Failed to fetch search results from Mappls.", error: error.message }, { status: 500 });
     }
 }
