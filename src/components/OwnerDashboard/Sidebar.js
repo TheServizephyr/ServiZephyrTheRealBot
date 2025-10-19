@@ -104,28 +104,13 @@ export default function Sidebar({ isOpen, setIsOpen, isMobile, isCollapsed, rest
   const menuItems = getMenuItems(businessType);
 
   return (
-    <aside
-      className={`${styles.sidebar} ${isOpen ? styles.open : ''} ${isCollapsed ? styles.collapsed : ''}`}
-    >
-
-      {!isMobile && (
-        <button
-            className={styles.collapseBtn}
-            onClick={() => setIsOpen(prev => !prev)}
-        >
-             <motion.div
-                key={isCollapsed ? 'menu' : 'close'}
-                initial={{ opacity: 0, scale: 0.5, rotate: -90 }}
-                animate={{ opacity: 1, scale: 1, rotate: 0 }}
-                transition={{ duration: 0.3, ease: 'easeOut' }}
-             >
-                {isCollapsed ? <ChevronRight size={20} /> : <ChevronLeft size={20} />}
-            </motion.div>
+    <>
+      <div className={`flex items-center shrink-0 border-b border-border justify-between ${isCollapsed ? 'h-[65px] justify-center' : 'h-[65px] px-6'}`}>
+        {!isCollapsed && <h1 className="text-xl font-bold text-primary">ServiZephyr</h1>}
+        <button className="hidden md:flex p-2 rounded-full hover:bg-muted" onClick={() => setIsOpen(prev => !prev)}>
+            <ChevronLeft className={`transition-transform duration-300 ${isCollapsed ? 'rotate-180' : ''}`} />
         </button>
-      )}
-      
-       <div className={styles.sidebarHeader}>
-       </div>
+      </div>
 
       <nav className={styles.sidebarNav}>
         <div className={styles.menuGroup}>
@@ -153,7 +138,6 @@ export default function Sidebar({ isOpen, setIsOpen, isMobile, isCollapsed, rest
             ))}
         </div>
       </nav>
-      
-    </aside>
+    </>
   );
 }

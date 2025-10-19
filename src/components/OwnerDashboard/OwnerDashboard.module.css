@@ -44,7 +44,6 @@
 /*              SIDEBAR                      */
 /* ========================================= */
 .sidebar {
-  background-color: var(--card); 
   color: var(--card-foreground);
   display: flex;
   flex-direction: column;

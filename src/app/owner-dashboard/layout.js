@@ -1,5 +1,3 @@
-
-
 'use client';
 
 import { useState, useEffect } from "react";
@@ -210,35 +208,51 @@ function OwnerDashboardContent({ children }) {
   }
 
   const blockedContent = renderStatusScreen();
+  const isCollapsed = !isSidebarOpen && !isMobile;
 
   return (
-    <div className="flex h-screen flex-col bg-background">
-      <Navbar
-        isSidebarOpen={isSidebarOpen}
-        setSidebarOpen={setSidebarOpen}
-        restaurantName={restaurantName}
-      />
-      <div className={styles.contentWrapper}>
-        <AnimatePresence>
-          {isSidebarOpen && isMobile && (
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              onClick={() => setSidebarOpen(false)}
-              className={styles.mobileOverlay}
+    <div className="flex h-screen bg-background text-foreground">
+      {/* Sidebar */}
+      <AnimatePresence>
+        {(isSidebarOpen || !isMobile) && (
+          <motion.aside
+            key="sidebar"
+            initial={isMobile ? { x: '-100%' } : { width: '260px' }}
+            animate={isMobile ? (isSidebarOpen ? { x: 0 } : { x: '-100%' }) : { width: isCollapsed ? '80px' : '260px' }}
+            exit={isMobile ? { x: '-100%' } : { width: '80px' }}
+            transition={{ type: 'spring', stiffness: 300, damping: 30 }}
+            className={`fixed md:relative h-full z-50 bg-card border-r border-border flex flex-col ${
+              isMobile && !isSidebarOpen ? 'hidden' : ''
+            }`}
+          >
+             <Sidebar
+              isOpen={isSidebarOpen}
+              setIsOpen={setSidebarOpen}
+              isMobile={isMobile}
+              isCollapsed={isCollapsed}
+              restrictedFeatures={restaurantStatus.restrictedFeatures}
+              status={restaurantStatus.status}
             />
-          )}
-        </AnimatePresence>
-        <Sidebar
-          isOpen={isSidebarOpen}
-          setIsOpen={setSidebarOpen}
-          isMobile={isMobile}
-          isCollapsed={!isSidebarOpen && !isMobile}
-          restrictedFeatures={restaurantStatus.restrictedFeatures}
-          status={restaurantStatus.status}
+          </motion.aside>
+        )}
+      </AnimatePresence>
+       {isMobile && isSidebarOpen && (
+          <div
+            className="fixed inset-0 bg-black/60 z-40"
+            onClick={() => setSidebarOpen(false)}
+          />
+        )}
+
+
+      <div className="flex-1 flex flex-col overflow-hidden">
+        {/* Top Bar */}
+        <Navbar
+            isSidebarOpen={isSidebarOpen}
+            setSidebarOpen={setSidebarOpen}
+            restaurantName={restaurantName}
         />
-        <main className={styles.mainContent}>
+        {/* Main Content */}
+        <main className="flex-1 overflow-y-auto p-4 md:p-6">
           {blockedContent || children}
         </main>
       </div>
