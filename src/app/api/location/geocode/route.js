@@ -19,18 +19,17 @@ export async function GET(req) {
         return NextResponse.json({ message: "Latitude and longitude are required." }, { status: 400 });
     }
 
-    const url = `https://apis.mappls.com/apis/O/rev_geocode?lat=${lat}&lng=${lng}`;
+    // CORRECTED URL AND AUTHENTICATION METHOD based on Reverse Geocoding Documentation
+    const url = `https://search.mappls.com/search/address/rev-geocode?lat=${lat}&lng=${lng}&access_token=${MAPPLS_API_KEY}`;
     console.log("[API geocode] Calling Mappls Reverse Geocode API:", url);
 
     try {
         const response = await fetch(url, {
             method: 'GET',
-            headers: {
-                'Authorization': `bearer ${MAPPLS_API_KEY}`
-            }
         });
         
         console.log(`[API geocode] Mappls response status: ${response.status}`);
+        
         const responseText = await response.text();
         
         let data;

@@ -18,15 +18,13 @@ export async function GET(req) {
         return NextResponse.json({ message: "Search query is required." }, { status: 400 });
     }
 
-    const url = `https://atlas.mappls.com/api/places/search/json?query=${encodeURIComponent(query)}`;
+    // CORRECTED URL AND AUTHENTICATION METHOD based on Autosuggest Documentation
+    const url = `https://search.mappls.com/search/places/autosuggest/json?query=${encodeURIComponent(query)}&access_token=${MAPPLS_API_KEY}`;
     console.log("[API search] Calling Mappls AutoSuggest API:", url);
 
     try {
         const response = await fetch(url, {
             method: 'GET',
-            headers: {
-                'Authorization': `bearer ${MAPPLS_API_KEY}`
-            }
         });
         
         console.log(`[API search] Mappls response status: ${response.status}`);
