@@ -415,8 +415,9 @@ const CartPageInternal = () => {
                                         variant="outline"
                                         size="sm"
                                         onClick={handleCutleryClick}
-                                        className={cn(notes.includes("Don't send cutlery.") && "bg-primary/20 text-primary border-primary")}
+                                        className={cn("flex items-center", notes.includes("Don't send cutlery.") && "bg-primary/20 text-primary border-primary")}
                                     >
+                                        <Utensils className="mr-2 h-4 w-4" />
                                         Don't send cutlery
                                     </Button>
                                 </div>
