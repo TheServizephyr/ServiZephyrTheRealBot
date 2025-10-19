@@ -1,5 +1,4 @@
 
-
 'use client';
 
 import React, { useState, useEffect, useMemo, Suspense } from 'react';
@@ -406,13 +405,17 @@ const CartPageInternal = () => {
                             </div>
                         </div>
                         
-                        <div className="p-4 mt-4 bg-card rounded-lg border border-border">
+                         <div className="p-4 mt-4 bg-card rounded-lg border border-border">
+                            <h3 className="font-bold text-lg mb-2">Coupons & Offers</h3>
                              <Popover open={isCouponPopoverOpen} onOpenChange={setCouponPopoverOpen}>
                                 <PopoverTrigger asChild>
-                                  <Button variant="outline" className="w-full justify-start text-left font-normal">
-                                      <Ticket className="mr-2 h-4 w-4" />
-                                      {appliedCoupons.length > 0 ? `${appliedCoupons.length} Coupon(s) Applied` : 'View Available Coupons'}
-                                  </Button>
+                                    <Button variant="outline" className="w-full justify-start text-left font-normal">
+                                        {appliedCoupons.length > 0 ? (
+                                            <span className="flex items-center text-primary font-semibold"><Check className="mr-2 h-4 w-4"/> {appliedCoupons.length} Coupon(s) Applied</span>
+                                        ) : (
+                                            <span className="flex items-center"><Ticket className="mr-2 h-4 w-4" /> View Available Coupons</span>
+                                        )}
+                                    </Button>
                                 </PopoverTrigger>
                                 <PopoverContent className="w-80 p-0" align="start">
                                      <div className="p-4 border-b border-border">
