@@ -11,11 +11,11 @@ import { sendNewOrderToOwner } from '@/lib/notifications';
 export async function POST(req) {
     try {
         const firestore = getFirestore();
-        const { name, address, phone, restaurantId, items, notes, coupon, loyaltyDiscount, grandTotal, paymentMethod, businessType = 'restaurant', deliveryType = 'delivery', pickupTime = '', tipAmount = 0 } = await req.json();
+        const { name, address, phone, restaurantId, items, notes, coupon, loyaltyDiscount, grandTotal, paymentMethod, businessType = 'restaurant', deliveryType = 'delivery', pickupTime = '', tipAmount = 0, subtotal, cgst, sgst, deliveryCharge } = await req.json();
 
         // --- VALIDATION ---
-        if (!name || !address || !phone || !restaurantId || !items || !grandTotal || !paymentMethod) {
-            return NextResponse.json({ message: 'Missing required fields for order creation.' }, { status: 400 });
+        if (!name || !address || !phone || !restaurantId || !items || !grandTotal || !paymentMethod || subtotal === undefined || grandTotal === undefined) {
+            return NextResponse.json({ message: 'Missing required fields for order creation. Bill details are mandatory.' }, { status: 400 });
         }
         const normalizedPhone = phone.length > 10 ? phone.slice(-10) : phone;
         if (!/^\d{10}$/.test(normalizedPhone)) {
@@ -111,7 +111,6 @@ export async function POST(req) {
             userId = existingUserQuery.docs[0].id;
         }
         
-        const { subtotal, cgst, sgst } = req.body;
         const couponDiscountAmount = coupon?.discount || 0;
         const finalLoyaltyDiscount = loyaltyDiscount || 0;
         const finalDiscount = couponDiscountAmount + finalLoyaltyDiscount;
@@ -159,7 +158,7 @@ export async function POST(req) {
             pickupTime,
             tipAmount,
             items: items,
-            subtotal, coupon, loyaltyDiscount, discount: finalDiscount, cgst, sgst, deliveryCharge: req.body.deliveryCharge,
+            subtotal, coupon, loyaltyDiscount, discount: finalDiscount, cgst, sgst, deliveryCharge,
             totalAmount: grandTotal,
             status: 'pending',
             orderDate: adminFirestore.FieldValue.serverTimestamp(),
