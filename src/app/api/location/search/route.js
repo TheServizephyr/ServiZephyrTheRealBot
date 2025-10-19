@@ -1,7 +1,6 @@
 import { NextResponse } from 'next/server';
 import axios from 'axios';
 
-// This API now uses a server-side-only environment variable for security.
 const MAPPLS_API_KEY = process.env.MAPPLS_API_KEY;
 
 export async function GET(req) {
@@ -18,14 +17,23 @@ export async function GET(req) {
         return NextResponse.json({ message: "Search query is required." }, { status: 400 });
     }
     
-    const url = `https://apis.mappls.com/advancedmaps/v1/${MAPPLS_API_KEY}/autosuggest?q=${encodeURIComponent(query)}`;
+    // CORRECTED URL and parameters as per Autosuggest API documentation
+    const url = `https://search.mappls.com/search/places/autosuggest/json`;
 
     try {
-        console.log(`[API search] Calling Mappls AutoSuggest API.`);
-        const response = await axios.get(url);
+        console.log(`[API search] Calling Mappls AutoSuggest API at: ${url}`);
+        const response = await axios.get(url, {
+            params: {
+                query: query,
+                access_token: MAPPLS_API_KEY
+            }
+        });
         
         console.log("[API search] Mappls response successful.");
+        // The API response for autosuggest has a different structure.
+        // It returns an object with a `suggestedLocations` array.
         return NextResponse.json(response.data, { status: 200 });
+
     } catch (error) {
         const errorData = error.response ? error.response.data : { message: error.message };
         console.error("[API search] Error calling Mappls API:", errorData);
