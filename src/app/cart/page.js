@@ -32,6 +32,8 @@ const ClearCartDialog = ({ isOpen, onClose, onConfirm }) => {
 };
 
 const PickupTimeModal = ({ isOpen, onClose, onConfirm, pickupTime, setPickupTime }) => {
+    const timeOptions = ["In 15 mins", "In 30 mins", "In 45 mins", "In 1 hour", "Tomorrow"];
+
     return (
         <Dialog open={isOpen} onOpenChange={onClose}>
             <DialogContent className="bg-background border-border text-foreground">
@@ -39,14 +41,27 @@ const PickupTimeModal = ({ isOpen, onClose, onConfirm, pickupTime, setPickupTime
                     <DialogTitle>Confirm Pickup Time</DialogTitle>
                     <DialogDescription>Let the restaurant know when you'll be arriving so they can prepare your order accordingly.</DialogDescription>
                 </DialogHeader>
-                <div className="py-4">
-                    <Label htmlFor="pickup-time">By the time you will arrive (e.g., "in 15 mins", "by 8 PM")</Label>
+                <div className="py-4 grid grid-cols-2 sm:grid-cols-3 gap-3">
+                    {timeOptions.map(time => (
+                        <button
+                            key={time}
+                            onClick={() => setPickupTime(time)}
+                            className={cn(
+                                "p-4 rounded-lg border-2 font-semibold transition-all",
+                                pickupTime === time ? "border-primary bg-primary/10 text-primary" : "border-border hover:bg-muted"
+                            )}
+                        >
+                            {time}
+                        </button>
+                    ))}
                     <Input 
-                        id="pickup-time" 
-                        value={pickupTime}
+                        placeholder="Or type custom time..."
+                        value={timeOptions.includes(pickupTime) ? '' : pickupTime}
                         onChange={(e) => setPickupTime(e.target.value)}
-                        className="mt-2"
-                        placeholder="e.g., in 20 minutes"
+                        className={cn(
+                            "sm:col-span-3 p-4 rounded-lg border-2 font-semibold transition-all h-auto text-base",
+                            !timeOptions.includes(pickupTime) && pickupTime ? "border-primary bg-primary/10 text-primary" : "border-border"
+                        )}
                     />
                 </div>
                 <DialogFooter>
@@ -337,35 +352,6 @@ const CartPageInternal = () => {
                             </div>
                         </div>
 
-                        <AnimatePresence>
-                        {deliveryType === 'delivery' && (
-                            <motion.div 
-                                className="p-4 mt-4 bg-card rounded-lg border border-border"
-                                initial={{ opacity: 0, y: -10 }}
-                                animate={{ opacity: 1, y: 0 }}
-                                exit={{ opacity: 0, y: -10 }}
-                            >
-                                <div className="flex items-center gap-2">
-                                     <Heart size={16} className="text-primary"/>
-                                     <h4 className="font-bold text-lg">Tip for your delivery hero</h4>
-                                </div>
-                                <p className="text-sm text-muted-foreground mt-1">A small tip makes a big difference. 100% of the tip goes directly to the rider.</p>
-                                <div className="flex gap-2 mt-3">
-                                    {[10, 20, 50].map(tip => (
-                                        <Button key={tip} variant={tipAmount === tip ? "default" : "outline"} onClick={() => handleTipChange(tip)} className="flex-1">₹{tip}</Button>
-                                    ))}
-                                    <Input 
-                                        type="number" 
-                                        placeholder="Custom" 
-                                        value={customTip}
-                                        onChange={handleCustomTipChange}
-                                        className={cn("flex-1", tipAmount !== 0 && ![10,20,50].includes(tipAmount) && "border-primary ring-2 ring-primary")} 
-                                    />
-                                </div>
-                            </motion.div>
-                        )}
-                        </AnimatePresence>
-
                         <div className="bg-card p-4 rounded-lg border border-border mt-4">
                             <div className="flex justify-between items-center mb-3">
                                 <h3 className="font-bold text-lg">Your Items</h3>
@@ -469,6 +455,36 @@ const CartPageInternal = () => {
                                 </PopoverContent>
                             </Popover>
                         </div>
+                        
+                        <AnimatePresence>
+                        {deliveryType === 'delivery' && (
+                            <motion.div 
+                                className="p-4 mt-4 bg-card rounded-lg border border-border"
+                                initial={{ opacity: 0, y: -10 }}
+                                animate={{ opacity: 1, y: 0 }}
+                                exit={{ opacity: 0, y: -10 }}
+                            >
+                                <div className="flex items-center gap-2">
+                                     <Heart size={16} className="text-primary"/>
+                                     <h4 className="font-bold text-lg">Tip for your delivery hero</h4>
+                                </div>
+                                <p className="text-sm text-muted-foreground mt-1">A small tip makes a big difference. 100% of the tip goes directly to the rider.</p>
+                                <div className="flex gap-2 mt-3">
+                                    {[10, 20, 50].map(tip => (
+                                        <Button key={tip} variant={tipAmount === tip ? "default" : "outline"} onClick={() => handleTipChange(tip)} className="flex-1">₹{tip}</Button>
+                                    ))}
+                                    <Input 
+                                        type="number" 
+                                        placeholder="Custom" 
+                                        value={customTip}
+                                        onChange={handleCustomTipChange}
+                                        className={cn("flex-1", tipAmount !== 0 && ![10,20,50].includes(tipAmount) && "border-primary ring-2 ring-primary")} 
+                                    />
+                                </div>
+                            </motion.div>
+                        )}
+                        </AnimatePresence>
+
 
                         <div className="mt-6 p-4 border-t-2 border-primary bg-card rounded-lg shadow-lg">
                              <div className="flex justify-between items-center">
@@ -552,5 +568,6 @@ export default CartPage;
 
 
     
+
 
 
