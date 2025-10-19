@@ -1,12 +1,7 @@
 import { NextResponse } from 'next/server';
 import axios from 'axios';
 
-// Load environment variables from .env.local for local development
-if (process.env.NODE_ENV !== 'production') {
-  require('dotenv').config({ path: './.env.local' });
-}
-
-const MAPPLS_API_KEY = process.env.NEXT_PUBLIC_MAPPLS_API_KEY;
+const MAPPLS_API_KEY = process.env.MAPPLS_API_KEY;
 
 export async function GET(req) {
     console.log("[API geocode] Request received.");
@@ -15,7 +10,7 @@ export async function GET(req) {
     const lng = searchParams.get('lng');
 
     if (!MAPPLS_API_KEY) {
-        console.error("[API geocode] Mappls API Key is not configured. Check NEXT_PUBLIC_MAPPLS_API_KEY in your environment variables.");
+        console.error("[API geocode] Mappls API Key is not configured. Check MAPPLS_API_KEY in your environment variables via next.config.js.");
         return NextResponse.json({ message: "Server configuration error: Mappls API Key is missing." }, { status: 500 });
     }
 
