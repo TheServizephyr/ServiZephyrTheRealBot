@@ -304,8 +304,8 @@ const CartPageInternal = () => {
     const specialCoupons = allCoupons.filter(c => c.customerId);
     const normalCoupons = allCoupons.filter(c => !c.customerId);
 
-    const isDeliveryEnabled = cartData?.deliveryEnabled ?? true;
-    const isPickupEnabled = cartData?.pickupEnabled ?? false;
+    const isDeliveryEnabled = cartData?.deliveryEnabled === true;
+    const isPickupEnabled = cartData?.pickupEnabled === true;
 
     if (!cartData || !restaurantId) {
         return (
@@ -363,7 +363,7 @@ const CartPageInternal = () => {
                         <div className="p-4 bg-card rounded-lg border border-border">
                             <div className="flex bg-muted p-1 rounded-lg">
                                 <button 
-                                    onClick={() => handleDeliveryTypeChange('delivery')} 
+                                    onClick={() => isDeliveryEnabled && handleDeliveryTypeChange('delivery')} 
                                     className={cn(
                                         "flex-1 p-2 rounded-md flex items-center justify-center gap-2 font-semibold transition-all",
                                         deliveryType === 'delivery' && 'bg-background shadow-sm',
@@ -375,7 +375,7 @@ const CartPageInternal = () => {
                                     <Bike size={16} /> Delivery
                                 </button>
                                 <button 
-                                    onClick={() => handleDeliveryTypeChange('pickup')} 
+                                    onClick={() => isPickupEnabled && handleDeliveryTypeChange('pickup')} 
                                     className={cn(
                                         "flex-1 p-2 rounded-md flex items-center justify-center gap-2 font-semibold transition-all",
                                         deliveryType === 'pickup' && 'bg-background shadow-sm',
