@@ -308,7 +308,6 @@ const AssignRiderModal = ({ isOpen, onClose, onAssign, order, riders }) => {
 };
 
 const OrderDetailModal = ({ data, isOpen, onClose }) => {
-    // Corrected Guard Clause
     if (!isOpen || !data || !data.order || !data.order.id) {
         return null;
     }
@@ -320,8 +319,7 @@ const OrderDetailModal = ({ data, isOpen, onClose }) => {
         <Dialog open={isOpen} onOpenChange={onClose}>
             <DialogContent className="max-w-2xl bg-card border-border text-foreground">
                 <DialogHeader>
-                    {/* Corrected Usage of order.id */}
-                    <DialogTitle>Details for Order #{order.id.substring(0, 8)}</DialogTitle>
+                    <DialogTitle>Details for Order #{data.order.id.substring(0, 8)}</DialogTitle>
                 </DialogHeader>
                 <Tabs defaultValue="order" className="w-full">
                     <TabsList className="grid w-full grid-cols-2">
@@ -851,8 +849,8 @@ export default function LiveOrdersPage() {
                                         <div className="font-bold text-foreground text-sm truncate max-w-[100px] sm:max-w-none">{order.id}</div>
                                         <div className="flex items-center gap-2">
                                             <div className="text-sm text-muted-foreground">{order.customer}</div>
-                                             <button onClick={() => handleDetailClick(order.id, order.customerId)} title="View Customer & Order Details">
-                                                <User size={14} className="text-primary hover:text-primary/80 cursor-pointer"/>
+                                             <button onClick={() => handleDetailClick(order.id, order.customerId)} title="View Customer & Order Details" className="text-primary hover:text-primary/80 cursor-pointer">
+                                                <User size={14} />
                                             </button>
                                         </div>
                                         <div className="mt-1 flex items-center gap-2">
