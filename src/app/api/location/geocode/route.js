@@ -17,7 +17,6 @@ export async function GET(req) {
         return NextResponse.json({ message: "Latitude and longitude are required." }, { status: 400 });
     }
 
-    // CORRECTED URL based on the official Reverse Geocoding documentation.
     const url = `https://search.mappls.com/search/address/rev-geocode?lat=${lat}&lng=${lng}&access_token=${MAPPLS_API_KEY}`;
 
     try {

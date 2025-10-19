@@ -1,5 +1,4 @@
 import { NextResponse } from 'next/server';
-import axios from 'axios';
 
 const MAPPLS_API_KEY = process.env.MAPPLS_API_KEY;
 
@@ -18,25 +17,25 @@ export async function GET(req) {
     }
     
     // CORRECTED URL and parameters as per Autosuggest API documentation
-    const url = `https://search.mappls.com/search/places/autosuggest/json`;
+    const url = `https://search.mappls.com/search/places/autosuggest?query=${query}&access_token=${MAPPLS_API_KEY}`;
 
     try {
         console.log(`[API search] Calling Mappls AutoSuggest API...`);
-        const response = await axios.get(url, {
-            params: {
-                query: query,
-                access_token: MAPPLS_API_KEY
-            }
-        });
+        const response = await fetch(url);
+        const data = await response.json();
+        
+        if (!response.ok) {
+            const errorData = data.error || { message: 'An unknown error occurred with Mappls API.' };
+            throw new Error(errorData.message);
+        }
         
         console.log("[API search] Mappls response successful.");
         // The API response for autosuggest has a different structure.
         // It returns an object with a `suggestedLocations` array.
-        return NextResponse.json(response.data, { status: 200 });
+        return NextResponse.json(data, { status: 200 });
 
     } catch (error) {
-        const errorData = error.response ? error.response.data : { message: error.message };
-        console.error("[API search] Error calling Mappls API:", errorData);
-        return NextResponse.json({ message: "Failed to fetch search results from Mappls.", error: errorData }, { status: error.response?.status || 500 });
+        console.error("[API search] Error calling Mappls API:", error.message);
+        return NextResponse.json({ message: "Failed to fetch search results from Mappls.", error: error.message }, { status: 500 });
     }
 }
