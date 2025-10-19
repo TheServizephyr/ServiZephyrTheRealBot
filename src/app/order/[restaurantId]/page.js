@@ -1,11 +1,10 @@
 
-
 'use client';
 
-import React, { useState, useEffect, Suspense, useMemo } from 'react';
+import React, { useState, useEffect, Suspense, useMemo, useCallback } from 'react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Utensils, Plus, Minus, X, Home, User, Edit2, ShoppingCart, Star, CookingPot, BookOpen, Check, SlidersHorizontal, ArrowUpDown, PlusCircle, Ticket, Gift, Sparkles, Flame, Search, Trash2, ChevronDown, Tag as TagIcon, RadioGroup, IndianRupee, HardHat } from 'lucide-react';
+import { Utensils, Plus, Minus, X, Home, User, Edit2, ShoppingCart, Star, CookingPot, BookOpen, Check, SlidersHorizontal, ArrowUpDown, PlusCircle, Ticket, Gift, Sparkles, Flame, Search, Trash2, ChevronDown, Tag as TagIcon, RadioGroup, IndianRupee, HardHat, MapPin } from 'lucide-react';
 import Image from 'next/image';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
@@ -13,6 +12,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
+import Link from 'next/link';
 
 
 const CustomizationDrawer = ({ item, isOpen, onClose, onAddToCart }) => {
@@ -267,7 +267,7 @@ const BannerCarousel = ({ images, onClick, restaurantName, logoUrl }) => {
     }, [images.length]);
   
     return (
-      <div className="relative h-48 w-full group mb-12">
+      <div className="relative h-48 w-full group">
         <div className="absolute inset-0 overflow-hidden cursor-pointer" onClick={onClick}>
             <AnimatePresence initial={false}>
             <motion.div
@@ -314,12 +314,9 @@ const OrderPageInternal = () => {
     const searchParams = useSearchParams();
     const { restaurantId } = params;
     
-    // **THE FIX**: Logic to get phone number moved out of useEffect
     const phoneFromUrl = searchParams.get('phone');
-    const phoneFromStorage = typeof window !== 'undefined' ? localStorage.getItem('lastKnownPhone') : null;
-    const initialPhone = phoneFromUrl || phoneFromStorage;
     
-    const [phone, setPhone] = useState(initialPhone);
+    const [customerLocation, setCustomerLocation] = useState(null);
 
     // --- STATE MANAGEMENT ---
     const [restaurantData, setRestaurantData] = useState({
@@ -351,55 +348,94 @@ const OrderPageInternal = () => {
     const [isBannerExpanded, setIsBannerExpanded] = useState(false);
     
 
-    // --- DATA FETCHING ---
+    // --- LOCATION & DATA FETCHING ---
     useEffect(() => {
-      // Update state and localStorage if phone in URL changes
-      const phoneFromUrl = searchParams.get('phone');
-      if (phoneFromUrl && phoneFromUrl !== phone) {
-        setPhone(phoneFromUrl);
-        localStorage.setItem('lastKnownPhone', phoneFromUrl);
-      }
+        console.log("[OrderPage] useEffect for location and data fetching triggered.");
+        const phone = phoneFromUrl || localStorage.getItem('lastKnownPhone');
+        const locationStr = localStorage.getItem('customerLocation');
 
-      const fetchMenuData = async () => {
-        if (!restaurantId || !phone) { // Only fetch if we have a phone number
-            setLoading(false); // Stop loading if no phone
-            return;
-        };
-        setLoading(true);
-        setError(null);
-        try {
-          // Pass the phone number as customerId to fetch user-specific coupons
-          const res = await fetch(`/api/menu/${restaurantId}?phone=${phone || ''}`);
-          if (!res.ok) {
-            const errorData = await res.json();
-            throw new Error(errorData.message || 'Failed to fetch menu data.');
-          }
-          const data = await res.json();
-
-          setRestaurantData({
-              name: data.restaurantName,
-              status: data.approvalStatus, // Expecting status from API
-              logoUrl: data.logoUrl || '',
-              bannerUrls: (data.bannerUrls && data.bannerUrls.length > 0) ? data.bannerUrls : ['/order_banner.jpg'],
-              deliveryCharge: data.deliveryCharge || 0,
-              menu: data.menu || {},
-              coupons: data.coupons || [],
-              deliveryEnabled: data.deliveryEnabled,
-              pickupEnabled: data.pickupEnabled,
-          });
-
-        } catch (err) {
-          setError(err.message);
-          console.error(err);
-        } finally {
-          setLoading(false);
+        if (phone && !localStorage.getItem('lastKnownPhone')) {
+            localStorage.setItem('lastKnownPhone', phone);
         }
-      };
 
-      fetchMenuData();
-    }, [restaurantId, phone, searchParams]);
+        if (!locationStr) {
+            console.log("[OrderPage] No location found in localStorage. Redirecting to /location.");
+            router.push(`/location?restaurantId=${restaurantId}&returnUrl=${encodeURIComponent(window.location.pathname + window.location.search)}`);
+            return;
+        }
+
+        try {
+            const parsedLocation = JSON.parse(locationStr);
+            setCustomerLocation(parsedLocation);
+        } catch (e) {
+            console.error("[OrderPage] Failed to parse location from localStorage. Redirecting.", e);
+            router.push(`/location?restaurantId=${restaurantId}`);
+            return;
+        }
+
+        const fetchMenuData = async () => {
+            if (!restaurantId || !phone) {
+                setLoading(false);
+                return;
+            };
+            setLoading(true);
+            setError(null);
+            try {
+                // Pass phone and location to the menu API
+                const apiUrl = `/api/menu/${restaurantId}?phone=${phone}`;
+                const res = await fetch(apiUrl);
+                
+                if (!res.ok) {
+                    const errorData = await res.json();
+                    throw new Error(errorData.message || 'Failed to fetch menu data.');
+                }
+                const data = await res.json();
+
+                setRestaurantData({
+                    name: data.restaurantName,
+                    status: data.approvalStatus,
+                    logoUrl: data.logoUrl || '',
+                    bannerUrls: (data.bannerUrls && data.bannerUrls.length > 0) ? data.bannerUrls : ['/order_banner.jpg'],
+                    deliveryCharge: data.deliveryCharge || 0,
+                    menu: data.menu || {},
+                    coupons: data.coupons || [],
+                    deliveryEnabled: data.deliveryEnabled,
+                    pickupEnabled: data.pickupEnabled,
+                });
+
+            } catch (err) {
+                setError(err.message);
+                console.error(err);
+            } finally {
+                setLoading(false);
+            }
+        };
+
+        fetchMenuData();
+    }, [restaurantId, phoneFromUrl, router]);
     
     // --- CART PERSISTENCE ---
+    const updateCart = useCallback((newCart, newNotes) => {
+        setCart(newCart);
+        if (newNotes !== undefined) {
+            setNotes(newNotes);
+        }
+        
+        const cartDataToSave = {
+            cart: newCart,
+            notes: newNotes !== undefined ? newNotes : notes,
+            restaurantId,
+            restaurantName: restaurantData.name,
+            phone: phoneFromUrl || localStorage.getItem('lastKnownPhone'),
+            coupons: restaurantData.coupons,
+            loyaltyPoints,
+            deliveryCharge: restaurantData.deliveryCharge,
+            deliveryEnabled: restaurantData.deliveryEnabled,
+            pickupEnabled: restaurantData.pickupEnabled,
+        };
+        localStorage.setItem(`cart_${restaurantId}`, JSON.stringify(cartDataToSave));
+    }, [notes, restaurantId, restaurantData, loyaltyPoints, phoneFromUrl]);
+    
     useEffect(() => {
         if (restaurantId) {
             const savedCartData = localStorage.getItem(`cart_${restaurantId}`);
@@ -410,26 +446,6 @@ const OrderPageInternal = () => {
             }
         }
     }, [restaurantId]);
-    
-    const updateCart = (newCart, newNotes) => {
-        setCart(newCart);
-        if (newNotes !== undefined) {
-            setNotes(newNotes);
-        }
-        const cartDataToSave = {
-            cart: newCart,
-            notes: newNotes !== undefined ? newNotes : notes,
-            restaurantId,
-            restaurantName: restaurantData.name,
-            phone,
-            coupons: restaurantData.coupons,
-            loyaltyPoints,
-            deliveryCharge: restaurantData.deliveryCharge,
-            deliveryEnabled: restaurantData.deliveryEnabled,
-            pickupEnabled: restaurantData.pickupEnabled,
-        };
-        localStorage.setItem(`cart_${restaurantId}`, JSON.stringify(cartDataToSave));
-    };
 
 
     // --- MENU PROCESSING & FILTERING ---
@@ -446,14 +462,14 @@ const OrderPageInternal = () => {
 
             if (filters.veg) items = items.filter(item => item.isVeg);
             if (filters.nonVeg) items = items.filter(item => !item.isVeg);
-            if (filters.recommended) items = items.filter(item => item.isRecommended); // Assuming this data comes from API
+            if (filters.recommended) items = items.filter(item => item.isRecommended);
             
             if (sortBy === 'price-asc') {
               items.sort((a, b) => (a.portions?.[0]?.price || 0) - (b.portions?.[0]?.price || 0));
             } else if (sortBy === 'price-desc') {
               items.sort((a, b) => (b.portions?.[0]?.price || 0) - (a.portions?.[0]?.price || 0));
             } else if (sortBy === 'rating-desc') {
-              items.sort((a,b) => (b.rating || 0) - (a.rating || 0)); // Assuming rating comes from API
+              items.sort((a,b) => (b.rating || 0) - (a.rating || 0));
             }
             
             newMenu[category] = items;
@@ -487,28 +503,30 @@ const OrderPageInternal = () => {
 
     const subtotal = useMemo(() => cart.reduce((sum, item) => sum + item.totalPrice * item.quantity, 0), [cart]);
 
-    const handleAddToCart = (item, portion, selectedAddOns, totalPrice) => {
+    const handleAddToCart = useCallback((item, portion, selectedAddOns, totalPrice) => {
         const cartItemId = `${item.id}-${portion.name}-${selectedAddOns.map(a => a.name).sort().join('-')}`;
         
-        const existingItemIndex = cart.findIndex(cartItem => cartItem.cartItemId === cartItemId);
-        
-        let newCart;
-        if (existingItemIndex > -1) {
-            newCart = cart.map((cartItem, index) =>
-                index === existingItemIndex ? { ...cartItem, quantity: cartItem.quantity + 1 } : cartItem
-            );
-        } else {
-            newCart = [...cart, { 
-                ...item, 
-                cartItemId, 
-                portion, 
-                selectedAddOns, 
-                totalPrice, 
-                quantity: 1 
-            }];
-        }
-        updateCart(newCart);
-    };
+        setCart(currentCart => {
+            const existingItemIndex = currentCart.findIndex(cartItem => cartItem.cartItemId === cartItemId);
+            let newCart;
+            if (existingItemIndex > -1) {
+                newCart = currentCart.map((cartItem, index) =>
+                    index === existingItemIndex ? { ...cartItem, quantity: cartItem.quantity + 1 } : cartItem
+                );
+            } else {
+                newCart = [...currentCart, { 
+                    ...item, 
+                    cartItemId, 
+                    portion, 
+                    selectedAddOns, 
+                    totalPrice, 
+                    quantity: 1 
+                }];
+            }
+            updateCart(newCart, notes);
+            return newCart;
+        });
+    }, [notes, updateCart]);
 
     const handleIncrement = (item) => {
         // Direct add if item is simple (1 portion, 0 addons)
@@ -566,6 +584,7 @@ const OrderPageInternal = () => {
     }
 
     const handleCheckout = () => {
+        const phone = phoneFromUrl || localStorage.getItem('lastKnownPhone');
         router.push(`/cart?restaurantId=${restaurantId}&phone=${phone}`);
     };
 
@@ -635,7 +654,19 @@ const OrderPageInternal = () => {
                     <BannerCarousel images={restaurantData.bannerUrls} onClick={() => setIsBannerExpanded(true)} restaurantName={restaurantData.name} logoUrl={restaurantData.logoUrl} />
                 </header>
 
-                <div className="sticky top-0 z-10 bg-background/95 backdrop-blur-sm py-2 border-b border-border">
+                <div className="container mx-auto px-4 mt-6">
+                    <div className="bg-card border border-border p-3 rounded-lg flex items-center justify-between">
+                         <div className="flex items-center gap-3 overflow-hidden">
+                             <MapPin className="text-primary flex-shrink-0" size={20}/>
+                             <p className="text-sm text-muted-foreground truncate">{customerLocation?.full || 'No location set'}</p>
+                         </div>
+                         <Link href={`/location?restaurantId=${restaurantId}&returnUrl=${encodeURIComponent(window.location.pathname + window.location.search)}`}>
+                            <Button variant="link" className="text-primary p-0 h-auto font-semibold flex-shrink-0">Change</Button>
+                         </Link>
+                    </div>
+                </div>
+
+                <div className="sticky top-0 z-10 bg-background/95 backdrop-blur-sm py-2 border-b border-border mt-4">
                     <div className="container mx-auto px-4 flex items-center gap-4">
                         <div className="relative flex-grow">
                             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" size={20} />

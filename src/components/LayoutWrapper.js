@@ -16,7 +16,8 @@ const LayoutWrapper = ({ children }) => {
     '/complete-profile',
     '/order',
     '/cart',
-    '/track', // Added /track to hide header/footer
+    '/track',
+    '/location', // Added /location to hide header/footer
     '/customer-form',
     '/bill'
   ];
