@@ -1,6 +1,11 @@
 import { NextResponse } from 'next/server';
 import axios from 'axios';
 
+// Load environment variables from .env.local for local development
+if (process.env.NODE_ENV !== 'production') {
+  require('dotenv').config({ path: './.env.local' });
+}
+
 const MAPPLS_API_KEY = process.env.NEXT_PUBLIC_MAPPLS_API_KEY;
 
 export async function GET(req) {

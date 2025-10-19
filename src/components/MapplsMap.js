@@ -11,13 +11,15 @@ const MapplsMap = ({ onMapLoad, initialCenter, onPinDragEnd }) => {
     const [scriptsLoaded, setScriptsLoaded] = React.useState(false);
     const [mapInitialized, setMapInitialized] = React.useState(false);
 
+    const apiKey = process.env.NEXT_PUBLIC_MAPPLS_API_KEY;
+
     const handleScriptLoad = () => {
         console.log("[MapplsMap] Mappls script loaded.");
         setScriptsLoaded(true);
     };
 
     useEffect(() => {
-        if (scriptsLoaded && !mapInitialized && mapRef.current) {
+        if (scriptsLoaded && !mapInitialized && mapRef.current && apiKey) {
             console.log("[MapplsMap] Scripts loaded, initializing map...");
             try {
                 const centerPoint = initialCenter 
@@ -58,12 +60,20 @@ const MapplsMap = ({ onMapLoad, initialCenter, onPinDragEnd }) => {
                 console.error("[MapplsMap] Error initializing Mappls Map:", error);
             }
         }
-    }, [scriptsLoaded, mapInitialized, initialCenter, onMapLoad, onPinDragEnd]);
+    }, [scriptsLoaded, mapInitialized, initialCenter, onMapLoad, onPinDragEnd, apiKey]);
+
+    if (!apiKey) {
+        return (
+             <div className="w-full h-full bg-destructive/10 flex items-center justify-center">
+                <p className="text-destructive font-semibold">Mappls API Key is missing.</p>
+            </div>
+        )
+    }
 
     return (
         <>
             <Script
-                src="https://apis.mappls.com/advancedmaps/api/290d3c63-8472-40f4-8a88-29cf977b2a59/map_sdk?layer=vector&v=3.0"
+                src={`https://sdk.mappls.com/map/sdk/web?v=3.0&access_token=${apiKey}`}
                 onLoad={handleScriptLoad}
                 onError={() => console.error("[MapplsMap] Failed to load Mappls script.")}
             />
