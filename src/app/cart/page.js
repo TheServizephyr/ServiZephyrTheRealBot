@@ -122,8 +122,6 @@ const CartPageInternal = () => {
             setTipAmount(parsedData.tipAmount || 0);
             setPickupTime(parsedData.pickupTime || '');
 
-            // **THE FIX**: Set initial delivery type based on saved cart settings first,
-            // then fall back to restaurant capabilities.
             if (parsedData.deliveryType) {
                 setDeliveryType(parsedData.deliveryType);
             } else if (parsedData.deliveryEnabled && !parsedData.pickupEnabled) {
@@ -131,7 +129,7 @@ const CartPageInternal = () => {
             } else if (!parsedData.deliveryEnabled && parsedData.pickupEnabled) {
                 setDeliveryType('pickup');
             } else {
-                setDeliveryType('delivery'); // Default if both are available
+                setDeliveryType('delivery');
             }
 
         } else {
@@ -365,7 +363,7 @@ const CartPageInternal = () => {
                         <div className="p-4 bg-card rounded-lg border border-border">
                             <div className="flex bg-muted p-1 rounded-lg">
                                 <button 
-                                    onClick={() => isDeliveryEnabled && handleDeliveryTypeChange('delivery')} 
+                                    onClick={() => handleDeliveryTypeChange('delivery')} 
                                     className={cn(
                                         "flex-1 p-2 rounded-md flex items-center justify-center gap-2 font-semibold transition-all",
                                         deliveryType === 'delivery' && 'bg-background shadow-sm',
@@ -377,7 +375,7 @@ const CartPageInternal = () => {
                                     <Bike size={16} /> Delivery
                                 </button>
                                 <button 
-                                    onClick={() => isPickupEnabled && handleDeliveryTypeChange('pickup')} 
+                                    onClick={() => handleDeliveryTypeChange('pickup')} 
                                     className={cn(
                                         "flex-1 p-2 rounded-md flex items-center justify-center gap-2 font-semibold transition-all",
                                         deliveryType === 'pickup' && 'bg-background shadow-sm',
@@ -617,6 +615,9 @@ const CartPage = () => (
 
 export default CartPage;
 
+
+
+    
 
 
     
