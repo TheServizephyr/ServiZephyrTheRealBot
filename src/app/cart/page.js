@@ -3,8 +3,8 @@
 
 import React, { useState, useEffect, useMemo, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { motion } from 'framer-motion';
-import { Utensils, Plus, Minus, X, Home, User, ShoppingCart, CookingPot, Ticket, Gift, ArrowLeft, Sparkles, Check, PlusCircle, Trash2 } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { Utensils, Plus, Minus, X, Home, User, ShoppingCart, CookingPot, Ticket, Gift, ArrowLeft, Sparkles, Check, PlusCircle, Trash2, ChevronDown } from 'lucide-react';
 import Script from 'next/script';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose } from "@/components/ui/dialog";
@@ -45,6 +45,7 @@ const CartPageInternal = () => {
     const [appliedCoupons, setAppliedCoupons] = useState([]);
     const [isClearCartDialogOpen, setIsClearCartDialogOpen] = useState(false);
     const [phone, setPhone] = useState(initialPhone);
+    const [isBillExpanded, setIsBillExpanded] = useState(false);
 
 
     useEffect(() => {
@@ -89,7 +90,7 @@ const CartPageInternal = () => {
             if (action === 'increment') {
                 newCart[existingItemIndex].quantity++;
             } else if (action === 'decrement') {
-                if (newCart[existingItem-Index].quantity === 1) {
+                if (newCart[existingItemIndex].quantity === 1) {
                     newCart.splice(existingItemIndex, 1);
                 } else {
                     newCart[existingItemIndex].quantity--;
@@ -279,7 +280,7 @@ const CartPageInternal = () => {
                                 ))}
                             </div>
 
-                            <Button variant="outline" onClick={handleGoBack} className="w-full mt-4 border-green-500 text-green-500 bg-green-500/10 hover:bg-green-500/20">
+                            <Button variant="outline" onClick={handleGoBack} className="w-full mt-4 border-green-500 text-green-500 bg-green-500/10 hover:bg-green-500/20 hover:text-green-500">
                                 <PlusCircle className="mr-2 h-4 w-4" /> Add more items
                             </Button>
                             
@@ -341,16 +342,49 @@ const CartPageInternal = () => {
 
 
                         <div className="mt-6 p-4 border-t-2 border-primary bg-card rounded-lg shadow-lg">
-                            <h3 className="text-xl font-bold mb-4">Bill Summary</h3>
-                            <div className="space-y-1 text-sm mb-4">
-                                <div className="flex justify-between"><span>Subtotal:</span> <span className="font-medium">₹{subtotal.toFixed(2)}</span></div>
-                                {couponDiscount > 0 && <div className="flex justify-between text-green-400"><span>Coupon Discount:</span> <span className="font-medium">- ₹{couponDiscount.toFixed(2)}</span></div>}
-                                {specialCouponDiscount > 0 && <div className="flex justify-between text-primary"><span>Special Discount:</span> <span className="font-medium">- ₹{specialCouponDiscount.toFixed(2)}</span></div>}
-                                <div className="flex justify-between"><span>Delivery Fee:</span> {finalDeliveryCharge > 0 ? <span>₹{finalDeliveryCharge.toFixed(2)}</span> : <span className="text-primary font-bold">FREE</span>}</div>
-                                <div className="flex justify-between"><span>CGST ({5}%):</span> <span className="font-medium">₹{cgst.toFixed(2)}</span></div>
-                                <div className="flex justify-between"><span>SGST ({5}%):</span> <span className="font-medium">₹{sgst.toFixed(2)}</span></div>
-                                <div className="border-t border-dashed border-border my-2"></div>
-                                <div className="flex justify-between items-center text-lg font-bold"><span>Grand Total:</span> <span>₹{grandTotal > 0 ? grandTotal.toFixed(2) : '0.00'}</span></div>
+                            <div className="flex justify-between items-center">
+                                <h3 className="text-xl font-bold">Bill Summary</h3>
+                                <Button variant="ghost" size="sm" onClick={() => setIsBillExpanded(!isBillExpanded)} className="text-primary">
+                                    {isBillExpanded ? 'Hide Details' : 'View Detailed Bill'}
+                                    <ChevronDown className={cn("ml-1 h-4 w-4 transition-transform", isBillExpanded && "rotate-180")} />
+                                </Button>
+                            </div>
+
+                            <AnimatePresence>
+                                {isBillExpanded && (
+                                    <motion.div
+                                        initial={{ height: 0, opacity: 0 }}
+                                        animate={{ height: 'auto', opacity: 1 }}
+                                        exit={{ height: 0, opacity: 0 }}
+                                        className="overflow-hidden"
+                                    >
+                                        <div className="space-y-1 text-sm mt-4 pt-4 border-t border-dashed">
+                                            <div className="flex justify-between">
+                                                <span>Subtotal:</span>
+                                                <span className="font-medium">₹{subtotal.toFixed(2)}</span>
+                                            </div>
+                                            {couponDiscount > 0 && <div className="flex justify-between text-green-400"><span>Coupon Discount:</span> <span className="font-medium">- ₹{couponDiscount.toFixed(2)}</span></div>}
+                                            {specialCouponDiscount > 0 && <div className="flex justify-between text-primary"><span>Special Discount:</span> <span className="font-medium">- ₹{specialCouponDiscount.toFixed(2)}</span></div>}
+                                            <div className="flex justify-between"><span>Delivery Fee:</span> {finalDeliveryCharge > 0 ? <span>₹{finalDeliveryCharge.toFixed(2)}</span> : <span className="text-primary font-bold">FREE</span>}</div>
+                                            <div className="flex justify-between"><span>CGST ({5}%):</span> <span className="font-medium">₹{cgst.toFixed(2)}</span></div>
+                                            <div className="flex justify-between"><span>SGST ({5}%):</span> <span className="font-medium">₹{sgst.toFixed(2)}</span></div>
+                                        </div>
+                                    </motion.div>
+                                )}
+                            </AnimatePresence>
+                            
+                            <div className="border-t border-dashed border-border my-3"></div>
+
+                            {totalDiscount > 0 && (
+                                <div className="flex justify-between items-center text-md mb-2">
+                                    <span className="text-green-400 font-semibold">Total Savings</span>
+                                    <span className="font-bold text-green-400">- ₹{totalDiscount.toFixed(2)}</span>
+                                </div>
+                            )}
+
+                            <div className="flex justify-between items-center text-lg font-bold">
+                                <span>Grand Total:</span>
+                                <span>₹{grandTotal > 0 ? grandTotal.toFixed(2) : '0.00'}</span>
                             </div>
                         </div>
                     </>
@@ -378,3 +412,4 @@ const CartPage = () => (
 export default CartPage;
 
     
+
