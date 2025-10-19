@@ -1,4 +1,5 @@
 
+
 "use client";
 
 import React, { useState, useEffect } from 'react';
@@ -339,6 +340,7 @@ export default function SettingsPage() {
         if (section === 'profile') {
             payload = {
                 name: editedUser.name,
+                restaurantName: editedUser.restaurantName,
                 phone: editedUser.phone,
                 notifications: editedUser.notifications,
                 gstin: editedUser.gstin,
@@ -492,8 +494,8 @@ export default function SettingsPage() {
                     
                     <div className="space-y-6">
                         <div>
-                            <Label htmlFor="fullName" className="flex items-center gap-2"><User size={14}/> Full Name</Label>
-                            <input id="fullName" value={editedUser.name} onChange={e => setEditedUser({...editedUser, name: e.target.value})} disabled={!isEditingProfile} className="mt-1 w-full p-2 border rounded-md bg-input border-border disabled:opacity-70 disabled:cursor-not-allowed" />
+                            <Label htmlFor="ownerName" className="flex items-center gap-2"><User size={14}/> Owner Name</Label>
+                            <input id="ownerName" value={editedUser.name} onChange={e => setEditedUser({...editedUser, name: e.target.value})} disabled={!isEditingProfile} className="mt-1 w-full p-2 border rounded-md bg-input border-border disabled:opacity-70 disabled:cursor-not-allowed" />
                         </div>
                          <div>
                             <Label htmlFor="restaurantName" className="flex items-center gap-2"><Store size={14}/> Restaurant Name</Label>
@@ -779,5 +781,3 @@ export default function SettingsPage() {
         </div>
     );
 }
-
-    

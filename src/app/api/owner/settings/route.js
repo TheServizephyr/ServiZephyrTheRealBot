@@ -83,6 +83,7 @@ export async function GET(req) {
             email: userData.email || 'No Email',
             phone: userData.phone || '',
             role: userData.role || 'customer',
+            restaurantName: businessData?.name || '',
             profilePicture: userData.profilePictureUrl || `https://picsum.photos/seed/${uid}/200/200`,
             notifications: userData.notifications || {
                 newOrders: true,
@@ -135,6 +136,7 @@ export async function PATCH(req) {
         // --- Update Business Profile ---
         if (businessRef) {
             const businessUpdateData = {};
+            if (updates.restaurantName !== undefined) businessUpdateData.name = updates.restaurantName;
             if (updates.gstin !== undefined) businessUpdateData.gstin = updates.gstin;
             if (updates.fssai !== undefined) businessUpdateData.fssai = updates.fssai;
             if (updates.botPhoneNumberId !== undefined) businessUpdateData.botPhoneNumberId = updates.botPhoneNumberId;
@@ -177,6 +179,7 @@ export async function PATCH(req) {
             email: finalUserData.email,
             phone: finalUserData.phone,
             role: finalUserData.role,
+            restaurantName: finalBusinessData?.name || '',
             profilePicture: finalUserData.profilePictureUrl,
             notifications: finalUserData.notifications,
             gstin: finalBusinessData?.gstin || '',
@@ -204,5 +207,3 @@ export async function PATCH(req) {
         return NextResponse.json({ message: `Backend Error: ${error.message}` }, { status: error.status || 500 });
     }
 }
-
-    
