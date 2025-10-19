@@ -82,11 +82,12 @@ const CheckoutPageInternal = () => {
     const router = useRouter();
     const searchParams = useSearchParams();
     const restaurantId = searchParams.get('restaurantId');
-    const phone = searchParams.get('phone'); // **THE FIX**: Get phone from URL
+    const phone = searchParams.get('phone');
     
     // States for cart and user details
     const [cart, setCart] = useState([]);
     const [cartData, setCartData] = useState(null);
+    const [appliedCoupons, setAppliedCoupons] = useState([]);
     const [name, setName] = useState('');
     const [address, setAddress] = useState('');
     const [savedAddresses, setSavedAddresses] = useState([]);
@@ -113,14 +114,13 @@ const CheckoutPageInternal = () => {
             const savedCartData = localStorage.getItem(`cart_${restaurantId}`);
             if (savedCartData) {
                 const parsedData = JSON.parse(savedCartData);
-                // **THE FIX**: Ensure phone from URL is prioritized
                 const finalPhone = phone || parsedData.phone;
                 const updatedData = { ...parsedData, phone: finalPhone };
 
                 setCart(updatedData.cart || []);
+                setAppliedCoupons(updatedData.appliedCoupons || []);
                 setCartData(updatedData);
             } else {
-                // If no cart, redirect back
                 router.push(`/order/${restaurantId}`);
                 return;
             }
@@ -128,16 +128,13 @@ const CheckoutPageInternal = () => {
             // 2. Fetch Restaurant Settings (for COD status)
             try {
                 const auth = getAuth();
-                // This part doesn't need auth, so we can call it directly
-                // In a real app, you might want to protect this if settings are sensitive
-                 const res = await fetch(`/api/owner/settings?restaurantId=${restaurantId}`); // This is a public API now
+                 const res = await fetch(`/api/owner/settings?restaurantId=${restaurantId}`);
                  if (res.ok) {
                     const data = await res.json();
                     setCodEnabled(data.codEnabled || false);
                  }
             } catch (err) {
                 console.error("Could not fetch restaurant settings for COD:", err);
-                // Assume COD is disabled if fetch fails
                 setCodEnabled(false);
             } finally {
                 setLoading(false);
@@ -172,7 +169,6 @@ const CheckoutPageInternal = () => {
                         }
                         setIsExistingUser(true);
                     } else {
-                        // User not found in either collection, treat as completely new
                         setIsExistingUser(false);
                         setIsAddingNew(true);
                         setName('');
@@ -192,21 +188,30 @@ const CheckoutPageInternal = () => {
         fetchUserData();
     }, [isModalOpen, cartData?.phone]);
     
-    // --- CALCULATIONS (from cart page) ---
     const subtotal = useMemo(() => cart.reduce((sum, item) => sum + item.totalPrice * item.quantity, 0), [cart]);
-    const { totalDiscount, finalDeliveryCharge, grandTotal } = useMemo(() => {
-        let couponDiscount = 0;
-        const hasFreeDelivery = cartData?.appliedCoupons?.some(c => c.type === 'free_delivery' && subtotal >= c.minOrder);
-        const finalDeliveryCharge = hasFreeDelivery ? 0 : (cartData?.deliveryCharge || 0);
 
-        // This is a simplified discount calculation. In a real app, it would be more complex.
-        const totalDiscount = couponDiscount;
-        const taxableAmount = subtotal - totalDiscount;
-        const tax = taxableAmount > 0 ? taxableAmount * 0.05 : 0;
-        const grandTotal = taxableAmount + finalDeliveryCharge + (tax * 2);
+    const { totalDiscount, finalDeliveryCharge, grandTotal } = useMemo(() => {
+        let couponDiscountValue = 0;
+        appliedCoupons.forEach(coupon => {
+            if (subtotal >= coupon.minOrder) {
+                if (coupon.type === 'flat') {
+                    couponDiscountValue += coupon.value;
+                } else if (coupon.type === 'percentage') {
+                    couponDiscountValue += (subtotal * coupon.value) / 100;
+                }
+            }
+        });
         
-        return { totalDiscount, finalDeliveryCharge, grandTotal };
-    }, [cart, cartData, subtotal]);
+        const hasFreeDelivery = appliedCoupons.some(c => c.type === 'free_delivery' && subtotal >= c.minOrder);
+        const deliveryCharge = hasFreeDelivery ? 0 : (cartData?.deliveryCharge || 0);
+
+        const taxableAmount = subtotal - couponDiscountValue;
+        const tax = taxableAmount > 0 ? taxableAmount * 0.05 : 0;
+        const finalGrandTotal = taxableAmount + deliveryCharge + (tax * 2);
+        
+        return { totalDiscount: couponDiscountValue, finalDeliveryCharge: deliveryCharge, grandTotal: finalGrandTotal };
+    }, [cart, appliedCoupons, subtotal, cartData?.deliveryCharge]);
+
 
     const handlePaymentMethodSelect = (method) => {
         setSelectedPaymentMethod(method);
@@ -235,14 +240,14 @@ const CheckoutPageInternal = () => {
             restaurantId,
             items: finalItems,
             notes: cartData.notes || '',
-            coupon: cartData.appliedCoupons?.length > 0 ? {
-                code: cartData.appliedCoupons[0].code,
-                discount: totalDiscount, // Simplified
+            coupon: appliedCoupons.length > 0 ? {
+                code: appliedCoupons[0].code, // Simplified, assumes one coupon
+                discount: totalDiscount,
             } : null,
-            loyaltyDiscount: 0, // Simplified
+            loyaltyDiscount: 0,
             grandTotal,
             paymentMethod: selectedPaymentMethod,
-            businessType: cartData.businessType || 'restaurant', // Pass businessType
+            businessType: cartData.businessType || 'restaurant',
         };
 
         try {
@@ -258,22 +263,18 @@ const CheckoutPageInternal = () => {
                 throw new Error(orderCreationResult.message || "Failed to create order.");
             }
             
-            // This is the Firestore order ID, NOT the Razorpay one
             const { firestore_order_id, razorpay_order_id } = orderCreationResult;
 
             if (selectedPaymentMethod === 'razorpay') {
                 const options = {
                     key: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID,
-                    amount: grandTotal * 100,
+                    amount: Math.round(grandTotal * 100),
                     currency: "INR",
                     name: "ServiZephyr (Pvt. Ltd.)",
                     description: `Payment for Order`,
                     order_id: razorpay_order_id,
                     handler: function (response) {
                         localStorage.removeItem(`cart_${restaurantId}`);
-                        // The webhook will create the Firestore order, but we can redirect immediately.
-                        // We need an ID to track, so we have to generate one on the client or have the API return it.
-                        // For now, let's assume the API returns the ID it will use.
                         router.push(`/track/${firestore_order_id}`);
                     },
                     prefill: { name: name.trim(), contact: cartData.phone },
@@ -415,3 +416,5 @@ const CheckoutPage = () => (
 );
 
 export default CheckoutPage;
+
+    

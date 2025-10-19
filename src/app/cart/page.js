@@ -1,4 +1,5 @@
 
+
 'use client';
 
 import React, { useState, useEffect, useMemo, Suspense } from 'react';
@@ -34,7 +35,6 @@ const CartPageInternal = () => {
     const searchParams = useSearchParams();
     const restaurantId = searchParams.get('restaurantId');
     
-    // **THE FIX**: Prioritize URL, then localStorage, then nothing.
     const phoneFromUrl = searchParams.get('phone');
     const phoneFromStorage = typeof window !== 'undefined' ? localStorage.getItem('lastKnownPhone') : null;
     const initialPhone = phoneFromUrl || phoneFromStorage;
@@ -51,7 +51,6 @@ const CartPageInternal = () => {
     useEffect(() => {
         if (!restaurantId) return;
 
-        // **THE FIX**: Logic to establish the authoritative phone number.
         const phoneToUse = phoneFromUrl || phoneFromStorage;
         if (phoneToUse) {
             setPhone(phoneToUse);
@@ -60,23 +59,29 @@ const CartPageInternal = () => {
             }
         }
 
-        // Now, load cart data from localStorage for the specific restaurant.
         const data = localStorage.getItem(`cart_${restaurantId}`);
         if (data) {
             const parsedData = JSON.parse(data);
             setCartData(parsedData);
             setCart(parsedData.cart || []);
             setNotes(parsedData.notes || '');
+            setAppliedCoupons(parsedData.appliedCoupons || []); // Load applied coupons
         } else {
             setCart([]);
+            setAppliedCoupons([]);
         }
 
     }, [restaurantId, phoneFromUrl, phoneFromStorage]);
 
-    const updateCartInStorage = (newCart, newNotes) => {
-        // Ensure that even if cartData is null initially, we create a new object.
-        const currentData = cartData || {}; 
-        const updatedData = { ...currentData, cart: newCart, notes: newNotes, phone: phone };
+    const updateCartInStorage = (newCart, newNotes, newCoupons) => {
+        const currentData = cartData || {};
+        const updatedData = { 
+            ...currentData, 
+            cart: newCart, 
+            notes: newNotes, 
+            phone: phone,
+            appliedCoupons: newCoupons // Save applied coupons
+        };
         setCartData(updatedData);
         localStorage.setItem(`cart_${restaurantId}`, JSON.stringify(updatedData));
     };
@@ -98,30 +103,29 @@ const CartPageInternal = () => {
             }
         }
         setCart(newCart);
-        updateCartInStorage(newCart, notes);
+        updateCartInStorage(newCart, notes, appliedCoupons);
     };
 
 
     const handleNotesChange = (e) => {
         const newNotes = e.target.value;
         setNotes(newNotes);
-        updateCartInStorage(cart, newNotes);
+        updateCartInStorage(cart, newNotes, appliedCoupons);
     }
     
     const handleClearCart = () => {
-        localStorage.removeItem(`cart_${restaurantId}`);
+        const newCoupons = [];
         setCart([]);
-        setAppliedCoupons([]);
-        setCartData(prev => ({...prev, cart: []}));
+        setAppliedCoupons(newCoupons);
+        updateCartInStorage([], notes, newCoupons); // Clear cart and coupons in storage
         setIsClearCartDialogOpen(false);
     };
 
     const handleConfirmOrder = () => {
-        // **THE FIX**: Pass the authoritative phone number to the checkout page.
+        // The data is already saved in localStorage including coupons, just navigate
         router.push(`/checkout?restaurantId=${restaurantId}&phone=${phone}`);
     };
 
-    // **THE FIX**: Ensure the back button also carries the phone number.
     const handleGoBack = () => {
         router.push(`/order/${restaurantId}?phone=${phone}`);
     };
@@ -171,25 +175,26 @@ const CartPageInternal = () => {
     }, [subtotal, totalDiscount, finalDeliveryCharge]);
 
     const handleApplyCoupon = (couponToApply) => {
-        if (appliedCoupons.some(c => c.id === couponToApply.id)) {
-            setAppliedCoupons(prev => prev.filter(c => c.id !== couponToApply.id));
-            return;
-        }
+        let newCoupons;
+        const isApplied = appliedCoupons.some(c => c.id === couponToApply.id);
 
-        if (subtotal < couponToApply.minOrder) {
-            alert(`You need to spend at least ₹${couponToApply.minOrder} to use this coupon.`);
-            return;
+        if (isApplied) {
+            newCoupons = appliedCoupons.filter(c => c.id !== couponToApply.id);
+        } else {
+            if (subtotal < couponToApply.minOrder) {
+                alert(`You need to spend at least ₹${couponToApply.minOrder} to use this coupon.`);
+                return;
+            }
+            const isSpecial = !!couponToApply.customerId;
+            let currentCoupons = [...appliedCoupons];
+            if (!isSpecial) {
+                currentCoupons = currentCoupons.filter(c => !!c.customerId); // Remove other normal coupons
+            }
+            newCoupons = [...currentCoupons, couponToApply];
         }
         
-        const isSpecial = !!couponToApply.customerId;
-
-        setAppliedCoupons(prev => {
-            let newCoupons = [...prev];
-            if (!isSpecial) {
-                newCoupons = newCoupons.filter(c => !!c.customerId);
-            }
-            return [...newCoupons, couponToApply];
-        });
+        setAppliedCoupons(newCoupons);
+        updateCartInStorage(cart, notes, newCoupons); // Update storage with new coupon list
     };
 
     const allCoupons = cartData?.coupons || [];
@@ -340,9 +345,8 @@ const CartPageInternal = () => {
                             </Popover>
                         </div>
 
-
                         <div className="mt-6 p-4 border-t-2 border-primary bg-card rounded-lg shadow-lg">
-                            <div className="flex justify-between items-center">
+                             <div className="flex justify-between items-center">
                                 <h3 className="text-xl font-bold">Bill Summary</h3>
                                 <Button variant="ghost" size="sm" onClick={() => setIsBillExpanded(!isBillExpanded)} className="text-primary">
                                     {isBillExpanded ? 'Hide Details' : 'View Detailed Bill'}
@@ -374,18 +378,22 @@ const CartPageInternal = () => {
                             </AnimatePresence>
                             
                             <div className="border-t border-dashed border-border my-3"></div>
+                            
+                            <div className="flex justify-between items-center text-lg font-bold">
+                                 <span>Grand Total:</span>
+                                <div className="flex items-center gap-3">
+                                {totalDiscount > 0 && (
+                                    <span className="text-muted-foreground line-through text-base font-medium">₹{(subtotal + finalDeliveryCharge + (cgst*2)).toFixed(2)}</span>
+                                )}
+                                <span>₹{grandTotal > 0 ? grandTotal.toFixed(2) : '0.00'}</span>
+                                </div>
+                            </div>
 
                             {totalDiscount > 0 && (
-                                <div className="flex justify-between items-center text-md mb-2">
-                                    <span className="text-green-400 font-semibold">Total Savings</span>
-                                    <span className="font-bold text-green-400">- ₹{totalDiscount.toFixed(2)}</span>
+                                <div className="text-right text-sm font-semibold text-green-400 mt-1">
+                                    You saved ₹{totalDiscount.toFixed(2)}!
                                 </div>
                             )}
-
-                            <div className="flex justify-between items-center text-lg font-bold">
-                                <span>Grand Total:</span>
-                                <span>₹{grandTotal > 0 ? grandTotal.toFixed(2) : '0.00'}</span>
-                            </div>
                         </div>
                     </>
                 )}
@@ -413,3 +421,6 @@ export default CartPage;
 
     
 
+
+
+    
