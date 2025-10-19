@@ -308,7 +308,8 @@ const AssignRiderModal = ({ isOpen, onClose, onAssign, order, riders }) => {
 };
 
 const OrderDetailModal = ({ data, isOpen, onClose }) => {
-    if (!isOpen || !data || !data.order) {
+    // Corrected Guard Clause
+    if (!isOpen || !data || !data.order || !data.order.id) {
         return null;
     }
 
@@ -319,6 +320,7 @@ const OrderDetailModal = ({ data, isOpen, onClose }) => {
         <Dialog open={isOpen} onOpenChange={onClose}>
             <DialogContent className="max-w-2xl bg-card border-border text-foreground">
                 <DialogHeader>
+                    {/* Corrected Usage of order.id */}
                     <DialogTitle>Details for Order #{order.id.substring(0, 8)}</DialogTitle>
                 </DialogHeader>
                 <Tabs defaultValue="order" className="w-full">
@@ -933,20 +935,3 @@ export default function LiveOrdersPage() {
     </div>
   );
 }
-
-    
-
-
-
-
-    
-
-    
-
-
-
-
-
-
-
-
