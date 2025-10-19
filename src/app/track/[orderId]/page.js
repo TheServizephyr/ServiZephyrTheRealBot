@@ -193,9 +193,7 @@ export default function OrderTrackingPage() {
     }, [restaurant]);
 
     const customerLocation = useMemo(() => {
-        // Assuming customer address is on the order document.
-        // It might be nested, e.g., order.customerAddress.location
-        const loc = order?.customerAddress?.location; // Adjust path as needed
+        const loc = order?.customerLocation;
         if (loc instanceof GeoPoint) {
             return { latitude: loc.latitude, longitude: loc.longitude };
         }

@@ -1,4 +1,5 @@
 
+
 import { NextResponse } from 'next/server';
 import { getFirestore } from '@/lib/firebase-admin';
 import { getAuth } from 'firebase/auth';
@@ -34,12 +35,16 @@ export async function GET(request, { params }) {
             }
         }
         
-        const restaurantRef = firestore.collection('restaurants').doc(orderData.restaurantId);
-        const restaurantSnap = await restaurantRef.get();
-        if(!restaurantSnap.exists()){
+        let restaurantDoc;
+        let businessType = orderData.businessType || 'restaurant'; // Default to restaurant
+        const collectionName = businessType === 'shop' ? 'shops' : 'restaurants';
+
+        restaurantDoc = await firestore.collection(collectionName).doc(orderData.restaurantId).get();
+        
+        if(!restaurantDoc.exists){
              return NextResponse.json({ message: 'Restaurant associated with order not found.' }, { status: 404 });
         }
-        const restaurantData = restaurantSnap.data();
+        const restaurantData = restaurantDoc.data();
 
         // Combine all data into one response
         const responsePayload = {
@@ -50,7 +55,7 @@ export async function GET(request, { params }) {
             },
             restaurant: {
                 name: restaurantData.name,
-                location: restaurantData.location // Assuming GeoPoint
+                location: restaurantData.address?.location // Corrected path to location
             },
             deliveryBoy: deliveryBoyData ? {
                 id: deliveryBoyData.id,

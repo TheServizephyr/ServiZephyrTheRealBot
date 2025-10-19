@@ -32,6 +32,18 @@ export async function POST(req) {
         let razorpayOrderId = null;
         const businessData = businessDoc.data();
 
+        // This is a placeholder for a real address-to-coordinate conversion
+        const getCoordinatesFromAddress = (addr) => {
+            // In a real app, you would use a geocoding service like Google Maps API.
+            // For now, we'll return a fixed location for demonstration.
+            if (typeof addr === 'string' && addr.toLowerCase().includes('delhi')) {
+                return new adminFirestore.GeoPoint(28.7041, 77.1025);
+            }
+            // Default to a location in Ghaziabad
+            return new adminFirestore.GeoPoint(28.6692, 77.4538);
+        };
+        const customerLocation = getCoordinatesFromAddress(address);
+
         if (paymentMethod === 'razorpay') {
             if (!process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID || !process.env.RAZORPAY_KEY_SECRET) {
                 console.error("[Order API] Razorpay keys are not configured in environment variables.");
@@ -45,7 +57,7 @@ export async function POST(req) {
 
             // CORRECTED: The webhook needs all this data, so we must pass it in the notes.
             const orderPayloadForNotes = {
-                customerDetails: { name, address, phone: normalizedPhone },
+                customerDetails: { name, address, phone: normalizedPhone, location: { latitude: customerLocation.latitude, longitude: customerLocation.longitude } },
                 restaurantDetails: { restaurantId, restaurantName: businessData.name },
                 items: items,
                 billDetails: { 
@@ -164,6 +176,7 @@ export async function POST(req) {
         const newOrderRef = firestore.collection('orders').doc();
         batch.set(newOrderRef, {
             customerName: name, customerId: userId, customerAddress: address, customerPhone: normalizedPhone,
+            customerLocation: customerLocation,
             restaurantId: restaurantId, restaurantName: businessData.name,
             businessType,
             deliveryType,
