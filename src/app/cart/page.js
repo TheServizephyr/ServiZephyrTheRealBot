@@ -168,6 +168,14 @@ const CartPageInternal = () => {
         const newNotes = e.target.value;
         updateCartInStorage({ notes: newNotes });
     }
+
+    const handleCutleryClick = () => {
+        const cutleryNote = "Don't send cutlery.";
+        if (!notes.includes(cutleryNote)) {
+            const newNotes = notes ? `${notes.trim()} ${cutleryNote}` : cutleryNote;
+            updateCartInStorage({ notes: newNotes });
+        }
+    };
     
     const handleClearCart = () => {
         setIsClearCartDialogOpen(false);
@@ -402,6 +410,16 @@ const CartPageInternal = () => {
                                   rows={2}
                                   className="w-full pl-7 pr-4 py-2 rounded-md bg-input border border-foreground text-sm focus:ring-1 focus:ring-primary"
                                 />
+                                <div className="mt-2 flex justify-end">
+                                    <Button
+                                        variant="outline"
+                                        size="sm"
+                                        onClick={handleCutleryClick}
+                                        className={cn(notes.includes("Don't send cutlery.") && "bg-primary/20 text-primary border-primary")}
+                                    >
+                                        Don't send cutlery
+                                    </Button>
+                                </div>
                             </div>
                         </div>
                         
@@ -565,15 +583,3 @@ const CartPage = () => (
 );
 
 export default CartPage;
-
-    
-
-
-
-    
-
-
-
-
-
-    
