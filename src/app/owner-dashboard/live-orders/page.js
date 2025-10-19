@@ -319,7 +319,7 @@ const OrderDetailModal = ({ data, isOpen, onClose }) => {
         <Dialog open={isOpen} onOpenChange={onClose}>
             <DialogContent className="max-w-2xl bg-card border-border text-foreground">
                 <DialogHeader>
-                    <DialogTitle>Details for Order #{data.order.id.substring(0, 8)}</DialogTitle>
+                    <DialogTitle>Details for Order #{order.id.substring(0, 8)}</DialogTitle>
                 </DialogHeader>
                 <Tabs defaultValue="order" className="w-full">
                     <TabsList className="grid w-full grid-cols-2">
@@ -930,3 +930,4 @@ export default function LiveOrdersPage() {
     </div>
   );
 }
+
