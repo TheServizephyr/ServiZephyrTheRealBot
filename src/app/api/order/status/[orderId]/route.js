@@ -2,11 +2,6 @@
 
 import { NextResponse } from 'next/server';
 import { getFirestore } from '@/lib/firebase-admin';
-import { getAuth } from 'firebase/auth';
-
-// This API is intended for the customer-facing tracking page.
-// It uses client-side auth, but we can add a server-side check if needed.
-// For now, we'll assume Firestore rules secure the data.
 
 export async function GET(request, { params }) {
     try {
@@ -14,13 +9,16 @@ export async function GET(request, { params }) {
         const firestore = getFirestore();
 
         if (!orderId) {
+            console.log("[API][Order Status] Error: Order ID is missing.");
             return NextResponse.json({ message: 'Order ID is missing.' }, { status: 400 });
         }
 
+        console.log(`[API][Order Status] Fetching order: ${orderId}`);
         const orderRef = firestore.collection('orders').doc(orderId);
         const orderSnap = await orderRef.get();
 
         if (!orderSnap.exists) {
+            console.log(`[API][Order Status] Error: Order ${orderId} not found.`);
             return NextResponse.json({ message: 'Order not found.' }, { status: 404 });
         }
         
@@ -28,34 +26,41 @@ export async function GET(request, { params }) {
         let deliveryBoyData = null;
 
         if (orderData.deliveryBoyId) {
+            console.log(`[API][Order Status] Fetching delivery boy: ${orderData.deliveryBoyId}`);
+            // This path assumes deliveryBoys is a top-level collection.
+            // If it's a sub-collection, this needs to be adjusted.
             const deliveryBoyRef = firestore.collection('deliveryBoys').doc(orderData.deliveryBoyId);
             const deliveryBoySnap = await deliveryBoyRef.get();
             if (deliveryBoySnap.exists()) {
-                deliveryBoyData = deliveryBoySnap.data();
+                deliveryBoyData = { id: deliveryBoySnap.id, ...deliveryBoySnap.data()};
+                console.log("[API][Order Status] Delivery boy found.");
+            } else {
+                 console.warn(`[API][Order Status] Delivery boy with ID ${orderData.deliveryBoyId} not found in top-level collection.`);
             }
         }
         
-        let restaurantDoc;
-        let businessType = orderData.businessType || 'restaurant'; // Default to restaurant
+        const businessType = orderData.businessType || 'restaurant';
         const collectionName = businessType === 'shop' ? 'shops' : 'restaurants';
 
-        restaurantDoc = await firestore.collection(collectionName).doc(orderData.restaurantId).get();
+        console.log(`[API][Order Status] Fetching business: ${orderData.restaurantId} from collection: ${collectionName}`);
+        const businessDoc = await firestore.collection(collectionName).doc(orderData.restaurantId).get();
         
-        if(!restaurantDoc.exists){
-             return NextResponse.json({ message: 'Restaurant associated with order not found.' }, { status: 404 });
+        if(!businessDoc.exists){
+             console.log(`[API][Order Status] Error: Business ${orderData.restaurantId} not found.`);
+             return NextResponse.json({ message: 'Business associated with order not found.' }, { status: 404 });
         }
-        const restaurantData = restaurantDoc.data();
+        const businessData = businessDoc.data();
+        console.log("[API][Order Status] Business found.");
 
-        // Combine all data into one response
         const responsePayload = {
             order: {
                 id: orderSnap.id,
                 status: orderData.status,
-                customerLocation: orderData.customerLocation // **THE FIX**: Get location from order doc
+                customerLocation: orderData.customerLocation // Pass the GeoPoint directly
             },
             restaurant: {
-                name: restaurantData.name,
-                location: restaurantData.address?.location // Corrected path to location
+                name: businessData.name,
+                location: businessData.address?.location // Pass the GeoPoint directly
             },
             deliveryBoy: deliveryBoyData ? {
                 id: deliveryBoyData.id,
@@ -63,15 +68,15 @@ export async function GET(request, { params }) {
                 photoUrl: deliveryBoyData.photoUrl,
                 rating: deliveryBoyData.rating,
                 phone: deliveryBoyData.phone,
-                location: deliveryBoyData.location // Assuming GeoPoint
+                location: deliveryBoyData.location // Pass the GeoPoint directly
             } : null
         };
         
+        console.log("[API][Order Status] Successfully built response payload.");
         return NextResponse.json(responsePayload, { status: 200 });
 
     } catch (error) {
-        console.error("GET /api/order/status/[orderId] ERROR:", error);
-        console.log("Error details for status API:", error.message);
+        console.error("[API][Order Status] CRITICAL ERROR:", error);
         return NextResponse.json({ message: `Backend Error: ${error.message}` }, { status: 500 });
     }
 }

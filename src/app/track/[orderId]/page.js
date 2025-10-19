@@ -8,10 +8,9 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { useParams, useRouter } from 'next/navigation';
-import { doc, onSnapshot, GeoPoint } from 'firebase/firestore';
-import { db } from '@/lib/firebase';
 import dynamic from 'next/dynamic';
 
+// Dynamically import the map component to prevent SSR issues
 const LiveTrackingMap = dynamic(() => import('@/components/LiveTrackingMap'), { 
     ssr: false,
     loading: () => <div className="w-full h-full bg-muted flex items-center justify-center"><Loader2 className="animate-spin text-primary"/></div>
@@ -114,116 +113,55 @@ export default function OrderTrackingPage() {
     const { orderId } = useParams();
     const router = useRouter();
 
-    const [order, setOrder] = useState(null);
-    const [restaurant, setRestaurant] = useState(null);
-    const [deliveryBoy, setDeliveryBoy] = useState(null);
+    const [orderData, setOrderData] = useState(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
 
-    useEffect(() => {
+    const fetchData = async () => {
         if (!orderId) {
             setError("No order ID provided.");
             setLoading(false);
             return;
         }
-
-        const orderRef = doc(db, 'orders', orderId);
-
-        const unsubscribeOrder = onSnapshot(orderRef, 
-            (orderSnap) => {
-                if (!orderSnap.exists()) {
-                    setError('Order not found.');
-                    setLoading(false);
-                    return;
-                }
-                const orderData = { id: orderSnap.id, ...orderSnap.data() };
-                setOrder(orderData);
-            },
-            (err) => {
-                console.error("Order snapshot error:", err);
-                setError('Failed to load order details.');
-                setLoading(false);
+        setLoading(true);
+        try {
+            console.log(`[TrackPage] Fetching data for order: ${orderId}`);
+            const res = await fetch(`/api/order/status/${orderId}`);
+            if (!res.ok) {
+                const errData = await res.json();
+                throw new Error(errData.message || 'Failed to fetch order status.');
             }
-        );
-
-        return () => unsubscribeOrder();
+            const data = await res.json();
+            console.log("[TrackPage] Fetched data:", data);
+            setOrderData(data);
+        } catch (err) {
+            console.error("[TrackPage] Fetch error:", err);
+            setError(err.message);
+        } finally {
+            setLoading(false);
+        }
+    };
+    
+    useEffect(() => {
+        fetchData(); // Initial fetch
+        const interval = setInterval(fetchData, 30000); // Poll every 30 seconds
+        return () => clearInterval(interval);
     }, [orderId]);
 
+    const { restaurantLocation, customerLocation, riderLocation } = useMemo(() => {
+        const restaurantLoc = orderData?.restaurant?.location;
+        const customerLoc = orderData?.order?.customerLocation;
+        const riderLoc = orderData?.deliveryBoy?.location;
 
-    useEffect(() => {
-        if (!order) return;
-
-        let unsubRestaurant;
-        let unsubRider;
-
-        const businessCollection = order.businessType === 'shop' ? 'shops' : 'restaurants';
-        const restaurantRef = doc(db, businessCollection, order.restaurantId);
-
-        unsubRestaurant = onSnapshot(restaurantRef, 
-            (restaurantSnap) => {
-                if (restaurantSnap.exists()) {
-                    setRestaurant({ id: restaurantSnap.id, ...restaurantSnap.data() });
-                } else {
-                    setError('Associated business not found.');
-                }
-                setLoading(false); 
-            },
-            (err) => {
-                setError('Failed to load business details.');
-                setLoading(false);
-            }
-        );
-
-        if (order.deliveryBoyId) {
-            // **THE FIX**: This assumes delivery boys are in a top-level collection.
-            // Adjust this path if riders are in a sub-collection of the restaurant.
-            const riderRef = doc(db, 'deliveryBoys', order.deliveryBoyId);
-            unsubRider = onSnapshot(riderRef,
-                (riderSnap) => {
-                    setDeliveryBoy(riderSnap.exists() ? { id: riderSnap.id, ...riderSnap.data() } : null);
-                },
-                (err) => console.warn("Rider snapshot error:", err)
-            );
-        } else {
-            setDeliveryBoy(null);
-        }
-
-        return () => {
-            if (unsubRestaurant) unsubRestaurant();
-            if (unsubRider) unsubRider();
+        return {
+            restaurantLocation: restaurantLoc ? { latitude: restaurantLoc.latitude, longitude: restaurantLoc.longitude } : null,
+            customerLocation: customerLoc ? { latitude: customerLoc.latitude, longitude: customerLoc.longitude } : null,
+            riderLocation: riderLoc ? { latitude: riderLoc.latitude, longitude: riderLoc.longitude } : null,
         };
-
-    }, [order]);
-
-
-    const restaurantLocation = useMemo(() => {
-        // **THE FIX**: Correct path to location GeoPoint
-        const loc = restaurant?.address?.location;
-        if (loc instanceof GeoPoint) {
-            return { latitude: loc.latitude, longitude: loc.longitude };
-        }
-        return null;
-    }, [restaurant]);
-
-    const customerLocation = useMemo(() => {
-        // **THE FIX**: Get location from the order document itself
-        const loc = order?.customerLocation;
-        if (loc instanceof GeoPoint) {
-            return { latitude: loc.latitude, longitude: loc.longitude };
-        }
-        return null;
-    }, [order]);
-
-    const riderLocation = useMemo(() => {
-        const loc = deliveryBoy?.location;
-        if (loc instanceof GeoPoint) {
-            return { latitude: loc.latitude, longitude: loc.longitude };
-        }
-        return null;
-    }, [deliveryBoy]);
+    }, [orderData]);
 
 
-    if (loading) {
+    if (loading && !orderData) {
         return (
             <div className="min-h-screen bg-background flex flex-col items-center justify-center text-center p-4">
                 <Loader2 className="w-16 h-16 text-primary animate-spin" />
@@ -242,7 +180,7 @@ export default function OrderTrackingPage() {
         )
     }
 
-    if (!order) {
+    if (!orderData || !orderData.order) {
         return (
              <div className="min-h-screen bg-background flex flex-col items-center justify-center text-center p-4">
                 <h1 className="text-2xl font-bold">Order Not Found</h1>
@@ -251,8 +189,7 @@ export default function OrderTrackingPage() {
         )
     }
     
-    const showRiderDetails = order.status === 'dispatched' || order.status === 'delivered';
-
+    const showRiderDetails = orderData.order.status === 'dispatched' || orderData.order.status === 'delivered';
 
     return (
         <div className="min-h-screen bg-background text-foreground flex flex-col">
@@ -261,14 +198,14 @@ export default function OrderTrackingPage() {
                     <p className="text-xs text-muted-foreground">Tracking Order</p>
                     <h1 className="font-bold text-lg">{orderId}</h1>
                 </div>
-                <Button onClick={() => window.location.reload()} variant="outline" size="icon">
-                    <RefreshCw className="h-4 w-4" />
+                <Button onClick={() => fetchData()} variant="outline" size="icon" disabled={loading}>
+                    <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
                 </Button>
             </header>
 
             <main className="flex-grow flex flex-col">
                  <div className="p-4 bg-card border-b border-border">
-                    <StatusTimeline currentStatus={order.status} />
+                    <StatusTimeline currentStatus={orderData.order.status} />
                 </div>
 
                 <div className="flex-grow relative h-64 md:h-auto">
@@ -280,7 +217,7 @@ export default function OrderTrackingPage() {
                 </div>
                 
                 <div className="p-4">
-                   {showRiderDetails && <RiderDetails rider={deliveryBoy} />}
+                   {showRiderDetails && <RiderDetails rider={orderData.deliveryBoy} />}
                 </div>
             </main>
         </div>
