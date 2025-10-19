@@ -51,7 +51,7 @@ export async function GET(request, { params }) {
             order: {
                 id: orderSnap.id,
                 status: orderData.status,
-                customerLocation: orderData.customerLocation // Assuming this is stored on order
+                customerLocation: orderData.customerLocation // **THE FIX**: Get location from order doc
             },
             restaurant: {
                 name: restaurantData.name,

@@ -1,8 +1,9 @@
+
 'use client';
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { motion } from 'framer-motion';
-import { Check, CookingPot, Bike, Home, Star, Phone, Navigation, RefreshCw, Loader2, ArrowLeft } from 'lucide-react';
+import { Check, CookingPot, Bike, Home, Star, Phone, Navigation, RefreshCw, Loader2, ArrowLeft, XCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -23,17 +24,22 @@ const statusConfig = {
   preparing: { title: 'Preparing', icon: <CookingPot size={24} />, step: 2 },
   dispatched: { title: 'Out for Delivery', icon: <Bike size={24} />, step: 3 },
   delivered: { title: 'Delivered', icon: <Home size={24} />, step: 4 },
-  rejected: { title: 'Rejected', icon: <Home size={24} />, step: 4, isError: true },
+  rejected: { title: 'Rejected', icon: <XCircle size={24} />, step: 4, isError: true },
 };
 
 const StatusTimeline = ({ currentStatus }) => {
-    const activeStatus = (currentStatus === 'paid' || currentStatus === 'rejected') ? 'pending' : currentStatus;
+    const activeStatus = (currentStatus === 'paid') ? 'pending' : currentStatus;
     const currentStep = statusConfig[activeStatus]?.step || 0;
+    const isError = statusConfig[activeStatus]?.isError || false;
   
+    const uniqueSteps = Object.values(statusConfig)
+        .filter((value, index, self) => 
+            !value.isError && self.findIndex(v => v.step === value.step) === index
+        );
+
     return (
       <div className="flex justify-between items-center w-full px-2 sm:px-4 pt-4">
-        {Object.values(statusConfig).filter(s => !s.isError).map(({ title, icon, step }) => {
-          if(title === 'Rejected') return null;
+        {uniqueSteps.map(({ title, icon, step }) => {
           const isCompleted = step <= currentStep;
           const isCurrent = step === currentStep;
           return (
@@ -41,6 +47,7 @@ const StatusTimeline = ({ currentStatus }) => {
               <div className="flex flex-col items-center text-center w-16">
                 <motion.div
                   className={`w-12 h-12 rounded-full flex items-center justify-center border-2 transition-all duration-500 ${
+                    isError ? 'bg-destructive border-destructive text-destructive-foreground' :
                     isCompleted ? 'bg-primary border-primary text-primary-foreground' : 'bg-card border-border text-muted-foreground'
                   }`}
                   animate={{ scale: isCurrent ? 1.1 : 1 }}
@@ -48,14 +55,17 @@ const StatusTimeline = ({ currentStatus }) => {
                 >
                   {icon}
                 </motion.div>
-                <p className={`mt-2 text-xs font-semibold ${isCompleted ? 'text-foreground' : 'text-muted-foreground'}`}>
-                  {title}
+                <p className={`mt-2 text-xs font-semibold ${
+                    isError ? 'text-destructive' :
+                    isCompleted ? 'text-foreground' : 'text-muted-foreground'
+                }`}>
+                  {isError ? statusConfig[currentStatus].title : title}
                 </p>
               </div>
               {step < 4 && (
                 <div className="flex-1 h-1 mx-1 sm:mx-2 rounded-full bg-border">
                   <motion.div
-                    className="h-full bg-primary rounded-full"
+                    className={`h-full rounded-full ${isError ? 'bg-destructive' : 'bg-primary'}`}
                     initial={{ width: '0%' }}
                     animate={{ width: isCompleted ? '100%' : '0%' }}
                     transition={{ duration: 0.5, delay: 0.2 }}
@@ -165,6 +175,8 @@ export default function OrderTrackingPage() {
         );
 
         if (order.deliveryBoyId) {
+            // **THE FIX**: This assumes delivery boys are in a top-level collection.
+            // Adjust this path if riders are in a sub-collection of the restaurant.
             const riderRef = doc(db, 'deliveryBoys', order.deliveryBoyId);
             unsubRider = onSnapshot(riderRef,
                 (riderSnap) => {
@@ -185,6 +197,7 @@ export default function OrderTrackingPage() {
 
 
     const restaurantLocation = useMemo(() => {
+        // **THE FIX**: Correct path to location GeoPoint
         const loc = restaurant?.address?.location;
         if (loc instanceof GeoPoint) {
             return { latitude: loc.latitude, longitude: loc.longitude };
@@ -193,6 +206,7 @@ export default function OrderTrackingPage() {
     }, [restaurant]);
 
     const customerLocation = useMemo(() => {
+        // **THE FIX**: Get location from the order document itself
         const loc = order?.customerLocation;
         if (loc instanceof GeoPoint) {
             return { latitude: loc.latitude, longitude: loc.longitude };

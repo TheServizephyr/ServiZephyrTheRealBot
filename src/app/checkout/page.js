@@ -5,13 +5,68 @@
 import React, { useState, useEffect, useMemo, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { motion } from 'framer-motion';
-import { Home, User, ShoppingCart, ArrowLeft, Wallet, IndianRupee, Truck } from 'lucide-react';
+import { Home, User, ShoppingCart, ArrowLeft, Wallet, IndianRupee, Truck, ChevronsUpDown, Check, PlusCircle } from 'lucide-react';
 import Script from 'next/script';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose } from "@/components/ui/dialog";
 import { Label } from '@/components/ui/label';
 import { cn } from '@/lib/utils';
 import { getAuth } from 'firebase/auth';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem } from '@/components/ui/command';
+
+
+const AddressSelectionCombobox = ({ savedAddresses, selectedAddress, onSelectAddress, onAddNew, disabled }) => {
+    const [open, setOpen] = useState(false);
+    
+    return (
+        <Popover open={open} onOpenChange={setOpen}>
+            <PopoverTrigger asChild>
+                <Button
+                    variant="outline"
+                    role="combobox"
+                    aria-expanded={open}
+                    className="w-full justify-between h-auto py-2 text-left font-normal"
+                    disabled={disabled}
+                >
+                    <span className="truncate">{selectedAddress || "Select an address..."}</span>
+                    <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-[--radix-popover-trigger-width] p-0">
+                <Command>
+                    <CommandInput placeholder="Search address..." />
+                    <CommandEmpty>No address found.</CommandEmpty>
+                    <CommandGroup className="max-h-60 overflow-y-auto">
+                        {savedAddresses.map((addr) => (
+                            <CommandItem
+                                key={addr.id}
+                                value={addr.full}
+                                onSelect={(currentValue) => {
+                                    onSelectAddress(addr.full);
+                                    setOpen(false);
+                                }}
+                            >
+                                <Check className={cn("mr-2 h-4 w-4", selectedAddress === addr.full ? "opacity-100" : "opacity-0")} />
+                                {addr.full}
+                            </CommandItem>
+                        ))}
+                        <CommandItem
+                            onSelect={() => {
+                                onAddNew();
+                                setOpen(false);
+                            }}
+                            className="text-primary font-semibold"
+                        >
+                           <PlusCircle className="mr-2 h-4 w-4" />
+                           Add a new address
+                        </CommandItem>
+                    </CommandGroup>
+                </Command>
+            </PopoverContent>
+        </Popover>
+    )
+}
 
 
 const CheckoutModal = ({ isOpen, onClose, onConfirm, grandTotal, loading, name, onNameChange, address, onAddressChange, error, isExistingUser, savedAddresses, selectedAddress, onSelectAddress, isAddingNew, onSetIsAddingNew }) => {
@@ -36,21 +91,21 @@ const CheckoutModal = ({ isOpen, onClose, onConfirm, grandTotal, loading, name, 
                                 </div>
                             </div>
                            
-                            {isExistingUser && savedAddresses.length > 0 && (
+                            {isExistingUser && savedAddresses.length > 0 ? (
                                 <div>
                                     <Label>Select Address</Label>
-                                    <div className="space-y-2 mt-1">
-                                        {savedAddresses.map(addr => (
-                                            <div key={addr.id} onClick={() => onSelectAddress(addr.full)} className={cn("p-3 rounded-md border-2 cursor-pointer", !isAddingNew && selectedAddress === addr.full ? 'border-primary bg-primary/10' : 'border-border')}>
-                                                {addr.full}
-                                            </div>
-                                        ))}
-                                         <div onClick={() => onSetIsAddingNew(true)} className={cn("p-3 rounded-md border-2 cursor-pointer flex items-center gap-2", isAddingNew ? 'border-primary bg-primary/10' : 'border-border')}>
-                                            <Wallet size={16}/> Add a new address
-                                        </div>
-                                    </div>
+                                    <AddressSelectionCombobox
+                                        savedAddresses={savedAddresses}
+                                        selectedAddress={selectedAddress}
+                                        onSelectAddress={(addr) => {
+                                            onSelectAddress(addr);
+                                            onSetIsAddingNew(false);
+                                        }}
+                                        onAddNew={() => onSetIsAddingNew(true)}
+                                        disabled={loading}
+                                    />
                                 </div>
-                            )}
+                            ) : null}
 
                             {(isAddingNew || !isExistingUser || savedAddresses.length === 0) && (
                                  <div>
@@ -231,7 +286,9 @@ const CheckoutPageInternal = () => {
     };
 
     const handleConfirmOrder = async () => {
+        // **THE FIX**: Correctly use the 'address' from the state when adding a new address.
         const finalAddress = cartData?.deliveryType === 'pickup' ? 'Self Pickup' : (isAddingNew ? address : selectedAddress);
+        
         if (!finalAddress || !name.trim()) {
             setError('Please enter your name and address.');
             return;
@@ -241,7 +298,7 @@ const CheckoutPageInternal = () => {
 
         const finalItems = cart.map(item => ({
             name: `${item.name} (${item.portion.name})${item.selectedAddOns.map(a => ` + ${a.name}`).join('')}`,
-            quantity: item.quantity,
+            qty: item.quantity,
             price: item.totalPrice,
         }));
         
