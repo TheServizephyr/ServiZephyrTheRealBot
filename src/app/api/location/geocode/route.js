@@ -22,7 +22,7 @@ export async function GET(req) {
     const url = `https://apis.mappls.com/advancedmaps/v1/${MAPPLS_API_KEY}/rev_geocode?lat=${lat}&lng=${lng}`;
 
     try {
-        console.log(`[API geocode] Calling Mappls Reverse Geocode API at: ${url}`);
+        console.log(`[API geocode] Calling Mappls Reverse Geocode API...`);
         const response = await fetch(url);
         const data = await response.json();
         
