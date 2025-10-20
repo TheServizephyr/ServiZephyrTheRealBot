@@ -1,11 +1,10 @@
 
-
 'use client';
 
 import React, { useState, useEffect, Suspense, useMemo, useCallback } from 'react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Utensils, Plus, Minus, X, Home, User, Edit2, ShoppingCart, Star, CookingPot, BookOpen, Check, SlidersHorizontal, ArrowUpDown, PlusCircle, Ticket, Gift, Sparkles, Flame, Search, Trash2, ChevronDown, Tag as TagIcon, RadioGroup, IndianRupee, HardHat, MapPin } from 'lucide-react';
+import { Utensils, Plus, Minus, X, Home, User, Edit2, ShoppingCart, Star, CookingPot, BookOpen, Check, SlidersHorizontal, ArrowUpDown, PlusCircle, Ticket, Gift, Sparkles, Flame, Search, Trash2, ChevronDown, Tag as TagIcon, RadioGroup, IndianRupee, HardHat, MapPin, Bike, Store } from 'lucide-react';
 import Image from 'next/image';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
@@ -334,6 +333,7 @@ const OrderPageInternal = () => {
     const [loyaltyPoints, setLoyaltyPoints] = useState(0);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
+    const [deliveryType, setDeliveryType] = useState('delivery');
 
     const [cart, setCart] = useState([]);
     const [notes, setNotes] = useState("");
@@ -358,16 +358,10 @@ const OrderPageInternal = () => {
             localStorage.setItem('lastKnownPhone', phone);
         }
         
-        // Temporarily store a dummy location if none exists to bypass the check
         let locationStr = localStorage.getItem('customerLocation');
         if (!locationStr) {
-            const dummyLocation = {
-                full: "Ghaziabad, Uttar Pradesh",
-                lat: 28.6692,
-                lng: 77.4538,
-            };
-            locationStr = JSON.stringify(dummyLocation);
-            localStorage.setItem('customerLocation', locationStr);
+            router.push(`/location?restaurantId=${restaurantId}&returnUrl=${encodeURIComponent(window.location.pathname + window.location.search)}`);
+            return;
         }
 
         try {
@@ -375,7 +369,8 @@ const OrderPageInternal = () => {
             setCustomerLocation(parsedLocation);
         } catch (e) {
             console.error("[OrderPage] Failed to parse location from localStorage.", e);
-            // Don't redirect, just log the error
+            router.push(`/location?restaurantId=${restaurantId}&returnUrl=${encodeURIComponent(window.location.pathname + window.location.search)}`);
+            return;
         }
 
         const fetchMenuData = async () => {
@@ -407,6 +402,15 @@ const OrderPageInternal = () => {
                     deliveryEnabled: data.deliveryEnabled,
                     pickupEnabled: data.pickupEnabled,
                 });
+                
+                // Set initial delivery type
+                if (data.deliveryEnabled && !data.pickupEnabled) {
+                    setDeliveryType('delivery');
+                } else if (!data.deliveryEnabled && data.pickupEnabled) {
+                    setDeliveryType('pickup');
+                } else {
+                    setDeliveryType('delivery');
+                }
 
             } catch (err) {
                 setError(err.message);
@@ -420,15 +424,19 @@ const OrderPageInternal = () => {
     }, [restaurantId, phoneFromUrl, router]);
     
     // --- CART PERSISTENCE ---
-    const updateCart = useCallback((newCart, newNotes) => {
+    const updateCart = useCallback((newCart, newNotes, newDeliveryType) => {
         setCart(newCart);
         if (newNotes !== undefined) {
             setNotes(newNotes);
+        }
+        if (newDeliveryType !== undefined) {
+            setDeliveryType(newDeliveryType);
         }
         
         const cartDataToSave = {
             cart: newCart,
             notes: newNotes !== undefined ? newNotes : notes,
+            deliveryType: newDeliveryType !== undefined ? newDeliveryType : deliveryType,
             restaurantId,
             restaurantName: restaurantData.name,
             phone: phoneFromUrl || localStorage.getItem('lastKnownPhone'),
@@ -439,7 +447,7 @@ const OrderPageInternal = () => {
             pickupEnabled: restaurantData.pickupEnabled,
         };
         localStorage.setItem(`cart_${restaurantId}`, JSON.stringify(cartDataToSave));
-    }, [notes, restaurantId, restaurantData, loyaltyPoints, phoneFromUrl]);
+    }, [notes, restaurantId, restaurantData, loyaltyPoints, phoneFromUrl, deliveryType]);
     
     useEffect(() => {
         if (restaurantId) {
@@ -448,6 +456,9 @@ const OrderPageInternal = () => {
                 const parsedData = JSON.parse(savedCartData);
                 setCart(parsedData.cart || []);
                 setNotes(parsedData.notes || '');
+                if (parsedData.deliveryType) {
+                    setDeliveryType(parsedData.deliveryType);
+                }
             }
         }
     }, [restaurantId]);
@@ -528,10 +539,10 @@ const OrderPageInternal = () => {
                     quantity: 1 
                 }];
             }
-            updateCart(newCart, notes);
+            updateCart(newCart, notes, deliveryType);
             return newCart;
         });
-    }, [notes, updateCart]);
+    }, [notes, deliveryType, updateCart]);
 
     const handleIncrement = (item) => {
         // Direct add if item is simple (1 portion, 0 addons)
@@ -563,6 +574,10 @@ const OrderPageInternal = () => {
         }
 
         updateCart(newCart);
+    };
+    
+    const handleDeliveryTypeChange = (type) => {
+        updateCart(cart, notes, type);
     };
 
     const totalCartItems = cart.reduce((sum, item) => sum + item.quantity, 0);
@@ -659,35 +674,64 @@ const OrderPageInternal = () => {
                     <BannerCarousel images={restaurantData.bannerUrls} onClick={() => setIsBannerExpanded(true)} restaurantName={restaurantData.name} logoUrl={restaurantData.logoUrl} />
                 </header>
 
-                <div className="container mx-auto px-4 mt-6">
-                    <div className="bg-card border border-border p-3 rounded-lg flex items-center justify-between">
-                         <div className="flex items-center gap-3 overflow-hidden">
-                             <MapPin className="text-primary flex-shrink-0" size={20}/>
-                             <p className="text-sm text-muted-foreground truncate">{customerLocation?.full || 'No location set'}</p>
-                         </div>
-                         <Link href={`/location?restaurantId=${restaurantId}&returnUrl=${encodeURIComponent(window.location.pathname + window.location.search)}`}>
-                            <Button variant="link" className="text-primary p-0 h-auto font-semibold flex-shrink-0">Change</Button>
-                         </Link>
+                <div className="container mx-auto px-4 mt-6 space-y-4">
+                     <div className="bg-card p-4 rounded-lg border border-border">
+                        <div className="flex bg-muted p-1 rounded-lg">
+                            <button
+                                onClick={() => restaurantData.deliveryEnabled && handleDeliveryTypeChange('delivery')}
+                                className={cn(
+                                    "flex-1 p-2 rounded-md flex items-center justify-center gap-2 font-semibold transition-all",
+                                    deliveryType === 'delivery' && 'bg-background shadow-sm',
+                                    !restaurantData.deliveryEnabled && 'opacity-50 cursor-not-allowed'
+                                )}
+                                disabled={!restaurantData.deliveryEnabled}
+                                title={!restaurantData.deliveryEnabled ? "Delivery not available" : ""}
+                            >
+                                <Bike size={16} /> Delivery
+                            </button>
+                            <button
+                                onClick={() => restaurantData.pickupEnabled && handleDeliveryTypeChange('pickup')}
+                                className={cn(
+                                    "flex-1 p-2 rounded-md flex items-center justify-center gap-2 font-semibold transition-all",
+                                    deliveryType === 'pickup' && 'bg-background shadow-sm',
+                                    !restaurantData.pickupEnabled && 'opacity-50 cursor-not-allowed'
+                                )}
+                                disabled={!restaurantData.pickupEnabled}
+                                title={!restaurantData.pickupEnabled ? "Pickup not available" : ""}
+                            >
+                                <Store size={16} /> Pickup
+                            </button>
+                        </div>
                     </div>
-                </div>
-
-                <div className="sticky top-0 z-10 bg-background/95 backdrop-blur-sm py-2 border-b border-border mt-4">
-                    <div className="container mx-auto px-4 flex items-center gap-4">
-                        <div className="relative flex-grow">
+                    <div className="flex flex-col md:flex-row items-center gap-4">
+                        <div className="bg-card border border-border p-3 rounded-lg flex items-center justify-between w-full md:w-1/3">
+                            <div className="flex items-center gap-3 overflow-hidden">
+                                <MapPin className="text-primary flex-shrink-0" size={20}/>
+                                <p className="text-sm text-muted-foreground truncate">{customerLocation?.full || 'No location set'}</p>
+                            </div>
+                            <Link href={`/location?restaurantId=${restaurantId}&returnUrl=${encodeURIComponent(window.location.pathname + window.location.search)}`}>
+                                <Button variant="link" className="text-primary p-0 h-auto font-semibold flex-shrink-0">Change</Button>
+                            </Link>
+                        </div>
+                        <div className="relative w-full md:w-2/3">
                             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" size={20} />
                             <input
                                 type="text"
                                 placeholder="Search for dishes..."
                                 value={searchQuery}
                                 onChange={(e) => setSearchQuery(e.target.value)}
-                                className="w-full bg-input border border-border rounded-lg pl-10 pr-4 py-2 h-10 text-sm focus:ring-2 focus:ring-primary focus:border-primary outline-none"
+                                className="w-full bg-input border border-border rounded-lg pl-10 pr-4 py-2 h-12 text-sm focus:ring-2 focus:ring-primary focus:border-primary outline-none"
                             />
                         </div>
+                    </div>
+                </div>
 
+                <div className="sticky top-0 z-10 bg-background/95 backdrop-blur-sm py-2 border-b border-border mt-4">
+                    <div className="container mx-auto px-4 flex items-center justify-end gap-4">
                         <Popover>
                             <PopoverTrigger asChild>
                                 <Button variant="outline" className="flex items-center gap-2 flex-shrink-0">
-                                    <SlidersHorizontal size={16} /> Filter
+                                    <SlidersHorizontal size={16} /> Filter & Sort
                                 </Button>
                             </PopoverTrigger>
                             <PopoverContent className="w-64">

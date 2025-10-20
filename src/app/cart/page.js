@@ -1,5 +1,4 @@
 
-
 'use client';
 
 import React, { useState, useEffect, useMemo, Suspense } from 'react';
@@ -124,12 +123,6 @@ const CartPageInternal = () => {
 
             if (parsedData.deliveryType) {
                 setDeliveryType(parsedData.deliveryType);
-            } else if (parsedData.deliveryEnabled && !parsedData.pickupEnabled) {
-                setDeliveryType('delivery');
-            } else if (!parsedData.deliveryEnabled && parsedData.pickupEnabled) {
-                setDeliveryType('pickup');
-            } else {
-                setDeliveryType('delivery');
             }
 
         } else {
@@ -147,7 +140,6 @@ const CartPageInternal = () => {
         if(updates.cart !== undefined) setCart(updates.cart);
         if(updates.notes !== undefined) setNotes(updates.notes);
         if(updates.appliedCoupons !== undefined) setAppliedCoupons(updates.appliedCoupons);
-        if(updates.deliveryType !== undefined) setDeliveryType(updates.deliveryType);
         if(updates.tipAmount !== undefined) setTipAmount(updates.tipAmount);
         if(updates.pickupTime !== undefined) setPickupTime(updates.pickupTime);
 
@@ -189,7 +181,7 @@ const CartPageInternal = () => {
     
     const handleClearCart = () => {
         setIsClearCartDialogOpen(false);
-        updateCartInStorage({ cart: [], appliedCoupons: [], tipAmount: 0, deliveryType: 'delivery' });
+        updateCartInStorage({ cart: [], appliedCoupons: [], tipAmount: 0 });
     };
 
     const handleConfirmOrder = () => {
@@ -200,17 +192,9 @@ const CartPageInternal = () => {
     const handleGoBack = () => {
         router.push(`/order/${restaurantId}?phone=${phone}`);
     };
-
-    const handleDeliveryTypeChange = (type) => {
-        if (type === 'pickup') {
-            setIsPickupModalOpen(true);
-        } else {
-            updateCartInStorage({ deliveryType: 'delivery', tipAmount: tipAmount, pickupTime: '' });
-        }
-    };
     
     const handleConfirmPickup = () => {
-        updateCartInStorage({ deliveryType: 'pickup', pickupTime: pickupTime, tipAmount: 0 }); // Reset tip for pickup
+        updateCartInStorage({ pickupTime: pickupTime }); 
         setIsPickupModalOpen(false);
     };
 
@@ -304,8 +288,6 @@ const CartPageInternal = () => {
     const specialCoupons = allCoupons.filter(c => c.customerId);
     const normalCoupons = allCoupons.filter(c => !c.customerId);
 
-    const isDeliveryEnabled = cartData?.deliveryEnabled === true;
-    const isPickupEnabled = cartData?.pickupEnabled === true;
 
     if (!cartData || !restaurantId) {
         return (
@@ -360,34 +342,20 @@ const CartPageInternal = () => {
                     </div>
                 ) : (
                     <>
-                        <div className="p-4 bg-card rounded-lg border border-border">
-                            <div className="flex bg-muted p-1 rounded-lg">
-                                <button 
-                                    onClick={() => isDeliveryEnabled && handleDeliveryTypeChange('delivery')} 
-                                    className={cn(
-                                        "flex-1 p-2 rounded-md flex items-center justify-center gap-2 font-semibold transition-all",
-                                        deliveryType === 'delivery' && 'bg-background shadow-sm',
-                                        !isDeliveryEnabled && 'opacity-50 cursor-not-allowed'
-                                    )}
-                                    disabled={!isDeliveryEnabled}
-                                    title={!isDeliveryEnabled ? "Delivery not available" : ""}
-                                >
-                                    <Bike size={16} /> Delivery
-                                </button>
-                                <button 
-                                    onClick={() => isPickupEnabled && handleDeliveryTypeChange('pickup')} 
-                                    className={cn(
-                                        "flex-1 p-2 rounded-md flex items-center justify-center gap-2 font-semibold transition-all",
-                                        deliveryType === 'pickup' && 'bg-background shadow-sm',
-                                        !isPickupEnabled && 'opacity-50 cursor-not-allowed'
-                                    )}
-                                    disabled={!isPickupEnabled}
-                                    title={!isPickupEnabled ? "Pickup not available" : ""}
-                                >
-                                    <Store size={16} /> Pickup
-                                </button>
+                        {deliveryType === 'pickup' && (
+                             <div className="p-4 bg-card rounded-lg border border-border mb-4">
+                                <div className="flex items-center justify-between">
+                                    <div className="flex items-center gap-3">
+                                        <Store size={20} className="text-primary"/>
+                                        <div>
+                                            <h4 className="font-semibold">Pickup Time</h4>
+                                            <p className="text-sm text-muted-foreground">{pickupTime || 'Not set'}</p>
+                                        </div>
+                                    </div>
+                                    <Button variant="link" className="text-primary" onClick={() => setIsPickupModalOpen(true)}>Change</Button>
+                                </div>
                             </div>
-                        </div>
+                        )}
 
                         <div className="bg-card p-4 rounded-lg border border-border mt-4">
                             <div className="flex justify-between items-center mb-3">
@@ -598,7 +566,7 @@ const CartPageInternal = () => {
             <footer className="fixed bottom-0 left-0 w-full bg-background/80 backdrop-blur-lg border-t border-border z-30">
                 <div className="container mx-auto p-4 flex items-center justify-center gap-4">
                     <Button onClick={handleConfirmOrder} className="flex-grow bg-primary hover:bg-primary/90 text-primary-foreground h-12 text-lg font-bold" disabled={cart.length === 0}>
-                        Confirm Order
+                        Proceed to Checkout
                     </Button>
                 </div>
             </footer>
@@ -614,10 +582,3 @@ const CartPage = () => (
 );
 
 export default CartPage;
-
-
-
-    
-
-
-    
