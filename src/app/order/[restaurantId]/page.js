@@ -15,6 +15,7 @@ import { Switch } from '@/components/ui/switch';
 import Link from 'next/link';
 import { format } from 'date-fns';
 import { Calendar as CalendarUI } from '@/components/ui/calendar';
+import QrScanner from '@/components/QrScanner';
 
 
 const CustomizationDrawer = ({ item, isOpen, onClose, onAddToCart }) => {
@@ -457,6 +458,7 @@ const OrderPageInternal = () => {
     const [customizationItem, setCustomizationItem] = useState(null);
     const [isBannerExpanded, setIsBannerExpanded] = useState(false);
     const [isDineInModalOpen, setDineInModalOpen] = useState(false);
+    const [isQrScannerOpen, setIsQrScannerOpen] = useState(false);
     
 
     // --- LOCATION & DATA FETCHING ---
@@ -753,6 +755,17 @@ const OrderPageInternal = () => {
     return (
         <>
             <AnimatePresence>
+                {isQrScannerOpen && (
+                    <QrScanner 
+                        onClose={() => setIsQrScannerOpen(false)}
+                        onScanSuccess={(decodedText) => {
+                            setIsQrScannerOpen(false);
+                            router.push(decodedText);
+                        }}
+                    />
+                )}
+            </AnimatePresence>
+            <AnimatePresence>
                 {isBannerExpanded && (
                      <motion.div
                         className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4"
@@ -789,7 +802,10 @@ const OrderPageInternal = () => {
                 <DineInModal 
                   isOpen={isDineInModalOpen} 
                   onClose={() => setDineInModalOpen(false)}
-                  onScanQR={() => alert("QR Scanner coming soon!")}
+                  onScanQR={() => {
+                    setDineInModalOpen(false);
+                    setIsQrScannerOpen(true);
+                  }}
                 />
                 <MenuBrowserModal isOpen={isMenuBrowserOpen} onClose={() => setIsMenuBrowserOpen(false)} categories={menuCategories} onCategoryClick={handleCategoryClick} />
                 <CustomizationDrawer
