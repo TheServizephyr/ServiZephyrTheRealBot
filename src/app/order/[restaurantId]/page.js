@@ -1,4 +1,5 @@
 
+
 'use client';
 
 import React, { useState, useEffect, Suspense, useMemo, useCallback } from 'react';
@@ -289,7 +290,7 @@ const BannerCarousel = ({ images, onClick, restaurantName, logoUrl }) => {
             </AnimatePresence>
         </div>
         <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-black/20 to-transparent"></div>
-        <div className="absolute bottom-[-3rem] left-0 right-0 px-4">
+        <div className="absolute bottom-[-0.5rem] left-0 right-0 px-4">
              <div className="container mx-auto bg-background shadow-lg border border-border rounded-xl p-3 flex items-center justify-between">
                 {logoUrl && (
                     <div className="relative w-16 h-16 rounded-lg overflow-hidden border-2 border-border shadow-md flex-shrink-0">
