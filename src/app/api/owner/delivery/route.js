@@ -1,7 +1,7 @@
 
 
 import { NextResponse } from 'next/server';
-import { firestore as adminFirestore } from 'firebase-admin';
+
 import { getAuth, getFirestore } from '@/lib/firebase-admin';
 
 // Helper to verify owner and get their first business ID
@@ -141,7 +141,7 @@ export async function POST(req) {
             totalDeliveries: 0,
             avgDeliveryTime: 0,
             avgRating: 0,
-            createdAt: adminFirestore.FieldValue.serverTimestamp(),
+            createdAt: firestore.FieldValue.serverTimestamp(),
         };
 
         await newBoyRef.set(newBoyData);

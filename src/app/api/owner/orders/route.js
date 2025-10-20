@@ -1,7 +1,7 @@
 
 
 import { NextResponse } from 'next/server';
-import { firestore as adminFirestore } from 'firebase-admin';
+
 import { getAuth, getFirestore } from '@/lib/firebase-admin';
 import { sendOrderStatusUpdateToCustomer } from '@/lib/notifications';
 
@@ -151,7 +151,7 @@ export async function PATCH(req) {
         
         const updateData = { 
             status: newStatus,
-            statusHistory: adminFirestore.FieldValue.arrayUnion({
+            statusHistory: firestore.FieldValue.arrayUnion({
                 status: newStatus,
                 timestamp: new Date()
             })
@@ -217,6 +217,3 @@ export async function PATCH(req) {
         return NextResponse.json({ message: `Backend Error: ${error.message}` }, { status: error.status || 500 });
     }
 }
-
-
-

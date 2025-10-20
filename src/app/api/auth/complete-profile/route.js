@@ -1,7 +1,7 @@
 
 import { NextResponse } from 'next/server';
 import { getAuth, getFirestore } from '@/lib/firebase-admin';
-import { firestore as adminFirestore } from 'firebase-admin';
+
 
 export async function POST(req) {
     try {
@@ -74,7 +74,7 @@ export async function POST(req) {
                             name: finalUserData.name, // Update with master profile name
                             email: finalUserData.email, // Add email
                             status: 'verified', // Mark as verified
-                            lastSeen: adminFirestore.FieldValue.serverTimestamp()
+                            lastSeen: firestore.FieldValue.serverTimestamp()
                         };
 
                         batch.set(newCustomerRef, newCustomerPayload, { merge: true });
@@ -84,7 +84,7 @@ export async function POST(req) {
                         const userRestaurantLinkRef = firestore.collection('users').doc(uid).collection('joined_restaurants').doc(restaurantId);
                          batch.set(userRestaurantLinkRef, {
                             restaurantName: restaurantInfo.restaurantName, 
-                            joinedAt: adminFirestore.FieldValue.serverTimestamp(),
+                            joinedAt: firestore.FieldValue.serverTimestamp(),
                             totalSpend: oldCustomerData.totalSpend || 0,
                             loyaltyPoints: oldCustomerData.loyaltyPoints || 0,
                             lastOrderDate: oldCustomerData.lastOrderDate,

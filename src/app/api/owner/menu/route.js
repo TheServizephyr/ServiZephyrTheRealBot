@@ -1,7 +1,7 @@
 
 
 import { NextResponse } from 'next/server';
-import { firestore as adminFirestore } from 'firebase-admin';
+
 import { getAuth, getFirestore } from '@/lib/firebase-admin';
 
 // Helper to verify owner and get their first business ID
@@ -171,7 +171,7 @@ export async function POST(req) {
                 ...finalItem,
                 id: newItemId,
                 order: maxOrder + 1,
-                createdAt: adminFirestore.FieldValue.serverTimestamp(),
+                createdAt: firestore.FieldValue.serverTimestamp(),
             });
             console.log(`[API LOG] New item with ID ${newItemId} added to batch.`);
         }

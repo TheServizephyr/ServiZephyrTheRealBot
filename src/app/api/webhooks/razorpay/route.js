@@ -5,7 +5,7 @@ import { getFirestore } from '@/lib/firebase-admin';
 import { sendNewOrderToOwner } from '@/lib/notifications';
 import crypto from 'crypto';
 import https from 'https';
-import { firestore as adminFirestore } from 'firebase-admin';
+
 
 async function makeRazorpayRequest(options, payload) {
     return new Promise((resolve, reject) => {
@@ -111,8 +111,8 @@ export async function POST(req) {
                     name: customerDetails.name, 
                     phone: customerDetails.phone, 
                     addresses: [{ id: `addr_${Date.now()}`, full: customerDetails.address }],
-                    createdAt: adminFirestore.FieldValue.serverTimestamp(),
-                    orderedFrom: adminFirestore.FieldValue.arrayUnion({
+                    createdAt: firestore.FieldValue.serverTimestamp(),
+                    orderedFrom: firestore.FieldValue.arrayUnion({
                         restaurantId: restaurantDetails.restaurantId,
                         restaurantName: restaurantDetails.restaurantName,
                         businessType: businessType,
@@ -136,10 +136,10 @@ export async function POST(req) {
             batch.set(restaurantCustomerRef, {
                 name: customerDetails.name, phone: customerDetails.phone, 
                 status: isNewUser ? 'unclaimed' : 'verified',
-                totalSpend: adminFirestore.FieldValue.increment(subtotal),
-                loyaltyPoints: adminFirestore.FieldValue.increment(pointsEarned - pointsSpent),
-                lastOrderDate: adminFirestore.FieldValue.serverTimestamp(),
-                totalOrders: adminFirestore.FieldValue.increment(1),
+                totalSpend: firestore.FieldValue.increment(subtotal),
+                loyaltyPoints: firestore.FieldValue.increment(pointsEarned - pointsSpent),
+                lastOrderDate: firestore.FieldValue.serverTimestamp(),
+                totalOrders: firestore.FieldValue.increment(1),
             }, { merge: true });
             
             const newOrderRef = firestore.collection('orders').doc();
@@ -162,7 +162,7 @@ export async function POST(req) {
                 deliveryCharge: billDetails.deliveryCharge,
                 totalAmount: billDetails.grandTotal,
                 status: 'paid',
-                orderDate: adminFirestore.FieldValue.serverTimestamp(),
+                orderDate: firestore.FieldValue.serverTimestamp(),
                 notes: notes || null,
                 paymentDetails: {
                     razorpay_payment_id: paymentId,
