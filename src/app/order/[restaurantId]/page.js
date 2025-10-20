@@ -5,7 +5,7 @@
 import React, { useState, useEffect, Suspense, useMemo, useCallback } from 'react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Utensils, Plus, Minus, X, Home, User, Edit2, ShoppingCart, Star, CookingPot, BookOpen, Check, SlidersHorizontal, ArrowUpDown, PlusCircle, Ticket, Gift, Sparkles, Flame, Search, Trash2, ChevronDown, Tag as TagIcon, RadioGroup, IndianRupee, HardHat, MapPin, Bike, Store, ConciergeBell, QrCode, Calendar, Clock, UserCheck, ArrowLeft } from 'lucide-react';
+import { Utensils, Plus, Minus, X, Home, User, Edit2, ShoppingCart, Star, CookingPot, BookOpen, Check, SlidersHorizontal, ArrowUpDown, PlusCircle, Ticket, Gift, Sparkles, Flame, Search, Trash2, ChevronDown, Tag as TagIcon, RadioGroup, IndianRupee, HardHat, MapPin, Bike, Store, ConciergeBell, QrCode, Calendar, Clock, UserCheck, ArrowLeft, CheckCircle } from 'lucide-react';
 import Image from 'next/image';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
@@ -259,8 +259,8 @@ const MenuBrowserModal = ({ isOpen, onClose, categories, onCategoryClick }) => {
   );
 };
 
-const DineInModal = ({ isOpen, onClose, onBookTable, onScanQR }) => {
-    const [activeModal, setActiveModal] = useState('main'); // 'main', 'book', 'scan'
+const DineInModal = ({ isOpen, onClose, onScanQR }) => {
+    const [activeModal, setActiveModal] = useState('main'); // 'main', 'book', 'success'
     const [bookingDetails, setBookingDetails] = useState({ name: '', guests: 2, date: new Date(), time: '19:00' });
 
     const handleBookingChange = (field, value) => {
@@ -273,10 +273,20 @@ const DineInModal = ({ isOpen, onClose, onBookTable, onScanQR }) => {
             alert("Please enter your name.");
             return;
         }
-        alert(`Table booking request sent for ${bookingDetails.name} (${bookingDetails.guests} guests) on ${format(bookingDetails.date, "PPP")} at ${bookingDetails.time}.`);
-        onClose();
-        setActiveModal('main');
+        // Here you would typically make an API call
+        console.log("Booking Request Sent:", bookingDetails);
+        setActiveModal('success');
     };
+
+    // Reset state when modal is closed
+    useEffect(() => {
+        if (!isOpen) {
+            setTimeout(() => {
+                setActiveModal('main');
+                setBookingDetails({ name: '', guests: 2, date: new Date(), time: '19:00' });
+            }, 300); // delay to allow for closing animation
+        }
+    }, [isOpen]);
 
     return (
         <Dialog open={isOpen} onOpenChange={onClose}>
@@ -289,7 +299,7 @@ const DineInModal = ({ isOpen, onClose, onBookTable, onScanQR }) => {
                         animate={{ opacity: 1, x: 0 }}
                         exit={{ opacity: 0, x: -20 }}
                     >
-                         <DialogHeader className="p-4 border-b text-center">
+                         <DialogHeader className="p-6 pb-4 border-b text-center">
                             <DialogTitle className="text-xl">Planning to Visit Us?</DialogTitle>
                             <DialogDescription>How would you like to proceed?</DialogDescription>
                         </DialogHeader>
@@ -353,7 +363,22 @@ const DineInModal = ({ isOpen, onClose, onBookTable, onScanQR }) => {
                         </div>
                         <DialogFooter className="p-4 border-t flex-shrink-0">
                              <Button variant="secondary" onClick={() => setActiveModal('main')}>Back</Button>
-                             <Button onClick={handleConfirmBooking} className="bg-primary hover:bg-primary/90">Continue</Button>
+                             <Button onClick={handleConfirmBooking} className="bg-primary hover:bg-primary/90">Confirm Booking</Button>
+                        </DialogFooter>
+                    </motion.div>
+                )}
+                 {activeModal === 'success' && (
+                     <motion.div
+                        key="success"
+                        initial={{ opacity: 0, scale: 0.8 }}
+                        animate={{ opacity: 1, scale: 1 }}
+                        className="flex flex-col items-center justify-center p-8 text-center"
+                     >
+                        <CheckCircle className="h-16 w-16 text-green-500 mb-4" />
+                        <h2 className="text-2xl font-bold">Booking Request Sent!</h2>
+                        <p className="text-muted-foreground mt-2">You will receive a WhatsApp confirmation shortly. Thank you!</p>
+                         <DialogFooter className="mt-6 w-full">
+                           <DialogClose asChild><Button className="w-full">Done</Button></DialogClose>
                         </DialogFooter>
                     </motion.div>
                 )}
@@ -986,5 +1011,6 @@ const OrderPage = () => (
 );
 
 export default OrderPage;
+
 
 
