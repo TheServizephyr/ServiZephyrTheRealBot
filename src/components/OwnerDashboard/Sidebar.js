@@ -17,7 +17,8 @@ import {
   Bot,
   MessageSquare,
   Banknote,
-  Package as PackageIcon // Using an alias to avoid name conflicts
+  Package as PackageIcon,
+  ConciergeBell
 } from "lucide-react";
 import styles from "./OwnerDashboard.module.css";
 import SidebarLink from "./SidebarLink";
@@ -34,6 +35,7 @@ const getMenuItems = (businessType) => [
   businessType === 'shop' 
     ? { name: "Items", icon: PackageIcon, href: "/owner-dashboard/menu", featureId: "menu" } 
     : { name: "Menu", icon: Salad, href: "/owner-dashboard/menu", featureId: "menu" },
+  { name: "Dine-In", icon: ConciergeBell, href: "/owner-dashboard/dine-in", featureId: "dine-in" },
   { name: "Customers", icon: Users, href: "/owner-dashboard/customers", featureId: "customers" },
   { name: "Analytics", icon: BarChart2, href: "/owner-dashboard/analytics", featureId: "analytics" },
   { name: "Delivery", icon: Truck, href: "/owner-dashboard/delivery", featureId: "delivery" },
@@ -94,7 +96,7 @@ export default function Sidebar({ isOpen, setIsOpen, isMobile, isCollapsed, rest
 
   const getIsDisabled = (featureId) => {
     if (status === 'pending' || status === 'rejected') {
-      return !['menu', 'settings', 'connections', 'payout-settings'].includes(featureId);
+      return !['menu', 'settings', 'connections', 'payout-settings', 'dine-in'].includes(featureId);
     }
     if (status === 'suspended') {
       return restrictedFeatures.includes(featureId);

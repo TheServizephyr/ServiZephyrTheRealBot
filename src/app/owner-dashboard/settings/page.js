@@ -4,7 +4,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { User, Mail, Phone, Shield, Edit, Save, XCircle, Bell, Trash2, KeyRound, Eye, EyeOff, FileText, Bot, Truck, Image as ImageIcon, Upload, X, IndianRupee, MapPin, Wallet, ChevronsUpDown, Check, ShoppingBag, Store } from 'lucide-react';
+import { User, Mail, Phone, Shield, Edit, Save, XCircle, Bell, Trash2, KeyRound, Eye, EyeOff, FileText, Bot, Truck, Image as ImageIcon, Upload, X, IndianRupee, MapPin, Wallet, ChevronsUpDown, Check, ShoppingBag, Store, ConciergeBell } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
@@ -299,32 +299,33 @@ export default function SettingsPage() {
     const handlePaymentToggle = (type, value) => {
         setEditedUser(prev => {
             const newState = { ...prev, [type]: value };
+            const { 
+                deliveryEnabled, pickupEnabled, dineInEnabled,
+                deliveryOnlinePaymentEnabled, deliveryCodEnabled,
+                pickupOnlinePaymentEnabled, pickupPodEnabled,
+                dineInOnlinePaymentEnabled, dineInPayAtCounterEnabled
+            } = newState;
 
-            // Prevent disabling both Delivery and Pickup
-            if (type === 'deliveryEnabled' && !value && !newState.pickupEnabled) {
-                alert("At least one order type (Delivery or Pickup) must be enabled.");
+
+            // Prevent disabling all order types
+            if (!deliveryEnabled && !pickupEnabled && !dineInEnabled) {
+                alert("At least one order type (Delivery, Pickup, or Dine-In) must be enabled.");
                 return prev;
             }
-            if (type === 'pickupEnabled' && !value && !newState.deliveryEnabled) {
-                alert("At least one order type (Delivery or Pickup) must be enabled.");
-                return prev;
-            }
 
-            // Prevent disabling both Online and POD for an active order type
-            if (type === 'deliveryOnlinePaymentEnabled' && !value && !newState.deliveryCodEnabled && newState.deliveryEnabled) {
+            // Validation for Delivery
+            if (deliveryEnabled && !deliveryOnlinePaymentEnabled && !deliveryCodEnabled) {
                 alert("At least one payment method must be enabled for Delivery.");
                 return prev;
             }
-             if (type === 'deliveryCodEnabled' && !value && !newState.deliveryOnlinePaymentEnabled && newState.deliveryEnabled) {
-                alert("At least one payment method must be enabled for Delivery.");
-                return prev;
-            }
-             if (type === 'pickupOnlinePaymentEnabled' && !value && !newState.pickupPodEnabled && newState.pickupEnabled) {
+            // Validation for Pickup
+            if (pickupEnabled && !pickupOnlinePaymentEnabled && !pickupPodEnabled) {
                 alert("At least one payment method must be enabled for Pickup.");
                 return prev;
             }
-            if (type === 'pickupPodEnabled' && !value && !newState.pickupOnlinePaymentEnabled && newState.pickupEnabled) {
-                alert("At least one payment method must be enabled for Pickup.");
+            // Validation for Dine-In
+             if (dineInEnabled && !dineInOnlinePaymentEnabled && !dineInPayAtCounterEnabled) {
+                alert("At least one payment method must be enabled for Dine-In.");
                 return prev;
             }
 
@@ -356,15 +357,16 @@ export default function SettingsPage() {
         } else if (section === 'payment') {
             payload = {
                 deliveryCharge: editedUser.deliveryCharge,
-                isOpen: editedUser.isOpen, // This was already here for store open/close
-                // New fields for order types
+                isOpen: editedUser.isOpen,
                 deliveryEnabled: editedUser.deliveryEnabled,
                 pickupEnabled: editedUser.pickupEnabled,
-                // New fields for payment options
+                dineInEnabled: editedUser.dineInEnabled,
                 deliveryOnlinePaymentEnabled: editedUser.deliveryOnlinePaymentEnabled,
                 deliveryCodEnabled: editedUser.deliveryCodEnabled,
                 pickupOnlinePaymentEnabled: editedUser.pickupOnlinePaymentEnabled,
-                pickupPodEnabled: editedUser.pickupPodEnabled
+                pickupPodEnabled: editedUser.pickupPodEnabled,
+                dineInOnlinePaymentEnabled: editedUser.dineInOnlinePaymentEnabled,
+                dineInPayAtCounterEnabled: editedUser.dineInPayAtCounterEnabled,
             }
         }
 
@@ -582,18 +584,24 @@ export default function SettingsPage() {
                         <div>
                              <Label className="font-semibold text-lg">Order Types</Label>
                              <p className="text-sm text-muted-foreground mb-4">Choose which types of orders your business will accept.</p>
-                             <div className="grid md:grid-cols-2 gap-4">
+                             <div className="grid md:grid-cols-3 gap-4">
                                 <div className="flex items-center justify-between p-4 bg-muted/50 rounded-lg">
                                     <Label htmlFor="deliveryEnabled" className="flex flex-col">
-                                        <span className="font-semibold flex items-center gap-2"><Truck size={16}/> Accept Delivery Orders</span>
+                                        <span className="font-semibold flex items-center gap-2"><Truck size={16}/> Delivery</span>
                                     </Label>
                                     <Switch id="deliveryEnabled" checked={editedUser.deliveryEnabled} onCheckedChange={(checked) => handlePaymentToggle('deliveryEnabled', checked)} disabled={!isEditingPayment} />
                                 </div>
-                                 <div className="flex items-center justify-between p-4 bg-muted/50 rounded-lg">
+                                <div className="flex items-center justify-between p-4 bg-muted/50 rounded-lg">
                                     <Label htmlFor="pickupEnabled" className="flex flex-col">
-                                        <span className="font-semibold flex items-center gap-2"><ShoppingBag size={16}/> Accept Pickup Orders</span>
+                                        <span className="font-semibold flex items-center gap-2"><ShoppingBag size={16}/> Pickup</span>
                                     </Label>
                                     <Switch id="pickupEnabled" checked={editedUser.pickupEnabled} onCheckedChange={(checked) => handlePaymentToggle('pickupEnabled', checked)} disabled={!isEditingPayment} />
+                                </div>
+                                 <div className="flex items-center justify-between p-4 bg-muted/50 rounded-lg">
+                                    <Label htmlFor="dineInEnabled" className="flex flex-col">
+                                        <span className="font-semibold flex items-center gap-2"><ConciergeBell size={16}/> Dine-In</span>
+                                    </Label>
+                                    <Switch id="dineInEnabled" checked={editedUser.dineInEnabled} onCheckedChange={(checked) => handlePaymentToggle('dineInEnabled', checked)} disabled={!isEditingPayment} />
                                 </div>
                             </div>
                         </div>
@@ -601,20 +609,16 @@ export default function SettingsPage() {
                          <div className="border-t border-border pt-6">
                              <Label className="font-semibold text-lg">Payment Methods</Label>
                               <p className="text-sm text-muted-foreground mb-4">Configure payment options for each order type.</p>
-                             <div className="grid md:grid-cols-2 gap-6">
+                             <div className="grid md:grid-cols-3 gap-6">
                                 {/* Delivery Payment Options */}
                                 <div className={cn("space-y-4 p-4 border rounded-lg", !editedUser.deliveryEnabled && "opacity-50")}>
                                      <h4 className="font-bold">For Delivery</h4>
                                       <div className="flex items-center justify-between">
-                                        <Label htmlFor="deliveryOnlinePaymentEnabled" className="flex flex-col">
-                                            <span className="font-semibold flex items-center gap-2"><Wallet size={16}/> Enable Online Payments</span>
-                                        </Label>
+                                        <Label htmlFor="deliveryOnlinePaymentEnabled" className="text-sm">Online Payments</Label>
                                         <Switch id="deliveryOnlinePaymentEnabled" checked={editedUser.deliveryOnlinePaymentEnabled} onCheckedChange={(checked) => handlePaymentToggle('deliveryOnlinePaymentEnabled', checked)} disabled={!isEditingPayment || !editedUser.deliveryEnabled} />
                                     </div>
                                     <div className="flex items-center justify-between">
-                                        <Label htmlFor="deliveryCodEnabled" className="flex flex-col">
-                                            <span className="font-semibold flex items-center gap-2"><IndianRupee size={16}/> Enable Pay on Delivery (POD)</span>
-                                        </Label>
+                                        <Label htmlFor="deliveryCodEnabled" className="text-sm">Pay on Delivery (POD)</Label>
                                         <Switch id="deliveryCodEnabled" checked={editedUser.deliveryCodEnabled} onCheckedChange={(checked) => handlePaymentToggle('deliveryCodEnabled', checked)} disabled={!isEditingPayment || !editedUser.deliveryEnabled} />
                                     </div>
                                 </div>
@@ -622,16 +626,24 @@ export default function SettingsPage() {
                                 <div className={cn("space-y-4 p-4 border rounded-lg", !editedUser.pickupEnabled && "opacity-50")}>
                                      <h4 className="font-bold">For Pickup</h4>
                                      <div className="flex items-center justify-between">
-                                        <Label htmlFor="pickupOnlinePaymentEnabled" className="flex flex-col">
-                                            <span className="font-semibold flex items-center gap-2"><Wallet size={16}/> Enable Online Payments</span>
-                                        </Label>
+                                        <Label htmlFor="pickupOnlinePaymentEnabled" className="text-sm">Online Payments</Label>
                                         <Switch id="pickupOnlinePaymentEnabled" checked={editedUser.pickupOnlinePaymentEnabled} onCheckedChange={(checked) => handlePaymentToggle('pickupOnlinePaymentEnabled', checked)} disabled={!isEditingPayment || !editedUser.pickupEnabled} />
                                     </div>
                                     <div className="flex items-center justify-between">
-                                        <Label htmlFor="pickupPodEnabled" className="flex flex-col">
-                                            <span className="font-semibold flex items-center gap-2"><IndianRupee size={16}/> Enable Pay at Store</span>
-                                        </Label>
+                                        <Label htmlFor="pickupPodEnabled" className="text-sm">Pay at Store</Label>
                                         <Switch id="pickupPodEnabled" checked={editedUser.pickupPodEnabled} onCheckedChange={(checked) => handlePaymentToggle('pickupPodEnabled', checked)} disabled={!isEditingPayment || !editedUser.pickupEnabled} />
+                                    </div>
+                                </div>
+                                 {/* Dine-In Payment Options */}
+                                <div className={cn("space-y-4 p-4 border rounded-lg", !editedUser.dineInEnabled && "opacity-50")}>
+                                     <h4 className="font-bold">For Dine-In</h4>
+                                     <div className="flex items-center justify-between">
+                                        <Label htmlFor="dineInOnlinePaymentEnabled" className="text-sm">Online Payments</Label>
+                                        <Switch id="dineInOnlinePaymentEnabled" checked={editedUser.dineInOnlinePaymentEnabled} onCheckedChange={(checked) => handlePaymentToggle('dineInOnlinePaymentEnabled', checked)} disabled={!isEditingPayment || !editedUser.dineInEnabled} />
+                                    </div>
+                                    <div className="flex items-center justify-between">
+                                        <Label htmlFor="dineInPayAtCounterEnabled" className="text-sm">Pay at Counter</Label>
+                                        <Switch id="dineInPayAtCounterEnabled" checked={editedUser.dineInPayAtCounterEnabled} onCheckedChange={(checked) => handlePaymentToggle('dineInPayAtCounterEnabled', checked)} disabled={!isEditingPayment || !editedUser.dineInEnabled} />
                                     </div>
                                 </div>
                             </div>

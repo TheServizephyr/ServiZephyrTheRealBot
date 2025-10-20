@@ -98,14 +98,15 @@ export async function GET(req) {
             deliveryCharge: businessData?.deliveryCharge === undefined ? 30 : businessData.deliveryCharge,
             logoUrl: businessData?.logoUrl || '',
             bannerUrls: businessData?.bannerUrls || [],
-            // New order type fields
             deliveryEnabled: businessData?.deliveryEnabled === undefined ? true : businessData.deliveryEnabled,
             pickupEnabled: businessData?.pickupEnabled === undefined ? false : businessData.pickupEnabled,
-            // New payment method fields
+            dineInEnabled: businessData?.dineInEnabled === undefined ? false : businessData.dineInEnabled,
             deliveryOnlinePaymentEnabled: businessData?.deliveryOnlinePaymentEnabled === undefined ? true : businessData.deliveryOnlinePaymentEnabled,
             deliveryCodEnabled: businessData?.deliveryCodEnabled === undefined ? true : businessData.deliveryCodEnabled,
             pickupOnlinePaymentEnabled: businessData?.pickupOnlinePaymentEnabled === undefined ? true : businessData.pickupOnlinePaymentEnabled,
             pickupPodEnabled: businessData?.pickupPodEnabled === undefined ? true : businessData.pickupPodEnabled,
+            dineInOnlinePaymentEnabled: businessData?.dineInOnlinePaymentEnabled === undefined ? true : businessData.dineInOnlinePaymentEnabled,
+            dineInPayAtCounterEnabled: businessData?.dineInPayAtCounterEnabled === undefined ? true : businessData.dineInPayAtCounterEnabled,
             isOpen: businessData?.isOpen === undefined ? true : businessData.isOpen,
         };
 
@@ -148,11 +149,14 @@ export async function PATCH(req) {
             // Order & Payment Settings
             if (updates.deliveryEnabled !== undefined) businessUpdateData.deliveryEnabled = updates.deliveryEnabled;
             if (updates.pickupEnabled !== undefined) businessUpdateData.pickupEnabled = updates.pickupEnabled;
+            if (updates.dineInEnabled !== undefined) businessUpdateData.dineInEnabled = updates.dineInEnabled;
             if (updates.deliveryOnlinePaymentEnabled !== undefined) businessUpdateData.deliveryOnlinePaymentEnabled = updates.deliveryOnlinePaymentEnabled;
             if (updates.deliveryCodEnabled !== undefined) businessUpdateData.deliveryCodEnabled = updates.deliveryCodEnabled;
             if (updates.pickupOnlinePaymentEnabled !== undefined) businessUpdateData.pickupOnlinePaymentEnabled = updates.pickupOnlinePaymentEnabled;
             if (updates.pickupPodEnabled !== undefined) businessUpdateData.pickupPodEnabled = updates.pickupPodEnabled;
-            
+            if (updates.dineInOnlinePaymentEnabled !== undefined) businessUpdateData.dineInOnlinePaymentEnabled = updates.dineInOnlinePaymentEnabled;
+            if (updates.dineInPayAtCounterEnabled !== undefined) businessUpdateData.dineInPayAtCounterEnabled = updates.dineInPayAtCounterEnabled;
+
             if (updates.isOpen !== undefined && updates.isOpen !== businessData?.isOpen) {
                 businessUpdateData.isOpen = updates.isOpen;
                 
@@ -189,13 +193,15 @@ export async function PATCH(req) {
             deliveryCharge: finalBusinessData?.deliveryCharge === undefined ? 30 : finalBusinessData.deliveryCharge,
             logoUrl: finalBusinessData?.logoUrl || '',
             bannerUrls: finalBusinessData?.bannerUrls || [],
-            // New order and payment fields
             deliveryEnabled: finalBusinessData?.deliveryEnabled === undefined ? true : finalBusinessData.deliveryEnabled,
             pickupEnabled: finalBusinessData?.pickupEnabled === undefined ? false : finalBusinessData.pickupEnabled,
+            dineInEnabled: finalBusinessData?.dineInEnabled === undefined ? false : finalBusinessData.dineInEnabled,
             deliveryOnlinePaymentEnabled: finalBusinessData?.deliveryOnlinePaymentEnabled === undefined ? true : finalBusinessData.deliveryOnlinePaymentEnabled,
             deliveryCodEnabled: finalBusinessData?.deliveryCodEnabled === undefined ? true : finalBusinessData.deliveryCodEnabled,
             pickupOnlinePaymentEnabled: finalBusinessData?.pickupOnlinePaymentEnabled === undefined ? true : finalBusinessData.pickupOnlinePaymentEnabled,
             pickupPodEnabled: finalBusinessData?.pickupPodEnabled === undefined ? true : finalBusinessData.pickupPodEnabled,
+            dineInOnlinePaymentEnabled: finalBusinessData?.dineInOnlinePaymentEnabled === undefined ? true : finalBusinessData.dineInOnlinePaymentEnabled,
+            dineInPayAtCounterEnabled: finalBusinessData?.dineInPayAtCounterEnabled === undefined ? true : finalBusinessData.dineInPayAtCounterEnabled,
             isOpen: finalBusinessData?.isOpen === undefined ? true : finalBusinessData.isOpen,
             address: finalBusinessData?.address || { street: '', city: '', state: '', postalCode: '', country: 'IN' },
         };
