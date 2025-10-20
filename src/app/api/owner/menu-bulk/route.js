@@ -1,5 +1,4 @@
 import { NextResponse } from 'next/server';
-import { firestore as adminFirestore } from 'firebase-admin';
 import { getAuth, getFirestore } from '@/lib/firebase-admin';
 
 // Helper to verify owner and get their first restaurant ID
@@ -66,7 +65,7 @@ export async function POST(req) {
             const docRef = menuRef.doc();
             const newItem = {
                 id: docRef.id,
-                createdAt: adminFirestore.FieldValue.serverTimestamp(),
+                createdAt: firestore.FieldValue.serverTimestamp(),
                 isAvailable: true, // Default to available
                 order: 999, // Default order, can be managed later
                 ...item,
