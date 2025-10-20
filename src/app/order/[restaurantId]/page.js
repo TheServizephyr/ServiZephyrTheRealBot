@@ -498,10 +498,6 @@ const OrderPageInternal = () => {
         }
         
         let locationStr = localStorage.getItem('customerLocation');
-        // if (!locationStr && !tableIdFromUrl) {
-        //     router.push(`/location?restaurantId=${restaurantId}&returnUrl=${encodeURIComponent(window.location.pathname + window.location.search)}`);
-        //     return;
-        // }
         
         if(locationStr) {
             try {
@@ -509,8 +505,6 @@ const OrderPageInternal = () => {
                 setCustomerLocation(parsedLocation);
             } catch (e) {
                 console.error("[OrderPage] Failed to parse location from localStorage.", e);
-                // router.push(`/location?restaurantId=${restaurantId}&returnUrl=${encodeURIComponent(window.location.pathname + window.location.search)}`);
-                // return;
             }
         }
 
@@ -742,6 +736,10 @@ const OrderPageInternal = () => {
         return quantities;
     }, [cart]);
     
+    const handleCallWaiter = () => {
+        // Placeholder for WebSocket event
+        alert("Service Request: A waiter has been notified.");
+    };
 
     const handleCategoryClick = (categoryId) => {
         const section = document.getElementById(categoryId);
@@ -963,11 +961,20 @@ const OrderPageInternal = () => {
                 
                 <footer className="fixed bottom-0 left-0 right-0 z-30 pointer-events-none">
                     <div className="container mx-auto px-4 relative h-28">
-                        <motion.div
-                            className="absolute right-4 pointer-events-auto"
+                         <motion.div
+                            className="absolute right-4 flex flex-col gap-3 pointer-events-auto"
                             animate={{ bottom: totalCartItems > 0 ? '6.5rem' : '1rem' }}
                             transition={{ type: "spring", stiffness: 300, damping: 25 }}
                         >
+                            {tableIdFromUrl && (
+                                 <button
+                                    onClick={handleCallWaiter}
+                                    className="bg-card text-foreground h-16 w-16 rounded-2xl shadow-lg flex flex-col items-center justify-center gap-1 border border-border"
+                                >
+                                    <ConciergeBell size={24} className="text-primary" />
+                                    <span className="text-xs font-bold">Call Waiter</span>
+                                </button>
+                            )}
                              <button
                                 onClick={() => setIsMenuBrowserOpen(true)}
                                 className="bg-card text-foreground h-16 w-16 rounded-2xl shadow-lg flex flex-col items-center justify-center gap-1 border border-border"
@@ -1012,6 +1019,7 @@ const OrderPage = () => (
 );
 
 export default OrderPage;
+
 
 
 
