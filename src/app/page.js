@@ -315,7 +315,7 @@ export default function Home() {
                     >
                       Start Your Free Trial
                     </button>
-                    <Link href="/order/ashwani's-restaurant?phone=9027872803" className="mt-4 text-sm text-muted-foreground hover:text-primary underline">
+                    <Link href="/order/patel-ki-hatti?phone=8922035716" className="mt-4 text-sm text-muted-foreground hover:text-primary underline">
                       Test Order Page
                     </Link>
                   </motion.div>
