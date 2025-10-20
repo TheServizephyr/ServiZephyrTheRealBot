@@ -72,7 +72,10 @@ export async function GET(req) {
                 return NextResponse.json({ message: "Business not found." }, { status: 404 });
             }
             const businessData = businessDoc.data();
-            return NextResponse.json({ codEnabled: businessData.codEnabled || false }, { status: 200 });
+            return NextResponse.json({ 
+                codEnabled: businessData.codEnabled || false,
+                dineInPayAtCounterEnabled: businessData.dineInPayAtCounterEnabled,
+            }, { status: 200 });
         }
         
         // Authenticated endpoint for full settings

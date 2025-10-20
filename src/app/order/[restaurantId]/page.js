@@ -311,7 +311,11 @@ const DineInModal = ({ isOpen, onClose, onBookTable, onScanQR }) => {
                         exit={{ opacity: 0, x: -20 }}
                      >
                         <DialogHeader className="p-4 border-b flex-shrink-0">
-                            <DialogTitle className="text-xl text-center">Book a Table</DialogTitle>
+                             <div className="flex items-center justify-between">
+                                <Button variant="ghost" size="icon" onClick={() => setActiveModal('main')}><ArrowLeft/></Button>
+                                <DialogTitle className="text-xl text-center">Book a Table</DialogTitle>
+                                <div className="w-10"></div>
+                            </div>
                         </DialogHeader>
                         <div className="p-6 space-y-4 flex-grow overflow-y-auto">
                             <div>

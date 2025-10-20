@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useState, useEffect, useMemo, Suspense } from 'react';
@@ -169,7 +170,7 @@ const CheckoutPageInternal = () => {
                          setCodEnabled(data.pickupPodEnabled || false);
                     } else { // dine-in
                         // For dine-in, we can assume both are available or have a specific setting later
-                        setCodEnabled(true);
+                        setCodEnabled(data.dineInPayAtCounterEnabled || false);
                     }
 
                  }
@@ -348,7 +349,7 @@ const CheckoutPageInternal = () => {
                     rzp1.open();
                 }, 200);
 
-            } else { // COD or POD
+            } else { // COD, POD or Pay at Counter
                  if (deliveryType === 'dine-in') {
                       setIsModalOpen(false);
                       setDineInModalOpen(true);
