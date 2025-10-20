@@ -1,4 +1,3 @@
-
 'use client';
 
 import React, { useState, useEffect, Suspense, useMemo, useCallback } from 'react';
@@ -1015,5 +1014,3 @@ const OrderPage = () => (
 );
 
 export default OrderPage;
-
-    
