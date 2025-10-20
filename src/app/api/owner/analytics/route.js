@@ -4,6 +4,7 @@ import { NextResponse } from 'next/server';
 import { getAuth, getFirestore } from '@/lib/firebase-admin';
 import { format } from 'date-fns';
 
+export const dynamic = 'force-dynamic';
 
 async function verifyOwnerAndGetRestaurant(req, auth, firestore) {
     const authHeader = req.headers.get('authorization');

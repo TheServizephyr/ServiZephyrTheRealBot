@@ -1,9 +1,12 @@
 
+
 'use server';
 
 import { NextResponse } from 'next/server';
 import { getAuth, getFirestore } from '@/lib/firebase-admin';
 import https from 'https';
+
+export const dynamic = 'force-dynamic';
 
 // Helper to verify owner and get their business details
 async function verifyOwnerAndGetBusiness(req) {

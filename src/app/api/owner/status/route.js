@@ -1,6 +1,9 @@
 
+
 import { NextResponse } from 'next/server';
 import { getAuth, getFirestore } from '@/lib/firebase-admin';
+
+export const dynamic = 'force-dynamic';
 
 // Helper to verify owner and get their business
 async function verifyOwnerAndGetBusiness(req) {

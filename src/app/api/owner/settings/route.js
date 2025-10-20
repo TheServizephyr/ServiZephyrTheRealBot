@@ -6,6 +6,7 @@ import { getFirestore } from 'firebase-admin/firestore';
 import { initializeApp, getApps } from 'firebase-admin/app';
 import { sendRestaurantStatusChangeNotification } from '@/lib/notifications';
 
+export const dynamic = 'force-dynamic';
 
 // This function now verifies the user and fetches both user and their business data if they are an owner.
 async function verifyUserAndGetData(req) {

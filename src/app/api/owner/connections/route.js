@@ -3,6 +3,8 @@
 import { NextResponse } from 'next/server';
 import { getAuth, getFirestore } from '@/lib/firebase-admin';
 
+export const dynamic = 'force-dynamic';
+
 // Helper to verify owner and get their UID
 async function verifyOwner(req, auth, firestore) {
     const authHeader = req.headers.get('authorization');
