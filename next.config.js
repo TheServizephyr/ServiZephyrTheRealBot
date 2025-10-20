@@ -1,4 +1,4 @@
-
+// Cache-busting comment
 /** @type {import('next').NextConfig} */
 
 // Load environment variables from .env.local for local development
