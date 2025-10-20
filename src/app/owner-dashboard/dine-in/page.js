@@ -14,7 +14,7 @@ import { useSearchParams } from 'next/navigation';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
-import { useQRCode } from 'next-qrcode';
+import QRCode from 'qrcode.react';
 import { useReactToPrint } from 'react-to-print';
 
 const formatCurrency = (value) => `₹${Number(value || 0).toLocaleString('en-IN')}`;
@@ -91,22 +91,13 @@ const TableCard = ({ tableId, orders }) => {
 };
 
 const QrCodeDisplay = ({ text, tableName, innerRef }) => {
-    const { Canvas } = useQRCode();
-
     return (
         <div ref={innerRef} className="bg-white p-4 rounded-lg border border-border flex flex-col items-center">
-            <Canvas
-                text={text}
-                options={{
-                    errorCorrectionLevel: 'M',
-                    margin: 2,
-                    scale: 4,
-                    width: 256,
-                    color: {
-                        dark: '#000000',
-                        light: '#FFFFFF',
-                    },
-                }}
+            <QRCode
+                value={text}
+                size={256}
+                level={"M"}
+                includeMargin={true}
             />
             <p className="text-center font-bold text-lg mt-2 text-black">Scan to Order: {tableName}</p>
         </div>
@@ -118,8 +109,6 @@ const QrGeneratorModal = ({ isOpen, onClose, restaurantId }) => {
     const [tableName, setTableName] = useState('');
     const [qrValue, setQrValue] = useState('');
     const printRef = useRef();
-
-    const { Canvas } = useQRCode();
 
     const handleGenerate = () => {
         if (!tableName.trim()) {
