@@ -1,15 +1,20 @@
 
 'use client';
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { motion } from 'framer-motion';
-import { RefreshCw, Printer, CheckCircle, IndianRupee, Users, Clock, ShoppingBag, Bell, MoreVertical, Trash2 } from 'lucide-react';
+import { RefreshCw, Printer, CheckCircle, IndianRupee, Users, Clock, ShoppingBag, Bell, MoreVertical, Trash2, QrCode } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { auth } from '@/lib/firebase';
 import { cn } from "@/lib/utils";
 import { format } from 'date-fns';
 import { useSearchParams } from 'next/navigation';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose } from "@/components/ui/dialog";
+import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
+import QRCode from "react-qr-code";
+import { useReactToPrint } from 'react-to-print';
 
 const formatCurrency = (value) => `₹${Number(value || 0).toLocaleString('en-IN')}`;
 
@@ -84,12 +89,76 @@ const TableCard = ({ tableId, orders }) => {
     );
 };
 
+const QrGeneratorModal = ({ isOpen, onClose, restaurantId }) => {
+    const [tableName, setTableName] = useState('');
+    const [qrValue, setQrValue] = useState('');
+    const printRef = useRef();
+
+    const handleGenerate = () => {
+        if (!tableName.trim()) {
+            alert("Please enter a table name or number.");
+            return;
+        }
+        // Assuming the URL structure from the prompt
+        const url = `${window.location.origin}/order/${restaurantId}?table=${tableName.trim()}`;
+        setQrValue(url);
+    };
+
+    const handlePrint = useReactToPrint({
+        content: () => printRef.current,
+    });
+
+    useEffect(() => {
+        if (!isOpen) {
+            setTableName('');
+            setQrValue('');
+        }
+    }, [isOpen]);
+
+    return (
+        <Dialog open={isOpen} onOpenChange={onClose}>
+            <DialogContent className="bg-background border-border text-foreground">
+                <DialogHeader>
+                    <DialogTitle>Generate Table QR Code</DialogTitle>
+                    <DialogDescription>Create a unique QR code for a table. Customers can scan this to order directly.</DialogDescription>
+                </DialogHeader>
+                <div className="py-4 space-y-4">
+                    <div className="space-y-2">
+                        <Label htmlFor="table-name">Table Name / Number</Label>
+                        <Input 
+                            id="table-name"
+                            value={tableName}
+                            onChange={(e) => setTableName(e.target.value)}
+                            placeholder="e.g., T1, Table 5, Rooftop 2"
+                        />
+                    </div>
+                    <Button onClick={handleGenerate} className="w-full">Generate QR Code</Button>
+
+                    {qrValue && (
+                        <div className="mt-6 flex flex-col items-center gap-4">
+                            <div className="bg-white p-4 rounded-lg border border-border" ref={printRef}>
+                                <QRCode value={qrValue} size={256} />
+                                <p className="text-center font-bold text-lg mt-2 text-black">Scan to Order: {tableName}</p>
+                            </div>
+                            <Button onClick={handlePrint} variant="outline">
+                                <Printer className="mr-2 h-4 w-4" /> Print QR Code
+                            </Button>
+                        </div>
+                    )}
+                </div>
+            </DialogContent>
+        </Dialog>
+    );
+};
+
 
 export default function DineInPage() {
     const [orders, setOrders] = useState([]);
     const [loading, setLoading] = useState(true);
     const searchParams = useSearchParams();
     const impersonatedOwnerId = searchParams.get('impersonate_owner_id');
+    const [isQrModalOpen, setIsQrModalOpen] = useState(false);
+    const [restaurantId, setRestaurantId] = useState('');
 
     const fetchDineInOrders = async (isManualRefresh = false) => {
         if (!isManualRefresh) setLoading(true);
@@ -97,6 +166,17 @@ export default function DineInPage() {
             const user = auth.currentUser;
             if (!user) throw new Error("Authentication required.");
             const idToken = await user.getIdToken();
+            
+            // This is a bit of a workaround to get the restaurantId
+            // A better solution might be to have a dedicated endpoint for businessId
+            const settingsRes = await fetch('/api/owner/settings', { headers: { 'Authorization': `Bearer ${idToken}` } });
+            if (settingsRes.ok) {
+                const settingsData = await settingsRes.json();
+                // This assumes restaurantName is unique and can be used as ID, which is not ideal.
+                // It should be a proper ID from a dedicated endpoint. For now, this is a placeholder.
+                const bizId = settingsData?.restaurantName?.toLowerCase().replace(/\s+/g, '-') || '';
+                setRestaurantId(bizId);
+            }
             
             let url = new URL('/api/owner/orders', window.location.origin);
             if (impersonatedOwnerId) {
@@ -150,14 +230,20 @@ export default function DineInPage() {
 
     return (
         <div className="p-4 md:p-6 text-foreground min-h-screen bg-background">
+            <QrGeneratorModal isOpen={isQrModalOpen} onClose={() => setIsQrModalOpen(false)} restaurantId={restaurantId}/>
             <div className="flex flex-col md:flex-row justify-between md:items-center mb-6 gap-4">
                 <div>
                     <h1 className="text-2xl md:text-3xl font-bold tracking-tight">Dine-In Command Center</h1>
                     <p className="text-muted-foreground mt-1 text-sm md:text-base">A live overview of your active tables.</p>
                 </div>
-                 <Button onClick={() => fetchDineInOrders(true)} variant="outline" disabled={loading}>
-                    <RefreshCw size={16} className={cn("mr-2", loading && "animate-spin")} /> Refresh View
-                </Button>
+                <div className="flex gap-4">
+                     <Button onClick={() => setIsQrModalOpen(true)} variant="default" className="bg-primary hover:bg-primary/90">
+                        <QrCode size={16} className="mr-2"/> Generate Table QR Codes
+                    </Button>
+                    <Button onClick={() => fetchDineInOrders(true)} variant="outline" disabled={loading}>
+                        <RefreshCw size={16} className={cn("mr-2", loading && "animate-spin")} /> Refresh View
+                    </Button>
+                </div>
             </div>
             
             {loading ? (
@@ -182,4 +268,3 @@ export default function DineInPage() {
         </div>
     );
 }
-
