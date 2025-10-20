@@ -15,6 +15,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { format } from "date-fns";
 import { auth } from '@/lib/firebase';
 import { useSearchParams } from 'next/navigation';
+import InfoDialog from '@/components/InfoDialog';
 
 
 const formatDate = (dateStr) => {
@@ -31,13 +32,13 @@ const CouponModal = ({ isOpen, setIsOpen, onSave, editingCoupon }) => {
     const [isStartDatePickerOpen, setStartDatePickerOpen] = useState(false);
     const [isEndDatePickerOpen, setEndDatePickerOpen] = useState(false);
     const [isSaving, setIsSaving] = useState(false);
+    const [modalError, setModalError] = useState('');
 
     useEffect(() => {
         if(isOpen) {
             setIsSaving(false);
+            setModalError('');
             if (editingCoupon) {
-                // The parent component already converts Firestore timestamps to Date objects.
-                // No further `new Date()` conversion is needed here.
                 setCoupon({
                     ...editingCoupon
                 });
@@ -54,7 +55,6 @@ const CouponModal = ({ isOpen, setIsOpen, onSave, editingCoupon }) => {
     const handleChange = (field, value) => {
         const newCoupon = { ...coupon, [field]: value };
 
-        // If type is changed to free_delivery, clear the value
         if (field === 'type' && value === 'free_delivery') {
             newCoupon.value = 0;
         }
@@ -69,15 +69,15 @@ const CouponModal = ({ isOpen, setIsOpen, onSave, editingCoupon }) => {
 
     const handleSubmit = async (e) => {
         e.preventDefault();
+        setModalError('');
         
         let requiredFieldsMet = coupon.code && coupon.minOrder !== '';
-        // Only validate `value` if the coupon type is not 'free_delivery'
         if (coupon.type !== 'free_delivery') {
             requiredFieldsMet = requiredFieldsMet && coupon.value !== '';
         }
 
         if (!requiredFieldsMet) {
-            alert('Please fill all required fields.');
+            setModalError('Please fill all required fields: Code, Value (if not free delivery), and Minimum Order.');
             return;
         }
 
@@ -86,7 +86,7 @@ const CouponModal = ({ isOpen, setIsOpen, onSave, editingCoupon }) => {
             await onSave(coupon);
             setIsOpen(false);
         } catch (error) {
-            // alert is handled by onSave
+            setModalError(error.message);
         } finally {
             setIsSaving(false);
         }
@@ -189,7 +189,7 @@ const CouponModal = ({ isOpen, setIsOpen, onSave, editingCoupon }) => {
                            </div>
                         </div>
                     </div>
-
+                    {modalError && <p className="text-destructive text-center text-sm mt-4">{modalError}</p>}
                     <DialogFooter className="pt-6">
                         <DialogClose asChild><Button type="button" variant="secondary" disabled={isSaving}>Cancel</Button></DialogClose>
                         <Button type="submit" className="bg-primary hover:bg-primary/90" disabled={isSaving}>
@@ -271,6 +271,7 @@ export default function CouponsPage() {
     const [editingCoupon, setEditingCoupon] = useState(null);
     const [filter, setFilter] = useState('All');
     const [sort, setSort] = useState('expiryDate-asc');
+    const [infoDialog, setInfoDialog] = useState({ isOpen: false, title: '', message: '' });
     const searchParams = useSearchParams();
     const impersonatedOwnerId = searchParams.get('impersonate_owner_id');
 
@@ -306,7 +307,7 @@ export default function CouponsPage() {
             setCoupons(processedCoupons);
         } catch (error) {
             console.error(error);
-            alert("Could not load coupons: " + error.message);
+            setInfoDialog({ isOpen: true, title: "Error", message: "Could not load coupons: " + error.message });
         } finally {
             setLoading(false);
         }
@@ -329,11 +330,11 @@ export default function CouponsPage() {
                 expiryDate: couponData.expiryDate.toISOString(),
             };
             const data = await handleApiCall(isEditing ? 'PATCH' : 'POST', { coupon: payload });
-            alert(data.message);
+            setInfoDialog({ isOpen: true, title: "Success", message: data.message });
             await fetchCoupons();
         } catch (error) {
-            alert(`Error saving coupon: ${error.message}`);
-            throw error;
+            console.error("Error saving coupon:", error);
+            throw new Error(`Error saving coupon: ${error.message}`);
         }
     };
 
@@ -351,10 +352,10 @@ export default function CouponsPage() {
         if(window.confirm('Are you sure you want to delete this coupon? This action cannot be undone.')) {
             try {
                 const data = await handleApiCall('DELETE', { couponId: id });
-                alert(data.message);
+                setInfoDialog({ isOpen: true, title: "Success", message: data.message });
                 await fetchCoupons();
             } catch (error) {
-                alert(`Error deleting coupon: ${error.message}`);
+                setInfoDialog({ isOpen: true, title: "Error", message: `Error deleting coupon: ${error.message}` });
             }
         }
     };
@@ -364,7 +365,7 @@ export default function CouponsPage() {
             await handleApiCall('PATCH', { coupon: { id: coupon.id, status: newStatus } });
             setCoupons(prev => prev.map(c => c.id === coupon.id ? { ...c, status: newStatus } : c));
         } catch (error) {
-            alert(`Error updating status: ${error.message}`);
+            setInfoDialog({ isOpen: true, title: "Error", message: `Error updating status: ${error.message}` });
             await fetchCoupons();
         }
     };
@@ -398,6 +399,12 @@ export default function CouponsPage() {
 
     return (
         <div className="p-4 md:p-6 text-foreground min-h-screen bg-background">
+            <InfoDialog
+                isOpen={infoDialog.isOpen}
+                onClose={() => setInfoDialog({ isOpen: false, title: '', message: '' })}
+                title={infoDialog.title}
+                message={infoDialog.message}
+            />
             <CouponModal isOpen={isModalOpen} setIsOpen={setIsModalOpen} onSave={handleSaveCoupon} editingCoupon={editingCoupon} />
 
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-8">

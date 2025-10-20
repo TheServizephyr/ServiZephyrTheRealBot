@@ -33,6 +33,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { useWindowSize } from 'react-use';
 import { auth } from '@/lib/firebase';
+import InfoDialog from '@/components/InfoDialog';
 
 
 const SidebarLink = ({ href, icon: Icon, children, isCollapsed }) => {
@@ -72,6 +73,7 @@ function AdminLayoutContent({ children }) {
   const [isSidebarOpen, setSidebarOpen] = useState(false);
   const { theme, setTheme } = useTheme();
   const router = useRouter();
+  const [infoDialog, setInfoDialog] = useState({ isOpen: false, title: '', message: '' });
 
   useEffect(() => {
     if (!isMobile) {
@@ -92,11 +94,18 @@ function AdminLayoutContent({ children }) {
       router.push('/');
     } catch (error) {
       console.error("Logout failed:", error);
-      alert("Could not log out. Please try again.");
+      setInfoDialog({ isOpen: true, title: "Logout Failed", message: "Could not log out. Please try again." });
     }
   };
 
   return (
+    <>
+    <InfoDialog
+      isOpen={infoDialog.isOpen}
+      onClose={() => setInfoDialog({ isOpen: false, title: '', message: '' })}
+      title={infoDialog.title}
+      message={infoDialog.message}
+    />
     <div className="flex h-screen bg-background text-foreground">
       {/* Sidebar */}
       <AnimatePresence>
@@ -209,6 +218,7 @@ function AdminLayoutContent({ children }) {
         <main className="flex-1 overflow-y-auto p-4 md:p-6">{children}</main>
       </div>
     </div>
+    </>
   );
 }
 

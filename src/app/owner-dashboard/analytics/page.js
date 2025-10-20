@@ -17,6 +17,7 @@ import { Switch } from '@/components/ui/switch';
 import { format, addDays }from 'date-fns';
 import { useSearchParams } from 'next/navigation';
 import { auth } from '@/lib/firebase';
+import InfoDialog from '@/components/InfoDialog';
 
 const formatCurrency = (value) => `₹${Number(value || 0).toLocaleString('en-IN', { maximumFractionDigits: 0 })}`;
 const formatDate = (dateStr) => {
@@ -341,6 +342,7 @@ export default function AnalyticsPage() {
     const [isPopoverOpen, setIsPopoverOpen] = useState(false);
     const searchParams = useSearchParams();
     const impersonatedOwnerId = searchParams.get('impersonate_owner_id');
+    const [infoDialog, setInfoDialog] = useState({ isOpen: false, title: '', message: '' });
 
     const [analyticsData, setAnalyticsData] = useState(null);
     const [loading, setLoading] = useState(true);
@@ -377,7 +379,7 @@ export default function AnalyticsPage() {
 
             } catch (error) {
                 console.error("Error fetching analytics data:", error);
-                alert("Could not load analytics: " + error.message);
+                setInfoDialog({isOpen: true, title: "Error", message: "Could not load analytics: " + error.message});
             } finally {
                 setLoading(false);
             }
@@ -423,6 +425,12 @@ export default function AnalyticsPage() {
 
     return (
         <div className="p-4 md:p-6 text-foreground min-h-screen bg-background">
+            <InfoDialog
+                isOpen={infoDialog.isOpen}
+                onClose={() => setInfoDialog({ isOpen: false, title: '', message: '' })}
+                title={infoDialog.title}
+                message={infoDialog.message}
+            />
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6">
                 <div>
                     <h1 className="text-2xl md:text-3xl font-bold tracking-tight">Growth Engine: Analytics</h1>

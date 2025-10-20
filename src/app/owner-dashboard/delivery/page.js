@@ -12,6 +12,7 @@ import { auth } from '@/lib/firebase';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend } from 'recharts';
 import { useSearchParams } from 'next/navigation';
 import { Switch } from '@/components/ui/switch';
+import InfoDialog from '@/components/InfoDialog';
 
 
 const StatusBadge = ({ status }) => {
@@ -31,6 +32,7 @@ const AddBoyModal = ({ isOpen, setIsOpen, onSave, boy }) => {
     const [name, setName] = useState('');
     const [phone, setPhone] = useState('');
     const [isSaving, setIsSaving] = useState(false);
+    const [modalError, setModalError] = useState('');
 
     useEffect(() => {
         if (boy) {
@@ -41,11 +43,13 @@ const AddBoyModal = ({ isOpen, setIsOpen, onSave, boy }) => {
             setPhone('');
         }
         setIsSaving(false);
+        setModalError('');
     }, [boy, isOpen]);
 
     const handleSubmit = async () => {
+        setModalError('');
         if (!name.trim() || !phone.trim() || !/^\d{10}$/.test(phone.trim())) {
-            alert('Please enter a valid name and 10-digit phone number.');
+            setModalError('Please enter a valid name and 10-digit phone number.');
             return;
         }
         setIsSaving(true);
@@ -53,7 +57,7 @@ const AddBoyModal = ({ isOpen, setIsOpen, onSave, boy }) => {
             await onSave({ id: boy ? boy.id : null, name, phone });
             setIsOpen(false);
         } catch(error) {
-           // error alert is shown in onSave
+           setModalError(error.message);
         } finally {
             setIsSaving(false);
         }
@@ -74,6 +78,7 @@ const AddBoyModal = ({ isOpen, setIsOpen, onSave, boy }) => {
                         <Label htmlFor="phone" className="text-right">Phone</Label>
                         <input id="phone" value={phone} onChange={e => setPhone(e.target.value)} className="col-span-3 p-2 border rounded-md bg-input border-border" />
                     </div>
+                    {modalError && <p className="text-destructive text-center text-sm">{modalError}</p>}
                 </div>
                 <DialogFooter>
                     <DialogClose asChild><Button variant="secondary" disabled={isSaving}>Cancel</Button></DialogClose>
@@ -98,6 +103,7 @@ const AssignOrderModal = ({ isOpen, setIsOpen, onAssign, boyName, readyOrders })
                 setIsOpen(false);
             } catch(error) {
                 // error alert shown in onAssign
+                throw error;
             }
             finally {
                 setIsSaving(false);
@@ -293,6 +299,7 @@ export default function DeliveryPage() {
     const [isAddModalOpen, setAddModalOpen] = useState(false);
     const [isAssignModalOpen, setAssignModalOpen] = useState(false);
     const [selectedBoy, setSelectedBoy] = useState(null);
+    const [infoDialog, setInfoDialog] = useState({ isOpen: false, title: '', message: '' });
     const searchParams = useSearchParams();
     const impersonatedOwnerId = searchParams.get('impersonate_owner_id');
 
@@ -323,7 +330,7 @@ export default function DeliveryPage() {
             setData(result);
         } catch (error) {
             console.error(error);
-            alert("Could not load delivery data: " + error.message);
+            setInfoDialog({ isOpen: true, title: "Error", message: "Could not load delivery data: " + error.message });
         } finally {
             setLoading(false);
         }
@@ -342,8 +349,8 @@ export default function DeliveryPage() {
             await handleApiCall(boyData.id ? 'PATCH' : 'POST', { boy: boyData });
             await fetchData(true);
         } catch (error) {
-            alert(`Error saving delivery boy: ${error.message}`);
-            throw error;
+            console.error(error);
+            throw new Error(`Error saving delivery boy: ${error.message}`);
         }
     };
 
@@ -352,11 +359,11 @@ export default function DeliveryPage() {
         try {
             // This needs to update the order status as well, but for now, just updates the boy.
             await handleApiCall('PATCH', { boy: { id: selectedBoy.id, status: 'On Delivery' } });
-            alert(`Order ${orderId} assigned to ${selectedBoy.name}`);
+            setInfoDialog({ isOpen: true, title: "Success", message: `Order ${orderId} assigned to ${selectedBoy.name}` });
             await fetchData(true);
         } catch (error) {
-            alert(`Error assigning order: ${error.message}`);
-            throw error;
+            console.error(error);
+            throw new Error(`Error assigning order: ${error.message}`);
         } finally {
             setSelectedBoy(null);
         }
@@ -371,12 +378,18 @@ export default function DeliveryPage() {
             await handleApiCall('PATCH', { boy: { ...boy, status: newStatus } }, '/api/owner/delivery');
             await fetchData(true);
         } catch (error) {
-            alert(`Error updating status: ${error.message}`);
+            setInfoDialog({ isOpen: true, title: "Error", message: `Error updating status: ${error.message}` });
         }
     };
 
     return (
         <div className="p-4 md:p-6 text-foreground bg-background min-h-screen">
+            <InfoDialog
+                isOpen={infoDialog.isOpen}
+                onClose={() => setInfoDialog({ isOpen: false, title: '', message: '' })}
+                title={infoDialog.title}
+                message={infoDialog.message}
+            />
             <AddBoyModal isOpen={isAddModalOpen} setIsOpen={setAddModalOpen} onSave={handleSaveBoy} boy={selectedBoy} />
             {selectedBoy && <AssignOrderModal isOpen={isAssignModalOpen} setIsOpen={setAssignModalOpen} onAssign={handleConfirmAssignment} boyName={selectedBoy.name} readyOrders={data.readyOrders}/>}
             
@@ -387,7 +400,7 @@ export default function DeliveryPage() {
                         <p className="text-muted-foreground mt-1 text-sm md:text-base">Monitor and manage your delivery team in real-time.</p>
                     </div>
                     <div className="flex-shrink-0 flex gap-4">
-                        <Button onClick={() => fetchData(true)} variant="outline">
+                        <Button onClick={() => fetchData(true)} variant="outline" disabled={loading}>
                             <RefreshCw size={16} className={cn("mr-2", loading && "animate-spin")} /> Refresh
                         </Button>
                          <Button onClick={handleAddNew}>

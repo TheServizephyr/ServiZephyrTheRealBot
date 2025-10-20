@@ -15,6 +15,7 @@ import { Calendar } from '@/components/ui/calendar';
 import { format } from 'date-fns';
 import { Calendar as CalendarIcon, Wand2, Ticket, Percent, Truck } from 'lucide-react';
 import { useRouter, useSearchParams } from 'next/navigation';
+import InfoDialog from '@/components/InfoDialog';
 
 
 const formatDate = (dateString) => {
@@ -84,9 +85,11 @@ const SortableHeader = ({ children, column, sortConfig, onSort }) => {
 const CouponModal = ({ isOpen, setIsOpen, onSave, customer }) => {
     const [coupon, setCoupon] = useState(null);
     const [isSaving, setIsSaving] = useState(false);
+    const [modalError, setModalError] = useState('');
 
     useEffect(() => {
         if(isOpen && customer) {
+            setModalError('');
             setCoupon({
                 code: '',
                 description: `Special reward for ${customer.name}`,
@@ -114,12 +117,18 @@ const CouponModal = ({ isOpen, setIsOpen, onSave, customer }) => {
 
     const handleSubmit = async (e) => {
         e.preventDefault();
+        setModalError('');
+        if(!coupon.code || !coupon.value || !coupon.minOrder) {
+            setModalError("Please fill all fields to create a reward.");
+            return;
+        }
+
         setIsSaving(true);
         try {
             await onSave(coupon);
             setIsOpen(false);
         } catch (error) {
-            alert("Failed to save reward: " + error.message);
+            setModalError("Failed to save reward: " + error.message);
         } finally {
             setIsSaving(false);
         }
@@ -171,7 +180,7 @@ const CouponModal = ({ isOpen, setIsOpen, onSave, customer }) => {
                             </Popover>
                         </div>
                     </div>
-
+                    {modalError && <p className="text-destructive text-sm text-center">{modalError}</p>}
                     <DialogFooter className="pt-4">
                         <DialogClose asChild><Button type="button" variant="secondary" disabled={isSaving}>Cancel</Button></DialogClose>
                         <Button type="submit" className="bg-primary hover:bg-primary/90" disabled={isSaving}>
@@ -189,6 +198,7 @@ const CustomerDetailPanel = ({ customer, onClose, onSaveNotes, onSendReward }) =
   const [activeTab, setActiveTab] = useState('history');
   const [notes, setNotes] = useState(customer.notes || '');
   const [isSaving, setIsSaving] = useState(false);
+  const [infoDialog, setInfoDialog] = useState({ isOpen: false, title: '', message: '' });
 
   useEffect(() => {
     setNotes(customer.notes || '');
@@ -200,9 +210,9 @@ const CustomerDetailPanel = ({ customer, onClose, onSaveNotes, onSendReward }) =
     setIsSaving(true);
     try {
         await onSaveNotes(customer.id, notes);
-        alert("Notes saved!");
+        setInfoDialog({ isOpen: true, title: 'Success', message: 'Notes saved!' });
     } catch(err) {
-        alert("Failed to save notes. " + err.message);
+        setInfoDialog({ isOpen: true, title: 'Error', message: 'Failed to save notes. ' + err.message });
     } finally {
         setIsSaving(false);
     }
@@ -215,6 +225,13 @@ const CustomerDetailPanel = ({ customer, onClose, onSaveNotes, onSendReward }) =
   ];
 
   return (
+    <>
+    <InfoDialog
+        isOpen={infoDialog.isOpen}
+        onClose={() => setInfoDialog({ isOpen: false, title: '', message: '' })}
+        title={infoDialog.title}
+        message={infoDialog.message}
+    />
     <motion.div
       initial={{ x: '100%' }}
       animate={{ x: 0 }}
@@ -326,6 +343,7 @@ const CustomerDetailPanel = ({ customer, onClose, onSaveNotes, onSendReward }) =
         </AnimatePresence>
       </div>
     </motion.div>
+    </>
   );
 };
 
@@ -363,6 +381,7 @@ export default function CustomersPage() {
     const [activeFilter, setActiveFilter] = useState("All");
     const [isCouponModalOpen, setCouponModalOpen] = useState(false);
     const [rewardCustomer, setRewardCustomer] = useState(null);
+    const [infoDialog, setInfoDialog] = useState({ isOpen: false, title: '', message: '' });
     const searchParams = useSearchParams();
     const router = useRouter();
     const impersonatedOwnerId = searchParams.get('impersonate_owner_id');
@@ -396,7 +415,7 @@ export default function CustomersPage() {
                 setStats(data.stats || {});
             } catch (error) {
                 console.error("Failed to fetch customers:", error);
-                alert("Could not load customer data: " + error.message);
+                setInfoDialog({ isOpen: true, title: "Error", message: "Could not load customer data: " + error.message });
             } finally {
                 setLoading(false);
             }
@@ -444,7 +463,7 @@ export default function CustomersPage() {
             expiryDate: couponData.expiryDate.toISOString(),
         };
         await handleApiCall('/api/owner/coupons', 'POST', { coupon: payload });
-        alert(`Reward coupon "${couponData.code}" created for ${rewardCustomer.name}!`);
+        setInfoDialog({ isOpen: true, title: "Success!", message: `Reward coupon "${couponData.code}" created for ${rewardCustomer.name}!` });
     };
 
     const filteredAndSortedCustomers = useMemo(() => {
@@ -514,7 +533,12 @@ export default function CustomersPage() {
     return (
         <div className="p-4 md:p-6 text-foreground relative min-h-screen bg-background">
              {rewardCustomer && <CouponModal isOpen={isCouponModalOpen} setIsOpen={setCouponModalOpen} customer={rewardCustomer} onSave={handleSaveReward} />}
-
+             <InfoDialog
+                isOpen={infoDialog.isOpen}
+                onClose={() => setInfoDialog({ isOpen: false, title: '', message: '' })}
+                title={infoDialog.title}
+                message={infoDialog.message}
+             />
             <div>
                 <h1 className="text-3xl font-bold tracking-tight">Customer Hub</h1>
                 <p className="text-muted-foreground mt-1">Manage, analyze, and engage with your customers.</p>

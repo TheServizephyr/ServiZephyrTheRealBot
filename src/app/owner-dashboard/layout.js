@@ -1,4 +1,5 @@
 
+
 'use client';
 
 import { useState, useEffect } from "react";
@@ -12,6 +13,7 @@ import { auth } from "@/lib/firebase";
 import { AlertTriangle, HardHat, ShieldOff, Salad, XCircle, Lock, Mail, Phone, MessageSquare, Menu, X } from 'lucide-react';
 import { Button } from "@/components/ui/button";
 import { usePathname, useRouter } from "next/navigation";
+import InfoDialog from "@/components/InfoDialog";
 
 export const dynamic = 'force-dynamic';
 

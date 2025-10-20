@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useState, useEffect, useMemo, Suspense } from 'react';
@@ -11,6 +12,7 @@ import { Label } from '@/components/ui/label';
 import { cn } from '@/lib/utils';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Input } from '@/components/ui/input';
+import InfoDialog from '@/components/InfoDialog';
 
 const ClearCartDialog = ({ isOpen, onClose, onConfirm }) => {
     return (
@@ -96,6 +98,7 @@ const CartPageInternal = () => {
     
     // Coupon Popover State
     const [isCouponPopoverOpen, setCouponPopoverOpen] = useState(false);
+    const [infoDialog, setInfoDialog] = useState({ isOpen: false, title: '', message: '' });
     
     useEffect(() => {
         if (!restaurantId) return;
@@ -268,7 +271,7 @@ const CartPageInternal = () => {
             newAppliedCoupons = appliedCoupons.filter(c => c.id !== couponToToggle.id);
         } else {
             if (subtotal < couponToToggle.minOrder) {
-                alert(`You need to spend at least ₹${couponToToggle.minOrder} to use this coupon.`);
+                setInfoDialog({ isOpen: true, title: "Minimum Order Not Met", message: `You need to spend at least ₹${couponToToggle.minOrder} to use this coupon.` });
                 return;
             }
             const isSpecial = !!couponToToggle.customerId;
@@ -304,6 +307,12 @@ const CartPageInternal = () => {
     
     return (
         <>
+        <InfoDialog
+            isOpen={infoDialog.isOpen}
+            onClose={() => setInfoDialog({ isOpen: false, title: '', message: '' })}
+            title={infoDialog.title}
+            message={infoDialog.message}
+        />
         <Script src="https://checkout.razorpay.com/v1/checkout.js" />
         <ClearCartDialog 
             isOpen={isClearCartDialogOpen}

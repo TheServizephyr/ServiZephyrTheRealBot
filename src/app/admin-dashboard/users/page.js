@@ -1,4 +1,5 @@
 
+
 'use client';
 
 import { useState, useEffect } from 'react';
@@ -16,6 +17,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import InfoDialog from '@/components/InfoDialog';
 
 
 const UserRow = ({ user, onUpdateStatus }) => {
@@ -80,6 +82,7 @@ export default function AdminUsersPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [search, setSearch] = useState('');
+  const [infoDialog, setInfoDialog] = useState({ isOpen: false, title: '', message: '' });
 
   const fetchUsers = async () => {
     setLoading(true);
@@ -116,7 +119,7 @@ export default function AdminUsersPage() {
         }
         fetchUsers();
     } catch(err) {
-        alert('Error: ' + err.message);
+        setInfoDialog({ isOpen: true, title: "Error", message: err.message });
     }
   };
 
@@ -157,6 +160,12 @@ export default function AdminUsersPage() {
 
   return (
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-6">
+      <InfoDialog
+        isOpen={infoDialog.isOpen}
+        onClose={() => setInfoDialog({ isOpen: false, title: '', message: '' })}
+        title={infoDialog.title}
+        message={infoDialog.message}
+      />
       <h1 className="text-3xl font-bold tracking-tight">User Management</h1>
       <Tabs defaultValue="owners">
         <div className="flex flex-col md:flex-row justify-between items-center mb-4 gap-4">

@@ -21,6 +21,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Textarea } from '@/components/ui/textarea';
+import InfoDialog from '@/components/InfoDialog';
 
 
 const SuspensionModal = ({ isOpen, onOpenChange, onConfirm, restaurantName, initialRestrictedFeatures = [] }) => {
@@ -217,6 +218,7 @@ export default function AdminRestaurantsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [search, setSearch] = useState('');
+  const [infoDialog, setInfoDialog] = useState({ isOpen: false, title: '', message: '' });
 
   const fetchRestaurants = async () => {
     setLoading(true);
@@ -254,7 +256,7 @@ export default function AdminRestaurantsPage() {
         // Refresh the list after update
         fetchRestaurants();
     } catch (err) {
-        alert(err.message);
+        setInfoDialog({ isOpen: true, title: "Error", message: err.message });
     }
   };
 
@@ -295,6 +297,12 @@ export default function AdminRestaurantsPage() {
 
   return (
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-6">
+      <InfoDialog
+        isOpen={infoDialog.isOpen}
+        onClose={() => setInfoDialog({ isOpen: false, title: '', message: '' })}
+        title={infoDialog.title}
+        message={infoDialog.message}
+      />
       <h1 className="text-3xl font-bold tracking-tight">Listings Management</h1>
       <Tabs defaultValue="pending">
         <div className="flex flex-col md:flex-row justify-between items-center mb-4 gap-4">
