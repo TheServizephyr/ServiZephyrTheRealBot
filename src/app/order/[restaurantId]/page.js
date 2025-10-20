@@ -5,7 +5,7 @@
 import React, { useState, useEffect, Suspense, useMemo, useCallback } from 'react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Utensils, Plus, Minus, X, Home, User, Edit2, ShoppingCart, Star, CookingPot, BookOpen, Check, SlidersHorizontal, ArrowUpDown, PlusCircle, Ticket, Gift, Sparkles, Flame, Search, Trash2, ChevronDown, Tag as TagIcon, RadioGroup, IndianRupee, HardHat, MapPin, Bike, Store, ConciergeBell, QrCode, Calendar, Clock, UserCheck, ArrowLeft, CheckCircle, AlertTriangle } from 'lucide-react';
+import { Utensils, Plus, Minus, X, Home, User, Edit2, ShoppingCart, Star, CookingPot, BookOpen, Check, SlidersHorizontal, ArrowUpDown, PlusCircle, Ticket, Gift, Sparkles, Flame, Search, Trash2, ChevronDown, Tag as TagIcon, RadioGroup, IndianRupee, HardHat, MapPin, Bike, Store, ConciergeBell, QrCode, Calendar, Clock, UserCheck, ArrowLeft, CheckCircle, AlertTriangle, Bell } from 'lucide-react';
 import Image from 'next/image';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
@@ -510,7 +510,7 @@ const OrderPageInternal = () => {
 
 
         const fetchMenuData = async () => {
-            if (!restaurantId || !phone) {
+            if (!restaurantId) {
                 setLoading(false);
                 return;
             };
@@ -518,7 +518,10 @@ const OrderPageInternal = () => {
             setError(null);
             try {
                 // Pass phone and location to the menu API
-                const apiUrl = `/api/menu/${restaurantId}?phone=${phone}`;
+                let apiUrl = `/api/menu/${restaurantId}`;
+                if(phone){
+                    apiUrl += `?phone=${phone}`;
+                }
                 const res = await fetch(apiUrl);
                 
                 if (!res.ok) {
@@ -716,11 +719,7 @@ const OrderPageInternal = () => {
     };
     
     const handleDeliveryTypeChange = (type) => {
-        if (type === 'dine-in') {
-            setDineInModalOpen(true);
-        } else {
-            updateCart(cart, notes, type);
-        }
+        updateCart(cart, notes, type);
     };
 
     const totalCartItems = cart.reduce((sum, item) => sum + item.quantity, 0);
@@ -854,17 +853,17 @@ const OrderPageInternal = () => {
                         ) : (
                             <div className="flex bg-muted p-1 rounded-lg">
                                 {restaurantData.deliveryEnabled && (
-                                    <button onClick={() => handleDeliveryTypeChange('delivery')} className={cn("flex-1 p-2 rounded-md flex items-center justify-center gap-2 font-semibold transition-all", deliveryType === 'delivery' && 'bg-green-500/10 text-green-600 border border-green-500')}>
+                                    <button onClick={() => handleDeliveryTypeChange('delivery')} className={cn("flex-1 p-2 rounded-md flex items-center justify-center gap-2 font-semibold transition-all", deliveryType === 'delivery' && 'bg-primary text-primary-foreground')}>
                                         <Bike size={16} /> Delivery
                                     </button>
                                 )}
                                 {restaurantData.pickupEnabled && (
-                                    <button onClick={() => handleDeliveryTypeChange('pickup')} className={cn("flex-1 p-2 rounded-md flex items-center justify-center gap-2 font-semibold transition-all", deliveryType === 'pickup' && 'bg-green-500/10 text-green-600 border border-green-500')}>
+                                    <button onClick={() => handleDeliveryTypeChange('pickup')} className={cn("flex-1 p-2 rounded-md flex items-center justify-center gap-2 font-semibold transition-all", deliveryType === 'pickup' && 'bg-primary text-primary-foreground')}>
                                         <Store size={16} /> Pickup
                                     </button>
                                 )}
                                 {restaurantData.dineInEnabled && (
-                                    <button onClick={() => handleDeliveryTypeChange('dine-in')} className={cn("flex-1 p-2 rounded-md flex items-center justify-center gap-2 font-semibold transition-all", deliveryType === 'dine-in' && 'bg-green-500/10 text-green-600 border border-green-500')}>
+                                    <button onClick={() => setDineInModalOpen(true)} className={cn("flex-1 p-2 rounded-md flex items-center justify-center gap-2 font-semibold transition-all", deliveryType === 'dine-in' && 'bg-primary text-primary-foreground')}>
                                         <ConciergeBell size={16} /> Dine-In
                                     </button>
                                 )}
@@ -872,7 +871,11 @@ const OrderPageInternal = () => {
                         )}
                     </div>
                     <div className="flex flex-col md:flex-row items-center gap-4">
-                        {!tableIdFromUrl && (
+                        {tableIdFromUrl ? (
+                             <Button onClick={handleCallWaiter} className="w-full md:w-1/3 bg-card text-foreground border-border border hover:bg-muted h-12 flex items-center justify-center gap-2 text-base font-semibold">
+                                <Bell size={20} className="text-primary"/> Call Waiter
+                            </Button>
+                        ) : (
                             <div className="bg-card border border-border p-3 rounded-lg flex items-center justify-between w-full md:w-1/3">
                                 <div className="flex items-center gap-3 overflow-hidden">
                                     <MapPin className="text-primary flex-shrink-0" size={20}/>
@@ -883,7 +886,7 @@ const OrderPageInternal = () => {
                                 </Link>
                             </div>
                         )}
-                        <div className="relative w-full md:w-2/3">
+                        <div className={cn("relative w-full", tableIdFromUrl ? "md:w-2/3" : "md:w-2/3")}>
                             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" size={20} />
                             <input
                                 type="text"
@@ -961,22 +964,7 @@ const OrderPageInternal = () => {
                 
                 <footer className="fixed bottom-0 left-0 right-0 z-30 pointer-events-none">
                     <div className="container mx-auto px-4 relative h-28">
-                         {tableIdFromUrl && (
-                             <motion.div
-                                className="absolute right-4 bottom-28 pointer-events-auto"
-                                initial={{ y: 20, opacity: 0 }}
-                                animate={{ y: 0, opacity: 1 }}
-                                transition={{ delay: 0.5 }}
-                             >
-                                <button
-                                    onClick={handleCallWaiter}
-                                    className="bg-card text-foreground h-16 w-16 rounded-2xl shadow-lg flex flex-col items-center justify-center gap-1 border border-border"
-                                >
-                                    <ConciergeBell size={24} className="text-primary" />
-                                    <span className="text-xs font-bold">Call Waiter</span>
-                                </button>
-                            </motion.div>
-                         )}
+                         
                          <motion.div
                             className="absolute right-4 pointer-events-auto"
                             animate={{ bottom: totalCartItems > 0 ? '6.5rem' : '1rem' }}
@@ -1026,6 +1014,7 @@ const OrderPage = () => (
 );
 
 export default OrderPage;
+
 
 
 
