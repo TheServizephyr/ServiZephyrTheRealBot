@@ -1,4 +1,5 @@
 
+
 'use client';
 
 import React, { useState, useEffect, Suspense, useMemo, useCallback } from 'react';
@@ -471,10 +472,10 @@ const OrderPageInternal = () => {
         }
         
         let locationStr = localStorage.getItem('customerLocation');
-        if (!locationStr && !tableIdFromUrl) {
-            router.push(`/location?restaurantId=${restaurantId}&returnUrl=${encodeURIComponent(window.location.pathname + window.location.search)}`);
-            return;
-        }
+        // if (!locationStr && !tableIdFromUrl) {
+        //     router.push(`/location?restaurantId=${restaurantId}&returnUrl=${encodeURIComponent(window.location.pathname + window.location.search)}`);
+        //     return;
+        // }
         
         if(locationStr) {
             try {
@@ -482,8 +483,8 @@ const OrderPageInternal = () => {
                 setCustomerLocation(parsedLocation);
             } catch (e) {
                 console.error("[OrderPage] Failed to parse location from localStorage.", e);
-                router.push(`/location?restaurantId=${restaurantId}&returnUrl=${encodeURIComponent(window.location.pathname + window.location.search)}`);
-                return;
+                // router.push(`/location?restaurantId=${restaurantId}&returnUrl=${encodeURIComponent(window.location.pathname + window.location.search)}`);
+                // return;
             }
         }
 
@@ -985,3 +986,4 @@ const OrderPage = () => (
 );
 
 export default OrderPage;
+
