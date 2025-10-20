@@ -451,9 +451,8 @@ const OrderPageInternal = () => {
     const phoneFromUrl = searchParams.get('phone');
     const tableIdFromUrl = searchParams.get('table');
     
-    const [customerLocation, setCustomerLocation] = useState(null);
-
     // --- STATE MANAGEMENT ---
+    const [customerLocation, setCustomerLocation] = useState(null);
     const [restaurantData, setRestaurantData] = useState({
         name: '',
         status: null,
