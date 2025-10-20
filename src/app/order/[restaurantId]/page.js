@@ -5,7 +5,7 @@
 import React, { useState, useEffect, Suspense, useMemo, useCallback } from 'react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Utensils, Plus, Minus, X, Home, User, Edit2, ShoppingCart, Star, CookingPot, BookOpen, Check, SlidersHorizontal, ArrowUpDown, PlusCircle, Ticket, Gift, Sparkles, Flame, Search, Trash2, ChevronDown, Tag as TagIcon, RadioGroup, IndianRupee, HardHat, MapPin, Bike, Store, ConciergeBell, QrCode, Calendar, Clock, UserCheck, ArrowLeft, CheckCircle } from 'lucide-react';
+import { Utensils, Plus, Minus, X, Home, User, Edit2, ShoppingCart, Star, CookingPot, BookOpen, Check, SlidersHorizontal, ArrowUpDown, PlusCircle, Ticket, Gift, Sparkles, Flame, Search, Trash2, ChevronDown, Tag as TagIcon, RadioGroup, IndianRupee, HardHat, MapPin, Bike, Store, ConciergeBell, QrCode, Calendar, Clock, UserCheck, ArrowLeft, CheckCircle, AlertTriangle } from 'lucide-react';
 import Image from 'next/image';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
@@ -17,6 +17,7 @@ import Link from 'next/link';
 import { format } from 'date-fns';
 import { Calendar as CalendarUI } from '@/components/ui/calendar';
 import QrScanner from '@/components/QrScanner';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 
 
 const CustomizationDrawer = ({ item, isOpen, onClose, onAddToCart }) => {
@@ -1011,6 +1012,7 @@ const OrderPage = () => (
 );
 
 export default OrderPage;
+
 
 
 

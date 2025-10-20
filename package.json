@@ -12,6 +12,7 @@
   "dependencies": {
     "@hello-pangea/dnd": "^16.6.0",
     "@heroicons/react": "^2.2.0",
+    "@radix-ui/react-alert-dialog": "^1.1.1",
     "@radix-ui/react-avatar": "^1.1.10",
     "@radix-ui/react-dropdown-menu": "^2.0.6",
     "@radix-ui/react-label": "^2.0.2",
@@ -42,7 +43,7 @@
     "react-leaflet": "^4.2.1",
     "react-qr-code": "^2.0.15",
     "react-to-print": "^2.15.1",
-    "react-use": "^17.5.1",
+    "react-use": "^17.5.0",
     "recharts": "^2.15.4",
     "tailwind-merge": "^3.3.1",
     "tailwindcss-animate": "^1.0.7",

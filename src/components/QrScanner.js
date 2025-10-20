@@ -1,44 +1,69 @@
 
 'use client';
 
-import { useEffect, useRef } from 'react';
-import { Html5QrcodeScanner } from 'html5-qrcode';
+import { useEffect, useRef, useState } from 'react';
+import { Html5Qrcode } from 'html5-qrcode';
 import { motion } from 'framer-motion';
 import { X, CameraOff } from 'lucide-react';
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 
 const QrScanner = ({ onClose, onScanSuccess }) => {
     const scannerRef = useRef(null);
+    const [cameraError, setCameraError] = useState(null);
 
     useEffect(() => {
-        if (!scannerRef.current.innerHTML) {
-            const scanner = new Html5QrcodeScanner(
-                'qr-scanner',
-                { fps: 10, qrbox: { width: 250, height: 250 } },
-                false // verbose
-            );
+        if (!scannerRef.current) return;
 
-            const handleSuccess = (decodedText, decodedResult) => {
-                scanner.clear();
-                onScanSuccess(decodedText);
-            };
+        const html5QrCode = new Html5Qrcode(scannerRef.current.id);
+        let currentCameraId;
 
-            const handleError = (error) => {
-                // You can add more sophisticated error handling here if needed
-                // console.warn(`QR error = ${error}`);
-            };
-            
-            scanner.render(handleSuccess, handleError);
+        const startScanner = (cameras) => {
+            if (cameras && cameras.length > 0) {
+                // Use the back camera if available
+                const camera = cameras.find(c => c.label.toLowerCase().includes('back')) || cameras[0];
+                currentCameraId = camera.id;
 
-            return () => {
-                if (scanner) {
-                    // It's important to clear the scanner on component unmount
-                    // to stop the camera stream.
-                    scanner.clear().catch(error => {
-                        console.error("Failed to clear html5-qrcode-scanner.", error);
-                    });
-                }
-            };
-        }
+                html5QrCode.start(
+                    currentCameraId, 
+                    {
+                        fps: 10,
+                        qrbox: (viewfinderWidth, viewfinderHeight) => {
+                            const minEdge = Math.min(viewfinderWidth, viewfinderHeight);
+                            const qrboxSize = Math.floor(minEdge * 0.8);
+                            return {
+                                width: qrboxSize,
+                                height: qrboxSize,
+                            };
+                        },
+                    },
+                    (decodedText, decodedResult) => {
+                        onScanSuccess(decodedText);
+                    },
+                    (errorMessage) => {
+                        // This callback is called for non-critical errors, like when no QR code is found.
+                        // We can ignore it to avoid console spam.
+                    }
+                ).catch((err) => {
+                    console.error(`Unable to start scanning, error: ${err}`);
+                    setCameraError("Could not start camera. Please ensure permissions are granted and no other app is using it.");
+                });
+            } else {
+                 setCameraError("No cameras found on this device.");
+            }
+        };
+
+        Html5Qrcode.getCameras().then(startScanner).catch(err => {
+            console.error("Failed to get cameras", err);
+            setCameraError("Could not access camera. Please check your browser permissions.");
+        });
+
+        return () => {
+            if (html5QrCode && html5QrCode.isScanning) {
+                html5QrCode.stop().catch(err => {
+                    console.error("Failed to stop scanner cleanly", err);
+                });
+            }
+        };
     }, [onScanSuccess]);
 
     return (
@@ -51,12 +76,23 @@ const QrScanner = ({ onClose, onScanSuccess }) => {
             <div className="relative w-full max-w-md bg-background rounded-2xl p-6 shadow-2xl">
                 <button 
                     onClick={onClose}
-                    className="absolute -top-4 -right-4 bg-destructive text-destructive-foreground rounded-full p-2 z-10"
+                    className="absolute -top-3 -right-3 bg-destructive text-destructive-foreground rounded-full p-2 z-10 shadow-lg"
                 >
                     <X size={24} />
                 </button>
-                 <h2 className="text-2xl font-bold text-center mb-4">Scan Table QR Code</h2>
-                <div id="qr-scanner" ref={scannerRef}></div>
+                <h2 className="text-2xl font-bold text-center mb-4">Scan Table QR Code</h2>
+                
+                {cameraError ? (
+                    <Alert variant="destructive">
+                        <CameraOff className="h-4 w-4" />
+                        <AlertTitle>Camera Error</AlertTitle>
+                        <AlertDescription>
+                            {cameraError} Please check your browser settings to allow camera access.
+                        </AlertDescription>
+                    </Alert>
+                ) : (
+                    <div id="qr-scanner-container" ref={scannerRef} className="rounded-lg overflow-hidden border border-border"></div>
+                )}
             </div>
         </motion.div>
     );
