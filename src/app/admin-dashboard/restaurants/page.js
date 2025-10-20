@@ -62,7 +62,7 @@ const SuspensionModal = ({ isOpen, onOpenChange, onConfirm, restaurantName, init
         onConfirm(selectedFeatures, remark);
     }
 
-    const allSelected = selectedFeatures.length === features.length;
+    const allSelected = features.length > 0 && selectedFeatures.length === features.length;
     const partiallySelected = selectedFeatures.length > 0 && selectedFeatures.length < features.length;
 
     return (
@@ -80,7 +80,7 @@ const SuspensionModal = ({ isOpen, onOpenChange, onConfirm, restaurantName, init
                             id="select-all" 
                             onCheckedChange={handleSelectAll}
                             checked={allSelected}
-                            data-state={partiallySelected ? "indeterminate" : (allSelected ? "checked" : "unchecked")}
+                             data-state={partiallySelected ? "indeterminate" : (allSelected ? "checked" : "unchecked")}
                         />
                         <Label htmlFor="select-all" className="flex-grow cursor-pointer text-sm font-bold">Select/Deselect All</Label>
                     </div>

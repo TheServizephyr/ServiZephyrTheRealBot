@@ -16,7 +16,7 @@ async function verifyOwnerAndGetBusiness(req, auth, firestore) {
     const uid = decodedToken.uid;
     
     // --- ADMIN IMPERSONATION & PERMISSION LOGIC ---
-    const url = new URL(req.headers.get('referer'));
+    const url = new URL(req.url, `http://${req.headers.host}`);
     const impersonatedOwnerId = url.searchParams.get('impersonate_owner_id');
     const userDoc = await firestore.collection('users').doc(uid).get();
 
