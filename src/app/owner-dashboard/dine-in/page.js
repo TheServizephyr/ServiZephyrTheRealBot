@@ -1,9 +1,10 @@
 
+
 'use client';
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { motion } from 'framer-motion';
-import { RefreshCw, Printer, CheckCircle, IndianRupee, Users, Clock, ShoppingBag, Bell, MoreVertical, Trash2, QrCode } from 'lucide-react';
+import { RefreshCw, Printer, CheckCircle, IndianRupee, Users, Clock, ShoppingBag, Bell, MoreVertical, Trash2, QrCode, Download, Save } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { auth } from '@/lib/firebase';
@@ -13,7 +14,7 @@ import { useSearchParams } from 'next/navigation';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
-import QRCode from "react-qr-code";
+import { useQRCode } from 'next-qrcode';
 import { useReactToPrint } from 'react-to-print';
 
 const formatCurrency = (value) => `₹${Number(value || 0).toLocaleString('en-IN')}`;
@@ -89,24 +90,70 @@ const TableCard = ({ tableId, orders }) => {
     );
 };
 
+const QrCodeDisplay = ({ text, tableName, innerRef }) => {
+    const { Canvas } = useQRCode();
+
+    return (
+        <div ref={innerRef} className="bg-white p-4 rounded-lg border border-border flex flex-col items-center">
+            <Canvas
+                text={text}
+                options={{
+                    errorCorrectionLevel: 'M',
+                    margin: 2,
+                    scale: 4,
+                    width: 256,
+                    color: {
+                        dark: '#000000',
+                        light: '#FFFFFF',
+                    },
+                }}
+            />
+            <p className="text-center font-bold text-lg mt-2 text-black">Scan to Order: {tableName}</p>
+        </div>
+    );
+};
+
+
 const QrGeneratorModal = ({ isOpen, onClose, restaurantId }) => {
     const [tableName, setTableName] = useState('');
     const [qrValue, setQrValue] = useState('');
     const printRef = useRef();
+
+    const { Canvas } = useQRCode();
 
     const handleGenerate = () => {
         if (!tableName.trim()) {
             alert("Please enter a table name or number.");
             return;
         }
-        // Assuming the URL structure from the prompt
         const url = `${window.location.origin}/order/${restaurantId}?table=${tableName.trim()}`;
         setQrValue(url);
     };
-
+    
+    const handleDownload = () => {
+        const canvas = printRef.current.querySelector('canvas');
+        if (canvas) {
+            const pngUrl = canvas
+                .toDataURL("image/png")
+                .replace("image/png", "image/octet-stream");
+            let downloadLink = document.createElement("a");
+            downloadLink.href = pngUrl;
+            downloadLink.download = `${tableName}-qrcode.png`;
+            document.body.appendChild(downloadLink);
+            downloadLink.click();
+            document.body.removeChild(downloadLink);
+        }
+    };
+    
     const handlePrint = useReactToPrint({
         content: () => printRef.current,
+        documentTitle: `QR_Code_${tableName}`,
     });
+    
+    const handleSave = () => {
+        // Placeholder for future save functionality
+        alert(`QR Code for table "${tableName}" saved! (Feature coming soon)`);
+    }
 
     useEffect(() => {
         if (!isOpen) {
@@ -132,17 +179,22 @@ const QrGeneratorModal = ({ isOpen, onClose, restaurantId }) => {
                             placeholder="e.g., T1, Table 5, Rooftop 2"
                         />
                     </div>
-                    <Button onClick={handleGenerate} className="w-full">Generate QR Code</Button>
+                    <Button onClick={handleGenerate} className="w-full bg-primary hover:bg-primary/90">Generate QR Code</Button>
 
                     {qrValue && (
                         <div className="mt-6 flex flex-col items-center gap-4">
-                            <div className="bg-white p-4 rounded-lg border border-border" ref={printRef}>
-                                <QRCode value={qrValue} size={256} />
-                                <p className="text-center font-bold text-lg mt-2 text-black">Scan to Order: {tableName}</p>
+                           <QrCodeDisplay text={qrValue} tableName={tableName} innerRef={printRef} />
+                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 w-full max-w-sm">
+                                <Button onClick={handlePrint} variant="outline">
+                                    <Printer className="mr-2 h-4 w-4" /> Print
+                                </Button>
+                                <Button onClick={handleDownload} variant="outline">
+                                    <Download className="mr-2 h-4 w-4" /> Download PNG
+                                </Button>
+                                <Button onClick={handleSave} variant="secondary">
+                                    <Save className="mr-2 h-4 w-4" /> Save for Later
+                                </Button>
                             </div>
-                            <Button onClick={handlePrint} variant="outline">
-                                <Printer className="mr-2 h-4 w-4" /> Print QR Code
-                            </Button>
                         </div>
                     )}
                 </div>
