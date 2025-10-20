@@ -4,7 +4,7 @@
 import React, { useState, useEffect, Suspense, useMemo, useCallback } from 'react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Utensils, Plus, Minus, X, Home, User, Edit2, ShoppingCart, Star, CookingPot, BookOpen, Check, SlidersHorizontal, ArrowUpDown, PlusCircle, Ticket, Gift, Sparkles, Flame, Search, Trash2, ChevronDown, Tag as TagIcon, RadioGroup, IndianRupee, HardHat, MapPin, Bike, Store } from 'lucide-react';
+import { Utensils, Plus, Minus, X, Home, User, Edit2, ShoppingCart, Star, CookingPot, BookOpen, Check, SlidersHorizontal, ArrowUpDown, PlusCircle, Ticket, Gift, Sparkles, Flame, Search, Trash2, ChevronDown, Tag as TagIcon, RadioGroup, IndianRupee, HardHat, MapPin, Bike, Store, ConciergeBell, QrCode, Calendar, Clock, UserCheck } from 'lucide-react';
 import Image from 'next/image';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
@@ -13,6 +13,8 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import Link from 'next/link';
+import { format } from 'date-fns';
+import { Calendar as CalendarUI } from '@/components/ui/calendar';
 
 
 const CustomizationDrawer = ({ item, isOpen, onClose, onAddToCart }) => {
@@ -255,6 +257,107 @@ const MenuBrowserModal = ({ isOpen, onClose, categories, onCategoryClick }) => {
   );
 };
 
+const DineInModal = ({ isOpen, onClose, onBookTable, onScanQR }) => {
+    const [activeModal, setActiveModal] = useState('main'); // 'main', 'book', 'scan'
+    const [bookingDetails, setBookingDetails] = useState({ name: '', guests: 2, date: new Date(), time: '19:00' });
+
+    const handleBookingChange = (field, value) => {
+        setBookingDetails(prev => ({...prev, [field]: value}));
+    };
+
+    const handleConfirmBooking = () => {
+        // Basic validation
+        if (!bookingDetails.name.trim()) {
+            alert("Please enter your name.");
+            return;
+        }
+        alert(`Table booking request sent for ${bookingDetails.name} (${bookingDetails.guests} guests) on ${format(bookingDetails.date, "PPP")} at ${bookingDetails.time}.`);
+        onClose();
+        setActiveModal('main');
+    };
+
+    return (
+        <Dialog open={isOpen} onOpenChange={onClose}>
+            <DialogContent className="bg-background border-border text-foreground p-0 max-w-md">
+                <AnimatePresence mode="wait">
+                {activeModal === 'main' && (
+                    <motion.div
+                        key="main"
+                        initial={{ opacity: 0, x: 20 }}
+                        animate={{ opacity: 1, x: 0 }}
+                        exit={{ opacity: 0, x: -20 }}
+                    >
+                         <DialogHeader className="p-4 border-b text-center">
+                            <DialogTitle className="text-xl">Planning to Visit Us?</DialogTitle>
+                            <DialogDescription>How would you like to proceed?</DialogDescription>
+                        </DialogHeader>
+                        <div className="p-6 grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            <Button variant="outline" className="h-24 flex flex-col gap-2 text-base" onClick={() => setActiveModal('book')}>
+                                <Calendar size={24}/>
+                                Book a Table
+                            </Button>
+                             <Button variant="outline" className="h-24 flex flex-col gap-2 text-base" onClick={onScanQR}>
+                                <QrCode size={24}/>
+                                I'm at the Restaurant
+                            </Button>
+                        </div>
+                    </motion.div>
+                )}
+                {activeModal === 'book' && (
+                     <motion.div
+                        key="book"
+                        initial={{ opacity: 0, x: 20 }}
+                        animate={{ opacity: 1, x: 0 }}
+                        exit={{ opacity: 0, x: -20 }}
+                     >
+                        <DialogHeader className="p-4 border-b flex-shrink-0">
+                            <DialogTitle className="text-xl text-center">Book a Table</DialogTitle>
+                        </DialogHeader>
+                        <div className="p-6 space-y-4 flex-grow overflow-y-auto">
+                            <div>
+                                <Label htmlFor="name">Your Name</Label>
+                                <input id="name" type="text" value={bookingDetails.name} onChange={(e) => handleBookingChange('name', e.target.value)} className="w-full mt-1 p-2 bg-input border rounded-md" />
+                            </div>
+                            <div className="flex items-center justify-between">
+                                <Label>Party Size</Label>
+                                <div className="flex items-center gap-2">
+                                    <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => handleBookingChange('guests', Math.max(1, bookingDetails.guests - 1))}>-</Button>
+                                    <span className="font-bold w-8 text-center">{bookingDetails.guests}</span>
+                                    <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => handleBookingChange('guests', bookingDetails.guests + 1)}>+</Button>
+                                </div>
+                            </div>
+                             <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                    <Label>Date</Label>
+                                    <Popover>
+                                        <PopoverTrigger asChild>
+                                           <Button variant={"outline"} className={cn("w-full justify-start text-left font-normal mt-1", !bookingDetails.date && "text-muted-foreground")}>
+                                              <Calendar className="mr-2 h-4 w-4" />
+                                              {bookingDetails.date ? format(bookingDetails.date, "PPP") : <span>Pick a date</span>}
+                                           </Button>
+                                        </PopoverTrigger>
+                                        <PopoverContent className="w-auto p-0"><CalendarUI mode="single" selected={bookingDetails.date} onSelect={(d) => handleBookingChange('date', d)} initialFocus /></PopoverContent>
+                                    </Popover>
+                                </div>
+                                <div>
+                                     <Label>Time</Label>
+                                     <input type="time" value={bookingDetails.time} onChange={(e) => handleBookingChange('time', e.target.value)} className="w-full mt-1 p-2 bg-input border rounded-md" />
+                                </div>
+                            </div>
+                        </div>
+                        <DialogFooter className="p-4 border-t flex-shrink-0">
+                             <Button variant="secondary" onClick={() => setActiveModal('main')}>Back</Button>
+                             <Button onClick={handleConfirmBooking} className="bg-primary hover:bg-primary/90">Continue</Button>
+                        </DialogFooter>
+                    </motion.div>
+                )}
+                </AnimatePresence>
+            </DialogContent>
+        </Dialog>
+    );
+};
+
+
 const BannerCarousel = ({ images, onClick, restaurantName, logoUrl }) => {
     const [index, setIndex] = useState(0);
   
@@ -315,6 +418,7 @@ const OrderPageInternal = () => {
     const { restaurantId } = params;
     
     const phoneFromUrl = searchParams.get('phone');
+    const tableIdFromUrl = searchParams.get('table');
     
     const [customerLocation, setCustomerLocation] = useState(null);
 
@@ -329,6 +433,7 @@ const OrderPageInternal = () => {
         coupons: [],
         deliveryEnabled: true,
         pickupEnabled: false,
+        dineInEnabled: false,
     });
     const [loyaltyPoints, setLoyaltyPoints] = useState(0);
     const [loading, setLoading] = useState(true);
@@ -347,6 +452,7 @@ const OrderPageInternal = () => {
     });
     const [customizationItem, setCustomizationItem] = useState(null);
     const [isBannerExpanded, setIsBannerExpanded] = useState(false);
+    const [isDineInModalOpen, setDineInModalOpen] = useState(false);
     
 
     // --- LOCATION & DATA FETCHING ---
@@ -359,19 +465,22 @@ const OrderPageInternal = () => {
         }
         
         let locationStr = localStorage.getItem('customerLocation');
-        if (!locationStr) {
+        if (!locationStr && !tableIdFromUrl) {
             router.push(`/location?restaurantId=${restaurantId}&returnUrl=${encodeURIComponent(window.location.pathname + window.location.search)}`);
             return;
+        }
+        
+        if(locationStr) {
+            try {
+                const parsedLocation = JSON.parse(locationStr);
+                setCustomerLocation(parsedLocation);
+            } catch (e) {
+                console.error("[OrderPage] Failed to parse location from localStorage.", e);
+                router.push(`/location?restaurantId=${restaurantId}&returnUrl=${encodeURIComponent(window.location.pathname + window.location.search)}`);
+                return;
+            }
         }
 
-        try {
-            const parsedLocation = JSON.parse(locationStr);
-            setCustomerLocation(parsedLocation);
-        } catch (e) {
-            console.error("[OrderPage] Failed to parse location from localStorage.", e);
-            router.push(`/location?restaurantId=${restaurantId}&returnUrl=${encodeURIComponent(window.location.pathname + window.location.search)}`);
-            return;
-        }
 
         const fetchMenuData = async () => {
             if (!restaurantId || !phone) {
@@ -401,10 +510,13 @@ const OrderPageInternal = () => {
                     coupons: data.coupons || [],
                     deliveryEnabled: data.deliveryEnabled,
                     pickupEnabled: data.pickupEnabled,
+                    dineInEnabled: data.dineInEnabled !== undefined ? data.dineInEnabled : true,
                 });
                 
                 // Set initial delivery type
-                if (data.deliveryEnabled && !data.pickupEnabled) {
+                if (tableIdFromUrl) {
+                    setDeliveryType('dine-in');
+                } else if (data.deliveryEnabled && !data.pickupEnabled) {
                     setDeliveryType('delivery');
                 } else if (!data.deliveryEnabled && data.pickupEnabled) {
                     setDeliveryType('pickup');
@@ -421,7 +533,7 @@ const OrderPageInternal = () => {
         };
 
         fetchMenuData();
-    }, [restaurantId, phoneFromUrl, router]);
+    }, [restaurantId, phoneFromUrl, router, tableIdFromUrl]);
     
     // --- CART PERSISTENCE ---
     const updateCart = useCallback((newCart, newNotes, newDeliveryType) => {
@@ -456,12 +568,12 @@ const OrderPageInternal = () => {
                 const parsedData = JSON.parse(savedCartData);
                 setCart(parsedData.cart || []);
                 setNotes(parsedData.notes || '');
-                if (parsedData.deliveryType) {
+                if (parsedData.deliveryType && !tableIdFromUrl) {
                     setDeliveryType(parsedData.deliveryType);
                 }
             }
         }
-    }, [restaurantId]);
+    }, [restaurantId, tableIdFromUrl]);
 
 
     // --- MENU PROCESSING & FILTERING ---
@@ -577,7 +689,11 @@ const OrderPageInternal = () => {
     };
     
     const handleDeliveryTypeChange = (type) => {
-        updateCart(cart, notes, type);
+        if (type === 'dine-in') {
+            setDineInModalOpen(true);
+        } else {
+            updateCart(cart, notes, type);
+        }
     };
 
     const totalCartItems = cart.reduce((sum, item) => sum + item.quantity, 0);
@@ -605,7 +721,11 @@ const OrderPageInternal = () => {
 
     const handleCheckout = () => {
         const phone = phoneFromUrl || localStorage.getItem('lastKnownPhone');
-        router.push(`/cart?restaurantId=${restaurantId}&phone=${phone}`);
+        let url = `/cart?restaurantId=${restaurantId}&phone=${phone}`;
+        if (tableIdFromUrl) {
+            url += `&table=${tableIdFromUrl}`;
+        }
+        router.push(url);
     };
 
     if (loading) {
@@ -662,6 +782,11 @@ const OrderPageInternal = () => {
                 )}
             </AnimatePresence>
             <div className="min-h-screen bg-background text-foreground green-theme">
+                <DineInModal 
+                  isOpen={isDineInModalOpen} 
+                  onClose={() => setDineInModalOpen(false)}
+                  onScanQR={() => alert("QR Scanner coming soon!")}
+                />
                 <MenuBrowserModal isOpen={isMenuBrowserOpen} onClose={() => setIsMenuBrowserOpen(false)} categories={menuCategories} onCategoryClick={handleCategoryClick} />
                 <CustomizationDrawer
                     item={customizationItem}
@@ -676,43 +801,43 @@ const OrderPageInternal = () => {
 
                 <div className="container mx-auto px-4 mt-6 space-y-4">
                      <div className="bg-card p-4 rounded-lg border border-border">
-                        <div className="flex bg-muted p-1 rounded-lg">
-                            <button
-                                onClick={() => restaurantData.deliveryEnabled && handleDeliveryTypeChange('delivery')}
-                                className={cn(
-                                    "flex-1 p-2 rounded-md flex items-center justify-center gap-2 font-semibold transition-all",
-                                    deliveryType === 'delivery' && 'bg-background shadow-sm',
-                                    !restaurantData.deliveryEnabled && 'opacity-50 cursor-not-allowed'
+                        {tableIdFromUrl ? (
+                            <div className="flex items-center justify-center gap-2 p-1">
+                                <ConciergeBell className="text-primary"/>
+                                <h2 className="text-lg font-bold text-foreground">Ordering for: Table {tableIdFromUrl}</h2>
+                            </div>
+                        ) : (
+                            <div className="flex bg-muted p-1 rounded-lg">
+                                {restaurantData.deliveryEnabled && (
+                                    <button onClick={() => handleDeliveryTypeChange('delivery')} className={cn("flex-1 p-2 rounded-md flex items-center justify-center gap-2 font-semibold transition-all", deliveryType === 'delivery' && 'bg-background shadow-sm')}>
+                                        <Bike size={16} /> Delivery
+                                    </button>
                                 )}
-                                disabled={!restaurantData.deliveryEnabled}
-                                title={!restaurantData.deliveryEnabled ? "Delivery not available" : ""}
-                            >
-                                <Bike size={16} /> Delivery
-                            </button>
-                            <button
-                                onClick={() => restaurantData.pickupEnabled && handleDeliveryTypeChange('pickup')}
-                                className={cn(
-                                    "flex-1 p-2 rounded-md flex items-center justify-center gap-2 font-semibold transition-all",
-                                    deliveryType === 'pickup' && 'bg-background shadow-sm',
-                                    !restaurantData.pickupEnabled && 'opacity-50 cursor-not-allowed'
+                                {restaurantData.pickupEnabled && (
+                                    <button onClick={() => handleDeliveryTypeChange('pickup')} className={cn("flex-1 p-2 rounded-md flex items-center justify-center gap-2 font-semibold transition-all", deliveryType === 'pickup' && 'bg-background shadow-sm')}>
+                                        <Store size={16} /> Pickup
+                                    </button>
                                 )}
-                                disabled={!restaurantData.pickupEnabled}
-                                title={!restaurantData.pickupEnabled ? "Pickup not available" : ""}
-                            >
-                                <Store size={16} /> Pickup
-                            </button>
-                        </div>
+                                {restaurantData.dineInEnabled && (
+                                    <button onClick={() => handleDeliveryTypeChange('dine-in')} className={cn("flex-1 p-2 rounded-md flex items-center justify-center gap-2 font-semibold transition-all", deliveryType === 'dine-in' && 'bg-background shadow-sm')}>
+                                        <ConciergeBell size={16} /> Dine-In
+                                    </button>
+                                )}
+                            </div>
+                        )}
                     </div>
                     <div className="flex flex-col md:flex-row items-center gap-4">
-                        <div className="bg-card border border-border p-3 rounded-lg flex items-center justify-between w-full md:w-1/3">
-                            <div className="flex items-center gap-3 overflow-hidden">
-                                <MapPin className="text-primary flex-shrink-0" size={20}/>
-                                <p className="text-sm text-muted-foreground truncate">{customerLocation?.full || 'No location set'}</p>
+                        {!tableIdFromUrl && (
+                            <div className="bg-card border border-border p-3 rounded-lg flex items-center justify-between w-full md:w-1/3">
+                                <div className="flex items-center gap-3 overflow-hidden">
+                                    <MapPin className="text-primary flex-shrink-0" size={20}/>
+                                    <p className="text-sm text-muted-foreground truncate">{customerLocation?.full || 'No location set'}</p>
+                                </div>
+                                <Link href={`/location?restaurantId=${restaurantId}&returnUrl=${encodeURIComponent(window.location.pathname + window.location.search)}`}>
+                                    <Button variant="link" className="text-primary p-0 h-auto font-semibold flex-shrink-0">Change</Button>
+                                </Link>
                             </div>
-                            <Link href={`/location?restaurantId=${restaurantId}&returnUrl=${encodeURIComponent(window.location.pathname + window.location.search)}`}>
-                                <Button variant="link" className="text-primary p-0 h-auto font-semibold flex-shrink-0">Change</Button>
-                            </Link>
-                        </div>
+                        )}
                         <div className="relative w-full md:w-2/3">
                             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" size={20} />
                             <input
