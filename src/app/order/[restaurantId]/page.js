@@ -855,17 +855,17 @@ const OrderPageInternal = () => {
                         ) : (
                             <div className="flex bg-muted p-1 rounded-lg">
                                 {restaurantData.deliveryEnabled && (
-                                    <button onClick={() => handleDeliveryTypeChange('delivery')} className={cn("flex-1 p-2 rounded-md flex items-center justify-center gap-2 font-semibold transition-all", deliveryType === 'delivery' && 'bg-background shadow-sm')}>
+                                    <button onClick={() => handleDeliveryTypeChange('delivery')} className={cn("flex-1 p-2 rounded-md flex items-center justify-center gap-2 font-semibold transition-all", deliveryType === 'delivery' && 'bg-green-500/10 text-green-600 border border-green-500')}>
                                         <Bike size={16} /> Delivery
                                     </button>
                                 )}
                                 {restaurantData.pickupEnabled && (
-                                    <button onClick={() => handleDeliveryTypeChange('pickup')} className={cn("flex-1 p-2 rounded-md flex items-center justify-center gap-2 font-semibold transition-all", deliveryType === 'pickup' && 'bg-background shadow-sm')}>
+                                    <button onClick={() => handleDeliveryTypeChange('pickup')} className={cn("flex-1 p-2 rounded-md flex items-center justify-center gap-2 font-semibold transition-all", deliveryType === 'pickup' && 'bg-green-500/10 text-green-600 border border-green-500')}>
                                         <Store size={16} /> Pickup
                                     </button>
                                 )}
                                 {restaurantData.dineInEnabled && (
-                                    <button onClick={() => handleDeliveryTypeChange('dine-in')} className={cn("flex-1 p-2 rounded-md flex items-center justify-center gap-2 font-semibold transition-all", deliveryType === 'dine-in' && 'bg-background shadow-sm')}>
+                                    <button onClick={() => handleDeliveryTypeChange('dine-in')} className={cn("flex-1 p-2 rounded-md flex items-center justify-center gap-2 font-semibold transition-all", deliveryType === 'dine-in' && 'bg-green-500/10 text-green-600 border border-green-500')}>
                                         <ConciergeBell size={16} /> Dine-In
                                     </button>
                                 )}
@@ -1011,6 +1011,7 @@ const OrderPage = () => (
 );
 
 export default OrderPage;
+
 
 
 
