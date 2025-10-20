@@ -961,20 +961,27 @@ const OrderPageInternal = () => {
                 
                 <footer className="fixed bottom-0 left-0 right-0 z-30 pointer-events-none">
                     <div className="container mx-auto px-4 relative h-28">
-                         <motion.div
-                            className="absolute right-4 flex flex-col gap-3 pointer-events-auto"
-                            animate={{ bottom: totalCartItems > 0 ? '6.5rem' : '1rem' }}
-                            transition={{ type: "spring", stiffness: 300, damping: 25 }}
-                        >
-                            {tableIdFromUrl && (
-                                 <button
+                         {tableIdFromUrl && (
+                             <motion.div
+                                className="absolute right-4 bottom-28 pointer-events-auto"
+                                initial={{ y: 20, opacity: 0 }}
+                                animate={{ y: 0, opacity: 1 }}
+                                transition={{ delay: 0.5 }}
+                             >
+                                <button
                                     onClick={handleCallWaiter}
                                     className="bg-card text-foreground h-16 w-16 rounded-2xl shadow-lg flex flex-col items-center justify-center gap-1 border border-border"
                                 >
                                     <ConciergeBell size={24} className="text-primary" />
                                     <span className="text-xs font-bold">Call Waiter</span>
                                 </button>
-                            )}
+                            </motion.div>
+                         )}
+                         <motion.div
+                            className="absolute right-4 pointer-events-auto"
+                            animate={{ bottom: totalCartItems > 0 ? '6.5rem' : '1rem' }}
+                            transition={{ type: "spring", stiffness: 300, damping: 25 }}
+                        >
                              <button
                                 onClick={() => setIsMenuBrowserOpen(true)}
                                 className="bg-card text-foreground h-16 w-16 rounded-2xl shadow-lg flex flex-col items-center justify-center gap-1 border border-border"
@@ -1019,6 +1026,7 @@ const OrderPage = () => (
 );
 
 export default OrderPage;
+
 
 
 
