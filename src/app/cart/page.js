@@ -1,5 +1,3 @@
-
-
 'use client';
 
 import React, { useState, useEffect, useMemo, Suspense } from 'react';
@@ -92,14 +90,11 @@ const CartPageInternal = () => {
     const [phone, setPhone] = useState(initialPhone);
     const [isBillExpanded, setIsBillExpanded] = useState(false);
 
-    // New state for delivery type and tip
-    const [deliveryType, setDeliveryType] = useState('delivery');
+    // Tip state now lives in cartData in localStorage
     const [tipAmount, setTipAmount] = useState(0);
     const [customTip, setCustomTip] = useState('');
-    const [isPickupModalOpen, setIsPickupModalOpen] = useState(false);
-    const [pickupTime, setPickupTime] = useState('');
-
-    // State for coupon popover
+    
+    // Coupon Popover State
     const [isCouponPopoverOpen, setCouponPopoverOpen] = useState(false);
     
     useEffect(() => {
@@ -121,14 +116,6 @@ const CartPageInternal = () => {
             setNotes(parsedData.notes || '');
             setAppliedCoupons(parsedData.appliedCoupons || []);
             setTipAmount(parsedData.tipAmount || 0);
-            setPickupTime(parsedData.pickupTime || '');
-
-            // If a tableId is in the URL, force dine-in. Otherwise, use saved value or default.
-            if (tableId) {
-                 setDeliveryType('dine-in');
-            } else if (parsedData.deliveryType) {
-                setDeliveryType(parsedData.deliveryType);
-            }
 
         } else {
             setCart([]);
@@ -136,6 +123,11 @@ const CartPageInternal = () => {
         }
 
     }, [restaurantId, phoneFromUrl, phoneFromStorage, tableId]);
+
+    const deliveryType = useMemo(() => {
+        if (tableId) return 'dine-in';
+        return cartData?.deliveryType || 'delivery';
+    }, [tableId, cartData]);
 
     const updateCartInStorage = (updates) => {
         const currentData = JSON.parse(localStorage.getItem(`cart_${restaurantId}`)) || {};
@@ -146,7 +138,6 @@ const CartPageInternal = () => {
         if(updates.notes !== undefined) setNotes(updates.notes);
         if(updates.appliedCoupons !== undefined) setAppliedCoupons(updates.appliedCoupons);
         if(updates.tipAmount !== undefined) setTipAmount(updates.tipAmount);
-        if(updates.pickupTime !== undefined) setPickupTime(updates.pickupTime);
 
         localStorage.setItem(`cart_${restaurantId}`, JSON.stringify(updatedData));
     };
@@ -206,10 +197,6 @@ const CartPageInternal = () => {
         router.push(backUrl);
     };
     
-    const handleConfirmPickup = () => {
-        updateCartInStorage({ pickupTime: pickupTime }); 
-        setIsPickupModalOpen(false);
-    };
 
     const handleTipChange = (amount) => {
         const newTip = Number(amount);
@@ -323,13 +310,7 @@ const CartPageInternal = () => {
             onClose={() => setIsClearCartDialogOpen(false)}
             onConfirm={handleClearCart}
         />
-        <PickupTimeModal 
-            isOpen={isPickupModalOpen}
-            onClose={() => setIsPickupModalOpen(false)}
-            onConfirm={handleConfirmPickup}
-            pickupTime={pickupTime}
-            setPickupTime={setPickupTime}
-        />
+        
         <div className="min-h-screen bg-background text-foreground flex flex-col green-theme">
              <header className="sticky top-0 z-20 bg-background/80 backdrop-blur-lg border-b border-border">
                 <div className="container mx-auto px-4 py-3 flex items-center gap-4">
@@ -355,22 +336,7 @@ const CartPageInternal = () => {
                     </div>
                 ) : (
                     <>
-                        {deliveryType === 'pickup' && (
-                             <div className="p-4 bg-card rounded-lg border border-border mb-4">
-                                <div className="flex items-center justify-between">
-                                    <div className="flex items-center gap-3">
-                                        <Store size={20} className="text-primary"/>
-                                        <div>
-                                            <h4 className="font-semibold">Pickup Time</h4>
-                                            <p className="text-sm text-muted-foreground">{pickupTime || 'Not set'}</p>
-                                        </div>
-                                    </div>
-                                    <Button variant="link" className="text-primary" onClick={() => setIsPickupModalOpen(true)}>Change</Button>
-                                </div>
-                            </div>
-                        )}
-
-                        <div className="bg-card p-4 rounded-lg border border-border mt-4">
+                       <div className="bg-card p-4 rounded-lg border border-border mt-4">
                             <div className="flex justify-between items-center mb-3">
                                 <h3 className="font-bold text-lg">Your Items</h3>
                                  <Button variant="destructive" size="sm" onClick={() => setIsClearCartDialogOpen(true)}><Trash2 className="mr-2 h-4 w-4"/> Clear</Button>

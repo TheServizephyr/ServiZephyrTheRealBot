@@ -1,11 +1,9 @@
-
-
 'use client';
 
 import React, { useState, useEffect, useMemo, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { motion } from 'framer-motion';
-import { Home, User, ShoppingCart, ArrowLeft, Wallet, IndianRupee, Truck, ChevronsUpDown, Check, PlusCircle, CreditCard, Landmark, Split, Users as UsersIcon } from 'lucide-react';
+import { Home, User, ShoppingCart, ArrowLeft, Wallet, IndianRupee, Truck, ChevronsUpDown, Check, PlusCircle, CreditCard, Landmark, Split, Users as UsersIcon, Bell } from 'lucide-react';
 import Script from 'next/script';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose } from "@/components/ui/dialog";
@@ -67,7 +65,14 @@ const CheckoutModal = ({ isOpen, onClose, onConfirm, grandTotal, loading, name, 
 };
 
 
-const DineInPostOrderModal = ({ isOpen, onClose, onAddMore, onViewBill }) => {
+const DineInPostOrderModal = ({ isOpen, onClose, onAddMore, onViewBill, tableId }) => {
+    
+    // Placeholder function for calling waiter
+    const handleCallWaiter = () => {
+        alert(`Notification sent: "SERVICE REQUEST: TABLE ${tableId}"`);
+        // In a real app, this would trigger a WebSocket or Firebase event.
+    };
+
     return (
         <Dialog open={isOpen} onOpenChange={onClose}>
             <DialogContent className="bg-background border-border text-foreground">
@@ -83,6 +88,11 @@ const DineInPostOrderModal = ({ isOpen, onClose, onAddMore, onViewBill }) => {
                         <Wallet className="mr-2"/> View Bill & Pay
                     </Button>
                 </div>
+                 <DialogFooter className="!justify-center">
+                    <Button variant="outline" onClick={handleCallWaiter} className="flex items-center gap-2">
+                        <Bell size={16}/> Call Waiter
+                    </Button>
+                </DialogFooter>
             </DialogContent>
         </Dialog>
     );
@@ -123,7 +133,11 @@ const CheckoutPageInternal = () => {
             if (savedCartData) {
                 const parsedData = JSON.parse(savedCartData);
                 const finalPhone = phone || parsedData.phone;
-                const updatedData = { ...parsedData, phone: finalPhone, tableId: tableId || null };
+                
+                // If there's a tableId in the URL, force dine-in mode
+                const deliveryType = tableId ? 'dine-in' : (parsedData.deliveryType || 'delivery');
+
+                const updatedData = { ...parsedData, phone: finalPhone, tableId: tableId || null, deliveryType };
 
                 setCart(updatedData.cart || []);
                 setAppliedCoupons(updatedData.appliedCoupons || []);
@@ -307,11 +321,16 @@ const CheckoutPageInternal = () => {
                     key: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID, amount: Math.round(grandTotal * 100), currency: "INR",
                     name: "ServiZephyr (Pvt. Ltd.)", description: `Payment for Order`, order_id: razorpay_order_id,
                     handler: function (response) {
-                        localStorage.removeItem(`cart_${restaurantId}`);
+                        // For dine-in, show the "Add more / View Bill" modal.
                         if (deliveryType === 'dine-in') {
-                             setIsModalOpen(false);
-                             setDineInModalOpen(true);
+                            setIsModalOpen(false);
+                            setDineInModalOpen(true);
+                            // Clear only the items from the cart, not other details
+                            const currentCart = JSON.parse(localStorage.getItem(`cart_${restaurantId}`)) || {};
+                            localStorage.setItem(`cart_${restaurantId}`, JSON.stringify({ ...currentCart, cart: [] }));
+                            setCart([]);
                         } else {
+                             localStorage.removeItem(`cart_${restaurantId}`);
                             router.push(`/track/${firestore_order_id}`);
                         }
                     },
@@ -330,11 +349,14 @@ const CheckoutPageInternal = () => {
                 }, 200);
 
             } else { // COD or POD
-                 localStorage.removeItem(`cart_${restaurantId}`);
                  if (deliveryType === 'dine-in') {
                       setIsModalOpen(false);
                       setDineInModalOpen(true);
+                      const currentCart = JSON.parse(localStorage.getItem(`cart_${restaurantId}`)) || {};
+                      localStorage.setItem(`cart_${restaurantId}`, JSON.stringify({ ...currentCart, cart: [] }));
+                      setCart([]);
                  } else {
+                     localStorage.removeItem(`cart_${restaurantId}`);
                      router.push(`/track/${firestore_order_id}`);
                  }
             }
@@ -375,6 +397,7 @@ const CheckoutPageInternal = () => {
                 onClose={() => setDineInModalOpen(false)}
                 onAddMore={handleAddMoreToTab}
                 onViewBill={handleViewBill}
+                tableId={tableId}
             />
             <div className="min-h-screen bg-background text-foreground flex flex-col green-theme">
                 <header className="sticky top-0 z-20 bg-background/80 backdrop-blur-lg border-b border-border">
@@ -435,7 +458,7 @@ const CheckoutPageInternal = () => {
                                     >
                                         <IndianRupee size={40} className="text-primary flex-shrink-0"/>
                                         <div>
-                                            <h3 className="text-xl font-bold">{deliveryType === 'pickup' ? 'Pay at Store' : 'Pay on Delivery'}</h3>
+                                            <h3 className="text-xl font-bold">{deliveryType === 'pickup' ? 'Pay at Store' : (deliveryType === 'dine-in' ? 'Pay at Counter' : 'Pay on Delivery')}</h3>
                                             <p className="text-muted-foreground">Pay with cash or UPI when you receive your order</p>
                                         </div>
                                     </motion.button>
