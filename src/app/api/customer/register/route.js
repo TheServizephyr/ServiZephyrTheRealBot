@@ -11,12 +11,16 @@ import { sendNewOrderToOwner } from '@/lib/notifications';
 export async function POST(req) {
     try {
         const firestore = getFirestore();
-        const { name, address, phone, restaurantId, items, notes, coupon, loyaltyDiscount, grandTotal, paymentMethod, businessType = 'restaurant', deliveryType = 'delivery', pickupTime = '', tipAmount = 0, subtotal, cgst, sgst, deliveryCharge } = await req.json();
+        const { name, address, phone, restaurantId, items, notes, coupon, loyaltyDiscount, grandTotal, paymentMethod, businessType = 'restaurant', deliveryType = 'delivery', pickupTime = '', tipAmount = 0, subtotal, cgst, sgst, deliveryCharge, tableId = null } = await req.json();
 
         // --- VALIDATION ---
-        if (!name || !address || !phone || !restaurantId || !items || grandTotal === undefined || subtotal === undefined) {
-            return NextResponse.json({ message: 'Missing required fields for order creation. Bill details are mandatory.' }, { status: 400 });
+        if (!name || !phone || !restaurantId || !items || grandTotal === undefined || subtotal === undefined) {
+            return NextResponse.json({ message: 'Missing required fields for order creation.' }, { status: 400 });
         }
+        if (deliveryType === 'delivery' && !address) {
+            return NextResponse.json({ message: 'Address is required for delivery orders.' }, { status: 400 });
+        }
+
         const normalizedPhone = phone.length > 10 ? phone.slice(-10) : phone;
         if (!/^\d{10}$/.test(normalizedPhone)) {
             return NextResponse.json({ message: 'Invalid phone number format. Must be 10 digits.' }, { status: 400 });
@@ -34,15 +38,10 @@ export async function POST(req) {
 
         // This is a placeholder for a real address-to-coordinate conversion
         const getCoordinatesFromAddress = (addr) => {
-            // In a real app, you would use a geocoding service like Google Maps API.
-            // For now, we'll return a fixed location for demonstration.
-            if (typeof addr === 'string' && addr.toLowerCase().includes('delhi')) {
-                return new adminFirestore.GeoPoint(28.7041, 77.1025);
-            }
-            // Default to a location in Ghaziabad
+            if (typeof addr === 'string' && addr.toLowerCase().includes('delhi')) return new adminFirestore.GeoPoint(28.7041, 77.1025);
             return new adminFirestore.GeoPoint(28.6692, 77.4538);
         };
-        const customerLocation = getCoordinatesFromAddress(address);
+        const customerLocation = deliveryType === 'delivery' ? getCoordinatesFromAddress(address) : null;
 
         if (paymentMethod === 'razorpay') {
             if (!process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID || !process.env.RAZORPAY_KEY_SECRET) {
@@ -55,22 +54,12 @@ export async function POST(req) {
                 key_secret: process.env.RAZORPAY_KEY_SECRET,
             });
 
-            // CORRECTED: The webhook needs all this data, so we must pass it in the notes.
             const orderPayloadForNotes = {
-                customerDetails: { name, address, phone: normalizedPhone, location: { latitude: customerLocation.latitude, longitude: customerLocation.longitude } },
+                customerDetails: { name, address, phone: normalizedPhone, location: customerLocation ? { latitude: customerLocation.latitude, longitude: customerLocation.longitude } : null },
                 restaurantDetails: { restaurantId, restaurantName: businessData.name },
                 items: items,
                 billDetails: { 
-                    coupon, 
-                    loyaltyDiscount, 
-                    grandTotal, 
-                    deliveryType, 
-                    tipAmount, 
-                    pickupTime, 
-                    subtotal, // Pass all amounts
-                    cgst, 
-                    sgst, 
-                    deliveryCharge 
+                    coupon, loyaltyDiscount, grandTotal, deliveryType, tipAmount, pickupTime, subtotal, cgst, sgst, deliveryCharge, tableId
                 },
                 notes: notes || null,
                 businessType: businessType
@@ -88,20 +77,19 @@ export async function POST(req) {
 
             const razorpayOrder = await razorpay.orders.create(razorpayOrderOptions);
             razorpayOrderId = razorpayOrder.id;
-            console.log(`[Order API] Razorpay Order ${razorpayOrderId} created for amount ${grandTotal}. Firestore order creation will wait for payment confirmation.`);
+            console.log(`[Order API] Razorpay Order ${razorpayOrderId} created for amount ${grandTotal}.`);
             
-             // Create the Firestore order doc ID ahead of time for COD consistency
             const firestoreOrderId = firestore.collection('orders').doc().id;
             
             return NextResponse.json({ 
                 message: 'Razorpay order created. Awaiting payment confirmation.',
                 razorpay_order_id: razorpayOrderId,
-                firestore_order_id: firestoreOrderId, // Send this to the client
+                firestore_order_id: firestoreOrderId,
             }, { status: 200 });
         }
 
 
-        // --- FIRESTORE BATCH WRITE FOR COD ---
+        // --- FIRESTORE BATCH WRITE FOR COD / POD / DINE-IN ---
         const batch = firestore.batch();
         
         const usersRef = firestore.collection('users');
@@ -111,27 +99,15 @@ export async function POST(req) {
         let isNewUser = existingUserQuery.empty;
 
         if (isNewUser) {
-            // New user via COD, check for/create an unclaimed profile.
             const unclaimedUserRef = firestore.collection('unclaimed_profiles').doc(normalizedPhone);
-            userId = normalizedPhone; // Use phone as temporary ID
-            
-            const newOrderedFrom = {
-                restaurantId: restaurantId,
-                restaurantName: businessData.name,
-                businessType: businessType, // Save businessType here
-            };
-
+            userId = normalizedPhone;
+            const newOrderedFrom = { restaurantId, restaurantName: businessData.name, businessType };
             batch.set(unclaimedUserRef, {
-                name: name, 
-                phone: normalizedPhone, 
-                addresses: [{ id: `addr_${Date.now()}`, full: address }],
+                name: name, phone: normalizedPhone, addresses: [{ id: `addr_${Date.now()}`, full: address }],
                 createdAt: adminFirestore.FieldValue.serverTimestamp(),
                 orderedFrom: adminFirestore.FieldValue.arrayUnion(newOrderedFrom)
             }, { merge: true });
-            console.log(`[Order API] New unclaimed profile created/updated for ${normalizedPhone}`);
-
         } else {
-            // Existing verified user
             userId = existingUserQuery.docs[0].id;
         }
         
@@ -144,15 +120,13 @@ export async function POST(req) {
 
         const restaurantCustomerRef = businessRef.collection('customers').doc(userId);
         batch.set(restaurantCustomerRef, {
-            name: name, phone: normalizedPhone, 
-            status: isNewUser ? 'unclaimed' : 'verified', // Set status based on user existence
+            name: name, phone: normalizedPhone, status: isNewUser ? 'unclaimed' : 'verified',
             totalSpend: adminFirestore.FieldValue.increment(subtotal),
             loyaltyPoints: adminFirestore.FieldValue.increment(pointsEarned - pointsSpent),
             lastOrderDate: adminFirestore.FieldValue.serverTimestamp(),
             totalOrders: adminFirestore.FieldValue.increment(1),
         }, { merge: true });
         
-        // Only create joined_restaurants if it's a verified user
         if (!isNewUser) {
             const userRestaurantLinkRef = usersRef.doc(userId).collection('joined_restaurants').doc(restaurantId);
             batch.set(userRestaurantLinkRef, {
@@ -166,49 +140,35 @@ export async function POST(req) {
         
         if (coupon && coupon.id) {
             const couponRef = businessRef.collection('coupons').doc(coupon.id);
-            batch.update(couponRef, {
-                timesUsed: adminFirestore.FieldValue.increment(1)
-            });
-            console.log(`[Order API] Coupon ${coupon.id} usage count incremented.`);
+            batch.update(couponRef, { timesUsed: adminFirestore.FieldValue.increment(1) });
         }
-
 
         const newOrderRef = firestore.collection('orders').doc();
         batch.set(newOrderRef, {
             customerName: name, customerId: userId, customerAddress: address, customerPhone: normalizedPhone,
             customerLocation: customerLocation,
             restaurantId: restaurantId, restaurantName: businessData.name,
-            businessType,
-            deliveryType,
-            pickupTime,
-            tipAmount,
+            businessType, deliveryType, pickupTime, tipAmount, tableId,
             items: items,
             subtotal, coupon, loyaltyDiscount, discount: finalDiscount, cgst, sgst, deliveryCharge,
             totalAmount: grandTotal,
-            status: 'pending',
+            status: deliveryType === 'dine-in' ? 'active_tab' : 'pending',
             orderDate: adminFirestore.FieldValue.serverTimestamp(),
             notes: notes || null,
-            paymentDetails: {
-                method: paymentMethod,
-            }
+            paymentDetails: { method: paymentMethod }
         });
         
-        console.log(`[Order API] COD order ${newOrderRef.id} added to batch for user ${userId}.`);
-
         await batch.commit();
 
         if (businessData.ownerPhone && businessData.botPhoneNumberId) {
             await sendNewOrderToOwner({
-                ownerPhone: businessData.ownerPhone,
-                botPhoneNumberId: businessData.botPhoneNumberId,
-                customerName: name,
-                totalAmount: grandTotal,
-                orderId: newOrderRef.id
+                ownerPhone: businessData.ownerPhone, botPhoneNumberId: businessData.botPhoneNumberId,
+                customerName: name, totalAmount: grandTotal, orderId: newOrderRef.id
             });
         }
         
         return NextResponse.json({ 
-            message: 'COD order created successfully.',
+            message: 'Order created successfully.',
             firestore_order_id: newOrderRef.id,
         }, { status: 200 });
 

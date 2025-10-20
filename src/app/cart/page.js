@@ -1,4 +1,5 @@
 
+
 'use client';
 
 import React, { useState, useEffect, useMemo, Suspense } from 'react';
@@ -79,6 +80,7 @@ const CartPageInternal = () => {
     const restaurantId = searchParams.get('restaurantId');
     
     const phoneFromUrl = searchParams.get('phone');
+    const tableId = searchParams.get('table');
     const phoneFromStorage = typeof window !== 'undefined' ? localStorage.getItem('lastKnownPhone') : null;
     const initialPhone = phoneFromUrl || phoneFromStorage;
 
@@ -121,7 +123,10 @@ const CartPageInternal = () => {
             setTipAmount(parsedData.tipAmount || 0);
             setPickupTime(parsedData.pickupTime || '');
 
-            if (parsedData.deliveryType) {
+            // If a tableId is in the URL, force dine-in. Otherwise, use saved value or default.
+            if (tableId) {
+                 setDeliveryType('dine-in');
+            } else if (parsedData.deliveryType) {
                 setDeliveryType(parsedData.deliveryType);
             }
 
@@ -130,7 +135,7 @@ const CartPageInternal = () => {
             setAppliedCoupons([]);
         }
 
-    }, [restaurantId, phoneFromUrl, phoneFromStorage]);
+    }, [restaurantId, phoneFromUrl, phoneFromStorage, tableId]);
 
     const updateCartInStorage = (updates) => {
         const currentData = JSON.parse(localStorage.getItem(`cart_${restaurantId}`)) || {};
@@ -186,11 +191,19 @@ const CartPageInternal = () => {
 
     const handleConfirmOrder = () => {
         // The data is already saved in localStorage, just navigate
-        router.push(`/checkout?restaurantId=${restaurantId}&phone=${phone}`);
+        let checkoutUrl = `/checkout?restaurantId=${restaurantId}&phone=${phone}`;
+        if (tableId) {
+            checkoutUrl += `&table=${tableId}`;
+        }
+        router.push(checkoutUrl);
     };
 
     const handleGoBack = () => {
-        router.push(`/order/${restaurantId}?phone=${phone}`);
+        let backUrl = `/order/${restaurantId}?phone=${phone}`;
+        if (tableId) {
+            backUrl += `&table=${tableId}`;
+        }
+        router.push(backUrl);
     };
     
     const handleConfirmPickup = () => {
@@ -246,7 +259,7 @@ const CartPageInternal = () => {
     }, [appliedCoupons, subtotal]);
 
     const finalDeliveryCharge = useMemo(() => {
-        if (deliveryType === 'pickup' || !cartData) return 0;
+        if (deliveryType === 'pickup' || deliveryType === 'dine-in' || !cartData) return 0;
         const hasFreeDelivery = appliedCoupons.some(c => c.type === 'free_delivery' && subtotal >= c.minOrder);
         return hasFreeDelivery ? 0 : cartData.deliveryCharge;
     }, [appliedCoupons, cartData, subtotal, deliveryType]);

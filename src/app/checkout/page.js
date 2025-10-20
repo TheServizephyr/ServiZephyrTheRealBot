@@ -5,7 +5,7 @@
 import React, { useState, useEffect, useMemo, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { motion } from 'framer-motion';
-import { Home, User, ShoppingCart, ArrowLeft, Wallet, IndianRupee, Truck, ChevronsUpDown, Check, PlusCircle } from 'lucide-react';
+import { Home, User, ShoppingCart, ArrowLeft, Wallet, IndianRupee, Truck, ChevronsUpDown, Check, PlusCircle, CreditCard, Landmark, Split, Users as UsersIcon } from 'lucide-react';
 import Script from 'next/script';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose } from "@/components/ui/dialog";
@@ -16,60 +16,10 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem } from '@/components/ui/command';
 
 
-const AddressSelectionCombobox = ({ savedAddresses, selectedAddress, onSelectAddress, onAddNew, disabled }) => {
-    const [open, setOpen] = useState(false);
+const CheckoutModal = ({ isOpen, onClose, onConfirm, grandTotal, loading, name, onNameChange, address, onAddressChange, error, isExistingUser, savedAddresses, selectedAddress, onSelectAddress, isAddingNew, onSetIsAddingNew, deliveryType }) => {
     
-    return (
-        <Popover open={open} onOpenChange={setOpen}>
-            <PopoverTrigger asChild>
-                <Button
-                    variant="outline"
-                    role="combobox"
-                    aria-expanded={open}
-                    className="w-full justify-between h-auto py-2 text-left font-normal"
-                    disabled={disabled}
-                >
-                    <span className="truncate">{selectedAddress || "Select an address..."}</span>
-                    <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-                </Button>
-            </PopoverTrigger>
-            <PopoverContent className="w-[--radix-popover-trigger-width] p-0">
-                <Command>
-                    <CommandInput placeholder="Search address..." />
-                    <CommandEmpty>No address found.</CommandEmpty>
-                    <CommandGroup className="max-h-60 overflow-y-auto">
-                        {savedAddresses.map((addr) => (
-                            <CommandItem
-                                key={addr.id}
-                                value={addr.full}
-                                onSelect={(currentValue) => {
-                                    onSelectAddress(addr.full);
-                                    setOpen(false);
-                                }}
-                            >
-                                <Check className={cn("mr-2 h-4 w-4", selectedAddress === addr.full ? "opacity-100" : "opacity-0")} />
-                                {addr.full}
-                            </CommandItem>
-                        ))}
-                        <CommandItem
-                            onSelect={() => {
-                                onAddNew();
-                                setOpen(false);
-                            }}
-                            className="text-primary font-semibold"
-                        >
-                           <PlusCircle className="mr-2 h-4 w-4" />
-                           Add a new address
-                        </CommandItem>
-                    </CommandGroup>
-                </Command>
-            </PopoverContent>
-        </Popover>
-    )
-}
-
-
-const CheckoutModal = ({ isOpen, onClose, onConfirm, grandTotal, loading, name, onNameChange, address, onAddressChange, error, isExistingUser, savedAddresses, selectedAddress, onSelectAddress, isAddingNew, onSetIsAddingNew }) => {
+    const isDineIn = deliveryType === 'dine-in';
+    
     return (
         <Dialog open={isOpen} onOpenChange={onClose}>
             <DialogContent className="bg-background border-border text-foreground">
@@ -91,13 +41,15 @@ const CheckoutModal = ({ isOpen, onClose, onConfirm, grandTotal, loading, name, 
                                 </div>
                             </div>
                            
-                            <div>
-                                <Label htmlFor="checkout-address">Delivery Address</Label>
-                                <div className="relative mt-1">
-                                    <Home className="absolute left-3 top-3 h-5 w-5 text-muted-foreground" />
-                                    <textarea id="checkout-address" value={address} onChange={(e) => onAddressChange(e.target.value)} required rows={3} className="w-full pl-10 pr-4 py-2 rounded-md bg-input border-border" placeholder="Enter your full delivery address" />
+                            {!isDineIn && (
+                                <div>
+                                    <Label htmlFor="checkout-address">Delivery Address</Label>
+                                    <div className="relative mt-1">
+                                        <Home className="absolute left-3 top-3 h-5 w-5 text-muted-foreground" />
+                                        <textarea id="checkout-address" value={address} onChange={(e) => onAddressChange(e.target.value)} required rows={3} className="w-full pl-10 pr-4 py-2 rounded-md bg-input border-border" placeholder="Enter your full delivery address" />
+                                    </div>
                                 </div>
-                            </div>
+                            )}
 
                             {error && <p className="text-red-500 text-sm text-center pt-2">{error}</p>}
                         </>
@@ -115,29 +67,49 @@ const CheckoutModal = ({ isOpen, onClose, onConfirm, grandTotal, loading, name, 
 };
 
 
+const DineInPostOrderModal = ({ isOpen, onClose, onAddMore, onViewBill }) => {
+    return (
+        <Dialog open={isOpen} onOpenChange={onClose}>
+            <DialogContent className="bg-background border-border text-foreground">
+                <DialogHeader>
+                    <DialogTitle>Order Sent!</DialogTitle>
+                    <DialogDescription>Your order has been sent to the kitchen. What would you like to do next?</DialogDescription>
+                </DialogHeader>
+                <div className="py-6 space-y-4">
+                    <Button onClick={onAddMore} className="w-full h-14 text-lg bg-primary/20 text-primary hover:bg-primary/30 border-2 border-primary">
+                        <PlusCircle className="mr-2"/> Add More to My Tab
+                    </Button>
+                     <Button onClick={onViewBill} className="w-full h-14 text-lg">
+                        <Wallet className="mr-2"/> View Bill & Pay
+                    </Button>
+                </div>
+            </DialogContent>
+        </Dialog>
+    );
+};
+
+
 const CheckoutPageInternal = () => {
     const router = useRouter();
     const searchParams = useSearchParams();
     const restaurantId = searchParams.get('restaurantId');
     const phone = searchParams.get('phone');
+    const tableId = searchParams.get('table');
     
-    // States for cart and user details
     const [cart, setCart] = useState([]);
     const [cartData, setCartData] = useState(null);
     const [appliedCoupons, setAppliedCoupons] = useState([]);
     const [name, setName] = useState('');
     const [address, setAddress] = useState('');
-    const [savedAddresses, setSavedAddresses] = useState([]);
-    const [selectedAddress, setSelectedAddress] = useState('');
-    const [isAddingNew, setIsAddingNew] = useState(false);
+    
     const [isExistingUser, setIsExistingUser] = useState(false);
-
-    // States for page logic
     const [codEnabled, setCodEnabled] = useState(false);
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [selectedPaymentMethod, setSelectedPaymentMethod] = useState(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
+    const [isDineInModalOpen, setDineInModalOpen] = useState(false);
+    const [splitBillOptions, setSplitBillOptions] = useState(null);
     
     // Fetch cart and restaurant settings
     useEffect(() => {
@@ -147,40 +119,45 @@ const CheckoutPageInternal = () => {
                 return;
             }
 
-            // 1. Fetch Cart from Local Storage
             const savedCartData = localStorage.getItem(`cart_${restaurantId}`);
             if (savedCartData) {
                 const parsedData = JSON.parse(savedCartData);
                 const finalPhone = phone || parsedData.phone;
-                const updatedData = { ...parsedData, phone: finalPhone };
+                const updatedData = { ...parsedData, phone: finalPhone, tableId: tableId || null };
 
                 setCart(updatedData.cart || []);
                 setAppliedCoupons(updatedData.appliedCoupons || []);
                 setCartData(updatedData);
 
-                 // Check for location data
                 const locationStr = localStorage.getItem('customerLocation');
                 if (locationStr) {
                     try {
                         const parsedLocation = JSON.parse(locationStr);
                         setAddress(parsedLocation.full || '');
-                    } catch (e) {
-                        console.error("Could not parse customer location from storage.");
-                    }
+                    } catch (e) { console.error("Could not parse location."); }
                 }
 
             } else {
-                router.push(`/order/${restaurantId}`);
+                router.push(`/order/${restaurantId}${tableId ? `?table=${tableId}`: ''}`);
                 return;
             }
             
-            // 2. Fetch Restaurant Settings (for COD status)
             try {
-                const auth = getAuth();
                  const res = await fetch(`/api/owner/settings?restaurantId=${restaurantId}`);
                  if (res.ok) {
                     const data = await res.json();
-                    setCodEnabled(data.codEnabled || false);
+                    const deliveryType = tableId ? 'dine-in' : (cartData?.deliveryType || 'delivery');
+                    const isPickup = deliveryType === 'pickup';
+
+                    if (deliveryType === 'delivery') {
+                        setCodEnabled(data.deliveryCodEnabled || false);
+                    } else if (isPickup) {
+                         setCodEnabled(data.pickupPodEnabled || false);
+                    } else { // dine-in
+                        // For dine-in, we can assume both are available or have a specific setting later
+                        setCodEnabled(true);
+                    }
+
                  }
             } catch (err) {
                 console.error("Could not fetch restaurant settings for COD:", err);
@@ -191,10 +168,9 @@ const CheckoutPageInternal = () => {
         };
 
         fetchInitialData();
-    }, [restaurantId, router, phone]);
+    }, [restaurantId, router, phone, tableId]);
 
 
-    // Fetch user details when modal is about to open
     useEffect(() => {
         const fetchUserData = async () => {
             if (isModalOpen && cartData?.phone) {
@@ -209,7 +185,6 @@ const CheckoutPageInternal = () => {
                     if (res.ok) {
                         const data = await res.json();
                         setName(data.name);
-                        // Do not set address from here anymore, as it's pre-filled
                         setIsExistingUser(true);
                     } else {
                         setIsExistingUser(false);
@@ -231,23 +206,20 @@ const CheckoutPageInternal = () => {
     const { totalDiscount, finalDeliveryCharge, cgst, sgst, grandTotal } = useMemo(() => {
         if (!cartData) return { totalDiscount: 0, finalDeliveryCharge: 0, cgst: 0, sgst: 0, grandTotal: subtotal };
 
-        const isPickup = cartData.deliveryType === 'pickup';
+        const deliveryType = cartData.tableId ? 'dine-in' : (cartData.deliveryType || 'delivery');
 
         let couponDiscountValue = 0;
         appliedCoupons.forEach(coupon => {
             if (subtotal >= coupon.minOrder) {
-                if (coupon.type === 'flat') {
-                    couponDiscountValue += coupon.value;
-                } else if (coupon.type === 'percentage') {
-                    couponDiscountValue += (subtotal * coupon.value) / 100;
-                }
+                if (coupon.type === 'flat') couponDiscountValue += coupon.value;
+                else if (coupon.type === 'percentage') couponDiscountValue += (subtotal * coupon.value) / 100;
             }
         });
         
         const hasFreeDelivery = appliedCoupons.some(c => c.type === 'free_delivery' && subtotal >= c.minOrder);
-        const deliveryCharge = (isPickup || hasFreeDelivery) ? 0 : (cartData.deliveryCharge || 0);
+        const deliveryCharge = (deliveryType !== 'delivery' || hasFreeDelivery) ? 0 : (cartData.deliveryCharge || 0);
 
-        const tip = isPickup ? 0 : (cartData.tipAmount || 0);
+        const tip = (deliveryType === 'delivery' ? (cartData.tipAmount || 0) : 0);
 
         const taxableAmount = subtotal - couponDiscountValue;
         const tax = taxableAmount > 0 ? taxableAmount * 0.05 : 0;
@@ -256,9 +228,7 @@ const CheckoutPageInternal = () => {
         return { 
             totalDiscount: couponDiscountValue, 
             finalDeliveryCharge: deliveryCharge, 
-            cgst: tax,
-            sgst: tax,
-            grandTotal: finalGrandTotal
+            cgst: tax, sgst: tax, grandTotal: finalGrandTotal
         };
     }, [cartData, cart, appliedCoupons, subtotal]);
 
@@ -267,14 +237,31 @@ const CheckoutPageInternal = () => {
         setSelectedPaymentMethod(method);
         setIsModalOpen(true);
     };
+    
+    const handleAddMoreToTab = () => {
+        // Just go back to the menu, the cart is preserved.
+        router.push(`/order/${restaurantId}?table=${tableId}&phone=${phone}`);
+    };
+
+    const handleViewBill = () => {
+        setDineInModalOpen(false);
+        // Here we'd transition the UI to a bill view state
+        setSplitBillOptions({ active: true });
+    };
 
     const handleConfirmOrder = async () => {
-        const finalAddress = cartData?.deliveryType === 'pickup' ? 'Self Pickup' : address;
+        const deliveryType = cartData.tableId ? 'dine-in' : (cartData.deliveryType || 'delivery');
+        const finalAddress = deliveryType !== 'delivery' ? 'Self Pickup / Dine-In' : address;
         
-        if (!finalAddress || !name.trim()) {
-            setError('Please enter your name and address.');
+        if (deliveryType === 'delivery' && !address.trim()) {
+            setError('Please enter your delivery address.');
             return;
         }
+        if (!name.trim()) {
+            setError('Please enter your name.');
+            return;
+        }
+
         setError('');
         setLoading(true);
 
@@ -291,21 +278,16 @@ const CheckoutPageInternal = () => {
             restaurantId,
             items: finalItems,
             notes: cartData.notes || '',
-            coupon: appliedCoupons.length > 0 ? {
-                code: appliedCoupons.map(c => c.code).join(', '),
-                discount: totalDiscount,
-            } : null,
+            coupon: appliedCoupons.length > 0 ? { code: appliedCoupons.map(c => c.code).join(', '), discount: totalDiscount } : null,
             loyaltyDiscount: 0,
             grandTotal,
             paymentMethod: selectedPaymentMethod,
             businessType: cartData.businessType || 'restaurant',
-            deliveryType: cartData.deliveryType || 'delivery',
+            deliveryType: deliveryType,
+            tableId: cartData.tableId || null,
             pickupTime: cartData.pickupTime || '',
-            tipAmount: cartData.tipAmount || 0,
-            subtotal,
-            cgst,
-            sgst,
-            deliveryCharge: finalDeliveryCharge,
+            tipAmount: deliveryType === 'delivery' ? cartData.tipAmount || 0 : 0,
+            subtotal, cgst, sgst, deliveryCharge: finalDeliveryCharge,
         };
 
         try {
@@ -316,31 +298,27 @@ const CheckoutPageInternal = () => {
             });
 
             const orderCreationResult = await orderCreationResponse.json();
-
-            if (!orderCreationResponse.ok) {
-                throw new Error(orderCreationResult.message || "Failed to create order.");
-            }
+            if (!orderCreationResponse.ok) throw new Error(orderCreationResult.message || "Failed to create order.");
             
             const { firestore_order_id, razorpay_order_id } = orderCreationResult;
 
             if (selectedPaymentMethod === 'razorpay') {
                 const options = {
-                    key: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID,
-                    amount: Math.round(grandTotal * 100),
-                    currency: "INR",
-                    name: "ServiZephyr (Pvt. Ltd.)",
-                    description: `Payment for Order`,
-                    order_id: razorpay_order_id,
+                    key: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID, amount: Math.round(grandTotal * 100), currency: "INR",
+                    name: "ServiZephyr (Pvt. Ltd.)", description: `Payment for Order`, order_id: razorpay_order_id,
                     handler: function (response) {
                         localStorage.removeItem(`cart_${restaurantId}`);
-                        router.push(`/track/${firestore_order_id}`);
+                        if (deliveryType === 'dine-in') {
+                             setIsModalOpen(false);
+                             setDineInModalOpen(true);
+                        } else {
+                            router.push(`/track/${firestore_order_id}`);
+                        }
                     },
-                    prefill: { name: name.trim(), contact: cartData.phone },
-                    theme: { color: "#4f46e5" }
+                    prefill: { name: name.trim(), contact: cartData.phone }, theme: { color: "#4f46e5" }
                 };
                 
                 setIsModalOpen(false);
-                
                 setTimeout(() => {
                     const rzp1 = new window.Razorpay(options);
                     rzp1.on('payment.failed', function (response) {
@@ -351,10 +329,14 @@ const CheckoutPageInternal = () => {
                     rzp1.open();
                 }, 200);
 
-            } else { // COD
+            } else { // COD or POD
                  localStorage.removeItem(`cart_${restaurantId}`);
-                 router.push(`/track/${firestore_order_id}`);
-                 setIsModalOpen(false);
+                 if (deliveryType === 'dine-in') {
+                      setIsModalOpen(false);
+                      setDineInModalOpen(true);
+                 } else {
+                     router.push(`/track/${firestore_order_id}`);
+                 }
             }
 
         } catch (err) {
@@ -371,6 +353,8 @@ const CheckoutPageInternal = () => {
         );
     }
     
+    const deliveryType = tableId ? 'dine-in' : (cartData?.deliveryType || 'delivery');
+    
     return (
         <>
             <Script src="https://checkout.razorpay.com/v1/checkout.js" />
@@ -380,17 +364,17 @@ const CheckoutPageInternal = () => {
                 onConfirm={handleConfirmOrder}
                 grandTotal={grandTotal}
                 loading={loading}
-                name={name}
-                onNameChange={setName}
-                address={address}
-                onAddressChange={setAddress}
+                name={name} onNameChange={setName}
+                address={address} onAddressChange={setAddress}
                 error={error}
                 isExistingUser={isExistingUser}
-                savedAddresses={savedAddresses}
-                selectedAddress={selectedAddress}
-                onSelectAddress={setSelectedAddress}
-                isAddingNew={isAddingNew}
-                onSetIsAddingNew={setIsAddingNew}
+                deliveryType={deliveryType}
+            />
+             <DineInPostOrderModal
+                isOpen={isDineInModalOpen}
+                onClose={() => setDineInModalOpen(false)}
+                onAddMore={handleAddMoreToTab}
+                onViewBill={handleViewBill}
             />
             <div className="min-h-screen bg-background text-foreground flex flex-col green-theme">
                 <header className="sticky top-0 z-20 bg-background/80 backdrop-blur-lg border-b border-border">
@@ -400,7 +384,7 @@ const CheckoutPageInternal = () => {
                         </Button>
                         <div>
                             <p className="text-xs text-muted-foreground">Step 2 of 2</p>
-                            <h1 className="text-xl font-bold">Choose Payment Method</h1>
+                            <h1 className="text-xl font-bold">{splitBillOptions?.active ? 'Pay Your Bill' : 'Choose Payment Method'}</h1>
                         </div>
                     </div>
                 </header>
@@ -411,54 +395,61 @@ const CheckoutPageInternal = () => {
                         animate={{ opacity: 1, y: 0 }}
                         transition={{ duration: 0.5 }}
                     >
-                        <div className="bg-card p-4 rounded-lg border border-border mb-6">
+                         <div className="bg-card p-4 rounded-lg border border-border mb-6">
                             <div className="flex justify-between items-center text-lg font-bold">
                                 <span>Total Amount Payable</span>
                                 <span>₹{grandTotal > 0 ? grandTotal.toFixed(2) : '0.00'}</span>
                             </div>
                         </div>
 
-                        <div className="space-y-4">
-                             <motion.button
-                                whileHover={{ scale: 1.02 }}
-                                whileTap={{ scale: 0.98 }}
-                                onClick={() => handlePaymentMethodSelect('razorpay')}
-                                className="w-full text-left p-6 bg-card border-2 border-border rounded-lg flex items-center gap-6 hover:border-primary transition-all"
-                            >
-                                <Wallet size={40} className="text-primary flex-shrink-0"/>
-                                <div>
-                                    <h3 className="text-xl font-bold">Pay Online</h3>
-                                    <p className="text-muted-foreground">UPI, Credit/Debit Card, Netbanking</p>
-                                </div>
-                            </motion.button>
-                            
-                            {loading ? (
-                                <div className="w-full p-6 bg-card border-2 border-border rounded-lg animate-pulse h-[116px]">
-                                    <div className="h-6 bg-muted rounded w-3/4"></div>
-                                </div>
-                            ) : codEnabled ? (
-                                <motion.button
-                                    whileHover={{ scale: 1.02 }}
-                                    whileTap={{ scale: 0.98 }}
-                                    onClick={() => handlePaymentMethodSelect('cod')}
+                        {splitBillOptions?.active ? (
+                             <div className="space-y-4">
+                                <h2 className="text-xl font-bold text-center">How would you like to pay?</h2>
+                                <Button className="w-full h-16 text-lg"><Wallet className="mr-2"/>Pay Full Bill</Button>
+                                <Button variant="outline" className="w-full h-16 text-lg"><Split className="mr-2"/>Split The Bill</Button>
+                            </div>
+                        ) : (
+                             <div className="space-y-4">
+                                 <motion.button
+                                    whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}
+                                    onClick={() => handlePaymentMethodSelect('razorpay')}
                                     className="w-full text-left p-6 bg-card border-2 border-border rounded-lg flex items-center gap-6 hover:border-primary transition-all"
                                 >
-                                    <IndianRupee size={40} className="text-primary flex-shrink-0"/>
+                                    <div className="flex items-center gap-2">
+                                        <CreditCard size={24} className="text-primary"/>
+                                        <Landmark size={24} className="text-primary"/>
+                                    </div>
                                     <div>
-                                        <h3 className="text-xl font-bold">Pay on Delivery (POD)</h3>
-                                        <p className="text-muted-foreground">Pay with cash or UPI when your order arrives</p>
+                                        <h3 className="text-xl font-bold">Pay Online</h3>
+                                        <p className="text-muted-foreground">UPI, Credit/Debit Card, Netbanking</p>
                                     </div>
                                 </motion.button>
-                            ) : (
-                                <div className="w-full text-left p-6 bg-muted/50 border-2 border-dashed border-border rounded-lg flex items-center gap-6 opacity-60">
-                                    <IndianRupee size={40} className="text-muted-foreground flex-shrink-0"/>
-                                    <div>
-                                        <h3 className="text-xl font-bold text-muted-foreground">Pay on Delivery</h3>
-                                        <p className="text-muted-foreground">This restaurant is not currently accepting POD.</p>
+                                
+                                {loading ? (
+                                    <div className="w-full p-6 bg-card border-2 border-border rounded-lg animate-pulse h-[116px]"><div className="h-6 bg-muted rounded w-3/4"></div></div>
+                                ) : codEnabled ? (
+                                    <motion.button
+                                        whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}
+                                        onClick={() => handlePaymentMethodSelect('cod')}
+                                        className="w-full text-left p-6 bg-card border-2 border-border rounded-lg flex items-center gap-6 hover:border-primary transition-all"
+                                    >
+                                        <IndianRupee size={40} className="text-primary flex-shrink-0"/>
+                                        <div>
+                                            <h3 className="text-xl font-bold">{deliveryType === 'pickup' ? 'Pay at Store' : 'Pay on Delivery'}</h3>
+                                            <p className="text-muted-foreground">Pay with cash or UPI when you receive your order</p>
+                                        </div>
+                                    </motion.button>
+                                ) : (
+                                    <div className="w-full text-left p-6 bg-muted/50 border-2 border-dashed border-border rounded-lg flex items-center gap-6 opacity-60">
+                                        <IndianRupee size={40} className="text-muted-foreground flex-shrink-0"/>
+                                        <div>
+                                            <h3 className="text-xl font-bold text-muted-foreground">Pay on Delivery</h3>
+                                            <p className="text-muted-foreground">This restaurant is not currently accepting POD.</p>
+                                        </div>
                                     </div>
-                                </div>
-                            )}
-                        </div>
+                                )}
+                            </div>
+                        )}
                     </motion.div>
                 </main>
             </div>
