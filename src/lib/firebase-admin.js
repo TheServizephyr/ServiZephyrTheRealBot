@@ -1,9 +1,6 @@
 
 import admin from 'firebase-admin';
 
-// Load environment variables from .env.local file for local development
-// require('dotenv').config({ path: '.env.local' });
-
 function getServiceAccount() {
   // New Method (Primary for Local): Parse the full JSON string from .env.local
   if (process.env.FIREBASE_SERVICE_ACCOUNT_JSON) {
