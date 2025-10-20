@@ -1,5 +1,4 @@
 
-
 'use client';
 
 import React, { useState, useEffect, Suspense, useMemo, useCallback } from 'react';
@@ -719,6 +718,10 @@ const OrderPageInternal = () => {
     };
     
     const handleDeliveryTypeChange = (type) => {
+        if (type === 'dine-in' && !tableIdFromUrl) {
+            setDineInModalOpen(true);
+            return;
+        }
         updateCart(cart, notes, type);
     };
 
@@ -844,13 +847,19 @@ const OrderPageInternal = () => {
                 </header>
 
                 <div className="container mx-auto px-4 mt-6 space-y-4">
-                     <div className="bg-card p-4 rounded-lg border border-border">
-                        {tableIdFromUrl ? (
-                            <div className="flex items-center justify-center gap-2 p-1">
+                     
+                    {tableIdFromUrl ? (
+                        <div className="bg-card p-4 rounded-lg border border-border flex justify-between items-center">
+                            <div className="flex items-center gap-2">
                                 <ConciergeBell className="text-primary"/>
                                 <h2 className="text-lg font-bold text-foreground">Ordering for: Table {tableIdFromUrl}</h2>
                             </div>
-                        ) : (
+                            <Button onClick={handleCallWaiter} variant="outline" className="flex items-center gap-2 text-base font-semibold">
+                                <Bell size={20} className="text-primary"/> Call Waiter
+                            </Button>
+                        </div>
+                    ) : (
+                        <div className="bg-card p-4 rounded-lg border border-border">
                             <div className="flex bg-muted p-1 rounded-lg">
                                 {restaurantData.deliveryEnabled && (
                                     <button onClick={() => handleDeliveryTypeChange('delivery')} className={cn("flex-1 p-2 rounded-md flex items-center justify-center gap-2 font-semibold transition-all", deliveryType === 'delivery' && 'bg-primary text-primary-foreground')}>
@@ -863,20 +872,12 @@ const OrderPageInternal = () => {
                                     </button>
                                 )}
                                 {restaurantData.dineInEnabled && (
-                                    <button onClick={() => setDineInModalOpen(true)} className={cn("flex-1 p-2 rounded-md flex items-center justify-center gap-2 font-semibold transition-all", deliveryType === 'dine-in' && 'bg-primary text-primary-foreground')}>
+                                    <button onClick={() => handleDeliveryTypeChange('dine-in')} className={cn("flex-1 p-2 rounded-md flex items-center justify-center gap-2 font-semibold transition-all", deliveryType === 'dine-in' && 'bg-primary text-primary-foreground')}>
                                         <ConciergeBell size={16} /> Dine-In
                                     </button>
                                 )}
                             </div>
-                        )}
-                    </div>
-                    <div className="flex flex-col md:flex-row items-center gap-4">
-                        {tableIdFromUrl ? (
-                             <Button onClick={handleCallWaiter} className="w-full md:w-1/3 bg-card text-foreground border-border border hover:bg-muted h-12 flex items-center justify-center gap-2 text-base font-semibold">
-                                <Bell size={20} className="text-primary"/> Call Waiter
-                            </Button>
-                        ) : (
-                            <div className="bg-card border border-border p-3 rounded-lg flex items-center justify-between w-full md:w-1/3">
+                             <div className="bg-card border-t border-dashed border-border mt-4 pt-4 flex items-center justify-between w-full">
                                 <div className="flex items-center gap-3 overflow-hidden">
                                     <MapPin className="text-primary flex-shrink-0" size={20}/>
                                     <p className="text-sm text-muted-foreground truncate">{customerLocation?.full || 'No location set'}</p>
@@ -885,17 +886,18 @@ const OrderPageInternal = () => {
                                     <Button variant="link" className="text-primary p-0 h-auto font-semibold flex-shrink-0">Change</Button>
                                 </Link>
                             </div>
-                        )}
-                        <div className={cn("relative w-full", tableIdFromUrl ? "md:w-2/3" : "md:w-2/3")}>
-                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" size={20} />
-                            <input
-                                type="text"
-                                placeholder="Search for dishes..."
-                                value={searchQuery}
-                                onChange={(e) => setSearchQuery(e.target.value)}
-                                className="w-full bg-input border border-border rounded-lg pl-10 pr-4 py-2 h-12 text-sm focus:ring-2 focus:ring-primary focus:border-primary outline-none"
-                            />
                         </div>
+                    )}
+
+                    <div className="relative w-full">
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" size={20} />
+                        <input
+                            type="text"
+                            placeholder="Search for dishes..."
+                            value={searchQuery}
+                            onChange={(e) => setSearchQuery(e.target.value)}
+                            className="w-full bg-input border border-border rounded-lg pl-10 pr-4 py-2 h-12 text-sm focus:ring-2 focus:ring-primary focus:border-primary outline-none"
+                        />
                     </div>
                 </div>
 
@@ -1014,11 +1016,3 @@ const OrderPage = () => (
 );
 
 export default OrderPage;
-
-
-
-
-
-
-
-
