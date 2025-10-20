@@ -289,9 +289,6 @@ export default function Home() {
           
           <div className="relative container px-4 md:px-6 text-center z-20">
             <div className="max-w-4xl mx-auto flex flex-col items-center">
-              <div className="bg-destructive text-destructive-foreground p-4 rounded-lg mb-4">
-                  YEH EK FINAL TEST HAI - AGAR YEH DIKH GAYA, TO DEPLOYMENT SAHI HAI
-              </div>
                <h1 className="font-headline text-4xl sm:text-5xl md:text-7xl tracking-tighter leading-tight text-foreground">
                 Your Business. Your Customers. Your Control.
               </h1>
@@ -669,5 +666,3 @@ export default function Home() {
     </>
   )
 }
-
-    
