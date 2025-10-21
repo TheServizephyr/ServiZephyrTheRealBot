@@ -1,4 +1,5 @@
 
+
 'use client';
 
 import React, { useState, useEffect, useMemo } from 'react';
@@ -46,34 +47,39 @@ const BookingRow = ({ booking, onUpdateStatus }) => {
                 </span>
             </TableCell>
             <TableCell className="text-right">
-                <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                        <Button variant="ghost" className="h-8 w-8 p-0">
-                            <span className="sr-only">Open menu</span>
-                            <MoreVertical className="h-4 w-4" />
+                {booking.status === 'pending' ? (
+                    <div className="flex gap-2 justify-end">
+                        <Button variant="outline" size="sm" className="border-green-500 text-green-500 hover:bg-green-500/10 hover:text-green-500" onClick={() => onUpdateStatus(booking.id, 'confirmed')}>
+                            <Check className="mr-2 h-4 w-4" /> Confirm
                         </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end">
-                        {booking.status === 'pending' && (
-                            <DropdownMenuItem onClick={() => onUpdateStatus(booking.id, 'confirmed')}>
-                                <Check className="mr-2 h-4 w-4 text-green-500" />
-                                <span className="text-green-500">Confirm</span>
-                            </DropdownMenuItem>
-                        )}
-                         {(booking.status === 'pending' || booking.status === 'confirmed') && (
-                            <DropdownMenuItem onClick={() => onUpdateStatus(booking.id, 'cancelled')}>
-                                <X className="mr-2 h-4 w-4 text-red-500" />
-                                <span className="text-red-500">Cancel</span>
-                            </DropdownMenuItem>
-                        )}
-                         {booking.status === 'confirmed' && (
-                            <DropdownMenuItem onClick={() => onUpdateStatus(booking.id, 'completed')}>
-                                <CheckCircle className="mr-2 h-4 w-4 text-blue-500" />
-                                <span className="text-blue-500">Mark as Completed</span>
-                            </DropdownMenuItem>
-                        )}
-                    </DropdownMenuContent>
-                </DropdownMenu>
+                        <Button variant="outline" size="sm" className="border-red-500 text-red-500 hover:bg-red-500/10 hover:text-red-500" onClick={() => onUpdateStatus(booking.id, 'cancelled')}>
+                            <X className="mr-2 h-4 w-4" /> Cancel
+                        </Button>
+                    </div>
+                ) : (
+                    <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                            <Button variant="ghost" className="h-8 w-8 p-0">
+                                <span className="sr-only">Open menu</span>
+                                <MoreVertical className="h-4 w-4" />
+                            </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                            {(booking.status === 'confirmed') && (
+                                <DropdownMenuItem onClick={() => onUpdateStatus(booking.id, 'cancelled')}>
+                                    <X className="mr-2 h-4 w-4 text-red-500" />
+                                    <span className="text-red-500">Cancel</span>
+                                </DropdownMenuItem>
+                            )}
+                             {booking.status === 'confirmed' && (
+                                <DropdownMenuItem onClick={() => onUpdateStatus(booking.id, 'completed')}>
+                                    <CheckCircle className="mr-2 h-4 w-4 text-blue-500" />
+                                    <span className="text-blue-500">Mark as Completed</span>
+                                </DropdownMenuItem>
+                            )}
+                        </DropdownMenuContent>
+                    </DropdownMenu>
+                )}
             </TableCell>
         </TableRow>
     );
