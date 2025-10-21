@@ -1,4 +1,5 @@
 
+
 'use client'
 
 import { motion, useInView, animate, AnimatePresence } from 'framer-motion'
@@ -574,7 +575,7 @@ export default function Home() {
                   <TableRow>
                     <TableHead className="w-[40%] text-lg text-foreground">Feature</TableHead>
                     <TableHead className="text-center text-lg text-green-500 font-bold">ServiZephyr</TableHead>
-                    <TableHead className="text-center text-lg text-muted-foreground">Food Aggregators</TableHead>
+                    <TableHead className="text-center text-lg text-yellow-500 font-bold">Food Aggregators</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -589,7 +590,7 @@ export default function Home() {
                     <TableRow key={item.feature}>
                       <TableCell className="font-medium text-foreground">{item.feature}</TableCell>
                       <TableCell className="text-center font-bold text-green-500"><CheckCircle className="inline-block mr-2 h-5 w-5" />{item.servizephyr}</TableCell>
-                      <TableCell className="text-center text-primary font-bold">{item.aggregators}</TableCell>
+                      <TableCell className="text-center font-bold text-primary">{item.aggregators}</TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
