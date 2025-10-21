@@ -2,8 +2,7 @@
 
 import { NextResponse } from 'next/server';
 
-import { getAuth, FieldValue } from '@/lib/firebase-admin';
-import { getFirestore } from 'firebase-admin/firestore';
+import { getAuth, FieldValue, getFirestore } from '@/lib/firebase-admin';
 
 
 // Helper to verify owner and get their first business ID
@@ -94,8 +93,8 @@ export async function POST(req) {
             timesUsed: 0,
             value: isFreeDelivery ? 0 : Number(coupon.value), // Ensure value is 0 for free delivery
             createdAt: FieldValue.serverTimestamp(),
-            startDate: firestore.Timestamp.fromDate(new Date(coupon.startDate)),
-            expiryDate: firestore.Timestamp.fromDate(new Date(coupon.expiryDate)),
+            startDate: new Date(coupon.startDate),
+            expiryDate: new Date(coupon.expiryDate),
         };
 
         await newCouponRef.set(newCouponData);
@@ -130,10 +129,10 @@ export async function PATCH(req) {
         }
         
         if (updateData.startDate) {
-            updateData.startDate = firestore.Timestamp.fromDate(new Date(updateData.startDate));
+            updateData.startDate = new Date(updateData.startDate);
         }
         if (updateData.expiryDate) {
-            updateData.expiryDate = firestore.Timestamp.fromDate(new Date(updateData.expiryDate));
+            updateData.expiryDate = new Date(updateData.expiryDate);
         }
 
         await couponRef.update(updateData);
