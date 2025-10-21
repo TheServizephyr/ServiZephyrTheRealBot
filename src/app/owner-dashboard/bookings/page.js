@@ -1,5 +1,4 @@
 
-
 'use client';
 
 import React, { useState, useEffect, useMemo } from 'react';
@@ -22,7 +21,7 @@ const formatDateTime = (dateValue) => {
     let date;
     // Check if it's a Firestore Timestamp-like object from a JSON response
     if (typeof dateValue === 'object' && dateValue !== null && dateValue._seconds) {
-        date = new Date(dateValue._seconds * 1000 + (dateValue._nanoseconds || 0) / 1,000,000);
+        date = new Date(dateValue._seconds * 1000 + (dateValue._nanoseconds || 0) / 1000000);
     } 
     // Check if it's a native Firestore Timestamp
     else if (typeof dateValue === 'object' && dateValue !== null && typeof dateValue.toDate === 'function') {
