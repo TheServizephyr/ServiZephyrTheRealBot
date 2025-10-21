@@ -1,4 +1,5 @@
 
+
 import { NextResponse } from 'next/server';
 import { getAuth, getFirestore, FieldValue } from '@/lib/firebase-admin';
 
@@ -14,8 +15,10 @@ async function verifyOwnerAndGetBusiness(req) {
     const decodedToken = await auth.verifyIdToken(token);
     const uid = decodedToken.uid;
     
-    const url = new URL(req.headers.get('referer') || 'http://localhost');
-    const impersonatedOwnerId = url.searchParams.get('impersonate_owner_id');
+    // THE FIX: Read from URL search params instead of referer header
+    const { searchParams } = new URL(req.url);
+    const impersonatedOwnerId = searchParams.get('impersonate_owner_id');
+
     const userDoc = await firestore.collection('users').doc(uid).get();
 
     if (!userDoc.exists) {
@@ -152,7 +155,10 @@ export async function PATCH(req) {
                 const paxToReduce = tabDoc.data().pax_count || 0;
                 
                 transaction.update(tabRef, { status: 'closed' });
-                transaction.update(tableRef, { current_pax: FieldValue.increment(-paxToReduce) });
+                transaction.update(tableRef, { 
+                    current_pax: FieldValue.increment(-paxToReduce),
+                    state: 'needs_cleaning' 
+                });
             });
         }
         
