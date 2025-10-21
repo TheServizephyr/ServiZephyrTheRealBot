@@ -754,14 +754,13 @@ const OrderPageInternal = () => {
     const handleBookTable = async (bookingDetails) => {
         const { date, time } = bookingDetails;
         const localDate = new Date(date.getFullYear(), date.getMonth(), date.getDate(), parseInt(time.split(':')[0]), parseInt(time.split(':')[1]));
-        const bookingDateTimeISO = localDate.toISOString();
 
         const payload = {
             restaurantId,
             name: bookingDetails.name,
             phone: bookingDetails.phone,
             guests: bookingDetails.guests,
-            bookingDateTime: bookingDateTimeISO,
+            bookingDateTime: localDate,
         };
 
         const res = await fetch('/api/owner/bookings', {
