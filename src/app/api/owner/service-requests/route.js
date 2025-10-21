@@ -40,6 +40,8 @@ export async function GET(req) {
     try {
         const businessRef = await verifyOwnerAndGetBusinessRef(req);
 
+        // ** THE FIX: Removed sorting by 'status' to avoid needing a composite index. **
+        // The logic now fetches all pending requests and sorts them by time.
         const requestsSnap = await businessRef.collection('serviceRequests')
             .where('status', '==', 'pending')
             .orderBy('createdAt', 'desc')
