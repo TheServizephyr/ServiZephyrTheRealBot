@@ -184,6 +184,29 @@ function OwnerDashboardContent({ children }) {
             </main>
          );
       }
+      
+      const alwaysEnabled = ['menu', 'settings', 'connections', 'payout-settings', 'dine-in', 'bookings'];
+      const isDisabled = !alwaysEnabled.includes(featureId);
+
+      if ((restaurantStatus.status === 'pending' || restaurantStatus.status === 'rejected') && isDisabled) {
+        return (
+          <main className={styles.mainContent} style={{padding: '1rem'}}>
+            <div className="flex flex-col items-center justify-center text-center h-full p-8 bg-card border border-border rounded-xl">
+              <HardHat className="h-16 w-16 text-yellow-400" />
+              <h2 className="mt-6 text-2xl font-bold">Account {restaurantStatus.status.charAt(0).toUpperCase() + restaurantStatus.status.slice(1)}</h2>
+              <p className="mt-2 max-w-md text-muted-foreground">
+                Your account is currently {restaurantStatus.status}. Full access will be granted upon approval. You can still set up your menu and settings.
+              </p>
+               <div className="mt-6 flex gap-4">
+                  <Button onClick={() => router.push('/owner-dashboard/menu')}>
+                      <Salad className="mr-2 h-4 w-4"/> Go to Menu
+                  </Button>
+                   <Button variant="outline" onClick={() => router.push('/contact')}>Contact Support</Button>
+              </div>
+            </div>
+          </main>
+        )
+      }
 
       // If status is 'pending', 'rejected', or anything else, we now allow the page to render
       // as the access control is handled by the sidebar.

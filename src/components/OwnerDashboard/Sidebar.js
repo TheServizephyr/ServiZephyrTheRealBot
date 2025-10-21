@@ -18,7 +18,8 @@ import {
   MessageSquare,
   Banknote,
   Package as PackageIcon,
-  ConciergeBell
+  ConciergeBell,
+  CalendarClock
 } from "lucide-react";
 import styles from "./OwnerDashboard.module.css";
 import SidebarLink from "./SidebarLink";
@@ -36,6 +37,7 @@ const getMenuItems = (businessType) => [
     ? { name: "Items", icon: PackageIcon, href: "/owner-dashboard/menu", featureId: "menu" } 
     : { name: "Menu", icon: Salad, href: "/owner-dashboard/menu", featureId: "menu" },
   { name: "Dine-In", icon: ConciergeBell, href: "/owner-dashboard/dine-in", featureId: "dine-in" },
+  { name: "Bookings", icon: CalendarClock, href: "/owner-dashboard/bookings", featureId: "bookings" },
   { name: "Customers", icon: Users, href: "/owner-dashboard/customers", featureId: "customers" },
   { name: "Analytics", icon: BarChart2, href: "/owner-dashboard/analytics", featureId: "analytics" },
   { name: "Delivery", icon: Truck, href: "/owner-dashboard/delivery", featureId: "delivery" },
@@ -95,7 +97,7 @@ export default function Sidebar({ isOpen, setIsOpen, isMobile, isCollapsed, rest
   }, []);
 
   const getIsDisabled = (featureId) => {
-    const alwaysEnabled = ['menu', 'settings', 'connections', 'payout-settings', 'dine-in'];
+    const alwaysEnabled = ['menu', 'settings', 'connections', 'payout-settings', 'dine-in', 'bookings'];
     if (alwaysEnabled.includes(featureId)) {
         return false;
     }

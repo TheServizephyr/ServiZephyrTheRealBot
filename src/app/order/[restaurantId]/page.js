@@ -1,9 +1,10 @@
+
 'use client';
 
 import React, { useState, useEffect, Suspense, useMemo, useCallback } from 'react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Utensils, Plus, Minus, X, Home, User, Edit2, ShoppingCart, Star, CookingPot, BookOpen, Check, SlidersHorizontal, ArrowUpDown, PlusCircle, Ticket, Gift, Sparkles, Flame, Search, Trash2, ChevronDown, Tag as TagIcon, RadioGroup, IndianRupee, HardHat, MapPin, Bike, Store, ConciergeBell, QrCode, Calendar, Clock, UserCheck, ArrowLeft, CheckCircle, AlertTriangle, Bell } from 'lucide-react';
+import { Utensils, Plus, Minus, X, Home, User, Edit2, ShoppingCart, Star, CookingPot, BookOpen, Check, SlidersHorizontal, ArrowUpDown, PlusCircle, Ticket, Gift, Sparkles, Flame, Search, Trash2, ChevronDown, Tag as TagIcon, RadioGroup, IndianRupee, HardHat, MapPin, Bike, Store, ConciergeBell, QrCode, Calendar, Clock, UserCheck, ArrowLeft, CheckCircle, AlertTriangle, Bell, CalendarClock } from 'lucide-react';
 import Image from 'next/image';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
@@ -16,6 +17,7 @@ import { format } from 'date-fns';
 import { Calendar as CalendarUI } from '@/components/ui/calendar';
 import QrScanner from '@/components/QrScanner';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import InfoDialog from '@/components/InfoDialog';
 
 
 const CustomizationDrawer = ({ item, isOpen, onClose, onAddToCart }) => {
@@ -258,132 +260,156 @@ const MenuBrowserModal = ({ isOpen, onClose, categories, onCategoryClick }) => {
   );
 };
 
-const DineInModal = ({ isOpen, onClose, onScanQR }) => {
+const DineInModal = ({ isOpen, onClose, onScanQR, onBookTable }) => {
     const [activeModal, setActiveModal] = useState('main'); // 'main', 'book', 'success'
-    const [bookingDetails, setBookingDetails] = useState({ name: '', guests: 2, date: new Date(), time: '19:00' });
+    const [bookingDetails, setBookingDetails] = useState({ name: '', phone: '', guests: 2, date: new Date(), time: '19:00' });
+    const [isSaving, setIsSaving] = useState(false);
+    const [infoDialog, setInfoDialog] = useState({ isOpen: false, title: '', message: '' });
 
     const handleBookingChange = (field, value) => {
         setBookingDetails(prev => ({...prev, [field]: value}));
     };
 
-    const handleConfirmBooking = () => {
-        // Basic validation
-        if (!bookingDetails.name.trim()) {
-            alert("Please enter your name.");
+    const handleConfirmBooking = async () => {
+        if (!bookingDetails.name.trim() || !bookingDetails.phone.trim()) {
+            setInfoDialog({ isOpen: true, title: 'Error', message: 'Please enter your name and phone number.' });
             return;
         }
-        // Here you would typically make an API call
-        console.log("Booking Request Sent:", bookingDetails);
-        setActiveModal('success');
+        if (!/^\d{10}$/.test(bookingDetails.phone.trim())) {
+             setInfoDialog({ isOpen: true, title: 'Error', message: 'Please enter a valid 10-digit phone number.' });
+            return;
+        }
+
+        setIsSaving(true);
+        try {
+            await onBookTable(bookingDetails);
+            setActiveModal('success');
+        } catch(error) {
+            setInfoDialog({isOpen: true, title: "Booking Failed", message: error.message});
+        } finally {
+            setIsSaving(false);
+        }
     };
 
-    // Reset state when modal is closed
     useEffect(() => {
+        const phoneFromStorage = localStorage.getItem('lastKnownPhone');
+        if (phoneFromStorage) {
+            setBookingDetails(prev => ({...prev, phone: phoneFromStorage}));
+        }
         if (!isOpen) {
             setTimeout(() => {
                 setActiveModal('main');
-                setBookingDetails({ name: '', guests: 2, date: new Date(), time: '19:00' });
-            }, 300); // delay to allow for closing animation
+                setIsSaving(false);
+            }, 300);
         }
     }, [isOpen]);
 
     return (
-        <Dialog open={isOpen} onOpenChange={onClose}>
-            <DialogContent className="bg-background border-border text-foreground p-0 max-w-md">
-                <AnimatePresence mode="wait">
-                {activeModal === 'main' && (
-                    <motion.div
-                        key="main"
-                        initial={{ opacity: 0, x: 20 }}
-                        animate={{ opacity: 1, x: 0 }}
-                        exit={{ opacity: 0, x: -20 }}
-                    >
-                         <DialogHeader className="p-6 pb-4 border-b text-center">
-                            <DialogTitle className="text-xl">Planning to Visit Us?</DialogTitle>
-                            <DialogDescription>How would you like to proceed?</DialogDescription>
-                        </DialogHeader>
-                        <div className="p-6 grid grid-cols-1 sm:grid-cols-2 gap-4">
-                            <Button variant="outline" className="h-24 flex flex-col gap-2 text-base" onClick={() => setActiveModal('book')}>
-                                <Calendar size={24}/>
-                                Book a Table
-                            </Button>
-                             <Button variant="outline" className="h-24 flex flex-col gap-2 text-base" onClick={onScanQR}>
-                                <QrCode size={24}/>
-                                I'm at the Restaurant
-                            </Button>
-                        </div>
-                    </motion.div>
-                )}
-                {activeModal === 'book' && (
-                     <motion.div
-                        key="book"
-                        initial={{ opacity: 0, x: 20 }}
-                        animate={{ opacity: 1, x: 0 }}
-                        exit={{ opacity: 0, x: -20 }}
-                     >
-                        <DialogHeader className="p-4 border-b flex-shrink-0">
-                             <div className="flex items-center justify-between">
-                                <Button variant="ghost" size="icon" onClick={() => setActiveModal('main')}><ArrowLeft/></Button>
-                                <DialogTitle className="text-xl text-center">Book a Table</DialogTitle>
-                                <div className="w-10"></div>
+        <>
+            <InfoDialog isOpen={infoDialog.isOpen} onClose={() => setInfoDialog({isOpen: false, title: '', message: ''})} title={infoDialog.title} message={infoDialog.message} />
+            <Dialog open={isOpen} onOpenChange={onClose}>
+                <DialogContent className="bg-background border-border text-foreground p-0 max-w-md">
+                    <AnimatePresence mode="wait">
+                    {activeModal === 'main' && (
+                        <motion.div
+                            key="main"
+                            initial={{ opacity: 0, x: 20 }}
+                            animate={{ opacity: 1, x: 0 }}
+                            exit={{ opacity: 0, x: -20 }}
+                        >
+                            <DialogHeader className="p-6 pb-4 border-b text-center">
+                                <DialogTitle className="text-xl">Planning to Visit Us?</DialogTitle>
+                                <DialogDescription>How would you like to proceed?</DialogDescription>
+                            </DialogHeader>
+                            <div className="p-6 grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                <Button variant="outline" className="h-24 flex flex-col gap-2 text-base" onClick={() => setActiveModal('book')}>
+                                    <CalendarClock size={24}/>
+                                    Book a Table
+                                </Button>
+                                <Button variant="outline" className="h-24 flex flex-col gap-2 text-base" onClick={onScanQR}>
+                                    <QrCode size={24}/>
+                                    I'm at the Restaurant
+                                </Button>
                             </div>
-                        </DialogHeader>
-                        <div className="p-6 space-y-4 flex-grow overflow-y-auto">
-                            <div>
-                                <Label htmlFor="name">Your Name</Label>
-                                <input id="name" type="text" value={bookingDetails.name} onChange={(e) => handleBookingChange('name', e.target.value)} className="w-full mt-1 p-2 bg-input border rounded-md" />
-                            </div>
-                            <div className="flex items-center justify-between">
-                                <Label>Party Size</Label>
-                                <div className="flex items-center gap-2">
-                                    <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => handleBookingChange('guests', Math.max(1, bookingDetails.guests - 1))}>-</Button>
-                                    <span className="font-bold w-8 text-center">{bookingDetails.guests}</span>
-                                    <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => handleBookingChange('guests', bookingDetails.guests + 1)}>+</Button>
+                        </motion.div>
+                    )}
+                    {activeModal === 'book' && (
+                        <motion.div
+                            key="book"
+                            initial={{ opacity: 0, x: 20 }}
+                            animate={{ opacity: 1, x: 0 }}
+                            exit={{ opacity: 0, x: -20 }}
+                        >
+                            <DialogHeader className="p-4 border-b flex-shrink-0">
+                                <div className="flex items-center justify-between">
+                                    <Button variant="ghost" size="icon" onClick={() => setActiveModal('main')}><ArrowLeft/></Button>
+                                    <DialogTitle className="text-xl text-center">Book a Table</DialogTitle>
+                                    <div className="w-10"></div>
                                 </div>
-                            </div>
-                             <div className="grid grid-cols-2 gap-4">
+                            </DialogHeader>
+                            <div className="p-6 space-y-4 flex-grow overflow-y-auto max-h-[60vh]">
                                 <div>
-                                    <Label>Date</Label>
-                                    <Popover>
-                                        <PopoverTrigger asChild>
-                                           <Button variant={"outline"} className={cn("w-full justify-start text-left font-normal mt-1", !bookingDetails.date && "text-muted-foreground")}>
-                                              <Calendar className="mr-2 h-4 w-4" />
-                                              {bookingDetails.date ? format(bookingDetails.date, "PPP") : <span>Pick a date</span>}
-                                           </Button>
-                                        </PopoverTrigger>
-                                        <PopoverContent className="w-auto p-0"><CalendarUI mode="single" selected={bookingDetails.date} onSelect={(d) => handleBookingChange('date', d)} initialFocus /></PopoverContent>
-                                    </Popover>
+                                    <Label htmlFor="name">Your Name</Label>
+                                    <input id="name" type="text" value={bookingDetails.name} onChange={(e) => handleBookingChange('name', e.target.value)} className="w-full mt-1 p-2 bg-input border rounded-md" />
                                 </div>
                                 <div>
-                                     <Label>Time</Label>
-                                     <input type="time" value={bookingDetails.time} onChange={(e) => handleBookingChange('time', e.target.value)} className="w-full mt-1 p-2 bg-input border rounded-md" />
+                                    <Label htmlFor="phone">Phone Number</Label>
+                                    <input id="phone" type="tel" value={bookingDetails.phone} onChange={(e) => handleBookingChange('phone', e.target.value)} className="w-full mt-1 p-2 bg-input border rounded-md" />
+                                </div>
+                                <div className="flex items-center justify-between">
+                                    <Label>Party Size</Label>
+                                    <div className="flex items-center gap-2">
+                                        <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => handleBookingChange('guests', Math.max(1, bookingDetails.guests - 1))}>-</Button>
+                                        <span className="font-bold w-8 text-center">{bookingDetails.guests}</span>
+                                        <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => handleBookingChange('guests', bookingDetails.guests + 1)}>+</Button>
+                                    </div>
+                                </div>
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div>
+                                        <Label>Date</Label>
+                                        <Popover>
+                                            <PopoverTrigger asChild>
+                                            <Button variant={"outline"} className={cn("w-full justify-start text-left font-normal mt-1", !bookingDetails.date && "text-muted-foreground")}>
+                                                <Calendar className="mr-2 h-4 w-4" />
+                                                {bookingDetails.date ? format(bookingDetails.date, "PPP") : <span>Pick a date</span>}
+                                            </Button>
+                                            </PopoverTrigger>
+                                            <PopoverContent className="w-auto p-0"><CalendarUI mode="single" selected={bookingDetails.date} onSelect={(d) => handleBookingChange('date', d)} initialFocus /></PopoverContent>
+                                        </Popover>
+                                    </div>
+                                    <div>
+                                        <Label>Time</Label>
+                                        <input type="time" value={bookingDetails.time} onChange={(e) => handleBookingChange('time', e.target.value)} className="w-full mt-1 p-2 bg-input border rounded-md" />
+                                    </div>
                                 </div>
                             </div>
-                        </div>
-                        <DialogFooter className="p-4 border-t flex-shrink-0">
-                             <Button variant="secondary" onClick={() => setActiveModal('main')}>Back</Button>
-                             <Button onClick={handleConfirmBooking} className="bg-primary hover:bg-primary/90">Confirm Booking</Button>
-                        </DialogFooter>
-                    </motion.div>
-                )}
-                 {activeModal === 'success' && (
-                     <motion.div
-                        key="success"
-                        initial={{ opacity: 0, scale: 0.8 }}
-                        animate={{ opacity: 1, scale: 1 }}
-                        className="flex flex-col items-center justify-center p-8 text-center"
-                     >
-                        <CheckCircle className="h-16 w-16 text-green-500 mb-4" />
-                        <h2 className="text-2xl font-bold">Booking Request Sent!</h2>
-                        <p className="text-muted-foreground mt-2">You will receive a WhatsApp confirmation shortly. Thank you!</p>
-                         <DialogFooter className="mt-6 w-full">
-                           <DialogClose asChild><Button className="w-full">Done</Button></DialogClose>
-                        </DialogFooter>
-                    </motion.div>
-                )}
-                </AnimatePresence>
-            </DialogContent>
-        </Dialog>
+                            <DialogFooter className="p-4 border-t flex-shrink-0">
+                                <Button variant="secondary" onClick={() => setActiveModal('main')} disabled={isSaving}>Back</Button>
+                                <Button onClick={handleConfirmBooking} className="bg-primary hover:bg-primary/90" disabled={isSaving}>
+                                    {isSaving ? "Booking..." : "Confirm Booking"}
+                                </Button>
+                            </DialogFooter>
+                        </motion.div>
+                    )}
+                    {activeModal === 'success' && (
+                        <motion.div
+                            key="success"
+                            initial={{ opacity: 0, scale: 0.8 }}
+                            animate={{ opacity: 1, scale: 1 }}
+                            className="flex flex-col items-center justify-center p-8 text-center"
+                        >
+                            <CheckCircle className="h-16 w-16 text-green-500 mb-4" />
+                            <h2 className="text-2xl font-bold">Booking Request Sent!</h2>
+                            <p className="text-muted-foreground mt-2">You will receive a WhatsApp confirmation shortly. Thank you!</p>
+                            <DialogFooter className="mt-6 w-full">
+                            <DialogClose asChild><Button className="w-full">Done</Button></DialogClose>
+                            </DialogFooter>
+                        </motion.div>
+                    )}
+                    </AnimatePresence>
+                </DialogContent>
+            </Dialog>
+        </>
     );
 };
 
@@ -483,6 +509,7 @@ const OrderPageInternal = () => {
     const [isBannerExpanded, setIsBannerExpanded] = useState(false);
     const [isDineInModalOpen, setDineInModalOpen] = useState(false);
     const [isQrScannerOpen, setIsQrScannerOpen] = useState(false);
+    const [infoDialog, setInfoDialog] = useState({ isOpen: false, title: '', message: '' });
     
 
     // --- LOCATION & DATA FETCHING ---
@@ -723,6 +750,28 @@ const OrderPageInternal = () => {
         updateCart(cart, notes, type);
     };
 
+    const handleBookTable = async (bookingDetails) => {
+        const payload = {
+            restaurantId,
+            name: bookingDetails.name,
+            phone: bookingDetails.phone,
+            guests: bookingDetails.guests,
+            date: bookingDetails.date.toISOString(),
+            time: bookingDetails.time,
+        };
+
+        const res = await fetch('/api/owner/bookings', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+        });
+
+        if (!res.ok) {
+            const errorData = await res.json();
+            throw new Error(errorData.message || "Failed to create booking.");
+        }
+    };
+
     const totalCartItems = cart.reduce((sum, item) => sum + item.quantity, 0);
     
     const cartItemQuantities = useMemo(() => {
@@ -779,6 +828,7 @@ const OrderPageInternal = () => {
     
     return (
         <>
+            <InfoDialog isOpen={infoDialog.isOpen} onClose={() => setInfoDialog({isOpen: false, title: '', message: ''})} title={infoDialog.title} message={infoDialog.message} />
             <AnimatePresence>
                 {isQrScannerOpen && (
                     <QrScanner 
@@ -827,6 +877,7 @@ const OrderPageInternal = () => {
                 <DineInModal 
                   isOpen={isDineInModalOpen} 
                   onClose={() => setDineInModalOpen(false)}
+                  onBookTable={handleBookTable}
                   onScanQR={() => {
                     setDineInModalOpen(false);
                     setIsQrScannerOpen(true);
