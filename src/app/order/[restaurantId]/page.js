@@ -756,7 +756,7 @@ const OrderPageInternal = () => {
         const localDate = new Date(date.getFullYear(), date.getMonth(), date.getDate(), parseInt(time.split(':')[0]), parseInt(time.split(':')[1]));
 
         const payload = {
-            restaurantId,
+            restaurantId: restaurantId,
             name: bookingDetails.name,
             phone: bookingDetails.phone,
             guests: bookingDetails.guests,
