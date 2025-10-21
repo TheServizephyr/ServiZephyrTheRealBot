@@ -60,13 +60,11 @@ export async function GET(req) {
         
         let bookings = bookingsSnap.docs.map(doc => {
             const data = doc.data();
-            // Ensure bookingDateTime is always sent as an ISO string
-            const bookingDT = data.bookingDateTime.toDate ? data.bookingDateTime.toDate() : new Date(data.bookingDateTime);
             return { 
                 id: doc.id, 
                 ...data,
-                bookingDateTime: isNaN(bookingDT.getTime()) ? data.bookingDateTime : bookingDT.toISOString(),
-                createdAt: data.createdAt.toDate ? data.createdAt.toDate().toISOString() : new Date(data.createdAt).toISOString(),
+                // The data is already a Firestore Timestamp, no need to convert here.
+                // The client will handle the conversion.
             };
         });
 
@@ -82,9 +80,9 @@ export async function GET(req) {
 export async function POST(req) {
     try {
         const firestore = getFirestore();
-        const { restaurantId, name, phone, guests, date, time } = await req.json();
+        const { restaurantId, name, phone, guests, bookingDateTime } = await req.json();
 
-        if (!restaurantId || !name || !phone || !guests || !date || !time) {
+        if (!restaurantId || !name || !phone || !guests || !bookingDateTime) {
             return NextResponse.json({ message: 'Missing required booking data.' }, { status: 400 });
         }
 
@@ -97,15 +95,13 @@ export async function POST(req) {
         
         const newBookingRef = businessRef.collection('bookings').doc();
         
-        // ** THE FIX: Store date and time as a string to avoid timezone issues. **
-        const bookingDateTimeISOString = `${date.split('T')[0]}T${time}:00.000+05:30`;
-
         const newBookingData = {
             id: newBookingRef.id,
             customerName: name,
             customerPhone: phone,
             partySize: guests,
-            bookingDateTime: new Date(bookingDateTimeISOString), // Store as a proper Date object in Firestore
+            // Convert the ISO string from the client directly to a Firebase Date object
+            bookingDateTime: new Date(bookingDateTime), 
             status: 'pending', // Default status
             createdAt: FieldValue.serverTimestamp(),
             notes: '',

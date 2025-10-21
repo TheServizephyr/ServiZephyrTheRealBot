@@ -16,15 +16,18 @@ import { format } from 'date-fns';
 import InfoDialog from '@/components/InfoDialog';
 import { cn } from '@/lib/utils';
 
-const formatDateTime = (isoString) => {
-    if (!isoString) return 'N/A';
+const formatDateTime = (isoStringOrTimestamp) => {
+    if (!isoStringOrTimestamp) return 'N/A';
     try {
-        const date = new Date(isoString);
+        // Handle Firestore Timestamp object which has a toDate() method
+        const date = isoStringOrTimestamp.toDate ? isoStringOrTimestamp.toDate() : new Date(isoStringOrTimestamp);
+        
         if (isNaN(date.getTime())) throw new Error('Invalid date');
+        
         // This will format the date according to the user's local timezone, which is what we want.
         return format(date, "dd MMM, yyyy 'at' hh:mm a");
     } catch (error) {
-        console.warn("Invalid date string received:", isoString);
+        console.warn("Invalid date value provided to formatDateTime:", isoStringOrTimestamp);
         return 'Invalid Date';
     }
 };
@@ -169,9 +172,15 @@ export default function BookingsPage() {
         let items = [...bookings];
 
         if (activeTab === 'upcoming') {
-            items = items.filter(b => new Date(b.bookingDateTime) >= now && (b.status === 'pending' || b.status === 'confirmed'));
+            items = items.filter(b => {
+                const bookingDate = b.bookingDateTime?.toDate ? b.bookingDateTime.toDate() : new Date(b.bookingDateTime);
+                return bookingDate >= now && (b.status === 'pending' || b.status === 'confirmed');
+            });
         } else if (activeTab === 'past') {
-            items = items.filter(b => new Date(b.bookingDateTime) < now || b.status === 'completed' || b.status === 'cancelled');
+            items = items.filter(b => {
+                const bookingDate = b.bookingDateTime?.toDate ? b.bookingDateTime.toDate() : new Date(b.bookingDateTime);
+                return bookingDate < now || b.status === 'completed' || b.status === 'cancelled';
+            });
         }
 
         if (searchQuery) {
