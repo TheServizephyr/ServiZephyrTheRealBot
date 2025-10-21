@@ -275,6 +275,15 @@ export default function Home() {
   return (
     <>
       <main className="bg-background">
+        {process.env.NODE_ENV === 'development' && (
+          <div className="fixed bottom-4 right-4 z-[1000] bg-yellow-400 text-black p-4 rounded-lg shadow-lg">
+            <h3 className="font-bold text-lg">Local Test Links</h3>
+            <Link href="/order/pizzapalace" className="block hover:underline">
+              Test Order Page
+            </Link>
+          </div>
+        )}
+
         {/* Hero Section */}
         <section className="relative w-full flex flex-col justify-center items-center py-20 md:py-32">
           <video 
