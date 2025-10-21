@@ -271,7 +271,7 @@ const QrCodeDisplayModal = ({ isOpen, onClose, restaurantId, table }) => {
 };
 
 
-const QrGeneratorModal = ({ isOpen, onClose, onSaveTable, restaurantId, initialTable, onEditTable, onDeleteTable }) => {
+const QrGeneratorModal = ({ isOpen, onClose, onSaveTable, restaurantId, initialTable, onEditTable, onDeleteTable, showInfoDialog }) => {
     const [tableName, setTableName] = useState('');
     const [maxCapacity, setMaxCapacity] = useState(4);
     const [qrValue, setQrValue] = useState('');
@@ -298,11 +298,11 @@ const QrGeneratorModal = ({ isOpen, onClose, onSaveTable, restaurantId, initialT
 
     const handleGenerate = () => {
         if (!tableName.trim()) {
-            alert("Please enter a table name or number.");
+            showInfoDialog({ isOpen: true, title: 'Input Error', message: "Please enter a table name or number."});
             return;
         }
         if (!restaurantId) {
-            alert("Restaurant ID is missing. Cannot generate QR code.");
+            showInfoDialog({ isOpen: true, title: 'Error', message: "Restaurant ID is missing. Cannot generate QR code."});
             return;
         }
         const url = `${window.location.origin}/order/${restaurantId}?table=${tableName.trim()}`;
@@ -311,7 +311,7 @@ const QrGeneratorModal = ({ isOpen, onClose, onSaveTable, restaurantId, initialT
 
     const handleSave = async () => {
         if (!tableName.trim() || !maxCapacity || maxCapacity < 1) {
-            alert('Please enter a valid table name and capacity.');
+            showInfoDialog({ isOpen: true, title: 'Input Error', message: 'Please enter a valid table name and capacity.'});
             return;
         }
         try {
@@ -387,7 +387,6 @@ export default function DineInPage() {
     const [isQrModalOpen, setIsQrModalOpen] = useState(false);
     const [isQrDisplayModalOpen, setIsQrDisplayModalOpen] = useState(false);
     const [editingTable, setEditingTable] = useState(null);
-    const [displayTable, setDisplayTable] = useState(null);
     const [restaurant, setRestaurant] = useState(null);
     const [restaurantId, setRestaurantId] = useState('');
     const [billData, setBillData] = useState(null);
@@ -614,7 +613,7 @@ export default function DineInPage() {
                 title={infoDialog.title}
                 message={infoDialog.message}
             />
-            {restaurantId && <QrGeneratorModal isOpen={isQrModalOpen} onClose={() => setIsQrModalOpen(false)} restaurantId={restaurantId} onSaveTable={handleSaveTable} onEditTable={handleEditTable} onDeleteTable={handleDeleteTable} initialTable={editingTable}/>}
+            {restaurantId && <QrGeneratorModal isOpen={isQrModalOpen} onClose={() => setIsQrModalOpen(false)} restaurantId={restaurantId} onSaveTable={handleSaveTable} onEditTable={handleEditTable} onDeleteTable={handleDeleteTable} initialTable={editingTable} showInfoDialog={setInfoDialog} />}
             {restaurantId && <QrCodeDisplayModal isOpen={isQrDisplayModalOpen} onClose={() => setIsQrDisplayModalOpen(false)} restaurantId={restaurantId} table={displayTable} />}
 
 

@@ -15,6 +15,7 @@ import { auth } from '@/lib/firebase';
 import { cn } from "@/lib/utils";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useSearchParams } from "next/navigation";
+import InfoDialog from "@/components/InfoDialog";
 
 
 const restaurantCategoryConfig = {
@@ -228,7 +229,7 @@ const MenuCategory = ({ categoryId, title, icon, items, onDeleteItem, onEditItem
 
 
 
-const AddItemModal = ({ isOpen, setIsOpen, onSave, editingItem, allCategories }) => {
+const AddItemModal = ({ isOpen, setIsOpen, onSave, editingItem, allCategories, showInfoDialog }) => {
     const [item, setItem] = useState(null);
     const [isSaving, setIsSaving] = useState(false);
     const [newCategory, setNewCategory] = useState('');
@@ -375,7 +376,7 @@ const AddItemModal = ({ isOpen, setIsOpen, onSave, editingItem, allCategories })
         const finalNewCategoryName = showNewCategory ? newCategory.trim() : '';
 
         if (showNewCategory && !finalNewCategoryName) {
-            alert("Please enter a name for the new category.");
+            showInfoDialog({ isOpen: true, title: 'Input Error', message: "Please enter a name for the new category."});
             return;
         }
 
@@ -387,7 +388,7 @@ const AddItemModal = ({ isOpen, setIsOpen, onSave, editingItem, allCategories })
             if (pricingType === 'single') {
                 const basePrice = item.portions?.[0]?.price;
                 if (!basePrice || isNaN(parseFloat(basePrice))) {
-                    alert("Please enter a valid base price.");
+                    showInfoDialog({ isOpen: true, title: 'Input Error', message: "Please enter a valid base price."});
                     setIsSaving(false);
                     return;
                 }
@@ -408,7 +409,7 @@ const AddItemModal = ({ isOpen, setIsOpen, onSave, editingItem, allCategories })
                 }));
 
             if (finalPortions.length === 0) {
-                alert("Please add at least one valid portion with a name and price.");
+                showInfoDialog({ isOpen: true, title: 'Input Error', message: "Please add at least one valid portion with a name and price."});
                 setIsSaving(false);
                 return;
             }
@@ -427,7 +428,7 @@ const AddItemModal = ({ isOpen, setIsOpen, onSave, editingItem, allCategories })
             
 
             if (!newItemData.name) {
-                alert("Please provide an item name.");
+                showInfoDialog({ isOpen: true, title: 'Input Error', message: "Please provide an item name."});
                 setIsSaving(false);
                 return;
             }
@@ -591,7 +592,7 @@ const AddItemModal = ({ isOpen, setIsOpen, onSave, editingItem, allCategories })
     );
 };
 
-const BulkAddModal = ({ isOpen, setIsOpen, onSave, businessType }) => {
+const BulkAddModal = ({ isOpen, setIsOpen, onSave, businessType, showInfoDialog }) => {
     const [jsonText, setJsonText] = useState('');
     const [isSaving, setIsSaving] = useState(false);
     const [copySuccess, setCopySuccess] = useState('');
@@ -655,7 +656,7 @@ ${placeholderText}
             items = JSON.parse(jsonText);
             if (!Array.isArray(items)) throw new Error("JSON data must be an array.");
         } catch (error) {
-            alert(`Invalid JSON format: ${error.message}`);
+            showInfoDialog({isOpen: true, title: 'Input Error', message: `Invalid JSON format: ${error.message}`});
             return;
         }
 
@@ -737,6 +738,7 @@ export default function MenuPage() {
   const [selectedItems, setSelectedItems] = useState([]);
   const searchParams = useSearchParams();
   const impersonatedOwnerId = searchParams.get('impersonate_owner_id');
+  const [infoDialog, setInfoDialog] = useState({ isOpen: false, title: '', message: '' });
   
   const handleApiCall = async (endpoint, method, body) => {
     const user = auth.currentUser;
@@ -772,7 +774,7 @@ export default function MenuPage() {
         }
     } catch (error) {
         console.error("Error fetching menu:", error);
-        alert("Could not fetch menu. " + error.message);
+        setInfoDialog({isOpen: true, title: "Error", message: "Could not fetch menu. " + error.message});
     } finally {
         setLoading(false);
     }
@@ -797,11 +799,11 @@ export default function MenuPage() {
   const handleSaveItem = async (itemData, categoryId, newCategory, isEditing) => {
     try {
         const data = await handleApiCall('/api/owner/menu', 'POST', { item: itemData, categoryId, newCategory, isEditing });
-        alert(data.message);
+        setInfoDialog({isOpen: true, title: 'Success', message: data.message});
         await fetchMenu();
     } catch (error) {
         console.error("Error saving item:", error);
-        alert("Could not save item. " + error.message);
+        setInfoDialog({isOpen: true, title: "Error", message: "Could not save item. " + error.message});
         throw error; // Re-throw to keep modal open
     }
   };
@@ -809,11 +811,11 @@ export default function MenuPage() {
   const handleBulkSave = async (items) => {
     try {
         const data = await handleApiCall('/api/owner/menu-bulk', 'POST', { items });
-        alert(data.message);
+        setInfoDialog({isOpen: true, title: 'Success', message: data.message});
         await fetchMenu();
     } catch (error) {
         console.error("Error saving bulk items:", error);
-        alert(`Could not save bulk items: ${error.message}`);
+        setInfoDialog({isOpen: true, title: "Error", message: `Could not save bulk items: ${error.message}`});
         throw error;
     }
   };
@@ -835,11 +837,11 @@ export default function MenuPage() {
     if (window.confirm(`Are you sure you want to delete this item?`)) {
        try {
             await handleApiCall('/api/owner/menu', 'DELETE', { itemId });
-            alert('Item deleted successfully!');
+            setInfoDialog({isOpen: true, title: 'Success', message: 'Item deleted successfully!'});
             await fetchMenu();
        } catch (error) {
            console.error("Error deleting item:", error);
-           alert("Could not delete item. " + error.message);
+           setInfoDialog({isOpen: true, title: 'Error', message: "Could not delete item. " + error.message});
        }
     }
   };
@@ -859,7 +861,7 @@ export default function MenuPage() {
         });
      } catch (error) {
         console.error("Error toggling availability:", error);
-        alert("Could not update item availability. " + error.message);
+        setInfoDialog({isOpen: true, title: 'Error', message: "Could not update item availability. " + error.message});
         fetchMenu(); // Re-sync with server on error
      }
   };
@@ -868,12 +870,12 @@ export default function MenuPage() {
     if (window.confirm(`Are you sure you want to delete ${selectedItems.length} items? This action cannot be undone.`)) {
         try {
             await handleApiCall('/api/owner/menu', 'PATCH', { itemIds: selectedItems, action: 'delete' });
-            alert(`${selectedItems.length} items deleted successfully!`);
+            setInfoDialog({isOpen: true, title: 'Success', message: `${selectedItems.length} items deleted successfully!`});
             setSelectedItems([]);
             await fetchMenu();
         } catch (error) {
             console.error("Error bulk deleting items:", error);
-            alert("Could not delete items. " + error.message);
+            setInfoDialog({isOpen: true, title: 'Error', message: "Could not delete items. " + error.message});
         }
     }
   };
@@ -882,12 +884,12 @@ export default function MenuPage() {
      if (window.confirm(`Are you sure you want to mark ${selectedItems.length} items as out of stock?`)) {
         try {
             await handleApiCall('/api/owner/menu', 'PATCH', { itemIds: selectedItems, action: 'outOfStock' });
-            alert(`${selectedItems.length} items marked as out of stock!`);
+            setInfoDialog({isOpen: true, title: 'Success', message: `${selectedItems.length} items marked as out of stock!`});
             setSelectedItems([]);
             await fetchMenu();
         } catch (error) {
             console.error("Error marking items out of stock:", error);
-            alert("Could not update items. " + error.message);
+            setInfoDialog({isOpen: true, title: 'Error', message: "Could not update items. " + error.message});
         }
     }
   };
@@ -908,12 +910,19 @@ export default function MenuPage() {
 
   return (
     <div className="p-4 md:p-6 space-y-6 bg-background text-foreground min-h-screen">
+      <InfoDialog
+        isOpen={infoDialog.isOpen}
+        onClose={() => setInfoDialog({ isOpen: false, title: '', message: '' })}
+        title={infoDialog.title}
+        message={infoDialog.message}
+      />
       <AddItemModal 
         isOpen={isModalOpen} 
         setIsOpen={setIsModalOpen}
         onSave={handleSaveItem}
         editingItem={editingItem}
         allCategories={allCategories}
+        showInfoDialog={setInfoDialog}
       />
 
       <BulkAddModal
@@ -921,6 +930,7 @@ export default function MenuPage() {
         setIsOpen={setIsBulkModalOpen}
         onSave={handleBulkSave}
         businessType={businessType}
+        showInfoDialog={setInfoDialog}
       />
 
       {/* Header */}
@@ -1016,6 +1026,7 @@ export default function MenuPage() {
     </div>
   );
 }
+
 
 
 
