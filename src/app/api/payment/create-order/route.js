@@ -11,7 +11,6 @@ export async function POST(req) {
             return NextResponse.json({ message: 'Valid amount is required.' }, { status: 400 });
         }
         
-        // CORRECTED: Use NEXT_PUBLIC_RAZORPAY_KEY_ID to match Vercel environment variables
         if (!process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID || !process.env.RAZORPAY_KEY_SECRET) {
             console.error("Razorpay keys are not configured in environment variables.");
             return NextResponse.json({ message: 'Payment gateway is not configured.' }, { status: 500 });
