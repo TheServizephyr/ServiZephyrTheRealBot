@@ -268,7 +268,7 @@ const MenuBrowserModal = ({ isOpen, onClose, categories, onCategoryClick }) => {
   );
 };
 
-const DineInModal = ({ isOpen, onClose, onScanQR, onBookTable, tableStatus, onStartNewTab, onJoinTab }) => {
+const DineInModal = ({ isOpen, onClose, onBookTable, tableStatus, onStartNewTab, onJoinTab, onScanQR }) => {
     const [activeModal, setActiveModal] = useState('main'); // 'main', 'book', 'success'
     const [bookingDetails, setBookingDetails] = useState({ name: '', phone: '', guests: 2, date: new Date(), time: '19:00' });
     const [isSaving, setIsSaving] = useState(false);
@@ -334,6 +334,8 @@ const DineInModal = ({ isOpen, onClose, onScanQR, onBookTable, tableStatus, onSt
                 setActiveModal('join_or_new');
             } else if (tableStatus?.state === 'full') {
                  setActiveModal('full');
+            } else {
+                setActiveModal('main');
             }
         }
     }, [isOpen, tableStatus]);
@@ -349,6 +351,54 @@ const DineInModal = ({ isOpen, onClose, onScanQR, onBookTable, tableStatus, onSt
             <Dialog open={isOpen} onOpenChange={onClose}>
                 <DialogContent className="bg-background border-border text-foreground p-0 max-w-md">
                     <AnimatePresence mode="wait">
+                    {activeModal === 'main' && (
+                         <motion.div key="main">
+                             <DialogHeader className="p-6 pb-4">
+                                <DialogTitle>Dine-In Options</DialogTitle>
+                                <DialogDescription>To dine in, please scan a QR code at your table or book a table in advance.</DialogDescription>
+                            </DialogHeader>
+                            <div className="px-6 pb-6 space-y-3">
+                                <Button onClick={onScanQR} className="w-full h-16 text-lg"><QrCode className="mr-2"/> Scan Table QR</Button>
+                                <Button onClick={() => setActiveModal('book')} className="w-full h-16 text-lg" variant="outline"><Calendar className="mr-2"/> Book a Table</Button>
+                            </div>
+                        </motion.div>
+                    )}
+                    {activeModal === 'book' && (
+                         <motion.div key="book">
+                             <DialogHeader className="p-6 pb-4">
+                                <DialogTitle>Book a Table</DialogTitle>
+                                <DialogDescription>Reserve your table in advance.</DialogDescription>
+                            </DialogHeader>
+                            <div className="px-6 pb-6 space-y-4">
+                               <Input placeholder="Your Name" value={bookingDetails.name} onChange={(e) => handleBookingChange('name', e.target.value)} />
+                               <Input type="tel" placeholder="Your Phone Number" value={bookingDetails.phone} onChange={(e) => handleBookingChange('phone', e.target.value)} />
+                               <div className="flex items-center gap-4">
+                                 <Label>Guests:</Label>
+                                 <Input type="number" min="1" value={bookingDetails.guests} onChange={(e) => handleBookingChange('guests', parseInt(e.target.value))} className="w-20" />
+                               </div>
+                               <Popover>
+                                    <PopoverTrigger asChild>
+                                        <Button variant="outline" className="w-full justify-start">{format(bookingDetails.date, 'PPP')}</Button>
+                                    </PopoverTrigger>
+                                    <PopoverContent className="w-auto p-0">
+                                        <CalendarUI mode="single" selected={bookingDetails.date} onSelect={(d) => handleBookingChange('date', d)} fromDate={today} toDate={maxDate}/>
+                                    </PopoverContent>
+                                </Popover>
+                                <Input type="time" value={bookingDetails.time} onChange={(e) => handleBookingChange('time', e.target.value)} min={minTime} />
+                                <Button onClick={handleConfirmBooking} disabled={isSaving} className="w-full">{isSaving ? 'Booking...' : 'Confirm Booking'}</Button>
+                            </div>
+                         </motion.div>
+                    )}
+                    {activeModal === 'success' && (
+                         <motion.div key="success" className="p-8 text-center">
+                            <CheckCircle size={48} className="mx-auto text-green-500 mb-4"/>
+                            <DialogTitle className="text-2xl">Booking Confirmed!</DialogTitle>
+                            <DialogDescription>Your table has been requested. You will receive a confirmation on WhatsApp shortly.</DialogDescription>
+                             <DialogFooter className="mt-6">
+                                <Button onClick={onClose} className="w-full">Done</Button>
+                             </DialogFooter>
+                         </motion.div>
+                    )}
                     {activeModal === 'new_tab' && (
                         <motion.div key="new_tab">
                              <DialogHeader className="p-6 pb-4">
@@ -934,6 +984,11 @@ const OrderPageInternal = () => {
                     tableStatus={tableStatus}
                     onStartNewTab={handleStartNewTab}
                     onJoinTab={handleJoinTab}
+                    onScanQR={() => {
+                        setDineInModalOpen(false);
+                        setIsQrScannerOpen(true);
+                    }}
+                    onBookTable={handleBookTable}
                 />
             </div>
          )
