@@ -170,8 +170,9 @@ function OwnerDashboardContent({ children }) {
       // Handle pending, rejected, error states
       switch(restaurantStatus.status) {
           case 'pending':
-              if (pathname.endsWith('/owner-dashboard/menu') || pathname.endsWith('/owner-dashboard/settings') || pathname.endsWith('/owner-dashboard/connections') || pathname.endsWith('/owner-dashboard/payout-settings')) {
-                  console.log("[DEBUG] OwnerLayout: Status is 'pending', but allowing access to menu/settings.");
+              const allowedPaths = ['/owner-dashboard/menu', '/owner-dashboard/settings', '/owner-dashboard/connections', '/owner-dashboard/payout-settings', '/owner-dashboard/dine-in'];
+              if (allowedPaths.some(p => pathname.endsWith(p))) {
+                  console.log("[DEBUG] OwnerLayout: Status is 'pending', but allowing access to menu/settings/connections/payout-settings/dine-in.");
                   return null;
               }
               console.log("[DEBUG] OwnerLayout: Status is 'pending', showing 'Under Review' screen.");
