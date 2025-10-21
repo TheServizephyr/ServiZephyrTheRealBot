@@ -40,9 +40,20 @@ const BookingRow = ({ booking, onUpdateStatus }) => {
         completed: 'text-blue-400 bg-blue-500/10',
     };
 
-    const createdAtDate = booking.createdAt?.seconds 
-        ? new Date(booking.createdAt.seconds * 1000) 
-        : (booking.createdAt ? new Date(booking.createdAt) : null);
+    const createdAtDate = useMemo(() => {
+        if (!booking.createdAt) return null;
+        // Handle Firestore Timestamp from server (via JSON)
+        if (booking.createdAt._seconds) {
+            return new Date(booking.createdAt._seconds * 1000);
+        }
+        // Handle local Date object after creation
+        if (booking.createdAt.seconds) {
+            return new Date(booking.createdAt.seconds * 1000);
+        }
+        // Fallback for ISO string
+        const date = new Date(booking.createdAt);
+        return isNaN(date.getTime()) ? null : date;
+    }, [booking.createdAt]);
 
     return (
         <TableRow>
