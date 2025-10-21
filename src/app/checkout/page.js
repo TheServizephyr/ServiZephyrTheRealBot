@@ -1,4 +1,3 @@
-
 'use client';
 
 import React, { useState, useEffect, useMemo, Suspense } from 'react';
@@ -57,7 +56,7 @@ const CheckoutModal = ({ isOpen, onClose, onConfirm, grandTotal, loading, name, 
                 <DialogFooter>
                     <DialogClose asChild><Button variant="secondary" disabled={loading}>Cancel</Button></DialogClose>
                     <Button onClick={onConfirm} className="bg-primary hover:bg-primary/90 text-primary-foreground" disabled={loading}>
-                        {loading ? 'Processing...' : `Confirm & Place Order`}
+                        {loading ? 'Processing...' : `Confirm &amp; Place Order`}
                     </Button>
                 </DialogFooter>
             </DialogContent>
@@ -86,7 +85,7 @@ const DineInPostOrderModal = ({ isOpen, onClose, onAddMore, onViewBill, tableId 
                         <PlusCircle className="mr-2"/> Add More to My Tab
                     </Button>
                      <Button onClick={onViewBill} className="w-full h-14 text-lg">
-                        <Wallet className="mr-2"/> View Bill & Pay
+                        <Wallet className="mr-2"/> View Bill &amp; Pay
                     </Button>
                 </div>
                  <DialogFooter className="!justify-center">
@@ -169,7 +168,6 @@ const CheckoutPageInternal = () => {
                     } else if (isPickup) {
                          setCodEnabled(data.pickupPodEnabled || false);
                     } else { // dine-in
-                        // For dine-in, we can assume both are available or have a specific setting later
                         setCodEnabled(data.dineInPayAtCounterEnabled || false);
                     }
 
@@ -467,8 +465,8 @@ const CheckoutPageInternal = () => {
                                     <div className="w-full text-left p-6 bg-muted/50 border-2 border-dashed border-border rounded-lg flex items-center gap-6 opacity-60">
                                         <IndianRupee size={40} className="text-muted-foreground flex-shrink-0"/>
                                         <div>
-                                            <h3 className="text-xl font-bold text-muted-foreground">Pay on Delivery</h3>
-                                            <p className="text-muted-foreground">This restaurant is not currently accepting POD.</p>
+                                            <h3 className="text-xl font-bold text-muted-foreground">{deliveryType === 'pickup' ? 'Pay at Store' : (deliveryType === 'dine-in' ? 'Pay at Counter' : 'Pay on Delivery')}</h3>
+                                            <p className="text-muted-foreground">This restaurant is not currently accepting this payment method.</p>
                                         </div>
                                     </div>
                                 )}

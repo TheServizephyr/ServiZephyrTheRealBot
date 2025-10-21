@@ -1,10 +1,9 @@
-
 'use client';
 
 import React, { useState, useEffect, Suspense, useMemo, useCallback } from 'react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Utensils, Plus, Minus, X, Home, User, Edit2, ShoppingCart, Star, CookingPot, BookOpen, Check, SlidersHorizontal, ArrowUpDown, PlusCircle, Ticket, Gift, Sparkles, Flame, Search, Trash2, ChevronDown, Tag as TagIcon, RadioGroup, IndianRupee, HardHat, MapPin, Bike, Store, ConciergeBell, QrCode, Calendar, Clock, UserCheck, ArrowLeft, CheckCircle, AlertTriangle, Bell, CalendarClock } from 'lucide-react';
+import { Utensils, Plus, Minus, X, Home, User, Edit2, ShoppingCart, Star, CookingPot, BookOpen, Check, SlidersHorizontal, ArrowUpDown, PlusCircle, Ticket, Gift, Sparkles, Flame, Search, Trash2, ChevronDown, Tag as TagIcon, RadioGroup, IndianRupee, HardHat, MapPin, Bike, Store, ConciergeBell, QrCode, Calendar, Clock, UserCheck, ArrowLeft, CheckCircle, AlertTriangle, Bell, CalendarClock, Wallet } from 'lucide-react';
 import Image from 'next/image';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
@@ -782,6 +781,8 @@ const OrderPageInternal = () => {
     };
 
     const totalCartItems = cart.reduce((sum, item) => sum + item.quantity, 0);
+    const isTabActive = tableIdFromUrl && totalCartItems === 0;
+
     
     const cartItemQuantities = useMemo(() => {
         const quantities = {};
@@ -982,7 +983,7 @@ const OrderPageInternal = () => {
                         <Popover>
                             <PopoverTrigger asChild>
                                 <Button variant="outline" className="flex items-center gap-2 flex-shrink-0">
-                                    <SlidersHorizontal size={16} /> Filter & Sort
+                                    <SlidersHorizontal size={16} /> Filter &amp; Sort
                                 </Button>
                             </PopoverTrigger>
                             <PopoverContent className="w-64">
@@ -1058,7 +1059,7 @@ const OrderPageInternal = () => {
                         </motion.div>
 
                         <AnimatePresence>
-                            {totalCartItems > 0 && (
+                            {(totalCartItems > 0 || isTabActive) && (
                                 <motion.div
                                     className="absolute bottom-0 left-0 right-0 bg-background/80 backdrop-blur-lg border-t border-border pointer-events-auto"
                                     initial={{ y: "100%" }}
@@ -1067,13 +1068,23 @@ const OrderPageInternal = () => {
                                     transition={{ type: "spring", stiffness: 300, damping: 30 }}
                                 >
                                     <div className="container mx-auto p-4">
-                                        <Button onClick={handleCheckout} className="bg-primary hover:bg-primary/90 h-14 text-lg font-bold rounded-lg shadow-primary/30 flex justify-between items-center text-primary-foreground w-full">
-                                            <div className="flex items-center gap-2">
-                                               <ShoppingCart className="h-6 w-6"/> 
-                                               <span>{totalCartItems} {totalCartItems > 1 ? 'Items' : 'Item'}</span>
-                                            </div>
-                                            <span>View Cart | ₹{subtotal}</span>
-                                        </Button>
+                                        {isTabActive ? (
+                                            <Button onClick={handleCheckout} className="bg-primary hover:bg-primary/90 h-14 text-lg font-bold rounded-lg shadow-primary/30 flex justify-between items-center text-primary-foreground w-full">
+                                                <div className="flex items-center gap-2">
+                                                   <Wallet className="h-6 w-6"/> 
+                                                   <span>Tab for Table {tableIdFromUrl}</span>
+                                                </div>
+                                                <span>View Bill &amp; Pay</span>
+                                            </Button>
+                                        ) : (
+                                             <Button onClick={handleCheckout} className="bg-primary hover:bg-primary/90 h-14 text-lg font-bold rounded-lg shadow-primary/30 flex justify-between items-center text-primary-foreground w-full">
+                                                <div className="flex items-center gap-2">
+                                                   <ShoppingCart className="h-6 w-6"/> 
+                                                   <span>{totalCartItems} {totalCartItems > 1 ? 'Items' : 'Item'}</span>
+                                                </div>
+                                                <span>{isTabActive ? 'Add to Tab' : 'View Cart'} | ₹{subtotal}</span>
+                                            </Button>
+                                        )}
                                     </div>
                                 </motion.div>
                             )}
