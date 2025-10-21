@@ -56,7 +56,7 @@ const CheckoutModal = ({ isOpen, onClose, onConfirm, grandTotal, loading, name, 
                 <DialogFooter>
                     <DialogClose asChild><Button variant="secondary" disabled={loading}>Cancel</Button></DialogClose>
                     <Button onClick={onConfirm} className="bg-primary hover:bg-primary/90 text-primary-foreground" disabled={loading}>
-                        {loading ? 'Processing...' : `Confirm &amp; Place Order`}
+                        {loading ? 'Processing...' : `Confirm & Place Order`}
                     </Button>
                 </DialogFooter>
             </DialogContent>
@@ -85,7 +85,7 @@ const DineInPostOrderModal = ({ isOpen, onClose, onAddMore, onViewBill, tableId 
                         <PlusCircle className="mr-2"/> Add More to My Tab
                     </Button>
                      <Button onClick={onViewBill} className="w-full h-14 text-lg">
-                        <Wallet className="mr-2"/> View Bill &amp; Pay
+                        <Wallet className="mr-2"/> View Bill & Pay
                     </Button>
                 </div>
                  <DialogFooter className="!justify-center">
@@ -487,3 +487,5 @@ const CheckoutPage = () => (
 );
 
 export default CheckoutPage;
+
+    
