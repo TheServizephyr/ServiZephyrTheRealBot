@@ -3,7 +3,7 @@
 
 import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { Inbox, RefreshCw, AlertTriangle, User, FileText, Clock, Trash2, ChevronRight, CheckCircle, Mail } from 'lucide-react';
+import { Inbox, RefreshCw, AlertTriangle, User, FileText, Clock, Trash2, ChevronRight, CheckCircle, Mail, Mailbox } from 'lucide-react';
 import { auth } from '@/lib/firebase';
 import { formatDistanceToNow, parseISO } from 'date-fns';
 import { cn } from '@/lib/utils';
