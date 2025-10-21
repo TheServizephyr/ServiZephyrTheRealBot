@@ -293,11 +293,23 @@ export default function DineInPage() {
             url.searchParams.append('impersonate_owner_id', impersonatedOwnerId);
         }
         
-        const res = await fetch(url.toString(), {
+        const fetchOptions = {
             method,
-            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${idToken}` },
-            body: JSON.stringify(body),
-        });
+            headers: {
+                'Authorization': `Bearer ${idToken}`,
+                'Content-Type': 'application/json',
+            },
+        };
+
+        if (method !== 'GET' && method !== 'HEAD') {
+            fetchOptions.body = JSON.stringify(body);
+        } else if (body) {
+            // For GET requests, append body properties to URL search params
+            Object.keys(body).forEach(key => url.searchParams.append(key, body[key]));
+        }
+
+        const res = await fetch(url.toString(), fetchOptions);
+
         const data = await res.json();
         if (!res.ok) throw new Error(data.message || 'API call failed');
         return data;
@@ -306,14 +318,14 @@ export default function DineInPage() {
     const fetchDineInOrders = async (isManualRefresh = false) => {
         if (!isManualRefresh) setLoading(true);
         try {
-            const data = await handleApiCall('GET');
+            const data = await handleApiCall('GET', null, '/api/owner/orders');
             const dineInStatuses = ['pending', 'confirmed', 'preparing', 'active_tab', 'ready_for_pickup'];
             const dineInOrders = (data.orders || []).filter(o => o.deliveryType === 'dine-in' && dineInStatuses.includes(o.status));
             setOrders(dineInOrders);
 
             if (dineInOrders.length > 0 && !restaurant) {
                 const firstOrder = dineInOrders[0];
-                const orderDetails = await handleApiCall('GET', null, `/api/owner/orders?id=${firstOrder.id}`);
+                const orderDetails = await handleApiCall('GET', { id: firstOrder.id }, '/api/owner/orders');
                 setRestaurant(orderDetails.restaurant);
             }
 
