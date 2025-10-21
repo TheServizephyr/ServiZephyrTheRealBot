@@ -1,4 +1,5 @@
 
+
 import { NextResponse } from 'next/server';
 import { getAuth, getFirestore } from '@/lib/firebase-admin';
 
@@ -30,6 +31,17 @@ export async function POST(req) {
             console.log("[DEBUG] /api/auth/check-role: User document data:", userData);
             const role = userData.role;
             const businessType = userData.businessType || null; // Get businessType
+
+            // **THE FIX: Set custom claim for admin users**
+            if (role === 'admin' && !decodedToken.isAdmin) {
+                console.log(`[DEBUG] /api/auth/check-role: User is admin, setting custom claim...`);
+                await auth.setCustomUserClaims(uid, { isAdmin: true });
+                console.log(`[DEBUG] /api/auth/check-role: Custom claim 'isAdmin: true' set for UID: ${uid}.`);
+            } else if (role !== 'admin' && decodedToken.isAdmin) {
+                // If user is no longer an admin, remove the claim
+                 await auth.setCustomUserClaims(uid, { isAdmin: false });
+            }
+
             if (role) {
                 // User has a role, login is successful.
                 console.log(`[DEBUG] /api/auth/check-role: Role found: '${role}', BusinessType: '${businessType}'. Returning 200.`);

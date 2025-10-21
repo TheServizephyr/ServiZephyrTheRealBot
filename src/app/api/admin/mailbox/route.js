@@ -1,4 +1,5 @@
 
+
 import { NextResponse } from 'next/server';
 import { getFirestore, FieldValue } from '@/lib/firebase-admin';
 
@@ -9,15 +10,15 @@ async function verifyAdmin(req, auth) {
         throw { message: 'Authorization token not found or invalid.', status: 401 };
     }
     const token = authHeader.split('Bearer ')[1];
-    const decodedToken = await auth.verifyIdToken(token);
     
-    const firestore = getFirestore();
-    const userDoc = await firestore.collection('users').doc(decodedToken.uid).get();
-
-    if (userDoc.exists && userDoc.data().role === 'admin') {
+    // **THE FIX: Verify token and check for the 'isAdmin' custom claim**
+    const decodedToken = await auth.verifyIdToken(token, true); // `true` checks for revoked tokens
+    
+    if (decodedToken.isAdmin === true) {
         return decodedToken.uid;
     }
     
+    // If the claim is not present, deny access.
     throw { message: 'Access Denied: You do not have admin privileges.', status: 403 };
 }
 
@@ -101,4 +102,5 @@ export async function PATCH(req) {
         return NextResponse.json({ message: error.message || 'Internal Server Error' }, { status: error.status || 500 });
     }
 }
+
 
