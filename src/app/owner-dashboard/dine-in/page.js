@@ -384,7 +384,7 @@ const QrGeneratorModal = ({ isOpen, onClose, onSaveTable, restaurantId, initialT
     );
 };
 
-function DineInPageInternal() {
+function DineInPage() {
     const [allOrders, setAllOrders] = useState([]);
     const [allTables, setAllTables] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -691,3 +691,5 @@ function DineInPageInternal() {
 }
 
 export default DineInPage;
+
+    
