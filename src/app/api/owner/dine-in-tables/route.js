@@ -1,7 +1,5 @@
-
-
 import { NextResponse } from 'next/server';
-import { getAuth, getFirestore } from '@/lib/firebase-admin';
+import { getAuth, getFirestore, FieldValue } from '@/lib/firebase-admin';
 
 // Helper to verify owner and get their first business ID
 async function verifyOwnerAndGetBusiness(req) {
@@ -51,7 +49,7 @@ export async function GET(req) {
     try {
         const businessRef = await verifyOwnerAndGetBusiness(req);
         
-        const tablesSnap = await businessRef.collection('tables').get();
+        const tablesSnap = await businessRef.collection('tables').orderBy('createdAt', 'asc').get();
         const tables = tablesSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 
         return NextResponse.json({ tables }, { status: 200 });
@@ -65,9 +63,9 @@ export async function GET(req) {
 export async function POST(req) {
     try {
         const businessRef = await verifyOwnerAndGetBusiness(req);
-        const { tableId, maxCapacity } = await req.json();
+        const { tableId, max_capacity } = await req.json();
 
-        if (!tableId || !maxCapacity || maxCapacity < 1) {
+        if (!tableId || !max_capacity || max_capacity < 1) {
             return NextResponse.json({ message: 'Table ID and a valid capacity are required.' }, { status: 400 });
         }
         
@@ -75,9 +73,9 @@ export async function POST(req) {
 
         // Set max_capacity and initialize current_pax
         await tableRef.set({
-            max_capacity: Number(maxCapacity),
+            max_capacity: Number(max_capacity),
             current_pax: 0,
-            createdAt: new Date(),
+            createdAt: FieldValue.serverTimestamp(),
         }, { merge: true });
 
         return NextResponse.json({ message: 'Table saved successfully.' }, { status: 201 });
@@ -92,8 +90,39 @@ export async function POST(req) {
 export async function PATCH(req) {
      try {
         const businessRef = await verifyOwnerAndGetBusiness(req);
-        const { tableId, action, tabIdToClose } = await req.json();
+        const { tableId, action, tabIdToClose, newTableId, newCapacity } = await req.json();
 
+        // Handle Table Edit logic
+        if (newTableId !== undefined || newCapacity !== undefined) {
+            if (!tableId) {
+                return NextResponse.json({ message: 'Original Table ID is required for editing.' }, { status: 400 });
+            }
+            const oldTableRef = businessRef.collection('tables').doc(tableId);
+            const tableSnap = await oldTableRef.get();
+            if(!tableSnap.exists) {
+                return NextResponse.json({ message: 'Table to edit not found.' }, { status: 404 });
+            }
+            
+            const updateData = {};
+            if (newCapacity !== undefined) {
+                updateData.max_capacity = Number(newCapacity);
+            }
+
+            // If name is changed, we need to move the document
+            if (newTableId && newTableId !== tableId) {
+                const newTableRef = businessRef.collection('tables').doc(newTableId);
+                const tableData = tableSnap.data();
+                await newTableRef.set({ ...tableData, ...updateData });
+                await oldTableRef.delete();
+                return NextResponse.json({ message: `Table renamed to ${newTableId} and updated.` }, { status: 200 });
+            } else {
+                 await oldTableRef.update(updateData);
+                 return NextResponse.json({ message: `Table ${tableId} updated.` }, { status: 200 });
+            }
+        }
+
+
+        // Handle Table State logic
         if (!tableId || !action) {
             return NextResponse.json({ message: 'Table ID and action are required.' }, { status: 400 });
         }
@@ -104,32 +133,31 @@ export async function PATCH(req) {
         }
 
         const tableRef = businessRef.collection('tables').doc(tableId);
+        const firestore = businessRef.firestore;
 
         if (action === 'mark_paid') {
             if (!tabIdToClose) {
                 return NextResponse.json({ message: 'Tab ID is required to mark a tab as paid.' }, { status: 400 });
             }
-            const tabRef = businessRef.collection('dineInTabs').doc(tabIdToClose);
-            const tabDoc = await tabRef.get();
-            if (!tabDoc.exists) {
-                throw new Error("Tab to be closed not found.");
-            }
             
-            const paxToReduce = tabDoc.data().pax_count || 0;
-            
-            // Atomically update tab status and table capacity
-            const batch = tableRef.firestore.batch();
-            batch.update(tabRef, { status: 'closed' });
-            batch.update(tableRef, { current_pax: firestore.FieldValue.increment(-paxToReduce) });
-            await batch.commit();
+            return await firestore.runTransaction(async (transaction) => {
+                const tabRef = businessRef.collection('dineInTabs').doc(tabIdToClose);
+                const tabDoc = await transaction.get(tabRef);
+                if (!tabDoc.exists) throw new Error("Tab to be closed not found.");
+                
+                const tableDoc = await transaction.get(tableRef);
+                if (!tableDoc.exists) throw new Error("Table document not found.");
 
-            return NextResponse.json({ message: `Tab ${tabIdToClose} closed and capacity for table ${tableId} updated.` }, { status: 200 });
+                const paxToReduce = tabDoc.data().pax_count || 0;
+                
+                transaction.update(tabRef, { status: 'closed' });
+                transaction.update(tableRef, { current_pax: FieldValue.increment(-paxToReduce) });
+            });
         }
         
         if (action === 'mark_cleaned') {
-            // This is a placeholder for now. The logic of changing table state is deprecated.
-            // If needed, this would be where you reset any table-specific flags.
-            return NextResponse.json({ message: `Table ${tableId} cleaning acknowledged.` }, { status: 200 });
+             await tableRef.update({ state: 'available' });
+             return NextResponse.json({ message: `Table ${tableId} cleaning acknowledged.` }, { status: 200 });
         }
 
 
@@ -139,5 +167,22 @@ export async function PATCH(req) {
     }
 }
 
+export async function DELETE(req) {
+    try {
+        const businessRef = await verifyOwnerAndGetBusiness(req);
+        const { tableId } = await req.json();
 
+        if (!tableId) {
+            return NextResponse.json({ message: 'Table ID is required.' }, { status: 400 });
+        }
 
+        const tableRef = businessRef.collection('tables').doc(tableId);
+        await tableRef.delete();
+
+        return NextResponse.json({ message: 'Table deleted successfully.' }, { status: 200 });
+
+    } catch (error) {
+        console.error("DELETE DINE-IN TABLE ERROR:", error);
+        return NextResponse.json({ message: `Backend Error: ${error.message}` }, { status: error.status || 500 });
+    }
+}

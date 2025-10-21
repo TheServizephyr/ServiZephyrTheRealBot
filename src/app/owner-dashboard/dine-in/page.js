@@ -1,10 +1,9 @@
 
-
 'use client';
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { motion } from 'framer-motion';
-import { RefreshCw, Printer, CheckCircle, IndianRupee, Users, Clock, ShoppingBag, Bell, MoreVertical, Trash2, QrCode, Download, Save, Wind } from 'lucide-react';
+import { RefreshCw, Printer, CheckCircle, IndianRupee, Users, Clock, ShoppingBag, Bell, MoreVertical, Trash2, QrCode, Download, Save, Wind, Edit, ChevronDown, ChevronUp, Table as TableIcon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { auth } from '@/lib/firebase';
@@ -126,7 +125,7 @@ const TableCard = ({ tableId, tableData, onMarkAsPaid, onPrintBill, onMarkAsClea
             title: "Occupied",
             bg: "bg-yellow-500/10",
             border: "border-yellow-500",
-            icon: <Clock size={16} className="text-yellow-500" />
+            icon: <Users size={16} className="text-yellow-500" />
         },
         needs_cleaning: {
             title: "Needs Cleaning",
@@ -204,7 +203,7 @@ const TableCard = ({ tableId, tableData, onMarkAsPaid, onPrintBill, onMarkAsClea
                     </div>
                     <div className="grid grid-cols-2 gap-2 w-full">
                         <Button variant="outline" onClick={() => onPrintBill({ tableId, orders })}><Printer size={16} className="mr-2"/> Print Bill</Button>
-                        <Button className="bg-primary hover:bg-primary/90" onClick={() => onMarkAsPaid(tableId, orders.map(o => o.id))}><CheckCircle size={16} className="mr-2"/> Mark as Paid</Button>
+                        <Button className="bg-primary hover:bg-primary/90" onClick={() => onMarkAsPaid(tableId, tableData.orders.map(o => o.id))}><CheckCircle size={16} className="mr-2"/> Mark as Paid</Button>
                     </div>
                 </CardFooter>
             </Card>
@@ -226,12 +225,27 @@ const QrCodeDisplay = ({ text, tableName, innerRef }) => {
     );
 };
 
-
-const QrGeneratorModal = ({ isOpen, onClose, restaurantId, onSaveTable }) => {
+const QrGeneratorModal = ({ isOpen, onClose, onSaveTable, restaurantId, initialTable, onEditTable, onDeleteTable }) => {
     const [tableName, setTableName] = useState('');
     const [maxCapacity, setMaxCapacity] = useState(4);
     const [qrValue, setQrValue] = useState('');
     const printRef = useRef();
+
+    useEffect(() => {
+        if (isOpen) {
+            if (initialTable) {
+                setTableName(initialTable.id);
+                setMaxCapacity(initialTable.max_capacity || 4);
+                // Immediately generate QR for existing table
+                const url = `${window.location.origin}/order/${restaurantId}?table=${initialTable.id}`;
+                setQrValue(url);
+            } else {
+                setTableName('');
+                setMaxCapacity(4);
+                setQrValue('');
+            }
+        }
+    }, [isOpen, initialTable, restaurantId]);
 
     const handleGenerate = () => {
         if (!tableName.trim()) {
@@ -241,13 +255,11 @@ const QrGeneratorModal = ({ isOpen, onClose, restaurantId, onSaveTable }) => {
         const url = `${window.location.origin}/order/${restaurantId}?table=${tableName.trim()}`;
         setQrValue(url);
     };
-    
+
     const handleDownload = () => {
         const canvas = printRef.current.querySelector('canvas');
         if (canvas) {
-            const pngUrl = canvas
-                .toDataURL("image/png")
-                .replace("image/png", "image/octet-stream");
+            const pngUrl = canvas.toDataURL("image/png").replace("image/png", "image/octet-stream");
             let downloadLink = document.createElement("a");
             downloadLink.href = pngUrl;
             downloadLink.download = `${tableName}-qrcode.png`;
@@ -256,45 +268,43 @@ const QrGeneratorModal = ({ isOpen, onClose, restaurantId, onSaveTable }) => {
             document.body.removeChild(downloadLink);
         }
     };
-    
+
     const handlePrint = useReactToPrint({
         content: () => printRef.current,
         documentTitle: `QR_Code_${tableName}`,
     });
-    
+
     const handleSave = async () => {
         if (!tableName.trim() || !maxCapacity || maxCapacity < 1) {
             alert('Please enter a valid table name and capacity.');
             return;
         }
         try {
-            await onSaveTable(tableName.trim(), maxCapacity);
-            handleGenerate(); // Generate QR after successful save
+            if (initialTable) {
+                await onEditTable(initialTable.id, tableName.trim(), maxCapacity);
+            } else {
+                await onSaveTable(tableName.trim(), maxCapacity);
+            }
+            handleGenerate();
         } catch (error) {
             // error is handled by parent
         }
-    }
-
-    useEffect(() => {
-        if (!isOpen) {
-            setTableName('');
-            setQrValue('');
-            setMaxCapacity(4);
-        }
-    }, [isOpen]);
+    };
 
     return (
         <Dialog open={isOpen} onOpenChange={onClose}>
             <DialogContent className="bg-background border-border text-foreground">
                 <DialogHeader>
-                    <DialogTitle>Generate & Save Table QR Code</DialogTitle>
-                    <DialogDescription>Create a unique QR code for a table. Customers can scan this to order directly.</DialogDescription>
+                    <DialogTitle>{initialTable ? `Manage Table: ${initialTable.id}` : 'Generate & Save Table QR Code'}</DialogTitle>
+                    <DialogDescription>
+                        {initialTable ? 'Re-download QR or edit table details.' : 'Create a unique QR code for a table. Customers can scan this to order directly.'}
+                    </DialogDescription>
                 </DialogHeader>
                 <div className="py-4 space-y-4">
                     <div className="grid grid-cols-3 gap-4">
                         <div className="col-span-2">
                             <Label htmlFor="table-name">Table Name / Number</Label>
-                            <Input 
+                            <Input
                                 id="table-name"
                                 value={tableName}
                                 onChange={(e) => setTableName(e.target.value)}
@@ -302,8 +312,8 @@ const QrGeneratorModal = ({ isOpen, onClose, restaurantId, onSaveTable }) => {
                             />
                         </div>
                         <div>
-                             <Label htmlFor="max-capacity">Max Capacity</Label>
-                            <Input 
+                            <Label htmlFor="max-capacity">Max Capacity</Label>
+                            <Input
                                 id="max-capacity"
                                 type="number"
                                 value={maxCapacity}
@@ -314,20 +324,23 @@ const QrGeneratorModal = ({ isOpen, onClose, restaurantId, onSaveTable }) => {
                         </div>
                     </div>
                     <Button onClick={handleSave} className="w-full bg-primary hover:bg-primary/90">
-                        <Save className="mr-2 h-4 w-4" /> Save Table & Generate QR
+                        <Save className="mr-2 h-4 w-4" /> {initialTable ? 'Save Changes & Update QR' : 'Save Table & Generate QR'}
                     </Button>
 
                     {qrValue && (
                         <div className="mt-6 flex flex-col items-center gap-4">
-                           <QrCodeDisplay text={qrValue} tableName={tableName} innerRef={printRef} />
+                            <QrCodeDisplay text={qrValue} tableName={tableName} innerRef={printRef} />
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 w-full max-w-sm">
-                                <Button onClick={handlePrint} variant="outline">
-                                    <Printer className="mr-2 h-4 w-4" /> Print
-                                </Button>
-                                <Button onClick={handleDownload} variant="outline">
-                                    <Download className="mr-2 h-4 w-4" /> Download PNG
-                                </Button>
+                                <Button onClick={handlePrint} variant="outline"><Printer className="mr-2 h-4 w-4" /> Print</Button>
+                                <Button onClick={handleDownload} variant="outline"><Download className="mr-2 h-4 w-4" /> Download PNG</Button>
                             </div>
+                        </div>
+                    )}
+                     {initialTable && (
+                        <div className="pt-4 border-t border-dashed">
+                             <Button onClick={() => { onDeleteTable(initialTable.id); onClose(); }} variant="destructive" className="w-full">
+                                <Trash2 className="mr-2 h-4 w-4"/> Delete This Table
+                            </Button>
                         </div>
                     )}
                 </div>
@@ -344,6 +357,7 @@ export default function DineInPage() {
     const searchParams = useSearchParams();
     const impersonatedOwnerId = searchParams.get('impersonate_owner_id');
     const [isQrModalOpen, setIsQrModalOpen] = useState(false);
+    const [editingTable, setEditingTable] = useState(null);
     const [restaurant, setRestaurant] = useState(null);
     const [billData, setBillData] = useState(null);
     const [infoDialog, setInfoDialog] = useState({ isOpen: false, title: '', message: '' });
@@ -403,11 +417,9 @@ export default function DineInPage() {
                 const orderDetails = await handleApiCall('GET', { id: firstOrder.id }, '/api/owner/orders');
                 setRestaurant(orderDetails.restaurant);
             } else if (!restaurant) {
-                // If there are no orders, try fetching settings to get restaurant data
                 const settingsData = await handleApiCall('GET', null, '/api/owner/settings');
-                // The settings endpoint returns a flat object, let's create a restaurant-like structure
                  setRestaurant({
-                    id: settingsData.restaurantId, // Assuming this exists or can be derived
+                    id: settingsData.restaurantId,
                     name: settingsData.restaurantName,
                     address: settingsData.address,
                     gstin: settingsData.gstin
@@ -424,15 +436,41 @@ export default function DineInPage() {
     
     const handleSaveTable = async (tableName, maxCapacity) => {
         try {
-            await handleApiCall('POST', { tableId: tableName, maxCapacity }, '/api/owner/dine-in-tables');
+            await handleApiCall('POST', { tableId: tableName, max_capacity: maxCapacity }, '/api/owner/dine-in-tables');
             setInfoDialog({ isOpen: true, title: "Success", message: `Table "${tableName}" saved with a capacity of ${maxCapacity}.` });
-            await fetchData(true); // Refresh tables list
+            await fetchData(true);
         } catch (error) {
             console.error("Error saving table:", error);
             setInfoDialog({ isOpen: true, title: "Error", message: `Could not save table: ${error.message}` });
-            throw error; // Re-throw to keep modal open
+            throw error;
         }
     };
+    
+    const handleEditTable = async (originalId, newId, newCapacity) => {
+        try {
+            await handleApiCall('PATCH', { tableId: originalId, newTableId: newId, newCapacity }, '/api/owner/dine-in-tables');
+            setInfoDialog({ isOpen: true, title: "Success", message: `Table updated successfully.` });
+            await fetchData(true);
+        } catch(error) {
+            console.error("Error editing table:", error);
+            setInfoDialog({ isOpen: true, title: "Error", message: `Could not edit table: ${error.message}` });
+            throw error;
+        }
+    };
+
+    const handleDeleteTable = async (tableId) => {
+        if (window.confirm(`Are you sure you want to delete table "${tableId}"? This cannot be undone.`)) {
+            try {
+                await handleApiCall('DELETE', { tableId }, '/api/owner/dine-in-tables');
+                setInfoDialog({ isOpen: true, title: "Success", message: `Table "${tableId}" has been deleted.` });
+                await fetchData(true);
+            } catch (error) {
+                console.error("Error deleting table:", error);
+                setInfoDialog({ isOpen: true, title: "Error", message: `Could not delete table: ${error.message}` });
+            }
+        }
+    };
+
 
     useEffect(() => {
         const unsubscribe = auth.onAuthStateChanged(user => {
@@ -459,7 +497,7 @@ export default function DineInPage() {
                 )
             );
             
-            await handleApiCall('PATCH', { tableId, state: 'needs_cleaning' }, '/api/owner/dine-in-tables');
+            await handleApiCall('PATCH', { tableId, action: 'mark_paid', tabIdToClose: orderIds[0] }, '/api/owner/dine-in-tables');
 
             setInfoDialog({ isOpen: true, title: "Success", message: "Table has been marked for cleaning." });
             await fetchData(true);
@@ -474,7 +512,7 @@ export default function DineInPage() {
     const handleMarkAsCleaned = async (tableId) => {
          setLoading(true);
          try {
-             await handleApiCall('PATCH', { tableId, state: 'available' }, '/api/owner/dine-in-tables');
+             await handleApiCall('PATCH', { tableId, action: 'mark_cleaned' }, '/api/owner/dine-in-tables');
              setInfoDialog({ isOpen: true, title: "Success", message: `Table ${tableId} is now available.` });
              await fetchData(true);
          } catch(error) {
@@ -485,30 +523,40 @@ export default function DineInPage() {
          }
     };
 
-
     const combinedTableData = useMemo(() => {
         const tableMap = new Map();
-
-        // Initialize with all tables from the database
+        
         allTables.forEach(table => {
             tableMap.set(table.id, {
-                state: table.state || 'available',
-                orders: []
+                ...table,
+                state: (table.current_pax > 0) ? 'occupied' : 'available',
+                orders: [],
             });
         });
 
-        // Populate with orders
         allOrders.forEach(order => {
-            const tableId = order.tableId || 'Unknown';
-            if (!tableMap.has(tableId)) {
-                tableMap.set(tableId, { state: 'occupied', orders: [] });
+            const tableId = order.dineInTabId || 'Unknown';
+            if (tableMap.has(tableId)) {
+                const tableEntry = tableMap.get(tableId);
+                tableEntry.orders.push(order);
             }
-            const tableEntry = tableMap.get(tableId);
-            tableEntry.orders.push(order);
         });
+        
+        // This is a temporary fix for tables with closed tabs but that might have current_pax > 0 in DB
+        // if the cleanup trigger fails.
+        for (const [key, value] of tableMap.entries()) {
+            if (value.orders.length === 0 && value.current_pax > 0) {
+                 value.state = 'needs_cleaning';
+            }
+        }
         
         return Object.fromEntries(tableMap);
     }, [allOrders, allTables]);
+    
+    const handleOpenQrModal = (table = null) => {
+        setEditingTable(table);
+        setIsQrModalOpen(true);
+    };
 
     return (
         <div className="p-4 md:p-6 text-foreground min-h-screen bg-background">
@@ -527,15 +575,15 @@ export default function DineInPage() {
                 title={infoDialog.title}
                 message={infoDialog.message}
             />
-            {restaurant && <QrGeneratorModal isOpen={isQrModalOpen} onClose={() => setIsQrModalOpen(false)} restaurantId={restaurant.id} onSaveTable={handleSaveTable} />}
+            {restaurant && <QrGeneratorModal isOpen={isQrModalOpen} onClose={() => setIsQrModalOpen(false)} restaurantId={restaurant.id} onSaveTable={handleSaveTable} onEditTable={handleEditTable} onDeleteTable={handleDeleteTable} initialTable={editingTable}/>}
 
             <div className="flex flex-col md:flex-row justify-between md:items-center mb-6 gap-4">
                 <div>
                     <h1 className="text-2xl md:text-3xl font-bold tracking-tight">Dine-In Command Center</h1>
-                    <p className="text-muted-foreground mt-1 text-sm md:text-base">A live overview of your active tables.</p>
+                    <p className="text-muted-foreground mt-1 text-sm md:text-base">A live overview of your active tables and table management.</p>
                 </div>
                 <div className="flex gap-4">
-                     <Button onClick={() => setIsQrModalOpen(true)} variant="default" className="bg-primary hover:bg-primary/90" disabled={!restaurant}>
+                     <Button onClick={() => handleOpenQrModal(null)} variant="default" className="bg-primary hover:bg-primary/90">
                         <QrCode size={16} className="mr-2"/> Generate Table QR Codes
                     </Button>
                     <Button onClick={() => fetchData(true)} variant="outline" disabled={loading}>
@@ -544,6 +592,7 @@ export default function DineInPage() {
                 </div>
             </div>
             
+             <h2 className="text-xl font-bold mb-4">Live Tables</h2>
             {loading ? (
                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 animate-pulse">
                     {[...Array(4)].map((_, i) => (
@@ -559,13 +608,251 @@ export default function DineInPage() {
                     ))}
                 </div>
             ) : (
-                <div className="text-center py-24 text-muted-foreground border-2 border-dashed border-border rounded-xl">
+                <div className="text-center py-16 text-muted-foreground border-2 border-dashed border-border rounded-xl">
                     <ShoppingBag size={48} className="mx-auto" />
                     <p className="mt-4 text-lg font-semibold">No Active Tables</p>
                     <p>When a customer scans a QR code and orders, their table will appear here live.</p>
                 </div>
             )}
+            
+            <div className="mt-12">
+                 <h2 className="text-xl font-bold mb-4">All Your Tables</h2>
+                 <Card>
+                    <CardContent className="p-0">
+                         <div className="overflow-x-auto">
+                            <table className="w-full">
+                                <thead className="bg-muted/50">
+                                    <tr>
+                                        <th className="p-4 text-left font-semibold text-muted-foreground"><TableIcon size={16} className="inline mr-2"/>Table Name</th>
+                                        <th className="p-4 text-left font-semibold text-muted-foreground"><Users size={16} className="inline mr-2"/>Max Capacity</th>
+                                        <th className="p-4 text-left font-semibold text-muted-foreground"><Users size={16} className="inline mr-2"/>Currently Occupied</th>
+                                        <th className="p-4 text-right font-semibold text-muted-foreground">Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {allTables.map(table => (
+                                        <tr key={table.id} className="border-t border-border">
+                                            <td className="p-4 font-semibold">{table.id}</td>
+                                            <td className="p-4">{table.max_capacity}</td>
+                                            <td className="p-4">{table.current_pax || 0}</td>
+                                            <td className="p-4 flex justify-end gap-2">
+                                                <Button variant="outline" size="sm" onClick={() => handleOpenQrModal(table)}>
+                                                    <QrCode size={14} className="mr-2"/> Show QR
+                                                </Button>
+                                                <Button variant="ghost" size="icon" className="h-9 w-9" onClick={() => handleOpenQrModal(table)}>
+                                                    <Edit size={16}/>
+                                                </Button>
+                                                 <Button variant="ghost" size="icon" className="h-9 w-9 text-destructive hover:bg-destructive/10" onClick={() => handleDeleteTable(table.id)}>
+                                                    <Trash2 size={16}/>
+                                                </Button>
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                         </div>
+                    </CardContent>
+                 </Card>
+            </div>
         </div>
     );
 }
 
+```
+  </change>
+  <change>
+    <file>src/app/api/owner/dine-in-tables/route.js</file>
+    <content><![CDATA[
+
+import { NextResponse } from 'next/server';
+import { getAuth, getFirestore, FieldValue } from '@/lib/firebase-admin';
+
+// Helper to verify owner and get their first business ID
+async function verifyOwnerAndGetBusiness(req) {
+    const auth = getAuth();
+    const firestore = getFirestore();
+    const authHeader = req.headers.get('authorization');
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+        throw { message: 'Authorization token not found or invalid.', status: 401 };
+    }
+    const token = authHeader.split('Bearer ')[1];
+    const decodedToken = await auth.verifyIdToken(token);
+    const uid = decodedToken.uid;
+    
+    const url = new URL(req.headers.get('referer') || 'http://localhost');
+    const impersonatedOwnerId = url.searchParams.get('impersonate_owner_id');
+    const userDoc = await firestore.collection('users').doc(uid).get();
+
+    if (!userDoc.exists) {
+        throw { message: 'Access Denied: User profile not found.', status: 403 };
+    }
+
+    const userData = userDoc.data();
+    const userRole = userData.role;
+
+    let targetOwnerId = uid;
+    if (userRole === 'admin' && impersonatedOwnerId) {
+        targetOwnerId = impersonatedOwnerId;
+    } else if (userRole !== 'owner' && userRole !== 'restaurant-owner' && userRole !== 'shop-owner') {
+        throw { message: 'Access Denied: You do not have sufficient privileges.', status: 403 };
+    }
+    
+    const restaurantsQuery = await firestore.collection('restaurants').where('ownerId', '==', targetOwnerId).limit(1).get();
+    if (!restaurantsQuery.empty) {
+        return restaurantsQuery.docs[0].ref;
+    }
+
+    const shopsQuery = await firestore.collection('shops').where('ownerId', '==', targetOwnerId).limit(1).get();
+    if (!shopsQuery.empty) {
+        return shopsQuery.docs[0].ref;
+    }
+    
+    throw { message: 'No business associated with this owner.', status: 404 };
+}
+
+
+export async function GET(req) {
+    try {
+        const businessRef = await verifyOwnerAndGetBusiness(req);
+        
+        const tablesSnap = await businessRef.collection('tables').orderBy('createdAt', 'asc').get();
+        const tables = tablesSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+
+        return NextResponse.json({ tables }, { status: 200 });
+
+    } catch (error) {
+        console.error("GET DINE-IN TABLES ERROR:", error);
+        return NextResponse.json({ message: `Backend Error: ${error.message}` }, { status: error.status || 500 });
+    }
+}
+
+export async function POST(req) {
+    try {
+        const businessRef = await verifyOwnerAndGetBusiness(req);
+        const { tableId, max_capacity } = await req.json();
+
+        if (!tableId || !max_capacity || max_capacity < 1) {
+            return NextResponse.json({ message: 'Table ID and a valid capacity are required.' }, { status: 400 });
+        }
+        
+        const tableRef = businessRef.collection('tables').doc(tableId);
+
+        // Set max_capacity and initialize current_pax
+        await tableRef.set({
+            max_capacity: Number(max_capacity),
+            current_pax: 0,
+            createdAt: FieldValue.serverTimestamp(),
+        }, { merge: true });
+
+        return NextResponse.json({ message: 'Table saved successfully.' }, { status: 201 });
+
+    } catch (error) {
+        console.error("POST DINE-IN TABLE ERROR:", error);
+        return NextResponse.json({ message: `Backend Error: ${error.message}` }, { status: error.status || 500 });
+    }
+}
+
+
+export async function PATCH(req) {
+     try {
+        const businessRef = await verifyOwnerAndGetBusiness(req);
+        const { tableId, action, tabIdToClose, newTableId, newCapacity } = await req.json();
+
+        // Handle Table Edit logic
+        if (newTableId !== undefined || newCapacity !== undefined) {
+            if (!tableId) {
+                return NextResponse.json({ message: 'Original Table ID is required for editing.' }, { status: 400 });
+            }
+            const oldTableRef = businessRef.collection('tables').doc(tableId);
+            const tableSnap = await oldTableRef.get();
+            if(!tableSnap.exists) {
+                return NextResponse.json({ message: 'Table to edit not found.' }, { status: 404 });
+            }
+            
+            const updateData = {};
+            if (newCapacity !== undefined) {
+                updateData.max_capacity = Number(newCapacity);
+            }
+
+            // If name is changed, we need to move the document
+            if (newTableId && newTableId !== tableId) {
+                const newTableRef = businessRef.collection('tables').doc(newTableId);
+                const tableData = tableSnap.data();
+                await newTableRef.set({ ...tableData, ...updateData });
+                await oldTableRef.delete();
+                return NextResponse.json({ message: `Table renamed to ${newTableId} and updated.` }, { status: 200 });
+            } else {
+                 await oldTableRef.update(updateData);
+                 return NextResponse.json({ message: `Table ${tableId} updated.` }, { status: 200 });
+            }
+        }
+
+
+        // Handle Table State logic
+        if (!tableId || !action) {
+            return NextResponse.json({ message: 'Table ID and action are required.' }, { status: 400 });
+        }
+        
+        const validActions = ['mark_paid', 'mark_cleaned'];
+        if (!validActions.includes(action)) {
+            return NextResponse.json({ message: 'Invalid action provided.' }, { status: 400 });
+        }
+
+        const tableRef = businessRef.collection('tables').doc(tableId);
+        const firestore = businessRef.firestore;
+
+        if (action === 'mark_paid') {
+            if (!tabIdToClose) {
+                return NextResponse.json({ message: 'Tab ID is required to mark a tab as paid.' }, { status: 400 });
+            }
+            
+            return await firestore.runTransaction(async (transaction) => {
+                const tabRef = businessRef.collection('dineInTabs').doc(tabIdToClose);
+                const tabDoc = await transaction.get(tabRef);
+                if (!tabDoc.exists) throw new Error("Tab to be closed not found.");
+                
+                const tableDoc = await transaction.get(tableRef);
+                if (!tableDoc.exists) throw new Error("Table document not found.");
+
+                const paxToReduce = tabDoc.data().pax_count || 0;
+                
+                transaction.update(tabRef, { status: 'closed' });
+                transaction.update(tableRef, { current_pax: FieldValue.increment(-paxToReduce) });
+            });
+        }
+        
+        if (action === 'mark_cleaned') {
+             await tableRef.update({ state: 'available' });
+             return NextResponse.json({ message: `Table ${tableId} cleaning acknowledged.` }, { status: 200 });
+        }
+
+
+    } catch (error) {
+        console.error("PATCH DINE-IN TABLE ERROR:", error);
+        return NextResponse.json({ message: `Backend Error: ${error.message}` }, { status: error.status || 500 });
+    }
+}
+
+export async function DELETE(req) {
+    try {
+        const businessRef = await verifyOwnerAndGetBusiness(req);
+        const { tableId } = await req.json();
+
+        if (!tableId) {
+            return NextResponse.json({ message: 'Table ID is required.' }, { status: 400 });
+        }
+
+        const tableRef = businessRef.collection('tables').doc(tableId);
+        await tableRef.delete();
+
+        return NextResponse.json({ message: 'Table deleted successfully.' }, { status: 200 });
+
+    } catch (error) {
+        console.error("DELETE DINE-IN TABLE ERROR:", error);
+        return NextResponse.json({ message: `Backend Error: ${error.message}` }, { status: error.status || 500 });
+    }
+}
+
+
+
+    
