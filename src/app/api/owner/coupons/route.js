@@ -1,7 +1,8 @@
 
+
 import { NextResponse } from 'next/server';
 
-import { getAuth, getFirestore } from '@/lib/firebase-admin';
+import { getAuth, getFirestore, FieldValue } from '@/lib/firebase-admin';
 
 // Helper to verify owner and get their first business ID
 async function verifyOwnerAndGetBusiness(req, auth, firestore) {
@@ -90,7 +91,7 @@ export async function POST(req) {
             id: newCouponRef.id,
             timesUsed: 0,
             value: isFreeDelivery ? 0 : Number(coupon.value), // Ensure value is 0 for free delivery
-            createdAt: firestore.FieldValue.serverTimestamp(),
+            createdAt: FieldValue.serverTimestamp(),
             startDate: firestore.Timestamp.fromDate(new Date(coupon.startDate)),
             expiryDate: firestore.Timestamp.fromDate(new Date(coupon.expiryDate)),
         };
