@@ -18,8 +18,10 @@ import { cn } from '@/lib/utils';
 const formatDateTime = (isoStringOrTimestamp) => {
     if (!isoStringOrTimestamp) return 'N/A';
     try {
-        // Handle Firestore Timestamp object which has a toDate() method
-        const date = isoStringOrTimestamp.toDate ? isoStringOrTimestamp.toDate() : new Date(isoStringOrTimestamp);
+        // THE FIX: Check if it's a Firestore Timestamp object (with .seconds) or a regular Date object/string.
+        const date = isoStringOrTimestamp.seconds 
+            ? new Date(isoStringOrTimestamp.seconds * 1000) 
+            : new Date(isoStringOrTimestamp);
         
         if (isNaN(date.getTime())) throw new Error('Invalid date');
         
