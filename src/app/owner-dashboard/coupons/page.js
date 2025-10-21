@@ -159,10 +159,10 @@ const CouponModal = ({ isOpen, setIsOpen, onSave, editingCoupon }) => {
                                         <PopoverTrigger asChild>
                                            <Button variant={"outline"} className={cn("w-full justify-start text-left font-normal mt-1", !coupon.startDate && "text-muted-foreground")}>
                                               <CalendarIcon className="mr-2 h-4 w-4" />
-                                              {coupon.startDate ? format(coupon.startDate, "dd MMM yyyy") : <span>Pick a date</span>}
+                                              {coupon.startDate ? formatDate(coupon.startDate) : <span>Pick a date</span>}
                                            </Button>
                                         </PopoverTrigger>
-                                        <PopoverContent className="w-auto p-0"><Calendar mode="single" selected={coupon.startDate} onSelect={(date) => {handleChange('startDate', date); setStartDatePickerOpen(false);}} initialFocus /></PopoverContent>
+                                        <PopoverContent className="w-auto p-0"><Calendar mode="single" selected={new Date(coupon.startDate)} onSelect={(date) => {handleChange('startDate', date); setStartDatePickerOpen(false);}} initialFocus /></PopoverContent>
                                     </Popover>
                                 </div>
                                 <div>
@@ -171,10 +171,10 @@ const CouponModal = ({ isOpen, setIsOpen, onSave, editingCoupon }) => {
                                          <PopoverTrigger asChild>
                                            <Button variant={"outline"} className={cn("w-full justify-start text-left font-normal mt-1", !coupon.expiryDate && "text-muted-foreground")}>
                                               <CalendarIcon className="mr-2 h-4 w-4" />
-                                              {coupon.expiryDate ? format(coupon.expiryDate, "dd MMM yyyy") : <span>Pick a date</span>}
+                                              {coupon.expiryDate ? formatDate(coupon.expiryDate) : <span>Pick a date</span>}
                                            </Button>
                                         </PopoverTrigger>
-                                        <PopoverContent className="w-auto p-0"><Calendar mode="single" selected={coupon.expiryDate} onSelect={(date) => {handleChange('expiryDate', date); setEndDatePickerOpen(false);}} initialFocus /></PopoverContent>
+                                        <PopoverContent className="w-auto p-0"><Calendar mode="single" selected={new Date(coupon.expiryDate)} onSelect={(date) => {handleChange('expiryDate', date); setEndDatePickerOpen(false);}} initialFocus /></PopoverContent>
                                     </Popover>
                                 </div>
                            </div>
@@ -224,8 +224,8 @@ const CouponCard = ({ coupon, onStatusToggle, onEdit, onDelete }) => {
             <div className="p-5 bg-card">
                 <div className="flex justify-between items-start">
                     <p className="font-mono text-2xl font-bold tracking-widest text-foreground bg-muted px-4 py-2 rounded-lg border-2 border-dashed border-border">{coupon.code}</p>
-                    <div className={cn('flex items-center gap-2 text-sm font-semibold px-3 py-1 rounded-full', statusConfig[status].bg, statusConfig[status].text)}>
-                        {statusConfig[status].icon}
+                    <div className={cn('flex items-center gap-2 text-sm font-semibold px-3 py-1 rounded-full', statusConfig[status]?.bg, statusConfig[status]?.text)}>
+                        {statusConfig[status]?.icon}
                         {status}
                     </div>
                 </div>
