@@ -2,7 +2,9 @@
 
 import { NextResponse } from 'next/server';
 
-import { getAuth, getFirestore, FieldValue } from '@/lib/firebase-admin';
+import { getAuth, FieldValue } from '@/lib/firebase-admin';
+import { getFirestore } from 'firebase-admin/firestore';
+
 
 // Helper to verify owner and get their first business ID
 async function verifyOwnerAndGetBusiness(req, auth, firestore) {
@@ -72,8 +74,8 @@ export async function GET(req) {
 
 export async function POST(req) {
     try {
-        const auth = await getAuth();
-        const firestore = await getFirestore();
+        const auth = getAuth();
+        const firestore = getFirestore();
         const { businessId, collectionName } = await verifyOwnerAndGetBusiness(req, auth, firestore);
         const { coupon } = await req.json();
 
@@ -108,8 +110,8 @@ export async function POST(req) {
 
 export async function PATCH(req) {
     try {
-        const auth = await getAuth();
-        const firestore = await getFirestore();
+        const auth = getAuth();
+        const firestore = getFirestore();
         const { businessId, collectionName } = await verifyOwnerAndGetBusiness(req, auth, firestore);
         const { coupon } = await req.json();
 
@@ -147,8 +149,8 @@ export async function PATCH(req) {
 
 export async function DELETE(req) {
     try {
-        const auth = await getAuth();
-        const firestore = await getFirestore();
+        const auth = getAuth();
+        const firestore = getFirestore();
         const { businessId, collectionName } = await verifyOwnerAndGetBusiness(req, auth, firestore);
         const { couponId } = await req.json();
 
