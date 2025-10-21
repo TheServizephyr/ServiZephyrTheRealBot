@@ -55,7 +55,7 @@ async function verifyOwnerAndGetBusiness(req, auth, firestore) {
 export async function GET(req) {
     try {
         const auth = await getAuth();
-        const firestore = await getFirestore();
+        const firestore = getFirestore();
         const { businessId, collectionName } = await verifyOwnerAndGetBusiness(req, auth, firestore);
 
         const couponsRef = firestore.collection(collectionName).doc(businessId).collection('coupons');
