@@ -42,15 +42,15 @@ const BookingRow = ({ booking, onUpdateStatus }) => {
 
     const createdAtDate = useMemo(() => {
         if (!booking.createdAt) return null;
-        // Handle Firestore Timestamp from server (via JSON)
+        // Handle Firestore Timestamp from server (via JSON) which has `_seconds`
         if (booking.createdAt._seconds) {
             return new Date(booking.createdAt._seconds * 1000);
         }
-        // Handle local Date object after creation
+        // Handle local Date object or Firestore Timestamp with `seconds`
         if (booking.createdAt.seconds) {
             return new Date(booking.createdAt.seconds * 1000);
         }
-        // Fallback for ISO string
+        // Fallback for ISO string or other date formats
         const date = new Date(booking.createdAt);
         return isNaN(date.getTime()) ? null : date;
     }, [booking.createdAt]);
@@ -66,7 +66,7 @@ const BookingRow = ({ booking, onUpdateStatus }) => {
                 <div className="font-medium">{formatDateTime(booking.bookingDateTime)}</div>
                 {createdAtDate && (
                      <div className="text-xs text-muted-foreground">
-                        Booked {formatDistanceToNow(createdAtDate, { addSuffix: true })}
+                        Booked at {format(createdAtDate, 'p')}
                     </div>
                 )}
             </TableCell>
