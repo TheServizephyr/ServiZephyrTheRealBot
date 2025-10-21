@@ -69,4 +69,6 @@ const getFirestore = () => {
     return admin.firestore();
 };
 
-export { getAuth, getFirestore };
+const FieldValue = admin.firestore.FieldValue;
+
+export { getAuth, getFirestore, FieldValue };
