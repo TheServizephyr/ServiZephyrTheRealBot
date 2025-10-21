@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useState, useEffect, Suspense, useMemo, useCallback } from 'react';
@@ -17,6 +18,7 @@ import { Calendar as CalendarUI } from '@/components/ui/calendar';
 import QrScanner from '@/components/QrScanner';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import InfoDialog from '@/components/InfoDialog';
+import { auth } from '@/lib/firebase';
 
 
 const CustomizationDrawer = ({ item, isOpen, onClose, onAddToCart }) => {
@@ -795,9 +797,39 @@ const OrderPageInternal = () => {
         return quantities;
     }, [cart]);
     
-    const handleCallWaiter = () => {
-        // Placeholder for WebSocket event
-        alert("Service Request: A waiter has been notified.");
+    const handleCallWaiter = async () => {
+        try {
+            const user = auth.currentUser || { uid: 'anonymous', email: 'anon@test.com', displayName: 'Guest' };
+            const idToken = user.getIdToken ? await user.getIdToken() : 'anonymous_token';
+
+            const reportPayload = {
+                errorTitle: `Service Request: Table ${tableIdFromUrl}`,
+                errorMessage: "A customer at this table has requested assistance.",
+                pathname: window.location.pathname,
+                user: {
+                    uid: user.uid,
+                    email: user.email,
+                    displayName: user.displayName,
+                },
+                timestamp: new Date().toISOString(),
+            };
+
+            const response = await fetch('/api/admin/mailbox', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${idToken}`,
+                },
+                body: JSON.stringify(reportPayload),
+            });
+
+            if (!response.ok) throw new Error("Failed to send request.");
+            
+            setInfoDialog({ isOpen: true, title: "Request Sent!", message: "A waiter has been notified and will be with you shortly." });
+        } catch (error) {
+            console.error("Failed to send service request:", error);
+            setInfoDialog({ isOpen: true, title: "Error", message: "Could not send request. Please try again or call a waiter manually." });
+        }
     };
 
     const handleCategoryClick = (categoryId) => {
