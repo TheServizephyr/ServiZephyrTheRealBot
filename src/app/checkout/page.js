@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useState, useEffect, useMemo, Suspense } from 'react';
@@ -82,8 +83,8 @@ const CheckoutModal = ({ isOpen, onClose, onConfirm, grandTotal, loading, name, 
 const DineInPostOrderModal = ({ isOpen, onClose, onAddMore, onViewBill, tableId }) => {
     
     // Placeholder function for calling waiter
-    const handleCallWaiter = () => {
-        alert(`Notification sent: "SERVICE REQUEST: TABLE ${tableId}"`);
+    const handleCallWaiter = async () => {
+        alert(`A request has been sent to the staff for assistance at Table ${tableId}.`);
         // In a real app, this would trigger a WebSocket or Firebase event.
     };
 

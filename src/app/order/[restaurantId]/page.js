@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useState, useEffect, Suspense, useMemo, useCallback } from 'react';
@@ -350,7 +351,7 @@ const DineInModal = ({ isOpen, onClose, onScanQR, onBookTable, tableStatus, onSt
                             </DialogHeader>
                             <div className="px-6 pb-6 space-y-4">
                                 <div>
-                                    <Label>How many people in your group?</Label>
+                                    <Label>How many people are in your group?</Label>
                                     <Input type="number" value={newTabPax} onChange={e => setNewTabPax(parseInt(e.target.value))} min="1" max={tableStatus?.max_capacity - tableStatus?.current_pax} className="mt-1" />
                                 </div>
                                 <div>
@@ -521,13 +522,13 @@ const OrderPageInternal = () => {
             return;
         }
 
-        localStorage.setItem('dineInSetup', JSON.stringify({ pax_count: paxCount, tab_name: tabName }));
+        localStorage.setItem(`dineInSetup_${restaurantId}_${tableIdFromUrl}`, JSON.stringify({ pax_count: paxCount, tab_name: tabName }));
         setDineInState('ready');
         setDineInModalOpen(false);
     };
 
     const handleJoinTab = (tabId) => {
-        localStorage.setItem('dineInSetup', JSON.stringify({ join_tab_id: tabId }));
+        localStorage.setItem(`dineInSetup_${restaurantId}_${tableIdFromUrl}`, JSON.stringify({ join_tab_id: tabId }));
         setDineInState('ready');
         setDineInModalOpen(false);
     };
@@ -591,8 +592,9 @@ const OrderPageInternal = () => {
 
                 if (tableIdFromUrl) {
                     setDeliveryType('dine-in');
-                    if (tabIdFromUrl) {
-                        localStorage.setItem('dineInSetup', JSON.stringify({ join_tab_id: tabIdFromUrl }));
+                    const dineInSetup = localStorage.getItem(`dineInSetup_${restaurantId}_${tableIdFromUrl}`);
+                    
+                    if (dineInSetup) {
                         setDineInState('ready');
                     } else {
                         const tableRes = await fetch(`/api/owner/tables?restaurantId=${restaurantId}&tableId=${tableIdFromUrl}`);
@@ -612,6 +614,8 @@ const OrderPageInternal = () => {
                 } else if (menuData.pickupEnabled) {
                     setDeliveryType('pickup');
                     setDineInState('ready');
+                } else {
+                     setDineInState('ready'); // Default to ready if no other option
                 }
             } catch (err) {
                 console.error("[DEBUG] OrderPage: Error in fetchInitialData:", err);
@@ -873,15 +877,24 @@ const OrderPageInternal = () => {
         
         let dineInSetup = {};
         if (deliveryType === 'dine-in') {
-            const setupStr = localStorage.getItem('dineInSetup');
-            if (setupStr) dineInSetup = JSON.parse(setupStr);
+            const setupStr = localStorage.getItem(`dineInSetup_${restaurantId}_${tableIdFromUrl}`);
+            if (setupStr) {
+                dineInSetup = JSON.parse(setupStr);
+                const dineInTabId = dineInSetup.join_tab_id || dineInSetup.new_tab_id; // Let's assume we'll store a new_tab_id
+                
+                const currentCartData = JSON.parse(localStorage.getItem(`cart_${restaurantId}`)) || {};
+                currentCartData.dineInTabId = dineInTabId;
+                currentCartData.pax_count = dineInSetup.pax_count;
+                currentCartData.tab_name = dineInSetup.tab_name;
+                localStorage.setItem(`cart_${restaurantId}`, JSON.stringify(currentCartData));
+            }
         }
-
-        const tabIdToPass = dineInSetup.join_tab_id || tabIdFromUrl;
+        
+        const currentCartData = JSON.parse(localStorage.getItem(`cart_${restaurantId}`)) || {};
 
         let url = `/cart?restaurantId=${restaurantId}&phone=${phone}`;
         if (tableIdFromUrl) url += `&table=${tableIdFromUrl}`;
-        if (tabIdToPass) url += `&tabId=${tabIdToPass}`;
+        if (currentCartData.dineInTabId) url += `&tabId=${currentCartData.dineInTabId}`;
 
         router.push(url);
     };
