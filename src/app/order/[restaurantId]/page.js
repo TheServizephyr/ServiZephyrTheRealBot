@@ -1,4 +1,3 @@
-
 'use client';
 
 import React, { useState, useEffect, Suspense, useMemo, useCallback } from 'react';
@@ -799,22 +798,17 @@ const OrderPageInternal = () => {
     
     const handleCallWaiter = async () => {
         try {
-            const user = auth.currentUser || { uid: 'anonymous', email: 'anon@test.com', displayName: 'Guest' };
-            const idToken = user.getIdToken ? await user.getIdToken() : 'anonymous_token';
+            const user = auth.currentUser;
+            if (!user) throw new Error("Authentication required to make this request.");
+            
+            const idToken = await user.getIdToken();
 
             const reportPayload = {
-                errorTitle: `Service Request: Table ${tableIdFromUrl}`,
-                errorMessage: "A customer at this table has requested assistance.",
-                pathname: window.location.pathname,
-                user: {
-                    uid: user.uid,
-                    email: user.email,
-                    displayName: user.displayName,
-                },
-                timestamp: new Date().toISOString(),
+                restaurantId: restaurantId,
+                tableId: tableIdFromUrl,
             };
 
-            const response = await fetch('/api/admin/mailbox', {
+            const response = await fetch('/api/owner/service-requests', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -823,12 +817,15 @@ const OrderPageInternal = () => {
                 body: JSON.stringify(reportPayload),
             });
 
-            if (!response.ok) throw new Error("Failed to send request.");
+            if (!response.ok) {
+                const errorData = await response.json();
+                throw new Error(errorData.message || "Failed to send request.");
+            }
             
             setInfoDialog({ isOpen: true, title: "Request Sent!", message: "A waiter has been notified and will be with you shortly." });
         } catch (error) {
             console.error("Failed to send service request:", error);
-            setInfoDialog({ isOpen: true, title: "Error", message: "Could not send request. Please try again or call a waiter manually." });
+            setInfoDialog({ isOpen: true, title: "Error", message: "Could not send request. " + error.message });
         }
     };
 

@@ -1,5 +1,3 @@
-
-
 'use client';
 
 import { useState, useEffect } from 'react';
@@ -15,7 +13,6 @@ import {
   Bell,
   Sun,
   Moon,
-  Mailbox,
 } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
@@ -143,9 +140,6 @@ function AdminLayoutContent({ children }) {
               </SidebarLink>
               <SidebarLink href="/admin-dashboard/analytics" icon={BarChart2} isCollapsed={isCollapsed}>
                 Analytics
-              </SidebarLink>
-               <SidebarLink href="/admin-dashboard/mailbox" icon={Mailbox} isCollapsed={isCollapsed}>
-                Mailbox
               </SidebarLink>
               <SidebarLink href="/admin-dashboard/community" icon={MessageSquare} isCollapsed={isCollapsed}>
                 Community
