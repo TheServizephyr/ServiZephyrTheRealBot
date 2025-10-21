@@ -1,4 +1,5 @@
 
+
 'use client';
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
@@ -359,6 +360,7 @@ export default function DineInPage() {
     const [isQrModalOpen, setIsQrModalOpen] = useState(false);
     const [editingTable, setEditingTable] = useState(null);
     const [restaurant, setRestaurant] = useState(null);
+    const [restaurantId, setRestaurantId] = useState(null);
     const [billData, setBillData] = useState(null);
     const [infoDialog, setInfoDialog] = useState({ isOpen: false, title: '', message: '' });
     const billPrintRef = useRef();
@@ -403,29 +405,25 @@ export default function DineInPage() {
     const fetchData = async (isManualRefresh = false) => {
         if (!isManualRefresh) setLoading(true);
         try {
-            const [ordersData, tablesData] = await Promise.all([
+            const [ordersData, tablesData, settingsData] = await Promise.all([
                  handleApiCall('GET', null, '/api/owner/orders'),
-                 handleApiCall('GET', null, '/api/owner/dine-in-tables')
+                 handleApiCall('GET', null, '/api/owner/dine-in-tables'),
+                 handleApiCall('GET', null, '/api/owner/settings')
             ]);
             
             const dineInStatuses = ['pending', 'confirmed', 'preparing', 'active_tab', 'ready_for_pickup'];
             const dineInOrders = (ordersData.orders || []).filter(o => o.deliveryType === 'dine-in' && dineInStatuses.includes(o.status));
             setAllOrders(dineInOrders);
             setAllTables(tablesData.tables || []);
-
-            if (ordersData.orders.length > 0 && !restaurant) {
-                const firstOrder = ordersData.orders[0];
-                const orderDetails = await handleApiCall('GET', { id: firstOrder.id }, '/api/owner/orders');
-                setRestaurant(orderDetails.restaurant);
-            } else if (!restaurant) {
-                const settingsData = await handleApiCall('GET', null, '/api/owner/settings');
-                 setRestaurant({
-                    id: settingsData.restaurantId,
-                    name: settingsData.restaurantName,
-                    address: settingsData.address,
-                    gstin: settingsData.gstin
-                 });
-            }
+            
+            const fetchedRestaurant = {
+                id: settingsData.restaurantId,
+                name: settingsData.restaurantName,
+                address: settingsData.address,
+                gstin: settingsData.gstin
+             };
+            setRestaurant(fetchedRestaurant);
+            setRestaurantId(settingsData.businessId);
 
         } catch (error) {
             console.error("Error fetching dine-in data:", error);
@@ -576,7 +574,7 @@ export default function DineInPage() {
                 title={infoDialog.title}
                 message={infoDialog.message}
             />
-            {restaurant && <QrGeneratorModal isOpen={isQrModalOpen} onClose={() => setIsQrModalOpen(false)} restaurantId={restaurant.id} onSaveTable={handleSaveTable} onEditTable={handleEditTable} onDeleteTable={handleDeleteTable} initialTable={editingTable}/>}
+            {restaurantId && <QrGeneratorModal isOpen={isQrModalOpen} onClose={() => setIsQrModalOpen(false)} restaurantId={restaurantId} onSaveTable={handleSaveTable} onEditTable={handleEditTable} onDeleteTable={handleDeleteTable} initialTable={editingTable}/>}
 
             <div className="flex flex-col md:flex-row justify-between md:items-center mb-6 gap-4">
                 <div>
@@ -658,5 +656,3 @@ export default function DineInPage() {
         </div>
     );
 }
-
-    
