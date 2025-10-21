@@ -1,4 +1,5 @@
 
+
 'use client';
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
@@ -444,8 +445,7 @@ export default function DineInPage() {
              };
             setRestaurant(fetchedRestaurant);
             
-            const userDoc = await handleApiCall('GET', null, `/api/owner/settings?uid=${user.uid}`);
-            const fetchedRestaurantId = settingsData.businessId || 'not-found';
+            const fetchedRestaurantId = settingsData.businessId;
             console.log("[DEBUG] DineInPage: Setting Restaurant ID for QR codes:", fetchedRestaurantId);
             setRestaurantId(fetchedRestaurantId);
 

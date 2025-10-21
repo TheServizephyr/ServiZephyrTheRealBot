@@ -60,14 +60,14 @@ async function verifyUserAndGetData(req) {
 export async function GET(req) {
     try {
         const { searchParams } = new URL(req.url);
-        const businessId = searchParams.get('restaurantId') || searchParams.get('businessId');
+        const businessIdFromQuery = searchParams.get('restaurantId') || searchParams.get('businessId');
         
         // Public endpoint for fetching only COD status
-        if (businessId) {
+        if (businessIdFromQuery) {
             const firestore = getFirestore();
-            let businessDoc = await firestore.collection('restaurants').doc(businessId).get();
+            let businessDoc = await firestore.collection('restaurants').doc(businessIdFromQuery).get();
             if (!businessDoc.exists) {
-                businessDoc = await firestore.collection('shops').doc(businessId).get();
+                businessDoc = await firestore.collection('shops').doc(businessIdFromQuery).get();
             }
             if (!businessDoc.exists) {
                 return NextResponse.json({ message: "Business not found." }, { status: 404 });
@@ -80,7 +80,7 @@ export async function GET(req) {
         }
         
         // Authenticated endpoint for full settings
-        const { uid, userData, businessData } = await verifyUserAndGetData(req);
+        const { uid, userData, businessData, businessId } = await verifyUserAndGetData(req);
         
         const profileData = {
             name: userData.name || 'No Name',
@@ -112,6 +112,7 @@ export async function GET(req) {
             dineInOnlinePaymentEnabled: businessData?.dineInOnlinePaymentEnabled === undefined ? true : businessData.dineInOnlinePaymentEnabled,
             dineInPayAtCounterEnabled: businessData?.dineInPayAtCounterEnabled === undefined ? true : businessData.dineInPayAtCounterEnabled,
             isOpen: businessData?.isOpen === undefined ? true : businessData.isOpen,
+            businessId: businessId // THE FIX: Explicitly include businessId
         };
 
         return NextResponse.json(profileData, { status: 200 });
@@ -181,7 +182,7 @@ export async function PATCH(req) {
             }
         }
         
-        const { userData: finalUserData, businessData: finalBusinessData } = await verifyUserAndGetData(req);
+        const { userData: finalUserData, businessData: finalBusinessData, businessId: finalBusinessId } = await verifyUserAndGetData(req);
         const responseData = {
             name: finalUserData.name,
             email: finalUserData.email,
@@ -208,6 +209,7 @@ export async function PATCH(req) {
             dineInPayAtCounterEnabled: finalBusinessData?.dineInPayAtCounterEnabled === undefined ? true : finalBusinessData.dineInPayAtCounterEnabled,
             isOpen: finalBusinessData?.isOpen === undefined ? true : finalBusinessData.isOpen,
             address: finalBusinessData?.address || { street: '', city: '', state: '', postalCode: '', country: 'IN' },
+            businessId: finalBusinessId, // THE FIX: Also return businessId on PATCH
         };
 
         return NextResponse.json(responseData, { status: 200 });
