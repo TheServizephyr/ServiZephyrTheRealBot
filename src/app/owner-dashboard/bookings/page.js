@@ -1,5 +1,4 @@
 
-
 'use client';
 
 import React, { useState, useEffect, useMemo } from 'react';
@@ -168,19 +167,12 @@ export default function BookingsPage() {
 
 
     const filteredBookings = useMemo(() => {
-        const now = new Date();
         let items = [...bookings];
 
         if (activeTab === 'upcoming') {
-            items = items.filter(b => {
-                const bookingDate = b.bookingDateTime?.toDate ? b.bookingDateTime.toDate() : new Date(b.bookingDateTime);
-                return bookingDate >= now && (b.status === 'pending' || b.status === 'confirmed');
-            });
+            items = items.filter(b => b.status === 'pending' || b.status === 'confirmed');
         } else if (activeTab === 'past') {
-            items = items.filter(b => {
-                const bookingDate = b.bookingDateTime?.toDate ? b.bookingDateTime.toDate() : new Date(b.bookingDateTime);
-                return bookingDate < now || b.status === 'completed' || b.status === 'cancelled';
-            });
+            items = items.filter(b => b.status === 'completed' || b.status === 'cancelled');
         }
 
         if (searchQuery) {
@@ -190,6 +182,13 @@ export default function BookingsPage() {
                 b.customerPhone.includes(lowerQuery)
             );
         }
+
+        // Sort upcoming by soonest, past by latest
+        items.sort((a, b) => {
+            const dateA = a.bookingDateTime.seconds ? new Date(a.bookingDateTime.seconds * 1000) : new Date(a.bookingDateTime);
+            const dateB = b.bookingDateTime.seconds ? new Date(b.bookingDateTime.seconds * 1000) : new Date(b.bookingDateTime);
+            return activeTab === 'upcoming' ? dateA - dateB : dateB - dateA;
+        });
 
         return items;
     }, [bookings, searchQuery, activeTab]);
