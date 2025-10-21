@@ -1,5 +1,4 @@
 
-
 'use client';
 
 import React, { useState, useEffect, Suspense, useMemo, useCallback } from 'react';
@@ -516,6 +515,7 @@ const OrderPageInternal = () => {
         pickupEnabled: false,
         dineInEnabled: false,
     });
+    const [tableStatus, setTableStatus] = useState(null);
     const [loyaltyPoints, setLoyaltyPoints] = useState(0);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
@@ -540,70 +540,51 @@ const OrderPageInternal = () => {
 
     // --- LOCATION & DATA FETCHING ---
     useEffect(() => {
-        console.log("[OrderPage] useEffect for data fetching triggered.");
         const phone = phoneFromUrl || localStorage.getItem('lastKnownPhone');
-
         if (phone && !localStorage.getItem('lastKnownPhone')) {
             localStorage.setItem('lastKnownPhone', phone);
         }
         
         let locationStr = localStorage.getItem('customerLocation');
-        
         if(locationStr) {
             try {
-                const parsedLocation = JSON.parse(locationStr);
-                setCustomerLocation(parsedLocation);
+                setCustomerLocation(JSON.parse(locationStr));
             } catch (e) {
-                console.error("[OrderPage] Failed to parse location from localStorage.", e);
+                console.error("Failed to parse location.", e);
             }
         }
-
-
-        const fetchMenuData = async () => {
-            if (!restaurantId) {
-                setLoading(false);
-                return;
-            };
+        const fetchInitialData = async () => {
+            if (!restaurantId) return;
             setLoading(true);
             setError(null);
             try {
-                // Pass phone and location to the menu API
-                let apiUrl = `/api/menu/${restaurantId}`;
-                if(phone){
-                    apiUrl += `?phone=${phone}`;
-                }
-                const res = await fetch(apiUrl);
+                const menuRes = await fetch(`/api/menu/${restaurantId}${phone ? `?phone=${phone}`: ''}`);
+                if (!menuRes.ok) throw new Error((await menuRes.json()).message || 'Failed to fetch menu');
+                const menuData = await menuRes.json();
                 
-                if (!res.ok) {
-                    const errorData = await res.json();
-                    throw new Error(errorData.message || 'Failed to fetch menu data.');
-                }
-                const data = await res.json();
-
                 setRestaurantData({
-                    name: data.restaurantName,
-                    status: data.approvalStatus,
-                    logoUrl: data.logoUrl || '',
-                    bannerUrls: (data.bannerUrls && data.bannerUrls.length > 0) ? data.bannerUrls : ['/order_banner.jpg'],
-                    deliveryCharge: data.deliveryCharge || 0,
-                    menu: data.menu || {},
-                    coupons: data.coupons || [],
-                    deliveryEnabled: data.deliveryEnabled,
-                    pickupEnabled: data.pickupEnabled,
-                    dineInEnabled: data.dineInEnabled !== undefined ? data.dineInEnabled : true,
+                    name: menuData.restaurantName, status: menuData.approvalStatus,
+                    logoUrl: menuData.logoUrl || '', bannerUrls: (menuData.bannerUrls?.length > 0) ? menuData.bannerUrls : ['/order_banner.jpg'],
+                    deliveryCharge: menuData.deliveryCharge || 0, menu: menuData.menu || {}, coupons: menuData.coupons || [],
+                    deliveryEnabled: menuData.deliveryEnabled, pickupEnabled: menuData.pickupEnabled,
+                    dineInEnabled: menuData.dineInEnabled !== undefined ? menuData.dineInEnabled : true,
                 });
-                
-                // Set initial delivery type
+
                 if (tableIdFromUrl) {
                     setDeliveryType('dine-in');
-                } else if (data.deliveryEnabled && !data.pickupEnabled) {
+                    const tableRes = await fetch(`/api/owner/tables?restaurantId=${restaurantId}&tableId=${tableIdFromUrl}`);
+                    if (tableRes.ok) {
+                        const tableData = await tableRes.json();
+                        setTableStatus(tableData.state);
+                    } else {
+                        // Assume available if API fails, allows ordering. Backend will validate again.
+                        setTableStatus('available');
+                    }
+                } else if (menuData.deliveryEnabled) {
                     setDeliveryType('delivery');
-                } else if (!data.deliveryEnabled && data.pickupEnabled) {
+                } else if (menuData.pickupEnabled) {
                     setDeliveryType('pickup');
-                } else {
-                    setDeliveryType('delivery');
                 }
-
             } catch (err) {
                 setError(err.message);
                 console.error(err);
@@ -612,8 +593,8 @@ const OrderPageInternal = () => {
             }
         };
 
-        fetchMenuData();
-    }, [restaurantId, phoneFromUrl, router, tableIdFromUrl]);
+        fetchInitialData();
+    }, [restaurantId, phoneFromUrl, tableIdFromUrl]);
     
     // --- CART PERSISTENCE ---
     const updateCart = useCallback((newCart, newNotes, newDeliveryType) => {
@@ -853,6 +834,25 @@ const OrderPageInternal = () => {
          </div>
        );
     }
+
+    if (tableStatus && tableStatus !== 'available') {
+        const title = tableStatus === 'occupied' ? "This table's tab is already active." : "This table is being prepared.";
+        const description = tableStatus === 'occupied' ? "Are you part of this group? Please ask a member of your group to add items to the tab, or call a waiter for assistance." : "A waiter will be with you shortly. Thank you for your patience.";
+        
+        return (
+            <div className="min-h-screen bg-background flex flex-col items-center justify-center text-center p-4">
+                <Alert className="max-w-md">
+                    <ConciergeBell className="h-4 w-4" />
+                    <AlertTitle>{title}</AlertTitle>
+                    <AlertDescription>{description}</AlertDescription>
+                </Alert>
+                <div className="mt-6 flex gap-4">
+                     <Button onClick={handleCallWaiter}><Bell className="mr-2 h-4 w-4" /> Call Waiter</Button>
+                     {tableStatus === 'occupied' && <Button variant="outline">Yes, Join Tab</Button>}
+                </div>
+            </div>
+        )
+    }
     
     return (
         <>
@@ -911,7 +911,6 @@ const OrderPageInternal = () => {
                     setIsQrScannerOpen(true);
                   }}
                 />
-                <MenuBrowserModal isOpen={isMenuBrowserOpen} onClose={() => setIsMenuBrowserOpen(false)} categories={menuCategories} onCategoryClick={handleCategoryClick} />
                 <CustomizationDrawer
                     item={customizationItem}
                     isOpen={!!customizationItem}
