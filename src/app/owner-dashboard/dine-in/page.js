@@ -233,13 +233,20 @@ const QrGeneratorModal = ({ isOpen, onClose, onSaveTable, restaurantId, initialT
     const printRef = useRef();
 
     useEffect(() => {
+        console.log("[DEBUG] QrGeneratorModal opened. restaurantId:", restaurantId, "Initial Table:", initialTable);
         if (isOpen) {
             if (initialTable) {
                 setTableName(initialTable.id);
                 setMaxCapacity(initialTable.max_capacity || 4);
                 // Immediately generate QR for existing table
-                const url = `${window.location.origin}/order/${restaurantId}?table=${initialTable.id}`;
-                setQrValue(url);
+                if (restaurantId && initialTable.id) {
+                    const url = `${window.location.origin}/order/${restaurantId}?table=${initialTable.id}`;
+                    console.log("[DEBUG] Generating QR for existing table:", url);
+                    setQrValue(url);
+                } else {
+                    console.warn("[DEBUG] Missing restaurantId or tableId for existing table QR generation.");
+                    setQrValue('');
+                }
             } else {
                 setTableName('');
                 setMaxCapacity(4);
@@ -253,7 +260,12 @@ const QrGeneratorModal = ({ isOpen, onClose, onSaveTable, restaurantId, initialT
             alert("Please enter a table name or number.");
             return;
         }
+        if (!restaurantId) {
+            alert("Restaurant ID is missing. Cannot generate QR code.");
+            return;
+        }
         const url = `${window.location.origin}/order/${restaurantId}?table=${tableName.trim()}`;
+        console.log("[DEBUG] Generating new QR code with URL:", url);
         setQrValue(url);
     };
 
@@ -405,25 +417,34 @@ export default function DineInPage() {
     const fetchData = async (isManualRefresh = false) => {
         if (!isManualRefresh) setLoading(true);
         try {
+            console.log("[DEBUG] DineInPage: Fetching initial data...");
             const [ordersData, tablesData, settingsData] = await Promise.all([
                  handleApiCall('GET', null, '/api/owner/orders'),
                  handleApiCall('GET', null, '/api/owner/dine-in-tables'),
                  handleApiCall('GET', null, '/api/owner/settings')
             ]);
             
+            console.log("[DEBUG] DineInPage: Fetched Orders:", ordersData);
+            console.log("[DEBUG] DineInPage: Fetched Tables:", tablesData);
+            console.log("[DEBUG] DineInPage: Fetched Settings:", settingsData);
+            
             const dineInStatuses = ['pending', 'confirmed', 'preparing', 'active_tab', 'ready_for_pickup'];
             const dineInOrders = (ordersData.orders || []).filter(o => o.deliveryType === 'dine-in' && dineInStatuses.includes(o.status));
             setAllOrders(dineInOrders);
             setAllTables(tablesData.tables || []);
             
+            // This is the crucial part for QR code generation
+            const fetchedRestaurantId = settingsData?.businessId || Object.values(ordersData.orders || []).find(o => o.restaurantId)?.restaurantId;
             const fetchedRestaurant = {
-                id: settingsData.restaurantId,
+                id: fetchedRestaurantId,
                 name: settingsData.restaurantName,
                 address: settingsData.address,
                 gstin: settingsData.gstin
              };
+            
+            console.log("[DEBUG] DineInPage: Setting Restaurant ID for QR codes:", fetchedRestaurantId);
             setRestaurant(fetchedRestaurant);
-            setRestaurantId(settingsData.businessId);
+            setRestaurantId(fetchedRestaurantId);
 
         } catch (error) {
             console.error("Error fetching dine-in data:", error);
@@ -553,6 +574,10 @@ export default function DineInPage() {
     }, [allOrders, allTables]);
     
     const handleOpenQrModal = (table = null) => {
+        if (!restaurantId) {
+            setInfoDialog({isOpen: true, title: "Error", message: "Restaurant data is not loaded yet. Cannot generate QR codes."});
+            return;
+        }
         setEditingTable(table);
         setIsQrModalOpen(true);
     };

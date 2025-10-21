@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useState, useEffect, Suspense, useMemo, useCallback } from 'react';
@@ -540,6 +541,7 @@ const OrderPageInternal = () => {
 
     // --- LOCATION & DATA FETCHING ---
     useEffect(() => {
+        console.log("[DEBUG] OrderPage: Initial render/dependencies changed. restaurantId:", restaurantId);
         const phone = phoneFromUrl || localStorage.getItem('lastKnownPhone');
         if (phone && !localStorage.getItem('lastKnownPhone')) {
             localStorage.setItem('lastKnownPhone', phone);
@@ -554,14 +556,37 @@ const OrderPageInternal = () => {
             }
         }
         const fetchInitialData = async () => {
-            if (!restaurantId) return;
+            if (!restaurantId || restaurantId === 'undefined') {
+                console.error("[DEBUG] OrderPage: Invalid restaurantId detected:", restaurantId);
+                setError("Restaurant ID is invalid. Please scan the QR code again.");
+                setLoading(false);
+                return;
+            }
+            console.log(`[DEBUG] OrderPage: Starting to fetch data for restaurantId: ${restaurantId}`);
             setLoading(true);
             setError(null);
             try {
-                const menuRes = await fetch(`/api/menu/${restaurantId}${phone ? `?phone=${phone}`: ''}`);
-                if (!menuRes.ok) throw new Error((await menuRes.json()).message || 'Failed to fetch menu');
-                const menuData = await menuRes.json();
+                const url = `/api/menu/${restaurantId}${phone ? `?phone=${phone}`: ''}`;
+                console.log(`[DEBUG] OrderPage: Fetching URL: ${url}`);
+                const menuRes = await fetch(url);
+                console.log(`[DEBUG] OrderPage: API response status: ${menuRes.status}`);
+
+                const responseText = await menuRes.text();
+                let menuData;
+                try {
+                    menuData = JSON.parse(responseText);
+                } catch(e) {
+                    console.error("[DEBUG] OrderPage: Failed to parse JSON response. Raw text:", responseText);
+                    throw new Error("Received an invalid response from the server.");
+                }
+
+                if (!menuRes.ok) {
+                    console.error("[DEBUG] OrderPage: API call failed. Status:", menuRes.status, "Data:", menuData);
+                    throw new Error(menuData.message || 'Failed to fetch menu');
+                }
                 
+                console.log("[DEBUG] OrderPage: API call successful. Data received:", menuData);
+
                 setRestaurantData({
                     name: menuData.restaurantName, status: menuData.approvalStatus,
                     logoUrl: menuData.logoUrl || '', bannerUrls: (menuData.bannerUrls?.length > 0) ? menuData.bannerUrls : ['/order_banner.jpg'],
@@ -586,9 +611,10 @@ const OrderPageInternal = () => {
                     setDeliveryType('pickup');
                 }
             } catch (err) {
+                console.error("[DEBUG] OrderPage: Error in fetchInitialData:", err);
                 setError(err.message);
-                console.error(err);
             } finally {
+                console.log("[DEBUG] OrderPage: fetchInitialData finished.");
                 setLoading(false);
             }
         };

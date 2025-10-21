@@ -5,36 +5,46 @@ import { getFirestore } from '@/lib/firebase-admin';
 
 // This function can be used in any API route that needs to fetch menu data publicly.
 export async function GET(request, { params }) {
+    console.log("[DEBUG] Menu API: Request received.");
     try {
         const firestore = getFirestore();
         const { restaurantId } = params;
         const { searchParams } = new URL(request.url);
         const phone = searchParams.get('phone');
+        
+        console.log(`[DEBUG] Menu API: restaurantId from params: ${restaurantId}`);
 
-        if (!restaurantId) {
-            return NextResponse.json({ message: 'Restaurant ID is missing.' }, { status: 400 });
+        if (!restaurantId || restaurantId === 'undefined') {
+            console.error("[DEBUG] Menu API: Invalid restaurantId received:", restaurantId);
+            return NextResponse.json({ message: 'Restaurant ID is invalid or missing.' }, { status: 400 });
         }
         
         // ** THE FIX: Check both collections
         let restaurantDoc;
         let businessType = 'restaurant';
         
+        console.log(`[DEBUG] Menu API: Trying to fetch from 'restaurants' collection with ID: ${restaurantId}`);
         restaurantDoc = await firestore.collection('restaurants').doc(restaurantId).get();
         if (!restaurantDoc.exists) {
+            console.log(`[DEBUG] Menu API: Not found in 'restaurants'. Trying 'shops' collection.`);
             restaurantDoc = await firestore.collection('shops').doc(restaurantId).get();
             businessType = 'shop';
         }
 
         // If it doesn't exist in either, return 404.
         if (!restaurantDoc.exists) {
+            console.error(`[DEBUG] Menu API: Business with ID ${restaurantId} not found in either collection.`);
             return NextResponse.json({ message: `Business with ID ${restaurantId} not found.` }, { status: 404 });
         }
         
+        console.log(`[DEBUG] Menu API: Found business '${restaurantDoc.data().name}' in collection '${businessType}s'.`);
+
         const restaurantRef = restaurantDoc.ref;
         const restaurantData = restaurantDoc.data();
 
         // ** NEW **: Check restaurant status
         if (restaurantData.approvalStatus !== 'approved' || !restaurantData.isOpen) {
+             console.warn(`[DEBUG] Menu API: Business '${restaurantData.name}' is not accepting orders. Status: ${restaurantData.approvalStatus}, isOpen: ${restaurantData.isOpen}`);
             return NextResponse.json({ 
                 message: 'This business is currently not accepting orders.',
                 restaurantName: restaurantData.name,
@@ -106,6 +116,8 @@ export async function GET(request, { params }) {
              allCoupons = allCoupons.concat(processCouponSnap(customerCouponsSnap));
         }
 
+        console.log(`[DEBUG] Menu API: Successfully processed menu with ${Object.keys(menuData).length} categories and ${allCoupons.length} coupons.`);
+
         // Return all public data together
         return NextResponse.json({ 
             restaurantName: restaurantData.name,
@@ -127,7 +139,7 @@ export async function GET(request, { params }) {
         }, { status: 200 });
 
     } catch (error) {
-        console.error("GET MENU/COUPONS API ERROR:", error);
+        console.error("[DEBUG] GET MENU/COUPONS API CRITICAL ERROR:", error);
         return NextResponse.json({ message: `Backend Error: ${error.message}` }, { status: 500 });
     }
 }
