@@ -1,5 +1,4 @@
 
-
 import { getFirestore } from '@/lib/firebase-admin';
 import { NextResponse } from 'next/server';
 import Razorpay from 'razorpay';
@@ -59,8 +58,6 @@ export async function POST(req) {
         const isNewUser = existingUserQuery.empty;
         const userId = isNewUser ? normalizedPhone : existingUserQuery.docs[0].id;
 
-
-        // This is a placeholder for a real address-to-coordinate conversion
         const getCoordinatesFromAddress = (addr) => {
             if (typeof addr === 'string' && addr.toLowerCase().includes('delhi')) return new firestore.GeoPoint(28.7041, 77.1025);
             return new firestore.GeoPoint(28.6692, 77.4538);
@@ -78,18 +75,23 @@ export async function POST(req) {
                 key_secret: process.env.RAZORPAY_KEY_SECRET,
             });
             
-            const firestoreOrderId = firestore.collection('orders').doc().id;
-
             const servizephyrOrderPayload = {
-                order_id: firestoreOrderId, user_id: userId, restaurant_id: restaurantId, business_type: businessType,
-                customer_details: JSON.stringify({ name, address, phone: normalizedPhone }),
-                items: JSON.stringify(items),
-                bill_details: JSON.stringify({ subtotal, coupon, loyaltyDiscount, grandTotal, deliveryType, tipAmount, pickupTime, cgst, sgst, deliveryCharge, tableId, dineInTabId }),
+                restaurantDetails: { restaurantId, restaurantName: businessData.name },
+                customerDetails: { name, address, phone: normalizedPhone },
+                orderItems: items,
+                billDetails: { subtotal, coupon, loyaltyDiscount, grandTotal, deliveryType, tipAmount, pickupTime, cgst, sgst, deliveryCharge, tableId, dineInTabId },
+                businessType: businessType,
                 notes: notes || null
             };
 
             const razorpayOrderOptions = {
-                amount: Math.round(grandTotal * 100), currency: 'INR', receipt: firestoreOrderId, payment_capture: 1, notes: servizephyrOrderPayload
+                amount: Math.round(grandTotal * 100), 
+                currency: 'INR', 
+                receipt: nanoid(), 
+                payment_capture: 1,
+                notes: {
+                    servizephyr_order_payload: JSON.stringify(servizephyrOrderPayload)
+                }
             };
 
             const razorpayOrder = await razorpay.orders.create(razorpayOrderOptions);
@@ -98,7 +100,7 @@ export async function POST(req) {
             return NextResponse.json({ 
                 message: 'Razorpay order created. Awaiting payment confirmation.',
                 razorpay_order_id: razorpayOrderId,
-                firestore_order_id: firestoreOrderId,
+                firestore_order_id: razorpayOrder.receipt, // Use receipt as a placeholder for client-side tracking
                 dine_in_tab_id: dineInTabId, // Pass back tab ID
             }, { status: 200 });
         }
@@ -126,7 +128,7 @@ export async function POST(req) {
             const tableRef = businessRef.collection('tables').doc(tableId);
             batch.update(tableRef, {
                 current_pax: firestore.FieldValue.increment(pax_count),
-                lastActivity: firestore.FieldValue.serverTimestamp()
+                state: 'occupied'
             });
         }
         
@@ -181,7 +183,7 @@ export async function POST(req) {
             items: items,
             subtotal, coupon, loyaltyDiscount, discount: finalDiscount, cgst, sgst, deliveryCharge,
             totalAmount: grandTotal,
-            status: deliveryType === 'dine-in' ? 'active_tab' : 'pending',
+            status: 'pending',
             orderDate: firestore.FieldValue.serverTimestamp(),
             notes: notes || null,
             paymentDetails: { method: paymentMethod }

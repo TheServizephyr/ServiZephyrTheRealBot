@@ -1,5 +1,4 @@
 
-
 import { NextResponse } from 'next/server';
 import { getAuth, getFirestore, FieldValue } from '@/lib/firebase-admin';
 
@@ -80,6 +79,7 @@ export async function POST(req) {
             max_capacity: Number(max_capacity),
             current_pax: 0,
             createdAt: FieldValue.serverTimestamp(),
+            state: 'available'
         }, { merge: true });
 
         return NextResponse.json({ message: 'Table saved successfully.' }, { status: 201 });
@@ -144,7 +144,7 @@ export async function PATCH(req) {
                 return NextResponse.json({ message: 'Tab ID is required to mark a tab as paid.' }, { status: 400 });
             }
             
-            return await firestore.runTransaction(async (transaction) => {
+            await firestore.runTransaction(async (transaction) => {
                 const tabRef = businessRef.collection('dineInTabs').doc(tabIdToClose);
                 const tabDoc = await transaction.get(tabRef);
                 if (!tabDoc.exists) throw new Error("Tab to be closed not found.");
@@ -160,6 +160,7 @@ export async function PATCH(req) {
                     state: 'needs_cleaning' 
                 });
             });
+            return NextResponse.json({ message: `Table ${tableId} marked as needing cleaning.` }, { status: 200 });
         }
         
         if (action === 'mark_cleaned') {
@@ -193,4 +194,3 @@ export async function DELETE(req) {
         return NextResponse.json({ message: `Backend Error: ${error.message}` }, { status: error.status || 500 });
     }
 }
-

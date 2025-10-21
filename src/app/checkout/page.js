@@ -79,7 +79,6 @@ const CheckoutModal = ({ isOpen, onClose, onConfirm, grandTotal, loading, name, 
     );
 };
 
-
 const DineInPostOrderModal = ({ isOpen, onClose, onAddMore, onViewBill, tableId }) => {
     
     // Placeholder function for calling waiter
@@ -112,7 +111,6 @@ const DineInPostOrderModal = ({ isOpen, onClose, onAddMore, onViewBill, tableId 
         </Dialog>
     );
 };
-
 
 const CheckoutPageInternal = () => {
     const router = useRouter();
@@ -277,7 +275,7 @@ const CheckoutPageInternal = () => {
     };
     
     const handleAddMoreToTab = () => {
-        router.push(`/order/${restaurantId}?table=${tableId}&phone=${phone}&tabId=${tabId}`);
+        router.push(`/order/${restaurantId}?table=${tableId}&phone=${phone}&tabId=${cartData.dineInTabId}`);
     };
 
     const handleViewBill = () => {

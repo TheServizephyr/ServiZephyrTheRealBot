@@ -58,7 +58,8 @@ export async function GET(req) {
         return NextResponse.json({ 
             max_capacity: tableData.max_capacity,
             current_pax,
-            activeTabs
+            activeTabs,
+            state: tableData.state || 'available' // Pass the stored state
         }, { status: 200 });
 
     } catch (error) {

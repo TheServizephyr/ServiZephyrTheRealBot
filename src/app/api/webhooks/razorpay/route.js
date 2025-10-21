@@ -1,5 +1,4 @@
 
-
 import { NextResponse } from 'next/server';
 import { getFirestore } from '@/lib/firebase-admin';
 import { sendNewOrderToOwner } from '@/lib/notifications';
@@ -69,13 +68,7 @@ export async function POST(req) {
             }
             
             const firestore = getFirestore();
-
-            const existingOrderQuery = await firestore.collection('orders').where('paymentDetails.razorpay_order_id', '==', razorpayOrderId).limit(1).get();
-            if (!existingOrderQuery.empty) {
-                console.log(`[Webhook] Order ${razorpayOrderId} already processed. Skipping.`);
-                return NextResponse.json({ status: 'ok', message: 'Order already exists.'});
-            }
-
+            
             const key_id = process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID;
             const key_secret = process.env.RAZORPAY_KEY_SECRET;
             const credentials = Buffer.from(`${key_id}:${key_secret}`).toString('base64');
@@ -96,7 +89,14 @@ export async function POST(req) {
             }
 
             const { customerDetails, restaurantDetails, orderItems, billDetails, notes, businessType } = JSON.parse(orderPayloadString);
+            const { restaurantId, restaurantName } = restaurantDetails;
             
+            const existingOrderQuery = await firestore.collection('orders').where('paymentDetails.razorpay_order_id', '==', razorpayOrderId).limit(1).get();
+            if (!existingOrderQuery.empty) {
+                console.log(`[Webhook] Order ${razorpayOrderId} already processed. Skipping.`);
+                return NextResponse.json({ status: 'ok', message: 'Order already exists.'});
+            }
+
             const batch = firestore.batch();
             const usersRef = firestore.collection('users');
             const existingUserQuery = await usersRef.where('phone', '==', customerDetails.phone).limit(1).get();
@@ -112,18 +112,13 @@ export async function POST(req) {
                     phone: customerDetails.phone, 
                     addresses: [{ id: `addr_${Date.now()}`, full: customerDetails.address }],
                     createdAt: firestore.FieldValue.serverTimestamp(),
-                    orderedFrom: firestore.FieldValue.arrayUnion({
-                        restaurantId: restaurantDetails.restaurantId,
-                        restaurantName: restaurantDetails.restaurantName,
-                        businessType: businessType,
-                    })
+                    orderedFrom: firestore.FieldValue.arrayUnion({ restaurantId, restaurantName, businessType })
                 }, { merge: true });
 
             } else {
                 userId = existingUserQuery.docs[0].id;
             }
 
-            // THE FIX: Use subtotal from the reliable billDetails object from the notes
             const subtotal = billDetails.subtotal || 0;
             const loyaltyDiscount = billDetails.loyaltyDiscount || 0;
             
@@ -131,7 +126,7 @@ export async function POST(req) {
             const pointsSpent = loyaltyDiscount > 0 ? loyaltyDiscount / 0.5 : 0;
             
             const businessCollectionName = businessType === 'shop' ? 'shops' : 'restaurants';
-            const restaurantCustomerRef = firestore.collection(businessCollectionName).doc(restaurantDetails.restaurantId).collection('customers').doc(userId);
+            const restaurantCustomerRef = firestore.collection(businessCollectionName).doc(restaurantId).collection('customers').doc(userId);
             
             batch.set(restaurantCustomerRef, {
                 name: customerDetails.name, phone: customerDetails.phone, 
@@ -144,15 +139,35 @@ export async function POST(req) {
             
             const newOrderRef = firestore.collection('orders').doc();
             
+            // If it's a new Dine-In Tab, create it
+            let finalDineInTabId = billDetails.dineInTabId;
+            if (billDetails.deliveryType === 'dine-in' && billDetails.tableId && !finalDineInTabId) {
+                const newTabRef = firestore.collection(businessCollectionName).doc(restaurantId).collection('dineInTabs').doc();
+                finalDineInTabId = newTabRef.id;
+
+                batch.set(newTabRef, {
+                    id: finalDineInTabId, tableId: billDetails.tableId, status: 'active',
+                    tab_name: billDetails.tab_name || "Guest", pax_count: billDetails.pax_count || 1,
+                    createdAt: firestore.FieldValue.serverTimestamp(),
+                });
+                
+                const tableRef = firestore.collection(businessCollectionName).doc(restaurantId).collection('tables').doc(billDetails.tableId);
+                batch.update(tableRef, {
+                    current_pax: firestore.FieldValue.increment(billDetails.pax_count || 1),
+                    state: 'occupied'
+                });
+            }
+
             batch.set(newOrderRef, {
                 customerName: customerDetails.name, customerId: userId, customerAddress: customerDetails.address, customerPhone: customerDetails.phone,
-                restaurantId: restaurantDetails.restaurantId, restaurantName: restaurantDetails.restaurantName,
+                restaurantId: restaurantId, restaurantName: restaurantName,
                 businessType: businessType,
                 deliveryType: billDetails.deliveryType || 'delivery',
                 pickupTime: billDetails.pickupTime || '',
                 tipAmount: billDetails.tipAmount || 0,
+                tableId: billDetails.tableId || null,
+                dineInTabId: finalDineInTabId || null,
                 items: orderItems,
-                // Use all values from the reliable billDetails
                 subtotal: billDetails.subtotal, 
                 coupon: billDetails.coupon, 
                 loyaltyDiscount: billDetails.loyaltyDiscount, 
@@ -161,7 +176,7 @@ export async function POST(req) {
                 sgst: billDetails.sgst, 
                 deliveryCharge: billDetails.deliveryCharge,
                 totalAmount: billDetails.grandTotal,
-                status: 'paid',
+                status: 'paid', // Order is paid online
                 orderDate: firestore.FieldValue.serverTimestamp(),
                 notes: notes || null,
                 paymentDetails: {
@@ -174,7 +189,7 @@ export async function POST(req) {
             await batch.commit();
             console.log(`[Webhook] Successfully created Firestore order ${newOrderRef.id} from Razorpay Order ${razorpayOrderId}.`);
 
-            const businessDoc = await firestore.collection(businessCollectionName).doc(restaurantDetails.restaurantId).get();
+            const businessDoc = await firestore.collection(businessCollectionName).doc(restaurantId).get();
             if (businessDoc.exists) {
                 const businessData = businessDoc.data();
                 const linkedAccountId = businessData.razorpayAccountId;
@@ -196,7 +211,7 @@ export async function POST(req) {
                         console.error(`[Webhook] CRITICAL: Failed to process transfer for payment ${paymentId}. Error:`, JSON.stringify(transferError, null, 2));
                     }
                 } else {
-                    console.warn(`[Webhook] Restaurant ${restaurantDetails.restaurantId} has no Linked Account. Skipping transfer.`);
+                    console.warn(`[Webhook] Restaurant ${restaurantId} has no Linked Account. Skipping transfer.`);
                 }
 
                 if (businessData.ownerPhone && businessData.botPhoneNumberId) {

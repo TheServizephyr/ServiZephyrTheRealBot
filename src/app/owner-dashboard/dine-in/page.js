@@ -3,7 +3,7 @@
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { motion } from 'framer-motion';
-import { RefreshCw, Printer, CheckCircle, IndianRupee, Users, Clock, ShoppingBag, Bell, MoreVertical, Trash2, QrCode, Download, Save, Wind, Edit, ChevronDown, ChevronUp, Table as TableIcon } from 'lucide-react';
+import { RefreshCw, Printer, CheckCircle, IndianRupee, Users, Clock, ShoppingBag, Bell, MoreVertical, Trash2, QrCode, Download, Save, Wind, Edit, Table as TableIcon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { auth } from '@/lib/firebase';
@@ -137,7 +137,6 @@ const TableCard = ({ tableId, tableData, onMarkAsPaid, onPrintBill, onMarkAsClea
     
     const currentConfig = stateConfig[state] || { title: state, bg: "bg-muted", border: "border-border", icon: null };
 
-
     if (state === 'needs_cleaning') {
         return (
              <motion.div
@@ -203,7 +202,7 @@ const TableCard = ({ tableId, tableData, onMarkAsPaid, onPrintBill, onMarkAsClea
                     </div>
                     <div className="grid grid-cols-2 gap-2 w-full">
                         <Button variant="outline" onClick={() => onPrintBill({ tableId, orders })}><Printer size={16} className="mr-2"/> Print Bill</Button>
-                        <Button className="bg-primary hover:bg-primary/90" onClick={() => onMarkAsPaid(tableId, tableData.orders.map(o => o.id))}><CheckCircle size={16} className="mr-2"/> Mark as Paid</Button>
+                        <Button className="bg-primary hover:bg-primary/90" onClick={() => onMarkAsPaid(tableId, tableData.orders.map(o => o.dineInTabId))}><CheckCircle size={16} className="mr-2"/> Mark as Paid</Button>
                     </div>
                 </CardFooter>
             </Card>
@@ -268,7 +267,6 @@ const QrCodeDisplayModal = ({ isOpen, onClose, restaurantId, table }) => {
         </Dialog>
     );
 };
-
 
 const QrGeneratorModal = ({ isOpen, onClose, onSaveTable, restaurantId, initialTable, onEditTable, onDeleteTable, showInfoDialog }) => {
     const [tableName, setTableName] = useState('');
@@ -375,7 +373,6 @@ const QrGeneratorModal = ({ isOpen, onClose, onSaveTable, restaurantId, initialT
         </Dialog>
     );
 };
-
 
 function DineInPageInternal() {
     const [allOrders, setAllOrders] = useState([]);
@@ -501,7 +498,6 @@ function DineInPageInternal() {
         }
     };
 
-
     useEffect(() => {
         const unsubscribe = auth.onAuthStateChanged(user => {
           if (user) fetchData();
@@ -515,23 +511,11 @@ function DineInPageInternal() {
         };
       }, [impersonatedOwnerId]);
 
-
-    const handleMarkAsPaid = async (tableId, orderIds) => {
+    const handleMarkAsPaid = async (tableId, tabId) => {
         if (!window.confirm("Are you sure you want to mark this table's orders as paid and completed?")) return;
-
         setLoading(true);
         try {
-            // In a real scenario, these would be batched in a transaction
-            await Promise.all(
-                orderIds.map(orderId => 
-                    handleApiCall('PATCH', { orderId, newStatus: 'completed' }, '/api/owner/orders')
-                )
-            );
-            
-            // This API call needs to be created or logic adjusted.
-            // For now, let's assume it works.
-            await handleApiCall('PATCH', { tableId, action: 'mark_paid', tabIdToClose: tableId }, '/api/owner/dine-in-tables');
-
+            await handleApiCall('PATCH', { tableId, action: 'mark_paid', tabIdToClose: tabId }, '/api/owner/dine-in-tables');
             setInfoDialog({ isOpen: true, title: "Success", message: "Table has been marked for cleaning." });
             await fetchData(true);
         } catch (error) {
@@ -560,28 +544,19 @@ function DineInPageInternal() {
         allTables.forEach(table => {
             tableMap.set(table.id, {
                 ...table,
-                state: (table.current_pax > 0) ? 'occupied' : 'available',
+                state: table.state || 'available',
                 orders: [],
             });
         });
-
+    
         allOrders.forEach(order => {
-            const tableId = order.dineInTabId || 'Unknown';
+            const tableId = order.dineInTabId;
             if (tableMap.has(tableId)) {
                 const tableEntry = tableMap.get(tableId);
+                tableEntry.state = 'occupied';
                 tableEntry.orders.push(order);
             }
         });
-        
-        // This is a correction: A table can be occupied without new orders (e.g. bill paid).
-        // The state should be 'needs_cleaning' ONLY if the bill was just paid. This logic is handled by API now.
-        for (const [key, value] of tableMap.entries()) {
-            // Example: if a table has no current orders but was recently marked paid.
-            if (value.orders.length === 0 && value.current_pax > 0) {
-                 // The backend should set this state explicitly. Here we just reflect it.
-                 // This logic might be imperfect on the frontend.
-            }
-        }
         
         return Object.fromEntries(tableMap);
     }, [allOrders, allTables]);
@@ -623,7 +598,6 @@ function DineInPageInternal() {
             />
             {restaurantId && <QrGeneratorModal isOpen={isQrModalOpen} onClose={() => setIsQrModalOpen(false)} restaurantId={restaurantId} onSaveTable={handleSaveTable} onEditTable={handleEditTable} onDeleteTable={handleDeleteTable} initialTable={editingTable} showInfoDialog={setInfoDialog} />}
             {restaurantId && <QrCodeDisplayModal isOpen={isQrDisplayModalOpen} onClose={() => setIsQrDisplayModalOpen(false)} restaurantId={restaurantId} table={displayTable} />}
-
 
             <div className="flex flex-col md:flex-row justify-between md:items-center mb-6 gap-4">
                 <div>
