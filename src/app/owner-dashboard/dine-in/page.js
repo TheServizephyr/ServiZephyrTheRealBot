@@ -174,37 +174,47 @@ const TableCard = ({ tableId, tableData, onMarkAsPaid, onPrintBill, onMarkAsClea
             exit={{ scale: 0.9, opacity: 0 }}
             transition={{ type: 'spring', stiffness: 260, damping: 20 }}
         >
-            <Card className={cn("flex flex-col h-full shadow-lg hover:shadow-primary/20 transition-shadow duration-300 border-2", currentConfig.border)}>
-                <CardHeader className={cn("flex-row items-center justify-between space-y-0 pb-2", currentConfig.bg)}>
+            <Card className={cn("flex flex-col h-full shadow-lg hover:shadow-primary/20 transition-shadow duration-300 border-2", orders.length > 0 ? currentConfig.border : 'border-border')}>
+                <CardHeader className={cn("flex-row items-center justify-between space-y-0 pb-2", orders.length > 0 ? currentConfig.bg : 'bg-card')}>
                     <CardTitle className="text-2xl font-bold">Table {tableId}</CardTitle>
-                    <div className="flex items-center gap-2">
+                    {orders.length > 0 && <div className="flex items-center gap-2">
                         <span className="text-sm font-semibold text-muted-foreground">{customerNames.join(', ')}</span>
                         <Users size={16} className="text-muted-foreground"/>
-                    </div>
+                    </div>}
                 </CardHeader>
                 <CardContent className="flex-grow p-4">
-                    <div className="text-xs text-muted-foreground mb-3 flex items-center gap-2">
-                        <Clock size={14}/> Last activity: {latestOrderTime ? format(latestOrderTime, 'p') : 'N/A'}
-                    </div>
-                     <div className="space-y-2 max-h-48 overflow-y-auto pr-2">
-                        {allItems.map((item, index) => (
-                            <div key={index} className="flex justify-between items-center text-sm p-2 bg-muted/50 rounded-md">
-                                <span className="text-foreground">{item.name}</span>
-                                <span className="font-semibold text-foreground">x{item.qty}</span>
+                    {orders.length > 0 ? (
+                        <>
+                            <div className="text-xs text-muted-foreground mb-3 flex items-center gap-2">
+                                <Clock size={14}/> Last activity: {latestOrderTime ? format(latestOrderTime, 'p') : 'N/A'}
                             </div>
-                        ))}
-                    </div>
+                             <div className="space-y-2 max-h-48 overflow-y-auto pr-2">
+                                {allItems.map((item, index) => (
+                                    <div key={index} className="flex justify-between items-center text-sm p-2 bg-muted/50 rounded-md">
+                                        <span className="text-foreground">{item.name}</span>
+                                        <span className="font-semibold text-foreground">x{item.qty}</span>
+                                    </div>
+                                ))}
+                            </div>
+                        </>
+                    ) : (
+                         <div className="flex flex-col items-center justify-center h-full text-center text-muted-foreground">
+                            <CheckCircle size={32} className="text-green-500 mb-2"/>
+                            <p className="font-semibold">Table is Available</p>
+                            <p className="text-xs">Capacity: {tableData.max_capacity} guests</p>
+                        </div>
+                    )}
                 </CardContent>
-                <CardFooter className="flex-col items-start bg-muted/30 p-4 border-t">
+                {orders.length > 0 && <CardFooter className="flex-col items-start bg-muted/30 p-4 border-t">
                     <div className="flex justify-between items-center w-full mb-4">
                         <span className="text-lg font-bold">Total Bill:</span>
                         <span className="text-2xl font-bold text-primary">{formatCurrency(totalBill)}</span>
                     </div>
                     <div className="grid grid-cols-2 gap-2 w-full">
                         <Button variant="outline" onClick={() => onPrintBill({ tableId, orders })}><Printer size={16} className="mr-2"/> Print Bill</Button>
-                        <Button className="bg-primary hover:bg-primary/90" onClick={() => onMarkAsPaid(tableId, tableData.orders.map(o => o.dineInTabId))}><CheckCircle size={16} className="mr-2"/> Mark as Paid</Button>
+                        <Button className="bg-primary hover:bg-primary/90" onClick={() => onMarkAsPaid(tableId, tableData.orders.map(o => o.dineInTabId).filter(Boolean)[0])}><CheckCircle size={16} className="mr-2"/> Mark as Paid</Button>
                     </div>
-                </CardFooter>
+                </CardFooter>}
             </Card>
         </motion.div>
     );
@@ -550,10 +560,10 @@ function DineInPageInternal() {
         });
     
         allOrders.forEach(order => {
-            const tableId = order.dineInTabId;
+            const tableId = order.tableId; // Use tableId from order
             if (tableMap.has(tableId)) {
                 const tableEntry = tableMap.get(tableId);
-                tableEntry.state = 'occupied';
+                tableEntry.state = 'occupied'; // This is a simplification; a table can have paid orders.
                 tableEntry.orders.push(order);
             }
         });
@@ -621,10 +631,10 @@ function DineInPageInternal() {
                         <div key={i} className="bg-card border border-border rounded-xl h-96"></div>
                     ))}
                 </div>
-            ) : Object.keys(combinedTableData).filter(id => combinedTableData[id].state !== 'available').length > 0 ? (
+            ) : Object.keys(combinedTableData).filter(id => combinedTableData[id].orders.length > 0 || combinedTableData[id].state === 'needs_cleaning').length > 0 ? (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
                     {Object.entries(combinedTableData)
-                        .filter(([_, data]) => data.state !== 'available')
+                        .filter(([_, data]) => data.orders.length > 0 || data.state === 'needs_cleaning')
                         .map(([tableId, tableData]) => (
                         <TableCard key={tableId} tableId={tableId} tableData={tableData} onMarkAsPaid={handleMarkAsPaid} onPrintBill={setBillData} onMarkAsCleaned={handleMarkAsCleaned}/>
                     ))}
@@ -680,6 +690,4 @@ function DineInPageInternal() {
     );
 }
 
-export default function DineInPage() {
-    return <DineInPageInternal />;
-}
+export default DineInPage;
