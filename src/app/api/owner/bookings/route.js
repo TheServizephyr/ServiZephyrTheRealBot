@@ -60,11 +60,13 @@ export async function GET(req) {
         
         let bookings = bookingsSnap.docs.map(doc => {
             const data = doc.data();
+            // Ensure bookingDateTime is always sent as an ISO string
+            const bookingDT = data.bookingDateTime.toDate ? data.bookingDateTime.toDate() : new Date(data.bookingDateTime);
             return { 
                 id: doc.id, 
                 ...data,
-                bookingDateTime: data.bookingDateTime.toDate().toISOString(),
-                createdAt: data.createdAt.toDate().toISOString(),
+                bookingDateTime: isNaN(bookingDT.getTime()) ? data.bookingDateTime : bookingDT.toISOString(),
+                createdAt: data.createdAt.toDate ? data.createdAt.toDate().toISOString() : new Date(data.createdAt).toISOString(),
             };
         });
 
@@ -95,14 +97,15 @@ export async function POST(req) {
         
         const newBookingRef = businessRef.collection('bookings').doc();
         
-        const bookingDateTime = new Date(`${date.split('T')[0]}T${time}`);
+        // ** THE FIX: Store date and time as a string to avoid timezone issues. **
+        const bookingDateTimeISOString = `${date.split('T')[0]}T${time}:00.000+05:30`;
 
         const newBookingData = {
             id: newBookingRef.id,
             customerName: name,
             customerPhone: phone,
             partySize: guests,
-            bookingDateTime,
+            bookingDateTime: new Date(bookingDateTimeISOString), // Store as a proper Date object in Firestore
             status: 'pending', // Default status
             createdAt: FieldValue.serverTimestamp(),
             notes: '',

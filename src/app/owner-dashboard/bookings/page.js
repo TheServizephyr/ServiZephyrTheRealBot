@@ -21,8 +21,10 @@ const formatDateTime = (isoString) => {
     try {
         const date = new Date(isoString);
         if (isNaN(date.getTime())) throw new Error('Invalid date');
+        // This will format the date according to the user's local timezone, which is what we want.
         return format(date, "dd MMM, yyyy 'at' hh:mm a");
     } catch (error) {
+        console.warn("Invalid date string received:", isoString);
         return 'Invalid Date';
     }
 };
