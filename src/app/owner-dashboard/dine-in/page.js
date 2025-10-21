@@ -387,6 +387,7 @@ export default function DineInPage() {
     const [isQrModalOpen, setIsQrModalOpen] = useState(false);
     const [isQrDisplayModalOpen, setIsQrDisplayModalOpen] = useState(false);
     const [editingTable, setEditingTable] = useState(null);
+    const [displayTable, setDisplayTable] = useState(null);
     const [restaurant, setRestaurant] = useState(null);
     const [restaurantId, setRestaurantId] = useState('');
     const [billData, setBillData] = useState(null);

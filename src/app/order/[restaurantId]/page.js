@@ -507,6 +507,8 @@ const OrderPageInternal = () => {
     
     // --- DINE-IN GATEWAY LOGIC ---
     const [dineInState, setDineInState] = useState('loading'); // loading, needs_setup, ready
+    const [activeTabInfo, setActiveTabInfo] = useState({ id: null, name: '', total: 0 });
+
 
     const handleStartNewTab = (paxCount, tabName) => {
         if (!paxCount || paxCount < 1) {
@@ -523,12 +525,15 @@ const OrderPageInternal = () => {
         }
 
         localStorage.setItem(`dineInSetup_${restaurantId}_${tableIdFromUrl}`, JSON.stringify({ pax_count: paxCount, tab_name: tabName }));
+        setActiveTabInfo({ id: null, name: tabName, total: 0 }); // Temporarily set name
         setDineInState('ready');
         setDineInModalOpen(false);
     };
 
     const handleJoinTab = (tabId) => {
         localStorage.setItem(`dineInSetup_${restaurantId}_${tableIdFromUrl}`, JSON.stringify({ join_tab_id: tabId }));
+        const joinedTab = tableStatus.activeTabs.find(t => t.id === tabId);
+        setActiveTabInfo({ id: tabId, name: joinedTab?.tab_name || 'Existing Tab', total: 0 });
         setDineInState('ready');
         setDineInModalOpen(false);
     };
@@ -595,6 +600,11 @@ const OrderPageInternal = () => {
                     const dineInSetup = localStorage.getItem(`dineInSetup_${restaurantId}_${tableIdFromUrl}`);
                     
                     if (dineInSetup) {
+                        const setup = JSON.parse(dineInSetup);
+                        if (setup.join_tab_id || tabIdFromUrl) {
+                           // Logic to fetch tab total can be added here if needed
+                           setActiveTabInfo({ id: setup.join_tab_id || tabIdFromUrl, name: 'Active Tab', total: 0 }); // Placeholder
+                        }
                         setDineInState('ready');
                     } else {
                         const tableRes = await fetch(`/api/owner/tables?restaurantId=${restaurantId}&tableId=${tableIdFromUrl}`);
@@ -816,9 +826,9 @@ const OrderPageInternal = () => {
     };
 
     const totalCartItems = cart.reduce((sum, item) => sum + item.quantity, 0);
-    const isTabActive = tableIdFromUrl && totalCartItems === 0;
+    const isTabActive = tableIdFromUrl && !tabIdFromUrl;
 
-    
+
     const cartItemQuantities = useMemo(() => {
         const quantities = {};
         cart.forEach(item => {
@@ -833,11 +843,8 @@ const OrderPageInternal = () => {
     const handleCallWaiter = async () => {
         try {
             const user = auth.currentUser;
-            if (!user) throw new Error("Authentication required to make this request.");
             
-            const idToken = await user.getIdToken();
-
-            const reportPayload = {
+            const payload = {
                 restaurantId: restaurantId,
                 tableId: tableIdFromUrl,
             };
@@ -846,9 +853,8 @@ const OrderPageInternal = () => {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${idToken}`,
                 },
-                body: JSON.stringify(reportPayload),
+                body: JSON.stringify(payload),
             });
 
             if (!response.ok) {
@@ -874,23 +880,19 @@ const OrderPageInternal = () => {
 
     const handleCheckout = () => {
         const phone = phoneFromUrl || localStorage.getItem('lastKnownPhone');
+        let currentCartData = JSON.parse(localStorage.getItem(`cart_${restaurantId}`)) || {};
         
-        let dineInSetup = {};
         if (deliveryType === 'dine-in') {
             const setupStr = localStorage.getItem(`dineInSetup_${restaurantId}_${tableIdFromUrl}`);
             if (setupStr) {
-                dineInSetup = JSON.parse(setupStr);
-                const dineInTabId = dineInSetup.join_tab_id || dineInSetup.new_tab_id; // Let's assume we'll store a new_tab_id
-                
-                const currentCartData = JSON.parse(localStorage.getItem(`cart_${restaurantId}`)) || {};
-                currentCartData.dineInTabId = dineInTabId;
+                const dineInSetup = JSON.parse(setupStr);
+                currentCartData.dineInTabId = tabIdFromUrl || dineInSetup.join_tab_id || null;
                 currentCartData.pax_count = dineInSetup.pax_count;
                 currentCartData.tab_name = dineInSetup.tab_name;
-                localStorage.setItem(`cart_${restaurantId}`, JSON.stringify(currentCartData));
             }
         }
         
-        const currentCartData = JSON.parse(localStorage.getItem(`cart_${restaurantId}`)) || {};
+        localStorage.setItem(`cart_${restaurantId}`, JSON.stringify(currentCartData));
 
         let url = `/cart?restaurantId=${restaurantId}&phone=${phone}`;
         if (tableIdFromUrl) url += `&table=${tableIdFromUrl}`;
@@ -1125,7 +1127,7 @@ const OrderPageInternal = () => {
                          
                          <motion.div
                             className="absolute right-4 pointer-events-auto"
-                            animate={{ bottom: totalCartItems > 0 || isTabActive ? '6.5rem' : '1rem' }}
+                            animate={{ bottom: totalCartItems > 0 || tabIdFromUrl ? '6.5rem' : '1rem' }}
                             transition={{ type: "spring", stiffness: 300, damping: 25 }}
                         >
                              <button
@@ -1138,7 +1140,7 @@ const OrderPageInternal = () => {
                         </motion.div>
 
                         <AnimatePresence>
-                            {(totalCartItems > 0 || isTabActive) && (
+                           {(totalCartItems > 0 || tabIdFromUrl) && (
                                 <motion.div
                                     className="absolute bottom-0 left-0 right-0 bg-background/80 backdrop-blur-lg border-t border-border pointer-events-auto"
                                     initial={{ y: "100%" }}
@@ -1147,13 +1149,23 @@ const OrderPageInternal = () => {
                                     transition={{ type: "spring", stiffness: 300, damping: 30 }}
                                 >
                                     <div className="container mx-auto p-4">
-                                        <Button onClick={handleCheckout} className="bg-primary hover:bg-primary/90 h-14 text-lg font-bold rounded-lg shadow-primary/30 flex justify-between items-center text-primary-foreground w-full">
-                                            <div className="flex items-center gap-2">
-                                                {isTabActive ? <Wallet className="h-6 w-6"/> : <ShoppingCart className="h-6 w-6"/>}
-                                                <span>{isTabActive ? `View Tab for Table ${tableIdFromUrl}` : `${totalCartItems} Item${totalCartItems > 1 ? 's' : ''}`}</span>
-                                            </div>
-                                            <span>{isTabActive ? 'View Bill & Pay' : `View Cart | ₹${subtotal}`}</span>
-                                        </Button>
+                                        {totalCartItems > 0 ? (
+                                            <Button onClick={handleCheckout} className="bg-primary hover:bg-primary/90 h-14 text-lg font-bold rounded-lg shadow-primary/30 flex justify-between items-center text-primary-foreground w-full">
+                                                <span>{totalCartItems} Item{totalCartItems > 1 ? 's' : ''} in Cart</span>
+                                                <span>{deliveryType === 'dine-in' ? 'Add to Tab' : 'View Cart'} | ₹{subtotal}</span>
+                                            </Button>
+                                        ) : (tabIdFromUrl &&
+                                            <Button onClick={handleCheckout} className="bg-green-600 hover:bg-green-700 h-14 text-lg font-bold rounded-lg shadow-lg flex justify-between items-center text-white w-full">
+                                                <div className="flex items-center gap-2">
+                                                    <Users size={20}/>
+                                                    <span>{activeTabInfo.name || 'Your Tab'}</span>
+                                                </div>
+                                                <div className="flex items-center gap-2">
+                                                    <span>View Bill & Pay</span>
+                                                    <Wallet size={20}/>
+                                                </div>
+                                            </Button>
+                                        )}
                                     </div>
                                 </motion.div>
                             )}
