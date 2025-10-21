@@ -4,7 +4,7 @@
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { motion } from 'framer-motion';
-import { RefreshCw, Printer, CheckCircle, IndianRupee, Users, Clock, ShoppingBag, Bell, MoreVertical, Trash2, QrCode, Download, Save } from 'lucide-react';
+import { RefreshCw, Printer, CheckCircle, IndianRupee, Users, Clock, ShoppingBag, Bell, MoreVertical, Trash2, QrCode, Download, Save, Wind } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { auth } from '@/lib/firebase';
@@ -94,7 +94,8 @@ const BillModal = ({ order, restaurant, onClose, onPrint, printRef }) => {
     );
 };
 
-const TableCard = ({ tableId, orders, onMarkAsPaid, onPrintBill }) => {
+const TableCard = ({ tableId, tableData, onMarkAsPaid, onPrintBill, onMarkAsCleaned }) => {
+    const orders = tableData.orders || [];
     const totalBill = useMemo(() => orders.reduce((sum, order) => sum + (order.totalAmount || 0), 0), [orders]);
     const customerNames = useMemo(() => [...new Set(orders.map(o => o.customerName))], [orders]);
     const allItems = useMemo(() => {
@@ -118,8 +119,54 @@ const TableCard = ({ tableId, orders, onMarkAsPaid, onPrintBill }) => {
         return new Date(latestTimestamp);
     }, [orders]);
     
-    // Placeholder status logic
-    const status = "Ordering"; 
+    const state = tableData.state;
+
+    const stateConfig = {
+        occupied: {
+            title: "Occupied",
+            bg: "bg-yellow-500/10",
+            border: "border-yellow-500",
+            icon: <Clock size={16} className="text-yellow-500" />
+        },
+        needs_cleaning: {
+            title: "Needs Cleaning",
+            bg: "bg-red-500/10",
+            border: "border-red-500",
+            icon: <Wind size={16} className="text-red-500" />
+        }
+    };
+    
+    const currentConfig = stateConfig[state] || { title: state, bg: "bg-muted", border: "border-border", icon: null };
+
+
+    if (state === 'needs_cleaning') {
+        return (
+             <motion.div
+                layout
+                initial={{ scale: 0.9, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                exit={{ scale: 0.9, opacity: 0 }}
+                transition={{ type: 'spring', stiffness: 260, damping: 20 }}
+            >
+                <Card className={cn("flex flex-col h-full shadow-lg border-2", currentConfig.border)}>
+                    <CardHeader className={cn("flex-row items-center justify-between space-y-0 pb-2", currentConfig.bg)}>
+                        <CardTitle className="text-2xl font-bold">Table {tableId}</CardTitle>
+                        <div className="flex items-center gap-2 text-sm font-semibold">
+                            {currentConfig.icon} {currentConfig.title}
+                        </div>
+                    </CardHeader>
+                    <CardContent className="flex-grow p-4 flex flex-col items-center justify-center text-center">
+                        <p className="text-muted-foreground">This table's bill has been paid. Mark it as clean once it's ready for the next guests.</p>
+                    </CardContent>
+                    <CardFooter className="p-4">
+                        <Button className="w-full bg-green-500 hover:bg-green-600" onClick={() => onMarkAsCleaned(tableId)}>
+                            <CheckCircle size={16} className="mr-2"/> Mark as Cleaned
+                        </Button>
+                    </CardFooter>
+                </Card>
+            </motion.div>
+        )
+    }
 
     return (
         <motion.div
@@ -129,8 +176,8 @@ const TableCard = ({ tableId, orders, onMarkAsPaid, onPrintBill }) => {
             exit={{ scale: 0.9, opacity: 0 }}
             transition={{ type: 'spring', stiffness: 260, damping: 20 }}
         >
-            <Card className="flex flex-col h-full bg-card shadow-lg hover:shadow-primary/20 transition-shadow duration-300">
-                <CardHeader className="flex-row items-center justify-between space-y-0 pb-2">
+            <Card className={cn("flex flex-col h-full shadow-lg hover:shadow-primary/20 transition-shadow duration-300 border-2", currentConfig.border)}>
+                <CardHeader className={cn("flex-row items-center justify-between space-y-0 pb-2", currentConfig.bg)}>
                     <CardTitle className="text-2xl font-bold">Table {tableId}</CardTitle>
                     <div className="flex items-center gap-2">
                         <span className="text-sm font-semibold text-muted-foreground">{customerNames.join(', ')}</span>
@@ -157,7 +204,7 @@ const TableCard = ({ tableId, orders, onMarkAsPaid, onPrintBill }) => {
                     </div>
                     <div className="grid grid-cols-2 gap-2 w-full">
                         <Button variant="outline" onClick={() => onPrintBill({ tableId, orders })}><Printer size={16} className="mr-2"/> Print Bill</Button>
-                        <Button className="bg-primary hover:bg-primary/90" onClick={() => onMarkAsPaid(orders.map(o => o.id))}><CheckCircle size={16} className="mr-2"/> Mark as Paid</Button>
+                        <Button className="bg-primary hover:bg-primary/90" onClick={() => onMarkAsPaid(tableId, orders.map(o => o.id))}><CheckCircle size={16} className="mr-2"/> Mark as Paid</Button>
                     </div>
                 </CardFooter>
             </Card>
@@ -269,7 +316,8 @@ const QrGeneratorModal = ({ isOpen, onClose, restaurantId }) => {
 
 
 export default function DineInPage() {
-    const [orders, setOrders] = useState([]);
+    const [allOrders, setAllOrders] = useState([]);
+    const [allTables, setAllTables] = useState([]);
     const [loading, setLoading] = useState(true);
     const searchParams = useSearchParams();
     const impersonatedOwnerId = searchParams.get('impersonate_owner_id');
@@ -283,7 +331,7 @@ export default function DineInPage() {
         content: () => billPrintRef.current,
     });
     
-    const handleApiCall = async (method, body, endpoint = '/api/owner/orders') => {
+    const handleApiCall = async (method, body, endpoint) => {
         const user = auth.currentUser;
         if (!user) throw new Error("Authentication required.");
         const idToken = await user.getIdToken();
@@ -295,42 +343,48 @@ export default function DineInPage() {
         
         const fetchOptions = {
             method,
-            headers: {
-                'Authorization': `Bearer ${idToken}`,
-                'Content-Type': 'application/json',
-            },
+            headers: { 'Authorization': `Bearer ${idToken}`, 'Content-Type': 'application/json' },
         };
-
+        
         if (method !== 'GET' && method !== 'HEAD') {
             fetchOptions.body = JSON.stringify(body);
         } else if (body) {
-            // For GET requests, append body properties to URL search params
             Object.keys(body).forEach(key => url.searchParams.append(key, body[key]));
         }
 
         const res = await fetch(url.toString(), fetchOptions);
+        
+        // Handle no content response for DELETE
+        if (res.status === 204) {
+            return null;
+        }
 
         const data = await res.json();
         if (!res.ok) throw new Error(data.message || 'API call failed');
         return data;
     };
 
-    const fetchDineInOrders = async (isManualRefresh = false) => {
+    const fetchData = async (isManualRefresh = false) => {
         if (!isManualRefresh) setLoading(true);
         try {
-            const data = await handleApiCall('GET', null, '/api/owner/orders');
+            const [ordersData, tablesData] = await Promise.all([
+                 handleApiCall('GET', null, '/api/owner/orders'),
+                 handleApiCall('GET', null, '/api/owner/dine-in-tables')
+            ]);
+            
             const dineInStatuses = ['pending', 'confirmed', 'preparing', 'active_tab', 'ready_for_pickup'];
-            const dineInOrders = (data.orders || []).filter(o => o.deliveryType === 'dine-in' && dineInStatuses.includes(o.status));
-            setOrders(dineInOrders);
+            const dineInOrders = (ordersData.orders || []).filter(o => o.deliveryType === 'dine-in' && dineInStatuses.includes(o.status));
+            setAllOrders(dineInOrders);
+            setAllTables(tablesData.tables || []);
 
-            if (dineInOrders.length > 0 && !restaurant) {
-                const firstOrder = dineInOrders[0];
+            if (ordersData.orders.length > 0 && !restaurant) {
+                const firstOrder = ordersData.orders[0];
                 const orderDetails = await handleApiCall('GET', { id: firstOrder.id }, '/api/owner/orders');
                 setRestaurant(orderDetails.restaurant);
             }
 
         } catch (error) {
-            console.error("Error fetching dine-in orders:", error);
+            console.error("Error fetching dine-in data:", error);
             setInfoDialog({ isOpen: true, title: "Error", message: `Could not load dine-in data: ${error.message}` });
         } finally {
             if (!isManualRefresh) setLoading(false);
@@ -339,11 +393,11 @@ export default function DineInPage() {
 
     useEffect(() => {
         const unsubscribe = auth.onAuthStateChanged(user => {
-          if (user) fetchDineInOrders();
+          if (user) fetchData();
           else setLoading(false);
         });
     
-        const interval = setInterval(() => fetchDineInOrders(true), 30000);
+        const interval = setInterval(() => fetchData(true), 30000);
         return () => {
             unsubscribe();
             clearInterval(interval);
@@ -351,18 +405,22 @@ export default function DineInPage() {
       }, [impersonatedOwnerId]);
 
 
-    const handleMarkAsPaid = async (orderIds) => {
+    const handleMarkAsPaid = async (tableId, orderIds) => {
         if (!window.confirm("Are you sure you want to mark this table's orders as paid and completed?")) return;
 
         setLoading(true);
         try {
             await Promise.all(
                 orderIds.map(orderId => 
-                    handleApiCall('PATCH', { orderId, newStatus: 'completed' })
+                    handleApiCall('PATCH', { orderId, newStatus: 'completed' }, '/api/owner/orders')
                 )
             );
-            setInfoDialog({ isOpen: true, title: "Success", message: "Table has been cleared." });
-            await fetchDineInOrders(true);
+            
+            // Now update the table status to 'needs_cleaning'
+            await handleApiCall('PATCH', { tableId, state: 'needs_cleaning' }, '/api/owner/dine-in-tables');
+
+            setInfoDialog({ isOpen: true, title: "Success", message: "Table has been marked for cleaning." });
+            await fetchData(true);
         } catch (error) {
             console.error("Error marking orders as paid:", error);
             setInfoDialog({ isOpen: true, title: "Error", message: `Could not clear table: ${error.message}` });
@@ -370,18 +428,45 @@ export default function DineInPage() {
             setLoading(false);
         }
     };
+    
+    const handleMarkAsCleaned = async (tableId) => {
+         setLoading(true);
+         try {
+             await handleApiCall('PATCH', { tableId, state: 'available' }, '/api/owner/dine-in-tables');
+             setInfoDialog({ isOpen: true, title: "Success", message: `Table ${tableId} is now available.` });
+             await fetchData(true);
+         } catch(error) {
+             console.error("Error marking table as cleaned:", error);
+             setInfoDialog({ isOpen: true, title: "Error", message: `Could not update table status: ${error.message}` });
+         } finally {
+             setLoading(false);
+         }
+    };
 
 
-    const ordersByTable = useMemo(() => {
-        return orders.reduce((acc, order) => {
+    const combinedTableData = useMemo(() => {
+        const tableMap = new Map();
+
+        // Initialize with all tables from the database
+        allTables.forEach(table => {
+            tableMap.set(table.id, {
+                state: table.state || 'available',
+                orders: []
+            });
+        });
+
+        // Populate with orders
+        allOrders.forEach(order => {
             const tableId = order.tableId || 'Unknown';
-            if (!acc[tableId]) {
-                acc[tableId] = [];
+            if (!tableMap.has(tableId)) {
+                tableMap.set(tableId, { state: 'occupied', orders: [] });
             }
-            acc[tableId].push(order);
-            return acc;
-        }, {});
-    }, [orders]);
+            const tableEntry = tableMap.get(tableId);
+            tableEntry.orders.push(order);
+        });
+        
+        return Object.fromEntries(tableMap);
+    }, [allOrders, allTables]);
 
     return (
         <div className="p-4 md:p-6 text-foreground min-h-screen bg-background">
@@ -411,7 +496,7 @@ export default function DineInPage() {
                      <Button onClick={() => setIsQrModalOpen(true)} variant="default" className="bg-primary hover:bg-primary/90" disabled={!restaurant}>
                         <QrCode size={16} className="mr-2"/> Generate Table QR Codes
                     </Button>
-                    <Button onClick={() => fetchDineInOrders(true)} variant="outline" disabled={loading}>
+                    <Button onClick={() => fetchData(true)} variant="outline" disabled={loading}>
                         <RefreshCw size={16} className={cn("mr-2", loading && "animate-spin")} /> Refresh View
                     </Button>
                 </div>
@@ -423,10 +508,12 @@ export default function DineInPage() {
                         <div key={i} className="bg-card border border-border rounded-xl h-96"></div>
                     ))}
                 </div>
-            ) : Object.keys(ordersByTable).length > 0 ? (
+            ) : Object.keys(combinedTableData).filter(id => combinedTableData[id].state !== 'available').length > 0 ? (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-                    {Object.entries(ordersByTable).map(([tableId, tableOrders]) => (
-                        <TableCard key={tableId} tableId={tableId} orders={tableOrders} onMarkAsPaid={handleMarkAsPaid} onPrintBill={setBillData} />
+                    {Object.entries(combinedTableData)
+                        .filter(([_, data]) => data.state !== 'available')
+                        .map(([tableId, tableData]) => (
+                        <TableCard key={tableId} tableId={tableId} tableData={tableData} onMarkAsPaid={handleMarkAsPaid} onPrintBill={setBillData} onMarkAsCleaned={handleMarkAsCleaned}/>
                     ))}
                 </div>
             ) : (
@@ -439,3 +526,4 @@ export default function DineInPage() {
         </div>
     );
 }
+
