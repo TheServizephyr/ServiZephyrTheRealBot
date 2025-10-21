@@ -62,6 +62,31 @@ export async function GET(req) {
     }
 }
 
+export async function POST(req) {
+    try {
+        const businessRef = await verifyOwnerAndGetBusiness(req);
+        const { tableId, maxCapacity } = await req.json();
+
+        if (!tableId || !maxCapacity || maxCapacity < 1) {
+            return NextResponse.json({ message: 'Table ID and a valid capacity are required.' }, { status: 400 });
+        }
+        
+        const tableRef = businessRef.collection('tables').doc(tableId);
+
+        await tableRef.set({
+            max_capacity: Number(maxCapacity),
+            current_pax: 0,
+            createdAt: new Date(),
+        }, { merge: true });
+
+        return NextResponse.json({ message: 'Table saved successfully.' }, { status: 201 });
+
+    } catch (error) {
+        console.error("POST DINE-IN TABLE ERROR:", error);
+        return NextResponse.json({ message: `Backend Error: ${error.message}` }, { status: error.status || 500 });
+    }
+}
+
 
 export async function PATCH(req) {
      try {
@@ -92,4 +117,5 @@ export async function PATCH(req) {
         return NextResponse.json({ message: `Backend Error: ${error.message}` }, { status: error.status || 500 });
     }
 }
+
 

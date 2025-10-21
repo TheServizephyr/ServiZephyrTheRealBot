@@ -227,8 +227,9 @@ const QrCodeDisplay = ({ text, tableName, innerRef }) => {
 };
 
 
-const QrGeneratorModal = ({ isOpen, onClose, restaurantId }) => {
+const QrGeneratorModal = ({ isOpen, onClose, restaurantId, onSaveTable }) => {
     const [tableName, setTableName] = useState('');
+    const [maxCapacity, setMaxCapacity] = useState(4);
     const [qrValue, setQrValue] = useState('');
     const printRef = useRef();
 
@@ -261,15 +262,24 @@ const QrGeneratorModal = ({ isOpen, onClose, restaurantId }) => {
         documentTitle: `QR_Code_${tableName}`,
     });
     
-    const handleSave = () => {
-        // Placeholder for future save functionality
-        alert(`QR Code for table "${tableName}" saved! (Feature coming soon)`);
+    const handleSave = async () => {
+        if (!tableName.trim() || !maxCapacity || maxCapacity < 1) {
+            alert('Please enter a valid table name and capacity.');
+            return;
+        }
+        try {
+            await onSaveTable(tableName.trim(), maxCapacity);
+            handleGenerate(); // Generate QR after successful save
+        } catch (error) {
+            // error is handled by parent
+        }
     }
 
     useEffect(() => {
         if (!isOpen) {
             setTableName('');
             setQrValue('');
+            setMaxCapacity(4);
         }
     }, [isOpen]);
 
@@ -277,33 +287,45 @@ const QrGeneratorModal = ({ isOpen, onClose, restaurantId }) => {
         <Dialog open={isOpen} onOpenChange={onClose}>
             <DialogContent className="bg-background border-border text-foreground">
                 <DialogHeader>
-                    <DialogTitle>Generate Table QR Code</DialogTitle>
+                    <DialogTitle>Generate & Save Table QR Code</DialogTitle>
                     <DialogDescription>Create a unique QR code for a table. Customers can scan this to order directly.</DialogDescription>
                 </DialogHeader>
                 <div className="py-4 space-y-4">
-                    <div className="space-y-2">
-                        <Label htmlFor="table-name">Table Name / Number</Label>
-                        <Input 
-                            id="table-name"
-                            value={tableName}
-                            onChange={(e) => setTableName(e.target.value)}
-                            placeholder="e.g., T1, Table 5, Rooftop 2"
-                        />
+                    <div className="grid grid-cols-3 gap-4">
+                        <div className="col-span-2">
+                            <Label htmlFor="table-name">Table Name / Number</Label>
+                            <Input 
+                                id="table-name"
+                                value={tableName}
+                                onChange={(e) => setTableName(e.target.value)}
+                                placeholder="e.g., T1, Rooftop 2"
+                            />
+                        </div>
+                        <div>
+                             <Label htmlFor="max-capacity">Max Capacity</Label>
+                            <Input 
+                                id="max-capacity"
+                                type="number"
+                                value={maxCapacity}
+                                onChange={(e) => setMaxCapacity(parseInt(e.target.value, 10))}
+                                placeholder="e.g., 4"
+                                min="1"
+                            />
+                        </div>
                     </div>
-                    <Button onClick={handleGenerate} className="w-full bg-primary hover:bg-primary/90">Generate QR Code</Button>
+                    <Button onClick={handleSave} className="w-full bg-primary hover:bg-primary/90">
+                        <Save className="mr-2 h-4 w-4" /> Save Table & Generate QR
+                    </Button>
 
                     {qrValue && (
                         <div className="mt-6 flex flex-col items-center gap-4">
                            <QrCodeDisplay text={qrValue} tableName={tableName} innerRef={printRef} />
-                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 w-full max-w-sm">
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 w-full max-w-sm">
                                 <Button onClick={handlePrint} variant="outline">
                                     <Printer className="mr-2 h-4 w-4" /> Print
                                 </Button>
                                 <Button onClick={handleDownload} variant="outline">
                                     <Download className="mr-2 h-4 w-4" /> Download PNG
-                                </Button>
-                                <Button onClick={handleSave} variant="secondary">
-                                    <Save className="mr-2 h-4 w-4" /> Save for Later
                                 </Button>
                             </div>
                         </div>
@@ -346,15 +368,14 @@ export default function DineInPage() {
             headers: { 'Authorization': `Bearer ${idToken}`, 'Content-Type': 'application/json' },
         };
         
-        if (method !== 'GET' && method !== 'HEAD') {
+        if (method !== 'GET' && body) {
             fetchOptions.body = JSON.stringify(body);
-        } else if (body) {
+        } else if (method === 'GET' && body) {
             Object.keys(body).forEach(key => url.searchParams.append(key, body[key]));
         }
 
         const res = await fetch(url.toString(), fetchOptions);
         
-        // Handle no content response for DELETE
         if (res.status === 204) {
             return null;
         }
@@ -381,6 +402,16 @@ export default function DineInPage() {
                 const firstOrder = ordersData.orders[0];
                 const orderDetails = await handleApiCall('GET', { id: firstOrder.id }, '/api/owner/orders');
                 setRestaurant(orderDetails.restaurant);
+            } else if (!restaurant) {
+                // If there are no orders, try fetching settings to get restaurant data
+                const settingsData = await handleApiCall('GET', null, '/api/owner/settings');
+                // The settings endpoint returns a flat object, let's create a restaurant-like structure
+                 setRestaurant({
+                    id: settingsData.restaurantId, // Assuming this exists or can be derived
+                    name: settingsData.restaurantName,
+                    address: settingsData.address,
+                    gstin: settingsData.gstin
+                 });
             }
 
         } catch (error) {
@@ -388,6 +419,18 @@ export default function DineInPage() {
             setInfoDialog({ isOpen: true, title: "Error", message: `Could not load dine-in data: ${error.message}` });
         } finally {
             if (!isManualRefresh) setLoading(false);
+        }
+    };
+    
+    const handleSaveTable = async (tableName, maxCapacity) => {
+        try {
+            await handleApiCall('POST', { tableId: tableName, maxCapacity }, '/api/owner/dine-in-tables');
+            setInfoDialog({ isOpen: true, title: "Success", message: `Table "${tableName}" saved with a capacity of ${maxCapacity}.` });
+            await fetchData(true); // Refresh tables list
+        } catch (error) {
+            console.error("Error saving table:", error);
+            setInfoDialog({ isOpen: true, title: "Error", message: `Could not save table: ${error.message}` });
+            throw error; // Re-throw to keep modal open
         }
     };
 
@@ -416,7 +459,6 @@ export default function DineInPage() {
                 )
             );
             
-            // Now update the table status to 'needs_cleaning'
             await handleApiCall('PATCH', { tableId, state: 'needs_cleaning' }, '/api/owner/dine-in-tables');
 
             setInfoDialog({ isOpen: true, title: "Success", message: "Table has been marked for cleaning." });
@@ -485,7 +527,7 @@ export default function DineInPage() {
                 title={infoDialog.title}
                 message={infoDialog.message}
             />
-            {restaurant && <QrGeneratorModal isOpen={isQrModalOpen} onClose={() => setIsQrModalOpen(false)} restaurantId={restaurant.id}/>}
+            {restaurant && <QrGeneratorModal isOpen={isQrModalOpen} onClose={() => setIsQrModalOpen(false)} restaurantId={restaurant.id} onSaveTable={handleSaveTable} />}
 
             <div className="flex flex-col md:flex-row justify-between md:items-center mb-6 gap-4">
                 <div>
