@@ -1,4 +1,5 @@
 
+
 import { NextResponse } from 'next/server';
 import { getAuth, getFirestore, FieldValue } from '@/lib/firebase-admin';
 
@@ -14,7 +15,7 @@ async function verifyOwnerAndGetBusinessRef(req) {
     const decodedToken = await auth.verifyIdToken(token);
     const uid = decodedToken.uid;
     
-    const url = new URL(req.headers.get('referer') || 'http://localhost');
+    const url = new URL(req.url, `http://${req.headers.host}`);
     const impersonatedOwnerId = url.searchParams.get('impersonate_owner_id');
     const adminUserDoc = await firestore.collection('users').doc(uid).get();
 
