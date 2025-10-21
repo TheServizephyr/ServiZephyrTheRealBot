@@ -15,11 +15,16 @@ import { Switch } from '@/components/ui/switch';
 import Link from 'next/link';
 import { format, isToday, setHours, setMinutes } from 'date-fns';
 import { Calendar as CalendarUI } from '@/components/ui/calendar';
-import QrScanner from '@/components/QrScanner';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import InfoDialog from '@/components/InfoDialog';
 import { auth } from '@/lib/firebase';
 import { Input } from '@/components/ui/input';
+import dynamic from 'next/dynamic';
+
+const QrScanner = dynamic(() => import('@/components/QrScanner'), { 
+    ssr: false,
+    loading: () => <div className="min-h-screen bg-background flex items-center justify-center"><div className="animate-spin rounded-full h-16 w-16 border-b-2 border-primary"></div></div>
+});
 
 
 const CustomizationDrawer = ({ item, isOpen, onClose, onAddToCart }) => {
