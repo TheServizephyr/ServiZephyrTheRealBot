@@ -434,7 +434,10 @@ export default function DineInPage() {
             setAllTables(tablesData.tables || []);
             
             // This is the crucial part for QR code generation
-            const fetchedRestaurantId = settingsData?.businessId || Object.values(ordersData.orders || []).find(o => o.restaurantId)?.restaurantId;
+            const user = auth.currentUser;
+            const userDoc = await handleApiCall('GET', null, `/api/owner/settings?uid=${user.uid}`);
+            const fetchedRestaurantId = userDoc?.businessId;
+            
             const fetchedRestaurant = {
                 id: fetchedRestaurantId,
                 name: settingsData.restaurantName,
@@ -574,6 +577,7 @@ export default function DineInPage() {
     }, [allOrders, allTables]);
     
     const handleOpenQrModal = (table = null) => {
+        console.log("[DEBUG] DineInPage: handleOpenQrModal called with restaurantId:", restaurantId);
         if (!restaurantId) {
             setInfoDialog({isOpen: true, title: "Error", message: "Restaurant data is not loaded yet. Cannot generate QR codes."});
             return;
@@ -681,3 +685,4 @@ export default function DineInPage() {
         </div>
     );
 }
+
