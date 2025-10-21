@@ -3,9 +3,9 @@
 
 import React, { useEffect, useRef } from 'react';
 import Script from 'next/script';
-import { Loader2 } from 'lucide-react';
+import { Loader2, AlertTriangle } from 'lucide-react';
 
-const MapplsMap = ({ onMapLoad, initialCenter, onPinDragEnd }) => {
+const MapplsMap = ({ onMapLoad, initialCenter, onPinDragEnd, onError }) => {
     const mapRef = useRef(null);
     const mapInstance = useRef(null);
     const markerInstance = useRef(null);
@@ -17,6 +17,13 @@ const MapplsMap = ({ onMapLoad, initialCenter, onPinDragEnd }) => {
     const handleScriptLoad = () => {
         console.log("[MapplsMap] Mappls script loaded.");
         setScriptsLoaded(true);
+    };
+
+    const handleScriptError = () => {
+        console.error("[MapplsMap] Failed to load Mappls script.");
+        if (onError) {
+            onError("Failed to load map service script.");
+        }
     };
 
     useEffect(() => {
@@ -57,15 +64,22 @@ const MapplsMap = ({ onMapLoad, initialCenter, onPinDragEnd }) => {
                 });
             } catch (error) {
                 console.error("[MapplsMap] Error initializing Mappls Map:", error);
+                if (onError) {
+                    onError("Map initialization failed. " + error.message);
+                }
             }
         }
-    }, [scriptsLoaded, mapInitialized, initialCenter, onMapLoad, onPinDragEnd, apiKey]);
+    }, [scriptsLoaded, mapInitialized, initialCenter, onMapLoad, onPinDragEnd, apiKey, onError]);
 
     if (!apiKey) {
         console.error("[MapplsMap] CRITICAL: NEXT_PUBLIC_MAPPLS_API_KEY is not defined.");
         return (
-             <div className="w-full h-full bg-destructive/10 flex items-center justify-center">
-                <p className="text-destructive font-semibold">Mappls API Key is missing.</p>
+             <div className="w-full h-full bg-destructive/10 flex items-center justify-center text-center p-2">
+                <div>
+                    <AlertTriangle className="mx-auto h-8 w-8 text-destructive"/>
+                    <p className="text-destructive font-semibold mt-2">Map Configuration Error</p>
+                    <p className="text-xs text-destructive/80">API Key is missing.</p>
+                </div>
             </div>
         )
     }
@@ -75,7 +89,7 @@ const MapplsMap = ({ onMapLoad, initialCenter, onPinDragEnd }) => {
             <Script
                 src={`https://sdk.mappls.com/map/sdk/web?v=3.0&access_token=${apiKey}`}
                 onLoad={handleScriptLoad}
-                onError={() => console.error("[MapplsMap] Failed to load Mappls script.")}
+                onError={handleScriptError}
             />
             <div ref={mapRef} style={{ width: '100%', height: '100%', position: 'relative' }}>
                 {!scriptsLoaded && (

@@ -4,7 +4,7 @@
 import React, { useState, useEffect, Suspense, useRef } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { motion } from 'framer-motion';
-import { MapPin, Search, LocateFixed, Loader2, ArrowLeft } from 'lucide-react';
+import { MapPin, Search, LocateFixed, Loader2, ArrowLeft, AlertTriangle } from 'lucide-react';
 import MapplsMap from '@/components/MapplsMap';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -189,6 +189,7 @@ const LocationPageInternal = () => {
                             setMapInstance(map);
                             setMarkerInstance(marker);
                         }}
+                        onError={(mapError) => setError(`Map Error: ${mapError}`)}
                      />
                 ) : (
                     <div className="h-full w-full flex items-center justify-center bg-muted">
@@ -217,7 +218,9 @@ const LocationPageInternal = () => {
                         <span className="text-muted-foreground">{error || 'Fetching address...'}</span>
                     </div>
                 ) : error ? (
-                     <div className="text-destructive text-center font-semibold">{error}</div>
+                     <div className="text-destructive text-center font-semibold p-4 bg-destructive/10 rounded-lg flex items-center justify-center gap-2">
+                         <AlertTriangle size={16}/> {error}
+                     </div>
                 ) : (
                     <div className="space-y-3">
                          <div>
