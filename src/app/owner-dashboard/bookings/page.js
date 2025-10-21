@@ -1,4 +1,3 @@
-
 'use client';
 
 import React, { useState, useEffect, useMemo } from 'react';
@@ -51,15 +50,12 @@ const BookingRow = ({ booking, onUpdateStatus }) => {
 
     const createdAtDate = useMemo(() => {
         if (!booking.createdAt) return null;
-        // Handle Firestore Timestamp from server (via JSON) which has `_seconds`
         if (booking.createdAt._seconds) {
             return new Date(booking.createdAt._seconds * 1000);
         }
-        // Handle local Date object or Firestore Timestamp with `seconds`
         if (booking.createdAt.seconds) {
             return new Date(booking.createdAt.seconds * 1000);
         }
-        // Fallback for ISO string or other date formats
         const date = new Date(booking.createdAt);
         return isNaN(date.getTime()) ? null : date;
     }, [booking.createdAt]);
@@ -218,8 +214,8 @@ export default function BookingsPage() {
 
         // Sort upcoming by soonest, past by latest
         items.sort((a, b) => {
-            const dateA = a.bookingDateTime.seconds ? new Date(a.bookingDateTime.seconds * 1000) : new Date(a.bookingDateTime);
-            const dateB = b.bookingDateTime.seconds ? new Date(b.bookingDateTime.seconds * 1000) : new Date(b.bookingDateTime);
+            const dateA = a.bookingDateTime._seconds ? new Date(a.bookingDateTime._seconds * 1000) : new Date(a.bookingDateTime);
+            const dateB = b.bookingDateTime._seconds ? new Date(b.bookingDateTime._seconds * 1000) : new Date(b.bookingDateTime);
             return activeTab === 'upcoming' ? dateA - dateB : dateB - dateA;
         });
 
