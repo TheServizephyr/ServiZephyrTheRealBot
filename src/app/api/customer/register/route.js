@@ -10,7 +10,7 @@ import { sendNewOrderToOwner } from '@/lib/notifications';
 export async function POST(req) {
     try {
         const firestore = getFirestore();
-        const { name, address, phone, restaurantId, items, notes, coupon, loyaltyDiscount, grandTotal, paymentMethod, businessType = 'restaurant', deliveryType = 'delivery', pickupTime = '', tipAmount = 0, subtotal, cgst, sgst, deliveryCharge, tableId = null } = await req.json();
+        const { name, address, phone, restaurantId, items, notes, coupon, loyaltyDiscount, grandTotal, paymentMethod, businessType = 'restaurant', deliveryType = 'delivery', pickupTime = '', tipAmount = 0, subtotal, cgst, sgst, deliveryCharge, tableId = null, dineInTabId = null, pax_count = 1, tab_name = "Guest" } = await req.json();
 
         // --- VALIDATION ---
         if (!name || !phone || !restaurantId || !items || grandTotal === undefined || subtotal === undefined) {
@@ -32,23 +32,21 @@ export async function POST(req) {
             return NextResponse.json({ message: 'This business does not exist.' }, { status: 404 });
         }
 
-        // --- DINE-IN TABLE LOCKING LOGIC ---
-        if (deliveryType === 'dine-in' && tableId) {
+        // --- DINE-IN CAPACITY CHECK LOGIC ---
+        if (deliveryType === 'dine-in' && tableId && !dineInTabId) { // Only check for the FIRST order of a new tab
             const tableRef = businessRef.collection('tables').doc(tableId);
-            const tableDoc = await tableRef.get();
-
-            if (tableDoc.exists && tableDoc.data().state === 'occupied') {
-                 return NextResponse.json({ 
-                    error: 'TABLE_OCCUPIED', 
-                    message: "This table's tab is already active. Please join the existing tab or call a waiter." 
-                }, { status: 409 }); // 409 Conflict
-            }
-             if (tableDoc.exists && tableDoc.data().state === 'needs_cleaning') {
-                 return NextResponse.json({ 
-                    error: 'TABLE_NEEDS_CLEANING', 
-                    message: "This table is being prepared. A waiter will be with you shortly." 
-                }, { status: 409 });
-            }
+            await firestore.runTransaction(async (transaction) => {
+                const tableDoc = await transaction.get(tableRef);
+                if (!tableDoc.exists) throw new Error("Table not found.");
+                
+                const tableData = tableDoc.data();
+                const maxCapacity = tableData.max_capacity || 0;
+                const currentPax = tableData.current_pax || 0;
+                
+                if (currentPax + pax_count > maxCapacity) {
+                    throw new Error(`TABLE_FULL: This table cannot accommodate ${pax_count} more guests. Available space: ${maxCapacity - currentPax}.`);
+                }
+            });
         }
         // --- END DINE-IN LOGIC ---
         
@@ -83,40 +81,54 @@ export async function POST(req) {
             const firestoreOrderId = firestore.collection('orders').doc().id;
 
             const servizephyrOrderPayload = {
-                // Key identifiers for webhook processing
-                order_id: firestoreOrderId, // Use a pre-generated ID
-                user_id: userId,
-                restaurant_id: restaurantId,
-                business_type: businessType,
-                // Full data for record keeping and display on Razorpay dashboard
+                order_id: firestoreOrderId, user_id: userId, restaurant_id: restaurantId, business_type: businessType,
                 customer_details: JSON.stringify({ name, address, phone: normalizedPhone }),
                 items: JSON.stringify(items),
-                bill_details: JSON.stringify({ subtotal, coupon, loyaltyDiscount, grandTotal, deliveryType, tipAmount, pickupTime, cgst, sgst, deliveryCharge, tableId }),
+                bill_details: JSON.stringify({ subtotal, coupon, loyaltyDiscount, grandTotal, deliveryType, tipAmount, pickupTime, cgst, sgst, deliveryCharge, tableId, dineInTabId }),
                 notes: notes || null
             };
 
             const razorpayOrderOptions = {
-                amount: Math.round(grandTotal * 100), // Amount in paisa
-                currency: 'INR',
-                receipt: firestoreOrderId,
-                payment_capture: 1,
-                notes: servizephyrOrderPayload
+                amount: Math.round(grandTotal * 100), currency: 'INR', receipt: firestoreOrderId, payment_capture: 1, notes: servizephyrOrderPayload
             };
 
             const razorpayOrder = await razorpay.orders.create(razorpayOrderOptions);
             razorpayOrderId = razorpayOrder.id;
-            console.log(`[Order API] Razorpay Order ${razorpayOrderId} created for amount ${grandTotal}.`);
             
             return NextResponse.json({ 
                 message: 'Razorpay order created. Awaiting payment confirmation.',
                 razorpay_order_id: razorpayOrderId,
-                firestore_order_id: firestoreOrderId, // Return the same ID to the client
+                firestore_order_id: firestoreOrderId,
+                dine_in_tab_id: dineInTabId, // Pass back tab ID
             }, { status: 200 });
         }
 
 
         // --- FIRESTORE BATCH WRITE FOR COD / POD / DINE-IN ---
         const batch = firestore.batch();
+        
+        let finalDineInTabId = dineInTabId;
+
+        // If it's a new Dine-In Tab, create it
+        if (deliveryType === 'dine-in' && tableId && !finalDineInTabId) {
+            const newTabRef = businessRef.collection('dineInTabs').doc();
+            finalDineInTabId = newTabRef.id;
+
+            batch.set(newTabRef, {
+                id: finalDineInTabId,
+                tableId: tableId,
+                status: 'active',
+                tab_name: tab_name,
+                pax_count: pax_count,
+                createdAt: firestore.FieldValue.serverTimestamp(),
+            });
+            
+            const tableRef = businessRef.collection('tables').doc(tableId);
+            batch.update(tableRef, {
+                current_pax: firestore.FieldValue.increment(pax_count),
+                lastActivity: firestore.FieldValue.serverTimestamp()
+            });
+        }
         
         if (isNewUser) {
             const unclaimedUserRef = firestore.collection('unclaimed_profiles').doc(normalizedPhone);
@@ -165,7 +177,7 @@ export async function POST(req) {
             customerName: name, customerId: userId, customerAddress: address, customerPhone: normalizedPhone,
             customerLocation: customerLocation,
             restaurantId: restaurantId, restaurantName: businessData.name,
-            businessType, deliveryType, pickupTime, tipAmount, tableId,
+            businessType, deliveryType, pickupTime, tipAmount, tableId, dineInTabId: finalDineInTabId,
             items: items,
             subtotal, coupon, loyaltyDiscount, discount: finalDiscount, cgst, sgst, deliveryCharge,
             totalAmount: grandTotal,
@@ -174,13 +186,6 @@ export async function POST(req) {
             notes: notes || null,
             paymentDetails: { method: paymentMethod }
         });
-
-        // --- ATOMICALLY UPDATE TABLE STATE ---
-        if (deliveryType === 'dine-in' && tableId) {
-            const tableRef = businessRef.collection('tables').doc(tableId);
-            batch.set(tableRef, { state: 'occupied', activeTabId: newOrderRef.id, lastActivity: firestore.FieldValue.serverTimestamp() }, { merge: true });
-            console.log(`[Order API] Table ${tableId} state set to 'occupied' in batch.`);
-        }
         
         await batch.commit();
 
@@ -194,15 +199,17 @@ export async function POST(req) {
         return NextResponse.json({ 
             message: 'Order created successfully.',
             firestore_order_id: newOrderRef.id,
+            dine_in_tab_id: finalDineInTabId,
         }, { status: 200 });
 
     } catch (error) {
         console.error('CUSTOMER ORDER/REGISTER ERROR:', error);
+        if(error.message?.startsWith('TABLE_FULL')) {
+            return NextResponse.json({ error: 'TABLE_FULL', message: error.message }, { status: 409 });
+        }
         if(error.error && error.error.code === 'BAD_REQUEST_ERROR') {
              return NextResponse.json({ message: `Payment Gateway Error: ${error.error.description}` }, { status: 400 });
         }
         return NextResponse.json({ message: `Backend Error: ${error.message}` }, { status: 500 });
     }
 }
-
-    

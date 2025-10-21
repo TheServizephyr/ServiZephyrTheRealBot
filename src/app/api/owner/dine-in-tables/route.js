@@ -73,6 +73,7 @@ export async function POST(req) {
         
         const tableRef = businessRef.collection('tables').doc(tableId);
 
+        // Set max_capacity and initialize current_pax
         await tableRef.set({
             max_capacity: Number(maxCapacity),
             current_pax: 0,
@@ -91,31 +92,52 @@ export async function POST(req) {
 export async function PATCH(req) {
      try {
         const businessRef = await verifyOwnerAndGetBusiness(req);
-        const { tableId, state } = await req.json();
+        const { tableId, action, tabIdToClose } = await req.json();
 
-        if (!tableId || !state) {
-            return NextResponse.json({ message: 'Table ID and new state are required.' }, { status: 400 });
+        if (!tableId || !action) {
+            return NextResponse.json({ message: 'Table ID and action are required.' }, { status: 400 });
         }
         
-        const validStates = ['available', 'needs_cleaning', 'occupied'];
-        if (!validStates.includes(state)) {
-            return NextResponse.json({ message: 'Invalid state provided.' }, { status: 400 });
+        const validActions = ['mark_paid', 'mark_cleaned'];
+        if (!validActions.includes(action)) {
+            return NextResponse.json({ message: 'Invalid action provided.' }, { status: 400 });
         }
 
         const tableRef = businessRef.collection('tables').doc(tableId);
 
-        if (state === 'available') {
-            await tableRef.set({ state: 'available', lastCleaned: new Date() }, { merge: true });
-        } else {
-            await tableRef.set({ state: state }, { merge: true });
+        if (action === 'mark_paid') {
+            if (!tabIdToClose) {
+                return NextResponse.json({ message: 'Tab ID is required to mark a tab as paid.' }, { status: 400 });
+            }
+            const tabRef = businessRef.collection('dineInTabs').doc(tabIdToClose);
+            const tabDoc = await tabRef.get();
+            if (!tabDoc.exists) {
+                throw new Error("Tab to be closed not found.");
+            }
+            
+            const paxToReduce = tabDoc.data().pax_count || 0;
+            
+            // Atomically update tab status and table capacity
+            const batch = tableRef.firestore.batch();
+            batch.update(tabRef, { status: 'closed' });
+            batch.update(tableRef, { current_pax: firestore.FieldValue.increment(-paxToReduce) });
+            await batch.commit();
+
+            return NextResponse.json({ message: `Tab ${tabIdToClose} closed and capacity for table ${tableId} updated.` }, { status: 200 });
+        }
+        
+        if (action === 'mark_cleaned') {
+            // This is a placeholder for now. The logic of changing table state is deprecated.
+            // If needed, this would be where you reset any table-specific flags.
+            return NextResponse.json({ message: `Table ${tableId} cleaning acknowledged.` }, { status: 200 });
         }
 
-        return NextResponse.json({ message: `Table ${tableId} status updated to ${state}.` }, { status: 200 });
 
     } catch (error) {
         console.error("PATCH DINE-IN TABLE ERROR:", error);
         return NextResponse.json({ message: `Backend Error: ${error.message}` }, { status: error.status || 500 });
     }
 }
+
 
 
