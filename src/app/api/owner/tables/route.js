@@ -8,14 +8,14 @@ async function getBusinessRef(firestore, restaurantId) {
     let businessSnap = await businessRef.get();
     
     if (businessSnap.exists) {
-        return { ref: businessRef, collectionName: 'restaurants' };
+        return { ref: businessRef, data: businessSnap.data() };
     }
 
     businessRef = firestore.collection('shops').doc(restaurantId);
     businessSnap = await businessRef.get();
 
     if (businessSnap.exists) {
-         return { ref: businessRef, collectionName: 'shops' };
+         return { ref: businessRef, data: businessSnap.data() };
     }
     
     return null;
@@ -42,13 +42,24 @@ export async function GET(req) {
         const tableSnap = await tableRef.get();
 
         if (!tableSnap.exists) {
-            // If table doc doesn't exist, it's considered available
-            return NextResponse.json({ state: 'available' }, { status: 200 });
+            return NextResponse.json({ message: 'Table configuration not found.' }, { status: 404 });
         }
-
         const tableData = tableSnap.data();
-        
-        return NextResponse.json({ state: tableData.state || 'available' }, { status: 200 });
+
+        // Fetch active tabs for this table
+        const tabsSnap = await businessInfo.ref.collection('dineInTabs')
+            .where('tableId', '==', tableId)
+            .where('status', '==', 'active')
+            .get();
+            
+        const activeTabs = tabsSnap.docs.map(doc => doc.data());
+        const current_pax = activeTabs.reduce((sum, tab) => sum + (tab.pax_count || 0), 0);
+
+        return NextResponse.json({ 
+            max_capacity: tableData.max_capacity,
+            current_pax,
+            activeTabs
+        }, { status: 200 });
 
     } catch (error) {
         console.error("GET TABLE STATUS ERROR:", error);

@@ -14,15 +14,16 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem } from '@/components/ui/command';
 
 
-const CheckoutModal = ({ isOpen, onClose, onConfirm, grandTotal, loading, name, onNameChange, address, onAddressChange, error, isExistingUser, savedAddresses, selectedAddress, onSelectAddress, isAddingNew, onSetIsAddingNew, deliveryType }) => {
+const CheckoutModal = ({ isOpen, onClose, onConfirm, grandTotal, loading, name, onNameChange, address, onAddressChange, error, isExistingUser, savedAddresses, selectedAddress, onSelectAddress, isAddingNew, onSetIsAddingNew, deliveryType, paxCount, onPaxCountChange, tabName, onTabNameChange, cartData }) => {
     
     const isDineIn = deliveryType === 'dine-in';
+    const isNewTab = isDineIn && !cartData?.dineInTabId;
     
     return (
         <Dialog open={isOpen} onOpenChange={onClose}>
             <DialogContent className="bg-background border-border text-foreground">
                 <DialogHeader>
-                    <DialogTitle className="text-2xl">Confirm Your Details</DialogTitle>
+                    <DialogTitle className="text-2xl">{isNewTab ? "Start a New Tab" : "Confirm Your Details"}</DialogTitle>
                 </DialogHeader>
                 <div className="py-4 space-y-4">
                     {loading && !isExistingUser && name === '' ? (
@@ -32,7 +33,7 @@ const CheckoutModal = ({ isOpen, onClose, onConfirm, grandTotal, loading, name, 
                     ) : (
                         <>
                             <div>
-                                <Label htmlFor="checkout-name">Full Name</Label>
+                                <Label htmlFor="checkout-name">{isDineIn ? "Your Name" : "Full Name"}</Label>
                                 <div className="relative mt-1">
                                     <User className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
                                     <input id="checkout-name" type="text" value={name} onChange={(e) => onNameChange(e.target.value)} required className="w-full pl-10 pr-4 py-2 rounded-md bg-input border border-border" placeholder="Enter your full name" />
@@ -49,6 +50,19 @@ const CheckoutModal = ({ isOpen, onClose, onConfirm, grandTotal, loading, name, 
                                 </div>
                             )}
 
+                            {isNewTab && (
+                                <div className="grid grid-cols-2 gap-4">
+                                     <div>
+                                        <Label htmlFor="tab-name">Tab Name</Label>
+                                        <input id="tab-name" value={tabName} onChange={e => onTabNameChange(e.target.value)} className="w-full mt-1 p-2 rounded-md bg-input border border-border" placeholder="e.g., Rohan's Group"/>
+                                    </div>
+                                    <div>
+                                        <Label htmlFor="pax-count">Guests</Label>
+                                        <input id="pax-count" type="number" min="1" value={paxCount} onChange={e => onPaxCountChange(parseInt(e.target.value, 10))} className="w-full mt-1 p-2 rounded-md bg-input border border-border" />
+                                    </div>
+                                </div>
+                            )}
+
                             {error && <p className="text-red-500 text-sm text-center pt-2">{error}</p>}
                         </>
                     )}
@@ -56,7 +70,7 @@ const CheckoutModal = ({ isOpen, onClose, onConfirm, grandTotal, loading, name, 
                 <DialogFooter>
                     <DialogClose asChild><Button variant="secondary" disabled={loading}>Cancel</Button></DialogClose>
                     <Button onClick={onConfirm} className="bg-primary hover:bg-primary/90 text-primary-foreground" disabled={loading}>
-                        {loading ? 'Processing...' : `Confirm & Place Order`}
+                        {loading ? 'Processing...' : (isNewTab ? 'Start Tab & Order' : `Confirm & Place Order`)}
                     </Button>
                 </DialogFooter>
             </DialogContent>
@@ -105,12 +119,15 @@ const CheckoutPageInternal = () => {
     const restaurantId = searchParams.get('restaurantId');
     const phone = searchParams.get('phone');
     const tableId = searchParams.get('table');
+    const tabId = searchParams.get('tabId');
     
     const [cart, setCart] = useState([]);
     const [cartData, setCartData] = useState(null);
     const [appliedCoupons, setAppliedCoupons] = useState([]);
     const [name, setName] = useState('');
     const [address, setAddress] = useState('');
+    const [paxCount, setPaxCount] = useState(1);
+    const [tabName, setTabName] = useState('');
     
     const [isExistingUser, setIsExistingUser] = useState(false);
     const [codEnabled, setCodEnabled] = useState(false);
@@ -134,10 +151,9 @@ const CheckoutPageInternal = () => {
                 const parsedData = JSON.parse(savedCartData);
                 const finalPhone = phone || parsedData.phone;
                 
-                // If there's a tableId in the URL, force dine-in mode
                 const deliveryType = tableId ? 'dine-in' : (parsedData.deliveryType || 'delivery');
 
-                const updatedData = { ...parsedData, phone: finalPhone, tableId: tableId || null, deliveryType };
+                const updatedData = { ...parsedData, phone: finalPhone, tableId: tableId || null, dineInTabId: tabId || null, deliveryType };
 
                 setCart(updatedData.cart || []);
                 setAppliedCoupons(updatedData.appliedCoupons || []);
@@ -152,8 +168,14 @@ const CheckoutPageInternal = () => {
                 }
 
             } else {
-                router.push(`/order/${restaurantId}${tableId ? `?table=${tableId}`: ''}`);
-                return;
+                 if (tabId) {
+                    setCartData({ dineInTabId: tabId, deliveryType: 'dine-in', phone: phone });
+                    // If no cart, but tabId exists, it means they want to pay
+                    setSplitBillOptions({ active: true });
+                } else {
+                    router.push(`/order/${restaurantId}${tableId ? `?table=${tableId}`: ''}`);
+                    return;
+                }
             }
             
             try {
@@ -181,7 +203,7 @@ const CheckoutPageInternal = () => {
         };
 
         fetchInitialData();
-    }, [restaurantId, router, phone, tableId]);
+    }, [restaurantId, router, phone, tableId, tabId]);
 
 
     useEffect(() => {
@@ -198,10 +220,12 @@ const CheckoutPageInternal = () => {
                     if (res.ok) {
                         const data = await res.json();
                         setName(data.name);
+                        setTabName(`${data.name}'s Group`);
                         setIsExistingUser(true);
                     } else {
                         setIsExistingUser(false);
                         setName('');
+                        setTabName('');
                     }
                 } catch (err) {
                     setError('Could not fetch user details. Please enter manually.');
@@ -252,13 +276,11 @@ const CheckoutPageInternal = () => {
     };
     
     const handleAddMoreToTab = () => {
-        // Just go back to the menu, the cart is preserved.
-        router.push(`/order/${restaurantId}?table=${tableId}&phone=${phone}`);
+        router.push(`/order/${restaurantId}?table=${tableId}&phone=${phone}&tabId=${tabId}`);
     };
 
     const handleViewBill = () => {
         setDineInModalOpen(false);
-        // Here we'd transition the UI to a bill view state
         setSplitBillOptions({ active: true });
     };
 
@@ -272,6 +294,10 @@ const CheckoutPageInternal = () => {
         }
         if (!name.trim()) {
             setError('Please enter your name.');
+            return;
+        }
+        if (deliveryType === 'dine-in' && !cartData.dineInTabId && (!tabName.trim() || paxCount < 1)) {
+            setError('Please provide a name for your tab and the number of guests.');
             return;
         }
 
@@ -298,6 +324,9 @@ const CheckoutPageInternal = () => {
             businessType: cartData.businessType || 'restaurant',
             deliveryType: deliveryType,
             tableId: cartData.tableId || null,
+            dineInTabId: cartData.dineInTabId || null,
+            pax_count: cartData.dineInTabId ? null : paxCount,
+            tab_name: cartData.dineInTabId ? null : tabName,
             pickupTime: cartData.pickupTime || '',
             tipAmount: deliveryType === 'delivery' ? cartData.tipAmount || 0 : 0,
             subtotal, cgst, sgst, deliveryCharge: finalDeliveryCharge,
@@ -313,18 +342,24 @@ const CheckoutPageInternal = () => {
             const orderCreationResult = await orderCreationResponse.json();
             if (!orderCreationResponse.ok) throw new Error(orderCreationResult.message || "Failed to create order.");
             
-            const { firestore_order_id, razorpay_order_id } = orderCreationResult;
+            const { firestore_order_id, razorpay_order_id, dine_in_tab_id } = orderCreationResult;
+
+            // Important: Update tabId for subsequent actions
+            if (dine_in_tab_id) {
+                const currentCart = JSON.parse(localStorage.getItem(`cart_${restaurantId}`)) || {};
+                localStorage.setItem(`cart_${restaurantId}`, JSON.stringify({ ...currentCart, dineInTabId: dine_in_tab_id }));
+                setCartData(prev => ({ ...prev, dineInTabId: dine_in_tab_id }));
+            }
+
 
             if (selectedPaymentMethod === 'razorpay') {
                 const options = {
                     key: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID, amount: Math.round(grandTotal * 100), currency: "INR",
                     name: "ServiZephyr (Pvt. Ltd.)", description: `Payment for Order`, order_id: razorpay_order_id,
                     handler: function (response) {
-                        // For dine-in, show the "Add more / View Bill" modal.
                         if (deliveryType === 'dine-in') {
                             setIsModalOpen(false);
                             setDineInModalOpen(true);
-                            // Clear only the items from the cart, not other details
                             const currentCart = JSON.parse(localStorage.getItem(`cart_${restaurantId}`)) || {};
                             localStorage.setItem(`cart_${restaurantId}`, JSON.stringify({ ...currentCart, cart: [] }));
                             setCart([]);
@@ -390,6 +425,9 @@ const CheckoutPageInternal = () => {
                 error={error}
                 isExistingUser={isExistingUser}
                 deliveryType={deliveryType}
+                paxCount={paxCount} onPaxCountChange={setPaxCount}
+                tabName={tabName} onTabNameChange={setTabName}
+                cartData={cartData}
             />
              <DineInPostOrderModal
                 isOpen={isDineInModalOpen}
@@ -487,5 +525,3 @@ const CheckoutPage = () => (
 );
 
 export default CheckoutPage;
-
-    

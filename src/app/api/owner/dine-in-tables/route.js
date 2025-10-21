@@ -16,7 +16,7 @@ async function verifyOwnerAndGetBusiness(req) {
     const uid = decodedToken.uid;
     
     // THE FIX: Read from URL search params instead of referer header
-    const { searchParams } = new URL(req.url);
+    const { searchParams } = new URL(req.url, `http://${req.headers.host}`);
     const impersonatedOwnerId = searchParams.get('impersonate_owner_id');
 
     const userDoc = await firestore.collection('users').doc(uid).get();

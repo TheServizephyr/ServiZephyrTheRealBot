@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useMemo, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Utensils, Plus, Minus, X, Home, User, ShoppingCart, CookingPot, Ticket, Gift, ArrowLeft, Sparkles, Check, PlusCircle, Trash2, ChevronDown, Tag as TagIcon, RadioGroup, IndianRupee, HardHat, Bike, Store, Heart } from 'lucide-react';
+import { Utensils, Plus, Minus, X, Home, User, ShoppingCart, CookingPot, Ticket, Gift, ArrowLeft, Sparkles, Check, PlusCircle, Trash2, ChevronDown, Tag as TagIcon, RadioGroup, IndianRupee, HardHat, Bike, Store, Heart, Wallet } from 'lucide-react';
 import Script from 'next/script';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose } from "@/components/ui/dialog";
@@ -80,6 +80,7 @@ const CartPageInternal = () => {
     
     const phoneFromUrl = searchParams.get('phone');
     const tableId = searchParams.get('table');
+    const tabId = searchParams.get('tabId');
     const phoneFromStorage = typeof window !== 'undefined' ? localStorage.getItem('lastKnownPhone') : null;
     const initialPhone = phoneFromUrl || phoneFromStorage;
 
@@ -188,6 +189,9 @@ const CartPageInternal = () => {
         if (tableId) {
             checkoutUrl += `&table=${tableId}`;
         }
+        if (tabId) {
+            checkoutUrl += `&tabId=${tabId}`;
+        }
         router.push(checkoutUrl);
     };
 
@@ -195,6 +199,9 @@ const CartPageInternal = () => {
         let backUrl = `/order/${restaurantId}?phone=${phone}`;
         if (tableId) {
             backUrl += `&table=${tableId}`;
+        }
+         if (tabId) {
+            backUrl += `&tabId=${tabId}`;
         }
         router.push(backUrl);
     };
@@ -337,7 +344,7 @@ const CartPageInternal = () => {
                     <div className="h-full flex flex-col items-center justify-center text-muted-foreground">
                         <ShoppingCart size={48} className="mb-4" />
                         <h1 className="text-2xl font-bold">Your Cart is Empty</h1>
-                        <p className="mt-2">Looks like you haven't added anything to your cart yet.</p>
+                         <p className="mt-2">Looks like you haven't added anything to your cart yet.</p>
                          <Button onClick={handleGoBack} className="mt-6">
                             <ArrowLeft className="mr-2 h-4 w-4" /> Go Back to Menu
                         </Button>
@@ -346,7 +353,7 @@ const CartPageInternal = () => {
                     <>
                        <div className="bg-card p-4 rounded-lg border border-border mt-4">
                             <div className="flex justify-between items-center mb-3">
-                                <h3 className="font-bold text-lg">Your Items</h3>
+                                <h3 className="font-bold text-lg">{deliveryType === 'dine-in' ? `Adding to Tab` : `Your Items`}</h3>
                                  <Button variant="destructive" size="sm" onClick={() => setIsClearCartDialogOpen(true)}><Trash2 className="mr-2 h-4 w-4"/> Clear</Button>
                             </div>
                             <div className="space-y-4">
@@ -531,7 +538,7 @@ const CartPageInternal = () => {
                             <div className="border-t border-dashed border-border my-3"></div>
                             
                             <div className="flex justify-between items-center text-lg font-bold">
-                                 <span>Grand Total:</span>
+                                 <span>{deliveryType === 'dine-in' ? 'Total to be Added:' : 'Grand Total:'}</span>
                                 <div className="flex items-center gap-3">
                                 {totalDiscount > 0 && (
                                     <span className="text-muted-foreground line-through text-base font-medium">₹{(subtotal + finalDeliveryCharge + (cgst*2) + (deliveryType === 'delivery' ? tipAmount : 0)).toFixed(2)}</span>
@@ -552,9 +559,15 @@ const CartPageInternal = () => {
 
             <footer className="fixed bottom-0 left-0 w-full bg-background/80 backdrop-blur-lg border-t border-border z-30">
                 <div className="container mx-auto p-4 flex items-center justify-center gap-4">
-                    <Button onClick={handleConfirmOrder} className="flex-grow bg-primary hover:bg-primary/90 text-primary-foreground h-12 text-lg font-bold" disabled={cart.length === 0}>
-                        {deliveryType === 'dine-in' ? 'Add to Tab' : 'Proceed to Checkout'}
-                    </Button>
+                     {cart.length > 0 ? (
+                        <Button onClick={handleConfirmOrder} className="flex-grow bg-primary hover:bg-primary/90 text-primary-foreground h-12 text-lg font-bold" disabled={cart.length === 0}>
+                            {deliveryType === 'dine-in' ? 'Add to Tab' : 'Proceed to Checkout'}
+                        </Button>
+                    ) : deliveryType === 'dine-in' ? (
+                         <Button onClick={() => router.push(`/checkout?restaurantId=${restaurantId}&phone=${phone}&table=${tableId}&tabId=${tabId}`)} className="flex-grow bg-green-600 hover:bg-green-700 text-white h-12 text-lg font-bold">
+                            <Wallet className="mr-2"/> View Bill & Pay
+                        </Button>
+                    ) : null }
                 </div>
             </footer>
         </div>
@@ -569,5 +582,3 @@ const CartPage = () => (
 );
 
 export default CartPage;
-
-    

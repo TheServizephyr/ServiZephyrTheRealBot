@@ -1,10 +1,9 @@
-
 'use client';
 
 import React, { useState, useEffect, Suspense, useMemo, useCallback } from 'react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Utensils, Plus, Minus, X, Home, User, Edit2, ShoppingCart, Star, CookingPot, BookOpen, Check, SlidersHorizontal, ArrowUpDown, PlusCircle, Ticket, Gift, Sparkles, Flame, Search, Trash2, ChevronDown, Tag as TagIcon, RadioGroup, IndianRupee, HardHat, MapPin, Bike, Store, ConciergeBell, QrCode, Calendar, Clock, UserCheck, ArrowLeft, CheckCircle, AlertTriangle, Bell, CalendarClock, Wallet } from 'lucide-react';
+import { Utensils, Plus, Minus, X, Home, User, Edit2, ShoppingCart, Star, CookingPot, BookOpen, Check, SlidersHorizontal, ArrowUpDown, PlusCircle, Ticket, Gift, Sparkles, Flame, Search, Trash2, ChevronDown, Tag as TagIcon, RadioGroup, IndianRupee, HardHat, MapPin, Bike, Store, ConciergeBell, QrCode, Calendar, Clock, UserCheck, ArrowLeft, CheckCircle, AlertTriangle, Bell, CalendarClock, Wallet, Users } from 'lucide-react';
 import Image from 'next/image';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
@@ -19,6 +18,7 @@ import QrScanner from '@/components/QrScanner';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import InfoDialog from '@/components/InfoDialog';
 import { auth } from '@/lib/firebase';
+import { Input } from '@/components/ui/input';
 
 
 const CustomizationDrawer = ({ item, isOpen, onClose, onAddToCart }) => {
@@ -261,12 +261,16 @@ const MenuBrowserModal = ({ isOpen, onClose, categories, onCategoryClick }) => {
   );
 };
 
-const DineInModal = ({ isOpen, onClose, onScanQR, onBookTable }) => {
+const DineInModal = ({ isOpen, onClose, onScanQR, onBookTable, tableStatus, onStartNewTab, onJoinTab }) => {
     const [activeModal, setActiveModal] = useState('main'); // 'main', 'book', 'success'
     const [bookingDetails, setBookingDetails] = useState({ name: '', phone: '', guests: 2, date: new Date(), time: '19:00' });
     const [isSaving, setIsSaving] = useState(false);
     const [infoDialog, setInfoDialog] = useState({ isOpen: false, title: '', message: '' });
     const [minTime, setMinTime] = useState('00:00');
+    
+    // New states for New Tab flow
+    const [newTabPax, setNewTabPax] = useState(1);
+    const [newTabName, setNewTabName] = useState('');
 
     useEffect(() => {
         if (bookingDetails.date && isToday(bookingDetails.date)) {
@@ -313,9 +317,19 @@ const DineInModal = ({ isOpen, onClose, onScanQR, onBookTable }) => {
             setTimeout(() => {
                 setActiveModal('main');
                 setIsSaving(false);
+                setNewTabPax(1);
+                setNewTabName('');
             }, 300);
+        } else {
+            if (tableStatus?.state === 'available') {
+                setActiveModal('new_tab');
+            } else if (tableStatus?.state === 'partially_occupied') {
+                setActiveModal('join_or_new');
+            } else if (tableStatus?.state === 'full') {
+                 setActiveModal('full');
+            }
         }
-    }, [isOpen]);
+    }, [isOpen, tableStatus]);
     
     const today = new Date();
     const maxDate = new Date();
@@ -328,109 +342,60 @@ const DineInModal = ({ isOpen, onClose, onScanQR, onBookTable }) => {
             <Dialog open={isOpen} onOpenChange={onClose}>
                 <DialogContent className="bg-background border-border text-foreground p-0 max-w-md">
                     <AnimatePresence mode="wait">
-                    {activeModal === 'main' && (
-                        <motion.div
-                            key="main"
-                            initial={{ opacity: 0, x: 20 }}
-                            animate={{ opacity: 1, x: 0 }}
-                            exit={{ opacity: 0, x: -20 }}
-                        >
-                            <DialogHeader className="p-6 pb-4 border-b text-center">
-                                <DialogTitle className="text-xl">Planning to Visit Us?</DialogTitle>
-                                <DialogDescription>How would you like to proceed?</DialogDescription>
+                    {activeModal === 'new_tab' && (
+                        <motion.div key="new_tab">
+                             <DialogHeader className="p-6 pb-4">
+                                <DialogTitle>Start a New Tab</DialogTitle>
+                                <DialogDescription>Welcome! Let's get your tab started for Table {tableStatus?.tableId}.</DialogDescription>
                             </DialogHeader>
-                            <div className="p-6 grid grid-cols-1 sm:grid-cols-2 gap-4">
-                                <Button variant="outline" className="h-24 flex flex-col gap-2 text-base" onClick={() => setActiveModal('book')}>
-                                    <CalendarClock size={24}/>
-                                    Book a Table
-                                </Button>
-                                <Button variant="outline" className="h-24 flex flex-col gap-2 text-base" onClick={onScanQR}>
-                                    <QrCode size={24}/>
-                                    I'm at the Restaurant
-                                </Button>
+                            <div className="px-6 pb-6 space-y-4">
+                                <div>
+                                    <Label>How many people in your group?</Label>
+                                    <Input type="number" value={newTabPax} onChange={e => setNewTabPax(parseInt(e.target.value))} min="1" max={tableStatus?.max_capacity - tableStatus?.current_pax} className="mt-1" />
+                                </div>
+                                <div>
+                                    <Label>What's a name for your tab?</Label>
+                                    <Input value={newTabName} onChange={e => setNewTabName(e.target.value)} placeholder="e.g., Rohan's Group" className="mt-1" />
+                                </div>
+                                <Button onClick={() => onStartNewTab(newTabPax, newTabName)} className="w-full">Start Ordering</Button>
                             </div>
                         </motion.div>
                     )}
-                    {activeModal === 'book' && (
-                        <motion.div
-                            key="book"
-                            initial={{ opacity: 0, x: 20 }}
-                            animate={{ opacity: 1, x: 0 }}
-                            exit={{ opacity: 0, x: -20 }}
-                        >
-                            <DialogHeader className="p-4 border-b flex-shrink-0">
-                                <div className="flex items-center justify-between">
-                                    <Button variant="ghost" size="icon" onClick={() => setActiveModal('main')}><ArrowLeft/></Button>
-                                    <DialogTitle className="text-xl text-center">Book a Table</DialogTitle>
-                                    <div className="w-10"></div>
-                                </div>
+                    {activeModal === 'join_or_new' && (
+                         <motion.div key="join_or_new">
+                             <DialogHeader className="p-6 pb-4">
+                                <DialogTitle>Welcome to Table {tableStatus?.tableId}</DialogTitle>
+                                <DialogDescription>This table is partially occupied. Join an existing tab or start a new one.</DialogDescription>
                             </DialogHeader>
-                            <div className="p-6 space-y-4 flex-grow overflow-y-auto max-h-[60vh]">
-                                <div>
-                                    <Label htmlFor="name">Your Name</Label>
-                                    <input id="name" type="text" value={bookingDetails.name} onChange={(e) => handleBookingChange('name', e.target.value)} className="w-full mt-1 p-2 bg-input border rounded-md" />
+                            <div className="px-6 pb-6 space-y-4">
+                                <h4 className="font-semibold text-sm text-muted-foreground">Active Tabs:</h4>
+                                <div className="space-y-2">
+                                {(tableStatus.activeTabs || []).map(tab => (
+                                    <Button key={tab.id} variant="outline" className="w-full justify-between h-14" onClick={() => onJoinTab(tab.id)}>
+                                        <span>{tab.tab_name}</span>
+                                        <span className="flex items-center gap-1 text-xs bg-muted px-2 py-1 rounded-full"><Users size={12} /> {tab.pax_count}</span>
+                                    </Button>
+                                ))}
                                 </div>
-                                <div>
-                                    <Label htmlFor="phone">Phone Number</Label>
-                                    <input id="phone" type="tel" value={bookingDetails.phone} onChange={(e) => handleBookingChange('phone', e.target.value)} className="w-full mt-1 p-2 bg-input border rounded-md" />
+                                <div className="flex items-center gap-4 my-4">
+                                    <div className="flex-grow h-px bg-border"></div>
+                                    <span className="text-xs text-muted-foreground">OR</span>
+                                    <div className="flex-grow h-px bg-border"></div>
                                 </div>
-                                <div className="flex items-center justify-between">
-                                    <Label>Party Size</Label>
-                                    <div className="flex items-center gap-2">
-                                        <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => handleBookingChange('guests', Math.max(1, bookingDetails.guests - 1))}>-</Button>
-                                        <span className="font-bold w-8 text-center">{bookingDetails.guests}</span>
-                                        <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => handleBookingChange('guests', bookingDetails.guests + 1)}>+</Button>
-                                    </div>
-                                </div>
-                                <div className="grid grid-cols-2 gap-4">
-                                    <div>
-                                        <Label>Date</Label>
-                                        <Popover>
-                                            <PopoverTrigger asChild>
-                                            <Button variant={"outline"} className={cn("w-full justify-start text-left font-normal mt-1", !bookingDetails.date && "text-muted-foreground")}>
-                                                <Calendar className="mr-2 h-4 w-4" />
-                                                {bookingDetails.date ? format(bookingDetails.date, "PPP") : <span>Pick a date</span>}
-                                            </Button>
-                                            </PopoverTrigger>
-                                            <PopoverContent className="w-auto p-0">
-                                                <CalendarUI 
-                                                    mode="single" 
-                                                    selected={bookingDetails.date} 
-                                                    onSelect={(d) => handleBookingChange('date', d)} 
-                                                    disabled={{ before: today, after: maxDate }}
-                                                    initialFocus 
-                                                />
-                                            </PopoverContent>
-                                        </Popover>
-                                    </div>
-                                    <div>
-                                        <Label>Time</Label>
-                                        <input type="time" value={bookingDetails.time} min={minTime} onChange={(e) => handleBookingChange('time', e.target.value)} className="w-full mt-1 p-2 bg-input border rounded-md" />
-                                    </div>
-                                </div>
+                                <Button onClick={() => setActiveModal('new_tab')} className="w-full">Start a New, Separate Tab</Button>
                             </div>
-                            <DialogFooter className="p-4 border-t flex-shrink-0">
-                                <Button variant="secondary" onClick={() => setActiveModal('main')} disabled={isSaving}>Back</Button>
-                                <Button onClick={handleConfirmBooking} className="bg-primary hover:bg-primary/90" disabled={isSaving}>
-                                    {isSaving ? "Booking..." : "Confirm Booking"}
-                                </Button>
-                            </DialogFooter>
                         </motion.div>
                     )}
-                    {activeModal === 'success' && (
-                        <motion.div
-                            key="success"
-                            initial={{ opacity: 0, scale: 0.8 }}
-                            animate={{ opacity: 1, scale: 1 }}
-                            className="flex flex-col items-center justify-center p-8 text-center"
-                        >
-                            <CheckCircle className="h-16 w-16 text-green-500 mb-4" />
-                            <h2 className="text-2xl font-bold">Booking Request Sent!</h2>
-                            <p className="text-muted-foreground mt-2">You will receive a WhatsApp confirmation shortly. Thank you!</p>
-                            <DialogFooter className="mt-6 w-full">
-                            <DialogClose asChild><Button className="w-full">Done</Button></DialogClose>
-                            </DialogFooter>
-                        </motion.div>
+                    {activeModal === 'full' && (
+                         <motion.div key="full" className="p-8 text-center">
+                            <DialogHeader>
+                                <DialogTitle className="text-2xl text-destructive">Table is Full</DialogTitle>
+                                <DialogDescription>Sorry, all {tableStatus?.max_capacity} seats at this table are occupied. Please see the host for another available table.</DialogDescription>
+                            </DialogHeader>
+                             <DialogFooter className="mt-6">
+                                <Button onClick={onClose} className="w-full">Okay</Button>
+                             </DialogFooter>
+                         </motion.div>
                     )}
                     </AnimatePresence>
                 </DialogContent>
@@ -501,6 +466,7 @@ const OrderPageInternal = () => {
     
     const phoneFromUrl = searchParams.get('phone');
     const tableIdFromUrl = searchParams.get('table');
+    const tabIdFromUrl = searchParams.get('tabId');
     
     // --- STATE MANAGEMENT ---
     const [customerLocation, setCustomerLocation] = useState(null);
@@ -538,6 +504,34 @@ const OrderPageInternal = () => {
     const [isQrScannerOpen, setIsQrScannerOpen] = useState(false);
     const [infoDialog, setInfoDialog] = useState({ isOpen: false, title: '', message: '' });
     
+    // --- DINE-IN GATEWAY LOGIC ---
+    const [dineInState, setDineInState] = useState('loading'); // loading, needs_setup, ready
+
+    const handleStartNewTab = (paxCount, tabName) => {
+        if (!paxCount || paxCount < 1) {
+            setInfoDialog({ isOpen: true, title: "Invalid Input", message: "Please enter a valid number of guests." });
+            return;
+        }
+        if (!tabName.trim()) {
+            setInfoDialog({ isOpen: true, title: "Invalid Input", message: "Please enter a name for your tab." });
+            return;
+        }
+        if (paxCount > (tableStatus.max_capacity - tableStatus.current_pax)) {
+            setInfoDialog({ isOpen: true, title: "Capacity Exceeded", message: `This table can only accommodate ${tableStatus.max_capacity - tableStatus.current_pax} more guests.` });
+            return;
+        }
+
+        localStorage.setItem('dineInSetup', JSON.stringify({ pax_count: paxCount, tab_name: tabName }));
+        setDineInState('ready');
+        setDineInModalOpen(false);
+    };
+
+    const handleJoinTab = (tabId) => {
+        localStorage.setItem('dineInSetup', JSON.stringify({ join_tab_id: tabId }));
+        setDineInState('ready');
+        setDineInModalOpen(false);
+    };
+
 
     // --- LOCATION & DATA FETCHING ---
     useEffect(() => {
@@ -597,18 +591,27 @@ const OrderPageInternal = () => {
 
                 if (tableIdFromUrl) {
                     setDeliveryType('dine-in');
-                    const tableRes = await fetch(`/api/owner/tables?restaurantId=${restaurantId}&tableId=${tableIdFromUrl}`);
-                    if (tableRes.ok) {
-                        const tableData = await tableRes.json();
-                        setTableStatus(tableData.state);
+                    if (tabIdFromUrl) {
+                        localStorage.setItem('dineInSetup', JSON.stringify({ join_tab_id: tabIdFromUrl }));
+                        setDineInState('ready');
                     } else {
-                        // Assume available if API fails, allows ordering. Backend will validate again.
-                        setTableStatus('available');
+                        const tableRes = await fetch(`/api/owner/tables?restaurantId=${restaurantId}&tableId=${tableIdFromUrl}`);
+                        const tableData = await tableRes.json();
+                        
+                        let state = 'available';
+                        if (tableData.current_pax >= tableData.max_capacity) state = 'full';
+                        else if (tableData.current_pax > 0) state = 'partially_occupied';
+                        
+                        setTableStatus({ ...tableData, tableId: tableIdFromUrl, state });
+                        setDineInState('needs_setup');
+                        setDineInModalOpen(true);
                     }
                 } else if (menuData.deliveryEnabled) {
                     setDeliveryType('delivery');
+                    setDineInState('ready');
                 } else if (menuData.pickupEnabled) {
                     setDeliveryType('pickup');
+                    setDineInState('ready');
                 }
             } catch (err) {
                 console.error("[DEBUG] OrderPage: Error in fetchInitialData:", err);
@@ -620,7 +623,7 @@ const OrderPageInternal = () => {
         };
 
         fetchInitialData();
-    }, [restaurantId, phoneFromUrl, tableIdFromUrl]);
+    }, [restaurantId, phoneFromUrl, tableIdFromUrl, tabIdFromUrl]);
     
     // --- CART PERSISTENCE ---
     const updateCart = useCallback((newCart, newNotes, newDeliveryType) => {
@@ -777,6 +780,7 @@ const OrderPageInternal = () => {
     
     const handleDeliveryTypeChange = (type) => {
         if (type === 'dine-in' && !tableIdFromUrl) {
+            setDineInState('needs_setup');
             setDineInModalOpen(true);
             return;
         }
@@ -866,14 +870,23 @@ const OrderPageInternal = () => {
 
     const handleCheckout = () => {
         const phone = phoneFromUrl || localStorage.getItem('lastKnownPhone');
-        let url = `/cart?restaurantId=${restaurantId}&phone=${phone}`;
-        if (tableIdFromUrl) {
-            url += `&table=${tableIdFromUrl}`;
+        
+        let dineInSetup = {};
+        if (deliveryType === 'dine-in') {
+            const setupStr = localStorage.getItem('dineInSetup');
+            if (setupStr) dineInSetup = JSON.parse(setupStr);
         }
+
+        const tabIdToPass = dineInSetup.join_tab_id || tabIdFromUrl;
+
+        let url = `/cart?restaurantId=${restaurantId}&phone=${phone}`;
+        if (tableIdFromUrl) url += `&table=${tableIdFromUrl}`;
+        if (tabIdToPass) url += `&tabId=${tabIdToPass}`;
+
         router.push(url);
     };
 
-    if (loading) {
+    if (loading || dineInState === 'loading') {
         return (
             <div className="min-h-screen bg-background flex items-center justify-center">
                 <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-primary"></div>
@@ -891,23 +904,18 @@ const OrderPageInternal = () => {
        );
     }
 
-    if (tableStatus && tableStatus !== 'available') {
-        const title = tableStatus === 'occupied' ? "This table's tab is already active." : "This table is being prepared.";
-        const description = tableStatus === 'occupied' ? "Are you part of this group? Please ask a member of your group to add items to the tab, or call a waiter for assistance." : "A waiter will be with you shortly. Thank you for your patience.";
-        
-        return (
-            <div className="min-h-screen bg-background flex flex-col items-center justify-center text-center p-4">
-                <Alert className="max-w-md">
-                    <ConciergeBell className="h-4 w-4" />
-                    <AlertTitle>{title}</AlertTitle>
-                    <AlertDescription>{description}</AlertDescription>
-                </Alert>
-                <div className="mt-6 flex gap-4">
-                     <Button onClick={handleCallWaiter}><Bell className="mr-2 h-4 w-4" /> Call Waiter</Button>
-                     {tableStatus === 'occupied' && <Button variant="outline">Yes, Join Tab</Button>}
-                </div>
+    if (dineInState === 'needs_setup') {
+         return (
+            <div className="min-h-screen bg-background">
+                 <DineInModal 
+                    isOpen={isDineInModalOpen} 
+                    onClose={() => setDineInModalOpen(false)}
+                    tableStatus={tableStatus}
+                    onStartNewTab={handleStartNewTab}
+                    onJoinTab={handleJoinTab}
+                />
             </div>
-        )
+         )
     }
     
     return (
@@ -962,6 +970,9 @@ const OrderPageInternal = () => {
                   isOpen={isDineInModalOpen} 
                   onClose={() => setDineInModalOpen(false)}
                   onBookTable={handleBookTable}
+                  tableStatus={tableStatus}
+                  onStartNewTab={handleStartNewTab}
+                  onJoinTab={handleJoinTab}
                   onScanQR={() => {
                     setDineInModalOpen(false);
                     setIsQrScannerOpen(true);
@@ -1101,7 +1112,7 @@ const OrderPageInternal = () => {
                          
                          <motion.div
                             className="absolute right-4 pointer-events-auto"
-                            animate={{ bottom: totalCartItems > 0 ? '6.5rem' : '1rem' }}
+                            animate={{ bottom: totalCartItems > 0 || isTabActive ? '6.5rem' : '1rem' }}
                             transition={{ type: "spring", stiffness: 300, damping: 25 }}
                         >
                              <button
@@ -1123,23 +1134,13 @@ const OrderPageInternal = () => {
                                     transition={{ type: "spring", stiffness: 300, damping: 30 }}
                                 >
                                     <div className="container mx-auto p-4">
-                                        {isTabActive ? (
-                                            <Button onClick={handleCheckout} className="bg-primary hover:bg-primary/90 h-14 text-lg font-bold rounded-lg shadow-primary/30 flex justify-between items-center text-primary-foreground w-full">
-                                                <div className="flex items-center gap-2">
-                                                   <Wallet className="h-6 w-6"/> 
-                                                   <span>Tab for Table {tableIdFromUrl}</span>
-                                                </div>
-                                                <span>View Bill &amp; Pay</span>
-                                            </Button>
-                                        ) : (
-                                             <Button onClick={handleCheckout} className="bg-primary hover:bg-primary/90 h-14 text-lg font-bold rounded-lg shadow-primary/30 flex justify-between items-center text-primary-foreground w-full">
-                                                <div className="flex items-center gap-2">
-                                                   <ShoppingCart className="h-6 w-6"/> 
-                                                   <span>{totalCartItems} {totalCartItems > 1 ? 'Items' : 'Item'}</span>
-                                                </div>
-                                                <span>{isTabActive ? 'Add to Tab' : 'View Cart'} | ₹{subtotal}</span>
-                                            </Button>
-                                        )}
+                                        <Button onClick={handleCheckout} className="bg-primary hover:bg-primary/90 h-14 text-lg font-bold rounded-lg shadow-primary/30 flex justify-between items-center text-primary-foreground w-full">
+                                            <div className="flex items-center gap-2">
+                                                {isTabActive ? <Wallet className="h-6 w-6"/> : <ShoppingCart className="h-6 w-6"/>}
+                                                <span>{isTabActive ? `View Tab for Table ${tableIdFromUrl}` : `${totalCartItems} Item${totalCartItems > 1 ? 's' : ''}`}</span>
+                                            </div>
+                                            <span>{isTabActive ? 'View Bill & Pay' : `View Cart | ₹${subtotal}`}</span>
+                                        </Button>
                                     </div>
                                 </motion.div>
                             )}
