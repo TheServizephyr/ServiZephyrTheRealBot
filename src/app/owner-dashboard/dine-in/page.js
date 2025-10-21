@@ -208,15 +208,17 @@ export default function DineInPage() {
             if (!user) throw new Error("Authentication required.");
             const idToken = await user.getIdToken();
             
-            // This is a bit of a workaround to get the restaurantId
-            // A better solution might be to have a dedicated endpoint for businessId
+            let businessId = '';
             const settingsRes = await fetch('/api/owner/settings', { headers: { 'Authorization': `Bearer ${idToken}` } });
             if (settingsRes.ok) {
                 const settingsData = await settingsRes.json();
-                // This assumes restaurantName is unique and can be used as ID, which is not ideal.
-                // It should be a proper ID from a dedicated endpoint. For now, this is a placeholder.
-                const bizId = settingsData?.restaurantName?.toLowerCase().replace(/\s+/g, '-') || '';
-                setRestaurantId(bizId);
+                const restaurantsQuery = await fetch('/api/admin/restaurants');
+                const { restaurants } = await restaurantsQuery.json();
+                const matchedRestaurant = restaurants.find(r => r.name === settingsData.restaurantName);
+                if (matchedRestaurant) {
+                    businessId = matchedRestaurant.id;
+                    setRestaurantId(businessId);
+                }
             }
             
             let url = new URL('/api/owner/orders', window.location.origin);
@@ -233,8 +235,8 @@ export default function DineInPage() {
                 throw new Error(errorData.message || 'Failed to fetch orders');
             }
             const data = await res.json();
-            // Filter for dine-in and active tabs
-            const dineInOrders = (data.orders || []).filter(o => o.deliveryType === 'dine-in' && o.status === 'active_tab');
+            const dineInStatuses = ['pending', 'confirmed', 'preparing', 'active_tab', 'ready_for_pickup'];
+            const dineInOrders = (data.orders || []).filter(o => o.deliveryType === 'dine-in' && dineInStatuses.includes(o.status));
             setOrders(dineInOrders);
         } catch (error) {
             console.error("Error fetching dine-in orders:", error);
