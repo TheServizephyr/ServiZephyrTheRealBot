@@ -1,4 +1,5 @@
 
+
 "use client";
 
 import { useState, useEffect, useRef } from "react";
@@ -12,6 +13,7 @@ import { useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
+import InfoDialog from "@/components/InfoDialog";
 
 const MotionDiv = motion.div;
 
@@ -22,6 +24,7 @@ export default function Navbar({ isSidebarOpen, setSidebarOpen, restaurantName, 
   const { theme, setTheme } = useTheme();
   const router = useRouter();
   const dropdownRef = useRef(null);
+  const [infoDialog, setInfoDialog] = useState({ isOpen: false, title: '', message: '' });
 
   useEffect(() => {
     const fetchStatus = async () => {
@@ -66,7 +69,7 @@ export default function Navbar({ isSidebarOpen, setSidebarOpen, restaurantName, 
       router.push('/');
     } catch (error) {
       console.error("Logout failed:", error);
-      alert("Could not log out. Please try again.");
+      setInfoDialog({ isOpen: true, title: "Error", message: "Could not log out. Please try again." });
     }
   };
 
@@ -87,13 +90,20 @@ export default function Navbar({ isSidebarOpen, setSidebarOpen, restaurantName, 
       if (!res.ok) throw new Error("Failed to update status");
       setRestaurantStatus(newStatus);
     } catch (error) {
-      alert("Error updating status: " + error.message);
+      setInfoDialog({ isOpen: true, title: "Error", message: `Error updating status: ${error.message}` });
     } finally {
       setLoadingStatus(false);
     }
   };
 
   return (
+    <>
+    <InfoDialog
+        isOpen={infoDialog.isOpen}
+        onClose={() => setInfoDialog({ isOpen: false, title: '', message: '' })}
+        title={infoDialog.title}
+        message={infoDialog.message}
+    />
     <div className="flex items-center justify-between w-full">
       <div className="flex items-center gap-2">
         <button
@@ -183,5 +193,6 @@ export default function Navbar({ isSidebarOpen, setSidebarOpen, restaurantName, 
         </div>
       </div>
     </div>
+    </>
   );
 }

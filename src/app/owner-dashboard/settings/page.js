@@ -14,6 +14,7 @@ import Image from 'next/image';
 import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
 import { Command, CommandInput, CommandEmpty, CommandGroup, CommandItem } from '@/components/ui/command';
 import { cn } from '@/lib/utils';
+import InfoDialog from '@/components/InfoDialog';
 
 // --- Sub-components for better structure ---
 
@@ -94,6 +95,7 @@ const SectionCard = ({ title, description, children, footer }) => (
 
 const DeleteAccountModal = ({ isOpen, setIsOpen }) => {
     const [confirmationText, setConfirmationText] = useState("");
+    const [infoDialog, setInfoDialog] = useState({ isOpen: false, title: '', message: '' });
     const isDeleteDisabled = confirmationText !== "DELETE";
 
     const handleDelete = async () => {
@@ -101,19 +103,26 @@ const DeleteAccountModal = ({ isOpen, setIsOpen }) => {
             const user = getAuth().currentUser;
             if (user) {
                 await user.delete();
-                alert("Account deleted successfully.");
+                setInfoDialog({ isOpen: true, title: 'Success', message: 'Account deleted successfully.' });
                 // You would typically redirect the user to a logged-out page here.
-                window.location.href = "/";
+                setTimeout(() => window.location.href = "/", 2000);
             }
         } catch (error) {
             console.error("Error deleting account:", error);
-            alert(`Failed to delete account: ${error.message}. You may need to sign in again to perform this action.`);
+            setInfoDialog({ isOpen: true, title: 'Error', message: `Failed to delete account: ${error.message}. You may need to sign in again to perform this action.` });
         } finally {
             setIsOpen(false);
         }
     };
 
     return (
+        <>
+        <InfoDialog
+            isOpen={infoDialog.isOpen}
+            onClose={() => setInfoDialog({ isOpen: false, title: '', message: '' })}
+            title={infoDialog.title}
+            message={infoDialog.message}
+        />
         <Dialog open={isOpen} onOpenChange={setIsOpen}>
             <DialogContent className="sm:max-w-md bg-destructive/10 border-destructive text-foreground backdrop-blur-md">
                 <DialogHeader>
@@ -145,6 +154,7 @@ const DeleteAccountModal = ({ isOpen, setIsOpen }) => {
                 </DialogFooter>
             </DialogContent>
         </Dialog>
+        </>
     );
 };
 
@@ -200,6 +210,7 @@ export default function SettingsPage() {
     const [passwords, setPasswords] = useState({ current: '', new: '', confirm: '' });
     const [showNewPass, setShowNewPass] = useState(false);
     const bannerInputRef = React.useRef(null);
+    const [infoDialog, setInfoDialog] = useState({ isOpen: false, title: '', message: '' });
 
     const defaultAddress = {
         street: '',
@@ -237,7 +248,7 @@ export default function SettingsPage() {
                 setEditedUser(userData);
             } catch (error) {
                 console.error("Error fetching user data:", error);
-                alert(error.message);
+                setInfoDialog({ isOpen: true, title: 'Error', message: error.message });
             } finally {
                 setLoading(false);
             }
@@ -309,23 +320,23 @@ export default function SettingsPage() {
 
             // Prevent disabling all order types
             if (!deliveryEnabled && !pickupEnabled && !dineInEnabled) {
-                alert("At least one order type (Delivery, Pickup, or Dine-In) must be enabled.");
+                setInfoDialog({ isOpen: true, title: 'Invalid Selection', message: 'At least one order type (Delivery, Pickup, or Dine-In) must be enabled.' });
                 return prev;
             }
 
             // Validation for Delivery
             if (deliveryEnabled && !deliveryOnlinePaymentEnabled && !deliveryCodEnabled) {
-                alert("At least one payment method must be enabled for Delivery.");
+                setInfoDialog({ isOpen: true, title: 'Invalid Selection', message: 'At least one payment method must be enabled for Delivery.' });
                 return prev;
             }
             // Validation for Pickup
             if (pickupEnabled && !pickupOnlinePaymentEnabled && !pickupPodEnabled) {
-                alert("At least one payment method must be enabled for Pickup.");
+                setInfoDialog({ isOpen: true, title: 'Invalid Selection', message: 'At least one payment method must be enabled for Pickup.' });
                 return prev;
             }
             // Validation for Dine-In
              if (dineInEnabled && !dineInOnlinePaymentEnabled && !dineInPayAtCounterEnabled) {
-                alert("At least one payment method must be enabled for Dine-In.");
+                setInfoDialog({ isOpen: true, title: 'Invalid Selection', message: 'At least one payment method must be enabled for Dine-In.' });
                 return prev;
             }
 
@@ -396,11 +407,11 @@ export default function SettingsPage() {
             if (section === 'profile') setIsEditingProfile(false);
             if (section === 'media') setIsEditingMedia(false);
             if (section === 'payment') setIsEditingPayment(false);
-            alert("Updated Successfully!");
+            setInfoDialog({ isOpen: true, title: 'Success', message: 'Updated Successfully!' });
 
         } catch (error) {
             console.error("Error saving data:", error);
-            alert(error.message);
+            setInfoDialog({ isOpen: true, title: 'Error', message: error.message });
         }
     };
     
@@ -409,15 +420,15 @@ export default function SettingsPage() {
         const currentUser = getAuth().currentUser;
 
         if (!currentUser) {
-            alert("You must be logged in to change your password.");
+            setInfoDialog({ isOpen: true, title: 'Error', message: 'You must be logged in to change your password.' });
             return;
         }
         if (passwords.new !== passwords.confirm) {
-            alert("New password and confirm password do not match.");
+            setInfoDialog({ isOpen: true, title: 'Error', message: 'New password and confirm password do not match.' });
             return;
         }
         if (passwords.new.length < 6) {
-            alert("New password must be at least 6 characters long.");
+            setInfoDialog({ isOpen: true, title: 'Error', message: 'New password must be at least 6 characters long.' });
             return;
         }
         
@@ -427,12 +438,12 @@ export default function SettingsPage() {
             
             await updatePassword(currentUser, passwords.new);
             
-            alert("Password updated successfully!");
+            setInfoDialog({ isOpen: true, title: 'Success', message: 'Password updated successfully!' });
             setPasswords({ current: '', new: '', confirm: '' });
 
         } catch (error) {
             console.error("Password update error:", error);
-            alert(`Failed to update password: ${error.message}. Make sure your current password is correct.`);
+            setInfoDialog({ isOpen: true, title: 'Error', message: `Failed to update password: ${error.message}. Make sure your current password is correct.` });
         }
     };
 
@@ -454,6 +465,12 @@ export default function SettingsPage() {
 
     return (
         <div className="p-4 md:p-6 text-foreground min-h-screen bg-background space-y-8">
+            <InfoDialog
+                isOpen={infoDialog.isOpen}
+                onClose={() => setInfoDialog({ isOpen: false, title: '', message: '' })}
+                title={infoDialog.title}
+                message={infoDialog.message}
+            />
             <DeleteAccountModal isOpen={isDeleteModalOpen} setIsOpen={setDeleteModalOpen} />
             
             <h1 className="text-3xl font-bold tracking-tight">User Profile & Settings</h1>

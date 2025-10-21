@@ -17,6 +17,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import Link from 'next/link';
+import InfoDialog from '@/components/InfoDialog';
 
 
 const statusConfig = {
@@ -39,6 +40,7 @@ const RejectOrderModal = ({ order, isOpen, onClose, onConfirm }) => {
     const [reason, setReason] = useState('');
     const [otherReason, setOtherReason] = useState('');
     const [isSubmitting, setIsSubmitting] = useState(false);
+    const [infoDialog, setInfoDialog] = useState({ isOpen: false, title: '', message: '' });
 
     useEffect(() => {
         if (isOpen) {
@@ -51,7 +53,7 @@ const RejectOrderModal = ({ order, isOpen, onClose, onConfirm }) => {
     const handleConfirm = async () => {
         const finalReason = reason === 'other' ? otherReason : reason;
         if (!finalReason) {
-            alert("Please select or enter a reason for rejection.");
+            setInfoDialog({ isOpen: true, title: 'Validation Error', message: 'Please select or enter a reason for rejection.' });
             return;
         }
         setIsSubmitting(true);
@@ -59,7 +61,7 @@ const RejectOrderModal = ({ order, isOpen, onClose, onConfirm }) => {
             await onConfirm(order.id, finalReason);
             onClose();
         } catch (error) {
-            // alert handled in parent
+            // parent shows dialog
         } finally {
             setIsSubmitting(false);
         }
@@ -75,6 +77,13 @@ const RejectOrderModal = ({ order, isOpen, onClose, onConfirm }) => {
     ];
 
     return (
+        <>
+        <InfoDialog
+            isOpen={infoDialog.isOpen}
+            onClose={() => setInfoDialog({ isOpen: false, title: '', message: '' })}
+            title={infoDialog.title}
+            message={infoDialog.message}
+        />
         <Dialog open={isOpen} onOpenChange={onClose}>
             <DialogContent className="bg-background border-border text-foreground">
                 <DialogHeader>
@@ -122,6 +131,7 @@ const RejectOrderModal = ({ order, isOpen, onClose, onConfirm }) => {
                 </DialogFooter>
             </DialogContent>
         </Dialog>
+        </>
     );
 };
 
@@ -531,6 +541,7 @@ export default function LiveOrdersPage() {
   const [detailModalData, setDetailModalData] = useState({ isOpen: false, data: null });
   const [activeFilter, setActiveFilter] = useState('All');
   const [searchQuery, setSearchQuery] = useState('');
+  const [infoDialog, setInfoDialog] = useState({ isOpen: false, title: '', message: '' });
   const searchParams = useSearchParams();
   const impersonatedOwnerId = searchParams.get('impersonate_owner_id');
 
@@ -565,7 +576,7 @@ export default function LiveOrdersPage() {
         setOrders(ordersData.orders || []);
     } catch (error) {
         console.error(error);
-        alert("Could not load data: " + error.message);
+        setInfoDialog({ isOpen: true, title: 'Error', message: `Could not load data: ${error.message}` });
     } finally {
         if(!isManualRefresh) setLoading(false);
     }
@@ -613,7 +624,7 @@ export default function LiveOrdersPage() {
       await handleAPICall('PATCH', { orderId, newStatus });
       await fetchInitialData(true);
     } catch (error) {
-      alert(`Error updating status: ${error.message}`);
+      setInfoDialog({ isOpen: true, title: 'Error', message: `Error updating status: ${error.message}` });
     } finally {
       setUpdatingOrderId(null);
     }
@@ -631,7 +642,7 @@ export default function LiveOrdersPage() {
         await fetchInitialData(true);
         setAssignModalData({ isOpen: false, order: null });
     } catch (error) {
-        alert(`Error assigning rider: ${error.message}`);
+        setInfoDialog({ isOpen: true, title: 'Error', message: `Error assigning rider: ${error.message}` });
         setAssignModalData({ isOpen: false, order: null });
         throw error;
     } finally {
@@ -646,7 +657,7 @@ export default function LiveOrdersPage() {
         await handleAPICall('PATCH', { orderId, newStatus: 'rejected', rejectionReason: reason });
         await fetchInitialData(true);
     } catch (error) {
-        alert(`Error rejecting order: ${error.message}`);
+        setInfoDialog({ isOpen: true, title: 'Error', message: `Error rejecting order: ${error.message}` });
         throw error; // Re-throw so modal knows it failed
     } finally {
         setUpdatingOrderId(null);
@@ -659,7 +670,7 @@ export default function LiveOrdersPage() {
         const data = await handleAPICall('GET', { id: orderId });
         setBillData({ order: data.order, restaurant: data.restaurant });
       } catch(e) {
-        alert("Could not load bill data: " + e.message);
+        setInfoDialog({ isOpen: true, title: 'Error', message: `Could not load bill data: ${e.message}` });
       } finally {
         setUpdatingOrderId(null);
       }
@@ -670,7 +681,7 @@ export default function LiveOrdersPage() {
       const data = await handleAPICall('GET', { id: orderId, customerId: customerId });
       setDetailModalData({ isOpen: true, data });
     } catch(e) {
-      alert("Could not load details: " + e.message);
+      setInfoDialog({ isOpen: true, title: 'Error', message: `Could not load details: ${e.message}` });
     }
   };
 
@@ -738,6 +749,12 @@ export default function LiveOrdersPage() {
 
   return (
     <div className="p-4 md:p-6 text-foreground min-h-screen bg-background">
+        <InfoDialog
+            isOpen={infoDialog.isOpen}
+            onClose={() => setInfoDialog({ isOpen: false, title: '', message: '' })}
+            title={infoDialog.title}
+            message={infoDialog.message}
+        />
         
          {billData.order && (
             <BillModal 
@@ -930,4 +947,3 @@ export default function LiveOrdersPage() {
     </div>
   );
 }
-

@@ -11,6 +11,7 @@ import { auth } from '@/lib/firebase';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import Image from 'next/image';
 import Link from 'next/link';
+import InfoDialog from '@/components/InfoDialog';
 
 // Helper function to format currency
 const formatCurrency = (value) => `₹${Number(value).toLocaleString('en-IN')}`;
@@ -202,6 +203,7 @@ function PageContent() {
   const [dashboardData, setDashboardData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [botCount, setBotCount] = useState(0);
+  const [infoDialog, setInfoDialog] = useState({ isOpen: false, title: '', message: '' });
   const router = useRouter();
   const searchParams = useSearchParams();
   const impersonatedOwnerId = searchParams.get('impersonate_owner_id');
@@ -249,7 +251,7 @@ function PageContent() {
 
         } catch (error) {
             console.error("Error fetching initial data:", error);
-            alert(`Error: ${error.message}`);
+            setInfoDialog({ isOpen: true, title: 'Error', message: `Error: ${error.message}` });
         } finally {
             setLoading(false);
         }
@@ -269,6 +271,12 @@ function PageContent() {
 
   return (
     <div className="text-foreground min-h-full p-4 md:p-6">
+      <InfoDialog 
+          isOpen={infoDialog.isOpen} 
+          onClose={() => setInfoDialog({isOpen: false, title: '', message: ''})} 
+          title={infoDialog.title} 
+          message={infoDialog.message}
+      />
       <motion.div initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5 }}>
 
         {/* Global Header */}

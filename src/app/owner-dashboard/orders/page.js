@@ -9,6 +9,7 @@ import { RefreshCw } from "lucide-react";
 import styles from "@/components/OwnerDashboard/OwnerDashboard.module.css";
 import { auth } from '@/lib/firebase';
 import { useSearchParams } from "next/navigation";
+import InfoDialog from "@/components/InfoDialog";
 
 
 const containerVariants = {
@@ -24,6 +25,7 @@ const containerVariants = {
 export default function OrdersPage() {
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [infoDialog, setInfoDialog] = useState({ isOpen: false, title: '', message: '' });
   const searchParams = useSearchParams();
   const impersonatedOwnerId = searchParams.get('impersonate_owner_id');
 
@@ -53,7 +55,7 @@ export default function OrdersPage() {
         setOrders(data.orders || []);
     } catch (error) {
         console.error("Error fetching orders:", error);
-        alert(`Could not load orders: ${error.message}`);
+        setInfoDialog({ isOpen: true, title: "Error", message: `Could not load orders: ${error.message}` });
     } finally {
         setLoading(false);
     }
@@ -82,6 +84,12 @@ export default function OrdersPage() {
       animate="visible"
       className="space-y-8 p-4 md:p-6 bg-gray-900 text-white min-h-screen"
     >
+      <InfoDialog 
+          isOpen={infoDialog.isOpen} 
+          onClose={() => setInfoDialog({isOpen: false, title: '', message: ''})} 
+          title={infoDialog.title} 
+          message={infoDialog.message}
+      />
       <div className="flex justify-between items-center">
         <h1 className="text-3xl font-bold tracking-tight">
           All Orders

@@ -1,4 +1,5 @@
 
+
 'use client';
 
 import React, { useState, useEffect, useMemo } from 'react';
@@ -14,6 +15,7 @@ import { format, addDays } from 'date-fns';
 import { cn } from '@/lib/utils';
 import { auth } from '@/lib/firebase';
 import { useSearchParams } from 'next/navigation';
+import InfoDialog from '@/components/InfoDialog';
 
 const formatCurrency = (value, currency = 'INR') => {
     if (value === null || value === undefined) return '₹0';
