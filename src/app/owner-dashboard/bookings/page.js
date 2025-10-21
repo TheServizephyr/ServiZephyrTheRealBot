@@ -19,7 +19,9 @@ import { cn } from '@/lib/utils';
 const formatDateTime = (isoString) => {
     if (!isoString) return 'N/A';
     try {
-        return format(new Date(isoString), "dd MMM, yyyy 'at' hh:mm a");
+        const date = new Date(isoString);
+        if (isNaN(date.getTime())) throw new Error('Invalid date');
+        return format(date, "dd MMM, yyyy 'at' hh:mm a");
     } catch (error) {
         return 'Invalid Date';
     }
