@@ -14,7 +14,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import Link from 'next/link';
-import { format } from 'date-fns';
+import { format, isToday, setHours, setMinutes } from 'date-fns';
 import { Calendar as CalendarUI } from '@/components/ui/calendar';
 import QrScanner from '@/components/QrScanner';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
@@ -266,6 +266,18 @@ const DineInModal = ({ isOpen, onClose, onScanQR, onBookTable }) => {
     const [bookingDetails, setBookingDetails] = useState({ name: '', phone: '', guests: 2, date: new Date(), time: '19:00' });
     const [isSaving, setIsSaving] = useState(false);
     const [infoDialog, setInfoDialog] = useState({ isOpen: false, title: '', message: '' });
+    const [minTime, setMinTime] = useState('00:00');
+
+    useEffect(() => {
+        if (bookingDetails.date && isToday(bookingDetails.date)) {
+            const now = new Date();
+            const hours = now.getHours().toString().padStart(2, '0');
+            const minutes = now.getMinutes().toString().padStart(2, '0');
+            setMinTime(`${hours}:${minutes}`);
+        } else {
+            setMinTime('00:00');
+        }
+    }, [bookingDetails.date]);
 
     const handleBookingChange = (field, value) => {
         setBookingDetails(prev => ({...prev, [field]: value}));
@@ -304,6 +316,11 @@ const DineInModal = ({ isOpen, onClose, onScanQR, onBookTable }) => {
             }, 300);
         }
     }, [isOpen]);
+    
+    const today = new Date();
+    const maxDate = new Date();
+    maxDate.setDate(today.getDate() + 30);
+
 
     return (
         <>
@@ -375,12 +392,20 @@ const DineInModal = ({ isOpen, onClose, onScanQR, onBookTable }) => {
                                                 {bookingDetails.date ? format(bookingDetails.date, "PPP") : <span>Pick a date</span>}
                                             </Button>
                                             </PopoverTrigger>
-                                            <PopoverContent className="w-auto p-0"><CalendarUI mode="single" selected={bookingDetails.date} onSelect={(d) => handleBookingChange('date', d)} initialFocus /></PopoverContent>
+                                            <PopoverContent className="w-auto p-0">
+                                                <CalendarUI 
+                                                    mode="single" 
+                                                    selected={bookingDetails.date} 
+                                                    onSelect={(d) => handleBookingChange('date', d)} 
+                                                    disabled={{ before: today, after: maxDate }}
+                                                    initialFocus 
+                                                />
+                                            </PopoverContent>
                                         </Popover>
                                     </div>
                                     <div>
                                         <Label>Time</Label>
-                                        <input type="time" value={bookingDetails.time} onChange={(e) => handleBookingChange('time', e.target.value)} className="w-full mt-1 p-2 bg-input border rounded-md" />
+                                        <input type="time" value={bookingDetails.time} min={minTime} onChange={(e) => handleBookingChange('time', e.target.value)} className="w-full mt-1 p-2 bg-input border rounded-md" />
                                     </div>
                                 </div>
                             </div>
@@ -753,7 +778,7 @@ const OrderPageInternal = () => {
 
     const handleBookTable = async (bookingDetails) => {
         const { date, time } = bookingDetails;
-        const localDate = new Date(date.getFullYear(), date.getMonth(), date.getDate(), parseInt(time.split(':')[0]), parseInt(time.split(':')[1]));
+        const localDate = setMinutes(setHours(date, parseInt(time.split(':')[0])), parseInt(time.split(':')[1]));
 
         const payload = {
             restaurantId: restaurantId,
