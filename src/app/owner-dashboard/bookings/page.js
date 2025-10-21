@@ -16,20 +16,30 @@ import { format, formatDistanceToNow } from 'date-fns';
 import InfoDialog from '@/components/InfoDialog';
 import { cn } from '@/lib/utils';
 
-const formatDateTime = (isoStringOrTimestamp) => {
-    if (!isoStringOrTimestamp) return 'N/A';
-    try {
-        const date = isoStringOrTimestamp.seconds 
-            ? new Date(isoStringOrTimestamp.seconds * 1000) 
-            : new Date(isoStringOrTimestamp);
-        
-        if (isNaN(date.getTime())) throw new Error('Invalid date');
-        
-        return format(date, "dd MMM, yyyy 'at' hh:mm a");
-    } catch (error) {
-        console.warn("Invalid date value provided to formatDateTime:", isoStringOrTimestamp);
+const formatDateTime = (dateValue) => {
+    if (!dateValue) return 'N/A';
+    
+    let date;
+    // Check if it's a Firestore Timestamp-like object from a JSON response
+    if (typeof dateValue === 'object' && dateValue !== null && dateValue._seconds) {
+        date = new Date(dateValue._seconds * 1000 + (dateValue._nanoseconds || 0) / 1,000,000);
+    } 
+    // Check if it's a native Firestore Timestamp
+    else if (typeof dateValue === 'object' && dateValue !== null && typeof dateValue.toDate === 'function') {
+        date = dateValue.toDate();
+    }
+    // Check if it's already a Date object or a valid date string
+    else {
+        date = new Date(dateValue);
+    }
+    
+    // Final validation
+    if (isNaN(date.getTime())) {
+        console.warn("Invalid date value provided to formatDateTime:", dateValue);
         return 'Invalid Date';
     }
+    
+    return format(date, "dd MMM, yyyy 'at' hh:mm a");
 };
 
 const BookingRow = ({ booking, onUpdateStatus }) => {
