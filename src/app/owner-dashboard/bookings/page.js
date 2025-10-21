@@ -1,4 +1,5 @@
 
+
 'use client';
 
 import React, { useState, useEffect, useMemo } from 'react';
@@ -11,21 +12,19 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { auth } from '@/lib/firebase';
 import { useSearchParams } from 'next/navigation';
-import { format } from 'date-fns';
+import { format, formatDistanceToNow } from 'date-fns';
 import InfoDialog from '@/components/InfoDialog';
 import { cn } from '@/lib/utils';
 
 const formatDateTime = (isoStringOrTimestamp) => {
     if (!isoStringOrTimestamp) return 'N/A';
     try {
-        // THE FIX: Check if it's a Firestore Timestamp object (with .seconds) or a regular Date object/string.
         const date = isoStringOrTimestamp.seconds 
             ? new Date(isoStringOrTimestamp.seconds * 1000) 
             : new Date(isoStringOrTimestamp);
         
         if (isNaN(date.getTime())) throw new Error('Invalid date');
         
-        // This will format the date according to the user's local timezone, which is what we want.
         return format(date, "dd MMM, yyyy 'at' hh:mm a");
     } catch (error) {
         console.warn("Invalid date value provided to formatDateTime:", isoStringOrTimestamp);
@@ -41,6 +40,10 @@ const BookingRow = ({ booking, onUpdateStatus }) => {
         completed: 'text-blue-400 bg-blue-500/10',
     };
 
+    const createdAtDate = booking.createdAt?.seconds 
+        ? new Date(booking.createdAt.seconds * 1000) 
+        : (booking.createdAt ? new Date(booking.createdAt) : null);
+
     return (
         <TableRow>
             <TableCell>
@@ -48,7 +51,14 @@ const BookingRow = ({ booking, onUpdateStatus }) => {
                 <div className="text-sm text-muted-foreground">{booking.customerPhone}</div>
             </TableCell>
             <TableCell className="text-center">{booking.partySize}</TableCell>
-            <TableCell>{formatDateTime(booking.bookingDateTime)}</TableCell>
+            <TableCell>
+                <div className="font-medium">{formatDateTime(booking.bookingDateTime)}</div>
+                {createdAtDate && (
+                     <div className="text-xs text-muted-foreground">
+                        Booked {formatDistanceToNow(createdAtDate, { addSuffix: true })}
+                    </div>
+                )}
+            </TableCell>
             <TableCell>
                 <span className={cn('px-2 py-1 text-xs font-semibold rounded-full capitalize', statusConfig[booking.status])}>
                     {booking.status}
@@ -170,12 +180,13 @@ export default function BookingsPage() {
 
     const filteredBookings = useMemo(() => {
         let items = [...bookings];
-
+        
         if (activeTab === 'upcoming') {
             items = items.filter(b => b.status === 'pending' || b.status === 'confirmed');
         } else if (activeTab === 'past') {
             items = items.filter(b => b.status === 'completed' || b.status === 'cancelled');
         }
+
 
         if (searchQuery) {
             const lowerQuery = searchQuery.toLowerCase();
