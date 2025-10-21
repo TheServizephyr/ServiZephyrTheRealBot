@@ -1042,8 +1042,8 @@ const OrderPageInternal = () => {
                 )}
             </AnimatePresence>
             <div className="min-h-screen bg-background text-foreground green-theme">
-                <DineInModal 
-                  isOpen={isDineInModalOpen} 
+                <DineInModal
+                  isOpen={isDineInModalOpen}
                   onClose={() => setDineInModalOpen(false)}
                   onBookTable={handleBookTable}
                   tableStatus={tableStatus}
