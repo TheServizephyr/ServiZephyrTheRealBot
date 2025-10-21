@@ -95,12 +95,19 @@ export default function Sidebar({ isOpen, setIsOpen, isMobile, isCollapsed, rest
   }, []);
 
   const getIsDisabled = (featureId) => {
-    if (status === 'pending' || status === 'rejected') {
-      return !['menu', 'settings', 'connections', 'payout-settings', 'dine-in'].includes(featureId);
+    const alwaysEnabled = ['menu', 'settings', 'connections', 'payout-settings', 'dine-in'];
+    if (alwaysEnabled.includes(featureId)) {
+        return false;
     }
+    
+    if (status === 'pending' || status === 'rejected') {
+      return true;
+    }
+
     if (status === 'suspended') {
       return restrictedFeatures.includes(featureId);
     }
+    
     return false;
   };
 

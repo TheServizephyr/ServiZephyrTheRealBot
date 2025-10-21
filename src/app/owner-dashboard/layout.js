@@ -155,62 +155,39 @@ function OwnerDashboardContent({ children }) {
           console.log("[DEBUG] OwnerLayout: Status is 'approved'. No status screen to render.");
           return null;
       }
-
+      
+      // NEW LOGIC: Only render status screen if the account is suspended and the specific feature is restricted.
+      // The "pending" and "rejected" statuses are now handled by disabling links in the sidebar, not by blocking pages.
       if (restaurantStatus.status === 'suspended') {
         if (restaurantStatus.restrictedFeatures.includes(featureId)) {
-          console.log(`[DEBUG] OwnerLayout: Feature '${featureId}' is restricted. Showing lock screen.`);
+          console.log(`[DEBUG] OwnerLayout: Feature '${featureId}' is restricted due to suspension. Showing lock screen.`);
           return <FeatureLockScreen remark={restaurantStatus.suspensionRemark} featureId={featureId} />;
         }
         console.log(`[DEBUG] OwnerLayout: Status is 'suspended' but feature '${featureId}' is NOT restricted. Allowing access.`);
         return null; // Not this specific feature, so allow render
       }
       
-      let icon, title, message, actions;
-
-      // Handle pending, rejected, error states
-      switch(restaurantStatus.status) {
-          case 'pending':
-              const allowedPaths = ['/owner-dashboard/menu', '/owner-dashboard/settings', '/owner-dashboard/connections', '/owner-dashboard/payout-settings', '/owner-dashboard/dine-in'];
-              if (allowedPaths.some(p => pathname.endsWith(p))) {
-                  console.log("[DEBUG] OwnerLayout: Status is 'pending', but allowing access to menu/settings/connections/payout-settings/dine-in.");
-                  return null;
-              }
-              console.log("[DEBUG] OwnerLayout: Status is 'pending', showing 'Under Review' screen.");
-              icon = <HardHat className="h-16 w-16 text-yellow-400" />;
-              title = "Application Under Review";
-              message = "Your other dashboard features are being reviewed. You can set up your menu and settings while you wait.";
-              actions = <Button onClick={() => router.push('/owner-dashboard/menu')}><Salad className="mr-2 h-4 w-4"/> Go to Menu</Button>
-              break;
-          case 'rejected':
-              console.log("[DEBUG] OwnerLayout: Status is 'rejected'. Showing rejection screen.");
-              icon = <XCircle className="h-16 w-16 text-red-500" />;
-              title = "Application Rejected";
-              message = "Unfortunately, your application did not meet our criteria at this time. Please contact support for more information.";
-              actions = <Button onClick={() => router.push('/contact')}>Contact Support</Button>
-              break;
-          default: // Error or other states
-             console.log(`[DEBUG] OwnerLayout: Status is '${restaurantStatus.status}'. Showing error screen.`);
-             icon = <AlertTriangle className="h-16 w-16 text-red-500" />;
-             title = "Could Not Verify Status";
-             message = "We couldn't verify your restaurant's status. This could be a temporary issue. Please refresh or contact support.";
-             actions = (
-                <div className="flex gap-4">
+      // Retain a generic error screen for unexpected issues.
+      if (restaurantStatus.status === 'error') {
+         console.log(`[DEBUG] OwnerLayout: Status is '${restaurantStatus.status}'. Showing error screen.`);
+         return (
+            <main className={styles.mainContent} style={{padding: '1rem'}}>
+              <div className="flex flex-col items-center justify-center text-center h-full p-8 bg-card border border-border rounded-xl">
+                <AlertTriangle className="h-16 w-16 text-red-500" />
+                <h2 className="mt-6 text-2xl font-bold">Could Not Verify Status</h2>
+                <p className="mt-2 max-w-md text-muted-foreground">We couldn't verify your restaurant's status. This could be a temporary issue. Please refresh or contact support.</p>
+                <div className="mt-6 flex gap-4">
                     <Button onClick={() => window.location.reload()} variant="default">Refresh</Button>
                     <Button variant="default" onClick={() => router.push('/contact')}>Contact Support</Button>
                 </div>
-            );
+              </div>
+            </main>
+         );
       }
 
-      return (
-        <main className={styles.mainContent} style={{padding: '1rem'}}>
-          <div className="flex flex-col items-center justify-center text-center h-full p-8 bg-card border border-border rounded-xl">
-            {icon}
-            <h2 className="mt-6 text-2xl font-bold">{title}</h2>
-            <p className="mt-2 max-w-md text-muted-foreground">{message}</p>
-            <div className="mt-6">{actions}</div>
-          </div>
-        </main>
-      );
+      // If status is 'pending', 'rejected', or anything else, we now allow the page to render
+      // as the access control is handled by the sidebar.
+      return null;
   }
 
   const blockedContent = renderStatusScreen();

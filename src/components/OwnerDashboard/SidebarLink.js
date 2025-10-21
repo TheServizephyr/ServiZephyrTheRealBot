@@ -1,4 +1,5 @@
 
+
 "use client";
 
 import Link from "next/link";
@@ -17,34 +18,43 @@ export default function SidebarLink({ item, isCollapsed, isDisabled, disabledIco
     collapsed: { opacity: 0, width: 0, transition: { duration: 0.1 } },
   };
   
+  const linkContent = (
+    <a
+      className={cn(
+          styles.sidebarLink,
+          isActive && !isDisabled && styles.sidebarLinkActive,
+          isDisabled && 'opacity-50 cursor-not-allowed',
+          isCollapsed && styles.sidebarLinkCollapsed,
+      )}
+      title={isDisabled ? `${item.name} is currently restricted` : item.name}
+      onClick={(e) => { if (isDisabled) e.preventDefault(); }}
+    >
+        <div className={styles.sidebarLinkInner}>
+          <div className={cn(styles.linkIcon)}>
+              {isDisabled && DisabledIcon ? (
+                  <DisabledIcon size={22} />
+              ) : (
+                  <item.icon size={22} />
+              )}
+          </div>
+          <motion.span
+            variants={textVariants}
+            animate={isCollapsed ? "collapsed" : "expanded"}
+            className={styles.linkText}
+          >
+            {item.name}
+          </motion.span>
+        </div>
+    </a>
+  );
+
+  if (isDisabled) {
+    return linkContent;
+  }
+
   return (
       <Link href={item.href} passHref legacyBehavior>
-          <a
-            className={cn(
-                styles.sidebarLink,
-                isActive && !isDisabled && styles.sidebarLinkActive,
-                isDisabled && 'opacity-50 cursor-not-allowed',
-                isCollapsed && styles.sidebarLinkCollapsed,
-            )}
-            title={isDisabled ? `${item.name} is currently restricted` : item.name}
-          >
-              <div className={styles.sidebarLinkInner}>
-                <div className={cn(styles.linkIcon)}>
-                    {isDisabled && DisabledIcon ? (
-                        <DisabledIcon size={22} />
-                    ) : (
-                        <item.icon size={22} />
-                    )}
-                </div>
-                <motion.span
-                  variants={textVariants}
-                  animate={isCollapsed ? "collapsed" : "expanded"}
-                  className={styles.linkText}
-                >
-                  {item.name}
-                </motion.span>
-              </div>
-          </a>
+          {linkContent}
       </Link>
   );
 }
