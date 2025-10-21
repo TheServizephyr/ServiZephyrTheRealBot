@@ -213,18 +213,63 @@ const TableCard = ({ tableId, tableData, onMarkAsPaid, onPrintBill, onMarkAsClea
 };
 
 const QrCodeDisplay = ({ text, tableName, innerRef }) => {
+    const handleDownload = () => {
+        const canvas = innerRef.current.querySelector('canvas');
+        if (canvas) {
+            const pngUrl = canvas.toDataURL("image/png").replace("image/png", "image/octet-stream");
+            let downloadLink = document.createElement("a");
+            downloadLink.href = pngUrl;
+            downloadLink.download = `${tableName}-qrcode.png`;
+            document.body.appendChild(downloadLink);
+            downloadLink.click();
+            document.body.removeChild(downloadLink);
+        }
+    };
+
+    const handlePrint = useReactToPrint({
+        content: () => innerRef.current,
+        documentTitle: `QR_Code_${tableName}`,
+    });
+
     return (
-        <div ref={innerRef} className="bg-white p-4 rounded-lg border border-border flex flex-col items-center">
-            <QRCode
-                value={text}
-                size={256}
-                level={"M"}
-                includeMargin={true}
-            />
-            <p className="text-center font-bold text-lg mt-2 text-black">Scan to Order: {tableName}</p>
+        <div className="mt-6 flex flex-col items-center gap-4">
+             <div ref={innerRef} className="bg-white p-4 rounded-lg border border-border flex flex-col items-center">
+                <QRCode
+                    value={text}
+                    size={256}
+                    level={"M"}
+                    includeMargin={true}
+                />
+                <p className="text-center font-bold text-lg mt-2 text-black">Scan to Order: {tableName}</p>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 w-full max-w-sm">
+                <Button onClick={handlePrint} variant="outline"><Printer className="mr-2 h-4 w-4" /> Print</Button>
+                <Button onClick={handleDownload} variant="outline"><Download className="mr-2 h-4 w-4" /> Download PNG</Button>
+            </div>
         </div>
     );
 };
+
+const QrCodeDisplayModal = ({ isOpen, onClose, restaurantId, table }) => {
+    if (!table) return null;
+    const qrValue = `${window.location.origin}/order/${restaurantId}?table=${table.id}`;
+    const printRef = useRef();
+
+    return (
+        <Dialog open={isOpen} onOpenChange={onClose}>
+            <DialogContent className="bg-background border-border text-foreground">
+                <DialogHeader>
+                    <DialogTitle>QR Code for Table: {table.id}</DialogTitle>
+                    <DialogDescription>
+                        Customers can scan this code with their phone camera to open the menu and order directly from this table.
+                    </DialogDescription>
+                </DialogHeader>
+                <QrCodeDisplay text={qrValue} tableName={table.id} innerRef={printRef} />
+            </DialogContent>
+        </Dialog>
+    );
+};
+
 
 const QrGeneratorModal = ({ isOpen, onClose, onSaveTable, restaurantId, initialTable, onEditTable, onDeleteTable }) => {
     const [tableName, setTableName] = useState('');
@@ -233,18 +278,14 @@ const QrGeneratorModal = ({ isOpen, onClose, onSaveTable, restaurantId, initialT
     const printRef = useRef();
 
     useEffect(() => {
-        console.log("[DEBUG] QrGeneratorModal opened. restaurantId:", restaurantId, "Initial Table:", initialTable);
         if (isOpen) {
             if (initialTable) {
                 setTableName(initialTable.id);
                 setMaxCapacity(initialTable.max_capacity || 4);
-                // Immediately generate QR for existing table
                 if (restaurantId && initialTable.id) {
                     const url = `${window.location.origin}/order/${restaurantId}?table=${initialTable.id}`;
-                    console.log("[DEBUG] Generating QR for existing table:", url);
                     setQrValue(url);
                 } else {
-                    console.warn("[DEBUG] Missing restaurantId or tableId for existing table QR generation.");
                     setQrValue('');
                 }
             } else {
@@ -265,27 +306,8 @@ const QrGeneratorModal = ({ isOpen, onClose, onSaveTable, restaurantId, initialT
             return;
         }
         const url = `${window.location.origin}/order/${restaurantId}?table=${tableName.trim()}`;
-        console.log("[DEBUG] Generating new QR code with URL:", url);
         setQrValue(url);
     };
-
-    const handleDownload = () => {
-        const canvas = printRef.current.querySelector('canvas');
-        if (canvas) {
-            const pngUrl = canvas.toDataURL("image/png").replace("image/png", "image/octet-stream");
-            let downloadLink = document.createElement("a");
-            downloadLink.href = pngUrl;
-            downloadLink.download = `${tableName}-qrcode.png`;
-            document.body.appendChild(downloadLink);
-            downloadLink.click();
-            document.body.removeChild(downloadLink);
-        }
-    };
-
-    const handlePrint = useReactToPrint({
-        content: () => printRef.current,
-        documentTitle: `QR_Code_${tableName}`,
-    });
 
     const handleSave = async () => {
         if (!tableName.trim() || !maxCapacity || maxCapacity < 1) {
@@ -308,9 +330,9 @@ const QrGeneratorModal = ({ isOpen, onClose, onSaveTable, restaurantId, initialT
         <Dialog open={isOpen} onOpenChange={onClose}>
             <DialogContent className="bg-background border-border text-foreground">
                 <DialogHeader>
-                    <DialogTitle>{initialTable ? `Manage Table: ${initialTable.id}` : 'Generate & Save Table QR Code'}</DialogTitle>
+                    <DialogTitle>{initialTable ? `Manage Table: ${initialTable.id}` : 'Create a New Table'}</DialogTitle>
                     <DialogDescription>
-                        {initialTable ? 'Re-download QR or edit table details.' : 'Create a unique QR code for a table. Customers can scan this to order directly.'}
+                        {initialTable ? 'Edit table details. The QR code will update automatically.' : 'Create a new table. A unique QR code will be generated upon saving.'}
                     </DialogDescription>
                 </DialogHeader>
                 <div className="py-4 space-y-4">
@@ -337,18 +359,11 @@ const QrGeneratorModal = ({ isOpen, onClose, onSaveTable, restaurantId, initialT
                         </div>
                     </div>
                     <Button onClick={handleSave} className="w-full bg-primary hover:bg-primary/90">
-                        <Save className="mr-2 h-4 w-4" /> {initialTable ? 'Save Changes & Update QR' : 'Save Table & Generate QR'}
+                        <Save className="mr-2 h-4 w-4" /> {initialTable ? 'Save Changes' : 'Save Table & Generate QR'}
                     </Button>
 
-                    {qrValue && (
-                        <div className="mt-6 flex flex-col items-center gap-4">
-                            <QrCodeDisplay text={qrValue} tableName={tableName} innerRef={printRef} />
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 w-full max-w-sm">
-                                <Button onClick={handlePrint} variant="outline"><Printer className="mr-2 h-4 w-4" /> Print</Button>
-                                <Button onClick={handleDownload} variant="outline"><Download className="mr-2 h-4 w-4" /> Download PNG</Button>
-                            </div>
-                        </div>
-                    )}
+                    {qrValue && <QrCodeDisplay text={qrValue} tableName={tableName} innerRef={printRef} />}
+
                      {initialTable && (
                         <div className="pt-4 border-t border-dashed">
                              <Button onClick={() => { onDeleteTable(initialTable.id); onClose(); }} variant="destructive" className="w-full">
@@ -370,7 +385,9 @@ export default function DineInPage() {
     const searchParams = useSearchParams();
     const impersonatedOwnerId = searchParams.get('impersonate_owner_id');
     const [isQrModalOpen, setIsQrModalOpen] = useState(false);
+    const [isQrDisplayModalOpen, setIsQrDisplayModalOpen] = useState(false);
     const [editingTable, setEditingTable] = useState(null);
+    const [displayTable, setDisplayTable] = useState(null);
     const [restaurant, setRestaurant] = useState(null);
     const [restaurantId, setRestaurantId] = useState('');
     const [billData, setBillData] = useState(null);
@@ -417,7 +434,6 @@ export default function DineInPage() {
     const fetchData = async (isManualRefresh = false) => {
         if (!isManualRefresh) setLoading(true);
         try {
-            console.log("[DEBUG] DineInPage: Fetching initial data...");
             const user = auth.currentUser;
             if (!user) return;
             const idToken = await user.getIdToken();
@@ -428,10 +444,6 @@ export default function DineInPage() {
                  handleApiCall('GET', null, '/api/owner/dine-in-tables'),
                  fetch(settingsUrl, { headers: { 'Authorization': `Bearer ${idToken}` } }).then(res => res.json())
             ]);
-            
-            console.log("[DEBUG] DineInPage: Fetched Orders:", ordersData);
-            console.log("[DEBUG] DineInPage: Fetched Tables:", tablesData);
-            console.log("[DEBUG] DineInPage: Fetched Settings:", settingsData);
             
             const dineInStatuses = ['pending', 'confirmed', 'preparing', 'active_tab', 'ready_for_pickup'];
             const dineInOrders = (ordersData.orders || []).filter(o => o.deliveryType === 'dine-in' && dineInStatuses.includes(o.status));
@@ -446,11 +458,9 @@ export default function DineInPage() {
             setRestaurant(fetchedRestaurant);
             
             const fetchedRestaurantId = settingsData.businessId;
-            console.log("[DEBUG] DineInPage: Setting Restaurant ID for QR codes:", fetchedRestaurantId);
             setRestaurantId(fetchedRestaurantId);
 
         } catch (error) {
-            console.error("Error fetching dine-in data:", error);
             setInfoDialog({ isOpen: true, title: "Error", message: `Could not load dine-in data: ${error.message}` });
         } finally {
             if (!isManualRefresh) setLoading(false);
@@ -463,7 +473,6 @@ export default function DineInPage() {
             setInfoDialog({ isOpen: true, title: "Success", message: `Table "${tableName}" saved with a capacity of ${maxCapacity}.` });
             await fetchData(true);
         } catch (error) {
-            console.error("Error saving table:", error);
             setInfoDialog({ isOpen: true, title: "Error", message: `Could not save table: ${error.message}` });
             throw error;
         }
@@ -475,7 +484,6 @@ export default function DineInPage() {
             setInfoDialog({ isOpen: true, title: "Success", message: `Table updated successfully.` });
             await fetchData(true);
         } catch(error) {
-            console.error("Error editing table:", error);
             setInfoDialog({ isOpen: true, title: "Error", message: `Could not edit table: ${error.message}` });
             throw error;
         }
@@ -488,7 +496,6 @@ export default function DineInPage() {
                 setInfoDialog({ isOpen: true, title: "Success", message: `Table "${tableId}" has been deleted.` });
                 await fetchData(true);
             } catch (error) {
-                console.error("Error deleting table:", error);
                 setInfoDialog({ isOpen: true, title: "Error", message: `Could not delete table: ${error.message}` });
             }
         }
@@ -525,7 +532,6 @@ export default function DineInPage() {
             setInfoDialog({ isOpen: true, title: "Success", message: "Table has been marked for cleaning." });
             await fetchData(true);
         } catch (error) {
-            console.error("Error marking orders as paid:", error);
             setInfoDialog({ isOpen: true, title: "Error", message: `Could not clear table: ${error.message}` });
         } finally {
             setLoading(false);
@@ -539,7 +545,6 @@ export default function DineInPage() {
              setInfoDialog({ isOpen: true, title: "Success", message: `Table ${tableId} is now available.` });
              await fetchData(true);
          } catch(error) {
-             console.error("Error marking table as cleaned:", error);
              setInfoDialog({ isOpen: true, title: "Error", message: `Could not update table status: ${error.message}` });
          } finally {
              setLoading(false);
@@ -574,14 +579,22 @@ export default function DineInPage() {
         return Object.fromEntries(tableMap);
     }, [allOrders, allTables]);
     
-    const handleOpenQrModal = (table = null) => {
-        console.log("[DEBUG] DineInPage: handleOpenQrModal called with restaurantId:", restaurantId);
+    const handleOpenEditModal = (table = null) => {
         if (!restaurantId) {
-            setInfoDialog({isOpen: true, title: "Error", message: "Restaurant data is not loaded yet. Cannot generate QR codes."});
+            setInfoDialog({isOpen: true, title: "Error", message: "Restaurant data is not loaded yet. Cannot manage tables."});
             return;
         }
         setEditingTable(table);
         setIsQrModalOpen(true);
+    };
+
+     const handleOpenQrDisplayModal = (table) => {
+        if (!restaurantId) {
+            setInfoDialog({isOpen: true, title: "Error", message: "Restaurant data is not loaded yet. Cannot show QR code."});
+            return;
+        }
+        setDisplayTable(table);
+        setIsQrDisplayModalOpen(true);
     };
 
     return (
@@ -602,6 +615,8 @@ export default function DineInPage() {
                 message={infoDialog.message}
             />
             {restaurantId && <QrGeneratorModal isOpen={isQrModalOpen} onClose={() => setIsQrModalOpen(false)} restaurantId={restaurantId} onSaveTable={handleSaveTable} onEditTable={handleEditTable} onDeleteTable={handleDeleteTable} initialTable={editingTable}/>}
+            {restaurantId && <QrCodeDisplayModal isOpen={isQrDisplayModalOpen} onClose={() => setIsQrDisplayModalOpen(false)} restaurantId={restaurantId} table={displayTable} />}
+
 
             <div className="flex flex-col md:flex-row justify-between md:items-center mb-6 gap-4">
                 <div>
@@ -609,8 +624,8 @@ export default function DineInPage() {
                     <p className="text-muted-foreground mt-1 text-sm md:text-base">A live overview of your active tables and table management.</p>
                 </div>
                 <div className="flex gap-4">
-                     <Button onClick={() => handleOpenQrModal(null)} variant="default" className="bg-primary hover:bg-primary/90" disabled={loading}>
-                        <QrCode size={16} className="mr-2"/> Generate Table QR Codes
+                     <Button onClick={() => handleOpenEditModal(null)} variant="default" className="bg-primary hover:bg-primary/90" disabled={loading}>
+                        <QrCode size={16} className="mr-2"/> Create Table & QR
                     </Button>
                     <Button onClick={() => fetchData(true)} variant="outline" disabled={loading}>
                         <RefreshCw size={16} className={cn("mr-2", loading && "animate-spin")} /> Refresh View
@@ -662,10 +677,10 @@ export default function DineInPage() {
                                             <td className="p-4">{table.max_capacity}</td>
                                             <td className="p-4">{table.current_pax || 0}</td>
                                             <td className="p-4 flex justify-end gap-2">
-                                                <Button variant="outline" size="sm" onClick={() => handleOpenQrModal(table)}>
+                                                <Button variant="outline" size="sm" onClick={() => handleOpenQrDisplayModal(table)}>
                                                     <QrCode size={14} className="mr-2"/> Show QR
                                                 </Button>
-                                                <Button variant="ghost" size="icon" className="h-9 w-9" onClick={() => handleOpenQrModal(table)}>
+                                                <Button variant="ghost" size="icon" className="h-9 w-9" onClick={() => handleOpenEditModal(table)}>
                                                     <Edit size={16}/>
                                                 </Button>
                                                  <Button variant="ghost" size="icon" className="h-9 w-9 text-destructive hover:bg-destructive/10" onClick={() => handleDeleteTable(table.id)}>
