@@ -16,10 +16,85 @@ import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import QRCode from 'qrcode.react';
 import { useReactToPrint } from 'react-to-print';
+import InfoDialog from '@/components/InfoDialog';
+
 
 const formatCurrency = (value) => `₹${Number(value || 0).toLocaleString('en-IN')}`;
 
-const TableCard = ({ tableId, orders }) => {
+const BillModal = ({ order, restaurant, onClose, onPrint, printRef }) => {
+    if (!order || !restaurant) return null;
+
+    const allItems = useMemo(() => {
+        const itemMap = new Map();
+        (order.orders || []).forEach(o => {
+            (o.items || []).forEach(item => {
+                const existing = itemMap.get(item.name);
+                if (existing) {
+                    itemMap.set(item.name, { ...existing, qty: existing.qty + item.qty });
+                } else {
+                    itemMap.set(item.name, { ...item });
+                }
+            });
+        });
+        return Array.from(itemMap.values());
+    }, [order.orders]);
+    
+    const totalBill = useMemo(() => (order.orders || []).reduce((sum, o) => sum + (o.totalAmount || 0), 0), [order.orders]);
+
+    return (
+        <Dialog open={true} onOpenChange={onClose}>
+            <DialogContent className="bg-background border-border text-foreground max-w-md p-0">
+                 <div ref={printRef} className="font-mono text-black bg-white p-6">
+                    <div className="text-center mb-6 border-b-2 border-dashed border-black pb-4">
+                        <h1 className="text-2xl font-bold uppercase">{restaurant.name}</h1>
+                        <p className="text-xs">{restaurant.address?.street}, {restaurant.address?.city}</p>
+                        {restaurant.gstin && <p className="text-xs mt-1">GSTIN: {restaurant.gstin}</p>}
+                    </div>
+                     <div className="mb-4 text-xs">
+                        <p><strong>Table:</strong> {order.tableId}</p>
+                        <p><strong>Date:</strong> {new Date().toLocaleDateString('en-IN')}</p>
+                    </div>
+
+                    <table className="w-full text-xs mb-4">
+                        <thead className="border-y-2 border-dashed border-black">
+                            <tr>
+                                <th className="text-left font-bold py-2">ITEM</th>
+                                <th className="text-center font-bold py-2">QTY</th>
+                                <th className="text-right font-bold py-2">AMOUNT</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {allItems.map((item, index) => (
+                                <tr key={index} className="border-b border-dotted border-black">
+                                    <td className="py-2">{item.name}</td>
+                                    <td className="text-center py-2">{item.qty}</td>
+                                    <td className="text-right py-2">{formatCurrency(item.qty * item.price)}</td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                    
+                    <div className="flex justify-between font-bold text-lg pt-2 mt-2 border-t-2 border-dashed border-black">
+                        <span>GRAND TOTAL</span>
+                        <span>{formatCurrency(totalBill)}</span>
+                    </div>
+
+                    <div className="text-center mt-6 pt-4 border-t border-dashed border-black">
+                        <p className="text-xs italic">Thank you for dining with us!</p>
+                        <p className="text-xs font-bold mt-1">Powered by ServiZephyr</p>
+                    </div>
+                </div>
+                 <div className="p-4 bg-muted border-t border-border flex justify-end no-print">
+                    <Button onClick={onPrint} className="bg-primary hover:bg-primary/90">
+                        <Printer className="mr-2 h-4 w-4" /> Print Bill
+                    </Button>
+                </div>
+            </DialogContent>
+        </Dialog>
+    );
+};
+
+const TableCard = ({ tableId, orders, onMarkAsPaid, onPrintBill }) => {
     const totalBill = useMemo(() => orders.reduce((sum, order) => sum + (order.totalAmount || 0), 0), [orders]);
     const customerNames = useMemo(() => [...new Set(orders.map(o => o.customerName))], [orders]);
     const allItems = useMemo(() => {
@@ -81,8 +156,8 @@ const TableCard = ({ tableId, orders }) => {
                         <span className="text-2xl font-bold text-primary">{formatCurrency(totalBill)}</span>
                     </div>
                     <div className="grid grid-cols-2 gap-2 w-full">
-                        <Button variant="outline"><Printer size={16} className="mr-2"/> Print Bill</Button>
-                        <Button className="bg-primary hover:bg-primary/90"><CheckCircle size={16} className="mr-2"/> Mark as Paid</Button>
+                        <Button variant="outline" onClick={() => onPrintBill({ tableId, orders })}><Printer size={16} className="mr-2"/> Print Bill</Button>
+                        <Button className="bg-primary hover:bg-primary/90" onClick={() => onMarkAsPaid(orders.map(o => o.id))}><CheckCircle size={16} className="mr-2"/> Mark as Paid</Button>
                     </div>
                 </CardFooter>
             </Card>
@@ -199,48 +274,52 @@ export default function DineInPage() {
     const searchParams = useSearchParams();
     const impersonatedOwnerId = searchParams.get('impersonate_owner_id');
     const [isQrModalOpen, setIsQrModalOpen] = useState(false);
-    const [restaurantId, setRestaurantId] = useState('');
+    const [restaurant, setRestaurant] = useState(null);
+    const [billData, setBillData] = useState(null);
+    const [infoDialog, setInfoDialog] = useState({ isOpen: false, title: '', message: '' });
+    const billPrintRef = useRef();
+
+    const handlePrint = useReactToPrint({
+        content: () => billPrintRef.current,
+    });
+    
+    const handleApiCall = async (method, body, endpoint = '/api/owner/orders') => {
+        const user = auth.currentUser;
+        if (!user) throw new Error("Authentication required.");
+        const idToken = await user.getIdToken();
+        
+        let url = new URL(endpoint, window.location.origin);
+        if (impersonatedOwnerId) {
+            url.searchParams.append('impersonate_owner_id', impersonatedOwnerId);
+        }
+        
+        const res = await fetch(url.toString(), {
+            method,
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${idToken}` },
+            body: JSON.stringify(body),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.message || 'API call failed');
+        return data;
+    };
 
     const fetchDineInOrders = async (isManualRefresh = false) => {
         if (!isManualRefresh) setLoading(true);
         try {
-            const user = auth.currentUser;
-            if (!user) throw new Error("Authentication required.");
-            const idToken = await user.getIdToken();
-            
-            let businessId = '';
-            const settingsRes = await fetch('/api/owner/settings', { headers: { 'Authorization': `Bearer ${idToken}` } });
-            if (settingsRes.ok) {
-                const settingsData = await settingsRes.json();
-                const restaurantsQuery = await fetch('/api/admin/restaurants');
-                const { restaurants } = await restaurantsQuery.json();
-                const matchedRestaurant = restaurants.find(r => r.name === settingsData.restaurantName);
-                if (matchedRestaurant) {
-                    businessId = matchedRestaurant.id;
-                    setRestaurantId(businessId);
-                }
-            }
-            
-            let url = new URL('/api/owner/orders', window.location.origin);
-            if (impersonatedOwnerId) {
-                url.searchParams.append('impersonate_owner_id', impersonatedOwnerId);
-            }
-
-            const res = await fetch(url.toString(), {
-                headers: { 'Authorization': `Bearer ${idToken}` }
-            });
-
-            if (!res.ok) {
-                const errorData = await res.json();
-                throw new Error(errorData.message || 'Failed to fetch orders');
-            }
-            const data = await res.json();
+            const data = await handleApiCall('GET');
             const dineInStatuses = ['pending', 'confirmed', 'preparing', 'active_tab', 'ready_for_pickup'];
             const dineInOrders = (data.orders || []).filter(o => o.deliveryType === 'dine-in' && dineInStatuses.includes(o.status));
             setOrders(dineInOrders);
+
+            if (dineInOrders.length > 0 && !restaurant) {
+                const firstOrder = dineInOrders[0];
+                const orderDetails = await handleApiCall('GET', null, `/api/owner/orders?id=${firstOrder.id}`);
+                setRestaurant(orderDetails.restaurant);
+            }
+
         } catch (error) {
             console.error("Error fetching dine-in orders:", error);
-            alert(`Could not load dine-in data: ${error.message}`);
+            setInfoDialog({ isOpen: true, title: "Error", message: `Could not load dine-in data: ${error.message}` });
         } finally {
             if (!isManualRefresh) setLoading(false);
         }
@@ -260,6 +339,27 @@ export default function DineInPage() {
       }, [impersonatedOwnerId]);
 
 
+    const handleMarkAsPaid = async (orderIds) => {
+        if (!window.confirm("Are you sure you want to mark this table's orders as paid and completed?")) return;
+
+        setLoading(true);
+        try {
+            await Promise.all(
+                orderIds.map(orderId => 
+                    handleApiCall('PATCH', { orderId, newStatus: 'completed' })
+                )
+            );
+            setInfoDialog({ isOpen: true, title: "Success", message: "Table has been cleared." });
+            await fetchDineInOrders(true);
+        } catch (error) {
+            console.error("Error marking orders as paid:", error);
+            setInfoDialog({ isOpen: true, title: "Error", message: `Could not clear table: ${error.message}` });
+        } finally {
+            setLoading(false);
+        }
+    };
+
+
     const ordersByTable = useMemo(() => {
         return orders.reduce((acc, order) => {
             const tableId = order.tableId || 'Unknown';
@@ -273,14 +373,30 @@ export default function DineInPage() {
 
     return (
         <div className="p-4 md:p-6 text-foreground min-h-screen bg-background">
-            <QrGeneratorModal isOpen={isQrModalOpen} onClose={() => setIsQrModalOpen(false)} restaurantId={restaurantId}/>
+            {billData && (
+                <BillModal 
+                    order={billData}
+                    restaurant={restaurant}
+                    onClose={() => setBillData(null)}
+                    onPrint={handlePrint}
+                    printRef={billPrintRef}
+                />
+            )}
+            <InfoDialog
+                isOpen={infoDialog.isOpen}
+                onClose={() => setInfoDialog({ isOpen: false, title: '', message: '' })}
+                title={infoDialog.title}
+                message={infoDialog.message}
+            />
+            {restaurant && <QrGeneratorModal isOpen={isQrModalOpen} onClose={() => setIsQrModalOpen(false)} restaurantId={restaurant.id}/>}
+
             <div className="flex flex-col md:flex-row justify-between md:items-center mb-6 gap-4">
                 <div>
                     <h1 className="text-2xl md:text-3xl font-bold tracking-tight">Dine-In Command Center</h1>
                     <p className="text-muted-foreground mt-1 text-sm md:text-base">A live overview of your active tables.</p>
                 </div>
                 <div className="flex gap-4">
-                     <Button onClick={() => setIsQrModalOpen(true)} variant="default" className="bg-primary hover:bg-primary/90">
+                     <Button onClick={() => setIsQrModalOpen(true)} variant="default" className="bg-primary hover:bg-primary/90" disabled={!restaurant}>
                         <QrCode size={16} className="mr-2"/> Generate Table QR Codes
                     </Button>
                     <Button onClick={() => fetchDineInOrders(true)} variant="outline" disabled={loading}>
@@ -298,7 +414,7 @@ export default function DineInPage() {
             ) : Object.keys(ordersByTable).length > 0 ? (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
                     {Object.entries(ordersByTable).map(([tableId, tableOrders]) => (
-                        <TableCard key={tableId} tableId={tableId} orders={tableOrders} />
+                        <TableCard key={tableId} tableId={tableId} orders={tableOrders} onMarkAsPaid={handleMarkAsPaid} onPrintBill={setBillData} />
                     ))}
                 </div>
             ) : (
