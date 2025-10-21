@@ -17,7 +17,7 @@ export async function GET(req) {
         return NextResponse.json({ message: "Search query is required." }, { status: 400 });
     }
 
-    const url = `https://atlas.mappls.com/api/places/search/json?query=${encodeURIComponent(query)}`;
+    const url = `https://search.mappls.com/search/autosuggest?query=${encodeURIComponent(query)}`;
 
     try {
         console.log(`[API search] Calling Mappls AutoSuggest API: ${url}`);
@@ -45,3 +45,4 @@ export async function GET(req) {
         return NextResponse.json({ message: "Failed to fetch search results from Mappls.", error: error.message }, { status: 500 });
     }
 }
+

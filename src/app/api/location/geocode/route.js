@@ -54,3 +54,4 @@ export async function GET(req) {
         return NextResponse.json({ message: "Failed to fetch address from Mappls.", error: error.message }, { status: 500 });
     }
 }
+
