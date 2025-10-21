@@ -1,5 +1,4 @@
 
-
 'use client';
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
@@ -372,7 +371,7 @@ export default function DineInPage() {
     const [isQrModalOpen, setIsQrModalOpen] = useState(false);
     const [editingTable, setEditingTable] = useState(null);
     const [restaurant, setRestaurant] = useState(null);
-    const [restaurantId, setRestaurantId] = useState(null);
+    const [restaurantId, setRestaurantId] = useState('');
     const [billData, setBillData] = useState(null);
     const [infoDialog, setInfoDialog] = useState({ isOpen: false, title: '', message: '' });
     const billPrintRef = useRef();
@@ -418,10 +417,14 @@ export default function DineInPage() {
         if (!isManualRefresh) setLoading(true);
         try {
             console.log("[DEBUG] DineInPage: Fetching initial data...");
+            const user = auth.currentUser;
+            if (!user) return;
+            const idToken = await user.getIdToken();
+            
             const [ordersData, tablesData, settingsData] = await Promise.all([
                  handleApiCall('GET', null, '/api/owner/orders'),
                  handleApiCall('GET', null, '/api/owner/dine-in-tables'),
-                 handleApiCall('GET', null, '/api/owner/settings')
+                 fetch('/api/owner/settings', { headers: { 'Authorization': `Bearer ${idToken}` } }).then(res => res.json())
             ]);
             
             console.log("[DEBUG] DineInPage: Fetched Orders:", ordersData);
@@ -433,20 +436,16 @@ export default function DineInPage() {
             setAllOrders(dineInOrders);
             setAllTables(tablesData.tables || []);
             
-            // This is the crucial part for QR code generation
-            const user = auth.currentUser;
-            const userDoc = await handleApiCall('GET', null, `/api/owner/settings?uid=${user.uid}`);
-            const fetchedRestaurantId = userDoc?.businessId;
-            
             const fetchedRestaurant = {
-                id: fetchedRestaurantId,
                 name: settingsData.restaurantName,
                 address: settingsData.address,
                 gstin: settingsData.gstin
              };
-            
-            console.log("[DEBUG] DineInPage: Setting Restaurant ID for QR codes:", fetchedRestaurantId);
             setRestaurant(fetchedRestaurant);
+            
+            const userDoc = await handleApiCall('GET', null, `/api/owner/settings?uid=${user.uid}`);
+            const fetchedRestaurantId = settingsData.businessId || 'not-found';
+            console.log("[DEBUG] DineInPage: Setting Restaurant ID for QR codes:", fetchedRestaurantId);
             setRestaurantId(fetchedRestaurantId);
 
         } catch (error) {
@@ -565,8 +564,6 @@ export default function DineInPage() {
             }
         });
         
-        // This is a temporary fix for tables with closed tabs but that might have current_pax > 0 in DB
-        // if the cleanup trigger fails.
         for (const [key, value] of tableMap.entries()) {
             if (value.orders.length === 0 && value.current_pax > 0) {
                  value.state = 'needs_cleaning';
@@ -611,7 +608,7 @@ export default function DineInPage() {
                     <p className="text-muted-foreground mt-1 text-sm md:text-base">A live overview of your active tables and table management.</p>
                 </div>
                 <div className="flex gap-4">
-                     <Button onClick={() => handleOpenQrModal(null)} variant="default" className="bg-primary hover:bg-primary/90">
+                     <Button onClick={() => handleOpenQrModal(null)} variant="default" className="bg-primary hover:bg-primary/90" disabled={loading}>
                         <QrCode size={16} className="mr-2"/> Generate Table QR Codes
                     </Button>
                     <Button onClick={() => fetchData(true)} variant="outline" disabled={loading}>
@@ -685,4 +682,3 @@ export default function DineInPage() {
         </div>
     );
 }
-
