@@ -3,7 +3,7 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { motion } from 'framer-motion';
-import { CalendarClock, Check, X, Filter, MoreVertical, User, Phone, Users, Clock, Hash, Trash2, Search, RefreshCw } from 'lucide-react';
+import { CalendarClock, Check, X, Filter, MoreVertical, User, Phone, Users, Clock, Hash, Trash2, Search, RefreshCw, CheckCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
@@ -135,11 +135,16 @@ export default function BookingsPage() {
             if (!user) throw new Error("Authentication required.");
             const idToken = await user.getIdToken();
 
-            await fetch('/api/owner/bookings', {
+            const res = await fetch('/api/owner/bookings', {
                 method: 'PATCH',
                 headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${idToken}` },
                 body: JSON.stringify({ bookingId, status }),
             });
+            
+            if(!res.ok) {
+                const errorData = await res.json();
+                throw new Error(errorData.message || "Failed to update status.");
+            }
             
             setInfoDialog({ isOpen: true, title: 'Success', message: `Booking has been ${status}.` });
             fetchBookings(true); // Refresh data
