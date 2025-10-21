@@ -421,10 +421,11 @@ export default function DineInPage() {
             if (!user) return;
             const idToken = await user.getIdToken();
             
+            const settingsUrl = `/api/owner/settings?impersonate_owner_id=${impersonatedOwnerId || ''}`;
             const [ordersData, tablesData, settingsData] = await Promise.all([
                  handleApiCall('GET', null, '/api/owner/orders'),
                  handleApiCall('GET', null, '/api/owner/dine-in-tables'),
-                 fetch('/api/owner/settings', { headers: { 'Authorization': `Bearer ${idToken}` } }).then(res => res.json())
+                 fetch(settingsUrl, { headers: { 'Authorization': `Bearer ${idToken}` } }).then(res => res.json())
             ]);
             
             console.log("[DEBUG] DineInPage: Fetched Orders:", ordersData);
