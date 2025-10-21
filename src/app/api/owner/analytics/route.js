@@ -108,6 +108,8 @@ export async function GET(req) {
         
         // --- 2. Process Sales Overview ---
         let currentSales = 0, currentOrdersCount = 0, salesByDay = {};
+        const paymentMethodCounts = { Online: 0, COD: 0 };
+        
         currentOrdersSnap.forEach(doc => {
             const data = doc.data();
             currentSales += data.totalAmount || 0;
@@ -115,9 +117,17 @@ export async function GET(req) {
 
             const dayKey = format(data.orderDate.toDate(), 'dd/MM');
             salesByDay[dayKey] = (salesByDay[dayKey] || 0) + data.totalAmount;
+
+            if (data.paymentDetails?.method === 'razorpay') {
+                paymentMethodCounts.Online++;
+            } else { // Includes 'cod', 'pod', 'dine-in' etc.
+                paymentMethodCounts.COD++;
+            }
         });
         
         const salesTrend = Object.entries(salesByDay).map(([day, sales]) => ({ day, sales }));
+        const paymentMethods = Object.entries(paymentMethodCounts).map(([name, value]) => ({ name, value }));
+
 
         let prevSales = 0;
         prevOrdersSnap.forEach(doc => { prevSales += doc.data().totalAmount || 0; });
@@ -127,7 +137,6 @@ export async function GET(req) {
             return ((current - previous) / previous) * 100;
         };
 
-        // --- NEW: Process Rejection Data ---
         const totalRejections = rejectedOrdersSnap.size;
         const rejectionReasons = {};
         rejectedOrdersSnap.forEach(doc => {
@@ -146,11 +155,11 @@ export async function GET(req) {
                 revenueChange: calcChange(currentSales, prevSales),
                 ordersChange: calcChange(currentOrdersCount, prevOrdersSnap.size),
                 avgValueChange: calcChange(currentOrdersCount > 0 ? currentSales / currentOrdersCount : 0, prevOrdersSnap.size > 0 ? prevSales / prevOrdersSnap.size : 0),
-                totalRejections, // ADDED
+                totalRejections,
             },
             salesTrend,
-            paymentMethods: [{ name: 'Online', value: 70 }, { name: 'COD', value: 30 }], // Dummy for now
-            rejectionReasons: rejectionReasonsData, // ADDED
+            paymentMethods: paymentMethods,
+            rejectionReasons: rejectionReasonsData,
         };
 
         // --- 3. Process Menu Analytics ---

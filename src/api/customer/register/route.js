@@ -34,6 +34,13 @@ export async function POST(req) {
         
         let razorpayOrderId = null;
         const businessData = businessDoc.data();
+        
+        // Find user ID ahead of time
+        const usersRef = firestore.collection('users');
+        const existingUserQuery = await usersRef.where('phone', '==', normalizedPhone).limit(1).get();
+        const isNewUser = existingUserQuery.empty;
+        const userId = isNewUser ? normalizedPhone : existingUserQuery.docs[0].id;
+
 
         // This is a placeholder for a real address-to-coordinate conversion
         const getCoordinatesFromAddress = (addr) => {
@@ -52,38 +59,38 @@ export async function POST(req) {
                 key_id: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID,
                 key_secret: process.env.RAZORPAY_KEY_SECRET,
             });
-
-            const orderPayloadForNotes = {
-                customerDetails: { name, address, phone: normalizedPhone, location: customerLocation ? { latitude: customerLocation.latitude, longitude: customerLocation.longitude } : null },
-                restaurantDetails: { restaurantId, restaurantName: businessData.name },
-                items: items,
-                billDetails: { 
-                    coupon, loyaltyDiscount, grandTotal, deliveryType, tipAmount, pickupTime, subtotal, cgst, sgst, deliveryCharge, tableId
-                },
-                notes: notes || null,
-                businessType: businessType
-            };
             
+            const firestoreOrderId = firestore.collection('orders').doc().id;
+
+            const servizephyrOrderPayload = {
+                // Key identifiers for webhook processing
+                order_id: firestoreOrderId, // Use a pre-generated ID
+                user_id: userId,
+                restaurant_id: restaurantId,
+                business_type: businessType,
+                // Full data for record keeping and display on Razorpay dashboard
+                customer_details: JSON.stringify({ name, address, phone: normalizedPhone }),
+                items: JSON.stringify(items),
+                bill_details: JSON.stringify({ subtotal, coupon, loyaltyDiscount, grandTotal, deliveryType, tipAmount, pickupTime, cgst, sgst, deliveryCharge, tableId }),
+                notes: notes || null
+            };
+
             const razorpayOrderOptions = {
                 amount: Math.round(grandTotal * 100), // Amount in paisa
                 currency: 'INR',
-                receipt: `receipt_order_${nanoid()}`,
+                receipt: firestoreOrderId,
                 payment_capture: 1,
-                notes: {
-                    servizephyr_order_payload: JSON.stringify(orderPayloadForNotes)
-                }
+                notes: servizephyrOrderPayload
             };
 
             const razorpayOrder = await razorpay.orders.create(razorpayOrderOptions);
             razorpayOrderId = razorpayOrder.id;
             console.log(`[Order API] Razorpay Order ${razorpayOrderId} created for amount ${grandTotal}.`);
             
-            const firestoreOrderId = firestore.collection('orders').doc().id;
-            
             return NextResponse.json({ 
                 message: 'Razorpay order created. Awaiting payment confirmation.',
                 razorpay_order_id: razorpayOrderId,
-                firestore_order_id: firestoreOrderId,
+                firestore_order_id: firestoreOrderId, // Return the same ID to the client
             }, { status: 200 });
         }
 
@@ -91,23 +98,14 @@ export async function POST(req) {
         // --- FIRESTORE BATCH WRITE FOR COD / POD / DINE-IN ---
         const batch = firestore.batch();
         
-        const usersRef = firestore.collection('users');
-        const existingUserQuery = await usersRef.where('phone', '==', normalizedPhone).limit(1).get();
-
-        let userId;
-        let isNewUser = existingUserQuery.empty;
-
         if (isNewUser) {
             const unclaimedUserRef = firestore.collection('unclaimed_profiles').doc(normalizedPhone);
-            userId = normalizedPhone;
             const newOrderedFrom = { restaurantId, restaurantName: businessData.name, businessType };
             batch.set(unclaimedUserRef, {
                 name: name, phone: normalizedPhone, addresses: [{ id: `addr_${Date.now()}`, full: address }],
                 createdAt: firestore.FieldValue.serverTimestamp(),
                 orderedFrom: firestore.FieldValue.arrayUnion(newOrderedFrom)
             }, { merge: true });
-        } else {
-            userId = existingUserQuery.docs[0].id;
         }
         
         const couponDiscountAmount = coupon?.discount || 0;
