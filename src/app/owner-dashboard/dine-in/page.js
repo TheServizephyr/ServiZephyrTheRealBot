@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
@@ -11,8 +12,8 @@ import { format, formatDistanceToNow, isAfter, subDays } from 'date-fns';
 import { useSearchParams } from 'next/navigation';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Label } from "@/components/ui/label";
 import QRCode from 'qrcode.react';
 import { useReactToPrint } from 'react-to-print';
 import InfoDialog from '@/components/InfoDialog';
@@ -1073,3 +1074,5 @@ function DineInPage() {
 }
 
 export default DineInPage;
+
+    
