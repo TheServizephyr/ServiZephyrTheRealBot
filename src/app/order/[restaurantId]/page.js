@@ -358,7 +358,10 @@ const DineInModal = ({ isOpen, onClose, onBookTable, tableStatus, onStartNewTab,
                             </DialogHeader>
                             <div className="grid grid-cols-1 gap-4 px-6 pb-8">
                                 <button
-                                    onClick={onScanRequest}
+                                    onClick={() => {
+                                        onClose();
+                                        onScanRequest();
+                                    }}
                                     className="p-6 border-2 border-border rounded-lg text-left hover:bg-muted hover:border-primary transition-all group"
                                 >
                                     <div className="flex items-center gap-4">
@@ -887,7 +890,7 @@ const OrderPageInternal = () => {
             name: bookingDetails.name,
             phone: bookingDetails.phone,
             guests: bookingDetails.guests,
-            bookingDateTime: localDate,
+            bookingDateTime: localDate.toISOString(),
         };
 
         const res = await fetch('/api/owner/bookings', {
