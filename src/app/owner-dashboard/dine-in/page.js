@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
@@ -12,6 +13,7 @@ import { useSearchParams } from 'next/navigation';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import QRCode from 'qrcode.react';
 import { useReactToPrint } from 'react-to-print';
 import InfoDialog from '@/components/InfoDialog';
@@ -621,7 +623,6 @@ const LiveServiceRequests = ({ impersonatedOwnerId }) => {
 }
 
 const DineInMenuModal = ({ isOpen, onClose, showInfoDialog }) => {
-    // Dummy data for now
     const menuItems = [
         { id: 1, name: 'Paneer Butter Masala', price: 250, isAvailable: true },
         { id: 2, name: 'Dal Makhani', price: 200, isAvailable: true },
@@ -641,18 +642,19 @@ const DineInMenuModal = ({ isOpen, onClose, showInfoDialog }) => {
             <DialogContent className="max-w-4xl bg-background border-border text-foreground">
                 <DialogHeader>
                     <DialogTitle>Dine-In Menu Editor</DialogTitle>
-                    <DialogDescription>
-                        Manage a special menu for your dine-in customers. You can copy items from your main menu and add special requests.
-                    </DialogDescription>
+                    <Alert>
+                        <AlertTriangle className="h-4 w-4" />
+                        <AlertTitle>Feature in Development</AlertTitle>
+                        <AlertDescription>
+                            This editor is a preview. Soon, you will be able to copy items from your main menu and add custom items like cutlery and amenities.
+                        </AlertDescription>
+                    </Alert>
                 </DialogHeader>
                 <div className="mt-4 max-h-[70vh] overflow-y-auto pr-4 space-y-6">
-                    {/* Dine-in Menu Items */}
                     <div className="p-4 border border-dashed border-border rounded-lg">
                         <div className="flex justify-between items-center mb-4">
                             <h3 className="text-lg font-semibold flex items-center gap-2"><Salad size={20}/> Dine-In Menu Items</h3>
-                            <Button variant="outline" onClick={() => showInfoDialog({ isOpen: true, title: 'Coming Soon!', message: 'This feature will allow you to copy items from your main menu to quickly build your dine-in menu.' })}>
-                                Copy Items from Main Menu
-                            </Button>
+                            <Button variant="outline" disabled>Copy Items from Main Menu</Button>
                         </div>
                         <div className="space-y-2">
                             {menuItems.map(item => (
@@ -663,11 +665,10 @@ const DineInMenuModal = ({ isOpen, onClose, showInfoDialog }) => {
                             ))}
                         </div>
                     </div>
-                     {/* Cutlery */}
                     <div className="p-4 border border-dashed border-border rounded-lg">
                         <div className="flex justify-between items-center mb-4">
                             <h3 className="text-lg font-semibold flex items-center gap-2"><Fork size={20}/> Cutlery & Crockery</h3>
-                             <Button variant="outline" size="sm" onClick={() => showInfoDialog({ isOpen: true, title: 'Coming Soon!', message: 'You will be able to add, edit, and delete items in this section.' })}><PlusCircle size={16} className="mr-2"/> Add Item</Button>
+                             <Button variant="outline" size="sm" disabled><PlusCircle size={16} className="mr-2"/> Add Item</Button>
                         </div>
                         <div className="space-y-2">
                              {cutleryItems.map(item => (
@@ -678,11 +679,10 @@ const DineInMenuModal = ({ isOpen, onClose, showInfoDialog }) => {
                             ))}
                         </div>
                     </div>
-                     {/* Amenities */}
                     <div className="p-4 border border-dashed border-border rounded-lg">
                         <div className="flex justify-between items-center mb-4">
                             <h3 className="text-lg font-semibold flex items-center gap-2"><Droplet size={20}/> Basic Amenities</h3>
-                             <Button variant="outline" size="sm" onClick={() => showInfoDialog({ isOpen: true, title: 'Coming Soon!', message: 'You will be able to add, edit, and delete items in this section.' })}><PlusCircle size={16} className="mr-2"/> Add Item</Button>
+                             <Button variant="outline" size="sm" disabled><PlusCircle size={16} className="mr-2"/> Add Item</Button>
                         </div>
                          <div className="space-y-2">
                              {amenityItems.map(item => (
@@ -1074,3 +1074,5 @@ function DineInPage() {
 }
 
 export default DineInPage;
+
+    
