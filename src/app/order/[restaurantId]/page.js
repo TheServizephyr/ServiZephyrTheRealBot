@@ -266,14 +266,12 @@ const MenuBrowserModal = ({ isOpen, onClose, categories, onCategoryClick }) => {
   );
 };
 
-const DineInModal = ({ isOpen, onClose, onBookTable, tableStatus, onStartNewTab, onJoinTab }) => {
-    console.log("[DEBUG] DineInModal: Rendering. isOpen:", isOpen);
+const DineInModal = ({ isOpen, onClose, onBookTable, tableStatus, onStartNewTab, onJoinTab, onScanQR }) => {
     const [activeModal, setActiveModal] = useState('main'); // 'main', 'book', 'success'
     const [bookingDetails, setBookingDetails] = useState({ name: '', phone: '', guests: 2, date: new Date(), time: '19:00' });
     const [isSaving, setIsSaving] = useState(false);
     const [infoDialog, setInfoDialog] = useState({ isOpen: false, title: '', message: '' });
     const [minTime, setMinTime] = useState('00:00');
-    const [isQrScannerOpen, setIsQrScannerOpen] = useState(false);
     
     // New states for New Tab flow
     const [newTabPax, setNewTabPax] = useState(1);
@@ -348,16 +346,7 @@ const DineInModal = ({ isOpen, onClose, onBookTable, tableStatus, onStartNewTab,
     return (
         <>
             <InfoDialog isOpen={infoDialog.isOpen} onClose={() => setInfoDialog({isOpen: false, title: '', message: ''})} title={infoDialog.title} message={infoDialog.message} />
-             {isQrScannerOpen && (
-                <QrScanner 
-                    onClose={() => setIsQrScannerOpen(false)}
-                    onScanSuccess={(decodedText) => {
-                        setIsQrScannerOpen(false);
-                        window.location.href = decodedText;
-                    }}
-                />
-            )}
-            <Dialog open={isOpen && !isQrScannerOpen} onOpenChange={onClose}>
+            <Dialog open={isOpen} onOpenChange={onClose}>
                 <DialogContent className="bg-background border-border text-foreground p-0 max-w-lg">
                     <AnimatePresence mode="wait">
                     {activeModal === 'main' && (
@@ -373,21 +362,18 @@ const DineInModal = ({ isOpen, onClose, onBookTable, tableStatus, onStartNewTab,
                                 >
                                     <CalendarClock className="w-12 h-12 text-foreground transition-colors group-hover:text-primary" />
                                     <div>
-                                        <h4 className="font-bold text-lg text-foreground">I want to Book a Table</h4>
-                                        <p className="text-sm text-muted-foreground">Reserve a table for a future date or time.</p>
+                                        <h4 className="font-bold text-lg text-foreground">Book a Table</h4>
+                                        <p className="text-sm text-muted-foreground">Reserve for a future date or time.</p>
                                     </div>
                                 </button>
                                  <button
-                                    onClick={() => {
-                                        onClose();
-                                        setIsQrScannerOpen(true);
-                                    }}
+                                    onClick={onScanQR}
                                     className="p-6 border-2 border-border rounded-lg text-center flex flex-col items-center justify-center gap-3 hover:bg-muted hover:border-primary transition-all group"
                                 >
                                     <QrCode className="w-12 h-12 text-foreground transition-colors group-hover:text-primary" />
                                     <div>
                                         <h4 className="font-bold text-lg text-foreground">I'm at the Restaurant</h4>
-                                        <p className="text-sm text-muted-foreground">Scan the QR code on your table to start.</p>
+                                        <p className="text-sm text-muted-foreground">Scan the QR code on your table.</p>
                                     </div>
                                 </button>
                             </div>
@@ -610,6 +596,7 @@ const OrderPageInternal = () => {
     const [customizationItem, setCustomizationItem] = useState(null);
     const [isBannerExpanded, setIsBannerExpanded] = useState(false);
     const [isDineInModalOpen, setDineInModalOpen] = useState(false);
+    const [isQrScannerOpen, setIsQrScannerOpen] = useState(false);
     const [infoDialog, setInfoDialog] = useState({ isOpen: false, title: '', message: '' });
     
     // --- DINE-IN GATEWAY LOGIC ---
@@ -648,7 +635,6 @@ const OrderPageInternal = () => {
 
     // --- LOCATION & DATA FETCHING ---
     useEffect(() => {
-        console.log("[DEBUG] OrderPage: Initial render/dependencies changed. restaurantId:", restaurantId);
         const phone = phoneFromUrl || localStorage.getItem('lastKnownPhone');
         if (phone && !localStorage.getItem('lastKnownPhone')) {
             localStorage.setItem('lastKnownPhone', phone);
@@ -664,19 +650,15 @@ const OrderPageInternal = () => {
         }
         const fetchInitialData = async () => {
             if (!restaurantId || restaurantId === 'undefined') {
-                console.error("[DEBUG] OrderPage: Invalid restaurantId detected:", restaurantId);
                 setError("Restaurant ID is invalid. Please scan the QR code again.");
                 setLoading(false);
                 return;
             }
-            console.log(`[DEBUG] OrderPage: Starting to fetch data for restaurantId: ${restaurantId}`);
             setLoading(true);
             setError(null);
             try {
                 const url = `/api/menu/${restaurantId}${phone ? `?phone=${phone}`: ''}`;
-                console.log(`[DEBUG] OrderPage: Fetching URL: ${url}`);
                 const menuRes = await fetch(url);
-                console.log(`[DEBUG] OrderPage: API response status: ${menuRes.status}`);
 
                 const responseText = await menuRes.text();
                 let menuData;
@@ -688,12 +670,9 @@ const OrderPageInternal = () => {
                 }
 
                 if (!menuRes.ok) {
-                    console.error("[DEBUG] OrderPage: API call failed. Status:", menuRes.status, "Data:", menuData);
                     throw new Error(menuData.message || 'Failed to fetch menu');
                 }
                 
-                console.log("[DEBUG] OrderPage: API call successful. Data received:", menuData);
-                console.log("[DEBUG] DineInEnabled from API:", menuData.dineInEnabled);
 
                 setRestaurantData({
                     name: menuData.restaurantName, status: menuData.approvalStatus,
@@ -736,10 +715,8 @@ const OrderPageInternal = () => {
                      setDineInState('ready'); // Default to ready if no other option
                 }
             } catch (err) {
-                console.error("[DEBUG] OrderPage: Error in fetchInitialData:", err);
                 setError(err.message);
             } finally {
-                console.log("[DEBUG] OrderPage: fetchInitialData finished.");
                 setLoading(false);
             }
         };
@@ -901,9 +878,7 @@ const OrderPageInternal = () => {
     };
     
     const handleDeliveryTypeChange = (type) => {
-        console.log(`[DEBUG] handleDeliveryTypeChange called with type: ${type}`);
         if (type === 'dine-in' && !tableIdFromUrl) {
-            console.log("[DEBUG] Dine-in clicked, opening modal.");
             setDineInState('needs_setup');
             setDineInModalOpen(true);
             return;
@@ -1031,7 +1006,6 @@ const OrderPageInternal = () => {
     }
 
     if (dineInState === 'needs_setup') {
-        console.log("[DEBUG] DineInState is 'needs_setup', should render modal.");
          return (
             <div className="min-h-screen bg-background">
                  <DineInModal 
@@ -1041,6 +1015,10 @@ const OrderPageInternal = () => {
                     onStartNewTab={handleStartNewTab}
                     onJoinTab={handleJoinTab}
                     onBookTable={handleBookTable}
+                    onScanQR={() => {
+                        setDineInModalOpen(false);
+                        setIsQrScannerOpen(true);
+                    }}
                 />
             </div>
          )
@@ -1050,6 +1028,16 @@ const OrderPageInternal = () => {
         <>
             <InfoDialog isOpen={infoDialog.isOpen} onClose={() => setInfoDialog({isOpen: false, title: '', message: ''})} title={infoDialog.title} message={infoDialog.message} />
             
+            {isQrScannerOpen && (
+                <QrScanner 
+                    onClose={() => setIsQrScannerOpen(false)}
+                    onScanSuccess={(decodedText) => {
+                        setIsQrScannerOpen(false);
+                        window.location.href = decodedText;
+                    }}
+                />
+            )}
+
             <AnimatePresence>
                 {isBannerExpanded && (
                      <motion.div
@@ -1084,7 +1072,6 @@ const OrderPageInternal = () => {
                 )}
             </AnimatePresence>
             <div className="min-h-screen bg-background text-foreground green-theme">
-                {console.log("[DEBUG] Rendering DineInModal trigger. isDineInModalOpen:", isDineInModalOpen)}
                  <DineInModal
                   isOpen={isDineInModalOpen}
                   onClose={() => setDineInModalOpen(false)}
@@ -1092,6 +1079,10 @@ const OrderPageInternal = () => {
                   tableStatus={tableStatus}
                   onStartNewTab={handleStartNewTab}
                   onJoinTab={handleJoinTab}
+                  onScanQR={() => {
+                    setDineInModalOpen(false);
+                    setIsQrScannerOpen(true);
+                  }}
                 />
                 <CustomizationDrawer
                     item={customizationItem}
