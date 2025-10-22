@@ -5,7 +5,7 @@
 import React, { useState, useEffect, Suspense, useMemo, useCallback, useRef } from 'react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Utensils, Plus, Minus, X, Home, User, Edit2, ShoppingCart, Star, CookingPot, BookOpen, Check, SlidersHorizontal, ArrowUpDown, PlusCircle, Ticket, Gift, Sparkles, Flame, Search, Trash2, ChevronDown, Tag as TagIcon, RadioGroup, IndianRupee, HardHat, MapPin, Bike, Store, ConciergeBell, QrCode, CalendarClock, Wallet, Users, Camera, BookMarked, Calendar as CalendarIcon, Bell, CheckCircle, AlertTriangle } from 'lucide-react';
+import { Utensils, Plus, Minus, X, Home, User, Edit2, ShoppingCart, Star, CookingPot, BookOpen, Check, SlidersHorizontal, ArrowUpDown, PlusCircle, Ticket, Gift, Sparkles, Flame, Search, Trash2, ChevronDown, Tag as TagIcon, RadioGroup, IndianRupee, HardHat, MapPin, Bike, Store, ConciergeBell, QrCode, CalendarClock, Wallet, Users, Camera, BookMarked, Calendar as CalendarIcon, Bell, CheckCircle, AlertTriangle, Link as LinkIcon } from 'lucide-react';
 import Image from 'next/image';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
@@ -736,7 +736,7 @@ const OrderPageInternal = () => {
                     deliveryCharge: menuData.deliveryCharge || 0, menu: menuData.menu || {}, coupons: menuData.coupons || [],
                     deliveryEnabled: menuData.deliveryEnabled, pickupEnabled: menuData.pickupEnabled,
                     dineInEnabled: menuData.dineInEnabled !== undefined ? menuData.dineInEnabled : true,
-                    businessAddress: fullAddress,
+                    businessAddress: menuData.businessAddress || null,
                 });
 
                 if (tableIdFromUrl) {
@@ -1220,7 +1220,9 @@ const OrderPageInternal = () => {
                                         <Store className="text-primary flex-shrink-0" size={20}/>
                                         <div>
                                             <p className="text-xs text-muted-foreground">Pick your order from</p>
-                                            <p className="text-sm font-semibold text-foreground truncate">{restaurantData.businessAddress || 'N/A'}</p>
+                                            <a href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(restaurantData.businessAddress?.full || restaurantData.name)}`} target="_blank" rel="noopener noreferrer" className="text-sm font-semibold text-foreground truncate flex items-center gap-1 hover:underline text-primary">
+                                                {restaurantData.businessAddress?.full || 'N/A'} <LinkIcon size={12}/>
+                                            </a>
                                         </div>
                                     </div>
                                 ) : null}
