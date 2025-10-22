@@ -2,12 +2,12 @@
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { RefreshCw, Printer, CheckCircle, IndianRupee, Users, Clock, ShoppingBag, Bell, MoreVertical, Trash2, QrCode, Download, Save, Wind, Edit, Table as TableIcon, History } from 'lucide-react';
+import { RefreshCw, Printer, CheckCircle, IndianRupee, Users, Clock, ShoppingBag, Bell, MoreVertical, Trash2, QrCode, Download, Save, Wind, Edit, Table as TableIcon, History, Search } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { auth } from '@/lib/firebase';
 import { cn } from "@/lib/utils";
-import { format, formatDistanceToNow } from 'date-fns';
+import { format, formatDistanceToNow, isAfter, subDays } from 'date-fns';
 import { useSearchParams } from 'next/navigation';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
@@ -18,6 +18,58 @@ import InfoDialog from '@/components/InfoDialog';
 
 
 const formatCurrency = (value) => `₹${Number(value || 0).toLocaleString('en-IN')}`;
+
+const DineInHistoryModal = ({ isOpen, onClose, closedTabs }) => {
+    const [searchTerm, setSearchTerm] = useState('');
+
+    const filteredTabs = useMemo(() => {
+        if (!searchTerm) return closedTabs;
+        return closedTabs.filter(tab => 
+            tab.tableId.toLowerCase().includes(searchTerm.toLowerCase()) ||
+            tab.tab_name.toLowerCase().includes(searchTerm.toLowerCase())
+        );
+    }, [closedTabs, searchTerm]);
+
+    return (
+        <Dialog open={isOpen} onOpenChange={onClose}>
+            <DialogContent className="bg-background border-border text-foreground max-w-2xl">
+                <DialogHeader>
+                    <DialogTitle>Dine-In History (Last 30 Days)</DialogTitle>
+                    <DialogDescription>A log of all closed tabs from the past 30 days.</DialogDescription>
+                </DialogHeader>
+                 <div className="relative my-4">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                    <Input
+                        placeholder="Search by table or tab name..."
+                        value={searchTerm}
+                        onChange={(e) => setSearchTerm(e.target.value)}
+                        className="pl-10"
+                    />
+                </div>
+                <div className="max-h-[60vh] overflow-y-auto p-1 pr-4 space-y-3">
+                    {filteredTabs.length > 0 ? (
+                        filteredTabs.map(tab => (
+                            <div key={tab.id} className="p-3 bg-muted rounded-lg flex justify-between items-center">
+                                <div>
+                                    <p className="font-semibold text-foreground">Table {tab.tableId} - {tab.tab_name}</p>
+                                    <p className="text-xs text-muted-foreground">
+                                        Closed {formatDistanceToNow(tab.closedAt, { addSuffix: true })}
+                                    </p>
+                                </div>
+                                <div className="text-right">
+                                    <p className="font-bold text-lg text-primary">{formatCurrency(tab.totalBill)}</p>
+                                    <p className="text-xs text-muted-foreground">via {tab.paymentMethod || 'Pay at Counter'}</p>
+                                </div>
+                            </div>
+                        ))
+                    ) : (
+                        <p className="text-center py-10 text-muted-foreground">No history found for the last 30 days.</p>
+                    )}
+                </div>
+            </DialogContent>
+        </Dialog>
+    );
+};
 
 const HistoryModal = ({ tableHistory, onClose }) => {
     if (!tableHistory) return null;
@@ -517,6 +569,7 @@ function DineInPage() {
     const impersonatedOwnerId = searchParams.get('impersonate_owner_id');
     const [isQrModalOpen, setIsQrModalOpen] = useState(false);
     const [isQrDisplayModalOpen, setIsQrDisplayModalOpen] = useState(false);
+    const [isHistoryModalOpen, setIsHistoryModalOpen] = useState(false);
     const [editingTable, setEditingTable] = useState(null);
     const [displayTable, setDisplayTable] = useState(null);
     const [restaurant, setRestaurant] = useState(null);
@@ -579,9 +632,7 @@ function DineInPage() {
                  handleApiCall('GET', null, '/api/owner/service-requests')
             ]);
             
-            const dineInStatuses = ['pending', 'confirmed', 'preparing', 'active_tab', 'ready_for_pickup'];
-            const dineInOrders = (ordersData.orders || []).filter(o => o.deliveryType === 'dine-in' && dineInStatuses.includes(o.status));
-            setAllOrders(dineInOrders);
+            setAllOrders(ordersData.orders || []);
             setAllTables(tablesData.tables || []);
             setAllServiceRequests(requestsData.requests || []);
             
@@ -676,75 +727,91 @@ function DineInPage() {
          }
     };
 
-    const combinedTableData = useMemo(() => {
+    const { activeTableData, closedTabsData } = useMemo(() => {
         const tableMap = new Map();
-        
         allTables.forEach(table => {
-            tableMap.set(table.id, {
-                ...table,
-                state: table.state || 'available',
-                tabs: [], 
-            });
+            tableMap.set(table.id, { ...table, tabs: [] });
         });
-    
+
         const tabsData = new Map();
+        const dineInStatuses = ['pending', 'confirmed', 'preparing', 'active_tab', 'ready_for_pickup'];
+        const thirtyDaysAgo = subDays(new Date(), 30);
+        const closedTabs = [];
 
         allOrders.forEach(order => {
-            const tabId = order.dineInTabId;
-            if (!tabId) return;
+            if (order.deliveryType !== 'dine-in') return;
 
-            if (!tabsData.has(tabId)) {
-                tabsData.set(tabId, {
-                    id: tabId,
-                    tableId: order.tableId,
-                    tab_name: order.tab_name || "Guest",
-                    orders: [],
-                });
-            }
-            tabsData.get(tabId).orders.push(order);
-        });
-        
-        allServiceRequests.forEach(req => {
-            if (req.dineInTabId && tabsData.has(req.dineInTabId)) {
-                if (!tabsData.get(req.dineInTabId).serviceRequests) {
-                    tabsData.get(req.dineInTabId).serviceRequests = [];
+            const isClosed = !dineInStatuses.includes(order.status);
+            const orderDate = order.orderDate.seconds ? new Date(order.orderDate.seconds * 1000) : new Date(order.orderDate);
+            
+            if (isClosed && isAfter(orderDate, thirtyDaysAgo)) {
+                 if (order.dineInTabId) {
+                    if (!tabsData.has(order.dineInTabId)) {
+                        tabsData.set(order.dineInTabId, { id: order.dineInTabId, tableId: order.tableId, tab_name: order.tab_name || "Guest", orders: [], closedAt: new Date(0), paymentMethod: 'Unknown' });
+                    }
+                    const tab = tabsData.get(order.dineInTabId);
+                    tab.orders.push(order);
+                    if (orderDate > tab.closedAt) {
+                        tab.closedAt = orderDate; // Update closed time to the latest order time in the tab
+                        tab.paymentMethod = order.paymentDetails?.method || 'Pay at Counter';
+                    }
                 }
-                tabsData.get(req.dineInTabId).serviceRequests.push(req);
-            }
-        });
+            } else if (!isClosed) {
+                const tabId = order.dineInTabId;
+                if (!tabId) return;
 
-        tabsData.forEach(tab => {
-            const tableId = tab.tableId;
-            if (tableMap.has(tableId)) {
-                const tableEntry = tableMap.get(tableId);
-                tableEntry.state = 'occupied';
-                
-                const allItems = new Map();
-                tab.orders.forEach(order => {
-                    (order.items || []).forEach(item => {
-                        const existing = allItems.get(item.name);
-                        if (existing) {
-                            allItems.set(item.name, { ...existing, qty: existing.qty + item.qty });
-                        } else {
-                            allItems.set(item.name, { ...item });
-                        }
-                    });
-                });
-                tab.allItems = Array.from(allItems.values());
-                tab.totalBill = tab.orders.reduce((sum, order) => sum + (order.totalAmount || 0), 0);
-                
-                const latestTimestamp = Math.max(...tab.orders.map(o => o.orderDate.seconds ? o.orderDate.seconds * 1000 : new Date(o.orderDate).getTime()));
-                tab.latestOrderTime = new Date(latestTimestamp);
-
-                tableEntry.tabs.push(tab);
+                if (!tabsData.has(tabId)) {
+                    tabsData.set(tabId, { id: tabId, tableId: order.tableId, tab_name: order.tab_name || "Guest", orders: [] });
+                }
+                tabsData.get(tabId).orders.push(order);
             }
         });
         
-        return Object.fromEntries(tableMap);
-    }, [allOrders, allTables, allServiceRequests]);
+        tabsData.forEach(tab => {
+            tab.totalBill = (tab.orders || []).reduce((sum, order) => sum + (order.totalAmount || 0), 0);
+
+            if (tab.closedAt) { // It's a closed tab
+                closedTabs.push(tab);
+            } else { // It's an active tab
+                const tableId = tab.tableId;
+                if (tableMap.has(tableId)) {
+                    const tableEntry = tableMap.get(tableId);
+                    tableEntry.state = 'occupied';
+                    
+                    const allItems = new Map();
+                    tab.orders.forEach(order => {
+                        (order.items || []).forEach(item => {
+                            const existing = allItems.get(item.name);
+                            if (existing) {
+                                allItems.set(item.name, { ...existing, qty: existing.qty + item.qty });
+                            } else {
+                                allItems.set(item.name, { ...item });
+                            }
+                        });
+                    });
+                    tab.allItems = Array.from(allItems.values());
+                    
+                    const latestTimestamp = Math.max(...tab.orders.map(o => o.orderDate.seconds ? o.orderDate.seconds * 1000 : new Date(o.orderDate).getTime()));
+                    tab.latestOrderTime = new Date(latestTimestamp);
+                    tableEntry.tabs.push(tab);
+                }
+            }
+        });
+
+        // Add table state for non-occupied tables
+        allTables.forEach(table => {
+            if (!tableMap.get(table.id).tabs.length > 0 && table.state !== 'needs_cleaning') {
+                tableMap.get(table.id).state = 'available';
+            }
+        });
+
+        closedTabs.sort((a,b) => b.closedAt - a.closedAt);
+
+        return { activeTableData: Object.fromEntries(tableMap), closedTabsData: closedTabs };
+    }, [allOrders, allTables]);
     
     const handleShowHistory = (tableId, tabId) => {
-        const tableData = combinedTableData[tableId];
+        const tableData = activeTableData[tableId];
         if (!tableData) return;
 
         const tab = tableData.tabs.find(t => t.id === tabId);
@@ -758,7 +825,7 @@ function DineInPage() {
             totalAmount: o.totalAmount
         }));
     
-        const requestEvents = (tab.serviceRequests || []).map(r => ({
+        const requestEvents = (allServiceRequests || []).filter(r => r.dineInTabId === tabId).map(r => ({
             type: 'request',
             timestamp: r.createdAt.seconds ? r.createdAt.seconds * 1000 : new Date(r.createdAt).getTime(),
         }));
@@ -788,6 +855,7 @@ function DineInPage() {
 
     return (
         <div className="p-4 md:p-6 text-foreground min-h-screen bg-background">
+            <DineInHistoryModal isOpen={isHistoryModalOpen} onClose={() => setIsHistoryModalOpen(false)} closedTabs={closedTabsData} />
             {historyModalData && <HistoryModal tableHistory={historyModalData} onClose={() => setHistoryModalData(null)} />}
             {billData && (
                 <BillModal 
@@ -813,6 +881,9 @@ function DineInPage() {
                     <p className="text-muted-foreground mt-1 text-sm md:text-base">A live overview of your active tables and table management.</p>
                 </div>
                 <div className="flex gap-4">
+                     <Button onClick={() => setIsHistoryModalOpen(true)} variant="outline" disabled={loading}>
+                        <History size={16} className="mr-2"/> Dine-In History
+                    </Button>
                      <Button onClick={() => handleOpenEditModal(null)} variant="default" className="bg-primary hover:bg-primary/90" disabled={loading}>
                         <QrCode size={16} className="mr-2"/> Create Table & QR
                     </Button>
@@ -831,9 +902,9 @@ function DineInPage() {
                         <div key={i} className="bg-card border border-border rounded-xl h-96"></div>
                     ))}
                 </div>
-            ) : Object.values(combinedTableData).some(data => data.tabs.length > 0 || data.state === 'needs_cleaning') ? (
+            ) : Object.values(activeTableData).some(data => data.tabs.length > 0 || data.state === 'needs_cleaning') ? (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-                    {Object.entries(combinedTableData)
+                    {Object.entries(activeTableData)
                         .filter(([_, data]) => data.tabs.length > 0 || data.state === 'needs_cleaning')
                         .map(([tableId, tableData]) => (
                         <TableCard key={tableId} tableId={tableId} tableData={tableData} onMarkAsPaid={handleMarkAsPaid} onPrintBill={setBillData} onMarkAsCleaned={handleMarkAsCleaned} onShowHistory={handleShowHistory}/>
