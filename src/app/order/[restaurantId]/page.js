@@ -621,6 +621,7 @@ const OrderPageInternal = () => {
         deliveryEnabled: true,
         pickupEnabled: false,
         dineInEnabled: false,
+        businessAddress: null, // New state for restaurant address
     });
     const [tableStatus, setTableStatus] = useState(null);
     const [loyaltyPoints, setLoyaltyPoints] = useState(0);
@@ -724,12 +725,28 @@ const OrderPageInternal = () => {
                 
                 console.log("[DEBUG] OrderPage: API call successful. Data received:", menuData);
 
+                // Fetch full restaurant settings to get address for pickup
+                let businessAddress = 'N/A';
+                try {
+                    const settingsRes = await fetch(`/api/owner/settings?businessId=${restaurantId}`);
+                    if (settingsRes.ok) {
+                        const settingsData = await settingsRes.json();
+                        if (settingsData.address) {
+                            businessAddress = `${settingsData.address.street}, ${settingsData.address.city}`;
+                        }
+                    }
+                } catch(e) {
+                    console.warn("Could not fetch restaurant address", e);
+                }
+
+
                 setRestaurantData({
                     name: menuData.restaurantName, status: menuData.approvalStatus,
                     logoUrl: menuData.logoUrl || '', bannerUrls: (menuData.bannerUrls?.length > 0) ? menuData.bannerUrls : ['/order_banner.jpg'],
                     deliveryCharge: menuData.deliveryCharge || 0, menu: menuData.menu || {}, coupons: menuData.coupons || [],
                     deliveryEnabled: menuData.deliveryEnabled, pickupEnabled: menuData.pickupEnabled,
                     dineInEnabled: menuData.dineInEnabled !== undefined ? menuData.dineInEnabled : true,
+                    businessAddress, // Save restaurant address
                 });
 
                 if (tableIdFromUrl) {
@@ -1197,14 +1214,26 @@ const OrderPageInternal = () => {
                                     </button>
                                 )}
                             </div>
-                             <div className="bg-card border-t border-dashed border-border mt-4 pt-4 flex items-center justify-between w-full">
-                                <div className="flex items-center gap-3 overflow-hidden">
-                                    <MapPin className="text-primary flex-shrink-0" size={20}/>
-                                    <p className="text-sm text-muted-foreground truncate">{customerLocation?.full || 'No location set'}</p>
-                                </div>
-                                <Link href={`/location?restaurantId=${restaurantId}&returnUrl=${encodeURIComponent(window.location.pathname + window.location.search)}`}>
-                                    <Button variant="link" className="text-primary p-0 h-auto font-semibold flex-shrink-0">Change</Button>
-                                </Link>
+                            <div className="bg-card border-t border-dashed border-border mt-4 pt-4 flex items-center justify-between w-full">
+                                {deliveryType === 'delivery' ? (
+                                    <>
+                                        <div className="flex items-center gap-3 overflow-hidden">
+                                            <MapPin className="text-primary flex-shrink-0" size={20}/>
+                                            <p className="text-sm text-muted-foreground truncate">{customerLocation?.full || 'No location set'}</p>
+                                        </div>
+                                        <Link href={`/location?restaurantId=${restaurantId}&returnUrl=${encodeURIComponent(window.location.pathname + window.location.search)}`}>
+                                            <Button variant="link" className="text-primary p-0 h-auto font-semibold flex-shrink-0">Change</Button>
+                                        </Link>
+                                    </>
+                                ) : (
+                                    <div className="flex items-center gap-3 overflow-hidden">
+                                        <Store className="text-primary flex-shrink-0" size={20}/>
+                                        <div>
+                                            <p className="text-xs text-muted-foreground">Pick your order from</p>
+                                            <p className="text-sm font-semibold text-foreground truncate">{restaurantData.businessAddress || 'Restaurant Address'}</p>
+                                        </div>
+                                    </div>
+                                )}
                             </div>
                         </div>
                     )}
