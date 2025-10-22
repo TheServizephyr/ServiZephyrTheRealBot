@@ -621,7 +621,7 @@ const OrderPageInternal = () => {
         deliveryEnabled: true,
         pickupEnabled: false,
         dineInEnabled: false,
-        businessAddress: null, // New state for restaurant address
+        businessAddress: null,
     });
     const [tableStatus, setTableStatus] = useState(null);
     const [loyaltyPoints, setLoyaltyPoints] = useState(0);
@@ -725,20 +725,10 @@ const OrderPageInternal = () => {
                 
                 console.log("[DEBUG] OrderPage: API call successful. Data received:", menuData);
 
-                // Fetch full restaurant settings to get address for pickup
-                let businessAddress = 'N/A';
-                try {
-                    const settingsRes = await fetch(`/api/owner/settings?businessId=${restaurantId}`);
-                    if (settingsRes.ok) {
-                        const settingsData = await settingsRes.json();
-                        if (settingsData.address) {
-                            businessAddress = `${settingsData.address.street}, ${settingsData.address.city}`;
-                        }
-                    }
-                } catch(e) {
-                    console.warn("Could not fetch restaurant address", e);
+                let fullAddress = 'N/A';
+                if(menuData.businessAddress) {
+                    fullAddress = `${menuData.businessAddress.street}, ${menuData.businessAddress.city}`;
                 }
-
 
                 setRestaurantData({
                     name: menuData.restaurantName, status: menuData.approvalStatus,
@@ -746,7 +736,7 @@ const OrderPageInternal = () => {
                     deliveryCharge: menuData.deliveryCharge || 0, menu: menuData.menu || {}, coupons: menuData.coupons || [],
                     deliveryEnabled: menuData.deliveryEnabled, pickupEnabled: menuData.pickupEnabled,
                     dineInEnabled: menuData.dineInEnabled !== undefined ? menuData.dineInEnabled : true,
-                    businessAddress, // Save restaurant address
+                    businessAddress: fullAddress,
                 });
 
                 if (tableIdFromUrl) {
@@ -1225,15 +1215,15 @@ const OrderPageInternal = () => {
                                             <Button variant="link" className="text-primary p-0 h-auto font-semibold flex-shrink-0">Change</Button>
                                         </Link>
                                     </>
-                                ) : (
+                                ) : deliveryType === 'pickup' ? (
                                     <div className="flex items-center gap-3 overflow-hidden">
                                         <Store className="text-primary flex-shrink-0" size={20}/>
                                         <div>
                                             <p className="text-xs text-muted-foreground">Pick your order from</p>
-                                            <p className="text-sm font-semibold text-foreground truncate">{restaurantData.businessAddress || 'Restaurant Address'}</p>
+                                            <p className="text-sm font-semibold text-foreground truncate">{restaurantData.businessAddress || 'N/A'}</p>
                                         </div>
                                     </div>
-                                )}
+                                ) : null}
                             </div>
                         </div>
                     )}
@@ -1382,5 +1372,3 @@ const OrderPage = () => (
 );
 
 export default OrderPage;
-
-    

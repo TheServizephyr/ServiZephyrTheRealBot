@@ -132,10 +132,12 @@ export async function GET(request, { params }) {
             isOpen: restaurantData.isOpen,
             deliveryEnabled: restaurantData.deliveryEnabled === undefined ? true : restaurantData.deliveryEnabled,
             pickupEnabled: restaurantData.pickupEnabled === undefined ? false : restaurantData.pickupEnabled,
+            dineInEnabled: restaurantData.dineInEnabled !== undefined ? restaurantData.dineInEnabled : true, // THE FIX
             deliveryOnlinePaymentEnabled: restaurantData.deliveryOnlinePaymentEnabled === undefined ? true : restaurantData.deliveryOnlinePaymentEnabled,
             deliveryCodEnabled: restaurantData.deliveryCodEnabled === undefined ? true : restaurantData.deliveryCodEnabled,
             pickupOnlinePaymentEnabled: restaurantData.pickupOnlinePaymentEnabled === undefined ? true : restaurantData.pickupOnlinePaymentEnabled,
             pickupPodEnabled: restaurantData.pickupPodEnabled === undefined ? true : restaurantData.pickupPodEnabled,
+            businessAddress: restaurantData.address || null, // THE FIX: Send the business address
         }, { status: 200 });
 
     } catch (error) {
