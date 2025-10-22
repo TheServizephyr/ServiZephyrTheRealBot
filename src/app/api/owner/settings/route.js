@@ -73,9 +73,11 @@ export async function GET(req) {
                 return NextResponse.json({ message: "Business not found." }, { status: 404 });
             }
             const businessData = businessDoc.data();
+            // THE FIX: Return all relevant payment flags, not just a single 'codEnabled'.
             return NextResponse.json({ 
-                codEnabled: businessData.codEnabled || false,
-                dineInPayAtCounterEnabled: businessData.dineInPayAtCounterEnabled,
+                deliveryCodEnabled: businessData.deliveryCodEnabled === undefined ? true : businessData.deliveryCodEnabled,
+                pickupPodEnabled: businessData.pickupPodEnabled === undefined ? true : businessData.pickupPodEnabled,
+                dineInPayAtCounterEnabled: businessData.dineInPayAtCounterEnabled === undefined ? true : businessData.dineInPayAtCounterEnabled,
             }, { status: 200 });
         }
         

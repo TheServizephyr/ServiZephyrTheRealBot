@@ -185,11 +185,11 @@ const CheckoutPageInternal = () => {
                      const deliveryType = tableId ? 'dine-in' : (parsedData.deliveryType || 'delivery');
 
                     if (deliveryType === 'delivery') {
-                        setCodEnabled(data.deliveryCodEnabled || false);
+                        setCodEnabled(data.deliveryCodEnabled);
                     } else if (deliveryType === 'pickup') {
-                         setCodEnabled(data.pickupPodEnabled || false);
+                         setCodEnabled(data.pickupPodEnabled);
                     } else if (deliveryType === 'dine-in') {
-                        setCodEnabled(data.dineInPayAtCounterEnabled || false);
+                        setCodEnabled(data.dineInPayAtCounterEnabled);
                     } else {
                         setCodEnabled(false);
                     }
