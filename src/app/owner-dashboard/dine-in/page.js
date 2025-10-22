@@ -1,8 +1,9 @@
+
 'use client';
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { RefreshCw, Printer, CheckCircle, IndianRupee, Users, Clock, ShoppingBag, Bell, MoreVertical, Trash2, QrCode, Download, Save, Wind, Edit, Table as TableIcon, History, Search } from 'lucide-react';
+import { RefreshCw, Printer, CheckCircle, IndianRupee, Users, Clock, ShoppingBag, Bell, MoreVertical, Trash2, QrCode, Download, Save, Wind, Edit, Table as TableIcon, History, Search, PlusCircle, Salad } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { auth } from '@/lib/firebase';
@@ -19,15 +20,18 @@ import InfoDialog from '@/components/InfoDialog';
 
 const formatCurrency = (value) => `₹${Number(value || 0).toLocaleString('en-IN')}`;
 
-const ManageTablesModal = ({ isOpen, onClose, allTables, onEdit, onDelete, loading }) => {
+const ManageTablesModal = ({ isOpen, onClose, allTables, onEdit, onDelete, loading, onCreateNew }) => {
     return (
         <Dialog open={isOpen} onOpenChange={onClose}>
             <DialogContent className="bg-background border-border text-foreground max-w-4xl">
-                <DialogHeader>
-                    <DialogTitle>Manage All Tables</DialogTitle>
-                    <DialogDescription>
-                        View, edit, or delete all the tables you have created for your establishment.
-                    </DialogDescription>
+                <DialogHeader className="flex flex-row justify-between items-center">
+                    <div>
+                        <DialogTitle>Manage All Tables</DialogTitle>
+                        <DialogDescription>
+                            View, edit, or delete all the tables you have created for your establishment.
+                        </DialogDescription>
+                    </div>
+                    <Button onClick={onCreateNew}><PlusCircle size={16} className="mr-2"/> Create New Table</Button>
                 </DialogHeader>
                 <div className="max-h-[60vh] overflow-y-auto mt-4 pr-4">
                     <table className="w-full">
@@ -352,19 +356,20 @@ const TableCard = ({ tableId, tableData, onMarkAsPaid, onPrintBill, onMarkAsClea
                                 </div>
                             ))}
                         </div>
-                        <div className="mt-4 pt-4 border-t border-dashed">
-                             <Button variant="outline" size="sm" className="w-full" onClick={() => onShowHistory(tableId, tab.id)}>
+                        
+                        <CardFooter className="flex-col items-start bg-muted/30 p-4 border-t mt-4">
+                            <Button variant="outline" size="sm" className="w-full mb-4" onClick={() => onShowHistory(tableId, tab.id)}>
                                 <History size={14} className="mr-2"/> See History
                             </Button>
-                        </div>
-                        <div className="flex justify-between items-center w-full mt-4">
-                            <span className="text-lg font-bold">Total Bill:</span>
-                            <span className="text-2xl font-bold text-primary">{formatCurrency(tab.totalBill)}</span>
-                        </div>
-                        <div className="grid grid-cols-2 gap-2 w-full mt-4">
-                            <Button variant="outline" onClick={() => onPrintBill({ tableId, orders: tab.orders })}><Printer size={16} className="mr-2"/> Print Bill</Button>
-                            <Button className="bg-primary hover:bg-primary/90" onClick={() => onMarkAsPaid(tableId, tab.id)}><CheckCircle size={16} className="mr-2"/> Mark as Paid</Button>
-                        </div>
+                            <div className="flex justify-between items-center w-full">
+                                <span className="text-lg font-bold">Total Bill:</span>
+                                <span className="text-2xl font-bold text-primary">{formatCurrency(tab.totalBill)}</span>
+                            </div>
+                            <div className="grid grid-cols-2 gap-2 w-full mt-4">
+                                <Button variant="outline" onClick={() => onPrintBill({ tableId, orders: tab.orders })}><Printer size={16} className="mr-2"/> Print Bill</Button>
+                                <Button className="bg-primary hover:bg-primary/90" onClick={() => onMarkAsPaid(tableId, tab.id)}><CheckCircle size={16} className="mr-2"/> Mark as Paid</Button>
+                            </div>
+                        </CardFooter>
                     </div>
                    ))}
                 </CardContent>
@@ -913,7 +918,7 @@ function DineInPage() {
     return (
         <div className="p-4 md:p-6 text-foreground min-h-screen bg-background">
             <DineInHistoryModal isOpen={isHistoryModalOpen} onClose={() => setIsHistoryModalOpen(false)} closedTabs={closedTabsData} />
-            <ManageTablesModal isOpen={isManageTablesModalOpen} onClose={() => setIsManageTablesModalOpen(false)} allTables={allTables} onEdit={handleOpenEditModal} onDelete={handleDeleteTable} loading={loading} />
+            <ManageTablesModal isOpen={isManageTablesModalOpen} onClose={() => setIsManageTablesModalOpen(false)} allTables={allTables} onEdit={handleOpenEditModal} onDelete={handleDeleteTable} loading={loading} onCreateNew={() => handleOpenEditModal(null)} />
             {historyModalData && <HistoryModal tableHistory={historyModalData} onClose={() => setHistoryModalData(null)} />}
             {billData && (
                 <BillModal 
@@ -944,11 +949,11 @@ function DineInPage() {
                 <Button onClick={() => setIsHistoryModalOpen(true)} variant="outline" className="h-20 flex-col gap-1" disabled={loading}>
                     <History size={20}/> Dine-In History
                 </Button>
-                <Button onClick={() => handleOpenEditModal(null)} variant="outline" className="h-20 flex-col gap-1" disabled={loading}>
-                    <QrCode size={20}/> Create Table & QR
+                <Button onClick={() => {}} variant="outline" className="h-20 flex-col gap-1" disabled={loading}>
+                    <Salad size={20}/> Dine-In Menu
                 </Button>
                  <Button onClick={() => setIsManageTablesModalOpen(true)} variant="outline" className="h-20 flex-col gap-1" disabled={loading}>
-                    <TableIcon size={20}/> Manage All Tables
+                    <TableIcon size={20}/> Manage Tables
                 </Button>
                 <Button onClick={() => fetchData(true)} variant="outline" className="h-20 flex-col gap-1" disabled={loading}>
                     <RefreshCw size={20} className={cn(loading && "animate-spin")} /> Refresh View
