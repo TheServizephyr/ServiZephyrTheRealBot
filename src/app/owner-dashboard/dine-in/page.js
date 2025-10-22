@@ -936,86 +936,81 @@ function DineInPage() {
     };
 
     const { activeTableData, closedTabsData } = useMemo(() => {
-        const tableMap = new Map();
-        allTables.forEach(table => {
-            tableMap.set(table.id, { ...table, tabs: [] });
-        });
-
-        const tabsData = new Map();
         const dineInStatuses = ['pending', 'confirmed', 'preparing', 'active_tab', 'ready_for_pickup'];
         const thirtyDaysAgo = subDays(new Date(), 30);
-        const closedTabs = [];
-
-        allOrders.forEach(order => {
-            if (order.deliveryType !== 'dine-in') return;
-
-            const isClosed = !dineInStatuses.includes(order.status);
-            const orderDate = order.orderDate.seconds ? new Date(order.orderDate.seconds * 1000) : new Date(order.orderDate);
+    
+        // 1. Group all orders by their dineInTabId
+        const tabsData = allOrders.reduce((acc, order) => {
+            if (order.deliveryType !== 'dine-in' || !order.dineInTabId) {
+                return acc;
+            }
+            if (!acc[order.dineInTabId]) {
+                acc[order.dineInTabId] = {
+                    id: order.dineInTabId,
+                    tableId: order.tableId,
+                    tab_name: order.tab_name || "Guest",
+                    orders: [],
+                    isActive: false,
+                    closedAt: null,
+                    paymentMethod: 'Unknown'
+                };
+            }
+            acc[order.dineInTabId].orders.push(order);
+            return acc;
+        }, {});
+    
+        // 2. Process each tab to determine its state (active/closed) and aggregate data
+        Object.values(tabsData).forEach(tab => {
+            const latestOrder = tab.orders.reduce((latest, current) => {
+                const latestDate = latest.orderDate.seconds ? new Date(latest.orderDate.seconds * 1000) : new Date(latest.orderDate);
+                const currentDate = current.orderDate.seconds ? new Date(current.orderDate.seconds * 1000) : new Date(current.orderDate);
+                return currentDate > latestDate ? current : latest;
+            });
+    
+            tab.isActive = dineInStatuses.includes(latestOrder.status);
+            tab.totalBill = tab.orders.reduce((sum, o) => sum + (o.totalAmount || 0), 0);
             
-            if (isClosed && isAfter(orderDate, thirtyDaysAgo)) {
-                 if (order.dineInTabId) {
-                    if (!tabsData.has(order.dineInTabId)) {
-                        tabsData.set(order.dineInTabId, { id: order.dineInTabId, tableId: order.tableId, tab_name: order.tab_name || "Guest", orders: [], closedAt: new Date(0), paymentMethod: 'Unknown' });
+            const allItemsMap = new Map();
+            tab.orders.forEach(order => {
+                (order.items || []).forEach(item => {
+                    const existing = allItemsMap.get(item.name);
+                    if (existing) {
+                        allItemsMap.set(item.name, { ...existing, qty: existing.qty + item.qty });
+                    } else {
+                        allItemsMap.set(item.name, { ...item });
                     }
-                    const tab = tabsData.get(order.dineInTabId);
-                    tab.orders.push(order);
-                    if (orderDate > tab.closedAt) {
-                        tab.closedAt = orderDate; // Update closed time to the latest order time in the tab
-                        tab.paymentMethod = order.paymentDetails?.method || 'Pay at Counter';
-                    }
-                }
-            } else if (!isClosed) {
-                const tabId = order.dineInTabId;
-                if (!tabId) return;
+                });
+            });
+            tab.allItems = Array.from(allItemsMap.values());
+            
+            const latestTimestamp = Math.max(...tab.orders.map(o => o.orderDate.seconds ? o.orderDate.seconds * 1000 : new Date(o.orderDate).getTime()));
+            tab.latestOrderTime = new Date(latestTimestamp);
 
-                if (!tabsData.has(tabId)) {
-                    tabsData.set(tabId, { id: tabId, tableId: order.tableId, tab_name: order.tab_name || "Guest", orders: [] });
-                }
-                tabsData.get(tabId).orders.push(order);
+            if (!tab.isActive) {
+                tab.closedAt = tab.latestOrderTime;
+                tab.paymentMethod = latestOrder.paymentDetails?.method || 'Pay at Counter';
             }
         });
-        
-        tabsData.forEach(tab => {
-            tab.totalBill = (tab.orders || []).reduce((sum, order) => sum + (order.totalAmount || 0), 0);
-
-            if (tab.closedAt) { // It's a closed tab
-                closedTabs.push(tab);
-            } else { // It's an active tab
-                const tableId = tab.tableId;
-                if (tableMap.has(tableId)) {
-                    const tableEntry = tableMap.get(tableId);
-                    tableEntry.state = 'occupied';
-                    
-                    const allItems = new Map();
-                    tab.orders.forEach(order => {
-                        (order.items || []).forEach(item => {
-                            const existing = allItems.get(item.name);
-                            if (existing) {
-                                allItems.set(item.name, { ...existing, qty: existing.qty + item.qty });
-                            } else {
-                                allItems.set(item.name, { ...item });
-                            }
-                        });
-                    });
-                    tab.allItems = Array.from(allItems.values());
-                    
-                    const latestTimestamp = Math.max(...tab.orders.map(o => o.orderDate.seconds ? o.orderDate.seconds * 1000 : new Date(o.orderDate).getTime()));
-                    tab.latestOrderTime = new Date(latestTimestamp);
-                    tableEntry.tabs.push(tab);
-                }
-            }
-        });
-
-        // Add table state for non-occupied tables
-        allTables.forEach(table => {
-            if (tableMap.has(table.id) && !tableMap.get(table.id).tabs.length > 0 && table.state !== 'needs_cleaning') {
-                tableMap.get(table.id).state = 'available';
-            }
-        });
-
+    
+        // 3. Separate into active tabs and closed tabs (for history)
+        const closedTabs = Object.values(tabsData).filter(tab => !tab.isActive && tab.closedAt && isAfter(tab.closedAt, thirtyDaysAgo));
         closedTabs.sort((a,b) => b.closedAt - a.closedAt);
-
-        return { activeTableData: Object.fromEntries(tableMap), closedTabsData: closedTabs };
+    
+        // 4. Create the final table structure for display
+        const tableMap = allTables.reduce((acc, table) => {
+            acc[table.id] = { ...table, tabs: [], state: table.state || 'available' };
+            return acc;
+        }, {});
+    
+        Object.values(tabsData).forEach(tab => {
+            if (tab.isActive && tableMap[tab.tableId]) {
+                tableMap[tab.tableId].tabs.push(tab);
+                tableMap[tab.tableId].state = 'occupied';
+            }
+        });
+    
+        return { activeTableData: tableMap, closedTabsData: closedTabs };
+    
     }, [allOrders, allTables]);
     
     const handleShowHistory = (tableId, tabId) => {
