@@ -1,5 +1,4 @@
 
-
 'use client';
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
@@ -20,6 +19,49 @@ import InfoDialog from '@/components/InfoDialog';
 
 
 const formatCurrency = (value) => `₹${Number(value || 0).toLocaleString('en-IN')}`;
+
+const HistoryModal = ({ tableHistory, onClose }) => {
+    if (!tableHistory) return null;
+
+    const { tableId, events } = tableHistory;
+
+    return (
+        <Dialog open={true} onOpenChange={onClose}>
+            <DialogContent className="bg-background border-border text-foreground">
+                <DialogHeader>
+                    <DialogTitle>Activity History for Table {tableId}</DialogTitle>
+                    <DialogDescription>A log of all events that occurred at this table.</DialogDescription>
+                </DialogHeader>
+                <div className="max-h-[60vh] overflow-y-auto p-4 space-y-4">
+                    {events.length > 0 ? (
+                        events.map((event, index) => (
+                            <div key={index} className="flex items-start gap-4">
+                                <div className="bg-muted p-2 rounded-full mt-1">
+                                    {event.type === 'order' ? <ShoppingBag size={16} className="text-primary"/> : <Bell size={16} className="text-yellow-500"/>}
+                                </div>
+                                <div>
+                                    <p className="font-semibold">{event.type === 'order' ? `Order Placed by ${event.customerName}` : 'Service Request'}</p>
+                                    <p className="text-xs text-muted-foreground">
+                                        {formatDistanceToNow(new Date(event.timestamp), { addSuffix: true })}
+                                    </p>
+                                    {event.type === 'order' && (
+                                        <ul className="text-xs list-disc pl-4 mt-1 text-muted-foreground">
+                                            {event.items.map((item, i) => <li key={i}>{item.qty}x {item.name}</li>)}
+                                        </ul>
+                                    )}
+                                </div>
+                                {event.type === 'order' && <p className="ml-auto font-semibold text-sm">{formatCurrency(event.totalAmount)}</p>}
+                            </div>
+                        ))
+                    ) : (
+                        <p className="text-center text-muted-foreground py-8">No activity recorded for this table yet.</p>
+                    )}
+                </div>
+            </DialogContent>
+        </Dialog>
+    );
+};
+
 
 const BillModal = ({ order, restaurant, onClose, onPrint, printRef }) => {
     if (!order || !restaurant) return null;
@@ -94,7 +136,7 @@ const BillModal = ({ order, restaurant, onClose, onPrint, printRef }) => {
     );
 };
 
-const TableCard = ({ tableId, tableData, onMarkAsPaid, onPrintBill, onMarkAsCleaned }) => {
+const TableCard = ({ tableId, tableData, onMarkAsPaid, onPrintBill, onMarkAsCleaned, onShowHistory }) => {
     const orders = tableData.orders || [];
     const totalBill = useMemo(() => orders.reduce((sum, order) => sum + (order.totalAmount || 0), 0), [orders]);
     const customerNames = useMemo(() => [...new Set(orders.map(o => o.customerName))], [orders]);
@@ -208,7 +250,7 @@ const TableCard = ({ tableId, tableData, onMarkAsPaid, onPrintBill, onMarkAsClea
                 </CardContent>
                 {orders.length > 0 && <CardFooter className="flex-col items-start bg-muted/30 p-4 border-t">
                     <div className="w-full mb-4 pt-4 border-t border-dashed">
-                        <Button variant="outline" size="sm" className="w-full">
+                        <Button variant="outline" size="sm" className="w-full" onClick={onShowHistory}>
                             <History size={14} className="mr-2"/> See History
                         </Button>
                     </div>
@@ -472,6 +514,7 @@ const LiveServiceRequests = ({ impersonatedOwnerId }) => {
 function DineInPage() {
     const [allOrders, setAllOrders] = useState([]);
     const [allTables, setAllTables] = useState([]);
+    const [allServiceRequests, setAllServiceRequests] = useState([]);
     const [loading, setLoading] = useState(true);
     const searchParams = useSearchParams();
     const impersonatedOwnerId = searchParams.get('impersonate_owner_id');
@@ -482,6 +525,7 @@ function DineInPage() {
     const [restaurant, setRestaurant] = useState(null);
     const [restaurantId, setRestaurantId] = useState('');
     const [billData, setBillData] = useState(null);
+    const [historyModalData, setHistoryModalData] = useState(null);
     const [infoDialog, setInfoDialog] = useState({ isOpen: false, title: '', message: '' });
     const billPrintRef = useRef();
 
@@ -531,16 +575,18 @@ function DineInPage() {
             const idToken = await user.getIdToken();
             
             const settingsUrl = `/api/owner/settings?impersonate_owner_id=${impersonatedOwnerId || ''}`;
-            const [ordersData, tablesData, settingsData] = await Promise.all([
+            const [ordersData, tablesData, settingsData, requestsData] = await Promise.all([
                  handleApiCall('GET', null, '/api/owner/orders'),
                  handleApiCall('GET', null, '/api/owner/dine-in-tables'),
-                 fetch(settingsUrl, { headers: { 'Authorization': `Bearer ${idToken}` } }).then(res => res.json())
+                 fetch(settingsUrl, { headers: { 'Authorization': `Bearer ${idToken}` } }).then(res => res.json()),
+                 handleApiCall('GET', null, '/api/owner/service-requests')
             ]);
             
             const dineInStatuses = ['pending', 'confirmed', 'preparing', 'active_tab', 'ready_for_pickup'];
             const dineInOrders = (ordersData.orders || []).filter(o => o.deliveryType === 'dine-in' && dineInStatuses.includes(o.status));
             setAllOrders(dineInOrders);
             setAllTables(tablesData.tables || []);
+            setAllServiceRequests(requestsData.requests || []);
             
             const fetchedRestaurant = {
                 name: settingsData.restaurantName,
@@ -641,21 +687,50 @@ function DineInPage() {
                 ...table,
                 state: table.state || 'available',
                 orders: [],
+                serviceRequests: [],
             });
         });
     
         allOrders.forEach(order => {
-            const tableId = order.tableId; // Use tableId from order
+            const tableId = order.tableId;
             if (tableMap.has(tableId)) {
                 const tableEntry = tableMap.get(tableId);
-                tableEntry.state = 'occupied'; // This is a simplification; a table can have paid orders.
+                tableEntry.state = 'occupied';
                 tableEntry.orders.push(order);
             }
         });
         
+        allServiceRequests.forEach(req => {
+            if (tableMap.has(req.tableId)) {
+                tableMap.get(req.tableId).serviceRequests.push(req);
+            }
+        });
+        
         return Object.fromEntries(tableMap);
-    }, [allOrders, allTables]);
+    }, [allOrders, allTables, allServiceRequests]);
     
+    const handleShowHistory = (tableId) => {
+        const tableData = combinedTableData[tableId];
+        if (!tableData) return;
+
+        const orderEvents = tableData.orders.map(o => ({
+            type: 'order',
+            timestamp: o.orderDate.seconds ? o.orderDate.seconds * 1000 : new Date(o.orderDate).getTime(),
+            customerName: o.customerName,
+            items: o.items,
+            totalAmount: o.totalAmount
+        }));
+
+        const requestEvents = tableData.serviceRequests.map(r => ({
+            type: 'request',
+            timestamp: r.createdAt.seconds ? r.createdAt.seconds * 1000 : new Date(r.createdAt).getTime(),
+        }));
+        
+        const allEvents = [...orderEvents, ...requestEvents].sort((a, b) => b.timestamp - a.timestamp);
+        
+        setHistoryModalData({ tableId, events: allEvents });
+    };
+
     const handleOpenEditModal = (table = null) => {
         if (!restaurantId) {
             setInfoDialog({isOpen: true, title: "Error", message: "Restaurant data is not loaded yet. Cannot manage tables."});
@@ -676,6 +751,7 @@ function DineInPage() {
 
     return (
         <div className="p-4 md:p-6 text-foreground min-h-screen bg-background">
+            {historyModalData && <HistoryModal tableHistory={historyModalData} onClose={() => setHistoryModalData(null)} />}
             {billData && (
                 <BillModal 
                     order={billData}
@@ -723,7 +799,7 @@ function DineInPage() {
                     {Object.entries(combinedTableData)
                         .filter(([_, data]) => data.orders.length > 0 || data.state === 'needs_cleaning')
                         .map(([tableId, tableData]) => (
-                        <TableCard key={tableId} tableId={tableId} tableData={tableData} onMarkAsPaid={handleMarkAsPaid} onPrintBill={setBillData} onMarkAsCleaned={handleMarkAsCleaned}/>
+                        <TableCard key={tableId} tableId={tableId} tableData={tableData} onMarkAsPaid={handleMarkAsPaid} onPrintBill={setBillData} onMarkAsCleaned={handleMarkAsCleaned} onShowHistory={() => handleShowHistory(tableId)}/>
                     ))}
                 </div>
             ) : (
