@@ -370,7 +370,7 @@ const DineInModal = ({ isOpen, onClose, onBookTable, tableStatus, onStartNewTab,
                                     onClick={() => setActiveModal('book')}
                                     className="p-6 border-2 border-border rounded-lg text-center flex flex-col items-center justify-center gap-3 hover:bg-muted hover:border-primary transition-all group"
                                 >
-                                    <BookMarked className="w-12 h-12 text-foreground transition-colors group-hover:text-primary" />
+                                    <CalendarClock className="w-12 h-12 text-foreground transition-colors group-hover:text-primary" />
                                     <div>
                                         <h4 className="font-bold text-lg text-foreground">I want to Book a Table</h4>
                                         <p className="text-sm text-muted-foreground">Reserve a table for a future date or time.</p>
@@ -1273,6 +1273,7 @@ export default OrderPage;
     
 
     
+
 
 
 
