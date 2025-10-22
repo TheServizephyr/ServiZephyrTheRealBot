@@ -11,8 +11,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { auth } from '@/lib/firebase';
 import { useSearchParams } from 'next/navigation';
-import { format, formatDistanceToNow } from 'date-fns';
-import InfoDialog from '@/components/InfoDialog';
+import { format, formatDistanceToNow, isPast } from 'date-fns';
+import InfoDialog from '@/components/ui/InfoDialog';
 import { cn } from '@/lib/utils';
 
 const formatDateTime = (dateValue) => {
@@ -64,6 +64,17 @@ const BookingRow = ({ booking, onUpdateStatus }) => {
         return isNaN(date.getTime()) ? null : date;
     }, [booking.createdAt]);
 
+    const bookingDate = useMemo(() => {
+        if (!booking.bookingDateTime) return null;
+        if (booking.bookingDateTime._seconds) {
+             return new Date(booking.bookingDateTime._seconds * 1000);
+        }
+        const date = new Date(booking.bookingDateTime);
+        return isNaN(date.getTime()) ? null : date;
+    }, [booking.bookingDateTime]);
+    
+    const canBeCompleted = bookingDate ? isPast(bookingDate) : true;
+
     return (
         <TableRow>
             <TableCell>
@@ -110,7 +121,7 @@ const BookingRow = ({ booking, onUpdateStatus }) => {
                                     <span className="text-red-500">Cancel</span>
                                 </DropdownMenuItem>
                             )}
-                             {booking.status === 'confirmed' && (
+                             {booking.status === 'confirmed' && canBeCompleted && (
                                 <DropdownMenuItem onClick={() => onUpdateStatus(booking.id, 'completed')}>
                                     <CheckCircle className="mr-2 h-4 w-4 text-blue-500" />
                                     <span className="text-blue-500">Mark as Completed</span>
@@ -306,5 +317,7 @@ export default function BookingsPage() {
         </motion.div>
     );
 }
+
+    
 
     
