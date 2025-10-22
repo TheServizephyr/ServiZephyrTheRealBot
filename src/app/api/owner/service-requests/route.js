@@ -1,4 +1,5 @@
 
+
 import { NextResponse } from 'next/server';
 import { getAuth, getFirestore, FieldValue } from '@/lib/firebase-admin';
 
@@ -48,7 +49,15 @@ export async function GET(req) {
             .orderBy('createdAt', 'desc')
             .get();
         
-        const requests = requestsSnap.docs.map(doc => doc.data());
+        const requests = requestsSnap.docs.map(doc => {
+            const data = doc.data();
+            return {
+                ...data,
+                // THE FIX: Convert Firestore Timestamp to a serializable ISO string
+                createdAt: data.createdAt?.toDate ? data.createdAt.toDate().toISOString() : new Date().toISOString(),
+            };
+        });
+
 
         return NextResponse.json({ requests }, { status: 200 });
 

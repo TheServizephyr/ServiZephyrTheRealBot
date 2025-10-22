@@ -1,4 +1,5 @@
 
+
 'use client';
 
 import { useState, useEffect, useRef } from "react";
@@ -89,17 +90,23 @@ const ServiceBell = () => {
                             <h4 className="font-semibold text-foreground">Service Requests</h4>
                         </div>
                         <div className="max-h-80 overflow-y-auto p-2">
-                            {requests.length > 0 ? requests.map(req => (
+                            {requests.length > 0 ? requests.map(req => {
+                                // THE FIX: Add a safety check for the date
+                                const date = req.createdAt ? new Date(req.createdAt) : null;
+                                const isValidDate = date && !isNaN(date.getTime());
+
+                                return (
                                 <div key={req.id} className="p-2 hover:bg-muted rounded-lg">
                                     <p className="font-semibold">Table: {req.tableId}</p>
                                     <div className="flex justify-between items-center">
-                                        <p className="text-xs text-muted-foreground">{formatDistanceToNow(new Date(req.createdAt.seconds * 1000), { addSuffix: true })}</p>
+                                        <p className="text-xs text-muted-foreground">{isValidDate ? formatDistanceToNow(date, { addSuffix: true }) : 'Just now'}</p>
                                         <button onClick={() => handleAcknowledge(req.id)} className="text-xs text-green-500 hover:text-green-600 font-semibold flex items-center gap-1">
                                             <CheckCircle size={14}/> Acknowledge
                                         </button>
                                     </div>
                                 </div>
-                            )) : (
+                                );
+                            }) : (
                                 <p className="text-sm text-muted-foreground text-center p-4">No pending requests.</p>
                             )}
                         </div>
