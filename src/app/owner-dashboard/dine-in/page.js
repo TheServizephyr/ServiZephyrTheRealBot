@@ -19,6 +19,62 @@ import InfoDialog from '@/components/InfoDialog';
 
 const formatCurrency = (value) => `₹${Number(value || 0).toLocaleString('en-IN')}`;
 
+const ManageTablesModal = ({ isOpen, onClose, allTables, onEdit, onDelete, loading }) => {
+    return (
+        <Dialog open={isOpen} onOpenChange={onClose}>
+            <DialogContent className="bg-background border-border text-foreground max-w-4xl">
+                <DialogHeader>
+                    <DialogTitle>Manage All Tables</DialogTitle>
+                    <DialogDescription>
+                        View, edit, or delete all the tables you have created for your establishment.
+                    </DialogDescription>
+                </DialogHeader>
+                <div className="max-h-[60vh] overflow-y-auto mt-4 pr-4">
+                    <table className="w-full">
+                        <thead className="bg-muted/50 sticky top-0">
+                            <tr>
+                                <th className="p-4 text-left font-semibold text-muted-foreground"><TableIcon size={16} className="inline mr-2"/>Table Name</th>
+                                <th className="p-4 text-left font-semibold text-muted-foreground"><Users size={16} className="inline mr-2"/>Max Capacity</th>
+                                <th className="p-4 text-left font-semibold text-muted-foreground"><Users size={16} className="inline mr-2"/>Currently Occupied</th>
+                                <th className="p-4 text-right font-semibold text-muted-foreground">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {loading ? (
+                                [...Array(3)].map((_, i) => (
+                                    <tr key={i} className="border-t border-border animate-pulse">
+                                        <td className="p-4" colSpan={4}><div className="h-8 bg-muted rounded-md"></div></td>
+                                    </tr>
+                                ))
+                            ) : allTables.length > 0 ? (
+                                allTables.map(table => (
+                                    <tr key={table.id} className="border-t border-border hover:bg-muted/50">
+                                        <td className="p-4 font-semibold">{table.id}</td>
+                                        <td className="p-4">{table.max_capacity}</td>
+                                        <td className="p-4">{table.current_pax || 0}</td>
+                                        <td className="p-4 flex justify-end gap-2">
+                                            <Button variant="ghost" size="icon" className="h-9 w-9" onClick={() => onEdit(table)}>
+                                                <Edit size={16}/>
+                                            </Button>
+                                             <Button variant="ghost" size="icon" className="h-9 w-9 text-destructive hover:bg-destructive/10" onClick={() => onDelete(table.id)}>
+                                                <Trash2 size={16}/>
+                                             </Button>
+                                        </td>
+                                    </tr>
+                                ))
+                            ) : (
+                                <tr>
+                                    <td colSpan="4" className="text-center p-8 text-muted-foreground">No tables created yet.</td>
+                                </tr>
+                            )}
+                        </tbody>
+                    </table>
+                 </div>
+            </DialogContent>
+        </Dialog>
+    );
+}
+
 const DineInHistoryModal = ({ isOpen, onClose, closedTabs }) => {
     const [searchTerm, setSearchTerm] = useState('');
 
@@ -26,7 +82,7 @@ const DineInHistoryModal = ({ isOpen, onClose, closedTabs }) => {
         if (!searchTerm) return closedTabs;
         return closedTabs.filter(tab => 
             tab.tableId.toLowerCase().includes(searchTerm.toLowerCase()) ||
-            tab.tab_name.toLowerCase().includes(searchTerm.toLowerCase())
+            (tab.tab_name && tab.tab_name.toLowerCase().includes(searchTerm.toLowerCase()))
         );
     }, [closedTabs, searchTerm]);
 
@@ -53,7 +109,7 @@ const DineInHistoryModal = ({ isOpen, onClose, closedTabs }) => {
                                 <div>
                                     <p className="font-semibold text-foreground">Table {tab.tableId} - {tab.tab_name}</p>
                                     <p className="text-xs text-muted-foreground">
-                                        Closed {formatDistanceToNow(tab.closedAt, { addSuffix: true })}
+                                        Closed {tab.closedAt ? formatDistanceToNow(tab.closedAt, { addSuffix: true }) : 'Recently'}
                                     </p>
                                 </div>
                                 <div className="text-right">
@@ -568,6 +624,7 @@ function DineInPage() {
     const searchParams = useSearchParams();
     const impersonatedOwnerId = searchParams.get('impersonate_owner_id');
     const [isQrModalOpen, setIsQrModalOpen] = useState(false);
+    const [isManageTablesModalOpen, setIsManageTablesModalOpen] = useState(false);
     const [isQrDisplayModalOpen, setIsQrDisplayModalOpen] = useState(false);
     const [isHistoryModalOpen, setIsHistoryModalOpen] = useState(false);
     const [editingTable, setEditingTable] = useState(null);
@@ -856,6 +913,7 @@ function DineInPage() {
     return (
         <div className="p-4 md:p-6 text-foreground min-h-screen bg-background">
             <DineInHistoryModal isOpen={isHistoryModalOpen} onClose={() => setIsHistoryModalOpen(false)} closedTabs={closedTabsData} />
+            <ManageTablesModal isOpen={isManageTablesModalOpen} onClose={() => setIsManageTablesModalOpen(false)} allTables={allTables} onEdit={handleOpenEditModal} onDelete={handleDeleteTable} loading={loading} />
             {historyModalData && <HistoryModal tableHistory={historyModalData} onClose={() => setHistoryModalData(null)} />}
             {billData && (
                 <BillModal 
@@ -880,18 +938,23 @@ function DineInPage() {
                     <h1 className="text-2xl md:text-3xl font-bold tracking-tight">Dine-In Command Center</h1>
                     <p className="text-muted-foreground mt-1 text-sm md:text-base">A live overview of your active tables and table management.</p>
                 </div>
-                <div className="flex gap-4">
-                     <Button onClick={() => setIsHistoryModalOpen(true)} variant="outline" disabled={loading}>
-                        <History size={16} className="mr-2"/> Dine-In History
-                    </Button>
-                     <Button onClick={() => handleOpenEditModal(null)} variant="default" className="bg-primary hover:bg-primary/90" disabled={loading}>
-                        <QrCode size={16} className="mr-2"/> Create Table & QR
-                    </Button>
-                    <Button onClick={() => fetchData(true)} variant="outline" disabled={loading}>
-                        <RefreshCw size={16} className={cn("mr-2", loading && "animate-spin")} /> Refresh View
-                    </Button>
-                </div>
             </div>
+            
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+                <Button onClick={() => setIsHistoryModalOpen(true)} variant="outline" className="h-20 flex-col gap-1" disabled={loading}>
+                    <History size={20}/> Dine-In History
+                </Button>
+                <Button onClick={() => handleOpenEditModal(null)} variant="outline" className="h-20 flex-col gap-1" disabled={loading}>
+                    <QrCode size={20}/> Create Table & QR
+                </Button>
+                 <Button onClick={() => setIsManageTablesModalOpen(true)} variant="outline" className="h-20 flex-col gap-1" disabled={loading}>
+                    <TableIcon size={20}/> Manage All Tables
+                </Button>
+                <Button onClick={() => fetchData(true)} variant="outline" className="h-20 flex-col gap-1" disabled={loading}>
+                    <RefreshCw size={20} className={cn(loading && "animate-spin")} /> Refresh View
+                </Button>
+            </div>
+
 
             <LiveServiceRequests impersonatedOwnerId={impersonatedOwnerId} />
             
@@ -917,48 +980,10 @@ function DineInPage() {
                     <p>When a customer scans a QR code and orders, their table will appear here live.</p>
                 </div>
             )}
-            
-            <div className="mt-12">
-                 <h2 className="text-xl font-bold mb-4">All Your Tables</h2>
-                 <Card>
-                    <CardContent className="p-0">
-                         <div className="overflow-x-auto">
-                            <table className="w-full">
-                                <thead className="bg-muted/50">
-                                    <tr>
-                                        <th className="p-4 text-left font-semibold text-muted-foreground"><TableIcon size={16} className="inline mr-2"/>Table Name</th>
-                                        <th className="p-4 text-left font-semibold text-muted-foreground"><Users size={16} className="inline mr-2"/>Max Capacity</th>
-                                        <th className="p-4 text-left font-semibold text-muted-foreground"><Users size={16} className="inline mr-2"/>Currently Occupied</th>
-                                        <th className="p-4 text-right font-semibold text-muted-foreground">Actions</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {allTables.map(table => (
-                                        <tr key={table.id} className="border-t border-border">
-                                            <td className="p-4 font-semibold">{table.id}</td>
-                                            <td className="p-4">{table.max_capacity}</td>
-                                            <td className="p-4">{table.current_pax || 0}</td>
-                                            <td className="p-4 flex justify-end gap-2">
-                                                <Button variant="outline" size="sm" onClick={() => handleOpenQrDisplayModal(table)}>
-                                                    <QrCode size={14} className="mr-2"/> Show QR
-                                                </Button>
-                                                <Button variant="ghost" size="icon" className="h-9 w-9" onClick={() => handleOpenEditModal(table)}>
-                                                    <Edit size={16}/>
-                                                </Button>
-                                                 <Button variant="ghost" size="icon" className="h-9 w-9 text-destructive hover:bg-destructive/10" onClick={() => handleDeleteTable(table.id)}>
-                                                    <Trash2 size={16}/>
-                                                 </Button>
-                                            </td>
-                                        </tr>
-                                    ))}
-                                </tbody>
-                            </table>
-                         </div>
-                    </CardContent>
-                 </Card>
-            </div>
         </div>
     );
 }
 
 export default DineInPage;
+
+    
