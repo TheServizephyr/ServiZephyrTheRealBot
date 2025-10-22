@@ -4,7 +4,7 @@
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { RefreshCw, Printer, CheckCircle, IndianRupee, Users, Clock, ShoppingBag, Bell, MoreVertical, Trash2, QrCode, Download, Save, Wind, Edit, Table as TableIcon } from 'lucide-react';
+import { RefreshCw, Printer, CheckCircle, IndianRupee, Users, Clock, ShoppingBag, Bell, MoreVertical, Trash2, QrCode, Download, Save, Wind, Edit, Table as TableIcon, History } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { auth } from '@/lib/firebase';
@@ -207,6 +207,11 @@ const TableCard = ({ tableId, tableData, onMarkAsPaid, onPrintBill, onMarkAsClea
                     )}
                 </CardContent>
                 {orders.length > 0 && <CardFooter className="flex-col items-start bg-muted/30 p-4 border-t">
+                    <div className="w-full mb-4 pt-4 border-t border-dashed">
+                        <Button variant="outline" size="sm" className="w-full">
+                            <History size={14} className="mr-2"/> See History
+                        </Button>
+                    </div>
                     <div className="flex justify-between items-center w-full mb-4">
                         <span className="text-lg font-bold">Total Bill:</span>
                         <span className="text-2xl font-bold text-primary">{formatCurrency(totalBill)}</span>
@@ -773,3 +778,5 @@ function DineInPage() {
 }
 
 export default DineInPage;
+
+    
