@@ -10,6 +10,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { Label } from '@/components/ui/label';
 import { cn } from '@/lib/utils';
 import QRCode from 'qrcode.react';
+import { Input } from '@/components/ui/input';
 
 // Main component for the split bill interface
 const SplitBillInterface = ({ totalAmount, onBack, orderDetails }) => {
