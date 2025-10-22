@@ -267,12 +267,13 @@ const MenuBrowserModal = ({ isOpen, onClose, categories, onCategoryClick }) => {
   );
 };
 
-const DineInModal = ({ isOpen, onClose, onBookTable, tableStatus, onStartNewTab, onJoinTab, onScanRequest }) => {
+const DineInModal = ({ isOpen, onClose, onBookTable, tableStatus, onStartNewTab, onJoinTab }) => {
     const [activeModal, setActiveModal] = useState('main'); // 'main', 'book', 'success'
     const [bookingDetails, setBookingDetails] = useState({ name: '', phone: '', guests: 2, date: new Date(), time: '19:00' });
     const [isSaving, setIsSaving] = useState(false);
     const [infoDialog, setInfoDialog] = useState({ isOpen: false, title: '', message: '' });
     const [minTime, setMinTime] = useState('00:00');
+    const [isQrScannerOpen, setIsQrScannerOpen] = useState(false);
     
     // New states for New Tab flow
     const [newTabPax, setNewTabPax] = useState(1);
@@ -347,7 +348,16 @@ const DineInModal = ({ isOpen, onClose, onBookTable, tableStatus, onStartNewTab,
     return (
         <>
             <InfoDialog isOpen={infoDialog.isOpen} onClose={() => setInfoDialog({isOpen: false, title: '', message: ''})} title={infoDialog.title} message={infoDialog.message} />
-            <Dialog open={isOpen} onOpenChange={onClose}>
+             {isQrScannerOpen && (
+                <QrScanner 
+                    onClose={() => setIsQrScannerOpen(false)}
+                    onScanSuccess={(decodedText) => {
+                        setIsQrScannerOpen(false);
+                        window.location.href = decodedText;
+                    }}
+                />
+            )}
+            <Dialog open={isOpen && !isQrScannerOpen} onOpenChange={onClose}>
                 <DialogContent className="bg-background border-border text-foreground p-0 max-w-lg">
                     <AnimatePresence mode="wait">
                     {activeModal === 'main' && (
@@ -360,28 +370,24 @@ const DineInModal = ({ isOpen, onClose, onBookTable, tableStatus, onStartNewTab,
                                 <button
                                     onClick={() => {
                                         onClose();
-                                        onScanRequest();
+                                        setIsQrScannerOpen(true);
                                     }}
-                                    className="p-6 border-2 border-border rounded-lg text-left hover:bg-muted hover:border-primary transition-all group"
+                                    className="p-6 border-2 border-border rounded-lg text-center flex flex-col items-center justify-center gap-3 hover:bg-muted hover:border-primary transition-all group"
                                 >
-                                    <div className="flex items-center gap-4">
-                                        <Camera className="w-10 h-10 text-foreground transition-colors group-hover:text-primary" />
-                                        <div>
-                                            <h4 className="font-bold text-lg text-foreground">I'm at the Restaurant</h4>
-                                            <p className="text-sm text-muted-foreground">Scan the QR code on your table to start.</p>
-                                        </div>
+                                    <QrCode className="w-12 h-12 text-foreground transition-colors group-hover:text-primary" />
+                                    <div>
+                                        <h4 className="font-bold text-lg text-foreground">I'm at the Restaurant</h4>
+                                        <p className="text-sm text-muted-foreground">Scan the QR code on your table to start.</p>
                                     </div>
                                 </button>
                                 <button
                                     onClick={() => setActiveModal('book')}
-                                    className="p-6 border-2 border-border rounded-lg text-left hover:bg-muted hover:border-primary transition-all group"
+                                    className="p-6 border-2 border-border rounded-lg text-center flex flex-col items-center justify-center gap-3 hover:bg-muted hover:border-primary transition-all group"
                                 >
-                                    <div className="flex items-center gap-4">
-                                        <BookMarked className="w-10 h-10 text-foreground transition-colors group-hover:text-primary" />
-                                        <div>
-                                            <h4 className="font-bold text-lg text-foreground">I want to Book a Table</h4>
-                                            <p className="text-sm text-muted-foreground">Reserve a table for a future date or time.</p>
-                                        </div>
+                                    <BookMarked className="w-12 h-12 text-foreground transition-colors group-hover:text-primary" />
+                                    <div>
+                                        <h4 className="font-bold text-lg text-foreground">I want to Book a Table</h4>
+                                        <p className="text-sm text-muted-foreground">Reserve a table for a future date or time.</p>
                                     </div>
                                 </button>
                             </div>
@@ -1008,10 +1014,6 @@ const OrderPageInternal = () => {
                     tableStatus={tableStatus}
                     onStartNewTab={handleStartNewTab}
                     onJoinTab={handleJoinTab}
-                    onScanRequest={() => {
-                        setDineInModalOpen(false);
-                        setIsQrScannerOpen(true);
-                    }}
                     onBookTable={handleBookTable}
                 />
             </div>
@@ -1073,10 +1075,6 @@ const OrderPageInternal = () => {
                   tableStatus={tableStatus}
                   onStartNewTab={handleStartNewTab}
                   onJoinTab={handleJoinTab}
-                  onScanRequest={() => {
-                        setDineInModalOpen(false);
-                        setIsQrScannerOpen(true);
-                    }}
                 />
                 <CustomizationDrawer
                     item={customizationItem}
