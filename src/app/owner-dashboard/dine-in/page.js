@@ -3,7 +3,7 @@
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { RefreshCw, Printer, CheckCircle, IndianRupee, Users, Clock, ShoppingBag, Bell, MoreVertical, Trash2, QrCode, Download, Save, Wind, Edit, Table as TableIcon, History, Search, PlusCircle, Salad } from 'lucide-react';
+import { RefreshCw, Printer, CheckCircle, IndianRupee, Users, Clock, ShoppingBag, Bell, MoreVertical, Trash2, QrCode, Download, Save, Wind, Edit, Table as TableIcon, History, Search, PlusCircle, Salad, Fork, Spoon, Droplet } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { auth } from '@/lib/firebase';
@@ -621,6 +621,89 @@ const LiveServiceRequests = ({ impersonatedOwnerId }) => {
     )
 }
 
+const DineInMenuModal = ({ isOpen, onClose, showInfoDialog }) => {
+    // Dummy data for now
+    const menuItems = [
+        { id: 1, name: 'Paneer Butter Masala', price: 250, isAvailable: true },
+        { id: 2, name: 'Dal Makhani', price: 200, isAvailable: true },
+    ];
+    const cutleryItems = [
+        { id: 'c1', name: 'Extra Spoon', price: 0, isAvailable: true },
+        { id: 'c2', name: 'Extra Fork', price: 0, isAvailable: true },
+        { id: 'c3', name: 'Quarter Plate', price: 0, isAvailable: true },
+    ];
+     const amenityItems = [
+        { id: 'a1', name: 'Mineral Water (1L)', price: 20, isAvailable: true },
+        { id: 'a2', name: 'Tissues (Pack)', price: 10, isAvailable: true },
+    ];
+
+    return (
+        <Dialog open={isOpen} onOpenChange={onClose}>
+            <DialogContent className="max-w-4xl bg-background border-border text-foreground">
+                <DialogHeader>
+                    <DialogTitle>Dine-In Menu Editor</DialogTitle>
+                    <DialogDescription>
+                        Manage a special menu for your dine-in customers. You can copy items from your main menu and add special requests.
+                    </DialogDescription>
+                </DialogHeader>
+                <div className="mt-4 max-h-[70vh] overflow-y-auto pr-4 space-y-6">
+                    {/* Dine-in Menu Items */}
+                    <div className="p-4 border border-dashed border-border rounded-lg">
+                        <div className="flex justify-between items-center mb-4">
+                            <h3 className="text-lg font-semibold flex items-center gap-2"><Salad size={20}/> Dine-In Menu Items</h3>
+                            <Button variant="outline" onClick={() => showInfoDialog({ isOpen: true, title: 'Coming Soon!', message: 'This feature will allow you to copy items from your main menu to quickly build your dine-in menu.' })}>
+                                Copy Items from Main Menu
+                            </Button>
+                        </div>
+                        <div className="space-y-2">
+                            {menuItems.map(item => (
+                                <div key={item.id} className="flex justify-between items-center p-3 bg-muted rounded-md">
+                                    <p>{item.name}</p>
+                                    <p className="font-semibold">{formatCurrency(item.price)}</p>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                     {/* Cutlery */}
+                    <div className="p-4 border border-dashed border-border rounded-lg">
+                        <div className="flex justify-between items-center mb-4">
+                            <h3 className="text-lg font-semibold flex items-center gap-2"><Fork size={20}/> Cutlery & Crockery</h3>
+                             <Button variant="outline" size="sm" onClick={() => showInfoDialog({ isOpen: true, title: 'Coming Soon!', message: 'You will be able to add, edit, and delete items in this section.' })}><PlusCircle size={16} className="mr-2"/> Add Item</Button>
+                        </div>
+                        <div className="space-y-2">
+                             {cutleryItems.map(item => (
+                                <div key={item.id} className="flex justify-between items-center p-3 bg-muted rounded-md">
+                                    <p>{item.name}</p>
+                                    <p className="font-semibold">{item.price > 0 ? formatCurrency(item.price) : 'Free'}</p>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                     {/* Amenities */}
+                    <div className="p-4 border border-dashed border-border rounded-lg">
+                        <div className="flex justify-between items-center mb-4">
+                            <h3 className="text-lg font-semibold flex items-center gap-2"><Droplet size={20}/> Basic Amenities</h3>
+                             <Button variant="outline" size="sm" onClick={() => showInfoDialog({ isOpen: true, title: 'Coming Soon!', message: 'You will be able to add, edit, and delete items in this section.' })}><PlusCircle size={16} className="mr-2"/> Add Item</Button>
+                        </div>
+                         <div className="space-y-2">
+                             {amenityItems.map(item => (
+                                <div key={item.id} className="flex justify-between items-center p-3 bg-muted rounded-md">
+                                    <p>{item.name}</p>
+                                    <p className="font-semibold">{formatCurrency(item.price)}</p>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                </div>
+                 <DialogFooter>
+                    <Button onClick={onClose}>Close</Button>
+                </DialogFooter>
+            </DialogContent>
+        </Dialog>
+    )
+}
+
+
 function DineInPage() {
     const [allOrders, setAllOrders] = useState([]);
     const [allTables, setAllTables] = useState([]);
@@ -632,6 +715,7 @@ function DineInPage() {
     const [isManageTablesModalOpen, setIsManageTablesModalOpen] = useState(false);
     const [isQrDisplayModalOpen, setIsQrDisplayModalOpen] = useState(false);
     const [isHistoryModalOpen, setIsHistoryModalOpen] = useState(false);
+    const [isDineInMenuModalOpen, setIsDineInMenuModalOpen] = useState(false);
     const [editingTable, setEditingTable] = useState(null);
     const [displayTable, setDisplayTable] = useState(null);
     const [restaurant, setRestaurant] = useState(null);
@@ -862,7 +946,7 @@ function DineInPage() {
 
         // Add table state for non-occupied tables
         allTables.forEach(table => {
-            if (!tableMap.get(table.id).tabs.length > 0 && table.state !== 'needs_cleaning') {
+            if (tableMap.has(table.id) && !tableMap.get(table.id).tabs.length > 0 && table.state !== 'needs_cleaning') {
                 tableMap.get(table.id).state = 'available';
             }
         });
@@ -919,6 +1003,7 @@ function DineInPage() {
         <div className="p-4 md:p-6 text-foreground min-h-screen bg-background">
             <DineInHistoryModal isOpen={isHistoryModalOpen} onClose={() => setIsHistoryModalOpen(false)} closedTabs={closedTabsData} />
             <ManageTablesModal isOpen={isManageTablesModalOpen} onClose={() => setIsManageTablesModalOpen(false)} allTables={allTables} onEdit={handleOpenEditModal} onDelete={handleDeleteTable} loading={loading} onCreateNew={() => handleOpenEditModal(null)} />
+            <DineInMenuModal isOpen={isDineInMenuModalOpen} onClose={() => setIsDineInMenuModalOpen(false)} showInfoDialog={setInfoDialog} />
             {historyModalData && <HistoryModal tableHistory={historyModalData} onClose={() => setHistoryModalData(null)} />}
             {billData && (
                 <BillModal 
@@ -949,7 +1034,7 @@ function DineInPage() {
                 <Button onClick={() => setIsHistoryModalOpen(true)} variant="outline" className="h-20 flex-col gap-1" disabled={loading}>
                     <History size={20}/> Dine-In History
                 </Button>
-                <Button onClick={() => setInfoDialog({ isOpen: true, title: 'Feature in Development', message: 'The Dine-In Menu Editor will allow you to copy items from your main menu and create new sections for cutlery, water, and other amenities for dine-in customers. Stay tuned!' })} variant="outline" className="h-20 flex-col gap-1" disabled={loading}>
+                <Button onClick={() => setIsDineInMenuModalOpen(true)} variant="outline" className="h-20 flex-col gap-1" disabled={loading}>
                     <Salad size={20}/> Dine-In Menu
                 </Button>
                  <Button onClick={() => setIsManageTablesModalOpen(true)} variant="outline" className="h-20 flex-col gap-1" disabled={loading}>
