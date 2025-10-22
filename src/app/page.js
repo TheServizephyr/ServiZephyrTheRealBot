@@ -343,7 +343,7 @@ export default function Home() {
           <div className="grid grid-cols-2 gap-4 text-center sm:grid-cols-3 md:grid-cols-5 md:gap-8">
             <div className="rounded-lg border bg-secondary p-6 md:p-8 shadow-sm transition-all duration-300 hover:shadow-lg hover:-translate-y-2">
               <h3 className="text-4xl sm:text-5xl font-bold text-primary">
-                <AnimatedNumber value={25} suffix="%" />+
+                <AnimatedNumber value={24} suffix="%" />+
               </h3>
               <p className="mt-2 text-muted-foreground text-sm">Commission Saved</p>
             </div>
