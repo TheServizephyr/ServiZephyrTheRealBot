@@ -1136,5 +1136,3 @@ function DineInPage() {
 export default DineInPage;
 
     
-
-    
