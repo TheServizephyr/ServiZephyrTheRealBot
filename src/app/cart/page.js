@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useState, useEffect, useMemo, Suspense } from 'react';
@@ -114,12 +115,23 @@ const CartPageInternal = () => {
         const data = localStorage.getItem(`cart_${restaurantId}`);
         if (data) {
             const parsedData = JSON.parse(data);
-            setCartData(parsedData);
-            setCart(parsedData.cart || []);
-            setNotes(parsedData.notes || '');
-            setAppliedCoupons(parsedData.appliedCoupons || []);
-            setTipAmount(parsedData.tipAmount || 0);
 
+            // Check for cart expiry
+            const now = new Date().getTime();
+            if (parsedData.expiryTimestamp && now > parsedData.expiryTimestamp) {
+                localStorage.removeItem(`cart_${restaurantId}`);
+                setCartData(null);
+                setCart([]);
+                setNotes('');
+                setAppliedCoupons([]);
+                setTipAmount(0);
+            } else {
+                setCartData(parsedData);
+                setCart(parsedData.cart || []);
+                setNotes(parsedData.notes || '');
+                setAppliedCoupons(parsedData.appliedCoupons || []);
+                setTipAmount(parsedData.tipAmount || 0);
+            }
         } else {
             setCart([]);
             setAppliedCoupons([]);
@@ -134,7 +146,8 @@ const CartPageInternal = () => {
 
     const updateCartInStorage = (updates) => {
         const currentData = JSON.parse(localStorage.getItem(`cart_${restaurantId}`)) || {};
-        const updatedData = { ...currentData, ...updates };
+        const expiryTimestamp = new Date().getTime() + (24 * 60 * 60 * 1000); // 24 hours from now
+        const updatedData = { ...currentData, ...updates, expiryTimestamp };
 
         setCartData(updatedData);
         if(updates.cart !== undefined) setCart(updates.cart);

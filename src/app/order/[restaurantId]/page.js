@@ -283,8 +283,6 @@ const DineInModal = ({ isOpen, onClose, onBookTable, tableStatus, onStartNewTab,
     useEffect(() => {
         if (isOpen) {
             const now = new Date();
-            const hours = now.getHours().toString().padStart(2, '0');
-            const minutes = now.getMinutes().toString().padStart(2, '0');
             
             // Set initial time to next half hour
             const newTime = new Date(now.getTime() + 30 * 60000);
@@ -298,6 +296,8 @@ const DineInModal = ({ isOpen, onClose, onBookTable, tableStatus, onStartNewTab,
             }));
 
             if (isToday(now)) {
+                const hours = now.getHours().toString().padStart(2, '0');
+                const minutes = now.getMinutes().toString().padStart(2, '0');
                 setMinTime(`${hours}:${minutes}`);
             } else {
                 setMinTime('00:00');
@@ -306,13 +306,15 @@ const DineInModal = ({ isOpen, onClose, onBookTable, tableStatus, onStartNewTab,
     }, [isOpen]);
 
     useEffect(() => {
-        if (bookingDetails.date && isToday(bookingDetails.date)) {
-            const now = new Date();
-            const hours = now.getHours().toString().padStart(2, '0');
-            const minutes = now.getMinutes().toString().padStart(2, '0');
-            setMinTime(`${hours}:${minutes}`);
-        } else {
-            setMinTime('00:00');
+        if (bookingDetails.date) {
+             if (isToday(bookingDetails.date)) {
+                const now = new Date();
+                const hours = now.getHours().toString().padStart(2, '0');
+                const minutes = now.getMinutes().toString().padStart(2, '0');
+                setMinTime(`${hours}:${minutes}`);
+            } else {
+                setMinTime('00:00');
+            }
         }
     }, [bookingDetails.date]);
 
@@ -782,6 +784,9 @@ const OrderPageInternal = () => {
             setDeliveryType(newDeliveryType);
         }
         
+        // Add expiry timestamp to the cart data
+        const expiryTimestamp = new Date().getTime() + (24 * 60 * 60 * 1000); // 24 hours from now
+
         const cartDataToSave = {
             cart: newCart,
             notes: newNotes !== undefined ? newNotes : notes,
@@ -794,6 +799,7 @@ const OrderPageInternal = () => {
             deliveryCharge: restaurantData.deliveryCharge,
             deliveryEnabled: restaurantData.deliveryEnabled,
             pickupEnabled: restaurantData.pickupEnabled,
+            expiryTimestamp: expiryTimestamp, // Save the expiry time
         };
         localStorage.setItem(`cart_${restaurantId}`, JSON.stringify(cartDataToSave));
     }, [notes, restaurantId, restaurantData, loyaltyPoints, phoneFromUrl, deliveryType]);
@@ -803,10 +809,21 @@ const OrderPageInternal = () => {
             const savedCartData = localStorage.getItem(`cart_${restaurantId}`);
             if (savedCartData) {
                 const parsedData = JSON.parse(savedCartData);
-                setCart(parsedData.cart || []);
-                setNotes(parsedData.notes || '');
-                if (parsedData.deliveryType && !tableIdFromUrl) {
-                    setDeliveryType(parsedData.deliveryType);
+
+                // Check if the cart has expired
+                const now = new Date().getTime();
+                if (parsedData.expiryTimestamp && now > parsedData.expiryTimestamp) {
+                    // Cart has expired, clear it
+                    localStorage.removeItem(`cart_${restaurantId}`);
+                    setCart([]);
+                    setNotes('');
+                } else {
+                    // Cart is still valid
+                    setCart(parsedData.cart || []);
+                    setNotes(parsedData.notes || '');
+                    if (parsedData.deliveryType && !tableIdFromUrl) {
+                        setDeliveryType(parsedData.deliveryType);
+                    }
                 }
             }
         }
@@ -942,7 +959,14 @@ const OrderPageInternal = () => {
 
     const handleBookTable = async (bookingDetails) => {
         const { date, time } = bookingDetails;
-        const localDate = setMinutes(setHours(date, parseInt(time.split(':')[0])), parseInt(time.split(':')[1]));
+        let localDate;
+        if(date){
+            localDate = setMinutes(setHours(date, parseInt(time.split(':')[0])), parseInt(time.split(':')[1]));
+        } else {
+            // Handle case where date is not selected
+            setInfoDialog({isOpen: true, title: "Booking Failed", message: "Please select a date."});
+            return;
+        }
 
         const payload = {
             restaurantId: restaurantId,
