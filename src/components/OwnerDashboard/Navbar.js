@@ -44,8 +44,14 @@ const ServiceBell = () => {
     };
 
     useEffect(() => {
-        fetchRequests();
-        const interval = setInterval(fetchRequests, 30000); // Poll every 30 seconds
+        const user = auth.currentUser;
+        if (user) {
+            fetchRequests();
+        }
+        const interval = setInterval(() => {
+             const user = auth.currentUser;
+             if(user) fetchRequests();
+        }, 30000); // Poll every 30 seconds
         return () => clearInterval(interval);
     }, [impersonatedOwnerId]);
     
