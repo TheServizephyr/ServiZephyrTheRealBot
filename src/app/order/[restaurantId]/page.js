@@ -4,7 +4,7 @@
 import React, { useState, useEffect, Suspense, useMemo, useCallback } from 'react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Utensils, Plus, Minus, X, Home, User, Edit2, ShoppingCart, Star, CookingPot, BookOpen, Check, SlidersHorizontal, ArrowUpDown, PlusCircle, Ticket, Gift, Sparkles, Flame, Search, Trash2, ChevronDown, Tag as TagIcon, RadioGroup, IndianRupee, HardHat, MapPin, Bike, Store, ConciergeBell, QrCode, Calendar, Clock, UserCheck, ArrowLeft, CheckCircle, AlertTriangle, Bell, CalendarClock, Wallet, Users } from 'lucide-react';
+import { Utensils, Plus, Minus, X, Home, User, Edit2, ShoppingCart, Star, CookingPot, BookOpen, Check, SlidersHorizontal, ArrowUpDown, PlusCircle, Ticket, Gift, Sparkles, Flame, Search, Trash2, ChevronDown, Tag as TagIcon, RadioGroup, IndianRupee, HardHat, MapPin, Bike, Store, ConciergeBell, QrCode, Calendar, Clock, UserCheck, ArrowLeft, CheckCircle, AlertTriangle, Bell, CalendarClock, Wallet, Users, Camera, BookMarked } from 'lucide-react';
 import Image from 'next/image';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
@@ -352,13 +352,35 @@ const DineInModal = ({ isOpen, onClose, onBookTable, tableStatus, onStartNewTab,
                     <AnimatePresence mode="wait">
                     {activeModal === 'main' && (
                          <motion.div key="main">
-                             <DialogHeader className="p-6 pb-4">
-                                <DialogTitle>Dine-In Options</DialogTitle>
-                                <DialogDescription>To dine in, please scan a QR code at your table or book a table in advance.</DialogDescription>
+                            <DialogHeader className="p-6 text-center">
+                                <DialogTitle className="text-2xl">Dine-In Options</DialogTitle>
+                                <DialogDescription>How would you like to proceed?</DialogDescription>
                             </DialogHeader>
-                            <div className="px-6 pb-6 space-y-3">
-                                <Button onClick={onScanRequest} className="w-full h-16 text-lg"><QrCode className="mr-2"/> Scan Table QR</Button>
-                                <Button onClick={() => setActiveModal('book')} className="w-full h-16 text-lg" variant="outline"><Calendar className="mr-2"/> Book a Table</Button>
+                            <div className="grid grid-cols-1 gap-4 px-6 pb-8">
+                                <button
+                                    onClick={onScanRequest}
+                                    className="p-6 border-2 border-border rounded-lg text-left hover:bg-muted hover:border-primary transition-all group"
+                                >
+                                    <div className="flex items-center gap-4">
+                                        <Camera className="w-10 h-10 text-primary transition-transform group-hover:scale-110" />
+                                        <div>
+                                            <h4 className="font-bold text-lg text-foreground">I'm at the Restaurant</h4>
+                                            <p className="text-sm text-muted-foreground">Scan the QR code on your table to start.</p>
+                                        </div>
+                                    </div>
+                                </button>
+                                <button
+                                    onClick={() => setActiveModal('book')}
+                                    className="p-6 border-2 border-border rounded-lg text-left hover:bg-muted hover:border-primary transition-all group"
+                                >
+                                    <div className="flex items-center gap-4">
+                                        <BookMarked className="w-10 h-10 text-primary transition-transform group-hover:scale-110" />
+                                        <div>
+                                            <h4 className="font-bold text-lg text-foreground">I want to Book a Table</h4>
+                                            <p className="text-sm text-muted-foreground">Reserve a table for a future date or time.</p>
+                                        </div>
+                                    </div>
+                                </button>
                             </div>
                         </motion.div>
                     )}
@@ -1049,9 +1071,9 @@ const OrderPageInternal = () => {
                   onStartNewTab={handleStartNewTab}
                   onJoinTab={handleJoinTab}
                   onScanRequest={() => {
-                      setDineInModalOpen(false);
-                      setIsQrScannerOpen(true);
-                  }}
+                        setDineInModalOpen(false);
+                        setIsQrScannerOpen(true);
+                    }}
                 />
                 <CustomizationDrawer
                     item={customizationItem}
@@ -1244,3 +1266,5 @@ const OrderPage = () => (
 );
 
 export default OrderPage;
+
+    
