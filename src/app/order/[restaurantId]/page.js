@@ -667,7 +667,7 @@ const OrderPageInternal = () => {
         localStorage.setItem(`dineInSetup_${restaurantId}_${tableIdFromUrl}`, JSON.stringify({ pax_count: paxCount, tab_name: tabName }));
         setActiveTabInfo({ id: null, name: tabName, total: 0 }); // Temporarily set name
         setDineInState('ready');
-        setDineInModalOpen(false);
+        setIsDineInModalOpen(false);
     };
 
     const handleJoinTab = (tabId) => {
@@ -675,7 +675,7 @@ const OrderPageInternal = () => {
         const joinedTab = tableStatus.activeTabs.find(t => t.id === tabId);
         setActiveTabInfo({ id: tabId, name: joinedTab?.tab_name || 'Existing Tab', total: 0 });
         setDineInState('ready');
-        setDineInModalOpen(false);
+        setIsDineInModalOpen(false);
     };
 
 
@@ -760,7 +760,7 @@ const OrderPageInternal = () => {
                         
                         setTableStatus({ ...tableData, tableId: tableIdFromUrl, state });
                         setDineInState('needs_setup');
-                        setDineInModalOpen(true);
+                        setIsDineInModalOpen(true);
                     }
                 } else if (menuData.deliveryEnabled) {
                     setDeliveryType('delivery');
@@ -959,7 +959,7 @@ const OrderPageInternal = () => {
         if (type === 'dine-in' && !tableIdFromUrl) {
             console.log("[DEBUG] OrderPage: Dine-in clicked without tableId, opening modal.");
             setDineInState('needs_setup');
-            setDineInModalOpen(true);
+            setIsDineInModalOpen(true);
             return;
         }
         updateCart(cart, notes, type);
@@ -1068,7 +1068,7 @@ const OrderPageInternal = () => {
     };
     
     const handleCloseDineInModal = () => {
-        setDineInModalOpen(false);
+        setIsDineInModalOpen(false);
         // This is the fix: reset the state so the page doesn't get stuck
         setDineInState('ready');
     }
