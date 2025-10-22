@@ -117,6 +117,12 @@ export async function GET(request, { params }) {
         }
 
         console.log(`[DEBUG] Menu API: Successfully processed menu with ${Object.keys(menuData).length} categories and ${allCoupons.length} coupons.`);
+        
+        const businessAddress = restaurantData.address ? {
+            ...restaurantData.address,
+            full: `${restaurantData.address.street}, ${restaurantData.address.city}, ${restaurantData.address.state} ${restaurantData.address.postalCode}`.trim()
+        } : null;
+
 
         // Return all public data together
         return NextResponse.json({ 
@@ -137,7 +143,7 @@ export async function GET(request, { params }) {
             deliveryCodEnabled: restaurantData.deliveryCodEnabled === undefined ? true : restaurantData.deliveryCodEnabled,
             pickupOnlinePaymentEnabled: restaurantData.pickupOnlinePaymentEnabled === undefined ? true : restaurantData.pickupOnlinePaymentEnabled,
             pickupPodEnabled: restaurantData.pickupPodEnabled === undefined ? true : restaurantData.pickupPodEnabled,
-            businessAddress: restaurantData.address || null, // THE FIX: Send the business address
+            businessAddress: businessAddress, // THE FIX: Send the formatted business address
         }, { status: 200 });
 
     } catch (error) {
