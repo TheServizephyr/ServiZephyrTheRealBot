@@ -1,4 +1,5 @@
 
+
 'use client';
 
 import React, { useState, useEffect, useMemo } from 'react';
@@ -12,7 +13,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { auth } from '@/lib/firebase';
 import { useSearchParams } from 'next/navigation';
 import { format, formatDistanceToNow, isPast } from 'date-fns';
-import InfoDialog from '@/components/ui/InfoDialog';
+import InfoDialog from '@/components/InfoDialog';
 import { cn } from '@/lib/utils';
 
 const formatDateTime = (dateValue) => {
@@ -317,6 +318,8 @@ export default function BookingsPage() {
         </motion.div>
     );
 }
+
+    
 
     
 
