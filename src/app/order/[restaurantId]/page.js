@@ -1,4 +1,3 @@
-
 'use client';
 
 import React, { useState, useEffect, Suspense, useMemo, useCallback } from 'react';
@@ -401,34 +400,39 @@ const DineInModal = ({ isOpen, onClose, onBookTable, tableStatus, onStartNewTab,
                             </DialogHeader>
                             <div className="px-6 pb-6 space-y-4">
                                <Input placeholder="Your Name" value={bookingDetails.name} onChange={(e) => handleBookingChange('name', e.target.value)} />
-                               <Input type="tel" placeholder="Your Phone Number" value={bookingDetails.phone} onChange={(e) => handleBookingChange('phone', e.target.value)} />
                                <div className="grid grid-cols-2 gap-4">
-                                    <div>
-                                        <Label>Guests</Label>
-                                        <div className="flex items-center gap-2 mt-1 border border-input rounded-md p-1">
-                                            <Button type="button" variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleBookingChange('guests', Math.max(1, bookingDetails.guests - 1))}>-</Button>
-                                            <span className="font-bold text-lg w-8 text-center">{bookingDetails.guests}</span>
-                                            <Button type="button" variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleBookingChange('guests', bookingDetails.guests + 1)}>+</Button>
-                                        </div>
-                                    </div>
-                                    <div>
-                                        <Label>Time</Label>
-                                        <Input type="time" value={bookingDetails.time} onChange={(e) => handleBookingChange('time', e.target.value)} min={minTime} className="mt-1 h-10"/>
-                                    </div>
+                                   <div>
+                                       <Label>Guests</Label>
+                                       <div className="flex items-center gap-2 mt-1 border border-input rounded-md p-1">
+                                           <Button type="button" variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleBookingChange('guests', Math.max(1, bookingDetails.guests - 1))}>-</Button>
+                                           <span className="font-bold text-lg w-8 text-center">{bookingDetails.guests}</span>
+                                           <Button type="button" variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleBookingChange('guests', bookingDetails.guests + 1)}>+</Button>
+                                       </div>
+                                   </div>
+                                   <div>
+                                       <Label>Phone Number</Label>
+                                       <Input type="tel" placeholder="10-digit number" value={bookingDetails.phone} onChange={(e) => handleBookingChange('phone', e.target.value)} className="mt-1 h-10"/>
+                                   </div>
                                </div>
-                               <div>
-                                    <Label>Date</Label>
-                                    <Popover>
-                                        <PopoverTrigger asChild>
-                                            <Button variant="outline" className="w-full justify-start font-normal mt-1">
-                                                <CalendarIcon className="mr-2 h-4 w-4" />
-                                                {format(bookingDetails.date, 'PPP')}
-                                            </Button>
-                                        </PopoverTrigger>
-                                        <PopoverContent className="w-auto p-0">
-                                            <CalendarUI mode="single" selected={bookingDetails.date} onSelect={(d) => handleBookingChange('date', d)} fromDate={today} toDate={maxDate}/>
-                                        </PopoverContent>
-                                    </Popover>
+                               <div className="grid grid-cols-2 gap-4">
+                                   <div>
+                                       <Label>Date</Label>
+                                       <Popover>
+                                           <PopoverTrigger asChild>
+                                               <Button variant="outline" className="w-full justify-start font-normal mt-1">
+                                                   <CalendarIcon className="mr-2 h-4 w-4" />
+                                                   {format(bookingDetails.date, 'PPP')}
+                                               </Button>
+                                           </PopoverTrigger>
+                                           <PopoverContent className="w-auto p-0">
+                                               <CalendarUI mode="single" selected={bookingDetails.date} onSelect={(d) => handleBookingChange('date', d)} fromDate={today} toDate={maxDate}/>
+                                           </PopoverContent>
+                                       </Popover>
+                                   </div>
+                                   <div>
+                                       <Label>Time</Label>
+                                       <Input type="time" value={bookingDetails.time} onChange={(e) => handleBookingChange('time', e.target.value)} min={minTime} className="mt-1 h-10"/>
+                                   </div>
                                </div>
                                 <Button onClick={handleConfirmBooking} disabled={isSaving} className="w-full h-12 text-lg">
                                     {isSaving ? 'Booking...' : 'Confirm Booking'}
