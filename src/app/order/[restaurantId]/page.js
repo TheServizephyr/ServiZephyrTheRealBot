@@ -3,7 +3,7 @@
 import React, { useState, useEffect, Suspense, useMemo, useCallback, useRef } from 'react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Utensils, Plus, Minus, X, Home, User, Edit2, ShoppingCart, Star, CookingPot, BookOpen, Check, SlidersHorizontal, ArrowUpDown, PlusCircle, Ticket, Gift, Sparkles, Flame, Search, Trash2, ChevronDown, Tag as TagIcon, RadioGroup, IndianRupee, HardHat, MapPin, Bike, Store, ConciergeBell, QrCode, CalendarClock, Wallet, Users, Camera, BookMarked, Calendar as CalendarIcon } from 'lucide-react';
+import { Utensils, Plus, Minus, X, Home, User, Edit2, ShoppingCart, Star, CookingPot, BookOpen, Check, SlidersHorizontal, ArrowUpDown, PlusCircle, Ticket, Gift, Sparkles, Flame, Search, Trash2, ChevronDown, Tag as TagIcon, RadioGroup, IndianRupee, HardHat, MapPin, Bike, Store, ConciergeBell, QrCode, CalendarClock, Wallet, Users, Camera, BookMarked, Calendar as CalendarIcon, Bell, CheckCircle } from 'lucide-react';
 import Image from 'next/image';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
@@ -266,7 +266,7 @@ const MenuBrowserModal = ({ isOpen, onClose, categories, onCategoryClick }) => {
   );
 };
 
-const DineInModal = ({ isOpen, onClose, onBookTable, tableStatus, onStartNewTab, onJoinTab, onScanQR }) => {
+const DineInModal = ({ isOpen, onClose, onBookTable, tableStatus, onStartNewTab, onJoinTab }) => {
     const [activeModal, setActiveModal] = useState('main'); // 'main', 'book', 'success'
     const [bookingDetails, setBookingDetails] = useState({ name: '', phone: '', guests: 2, date: new Date(), time: '19:00' });
     const [isSaving, setIsSaving] = useState(false);
@@ -276,6 +276,8 @@ const DineInModal = ({ isOpen, onClose, onBookTable, tableStatus, onStartNewTab,
     // New states for New Tab flow
     const [newTabPax, setNewTabPax] = useState(1);
     const [newTabName, setNewTabName] = useState('');
+    const [isQrScannerOpen, setIsQrScannerOpen] = useState(false);
+
 
     useEffect(() => {
         if (bookingDetails.date && isToday(bookingDetails.date)) {
@@ -346,6 +348,15 @@ const DineInModal = ({ isOpen, onClose, onBookTable, tableStatus, onStartNewTab,
     return (
         <>
             <InfoDialog isOpen={infoDialog.isOpen} onClose={() => setInfoDialog({isOpen: false, title: '', message: ''})} title={infoDialog.title} message={infoDialog.message} />
+             {isQrScannerOpen && (
+                <QrScanner 
+                    onClose={() => setIsQrScannerOpen(false)}
+                    onScanSuccess={(decodedText) => {
+                        setIsQrScannerOpen(false);
+                        window.location.href = decodedText;
+                    }}
+                />
+            )}
             <Dialog open={isOpen} onOpenChange={onClose}>
                 <DialogContent className="bg-background border-border text-foreground p-0 max-w-lg">
                     <AnimatePresence mode="wait">
@@ -367,7 +378,11 @@ const DineInModal = ({ isOpen, onClose, onBookTable, tableStatus, onStartNewTab,
                                     </div>
                                 </button>
                                  <button
-                                    onClick={onScanQR}
+                                    onClick={() => {
+                                        console.log("[DEBUG] DineInModal: 'I'm at the Restaurant' button clicked. Closing modal, opening scanner.");
+                                        onClose(); // Close this modal
+                                        setIsQrScannerOpen(true); // Open the scanner
+                                    }}
                                     className="p-6 border-2 border-border rounded-lg text-center flex flex-col items-center justify-center gap-3 hover:bg-muted hover:border-primary transition-all group"
                                 >
                                     <QrCode className="w-12 h-12 text-foreground transition-colors group-hover:text-primary" />
@@ -429,9 +444,10 @@ const DineInModal = ({ isOpen, onClose, onBookTable, tableStatus, onStartNewTab,
                     )}
                     {activeModal === 'success' && (
                          <motion.div key="success" className="p-8 text-center">
-                            <CheckCircle size={48} className="mx-auto text-green-500 mb-4"/>
-                            <DialogTitle className="text-2xl">Booking Confirmed!</DialogTitle>
-                            <DialogDescription>Your table has been requested. You will receive a confirmation on WhatsApp shortly.</DialogDescription>
+                            <DialogHeader>
+                              <DialogTitle className="text-2xl">Booking Confirmed!</DialogTitle>
+                              <DialogDescription>Your table has been requested. You will receive a confirmation on WhatsApp shortly.</DialogDescription>
+                            </DialogHeader>
                              <DialogFooter className="mt-6">
                                 <Button onClick={onClose} className="w-full">Done</Button>
                              </DialogFooter>
@@ -635,6 +651,7 @@ const OrderPageInternal = () => {
 
     // --- LOCATION & DATA FETCHING ---
     useEffect(() => {
+        console.log("[DEBUG] OrderPage: Initial render/dependencies changed. restaurantId:", restaurantId);
         const phone = phoneFromUrl || localStorage.getItem('lastKnownPhone');
         if (phone && !localStorage.getItem('lastKnownPhone')) {
             localStorage.setItem('lastKnownPhone', phone);
@@ -649,6 +666,7 @@ const OrderPageInternal = () => {
             }
         }
         const fetchInitialData = async () => {
+            console.log("[DEBUG] OrderPage: Starting to fetch data for restaurantId:", restaurantId);
             if (!restaurantId || restaurantId === 'undefined') {
                 setError("Restaurant ID is invalid. Please scan the QR code again.");
                 setLoading(false);
@@ -658,8 +676,10 @@ const OrderPageInternal = () => {
             setError(null);
             try {
                 const url = `/api/menu/${restaurantId}${phone ? `?phone=${phone}`: ''}`;
+                 console.log("[DEBUG] OrderPage: Fetching URL:", url);
                 const menuRes = await fetch(url);
 
+                console.log("[DEBUG] OrderPage: API response status:", menuRes.status);
                 const responseText = await menuRes.text();
                 let menuData;
                 try {
@@ -673,6 +693,7 @@ const OrderPageInternal = () => {
                     throw new Error(menuData.message || 'Failed to fetch menu');
                 }
                 
+                console.log("[DEBUG] OrderPage: API call successful. Data received:", menuData);
 
                 setRestaurantData({
                     name: menuData.restaurantName, status: menuData.approvalStatus,
@@ -717,6 +738,7 @@ const OrderPageInternal = () => {
             } catch (err) {
                 setError(err.message);
             } finally {
+                 console.log("[DEBUG] OrderPage: fetchInitialData finished.");
                 setLoading(false);
             }
         };
@@ -766,6 +788,10 @@ const OrderPageInternal = () => {
 
 
     // --- MENU PROCESSING & FILTERING ---
+    const searchPlaceholder = useMemo(() => {
+        return restaurantData.businessType === 'shop' ? 'Search for a product...' : 'Search for a dish...';
+    }, [restaurantData.businessType]);
+
     const processedMenu = useMemo(() => {
         let newMenu = JSON.parse(JSON.stringify(restaurantData.menu));
         const lowercasedQuery = searchQuery.toLowerCase();
@@ -878,7 +904,9 @@ const OrderPageInternal = () => {
     };
     
     const handleDeliveryTypeChange = (type) => {
+        console.log("[DEBUG] OrderPage: handleDeliveryTypeChange called with type:", type);
         if (type === 'dine-in' && !tableIdFromUrl) {
+            console.log("[DEBUG] OrderPage: Dine-in clicked without tableId, opening modal.");
             setDineInState('needs_setup');
             setDineInModalOpen(true);
             return;
@@ -912,8 +940,6 @@ const OrderPageInternal = () => {
 
     const totalCartItems = cart.reduce((sum, item) => sum + item.quantity, 0);
     const isTabActive = tableIdFromUrl && !tabIdFromUrl;
-
-    const searchPlaceholder = restaurantData.businessType === 'shop' ? 'Search for a product...' : 'Search for a dish...';
 
     const cartItemQuantities = useMemo(() => {
         const quantities = {};
@@ -1015,10 +1041,6 @@ const OrderPageInternal = () => {
                     onStartNewTab={handleStartNewTab}
                     onJoinTab={handleJoinTab}
                     onBookTable={handleBookTable}
-                    onScanQR={() => {
-                        setDineInModalOpen(false);
-                        setIsQrScannerOpen(true);
-                    }}
                 />
             </div>
          )
@@ -1079,10 +1101,6 @@ const OrderPageInternal = () => {
                   tableStatus={tableStatus}
                   onStartNewTab={handleStartNewTab}
                   onJoinTab={handleJoinTab}
-                  onScanQR={() => {
-                    setDineInModalOpen(false);
-                    setIsQrScannerOpen(true);
-                  }}
                 />
                 <CustomizationDrawer
                     item={customizationItem}
