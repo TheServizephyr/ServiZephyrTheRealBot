@@ -1,14 +1,15 @@
 
+
 'use client';
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import { RefreshCw, Printer, CheckCircle, IndianRupee, Users, Clock, ShoppingBag, Bell, MoreVertical, Trash2, QrCode, Download, Save, Wind, Edit, Table as TableIcon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { auth } from '@/lib/firebase';
 import { cn } from "@/lib/utils";
-import { format } from 'date-fns';
+import { format, formatDistanceToNow } from 'date-fns';
 import { useSearchParams } from 'next/navigation';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
@@ -384,6 +385,85 @@ const QrGeneratorModal = ({ isOpen, onClose, onSaveTable, restaurantId, initialT
     );
 };
 
+const LiveServiceRequests = ({ impersonatedOwnerId }) => {
+    const [requests, setRequests] = useState([]);
+
+    const fetchRequests = async () => {
+        try {
+            const user = auth.currentUser;
+            if (!user) return;
+            const idToken = await user.getIdToken();
+            let url = '/api/owner/service-requests';
+            if (impersonatedOwnerId) {
+                url += `?impersonate_owner_id=${impersonatedOwnerId}`;
+            }
+            const res = await fetch(url, { headers: { 'Authorization': `Bearer ${idToken}` } });
+            if (res.ok) {
+                const data = await res.json();
+                setRequests(data.requests || []);
+            }
+        } catch (error) {
+            console.error("Failed to fetch service requests:", error);
+        }
+    };
+    
+    const handleAcknowledge = async (requestId) => {
+        try {
+            const user = auth.currentUser;
+            if (!user) return;
+            const idToken = await user.getIdToken();
+            await fetch('/api/owner/service-requests', {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${idToken}` },
+                body: JSON.stringify({ requestId, status: 'acknowledged' })
+            });
+            fetchRequests(); // Refresh list
+        } catch (error) {
+            console.error("Failed to acknowledge request:", error);
+        }
+    };
+
+    useEffect(() => {
+        fetchRequests();
+        const interval = setInterval(fetchRequests, 15000); // Poll every 15 seconds
+        return () => clearInterval(interval);
+    }, [impersonatedOwnerId]);
+
+    if(requests.length === 0) return null;
+
+    return (
+        <Card className="mb-6 border-primary/50 bg-primary/10">
+            <CardHeader>
+                <CardTitle className="flex items-center gap-3 text-primary">
+                    <Bell className="animate-wiggle"/> Live Service Requests ({requests.length})
+                </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+                {requests.map(req => {
+                    const date = req.createdAt ? new Date(req.createdAt) : null;
+                    const isValidDate = date && !isNaN(date.getTime());
+                    return (
+                        <motion.div 
+                            key={req.id}
+                            layout
+                            initial={{ opacity: 0, x: -20 }}
+                            animate={{ opacity: 1, x: 0 }}
+                            exit={{ opacity: 0, x: 50 }}
+                            className="flex items-center justify-between p-3 bg-card rounded-lg"
+                        >
+                            <div>
+                                <p className="font-bold">Service needed at Table: {req.tableId}</p>
+                                <p className="text-xs text-muted-foreground">{isValidDate ? formatDistanceToNow(date, { addSuffix: true }) : 'Just now'}</p>
+                            </div>
+                            <Button size="sm" onClick={() => handleAcknowledge(req.id)}><CheckCircle className="mr-2 h-4 w-4"/>Acknowledge</Button>
+                        </motion.div>
+                    )
+                })}
+            </CardContent>
+        </Card>
+    )
+}
+
 function DineInPage() {
     const [allOrders, setAllOrders] = useState([]);
     const [allTables, setAllTables] = useState([]);
@@ -623,6 +703,8 @@ function DineInPage() {
                     </Button>
                 </div>
             </div>
+
+            <LiveServiceRequests impersonatedOwnerId={impersonatedOwnerId} />
             
              <h2 className="text-xl font-bold mb-4">Live Tables</h2>
             {loading ? (
@@ -691,5 +773,3 @@ function DineInPage() {
 }
 
 export default DineInPage;
-
-    

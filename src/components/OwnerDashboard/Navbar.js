@@ -18,111 +18,6 @@ import { formatDistanceToNow } from 'date-fns';
 
 const MotionDiv = motion.div;
 
-const ServiceBell = () => {
-    const [requests, setRequests] = useState([]);
-    const [isOpen, setIsOpen] = useState(false);
-    const searchParams = useSearchParams();
-    const impersonatedOwnerId = searchParams.get('impersonate_owner_id');
-
-    const fetchRequests = async () => {
-        try {
-            const user = auth.currentUser;
-            if (!user) return;
-            const idToken = await user.getIdToken();
-            let url = '/api/owner/service-requests';
-            if (impersonatedOwnerId) {
-                url += `?impersonate_owner_id=${impersonatedOwnerId}`;
-            }
-            const res = await fetch(url, { headers: { 'Authorization': `Bearer ${idToken}` } });
-            if (res.ok) {
-                const data = await res.json();
-                setRequests(data.requests || []);
-            }
-        } catch (error) {
-            console.error("Failed to fetch service requests:", error);
-        }
-    };
-
-    useEffect(() => {
-        const user = auth.currentUser;
-        if (user) {
-            fetchRequests();
-        }
-        const interval = setInterval(() => {
-             const user = auth.currentUser;
-             if(user) fetchRequests();
-        }, 30000); // Poll every 30 seconds
-        return () => clearInterval(interval);
-    }, [impersonatedOwnerId]);
-    
-    const handleAcknowledge = async (requestId) => {
-        try {
-            const user = auth.currentUser;
-            if (!user) return;
-            const idToken = await user.getIdToken();
-            await fetch('/api/owner/service-requests', {
-                method: 'PATCH',
-                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${idToken}` },
-                body: JSON.stringify({ requestId, status: 'acknowledged' })
-            });
-            fetchRequests(); // Refresh list
-        } catch (error) {
-            console.error("Failed to acknowledge request:", error);
-        }
-    }
-
-    return (
-        <div className="relative">
-            <button className={styles.iconButton} onClick={() => setIsOpen(!isOpen)}>
-                <Bell size={22} />
-                {requests.length > 0 && (
-                    <span className="absolute -top-1 -right-1 flex h-4 w-4">
-                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
-                        <span className="relative inline-flex rounded-full h-4 w-4 bg-red-500 items-center justify-center text-xs text-white">
-                            {requests.length}
-                        </span>
-                    </span>
-                )}
-            </button>
-            <AnimatePresence>
-                {isOpen && (
-                    <MotionDiv
-                        className="absolute top-full right-0 mt-3 w-72 bg-card border border-border rounded-lg shadow-lg z-50"
-                        initial={{ opacity: 0, y: -10 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        exit={{ opacity: 0, y: -10 }}
-                    >
-                        <div className="p-3 border-b border-border">
-                            <h4 className="font-semibold text-foreground">Service Requests</h4>
-                        </div>
-                        <div className="max-h-80 overflow-y-auto p-2">
-                            {requests.length > 0 ? requests.map(req => {
-                                // THE FIX: Add a safety check for the date
-                                const date = req.createdAt ? new Date(req.createdAt) : null;
-                                const isValidDate = date && !isNaN(date.getTime());
-
-                                return (
-                                <div key={req.id} className="p-2 hover:bg-muted rounded-lg">
-                                    <p className="font-semibold">Table: {req.tableId}</p>
-                                    <div className="flex justify-between items-center">
-                                        <p className="text-xs text-muted-foreground">{isValidDate ? formatDistanceToNow(date, { addSuffix: true }) : 'Just now'}</p>
-                                        <button onClick={() => handleAcknowledge(req.id)} className="text-xs text-green-500 hover:text-green-600 font-semibold flex items-center gap-1">
-                                            <CheckCircle size={14}/> Acknowledge
-                                        </button>
-                                    </div>
-                                </div>
-                                );
-                            }) : (
-                                <p className="text-sm text-muted-foreground text-center p-4">No pending requests.</p>
-                            )}
-                        </div>
-                    </MotionDiv>
-                )}
-            </AnimatePresence>
-        </div>
-    );
-}
-
 export default function Navbar({ isSidebarOpen, setSidebarOpen, restaurantName, restaurantLogo }) {
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [restaurantStatus, setRestaurantStatus] = useState(true);
@@ -241,8 +136,6 @@ export default function Navbar({ isSidebarOpen, setSidebarOpen, restaurantName, 
                 </MotionDiv>
             </AnimatePresence>
         </button>
-
-        <ServiceBell />
 
         <div className="relative" ref={dropdownRef}>
           <button
