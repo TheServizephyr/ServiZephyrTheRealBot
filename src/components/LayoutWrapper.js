@@ -1,4 +1,3 @@
-
 'use client';
 
 import { usePathname } from 'next/navigation';
@@ -16,9 +15,12 @@ const LayoutWrapper = ({ children }) => {
     '/complete-profile',
     '/order',
     '/cart',
+    '/checkout',
     '/track',
+    '/location',
     '/customer-form',
-    '/bill'
+    '/bill',
+    '/order/placed'
   ];
 
   // Check if the current path starts with any of the noLayoutPaths
@@ -29,11 +31,11 @@ const LayoutWrapper = ({ children }) => {
   }
 
   return (
-    <>
+    <div className="flex flex-col min-h-screen">
       <Header />
       <main className="flex-grow">{children}</main>
       <Footer />
-    </>
+    </div>
   );
 };
 
