@@ -1,4 +1,5 @@
 
+
 import { NextResponse } from 'next/server';
 import { getFirestore } from '@/lib/firebase-admin';
 import { sendNewOrderToOwner } from '@/lib/notifications';
@@ -69,6 +70,7 @@ export async function POST(req) {
             
             const firestore = getFirestore();
             
+            // Fetch order notes to get our internal payload
             const key_id = process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID;
             const key_secret = process.env.RAZORPAY_KEY_SECRET;
             const credentials = Buffer.from(`${key_id}:${key_secret}`).toString('base64');
@@ -80,45 +82,62 @@ export async function POST(req) {
                 headers: { 'Authorization': `Basic ${credentials}` }
             };
 
-            const razorpayOrderDetails = await makeRazorpayRequest(fetchOrderOptions);
-            const orderPayloadString = razorpayOrderDetails.notes?.servizephyr_order_payload;
+            const rzpOrder = await makeRazorpayRequest(fetchOrderOptions);
+            const payloadString = rzpOrder.notes?.servizephyr_payload;
             
-            if (!orderPayloadString) {
-                console.error(`[Webhook] CRITICAL: servizephyr_order_payload not found in notes for Razorpay Order ${razorpayOrderId}`);
+            if (!payloadString) {
+                console.error(`[Webhook] CRITICAL: servizephyr_payload not found in notes for Razorpay Order ${razorpayOrderId}`);
                 return NextResponse.json({ status: 'error', message: 'Order payload not found in notes.' });
             }
-
-            const { customerDetails, restaurantDetails, orderItems, billDetails, notes, businessType } = JSON.parse(orderPayloadString);
-            const { restaurantId, restaurantName } = restaurantDetails;
             
+            const { 
+                order_id: firestoreOrderId,
+                user_id: userId,
+                restaurant_id: restaurantId,
+                business_type: businessType,
+                customer_details: customerDetailsString,
+                items: itemsString,
+                bill_details: billDetailsString,
+                notes: customNotes 
+            } = JSON.parse(payloadString);
+            
+            if (!firestoreOrderId || !userId || !restaurantId || !businessType) {
+                console.error(`[Webhook] CRITICAL: Missing key identifiers in payload for Razorpay Order ${razorpayOrderId}`);
+                return NextResponse.json({ status: 'error', message: 'Order identifier notes missing.' });
+            }
+
             const existingOrderQuery = await firestore.collection('orders').where('paymentDetails.razorpay_order_id', '==', razorpayOrderId).limit(1).get();
             if (!existingOrderQuery.empty) {
                 console.log(`[Webhook] Order ${razorpayOrderId} already processed. Skipping.`);
                 return NextResponse.json({ status: 'ok', message: 'Order already exists.'});
             }
 
+            // Parse stringified JSON from notes
+            const customerDetails = JSON.parse(customerDetailsString);
+            const orderItems = JSON.parse(itemsString);
+            const billDetails = JSON.parse(billDetailsString);
+
             const batch = firestore.batch();
             const usersRef = firestore.collection('users');
             const existingUserQuery = await usersRef.where('phone', '==', customerDetails.phone).limit(1).get();
 
-            let userId;
             const isNewUser = existingUserQuery.empty;
 
             if (isNewUser) {
                 const unclaimedUserRef = firestore.collection('unclaimed_profiles').doc(customerDetails.phone);
-                userId = customerDetails.phone; // Use phone as temporary ID for unclaimed profiles
                  batch.set(unclaimedUserRef, {
                     name: customerDetails.name, 
                     phone: customerDetails.phone, 
                     addresses: [{ id: `addr_${Date.now()}`, full: customerDetails.address }],
                     createdAt: firestore.FieldValue.serverTimestamp(),
-                    orderedFrom: firestore.FieldValue.arrayUnion({ restaurantId, restaurantName, businessType })
+                    orderedFrom: firestore.FieldValue.arrayUnion({
+                        restaurantId: restaurantId,
+                        restaurantName: rzpOrder.notes?.restaurantName || 'Unknown',
+                        businessType: businessType,
+                    })
                 }, { merge: true });
-
-            } else {
-                userId = existingUserQuery.docs[0].id;
             }
-
+            
             const subtotal = billDetails.subtotal || 0;
             const loyaltyDiscount = billDetails.loyaltyDiscount || 0;
             
@@ -137,17 +156,20 @@ export async function POST(req) {
                 totalOrders: firestore.FieldValue.increment(1),
             }, { merge: true });
             
-            const newOrderRef = firestore.collection('orders').doc();
+            const newOrderRef = firestore.collection('orders').doc(firestoreOrderId);
             
-            // If it's a new Dine-In Tab, create it
+            // DINE IN LOGIC: Handle new tab creation if it was a dine-in order
             let finalDineInTabId = billDetails.dineInTabId;
             if (billDetails.deliveryType === 'dine-in' && billDetails.tableId && !finalDineInTabId) {
                 const newTabRef = firestore.collection(businessCollectionName).doc(restaurantId).collection('dineInTabs').doc();
                 finalDineInTabId = newTabRef.id;
 
                 batch.set(newTabRef, {
-                    id: finalDineInTabId, tableId: billDetails.tableId, status: 'active',
-                    tab_name: billDetails.tab_name || "Guest", pax_count: billDetails.pax_count || 1,
+                    id: finalDineInTabId,
+                    tableId: billDetails.tableId,
+                    status: 'active',
+                    tab_name: billDetails.tab_name || "Guest",
+                    pax_count: billDetails.pax_count || 1,
                     createdAt: firestore.FieldValue.serverTimestamp(),
                 });
                 
@@ -160,13 +182,13 @@ export async function POST(req) {
 
             batch.set(newOrderRef, {
                 customerName: customerDetails.name, customerId: userId, customerAddress: customerDetails.address, customerPhone: customerDetails.phone,
-                restaurantId: restaurantId, restaurantName: restaurantName,
+                restaurantId: restaurantId,
                 businessType: businessType,
                 deliveryType: billDetails.deliveryType || 'delivery',
                 pickupTime: billDetails.pickupTime || '',
                 tipAmount: billDetails.tipAmount || 0,
-                tableId: billDetails.tableId || null,
-                dineInTabId: finalDineInTabId || null,
+                tableId: billDetails.tableId,
+                dineInTabId: finalDineInTabId,
                 items: orderItems,
                 subtotal: billDetails.subtotal, 
                 coupon: billDetails.coupon, 
@@ -176,9 +198,9 @@ export async function POST(req) {
                 sgst: billDetails.sgst, 
                 deliveryCharge: billDetails.deliveryCharge,
                 totalAmount: billDetails.grandTotal,
-                status: 'paid', // Order is paid online
+                status: 'paid',
                 orderDate: firestore.FieldValue.serverTimestamp(),
-                notes: notes || null,
+                notes: customNotes || null,
                 paymentDetails: {
                     razorpay_payment_id: paymentId,
                     razorpay_order_id: razorpayOrderId,
@@ -192,6 +214,12 @@ export async function POST(req) {
             const businessDoc = await firestore.collection(businessCollectionName).doc(restaurantId).get();
             if (businessDoc.exists) {
                 const businessData = businessDoc.data();
+                if(!businessData.name) {
+                     await newOrderRef.update({ restaurantName: "Unnamed Business" });
+                } else {
+                     await newOrderRef.update({ restaurantName: businessData.name });
+                }
+
                 const linkedAccountId = businessData.razorpayAccountId;
 
                 if (linkedAccountId && linkedAccountId.startsWith('acc_')) {
@@ -233,3 +261,5 @@ export async function POST(req) {
         return NextResponse.json({ status: 'error', message: 'Internal server error' }, { status: 200 });
     }
 }
+
+    

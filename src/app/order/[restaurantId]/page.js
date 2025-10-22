@@ -1,4 +1,5 @@
 
+
 'use client';
 
 import React, { useState, useEffect, Suspense, useMemo, useCallback, useRef } from 'react';
@@ -735,11 +736,11 @@ const OrderPageInternal = () => {
                     setDeliveryType('dine-in');
                     const dineInSetup = localStorage.getItem(`dineInSetup_${restaurantId}_${tableIdFromUrl}`);
                     
-                    if (dineInSetup) {
-                        const setup = JSON.parse(dineInSetup);
-                        if (setup.join_tab_id || tabIdFromUrl) {
-                           // Logic to fetch tab total can be added here if needed
-                           setActiveTabInfo({ id: setup.join_tab_id || tabIdFromUrl, name: 'Active Tab', total: 0 }); // Placeholder
+                    if (dineInSetup || tabIdFromUrl) {
+                        const setup = dineInSetup ? JSON.parse(dineInSetup) : {};
+                        const currentTabId = tabIdFromUrl || setup.join_tab_id;
+                        if (currentTabId) {
+                           setActiveTabInfo({ id: currentTabId, name: setup.tab_name || 'Active Tab', total: 0 }); // Placeholder
                         }
                         setDineInState('ready');
                     } else {
@@ -989,7 +990,6 @@ const OrderPageInternal = () => {
     };
 
     const totalCartItems = cart.reduce((sum, item) => sum + item.quantity, 0);
-    const isTabActive = tableIdFromUrl && !tabIdFromUrl;
 
     const cartItemQuantities = useMemo(() => {
         const quantities = {};
@@ -1004,18 +1004,15 @@ const OrderPageInternal = () => {
     
     const handleCallWaiter = async () => {
         try {
-            const user = auth.currentUser;
-            
             const payload = {
                 restaurantId: restaurantId,
                 tableId: tableIdFromUrl,
+                dineInTabId: activeTabInfo.id
             };
 
             const response = await fetch('/api/owner/service-requests', {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
+                headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(payload),
             });
 
@@ -1314,21 +1311,28 @@ const OrderPageInternal = () => {
                                     transition={{ type: "spring", stiffness: 300, damping: 30 }}
                                 >
                                     <div className="container mx-auto p-4">
-                                        {totalCartItems > 0 ? (
+                                        {deliveryType === 'dine-in' ? (
+                                            totalCartItems > 0 ? (
+                                                <Button onClick={handleCheckout} className="bg-primary hover:bg-primary/90 h-14 text-lg font-bold rounded-lg shadow-primary/30 flex justify-between items-center text-primary-foreground w-full">
+                                                    <span>{totalCartItems} New Item{totalCartItems > 1 ? 's' : ''}</span>
+                                                    <span>Add to Tab | ₹{subtotal}</span>
+                                                </Button>
+                                            ) : (
+                                                <Button onClick={handleCheckout} className="bg-green-600 hover:bg-green-700 h-14 text-lg font-bold rounded-lg shadow-lg flex justify-between items-center text-white w-full">
+                                                    <div className="flex items-center gap-2">
+                                                        <Users size={20}/>
+                                                        <span>{activeTabInfo.name || 'Your Tab'}</span>
+                                                    </div>
+                                                    <div className="flex items-center gap-2">
+                                                        <span>View Bill & Pay</span>
+                                                        <Wallet size={20}/>
+                                                    </div>
+                                                </Button>
+                                            )
+                                        ) : ( totalCartItems > 0 &&
                                             <Button onClick={handleCheckout} className="bg-primary hover:bg-primary/90 h-14 text-lg font-bold rounded-lg shadow-primary/30 flex justify-between items-center text-primary-foreground w-full">
                                                 <span>{totalCartItems} Item{totalCartItems > 1 ? 's' : ''} in Cart</span>
-                                                <span>{deliveryType === 'dine-in' ? 'Add to Tab' : 'View Cart'} | ₹{subtotal}</span>
-                                            </Button>
-                                        ) : (tabIdFromUrl &&
-                                            <Button onClick={handleCheckout} className="bg-green-600 hover:bg-green-700 h-14 text-lg font-bold rounded-lg shadow-lg flex justify-between items-center text-white w-full">
-                                                <div className="flex items-center gap-2">
-                                                    <Users size={20}/>
-                                                    <span>{activeTabInfo.name || 'Your Tab'}</span>
-                                                </div>
-                                                <div className="flex items-center gap-2">
-                                                    <span>View Bill & Pay</span>
-                                                    <Wallet size={20}/>
-                                                </div>
+                                                <span>View Cart | ₹{subtotal}</span>
                                             </Button>
                                         )}
                                     </div>
@@ -1349,3 +1353,5 @@ const OrderPage = () => (
 );
 
 export default OrderPage;
+
+    

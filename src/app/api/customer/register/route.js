@@ -74,33 +74,38 @@ export async function POST(req) {
                 key_secret: process.env.RAZORPAY_KEY_SECRET,
             });
             
+            const firestoreOrderId = firestore.collection('orders').doc().id;
+
             const servizephyrOrderPayload = {
-                restaurantDetails: { restaurantId, restaurantName: businessData.name },
-                customerDetails: { name, address, phone: normalizedPhone },
-                orderItems: items,
-                billDetails: { subtotal, coupon, loyaltyDiscount, grandTotal, deliveryType, tipAmount, pickupTime, cgst, sgst, deliveryCharge, tableId, dineInTabId },
-                businessType: businessType,
+                // Key identifiers for webhook processing
+                order_id: firestoreOrderId, // Use a pre-generated ID
+                user_id: userId,
+                restaurant_id: restaurantId,
+                business_type: businessType,
+                // Full data for record keeping and display on Razorpay dashboard
+                customer_details: JSON.stringify({ name, address, phone: normalizedPhone }),
+                items: JSON.stringify(items),
+                bill_details: JSON.stringify({ subtotal, coupon, loyaltyDiscount, grandTotal, deliveryType, tipAmount, pickupTime, cgst, sgst, deliveryCharge, tableId, dineInTabId, pax_count, tab_name }),
                 notes: notes || null
             };
 
             const razorpayOrderOptions = {
-                amount: Math.round(grandTotal * 100), 
-                currency: 'INR', 
-                receipt: nanoid(), 
+                amount: Math.round(grandTotal * 100), // Amount in paisa
+                currency: 'INR',
+                receipt: firestoreOrderId,
                 payment_capture: 1,
-                notes: {
-                    servizephyr_order_payload: JSON.stringify(servizephyrOrderPayload)
-                }
+                notes: { servizephyr_payload: JSON.stringify(servizephyrOrderPayload) }
             };
 
             const razorpayOrder = await razorpay.orders.create(razorpayOrderOptions);
             razorpayOrderId = razorpayOrder.id;
+            console.log(`[Order API] Razorpay Order ${razorpayOrderId} created for amount ${grandTotal}.`);
             
             return NextResponse.json({ 
                 message: 'Razorpay order created. Awaiting payment confirmation.',
                 razorpay_order_id: razorpayOrderId,
-                firestore_order_id: razorpayOrder.receipt, // Use receipt as a placeholder for client-side tracking
-                dine_in_tab_id: dineInTabId, // Pass back tab ID
+                firestore_order_id: firestoreOrderId, // Return the same ID to the client
+                dine_in_tab_id: dineInTabId || null,
             }, { status: 200 });
         }
 
@@ -182,7 +187,7 @@ export async function POST(req) {
             items: items,
             subtotal, coupon, loyaltyDiscount, discount: finalDiscount, cgst, sgst, deliveryCharge,
             totalAmount: grandTotal,
-            status: 'pending',
+            status: deliveryType === 'dine-in' ? 'active_tab' : 'pending',
             orderDate: firestore.FieldValue.serverTimestamp(),
             notes: notes || null,
             paymentDetails: { method: paymentMethod }
@@ -214,3 +219,5 @@ export async function POST(req) {
         return NextResponse.json({ message: `Backend Error: ${error.message}` }, { status: 500 });
     }
 }
+
+    

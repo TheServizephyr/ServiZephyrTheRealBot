@@ -42,8 +42,6 @@ export async function GET(req) {
     try {
         const businessRef = await verifyOwnerAndGetBusinessRef(req);
 
-        // ** THE FIX: Removed sorting by 'status' to avoid needing a composite index. **
-        // The logic now fetches all pending requests and sorts them by time.
         const requestsSnap = await businessRef.collection('serviceRequests')
             .where('status', '==', 'pending')
             .orderBy('createdAt', 'desc')
@@ -53,7 +51,6 @@ export async function GET(req) {
             const data = doc.data();
             return {
                 ...data,
-                // THE FIX: Convert Firestore Timestamp to a serializable ISO string
                 createdAt: data.createdAt?.toDate ? data.createdAt.toDate().toISOString() : new Date().toISOString(),
             };
         });
@@ -71,7 +68,7 @@ export async function GET(req) {
 export async function POST(req) {
     try {
         const firestore = getFirestore();
-        const { restaurantId, tableId } = await req.json();
+        const { restaurantId, tableId, dineInTabId } = await req.json();
 
         if (!restaurantId || !tableId) {
             return NextResponse.json({ message: 'Restaurant and Table ID are required.' }, { status: 400 });
@@ -94,6 +91,7 @@ export async function POST(req) {
         const newRequestData = {
             id: newRequestRef.id,
             tableId: tableId,
+            dineInTabId: dineInTabId || null,
             status: 'pending',
             createdAt: FieldValue.serverTimestamp(),
         };
@@ -134,3 +132,5 @@ export async function PATCH(req) {
         return NextResponse.json({ message: `Backend Error: ${error.message}` }, { status: error.status || 500 });
     }
 }
+
+    

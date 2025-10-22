@@ -1,4 +1,5 @@
 
+
 'use client';
 
 import React, { useState, useEffect, useMemo, Suspense } from 'react';
@@ -170,7 +171,7 @@ const CheckoutPageInternal = () => {
             } else {
                  if (tabId) { // User is here to pay an existing tab
                     setCartData({ dineInTabId: tabId, deliveryType: 'dine-in', phone: phone });
-                    setIsSplitBillActive(true); // Default to split bill view
+                    // No need to set split bill active by default, let user choose
                 } else {
                     router.push(`/order/${restaurantId}${tableId ? `?table=${tableId}`: ''}`);
                     return;
@@ -404,3 +405,5 @@ const CheckoutPage = () => (
 );
 
 export default CheckoutPage;
+
+    
