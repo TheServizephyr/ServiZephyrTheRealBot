@@ -154,9 +154,10 @@ const CheckoutPageInternal = () => {
                 return;
             }
 
+            let parsedData;
             const savedCartData = localStorage.getItem(`cart_${restaurantId}`);
             if (savedCartData) {
-                const parsedData = JSON.parse(savedCartData);
+                parsedData = JSON.parse(savedCartData);
                 const finalPhone = phone || parsedData.phone;
                 
                 const deliveryType = tableId ? 'dine-in' : (parsedData.deliveryType || 'delivery');
@@ -169,8 +170,8 @@ const CheckoutPageInternal = () => {
 
             } else {
                  if (tabId) { // User is here to pay an existing tab
-                    setCartData({ dineInTabId: tabId, deliveryType: 'dine-in', phone: phone });
-                    // No need to set split bill active by default, let user choose
+                    parsedData = { dineInTabId: tabId, deliveryType: 'dine-in', phone: phone };
+                    setCartData(parsedData);
                 } else {
                     router.push(`/order/${restaurantId}${tableId ? `?table=${tableId}`: ''}`);
                     return;
@@ -181,15 +182,16 @@ const CheckoutPageInternal = () => {
                  const res = await fetch(`/api/owner/settings?restaurantId=${restaurantId}`);
                  if (res.ok) {
                     const data = await res.json();
-                     const deliveryType = tableId ? 'dine-in' : (cartData?.deliveryType || 'delivery');
-                    const isPickup = deliveryType === 'pickup';
+                     const deliveryType = tableId ? 'dine-in' : (parsedData.deliveryType || 'delivery');
 
                     if (deliveryType === 'delivery') {
                         setCodEnabled(data.deliveryCodEnabled || false);
-                    } else if (isPickup) {
+                    } else if (deliveryType === 'pickup') {
                          setCodEnabled(data.pickupPodEnabled || false);
-                    } else { // dine-in
+                    } else if (deliveryType === 'dine-in') {
                         setCodEnabled(data.dineInPayAtCounterEnabled || false);
+                    } else {
+                        setCodEnabled(false);
                     }
 
                  }
@@ -349,7 +351,7 @@ const CheckoutPageInternal = () => {
                     order_id: data.razorpay_order_id,
                     handler: function (response) {
                         localStorage.removeItem(`cart_${restaurantId}`);
-                        if (deliveryType === 'dine-in') {
+                        if (orderData.deliveryType === 'dine-in') {
                            router.push(`/order/${restaurantId}?table=${tableId}&tabId=${data.dine_in_tab_id || tabId}&phone=${phone}`);
                         } else {
                            router.push(`/order/placed?orderId=${data.firestore_order_id}`);
@@ -365,7 +367,7 @@ const CheckoutPageInternal = () => {
                 rzp.open();
             } else { // For COD/POD/Dine-In
                 localStorage.removeItem(`cart_${restaurantId}`);
-                if (deliveryType === 'dine-in') {
+                if (orderData.deliveryType === 'dine-in') {
                    // Redirect back to the order page with the new tabId
                    router.push(`/order/${restaurantId}?table=${tableId}&tabId=${data.dine_in_tab_id || tabId}&phone=${phone}`);
                 } else {
