@@ -913,6 +913,9 @@ const OrderPageInternal = () => {
     const totalCartItems = cart.reduce((sum, item) => sum + item.quantity, 0);
     const isTabActive = tableIdFromUrl && !tabIdFromUrl;
 
+    const { businessType: restaurantType, name: restaurantName } = restaurantData;
+    const searchPlaceholder = restaurantType === 'shop' ? 'Search for a product...' : 'Search for a dish...';
+
 
     const cartItemQuantities = useMemo(() => {
         const quantities = {};
@@ -1270,4 +1273,5 @@ export default OrderPage;
     
 
     
+
 
