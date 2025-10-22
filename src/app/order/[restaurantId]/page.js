@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, Suspense, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, Suspense, useMemo, useCallback, useRef } from 'react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Utensils, Plus, Minus, X, Home, User, Edit2, ShoppingCart, Star, CookingPot, BookOpen, Check, SlidersHorizontal, ArrowUpDown, PlusCircle, Ticket, Gift, Sparkles, Flame, Search, Trash2, ChevronDown, Tag as TagIcon, RadioGroup, IndianRupee, HardHat, MapPin, Bike, Store, ConciergeBell, QrCode, CalendarClock, Wallet, Users, Camera, BookMarked, Calendar as CalendarIcon } from 'lucide-react';
@@ -609,7 +609,6 @@ const OrderPageInternal = () => {
     const [customizationItem, setCustomizationItem] = useState(null);
     const [isBannerExpanded, setIsBannerExpanded] = useState(false);
     const [isDineInModalOpen, setDineInModalOpen] = useState(false);
-    const [isQrScannerOpen, setIsQrScannerOpen] = useState(false);
     const [infoDialog, setInfoDialog] = useState({ isOpen: false, title: '', message: '' });
     
     // --- DINE-IN GATEWAY LOGIC ---
@@ -935,9 +934,7 @@ const OrderPageInternal = () => {
     const totalCartItems = cart.reduce((sum, item) => sum + item.quantity, 0);
     const isTabActive = tableIdFromUrl && !tabIdFromUrl;
 
-    const { businessType: restaurantType, name: restaurantName } = restaurantData;
-    const searchPlaceholder = restaurantType === 'shop' ? 'Search for a product...' : 'Search for a dish...';
-
+    const searchPlaceholder = restaurantData.businessType === 'shop' ? 'Search for a product...' : 'Search for a dish...';
 
     const cartItemQuantities = useMemo(() => {
         const quantities = {};
@@ -1047,17 +1044,7 @@ const OrderPageInternal = () => {
     return (
         <>
             <InfoDialog isOpen={infoDialog.isOpen} onClose={() => setInfoDialog({isOpen: false, title: '', message: ''})} title={infoDialog.title} message={infoDialog.message} />
-            <AnimatePresence>
-                {isQrScannerOpen && (
-                    <QrScanner 
-                        onClose={() => setIsQrScannerOpen(false)}
-                        onScanSuccess={(decodedText) => {
-                            setIsQrScannerOpen(false);
-                            router.push(decodedText);
-                        }}
-                    />
-                )}
-            </AnimatePresence>
+            
             <AnimatePresence>
                 {isBannerExpanded && (
                      <motion.div
