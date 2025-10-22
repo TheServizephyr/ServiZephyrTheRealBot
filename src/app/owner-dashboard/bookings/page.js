@@ -1,8 +1,9 @@
+
 'use client';
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { motion } from 'framer-motion';
-import { CalendarClock, Check, X, Filter, MoreVertical, User, Phone, Users, Clock, Hash, Trash2, Search, RefreshCw, CheckCircle, AlertTriangle } from 'lucide-react';
+import { CalendarClock, Check, X, Filter, MoreVertical, User, Phone, Users, Clock, Hash, Trash2, Search, RefreshCw, CheckCircle, AlertTriangle, XCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
@@ -42,11 +43,14 @@ const formatDateTime = (dateValue) => {
 
 const BookingRow = ({ booking, onUpdateStatus }) => {
     const statusConfig = {
-        pending: 'text-yellow-400 bg-yellow-500/10',
-        confirmed: 'text-green-400 bg-green-500/10',
-        cancelled: 'text-red-400 bg-red-500/10',
-        completed: 'text-blue-400 bg-blue-500/10',
+        pending: { style: 'text-yellow-400 bg-yellow-500/10', icon: <Clock size={14} /> },
+        confirmed: { style: 'text-green-400 bg-green-500/10', icon: <CheckCircle size={14} /> },
+        cancelled: { style: 'text-red-400 bg-red-500/10', icon: <XCircle size={14} /> },
+        completed: { style: 'text-blue-400 bg-blue-500/10', icon: <CheckCircle size={14} /> },
     };
+    
+    const currentStatusConfig = statusConfig[booking.status] || statusConfig.pending;
+
 
     const createdAtDate = useMemo(() => {
         if (!booking.createdAt) return null;
@@ -76,7 +80,8 @@ const BookingRow = ({ booking, onUpdateStatus }) => {
                 )}
             </TableCell>
             <TableCell>
-                <span className={cn('px-2 py-1 text-xs font-semibold rounded-full capitalize', statusConfig[booking.status])}>
+                 <span className={cn('flex items-center gap-2 px-2 py-1 text-xs font-semibold rounded-full capitalize', currentStatusConfig.style)}>
+                    {currentStatusConfig.icon}
                     {booking.status}
                 </span>
             </TableCell>
@@ -301,3 +306,5 @@ export default function BookingsPage() {
         </motion.div>
     );
 }
+
+    
