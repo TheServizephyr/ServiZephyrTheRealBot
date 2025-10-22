@@ -281,6 +281,31 @@ const DineInModal = ({ isOpen, onClose, onBookTable, tableStatus, onStartNewTab,
 
 
     useEffect(() => {
+        if (isOpen) {
+            const now = new Date();
+            const hours = now.getHours().toString().padStart(2, '0');
+            const minutes = now.getMinutes().toString().padStart(2, '0');
+            
+            // Set initial time to next half hour
+            const newTime = new Date(now.getTime() + 30 * 60000);
+            const initialHours = newTime.getHours().toString().padStart(2, '0');
+            const initialMinutes = (Math.ceil(newTime.getMinutes() / 30) * 30 % 60).toString().padStart(2, '0');
+
+            setBookingDetails(prev => ({
+                ...prev,
+                date: now,
+                time: `${initialHours}:${initialMinutes}`,
+            }));
+
+            if (isToday(now)) {
+                setMinTime(`${hours}:${minutes}`);
+            } else {
+                setMinTime('00:00');
+            }
+        }
+    }, [isOpen]);
+
+    useEffect(() => {
         if (bookingDetails.date && isToday(bookingDetails.date)) {
             const now = new Date();
             const hours = now.getHours().toString().padStart(2, '0');
