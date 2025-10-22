@@ -1,4 +1,3 @@
-
 'use client';
 
 import React, { useState, useEffect, Suspense, useMemo, useCallback } from 'react';
@@ -364,10 +363,20 @@ const DineInModal = ({ isOpen, onClose, onBookTable, tableStatus, onStartNewTab,
                          <motion.div key="main">
                             <DialogHeader className="p-6 text-center">
                                 <DialogTitle className="text-2xl">Dine-In Options</DialogTitle>
-                                <DialogDescription>How would you like to proceed?</DialogDescription>
+                                <DialogDescription>To dine in, please scan a QR code at your table or book a table in advance.</DialogDescription>
                             </DialogHeader>
                             <div className="grid md:grid-cols-2 gap-4 px-6 pb-8">
                                 <button
+                                    onClick={() => setActiveModal('book')}
+                                    className="p-6 border-2 border-border rounded-lg text-center flex flex-col items-center justify-center gap-3 hover:bg-muted hover:border-primary transition-all group"
+                                >
+                                    <BookMarked className="w-12 h-12 text-foreground transition-colors group-hover:text-primary" />
+                                    <div>
+                                        <h4 className="font-bold text-lg text-foreground">I want to Book a Table</h4>
+                                        <p className="text-sm text-muted-foreground">Reserve a table for a future date or time.</p>
+                                    </div>
+                                </button>
+                                 <button
                                     onClick={() => {
                                         onClose();
                                         setIsQrScannerOpen(true);
@@ -378,16 +387,6 @@ const DineInModal = ({ isOpen, onClose, onBookTable, tableStatus, onStartNewTab,
                                     <div>
                                         <h4 className="font-bold text-lg text-foreground">I'm at the Restaurant</h4>
                                         <p className="text-sm text-muted-foreground">Scan the QR code on your table to start.</p>
-                                    </div>
-                                </button>
-                                <button
-                                    onClick={() => setActiveModal('book')}
-                                    className="p-6 border-2 border-border rounded-lg text-center flex flex-col items-center justify-center gap-3 hover:bg-muted hover:border-primary transition-all group"
-                                >
-                                    <BookMarked className="w-12 h-12 text-foreground transition-colors group-hover:text-primary" />
-                                    <div>
-                                        <h4 className="font-bold text-lg text-foreground">I want to Book a Table</h4>
-                                        <p className="text-sm text-muted-foreground">Reserve a table for a future date or time.</p>
                                     </div>
                                 </button>
                             </div>
@@ -1134,7 +1133,7 @@ const OrderPageInternal = () => {
                         <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" size={20} />
                         <input
                             type="text"
-                            placeholder="Search for dishes..."
+                            placeholder={searchPlaceholder}
                             value={searchQuery}
                             onChange={(e) => setSearchQuery(e.target.value)}
                             className="w-full bg-input border border-border rounded-lg pl-10 pr-4 py-2 h-12 text-sm focus:ring-2 focus:ring-primary focus:border-primary outline-none"
@@ -1271,3 +1270,4 @@ export default OrderPage;
     
 
     
+
