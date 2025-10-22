@@ -622,83 +622,143 @@ const LiveServiceRequests = ({ impersonatedOwnerId }) => {
     )
 }
 
-const DineInMenuModal = ({ isOpen, onClose, showInfoDialog }) => {
-    const menuItems = [
-        { id: 1, name: 'Paneer Butter Masala', price: 250, isAvailable: true },
-        { id: 2, name: 'Dal Makhani', price: 200, isAvailable: true },
-    ];
-    const cutleryItems = [
-        { id: 'c1', name: 'Extra Spoon', price: 0, isAvailable: true },
-        { id: 'c2', name: 'Extra Fork', price: 0, isAvailable: true },
-        { id: 'c3', name: 'Quarter Plate', price: 0, isAvailable: true },
-    ];
-     const amenityItems = [
-        { id: 'a1', name: 'Mineral Water (1L)', price: 20, isAvailable: true },
-        { id: 'a2', name: 'Tissues (Pack)', price: 10, isAvailable: true },
-    ];
+const DineInAddItemModal = ({ isOpen, onClose, onSave, itemCategory, showInfoDialog }) => {
+    const [name, setName] = useState('');
+    const [price, setPrice] = useState('');
+
+    useEffect(() => {
+        if (isOpen) {
+            setName('');
+            setPrice('');
+        }
+    }, [isOpen]);
+
+    const handleSave = () => {
+        if (!name.trim() || !price || isNaN(parseFloat(price))) {
+            showInfoDialog({ isOpen: true, title: "Invalid Input", message: "Please enter a valid item name and price." });
+            return;
+        }
+        onSave({ name: name.trim(), price: parseFloat(price) });
+        onClose();
+    };
 
     return (
         <Dialog open={isOpen} onOpenChange={onClose}>
-            <DialogContent className="max-w-4xl bg-background border-border text-foreground">
+            <DialogContent className="bg-background border-border text-foreground">
                 <DialogHeader>
-                    <DialogTitle>Dine-In Menu Editor</DialogTitle>
-                    <Alert>
-                        <AlertTriangle className="h-4 w-4" />
-                        <AlertTitle>Feature in Development</AlertTitle>
-                        <AlertDescription>
-                            This editor is a preview. Soon, you will be able to copy items from your main menu and add custom items like cutlery and amenities.
-                        </AlertDescription>
-                    </Alert>
+                    <DialogTitle>Add New {itemCategory}</DialogTitle>
                 </DialogHeader>
-                <div className="mt-4 max-h-[70vh] overflow-y-auto pr-4 space-y-6">
-                    <div className="p-4 border border-dashed border-border rounded-lg">
-                        <div className="flex justify-between items-center mb-4">
-                            <h3 className="text-lg font-semibold flex items-center gap-2"><Salad size={20}/> Dine-In Menu Items</h3>
-                            <Button variant="outline" disabled>Copy Items from Main Menu</Button>
-                        </div>
-                        <div className="space-y-2">
-                            {menuItems.map(item => (
-                                <div key={item.id} className="flex justify-between items-center p-3 bg-muted rounded-md">
-                                    <p>{item.name}</p>
-                                    <p className="font-semibold">{formatCurrency(item.price)}</p>
-                                </div>
-                            ))}
-                        </div>
+                <div className="grid gap-4 py-4">
+                    <div>
+                        <Label htmlFor="item-name">Item Name</Label>
+                        <Input id="item-name" value={name} onChange={e => setName(e.target.value)} />
                     </div>
-                    <div className="p-4 border border-dashed border-border rounded-lg">
-                        <div className="flex justify-between items-center mb-4">
-                            <h3 className="text-lg font-semibold flex items-center gap-2"><Fork size={20}/> Cutlery & Crockery</h3>
-                             <Button variant="outline" size="sm" disabled><PlusCircle size={16} className="mr-2"/> Add Item</Button>
-                        </div>
-                        <div className="space-y-2">
-                             {cutleryItems.map(item => (
-                                <div key={item.id} className="flex justify-between items-center p-3 bg-muted rounded-md">
-                                    <p>{item.name}</p>
-                                    <p className="font-semibold">{item.price > 0 ? formatCurrency(item.price) : 'Free'}</p>
-                                </div>
-                            ))}
-                        </div>
-                    </div>
-                    <div className="p-4 border border-dashed border-border rounded-lg">
-                        <div className="flex justify-between items-center mb-4">
-                            <h3 className="text-lg font-semibold flex items-center gap-2"><Droplet size={20}/> Basic Amenities</h3>
-                             <Button variant="outline" size="sm" disabled><PlusCircle size={16} className="mr-2"/> Add Item</Button>
-                        </div>
-                         <div className="space-y-2">
-                             {amenityItems.map(item => (
-                                <div key={item.id} className="flex justify-between items-center p-3 bg-muted rounded-md">
-                                    <p>{item.name}</p>
-                                    <p className="font-semibold">{formatCurrency(item.price)}</p>
-                                </div>
-                            ))}
-                        </div>
+                    <div>
+                        <Label htmlFor="item-price">Price (₹)</Label>
+                        <Input id="item-price" type="number" value={price} onChange={e => setPrice(e.target.value)} />
                     </div>
                 </div>
-                 <DialogFooter>
-                    <Button onClick={onClose}>Close</Button>
+                <DialogFooter>
+                    <Button variant="secondary" onClick={onClose}>Cancel</Button>
+                    <Button onClick={handleSave}>Save Item</Button>
                 </DialogFooter>
             </DialogContent>
         </Dialog>
+    );
+}
+
+const DineInMenuModal = ({ isOpen, onClose, showInfoDialog }) => {
+    const [menuItems, setMenuItems] = useState([]);
+    const [cutleryItems, setCutleryItems] = useState([]);
+    const [amenityItems, setAmenityItems] = useState([]);
+    const [isAddItemModalOpen, setAddItemModalOpen] = useState(false);
+    const [addItemCategory, setAddItemCategory] = useState('');
+
+
+    const handleAddItem = (category) => {
+        setAddItemCategory(category);
+        setAddItemModalOpen(true);
+    };
+
+    const handleSaveNewItem = (item) => {
+        if (addItemCategory === 'Cutlery') {
+            setCutleryItems(prev => [...prev, item]);
+        } else if (addItemCategory === 'Amenity') {
+            setAmenityItems(prev => [...prev, item]);
+        }
+    };
+
+    return (
+        <>
+            <DineInAddItemModal
+                isOpen={isAddItemModalOpen}
+                onClose={() => setAddItemModalOpen(false)}
+                onSave={handleSaveNewItem}
+                itemCategory={addItemCategory}
+                showInfoDialog={showInfoDialog}
+            />
+            <Dialog open={isOpen} onOpenChange={onClose}>
+                <DialogContent className="max-w-4xl bg-background border-border text-foreground">
+                    <DialogHeader>
+                        <DialogTitle>Dine-In Menu Editor</DialogTitle>
+                        <Alert>
+                            <AlertTriangle className="h-4 w-4" />
+                            <AlertTitle>Feature in Development</AlertTitle>
+                            <AlertDescription>
+                                This is a preview. Soon, you will be able to copy items from your main menu. Saving items is currently local to this session.
+                            </AlertDescription>
+                        </Alert>
+                    </DialogHeader>
+                    <div className="mt-4 max-h-[70vh] overflow-y-auto pr-4 space-y-6">
+                        <div className="p-4 border border-dashed border-border rounded-lg">
+                            <div className="flex justify-between items-center mb-4">
+                                <h3 className="text-lg font-semibold flex items-center gap-2"><Salad size={20}/> Dine-In Menu Items</h3>
+                                <Button variant="outline" disabled>Copy Items from Main Menu</Button>
+                            </div>
+                            <div className="space-y-2">
+                                {menuItems.length > 0 ? menuItems.map(item => (
+                                    <div key={item.id} className="flex justify-between items-center p-3 bg-muted rounded-md">
+                                        <p>{item.name}</p>
+                                        <p className="font-semibold">{formatCurrency(item.price)}</p>
+                                    </div>
+                                )) : <p className="text-sm text-center text-muted-foreground py-4">No menu items added. Use 'Copy from Main Menu'.</p>}
+                            </div>
+                        </div>
+                        <div className="p-4 border border-dashed border-border rounded-lg">
+                            <div className="flex justify-between items-center mb-4">
+                                <h3 className="text-lg font-semibold flex items-center gap-2"><Fork size={20}/> Cutlery & Crockery</h3>
+                                 <Button variant="outline" size="sm" onClick={() => handleAddItem('Cutlery')}><PlusCircle size={16} className="mr-2"/> Add Item</Button>
+                            </div>
+                            <div className="space-y-2">
+                                 {cutleryItems.length > 0 ? cutleryItems.map((item, index) => (
+                                    <div key={index} className="flex justify-between items-center p-3 bg-muted rounded-md">
+                                        <p>{item.name}</p>
+                                        <p className="font-semibold">{item.price > 0 ? formatCurrency(item.price) : 'Free'}</p>
+                                    </div>
+                                )) : <p className="text-sm text-center text-muted-foreground py-4">No cutlery items added yet.</p>}
+                            </div>
+                        </div>
+                        <div className="p-4 border border-dashed border-border rounded-lg">
+                            <div className="flex justify-between items-center mb-4">
+                                <h3 className="text-lg font-semibold flex items-center gap-2"><Droplet size={20}/> Basic Amenities</h3>
+                                 <Button variant="outline" size="sm" onClick={() => handleAddItem('Amenity')}><PlusCircle size={16} className="mr-2"/> Add Item</Button>
+                            </div>
+                             <div className="space-y-2">
+                                 {amenityItems.length > 0 ? amenityItems.map((item, index) => (
+                                    <div key={index} className="flex justify-between items-center p-3 bg-muted rounded-md">
+                                        <p>{item.name}</p>
+                                        <p className="font-semibold">{formatCurrency(item.price)}</p>
+                                    </div>
+                                )) : <p className="text-sm text-center text-muted-foreground py-4">No amenities added yet.</p>}
+                            </div>
+                        </div>
+                    </div>
+                     <DialogFooter>
+                        <Button onClick={onClose}>Close</Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+        </>
     )
 }
 
