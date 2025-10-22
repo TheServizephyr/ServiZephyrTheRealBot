@@ -1,4 +1,3 @@
-
 'use client';
 
 import React, { useState, useEffect, Suspense, useMemo, useCallback, useRef } from 'react';
@@ -483,7 +482,7 @@ const DineInModal = ({ isOpen, onClose, onBookTable, tableStatus, onStartNewTab,
                         <motion.div key="new_tab">
                              <DialogHeader className="p-6 pb-4">
                                 <DialogTitle>Start a New Tab</DialogTitle>
-                                <DialogDescription>Welcome! Let's get your tab started for Table {tableStatus?.tableId}.</DialogDescription>
+                                <DialogDescription>Welcome to Table {tableStatus?.tableId}! (Max {tableStatus?.max_capacity} guests). Let's get your tab started.</DialogDescription>
                             </DialogHeader>
                             <div className="px-6 pb-6 space-y-4">
                                 <div>
@@ -491,10 +490,10 @@ const DineInModal = ({ isOpen, onClose, onBookTable, tableStatus, onStartNewTab,
                                     <Input type="number" value={newTabPax} onChange={e => setNewTabPax(parseInt(e.target.value))} min="1" max={tableStatus?.max_capacity - tableStatus?.current_pax} className="mt-1" />
                                 </div>
                                 <div>
-                                    <Label>What's a name for your tab?</Label>
+                                    <Label>What's a name for your tab? (Optional)</Label>
                                     <Input value={newTabName} onChange={e => setNewTabName(e.target.value)} placeholder="e.g., Rohan's Group" className="mt-1" />
                                 </div>
-                                <Button onClick={() => onStartNewTab(newTabPax, newTabName)} className="w-full">Start Ordering</Button>
+                                <Button onClick={() => onStartNewTab(newTabPax, newTabName || 'Guest')} className="w-full">Start Ordering</Button>
                             </div>
                         </motion.div>
                     )}
@@ -502,7 +501,7 @@ const DineInModal = ({ isOpen, onClose, onBookTable, tableStatus, onStartNewTab,
                          <motion.div key="join_or_new">
                              <DialogHeader className="p-6 pb-4">
                                 <DialogTitle>Welcome to Table {tableStatus?.tableId}</DialogTitle>
-                                <DialogDescription>This table is partially occupied. Join an existing tab or start a new one.</DialogDescription>
+                                <DialogDescription>This table has {tableStatus?.current_pax} of {tableStatus?.max_capacity} seats taken. Join an existing tab or start a new one.</DialogDescription>
                             </DialogHeader>
                             <div className="px-6 pb-6 space-y-4">
                                 <h4 className="font-semibold text-sm text-muted-foreground">Active Tabs:</h4>
