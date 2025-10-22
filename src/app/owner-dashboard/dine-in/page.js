@@ -1,4 +1,3 @@
-
 'use client';
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
@@ -137,32 +136,9 @@ const BillModal = ({ order, restaurant, onClose, onPrint, printRef }) => {
 };
 
 const TableCard = ({ tableId, tableData, onMarkAsPaid, onPrintBill, onMarkAsCleaned, onShowHistory }) => {
-    const orders = tableData.orders || [];
-    const totalBill = useMemo(() => orders.reduce((sum, order) => sum + (order.totalAmount || 0), 0), [orders]);
-    const customerNames = useMemo(() => [...new Set(orders.map(o => o.customerName))], [orders]);
-    const allItems = useMemo(() => {
-        const itemMap = new Map();
-        orders.forEach(order => {
-            (order.items || []).forEach(item => {
-                const existing = itemMap.get(item.name);
-                if (existing) {
-                    itemMap.set(item.name, { ...existing, qty: existing.qty + item.qty });
-                } else {
-                    itemMap.set(item.name, { ...item });
-                }
-            });
-        });
-        return Array.from(itemMap.values());
-    }, [orders]);
-
-    const latestOrderTime = useMemo(() => {
-        if (orders.length === 0) return null;
-        const latestTimestamp = Math.max(...orders.map(o => o.orderDate.seconds ? o.orderDate.seconds * 1000 : new Date(o.orderDate).getTime()));
-        return new Date(latestTimestamp);
-    }, [orders]);
+    const tabs = tableData.tabs || [];
     
     const state = tableData.state;
-
     const stateConfig = {
         occupied: {
             title: "Occupied",
@@ -209,6 +185,31 @@ const TableCard = ({ tableId, tableData, onMarkAsPaid, onPrintBill, onMarkAsClea
         )
     }
 
+    if(tabs.length === 0) {
+        return (
+             <motion.div
+                layout
+                initial={{ scale: 0.9, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                exit={{ scale: 0.9, opacity: 0 }}
+                transition={{ type: 'spring', stiffness: 260, damping: 20 }}
+            >
+                <Card className={cn("flex flex-col h-full shadow-lg hover:shadow-primary/20 transition-shadow duration-300 border-2", 'border-border')}>
+                    <CardHeader className={cn("flex-row items-center justify-between space-y-0 pb-2", 'bg-card')}>
+                        <CardTitle className="text-2xl font-bold">Table {tableId}</CardTitle>
+                    </CardHeader>
+                    <CardContent className="flex-grow p-4">
+                        <div className="flex flex-col items-center justify-center h-full text-center text-muted-foreground">
+                            <CheckCircle size={32} className="text-green-500 mb-2"/>
+                            <p className="font-semibold">Table is Available</p>
+                            <p className="text-xs">Capacity: {tableData.max_capacity} guests</p>
+                        </div>
+                    </CardContent>
+                </Card>
+            </motion.div>
+        )
+    }
+
     return (
         <motion.div
             layout
@@ -217,52 +218,48 @@ const TableCard = ({ tableId, tableData, onMarkAsPaid, onPrintBill, onMarkAsClea
             exit={{ scale: 0.9, opacity: 0 }}
             transition={{ type: 'spring', stiffness: 260, damping: 20 }}
         >
-            <Card className={cn("flex flex-col h-full shadow-lg hover:shadow-primary/20 transition-shadow duration-300 border-2", orders.length > 0 ? currentConfig.border : 'border-border')}>
-                <CardHeader className={cn("flex-row items-center justify-between space-y-0 pb-2", orders.length > 0 ? currentConfig.bg : 'bg-card')}>
+            <Card className={cn("flex flex-col h-full shadow-lg hover:shadow-primary/20 transition-shadow duration-300 border-2", currentConfig.border)}>
+                 <CardHeader className={cn("flex-row items-center justify-between space-y-0 pb-2", currentConfig.bg)}>
                     <CardTitle className="text-2xl font-bold">Table {tableId}</CardTitle>
-                    {orders.length > 0 && <div className="flex items-center gap-2">
-                        <span className="text-sm font-semibold text-muted-foreground">{customerNames.join(', ')}</span>
-                        <Users size={16} className="text-muted-foreground"/>
-                    </div>}
+                    <div className="flex items-center gap-2">
+                        {currentConfig.icon}
+                        <span className="text-sm font-semibold">{currentConfig.title}</span>
+                    </div>
                 </CardHeader>
                 <CardContent className="flex-grow p-4">
-                    {orders.length > 0 ? (
-                        <>
-                            <div className="text-xs text-muted-foreground mb-3 flex items-center gap-2">
-                                <Clock size={14}/> Last activity: {latestOrderTime ? format(latestOrderTime, 'p') : 'N/A'}
-                            </div>
-                             <div className="space-y-2 max-h-48 overflow-y-auto pr-2">
-                                {allItems.map((item, index) => (
-                                    <div key={index} className="flex justify-between items-center text-sm p-2 bg-muted/50 rounded-md">
-                                        <span className="text-foreground">{item.name}</span>
-                                        <span className="font-semibold text-foreground">x{item.qty}</span>
-                                    </div>
-                                ))}
-                            </div>
-                        </>
-                    ) : (
-                         <div className="flex flex-col items-center justify-center h-full text-center text-muted-foreground">
-                            <CheckCircle size={32} className="text-green-500 mb-2"/>
-                            <p className="font-semibold">Table is Available</p>
-                            <p className="text-xs">Capacity: {tableData.max_capacity} guests</p>
+                   {tabs.map((tab) => (
+                    <div key={tab.id} className="mb-4 last:mb-0">
+                         <div className="flex justify-between items-center bg-muted/50 p-2 rounded-t-lg">
+                            <h4 className="font-semibold text-foreground">{tab.tab_name}</h4>
+                            <span className="text-xs font-mono text-muted-foreground">{tab.id.substring(0,6)}...</span>
                         </div>
-                    )}
+                        <div className="text-xs text-muted-foreground my-2 flex items-center gap-2">
+                            <Clock size={14}/> Last activity: {tab.latestOrderTime ? format(tab.latestOrderTime, 'p') : 'N/A'}
+                        </div>
+                        <div className="space-y-2 max-h-48 overflow-y-auto pr-2">
+                            {tab.allItems.map((item, index) => (
+                                <div key={index} className="flex justify-between items-center text-sm p-2 bg-muted/50 rounded-md">
+                                    <span className="text-foreground">{item.name}</span>
+                                    <span className="font-semibold text-foreground">x{item.qty}</span>
+                                </div>
+                            ))}
+                        </div>
+                        <div className="mt-4 pt-4 border-t border-dashed">
+                             <Button variant="outline" size="sm" className="w-full" onClick={() => onShowHistory(tableId, tab.id)}>
+                                <History size={14} className="mr-2"/> See History
+                            </Button>
+                        </div>
+                        <div className="flex justify-between items-center w-full mt-4">
+                            <span className="text-lg font-bold">Total Bill:</span>
+                            <span className="text-2xl font-bold text-primary">{formatCurrency(tab.totalBill)}</span>
+                        </div>
+                        <div className="grid grid-cols-2 gap-2 w-full mt-4">
+                            <Button variant="outline" onClick={() => onPrintBill({ tableId, orders: tab.orders })}><Printer size={16} className="mr-2"/> Print Bill</Button>
+                            <Button className="bg-primary hover:bg-primary/90" onClick={() => onMarkAsPaid(tableId, tab.id)}><CheckCircle size={16} className="mr-2"/> Mark as Paid</Button>
+                        </div>
+                    </div>
+                   ))}
                 </CardContent>
-                {orders.length > 0 && <CardFooter className="flex-col items-start bg-muted/30 p-4 border-t">
-                    <div className="w-full mb-4 pt-4 border-t border-dashed">
-                        <Button variant="outline" size="sm" className="w-full" onClick={onShowHistory}>
-                            <History size={14} className="mr-2"/> See History
-                        </Button>
-                    </div>
-                    <div className="flex justify-between items-center w-full mb-4">
-                        <span className="text-lg font-bold">Total Bill:</span>
-                        <span className="text-2xl font-bold text-primary">{formatCurrency(totalBill)}</span>
-                    </div>
-                    <div className="grid grid-cols-2 gap-2 w-full">
-                        <Button variant="outline" onClick={() => onPrintBill({ tableId, orders })}><Printer size={16} className="mr-2"/> Print Bill</Button>
-                        <Button className="bg-primary hover:bg-primary/90" onClick={() => onMarkAsPaid(tableId, tableData.orders.map(o => o.dineInTabId).filter(Boolean)[0])}><CheckCircle size={16} className="mr-2"/> Mark as Paid</Button>
-                    </div>
-                </CardFooter>}
             </Card>
         </motion.div>
     );
@@ -686,42 +683,82 @@ function DineInPage() {
             tableMap.set(table.id, {
                 ...table,
                 state: table.state || 'available',
-                orders: [],
-                serviceRequests: [],
+                tabs: [], 
             });
         });
     
+        const tabsData = new Map();
+
         allOrders.forEach(order => {
-            const tableId = order.tableId;
-            if (tableMap.has(tableId)) {
-                const tableEntry = tableMap.get(tableId);
-                tableEntry.state = 'occupied';
-                tableEntry.orders.push(order);
+            const tabId = order.dineInTabId;
+            if (!tabId) return;
+
+            if (!tabsData.has(tabId)) {
+                tabsData.set(tabId, {
+                    id: tabId,
+                    tableId: order.tableId,
+                    tab_name: order.tab_name || "Guest",
+                    orders: [],
+                });
             }
+            tabsData.get(tabId).orders.push(order);
         });
         
         allServiceRequests.forEach(req => {
-            if (tableMap.has(req.tableId)) {
-                tableMap.get(req.tableId).serviceRequests.push(req);
+            if (req.dineInTabId && tabsData.has(req.dineInTabId)) {
+                if (!tabsData.get(req.dineInTabId).serviceRequests) {
+                    tabsData.get(req.dineInTabId).serviceRequests = [];
+                }
+                tabsData.get(req.dineInTabId).serviceRequests.push(req);
+            }
+        });
+
+        tabsData.forEach(tab => {
+            const tableId = tab.tableId;
+            if (tableMap.has(tableId)) {
+                const tableEntry = tableMap.get(tableId);
+                tableEntry.state = 'occupied';
+                
+                const allItems = new Map();
+                tab.orders.forEach(order => {
+                    (order.items || []).forEach(item => {
+                        const existing = allItems.get(item.name);
+                        if (existing) {
+                            allItems.set(item.name, { ...existing, qty: existing.qty + item.qty });
+                        } else {
+                            allItems.set(item.name, { ...item });
+                        }
+                    });
+                });
+                tab.allItems = Array.from(allItems.values());
+                tab.totalBill = tab.orders.reduce((sum, order) => sum + (order.totalAmount || 0), 0);
+                
+                const latestTimestamp = Math.max(...tab.orders.map(o => o.orderDate.seconds ? o.orderDate.seconds * 1000 : new Date(o.orderDate).getTime()));
+                tab.latestOrderTime = new Date(latestTimestamp);
+
+                tableEntry.tabs.push(tab);
             }
         });
         
         return Object.fromEntries(tableMap);
     }, [allOrders, allTables, allServiceRequests]);
     
-    const handleShowHistory = (tableId) => {
+    const handleShowHistory = (tableId, tabId) => {
         const tableData = combinedTableData[tableId];
         if (!tableData) return;
 
-        const orderEvents = tableData.orders.map(o => ({
+        const tab = tableData.tabs.find(t => t.id === tabId);
+        if (!tab) return;
+    
+        const orderEvents = (tab.orders || []).map(o => ({
             type: 'order',
             timestamp: o.orderDate.seconds ? o.orderDate.seconds * 1000 : new Date(o.orderDate).getTime(),
             customerName: o.customerName,
             items: o.items,
             totalAmount: o.totalAmount
         }));
-
-        const requestEvents = tableData.serviceRequests.map(r => ({
+    
+        const requestEvents = (tab.serviceRequests || []).map(r => ({
             type: 'request',
             timestamp: r.createdAt.seconds ? r.createdAt.seconds * 1000 : new Date(r.createdAt).getTime(),
         }));
@@ -794,12 +831,12 @@ function DineInPage() {
                         <div key={i} className="bg-card border border-border rounded-xl h-96"></div>
                     ))}
                 </div>
-            ) : Object.keys(combinedTableData).filter(id => combinedTableData[id].orders.length > 0 || combinedTableData[id].state === 'needs_cleaning').length > 0 ? (
+            ) : Object.values(combinedTableData).some(data => data.tabs.length > 0 || data.state === 'needs_cleaning') ? (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
                     {Object.entries(combinedTableData)
-                        .filter(([_, data]) => data.orders.length > 0 || data.state === 'needs_cleaning')
+                        .filter(([_, data]) => data.tabs.length > 0 || data.state === 'needs_cleaning')
                         .map(([tableId, tableData]) => (
-                        <TableCard key={tableId} tableId={tableId} tableData={tableData} onMarkAsPaid={handleMarkAsPaid} onPrintBill={setBillData} onMarkAsCleaned={handleMarkAsCleaned} onShowHistory={() => handleShowHistory(tableId)}/>
+                        <TableCard key={tableId} tableId={tableId} tableData={tableData} onMarkAsPaid={handleMarkAsPaid} onPrintBill={setBillData} onMarkAsCleaned={handleMarkAsCleaned} onShowHistory={handleShowHistory}/>
                     ))}
                 </div>
             ) : (
@@ -854,5 +891,3 @@ function DineInPage() {
 }
 
 export default DineInPage;
-
-    
