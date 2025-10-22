@@ -21,7 +21,7 @@ import InfoDialog from '@/components/InfoDialog';
 
 const formatCurrency = (value) => `₹${Number(value || 0).toLocaleString('en-IN')}`;
 
-const ManageTablesModal = ({ isOpen, onClose, allTables, onEdit, onDelete, loading, onCreateNew }) => {
+const ManageTablesModal = ({ isOpen, onClose, allTables, onEdit, onDelete, loading, onCreateNew, onShowQr }) => {
     return (
         <Dialog open={isOpen} onOpenChange={onClose}>
             <DialogContent className="bg-background border-border text-foreground max-w-4xl">
@@ -58,6 +58,9 @@ const ManageTablesModal = ({ isOpen, onClose, allTables, onEdit, onDelete, loadi
                                         <td className="p-4">{table.max_capacity}</td>
                                         <td className="p-4">{table.current_pax || 0}</td>
                                         <td className="p-4 flex justify-end gap-2">
+                                            <Button variant="ghost" size="icon" className="h-9 w-9" onClick={() => onShowQr(table)}>
+                                                <QrCode size={16}/>
+                                            </Button>
                                             <Button variant="ghost" size="icon" className="h-9 w-9" onClick={() => onEdit(table)}>
                                                 <Edit size={16}/>
                                             </Button>
@@ -1061,7 +1064,7 @@ function DineInPage() {
     return (
         <div className="p-4 md:p-6 text-foreground min-h-screen bg-background">
             <DineInHistoryModal isOpen={isHistoryModalOpen} onClose={() => setIsHistoryModalOpen(false)} closedTabs={closedTabsData} />
-            <ManageTablesModal isOpen={isManageTablesModalOpen} onClose={() => setIsManageTablesModalOpen(false)} allTables={allTables} onEdit={handleOpenEditModal} onDelete={handleDeleteTable} loading={loading} onCreateNew={() => handleOpenEditModal(null)} />
+            <ManageTablesModal isOpen={isManageTablesModalOpen} onClose={() => setIsManageTablesModalOpen(false)} allTables={allTables} onEdit={handleOpenEditModal} onDelete={handleDeleteTable} loading={loading} onCreateNew={() => handleOpenEditModal(null)} onShowQr={handleOpenQrDisplayModal} />
             <DineInMenuModal isOpen={isDineInMenuModalOpen} onClose={() => setIsDineInMenuModalOpen(false)} showInfoDialog={setInfoDialog} />
             {historyModalData && <HistoryModal tableHistory={historyModalData} onClose={() => setHistoryModalData(null)} />}
             {billData && (
