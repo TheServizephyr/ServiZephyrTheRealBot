@@ -1,5 +1,3 @@
-
-
 'use client';
 
 import React, { useState, useEffect, useMemo, Suspense } from 'react';
@@ -198,7 +196,22 @@ const CartPageInternal = () => {
     };
 
     const handleConfirmOrder = () => {
-        // The data is already saved in localStorage, just navigate
+        // --- NEW DINE-IN LOGIC ---
+        // If it's a dine-in order, we also need to store the setup details
+        // before moving to checkout, so the backend knows to create a new tab.
+        if (deliveryType === 'dine-in' && !tabId) {
+            const dineInSetupStr = localStorage.getItem(`dineInSetup_${restaurantId}_${tableId}`);
+            if (dineInSetupStr) {
+                const dineInSetup = JSON.parse(dineInSetupStr);
+                // Save these details into the main cart data object that will be used at checkout
+                updateCartInStorage({
+                    pax_count: dineInSetup.pax_count,
+                    tab_name: dineInSetup.tab_name,
+                });
+            }
+        }
+
+        // The rest of the data is already saved in localStorage, just navigate
         let checkoutUrl = `/checkout?restaurantId=${restaurantId}&phone=${phone}`;
         if (tableId) {
             checkoutUrl += `&table=${tableId}`;
@@ -596,5 +609,3 @@ const CartPage = () => (
 );
 
 export default CartPage;
-
-    

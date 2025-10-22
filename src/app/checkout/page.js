@@ -1,5 +1,3 @@
-
-
 'use client';
 
 import React, { useState, useEffect, useMemo, Suspense } from 'react';
@@ -283,7 +281,102 @@ const CheckoutPageInternal = () => {
     };
 
     const handleConfirmOrder = async () => {
-        // ... (existing order confirmation logic)
+        if (!name.trim()) {
+            setError("Please enter your name.");
+            return;
+        }
+
+        const orderData = {
+            name,
+            phone: cartData.phone,
+            restaurantId,
+            items: cart,
+            notes: cartData.notes,
+            coupon: appliedCoupons.find(c => !c.customerId) || null,
+            loyaltyDiscount: 0, // This logic can be added later
+            subtotal,
+            cgst,
+            sgst,
+            deliveryCharge: finalDeliveryCharge,
+            grandTotal,
+            paymentMethod: selectedPaymentMethod,
+            deliveryType: cartData.deliveryType,
+            pickupTime: cartData.pickupTime || '',
+            tipAmount: cartData.tipAmount || 0,
+            businessType: cartData.businessType || 'restaurant',
+            tableId: cartData.tableId || null,
+            dineInTabId: cartData.dineInTabId || null,
+            pax_count: cartData.pax_count || null,
+            tab_name: cartData.tab_name || null,
+        };
+
+        if (orderData.deliveryType === 'delivery') {
+            const savedLocation = JSON.parse(localStorage.getItem('customerLocation'));
+            if (!savedLocation || !savedLocation.full) {
+                setError("Please set a delivery location.");
+                return;
+            }
+            orderData.address = savedLocation.full;
+        }
+
+        setLoading(true);
+        setError('');
+
+        try {
+            const res = await fetch('/api/customer/register', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(orderData),
+            });
+
+            const data = await res.json();
+            if (!res.ok) {
+                 if (data.error === 'TABLE_FULL') {
+                    throw new Error("Sorry, this table is now full and cannot accommodate more guests.");
+                 }
+                throw new Error(data.message || "Failed to place order.");
+            }
+
+            // If Razorpay, initiate payment
+            if (data.razorpay_order_id) {
+                const options = {
+                    key: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID,
+                    amount: data.amount,
+                    currency: "INR",
+                    name: cartData.restaurantName,
+                    description: `Order from ${cartData.restaurantName}`,
+                    order_id: data.razorpay_order_id,
+                    handler: function (response) {
+                        localStorage.removeItem(`cart_${restaurantId}`);
+                        if (deliveryType === 'dine-in') {
+                           router.push(`/order/${restaurantId}?table=${tableId}&tabId=${data.dine_in_tab_id || tabId}&phone=${phone}`);
+                        } else {
+                           router.push(`/order/placed?orderId=${data.firestore_order_id}`);
+                        }
+                    },
+                    prefill: {
+                        name: name,
+                        email: "customer@servizephyr.com",
+                        contact: phone,
+                    },
+                };
+                const rzp = new window.Razorpay(options);
+                rzp.open();
+            } else { // For COD/POD/Dine-In
+                localStorage.removeItem(`cart_${restaurantId}`);
+                if (deliveryType === 'dine-in') {
+                   // Redirect back to the order page with the new tabId
+                   router.push(`/order/${restaurantId}?table=${tableId}&tabId=${data.dine_in_tab_id || tabId}&phone=${phone}`);
+                } else {
+                   router.push(`/order/placed?orderId=${data.firestore_order_id}`);
+                }
+            }
+
+        } catch (err) {
+            setError(err.message);
+        } finally {
+            setLoading(false);
+        }
     };
     
     if (loading && !cartData) {
@@ -301,10 +394,41 @@ const CheckoutPageInternal = () => {
         <>
             <Script src="https://checkout.razorpay.com/v1/checkout.js" />
             <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
-                {/* Modal content remains same as before */}
+                 <DialogContent className="bg-background border-border text-foreground">
+                    <DialogHeader>
+                        <DialogTitle>Confirm Details</DialogTitle>
+                        {error && <p className="text-destructive text-sm bg-destructive/10 p-2 rounded-md mt-2">{error}</p>}
+                    </DialogHeader>
+                    <div className="py-4 space-y-4">
+                        <div>
+                            <Label htmlFor="name">Your Name</Label>
+                            <Input id="name" value={name} onChange={(e) => setName(e.target.value)} disabled={loading} />
+                        </div>
+                        {deliveryType === 'delivery' && (
+                             <div>
+                                <Label htmlFor="address">Delivery Address</Label>
+                                <p className="text-sm p-3 bg-muted rounded-md min-h-[40px]">{JSON.parse(localStorage.getItem('customerLocation') || '{}').full || 'No address set'}</p>
+                            </div>
+                        )}
+                    </div>
+                    <DialogFooter>
+                        <DialogClose asChild><Button variant="secondary" disabled={loading}>Cancel</Button></DialogClose>
+                        <Button onClick={handleConfirmOrder} disabled={loading} className="bg-primary hover:bg-primary/90 text-primary-foreground">
+                            {loading ? 'Processing...' : 'Confirm Order'}
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
             </Dialog>
             <Dialog open={isDineInModalOpen} onOpenChange={setDineInModalOpen}>
-                {/* Modal content remains same as before */}
+                <DialogContent>
+                    <DialogHeader>
+                        <DialogTitle>What would you like to do?</DialogTitle>
+                    </DialogHeader>
+                     <div className="grid grid-cols-1 gap-4 py-4">
+                        <Button onClick={handleAddMoreToTab} variant="outline" className="h-16 text-lg">Add More Items</Button>
+                        <Button onClick={handleViewBill} className="h-16 text-lg">View Bill & Pay</Button>
+                    </div>
+                </DialogContent>
             </Dialog>
             <div className="min-h-screen bg-background text-foreground flex flex-col green-theme">
                 <header className="sticky top-0 z-20 bg-background/80 backdrop-blur-lg border-b border-border">
@@ -405,5 +529,3 @@ const CheckoutPage = () => (
 );
 
 export default CheckoutPage;
-
-    
