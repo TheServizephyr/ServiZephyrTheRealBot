@@ -949,7 +949,7 @@ function DineInPage() {
                 <Button onClick={() => setIsHistoryModalOpen(true)} variant="outline" className="h-20 flex-col gap-1" disabled={loading}>
                     <History size={20}/> Dine-In History
                 </Button>
-                <Button onClick={() => {}} variant="outline" className="h-20 flex-col gap-1" disabled={loading}>
+                <Button onClick={() => setInfoDialog({ isOpen: true, title: 'Feature in Development', message: 'The Dine-In Menu Editor will allow you to copy items from your main menu and create new sections for cutlery, water, and other amenities for dine-in customers. Stay tuned!' })} variant="outline" className="h-20 flex-col gap-1" disabled={loading}>
                     <Salad size={20}/> Dine-In Menu
                 </Button>
                  <Button onClick={() => setIsManageTablesModalOpen(true)} variant="outline" className="h-20 flex-col gap-1" disabled={loading}>
@@ -990,5 +990,3 @@ function DineInPage() {
 }
 
 export default DineInPage;
-
-    
