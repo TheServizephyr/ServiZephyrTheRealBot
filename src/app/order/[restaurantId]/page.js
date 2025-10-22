@@ -1,5 +1,4 @@
 
-
 'use client';
 
 import React, { useState, useEffect, Suspense, useMemo, useCallback } from 'react';
@@ -268,7 +267,7 @@ const MenuBrowserModal = ({ isOpen, onClose, categories, onCategoryClick }) => {
   );
 };
 
-const DineInModal = ({ isOpen, onClose, onBookTable, tableStatus, onStartNewTab, onJoinTab, onScanQR }) => {
+const DineInModal = ({ isOpen, onClose, onBookTable, tableStatus, onStartNewTab, onJoinTab, onScanRequest }) => {
     const [activeModal, setActiveModal] = useState('main'); // 'main', 'book', 'success'
     const [bookingDetails, setBookingDetails] = useState({ name: '', phone: '', guests: 2, date: new Date(), time: '19:00' });
     const [isSaving, setIsSaving] = useState(false);
@@ -358,7 +357,7 @@ const DineInModal = ({ isOpen, onClose, onBookTable, tableStatus, onStartNewTab,
                                 <DialogDescription>To dine in, please scan a QR code at your table or book a table in advance.</DialogDescription>
                             </DialogHeader>
                             <div className="px-6 pb-6 space-y-3">
-                                <Button onClick={onScanQR} className="w-full h-16 text-lg"><QrCode className="mr-2"/> Scan Table QR</Button>
+                                <Button onClick={onScanRequest} className="w-full h-16 text-lg"><QrCode className="mr-2"/> Scan Table QR</Button>
                                 <Button onClick={() => setActiveModal('book')} className="w-full h-16 text-lg" variant="outline"><Calendar className="mr-2"/> Book a Table</Button>
                             </div>
                         </motion.div>
@@ -984,7 +983,7 @@ const OrderPageInternal = () => {
                     tableStatus={tableStatus}
                     onStartNewTab={handleStartNewTab}
                     onJoinTab={handleJoinTab}
-                    onScanQR={() => {
+                    onScanRequest={() => {
                         setDineInModalOpen(false);
                         setIsQrScannerOpen(true);
                     }}
@@ -1049,9 +1048,9 @@ const OrderPageInternal = () => {
                   tableStatus={tableStatus}
                   onStartNewTab={handleStartNewTab}
                   onJoinTab={handleJoinTab}
-                  onScanQR={() => {
-                    setDineInModalOpen(false);
-                    setIsQrScannerOpen(true);
+                  onScanRequest={() => {
+                      setDineInModalOpen(false);
+                      setIsQrScannerOpen(true);
                   }}
                 />
                 <CustomizationDrawer
