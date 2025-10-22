@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useState, useEffect, Suspense, useMemo, useCallback, useRef } from 'react';
@@ -1012,6 +1013,12 @@ const OrderPageInternal = () => {
 
         router.push(url);
     };
+    
+    const handleCloseDineInModal = () => {
+        setDineInModalOpen(false);
+        // This is the fix: reset the state so the page doesn't get stuck
+        setDineInState('ready');
+    }
 
     if (loading || dineInState === 'loading') {
         return (
@@ -1036,7 +1043,7 @@ const OrderPageInternal = () => {
             <div className="min-h-screen bg-background">
                  <DineInModal 
                     isOpen={isDineInModalOpen} 
-                    onClose={() => setDineInModalOpen(false)}
+                    onClose={handleCloseDineInModal}
                     tableStatus={tableStatus}
                     onStartNewTab={handleStartNewTab}
                     onJoinTab={handleJoinTab}
@@ -1096,7 +1103,7 @@ const OrderPageInternal = () => {
             <div className="min-h-screen bg-background text-foreground green-theme">
                  <DineInModal
                   isOpen={isDineInModalOpen}
-                  onClose={() => setDineInModalOpen(false)}
+                  onClose={handleCloseDineInModal}
                   onBookTable={handleBookTable}
                   tableStatus={tableStatus}
                   onStartNewTab={handleStartNewTab}
