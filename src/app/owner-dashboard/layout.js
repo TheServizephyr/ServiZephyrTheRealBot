@@ -6,7 +6,7 @@ import { useState, useEffect } from "react";
 import Sidebar from "@/components/OwnerDashboard/Sidebar";
 import Navbar from "@/components/OwnerDashboard/Navbar";
 import styles from "@/components/OwnerDashboard/OwnerDashboard.module.css";
-import { AnimatePresence, motion } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
 import { ThemeProvider } from "@/components/ThemeProvider";
 import "../globals.css";
 import { auth } from "@/lib/firebase";
