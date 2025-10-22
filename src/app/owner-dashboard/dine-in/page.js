@@ -1,4 +1,3 @@
-
 'use client';
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
@@ -11,8 +10,8 @@ import { cn } from "@/lib/utils";
 import { format, formatDistanceToNow, isAfter, subDays } from 'date-fns';
 import { useSearchParams } from 'next/navigation';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose } from "@/components/ui/dialog";
-import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import QRCode from 'qrcode.react';
 import { useReactToPrint } from 'react-to-print';
 import InfoDialog from '@/components/InfoDialog';
@@ -1034,7 +1033,7 @@ function DineInPage() {
                 <Button onClick={() => setIsHistoryModalOpen(true)} variant="outline" className="h-20 flex-col gap-1" disabled={loading}>
                     <History size={20}/> Dine-In History
                 </Button>
-                <Button onClick={() => setIsDineInMenuModalOpen(true)} variant="outline" className="h-20 flex-col gap-1" disabled={loading}>
+                 <Button onClick={() => setIsDineInMenuModalOpen(true)} variant="outline" className="h-20 flex-col gap-1" disabled={loading}>
                     <Salad size={20}/> Dine-In Menu
                 </Button>
                  <Button onClick={() => setIsManageTablesModalOpen(true)} variant="outline" className="h-20 flex-col gap-1" disabled={loading}>
@@ -1075,5 +1074,3 @@ function DineInPage() {
 }
 
 export default DineInPage;
-
-    
