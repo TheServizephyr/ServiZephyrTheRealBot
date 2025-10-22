@@ -267,6 +267,7 @@ const MenuBrowserModal = ({ isOpen, onClose, categories, onCategoryClick }) => {
 };
 
 const DineInModal = ({ isOpen, onClose, onBookTable, tableStatus, onStartNewTab, onJoinTab }) => {
+    console.log("[DEBUG] DineInModal: Rendering. isOpen:", isOpen);
     const [activeModal, setActiveModal] = useState('main'); // 'main', 'book', 'success'
     const [bookingDetails, setBookingDetails] = useState({ name: '', phone: '', guests: 2, date: new Date(), time: '19:00' });
     const [isSaving, setIsSaving] = useState(false);
@@ -692,6 +693,7 @@ const OrderPageInternal = () => {
                 }
                 
                 console.log("[DEBUG] OrderPage: API call successful. Data received:", menuData);
+                console.log("[DEBUG] DineInEnabled from API:", menuData.dineInEnabled);
 
                 setRestaurantData({
                     name: menuData.restaurantName, status: menuData.approvalStatus,
@@ -899,7 +901,9 @@ const OrderPageInternal = () => {
     };
     
     const handleDeliveryTypeChange = (type) => {
+        console.log(`[DEBUG] handleDeliveryTypeChange called with type: ${type}`);
         if (type === 'dine-in' && !tableIdFromUrl) {
+            console.log("[DEBUG] Dine-in clicked, opening modal.");
             setDineInState('needs_setup');
             setDineInModalOpen(true);
             return;
@@ -1027,6 +1031,7 @@ const OrderPageInternal = () => {
     }
 
     if (dineInState === 'needs_setup') {
+        console.log("[DEBUG] DineInState is 'needs_setup', should render modal.");
          return (
             <div className="min-h-screen bg-background">
                  <DineInModal 
@@ -1079,7 +1084,8 @@ const OrderPageInternal = () => {
                 )}
             </AnimatePresence>
             <div className="min-h-screen bg-background text-foreground green-theme">
-                <DineInModal
+                {console.log("[DEBUG] Rendering DineInModal trigger. isDineInModalOpen:", isDineInModalOpen)}
+                 <DineInModal
                   isOpen={isDineInModalOpen}
                   onClose={() => setDineInModalOpen(false)}
                   onBookTable={handleBookTable}
