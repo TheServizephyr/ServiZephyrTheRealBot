@@ -705,7 +705,7 @@ const DineInMenuModal = ({ isOpen, onClose, showInfoDialog }) => {
                             <AlertTriangle className="h-4 w-4" />
                             <AlertTitle>Feature in Development</AlertTitle>
                             <AlertDescription>
-                                This is a preview. Soon, you will be able to copy items from your main menu. Saving items is currently local to this session.
+                               This is a preview. Soon, you will be able to copy items from your main menu. Saving items is currently local to this session.
                             </AlertDescription>
                         </Alert>
                     </DialogHeader>
@@ -1134,5 +1134,7 @@ function DineInPage() {
 }
 
 export default DineInPage;
+
+    
 
     
