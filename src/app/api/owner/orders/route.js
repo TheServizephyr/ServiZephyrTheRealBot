@@ -2,7 +2,7 @@
 
 import { NextResponse } from 'next/server';
 
-import { getAuth, getFirestore } from '@/lib/firebase-admin';
+import { getAuth, getFirestore, FieldValue } from '@/lib/firebase-admin';
 import { sendOrderStatusUpdateToCustomer } from '@/lib/notifications';
 
 
@@ -151,7 +151,7 @@ export async function PATCH(req) {
         
         const updateData = { 
             status: newStatus,
-            statusHistory: firestore.FieldValue.arrayUnion({
+            statusHistory: FieldValue.arrayUnion({
                 status: newStatus,
                 timestamp: new Date()
             })
