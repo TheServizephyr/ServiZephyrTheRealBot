@@ -290,7 +290,30 @@ const CheckoutPageInternal = () => {
             }
         }
         
+        setLoading(true);
+        setError('');
+        
         try {
+            // Fetch user data first to pre-fill name
+             if (parsedData.phone) {
+                const userRes = await fetch('/api/customer/lookup', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ phone: parsedData.phone }),
+                });
+                if (userRes.ok) {
+                    const userData = await userRes.json();
+                    setOrderName(userData.name || '');
+                    setUserAddresses(userData.addresses || []);
+                    if (userData.addresses && userData.addresses.length > 0) {
+                        setSelectedAddress(userData.addresses[0].id);
+                    }
+                    setIsExistingUser(true);
+                } else {
+                     setIsExistingUser(false);
+                }
+            }
+
              const res = await fetch(`/api/owner/settings?restaurantId=${restaurantId}`);
              if (res.ok) {
                 const data = await res.json();
@@ -307,7 +330,8 @@ const CheckoutPageInternal = () => {
                 }
              }
         } catch (err) {
-            console.error("Could not fetch restaurant settings for COD:", err);
+            console.error("Could not fetch initial data:", err);
+            setError('Failed to load checkout details. Please try again.');
             setCodEnabled(false);
         } finally {
             setLoading(false);
@@ -320,52 +344,14 @@ const CheckoutPageInternal = () => {
 
 
     useEffect(() => {
-        const fetchUserData = async () => {
-            if (isModalOpen && cartData?.phone) {
-                setLoading(true);
-                setError('');
-                try {
-                    const res = await fetch('/api/customer/lookup', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ phone: cartData.phone }),
-                    });
-                    if (res.ok) {
-                        const data = await res.json();
-                        setOrderName(data.name || '');
-                        setUserAddresses(data.addresses || []);
-                        if (data.addresses && data.addresses.length > 0) {
-                            setSelectedAddress(data.addresses[0].id);
-                            setOrderName(data.addresses[0].name || data.name || '');
-                            setOrderPhone(data.addresses[0].phone || cartData.phone || '');
-                        }
-                        setIsExistingUser(true);
-                    } else {
-                        setIsExistingUser(false);
-                        setOrderName('');
-                        setUserAddresses([]);
-                    }
-                } catch (err) {
-                    setError('Could not fetch user details. Please enter manually.');
-                    setIsExistingUser(false);
-                } finally {
-                    setLoading(false);
-                }
-            }
-        };
-        fetchUserData();
-    }, [isModalOpen, cartData?.phone]);
-
-    useEffect(() => {
         const address = userAddresses.find(a => a.id === selectedAddress);
         if (address) {
             setOrderName(address.name || '');
             setOrderPhone(address.phone || '');
-        } else if (userAddresses.length > 0) {
-            // If selected address is gone, select the first one
+        } else if (userAddresses.length > 0 && !selectedAddress) {
+            // Auto-select the first address if none is selected
             setSelectedAddress(userAddresses[0].id);
-        } else {
-            // No addresses left, clear fields
+        } else if (userAddresses.length === 0) {
             setSelectedAddress(null);
             setOrderName('');
             setOrderPhone(cartData?.phone || '');
@@ -463,7 +449,13 @@ const CheckoutPageInternal = () => {
 
     const handlePaymentMethodSelect = (method) => {
         setSelectedPaymentMethod(method);
-        setIsModalOpen(true);
+        const deliveryType = cartData.tableId ? 'dine-in' : (cartData.deliveryType || 'delivery');
+        
+        if (deliveryType === 'delivery') {
+            setIsModalOpen(true);
+        } else {
+            handleConfirmOrder(method);
+        }
     };
     
     const handleAddMoreToTab = () => {
@@ -475,9 +467,19 @@ const CheckoutPageInternal = () => {
         setIsSplitBillActive(true);
     };
 
-    const handleConfirmOrder = async () => {
+    const handleConfirmOrder = async (paymentMethod) => {
+        const finalPaymentMethod = paymentMethod || selectedPaymentMethod;
+        const deliveryType = cartData.tableId ? 'dine-in' : (cartData.deliveryType || 'delivery');
+
+        if (deliveryType === 'delivery' && !selectedAddress) {
+            setError("Please select or add a delivery address.");
+            setIsModalOpen(true); // Open modal if not already open
+            return;
+        }
+
         if (!orderName.trim()) {
-            setError("Please enter your name.");
+            setError("Please provide a name for the order.");
+            if (deliveryType === 'delivery') setIsModalOpen(true);
             return;
         }
 
@@ -496,7 +498,7 @@ const CheckoutPageInternal = () => {
             sgst,
             deliveryCharge: finalDeliveryCharge,
             grandTotal,
-            paymentMethod: selectedPaymentMethod,
+            paymentMethod: finalPaymentMethod,
             deliveryType: cartData.deliveryType,
             pickupTime: cartData.pickupTime || '',
             tipAmount: cartData.tipAmount || 0,
@@ -508,10 +510,6 @@ const CheckoutPageInternal = () => {
         };
 
         if (orderData.deliveryType === 'delivery') {
-            if (!deliveryAddress) {
-                setError("Please select or add a delivery address.");
-                return;
-            }
             orderData.address = deliveryAddress.full;
         }
 
@@ -569,6 +567,7 @@ const CheckoutPageInternal = () => {
             setError(err.message);
         } finally {
             setLoading(false);
+            setIsModalOpen(false);
         }
     };
     
@@ -634,7 +633,7 @@ const CheckoutPageInternal = () => {
                     </div>
                     <DialogFooter>
                         <DialogClose asChild><Button variant="secondary" disabled={loading}>Cancel</Button></DialogClose>
-                        <Button onClick={handleConfirmOrder} disabled={loading} className="bg-primary hover:bg-primary/90 text-primary-foreground">
+                        <Button onClick={() => handleConfirmOrder()} disabled={loading} className="bg-primary hover:bg-primary/90 text-primary-foreground">
                             {loading ? 'Processing...' : 'Confirm Order'}
                         </Button>
                     </DialogFooter>
@@ -750,5 +749,3 @@ const CheckoutPage = () => (
 );
 
 export default CheckoutPage;
-
-    
