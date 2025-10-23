@@ -1,5 +1,4 @@
 
-
 import { getFirestore } from '@/lib/firebase-admin';
 import { NextResponse } from 'next/server';
 import Razorpay from 'razorpay';
@@ -41,13 +40,8 @@ export async function POST(req) {
         const isNewUser = existingUserQuery.empty;
         const userId = isNewUser ? normalizedPhone : existingUserQuery.docs[0].id;
 
-
-        // This is a placeholder for a real address-to-coordinate conversion
-        const getCoordinatesFromAddress = (addr) => {
-            if (typeof addr === 'string' && addr.toLowerCase().includes('delhi')) return new (getFirestore().GeoPoint)(28.7041, 77.1025);
-            return new (getFirestore().GeoPoint)(28.6692, 77.4538);
-        };
-        const customerLocation = deliveryType === 'delivery' ? getCoordinatesFromAddress(address) : null;
+        // GeoPoint logic is temporarily disabled as per user request.
+        const customerLocation = null;
 
         if (paymentMethod === 'razorpay') {
             if (!process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID || !process.env.RAZORPAY_KEY_SECRET) {

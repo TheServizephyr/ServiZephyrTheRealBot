@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useState, useEffect, useMemo, Suspense } from 'react';
@@ -135,8 +136,10 @@ const CheckoutPageInternal = () => {
     const [cartData, setCartData] = useState(null);
     const [appliedCoupons, setAppliedCoupons] = useState([]);
     const [name, setName] = useState('');
-    const [address, setAddress] = useState('');
     
+    const [userAddresses, setUserAddresses] = useState([]);
+    const [selectedAddress, setSelectedAddress] = useState(null);
+
     const [isExistingUser, setIsExistingUser] = useState(false);
     const [codEnabled, setCodEnabled] = useState(false);
     const [isModalOpen, setIsModalOpen] = useState(false);
@@ -221,10 +224,18 @@ const CheckoutPageInternal = () => {
                     if (res.ok) {
                         const data = await res.json();
                         setName(data.name);
+                        setUserAddresses(data.addresses || []);
+                        if (data.addresses && data.addresses.length > 0) {
+                            setSelectedAddress(data.addresses[0].full); // Default to first address
+                        }
                         setIsExistingUser(true);
                     } else {
                         setIsExistingUser(false);
                         setName('');
+                        setUserAddresses([]);
+                        // For new users, we might want to pre-fill from localStorage if available
+                        const savedLocation = JSON.parse(localStorage.getItem('customerLocation') || '{}');
+                        setSelectedAddress(savedLocation.full || '');
                     }
                 } catch (err) {
                     setError('Could not fetch user details. Please enter manually.');
@@ -314,12 +325,11 @@ const CheckoutPageInternal = () => {
         };
 
         if (orderData.deliveryType === 'delivery') {
-            const savedLocation = JSON.parse(localStorage.getItem('customerLocation'));
-            if (!savedLocation || !savedLocation.full) {
-                setError("Please set a delivery location.");
+            if (!selectedAddress) {
+                setError("Please select or confirm a delivery address.");
                 return;
             }
-            orderData.address = savedLocation.full;
+            orderData.address = selectedAddress;
         }
 
         setLoading(true);
@@ -402,7 +412,7 @@ const CheckoutPageInternal = () => {
                         <DialogTitle>Confirm Details</DialogTitle>
                         {error && <p className="text-destructive text-sm bg-destructive/10 p-2 rounded-md mt-2">{error}</p>}
                     </DialogHeader>
-                    <div className="py-4 space-y-4">
+                    <div className="py-4 space-y-4 max-h-[70vh] overflow-y-auto">
                         <div>
                             <Label htmlFor="name">Your Name</Label>
                             <Input id="name" value={name} onChange={(e) => setName(e.target.value)} disabled={loading} />
@@ -410,7 +420,26 @@ const CheckoutPageInternal = () => {
                         {deliveryType === 'delivery' && (
                              <div>
                                 <Label htmlFor="address">Delivery Address</Label>
-                                <p className="text-sm p-3 bg-muted rounded-md min-h-[40px]">{JSON.parse(localStorage.getItem('customerLocation') || '{}').full || 'No address set'}</p>
+                                {userAddresses.length > 0 ? (
+                                    <div className="space-y-2 mt-2">
+                                        {userAddresses.map(addr => (
+                                            <div key={addr.id} className="flex items-center space-x-2 p-3 rounded-md bg-muted has-[:checked]:bg-primary/10 has-[:checked]:border-primary border border-transparent">
+                                                <input
+                                                    type="radio"
+                                                    id={addr.id}
+                                                    name="address"
+                                                    value={addr.full}
+                                                    checked={selectedAddress === addr.full}
+                                                    onChange={(e) => setSelectedAddress(e.target.value)}
+                                                    className="h-4 w-4 text-primary border-gray-300 focus:ring-primary"
+                                                />
+                                                <Label htmlFor={addr.id} className="flex-1 cursor-pointer">{addr.full}</Label>
+                                            </div>
+                                        ))}
+                                    </div>
+                                ) : (
+                                    <p className="text-sm p-3 bg-muted rounded-md min-h-[40px] mt-2">{selectedAddress || 'No saved address. Use location page to set one.'}</p>
+                                )}
                             </div>
                         )}
                     </div>
