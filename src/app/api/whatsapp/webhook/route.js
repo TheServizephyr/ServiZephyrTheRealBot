@@ -216,6 +216,24 @@ export async function POST(request) {
 
             await batch.commit();
             console.log(`[Webhook] Message saved successfully for ${customerPhone}.`);
+            
+            // --- FIX: SEND AUTOMATIC REPLY ---
+            const conversationDoc = await conversationRef.get();
+            const messageCount = (await conversationRef.collection('messages').count().get()).data().count;
+
+            if (messageCount <= 1) { // Send reply only on the first message
+                console.log(`[Webhook] First message from ${customerPhone}. Sending automatic reply.`);
+                const menuLink = `https://servizephyr.com/order/${business.id}?phone=${customerPhone}`;
+                const replyText = `Thanks for contacting *${business.data.name}*. We have received your message and will get back to you shortly.\n\nYou can also view our menu and place an order directly here:\n${menuLink}`;
+                
+                await sendWhatsAppMessage(fromWithCode, replyText, botPhoneNumberId);
+                 console.log(`[Webhook] Automatic reply sent to ${customerPhone}.`);
+            } else {
+                 console.log(`[Webhook] Not the first message from ${customerPhone}. Skipping automatic reply.`);
+            }
+            // --- END FIX ---
+
+
         } else {
             console.log("[Webhook] Received a non-text, non-button event. Skipping.");
         }
