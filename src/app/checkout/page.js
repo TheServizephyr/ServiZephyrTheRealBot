@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useState, useEffect, useMemo, Suspense } from 'react';
@@ -122,7 +123,7 @@ const SplitBillInterface = ({ totalAmount, onBack, orderDetails }) => {
     return null;
 };
 
-const AddAddressModal = ({ isOpen, onClose, onSave }) => {
+const AddAddressModal = ({ isOpen, onClose, onSave, existingAddresses }) => {
     const [label, setLabel] = useState('');
     const [recipientName, setRecipientName] = useState('');
     const [phone, setPhone] = useState('');
@@ -145,6 +146,7 @@ const AddAddressModal = ({ isOpen, onClose, onSave }) => {
     }, [isOpen]);
 
     const handleSave = () => {
+        // Basic validation
         if (!recipientName.trim() || !phone.trim() || !address.trim()) {
             setError('Please fill all required fields: Recipient Name, Phone, and Address.');
             return;
@@ -157,14 +159,32 @@ const AddAddressModal = ({ isOpen, onClose, onSave }) => {
             setError('Please enter a valid 10-digit alternate phone number.');
             return;
         }
-        setIsSaving(true);
-        const newAddress = {
-            id: `addr_${Date.now()}`,
-            label: label.trim(),
+
+        const trimmedAddress = {
             name: recipientName.trim(),
             phone: phone.trim(),
             alternatePhone: alternatePhone.trim(),
             full: address.trim(),
+        };
+
+        // Check for duplicates
+        const isDuplicate = existingAddresses.some(addr => 
+            addr.name === trimmedAddress.name &&
+            addr.phone === trimmedAddress.phone &&
+            addr.alternatePhone === trimmedAddress.alternatePhone &&
+            addr.full === trimmedAddress.full
+        );
+
+        if (isDuplicate) {
+            setError('This address already exists in your address book.');
+            return;
+        }
+
+        setIsSaving(true);
+        const newAddress = {
+            id: `addr_${Date.now()}`,
+            label: label.trim(),
+            ...trimmedAddress
         };
         onSave(newAddress).finally(() => setIsSaving(false));
     };
@@ -514,7 +534,7 @@ const CheckoutPageInternal = () => {
     return (
         <>
             <Script src="https://checkout.razorpay.com/v1/checkout.js" />
-            <AddAddressModal isOpen={isAddAddressModalOpen} onClose={() => setIsAddAddressModalOpen(false)} onSave={handleAddNewAddress} />
+            <AddAddressModal isOpen={isAddAddressModalOpen} onClose={() => setIsAddAddressModalOpen(false)} onSave={handleAddNewAddress} existingAddresses={userAddresses} />
             <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
                  <DialogContent className="bg-background border-border text-foreground">
                     <DialogHeader>
@@ -677,5 +697,3 @@ const CheckoutPage = () => (
 );
 
 export default CheckoutPage;
-
-    
