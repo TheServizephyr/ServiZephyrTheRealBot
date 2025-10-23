@@ -1,48 +1,53 @@
 
 import { NextResponse } from 'next/server';
 
-const MAPPLS_API_KEY = process.env.MAPPLS_API_KEY;
-
+// This API now uses the free Nominatim service from OpenStreetMap
 export async function GET(req) {
-    console.log("[API search] Request received.");
+    console.log("[API search] Request received for location search via Nominatim.");
     const { searchParams } = new URL(req.url);
     const query = searchParams.get('query');
-
-    if (!MAPPLS_API_KEY) {
-        console.error("[API search] Mappls API Key (MAPPLS_API_KEY) is not configured.");
-        return NextResponse.json({ message: "Server configuration error: Mappls API Key is missing." }, { status: 500 });
-    }
 
     if (!query) {
         return NextResponse.json({ message: "Search query is required." }, { status: 400 });
     }
+    
+    // Add "India" to the query for better results in the region
+    const biasedQuery = `${query}, India`;
 
-    const url = `https://search.mappls.com/search/autosuggest?query=${encodeURIComponent(query)}`;
+    const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(biasedQuery)}&addressdetails=1&limit=5`;
+    console.log(`[API search] Calling Nominatim API: ${url}`);
 
     try {
-        console.log(`[API search] Calling Mappls AutoSuggest API: ${url}`);
         const response = await fetch(url, {
             method: 'GET',
             headers: {
-                'Authorization': `bearer ${MAPPLS_API_KEY}`
+                'User-Agent': 'ServiZephyr/1.0 (ashwanibaghel@servizephyr.com)' // Nominatim requires a user-agent
             }
         });
         
-        console.log(`[API search] Mappls response status: ${response.status}`);
+        console.log(`[API search] Nominatim response status: ${response.status}`);
         const data = await response.json();
 
         if (!response.ok) {
-            const errorMessage = data?.error || data?.errorMessage || `Mappls returned status ${response.status}`;
-            console.error(`[API search] Mappls API error:`, errorMessage);
+            const errorMessage = data?.error || `Nominatim returned status ${response.status}`;
+            console.error(`[API search] Nominatim API error:`, errorMessage);
             return NextResponse.json({ message: errorMessage }, { status: response.status });
         }
 
-        console.log("[API search] Mappls response successful.");
-        return NextResponse.json(data.suggestedLocations || [], { status: 200 });
+        // Transform Nominatim data to match the expected `suggestedLocations` format
+        const suggestedLocations = data.map(item => ({
+            placeName: item.display_name.split(',')[0],
+            placeAddress: item.display_name,
+            latitude: parseFloat(item.lat),
+            longitude: parseFloat(item.lon),
+            eLoc: item.place_id // Use place_id as a unique key
+        }));
+        
+        console.log("[API search] Nominatim response successful, transformed to expected format.");
+        return NextResponse.json(suggestedLocations, { status: 200 });
 
     } catch (error) {
-        console.error(`[API search] CRITICAL Error calling Mappls API: ${error.message}`);
-        return NextResponse.json({ message: "Failed to fetch search results from Mappls.", error: error.message }, { status: 500 });
+        console.error(`[API search] CRITICAL Error calling Nominatim API: ${error.message}`);
+        return NextResponse.json({ message: "Failed to fetch search results from geocoding service.", error: error.message }, { status: 500 });
     }
 }
-
