@@ -357,7 +357,7 @@ const CheckoutPageInternal = () => {
     useEffect(() => {
         const address = userAddresses.find(a => a.id === selectedAddress);
         if (address) {
-            setOrderName(address.name || ''); 
+            setOrderName(address.name || '');
             setOrderPhone(address.phone || '');
         } else if (userAddresses.length > 0 && !selectedAddress) {
             setSelectedAddress(userAddresses[0].id);
@@ -763,5 +763,3 @@ const CheckoutPage = () => (
 );
 
 export default CheckoutPage;
-
-    
