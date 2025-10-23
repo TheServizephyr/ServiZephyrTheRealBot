@@ -16,9 +16,7 @@ const LocationPageInternal = () => {
     const returnUrl = searchParams.get('returnUrl') || `/order/${restaurantId}`;
 
     const [mapCenter, setMapCenter] = useState(null);
-    const [mapInstance, setMapInstance] = useState(null);
-    const [markerInstance, setMarkerInstance] = useState(null);
-
+    
     const [addressDetails, setAddressDetails] = useState({
         house: '',
         landmark: '',
@@ -71,6 +69,9 @@ const LocationPageInternal = () => {
         setLoading(true);
         setError('');
         try {
+            // Since we're using Leaflet now, we can switch to a free geocoding service like Nominatim
+            // For simplicity and to avoid another dependency, we'll keep our Mappls API route for now, assuming it's still functional for geocoding.
+            // A better solution would be to replace this with Nominatim or another free service.
             const res = await fetch(`/api/location/geocode?lat=${coords.lat}&lng=${coords.lng}`);
             console.log(`[LocationPage] /api/location/geocode response status: ${res.status}`);
             const data = await res.json();
@@ -87,12 +88,6 @@ const LocationPageInternal = () => {
                 lng: coords.lng,
             });
             
-            if (mapInstance && markerInstance) {
-                const newPos = new window.mappls.LatLng(coords.lat, coords.lng);
-                mapInstance.panTo(newPos);
-                markerInstance.setPosition(newPos);
-            }
-
         } catch (err) {
             console.error("[LocationPage] Reverse geocode API error:", err);
             setError('Could not fetch address details for this location.');
@@ -111,12 +106,13 @@ const LocationPageInternal = () => {
             debounceTimeout.current = setTimeout(async () => {
                 console.log("[LocationPage] Searching for:", searchQuery);
                 try {
+                    // This can also be switched to Nominatim if the Mappls API is fully deprecated
                     const res = await fetch(`/api/location/search?query=${searchQuery}`);
                     console.log(`[LocationPage] /api/location/search response status: ${res.status}`);
                     if (!res.ok) throw new Error('Search failed.');
                     const data = await res.json();
                     console.log("[LocationPage] Search suggestions:", data);
-                    setSuggestions(data.suggestedLocations || []);
+                    setSuggestions(data || []);
                 } catch (err) {
                     console.error("[LocationPage] Search API error:", err);
                 }
@@ -167,7 +163,7 @@ const LocationPageInternal = () => {
                         onChange={(e) => setSearchQuery(e.target.value)}
                     />
                     {suggestions.length > 0 && (
-                        <div className="absolute top-full mt-2 w-full bg-card border border-border rounded-lg shadow-lg max-h-60 overflow-y-auto">
+                        <div className="absolute top-full mt-2 w-full bg-card border border-border rounded-lg shadow-lg max-h-60 overflow-y-auto z-20">
                             {suggestions.map(s => (
                                 <div key={s.eLoc} onClick={() => handleSuggestionClick(s)} className="p-3 hover:bg-muted cursor-pointer border-b border-border last:border-b-0">
                                     <p className="font-semibold text-sm">{s.placeName}</p>
@@ -184,12 +180,6 @@ const LocationPageInternal = () => {
                      <MapplsMap 
                         initialCenter={mapCenter}
                         onPinDragEnd={reverseGeocode}
-                        onMapLoad={(map, marker) => {
-                            console.log("[LocationPage] MapplsMap loaded, setting map and marker instances.");
-                            setMapInstance(map);
-                            setMarkerInstance(marker);
-                        }}
-                        onError={(mapError) => setError(`Map Error: ${mapError}`)}
                      />
                 ) : (
                     <div className="h-full w-full flex items-center justify-center bg-muted">
