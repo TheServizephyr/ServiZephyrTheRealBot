@@ -50,18 +50,20 @@ export async function GET(req) {
         const businessDoc = await verifyOwnerAndGetBusinessRef(req);
         
         const messagesSnap = await businessDoc.ref.collection('conversations').doc(conversationId).collection('messages')
-            .orderBy('timestamp', 'asc')
+            .orderBy('timestamp', 'asc') // THE FIX: Explicitly sort messages by timestamp
             .get();
             
         const messages = messagesSnap.docs.map(doc => {
             const data = doc.data();
+            // Ensure timestamp is serializable to ISO string for the client
             return {
+                id: doc.id,
                 ...data,
                 timestamp: data.timestamp.toDate().toISOString()
             };
         });
         
-        // Mark conversation as read
+        // Mark conversation as read after fetching messages
         await businessDoc.ref.collection('conversations').doc(conversationId).set({ unreadCount: 0 }, { merge: true });
 
         return NextResponse.json({ messages }, { status: 200 });
@@ -109,6 +111,7 @@ export async function POST(req) {
             status: 'sent'
         });
 
+        // Update the last message and timestamp on the main conversation document
         batch.set(conversationRef, {
             lastMessage: text,
             lastMessageTimestamp: FieldValue.serverTimestamp(),
