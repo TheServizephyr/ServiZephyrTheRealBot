@@ -1,6 +1,4 @@
-
-
-"use client";
+'use client';
 
 import {
   LayoutDashboard,
@@ -39,6 +37,7 @@ const getMenuItems = (businessType) => [
   { name: "Dine-In", icon: ConciergeBell, href: "/owner-dashboard/dine-in", featureId: "dine-in" },
   { name: "Bookings", icon: CalendarClock, href: "/owner-dashboard/bookings", featureId: "bookings" },
   { name: "Customers", icon: Users, href: "/owner-dashboard/customers", featureId: "customers" },
+  { name: "WhatsApp Direct", icon: MessageSquare, href: "/owner-dashboard/whatsapp-direct", featureId: "whatsapp-direct" },
   { name: "Analytics", icon: BarChart2, href: "/owner-dashboard/analytics", featureId: "analytics" },
   { name: "Delivery", icon: Truck, href: "/owner-dashboard/delivery", featureId: "delivery" },
   { name: "Coupons", icon: Ticket, href: "/owner-dashboard/coupons", featureId: "coupons" },
@@ -97,7 +96,7 @@ export default function Sidebar({ isOpen, setIsOpen, isMobile, isCollapsed, rest
   }, []);
 
   const getIsDisabled = (featureId) => {
-    const alwaysEnabled = ['menu', 'settings', 'connections', 'payout-settings', 'dine-in', 'bookings'];
+    const alwaysEnabled = ['menu', 'settings', 'connections', 'payout-settings', 'dine-in', 'bookings', 'whatsapp-direct'];
     if (alwaysEnabled.includes(featureId)) {
         return false;
     }
