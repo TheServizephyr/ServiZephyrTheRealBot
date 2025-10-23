@@ -1,5 +1,3 @@
-
-
 'use client';
 
 import React, { useState, useEffect, useMemo, Suspense } from 'react';
@@ -180,8 +178,13 @@ const AddAddressModal = ({ isOpen, onClose, onSave, isExistingUser, userName, us
             name: finalName,
             phone: finalPhone,
             alternatePhone: alternatePhone.trim(),
-            full: fullAddress, // Add the constructed full address
-            ...address
+            street: address.street.trim(),
+            landmark: address.landmark.trim(),
+            city: address.city.trim(),
+            pincode: address.pincode.trim(),
+            state: address.state.trim(),
+            country: address.country.trim(),
+            full: fullAddress, 
         };
         
         setIsSaving(true);
@@ -355,14 +358,14 @@ const CheckoutPageInternal = () => {
     useEffect(() => {
         const address = userAddresses.find(a => a.id === selectedAddress);
         if (address) {
-            setOrderName(address.name || orderName || ''); 
+            // THE FIX: Set name and phone from the selected address, don't reset name
+            setOrderName(address.name || ''); 
             setOrderPhone(address.phone || '');
         } else if (userAddresses.length > 0 && !selectedAddress) {
+            // If no address is selected but addresses exist, default to the first one.
             setSelectedAddress(userAddresses[0].id);
-        } else if (userAddresses.length === 0) {
-            setSelectedAddress(null);
         }
-    }, [selectedAddress, userAddresses, orderName]); // Added orderName to dependencies
+    }, [selectedAddress, userAddresses]);
     
     const handleAddNewAddress = async (newAddress) => {
         try {
