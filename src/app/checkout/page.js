@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useState, useEffect, useMemo, Suspense } from 'react';
@@ -357,9 +358,14 @@ const CheckoutPageInternal = () => {
     useEffect(() => {
         const address = userAddresses.find(a => a.id === selectedAddress);
         if (address) {
-            setOrderName(address.name || '');
+            // THE FIX: Only update name if the address has a valid name.
+            // This prevents overwriting the `orderName` fetched from the user lookup.
+            if (address.name && address.name.trim() !== '') {
+                setOrderName(address.name);
+            }
             setOrderPhone(address.phone || '');
         } else if (userAddresses.length > 0 && !selectedAddress) {
+            // Auto-select the first address if none is selected
             setSelectedAddress(userAddresses[0].id);
         }
     }, [selectedAddress, userAddresses]);
@@ -462,10 +468,20 @@ const CheckoutPageInternal = () => {
         const deliveryType = cartData.tableId ? 'dine-in' : (cartData.deliveryType || 'delivery');
         
         if (deliveryType === 'delivery') {
-            setIsModalOpen(true);
-        } else {
-            handleConfirmOrder(method);
+            const deliveryAddress = userAddresses.find(a => a.id === selectedAddress);
+            if (!deliveryAddress) {
+                setError("Please select or add a delivery address.");
+                setIsModalOpen(true);
+                return;
+            }
+        } else if (!isExistingUser && (!orderName || orderName.trim().length === 0)) {
+            // For new users in pickup/dine-in, ensure name is provided
+             setError("Please provide your name.");
+             setIsModalOpen(true);
+             return;
         }
+
+        setIsModalOpen(true);
     };
     
     const handleAddMoreToTab = () => {
@@ -603,7 +619,7 @@ const CheckoutPageInternal = () => {
             <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
                  <DialogContent className="bg-background border-border text-foreground">
                     <DialogHeader>
-                        <DialogTitle>Confirm Delivery Address</DialogTitle>
+                        <DialogTitle>{deliveryType === 'delivery' ? 'Confirm Delivery Details' : 'Confirm Your Details'}</DialogTitle>
                         {error && <p className="text-destructive text-sm bg-destructive/10 p-2 rounded-md mt-2">{error}</p>}
                     </DialogHeader>
                     <div className="py-4 space-y-4 max-h-[70vh] overflow-y-auto">
@@ -641,7 +657,7 @@ const CheckoutPageInternal = () => {
                         ) : (
                              <div>
                                 <Label htmlFor="name">Your Name</Label>
-                                <Input id="name" value={orderName} onChange={(e) => setOrderName(e.target.value)} disabled={loading} />
+                                <Input id="name" value={orderName} onChange={(e) => setOrderName(e.target.value)} disabled={loading || isExistingUser} />
                             </div>
                         )}
                     </div>
