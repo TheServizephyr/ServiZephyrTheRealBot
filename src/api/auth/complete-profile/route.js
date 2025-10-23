@@ -48,8 +48,17 @@ export async function POST(req) {
             // Ensure addresses in unclaimed data are in the new format
             const unclaimedAddresses = (unclaimedData.addresses || []).map(addr => {
                 if (typeof addr === 'string') {
-                    return { id: `addr_${Date.now()}_${Math.random()}`, name: 'Default', phone: unclaimedData.phone, full: addr };
+                    // Convert old string address to new structured format
+                    return {
+                        id: `addr_${Date.now()}_${Math.random()}`,
+                        label: 'Default', // Provide a default label
+                        name: unclaimedData.name, // Use the name from the unclaimed profile
+                        phone: unclaimedData.phone,
+                        alternatePhone: '',
+                        full: addr
+                    };
                 }
+                // If it's already an object, assume it's in the new format or close enough
                 return addr;
             });
 

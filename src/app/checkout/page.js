@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useState, useEffect, useMemo, Suspense } from 'react';
@@ -123,27 +124,35 @@ const SplitBillInterface = ({ totalAmount, onBack, orderDetails }) => {
 };
 
 const AddAddressModal = ({ isOpen, onClose, onSave }) => {
-    const [name, setName] = useState('');
+    const [label, setLabel] = useState('');
+    const [recipientName, setRecipientName] = useState('');
     const [phone, setPhone] = useState('');
+    const [alternatePhone, setAlternatePhone] = useState('');
     const [address, setAddress] = useState('');
     const [isSaving, setIsSaving] = useState(false);
     const [error, setError] = useState('');
 
     const handleSave = () => {
-        if (!name.trim() || !phone.trim() || !address.trim()) {
-            setError('Please fill all fields.');
+        if (!label.trim() || !recipientName.trim() || !phone.trim() || !address.trim()) {
+            setError('Please fill all required fields: Label, Recipient Name, Phone, and Address.');
             return;
         }
         if (!/^\d{10}$/.test(phone.trim())) {
-            setError('Please enter a valid 10-digit phone number.');
+            setError('Please enter a valid 10-digit primary phone number.');
+            return;
+        }
+        if (alternatePhone && !/^\d{10}$/.test(alternatePhone.trim())) {
+            setError('Please enter a valid 10-digit alternate phone number.');
             return;
         }
         setIsSaving(true);
         const newAddress = {
             id: `addr_${Date.now()}`,
-            name,
+            label,
+            name: recipientName,
             phone,
-            full: address
+            alternatePhone,
+            full: address,
         };
         onSave(newAddress).finally(() => setIsSaving(false));
     };
@@ -158,16 +167,24 @@ const AddAddressModal = ({ isOpen, onClose, onSave }) => {
                 <div className="py-4 space-y-4">
                      {error && <p className="text-destructive text-sm bg-destructive/10 p-2 rounded-md">{error}</p>}
                     <div>
-                        <Label htmlFor="addr-name">Label (e.g., Home, Office, Friend's Place)</Label>
-                        <Input id="addr-name" value={name} onChange={(e) => setName(e.target.value)} />
+                        <Label htmlFor="addr-label">Address Label (e.g., Home, Office)</Label>
+                        <Input id="addr-label" value={label} onChange={(e) => setLabel(e.target.value)} required />
                     </div>
                     <div>
-                        <Label htmlFor="addr-phone">Phone Number</Label>
-                        <Input id="addr-phone" type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} />
+                        <Label htmlFor="addr-name">Recipient Name</Label>
+                        <Input id="addr-name" value={recipientName} onChange={(e) => setRecipientName(e.target.value)} required />
+                    </div>
+                    <div>
+                        <Label htmlFor="addr-phone">Primary Phone Number</Label>
+                        <Input id="addr-phone" type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} required/>
+                    </div>
+                     <div>
+                        <Label htmlFor="addr-alt-phone">Alternate Phone Number (Optional)</Label>
+                        <Input id="addr-alt-phone" type="tel" value={alternatePhone} onChange={(e) => setAlternatePhone(e.target.value)} />
                     </div>
                     <div>
                         <Label htmlFor="addr-full">Full Address</Label>
-                        <Input id="addr-full" value={address} onChange={(e) => setAddress(e.target.value)} />
+                        <Input id="addr-full" value={address} onChange={(e) => setAddress(e.target.value)} required/>
                     </div>
                 </div>
                 <DialogFooter>
@@ -426,9 +443,6 @@ const CheckoutPageInternal = () => {
 
             const data = await res.json();
             if (!res.ok) {
-                 if (data.error === 'TABLE_FULL') {
-                    throw new Error("Sorry, this table is now full and cannot accommodate more guests.");
-                 }
                 throw new Error(data.message || "Failed to place order.");
             }
 
@@ -512,9 +526,9 @@ const CheckoutPageInternal = () => {
                                                 className="h-4 w-4 text-primary border-gray-300 focus:ring-primary"
                                             />
                                             <Label htmlFor={addr.id} className="flex-1 cursor-pointer">
-                                                <p className="font-semibold">{addr.name}</p>
+                                                <p className="font-semibold">{addr.label} <span className="font-normal text-muted-foreground">({addr.name})</span></p>
                                                 <p className="text-xs text-muted-foreground">{addr.full}</p>
-                                                <p className="text-xs text-muted-foreground">Ph: {addr.phone}</p>
+                                                <p className="text-xs text-muted-foreground">Ph: {addr.phone} {addr.alternatePhone && ` / ${addr.alternatePhone}`}</p>
                                             </Label>
                                         </div>
                                     ))}
