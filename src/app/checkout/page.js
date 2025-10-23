@@ -4,7 +4,7 @@
 import React, { useState, useEffect, useMemo, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { motion } from 'framer-motion';
-import { ArrowLeft, Wallet, IndianRupee, CreditCard, Landmark, Split, Users as UsersIcon, QrCode, PlusCircle } from 'lucide-react';
+import { ArrowLeft, Wallet, IndianRupee, CreditCard, Landmark, Split, Users as UsersIcon, QrCode, PlusCircle, Trash2 } from 'lucide-react';
 import Script from 'next/script';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose } from "@/components/ui/dialog";
@@ -12,6 +12,7 @@ import { Label } from '@/components/ui/label';
 import { cn } from '@/lib/utils';
 import QRCode from 'qrcode.react';
 import { Input } from '@/components/ui/input';
+import { auth } from '@/lib/firebase';
 
 // Main component for the split bill interface
 const SplitBillInterface = ({ totalAmount, onBack, orderDetails }) => {
@@ -134,7 +135,6 @@ const AddAddressModal = ({ isOpen, onClose, onSave, existingAddresses }) => {
 
     useEffect(() => {
         if (isOpen) {
-            // Reset form fields when modal opens
             setLabel('');
             setRecipientName('');
             setPhone('');
@@ -145,8 +145,7 @@ const AddAddressModal = ({ isOpen, onClose, onSave, existingAddresses }) => {
         }
     }, [isOpen]);
 
-    const handleSave = () => {
-        // Basic validation
+    const handleSave = async () => {
         if (!recipientName.trim() || !phone.trim() || !address.trim()) {
             setError('Please fill all required fields: Recipient Name, Phone, and Address.');
             return;
@@ -160,19 +159,20 @@ const AddAddressModal = ({ isOpen, onClose, onSave, existingAddresses }) => {
             return;
         }
 
-        const trimmedAddress = {
+        const newAddress = {
+            id: `addr_${Date.now()}`,
+            label: label.trim(),
             name: recipientName.trim(),
             phone: phone.trim(),
             alternatePhone: alternatePhone.trim(),
             full: address.trim(),
         };
 
-        // Check for duplicates
         const isDuplicate = existingAddresses.some(addr => 
-            addr.name === trimmedAddress.name &&
-            addr.phone === trimmedAddress.phone &&
-            addr.alternatePhone === trimmedAddress.alternatePhone &&
-            addr.full === trimmedAddress.full
+            addr.name === newAddress.name &&
+            addr.phone === newAddress.phone &&
+            addr.full === newAddress.full &&
+            addr.alternatePhone === newAddress.alternatePhone
         );
 
         if (isDuplicate) {
@@ -181,12 +181,13 @@ const AddAddressModal = ({ isOpen, onClose, onSave, existingAddresses }) => {
         }
 
         setIsSaving(true);
-        const newAddress = {
-            id: `addr_${Date.now()}`,
-            label: label.trim(),
-            ...trimmedAddress
-        };
-        onSave(newAddress).finally(() => setIsSaving(false));
+        try {
+            await onSave(newAddress);
+        } catch (err) {
+             setError(err.message);
+        } finally {
+            setIsSaving(false);
+        }
     };
 
     return (
@@ -243,7 +244,6 @@ const CheckoutPageInternal = () => {
     const [cartData, setCartData] = useState(null);
     const [appliedCoupons, setAppliedCoupons] = useState([]);
     
-    // Order details state
     const [orderName, setOrderName] = useState('');
     const [orderPhone, setOrderPhone] = useState('');
     const [selectedAddress, setSelectedAddress] = useState(null);
@@ -259,64 +259,62 @@ const CheckoutPageInternal = () => {
     const [isDineInModalOpen, setDineInModalOpen] = useState(false);
     const [isSplitBillActive, setIsSplitBillActive] = useState(false);
     
-    // Fetch cart and restaurant settings
-    useEffect(() => {
-        const fetchInitialData = async () => {
-            if (!restaurantId) {
-                router.push('/');
+    const fetchInitialData = async () => {
+        if (!restaurantId) {
+            router.push('/');
+            return;
+        }
+
+        let parsedData;
+        const savedCartData = localStorage.getItem(`cart_${restaurantId}`);
+        if (savedCartData) {
+            parsedData = JSON.parse(savedCartData);
+            const finalPhone = phone || parsedData.phone;
+            
+            const deliveryType = tableId ? 'dine-in' : (parsedData.deliveryType || 'delivery');
+
+            const updatedData = { ...parsedData, phone: finalPhone, tableId: tableId || null, dineInTabId: tabId || null, deliveryType };
+
+            setCart(updatedData.cart || []);
+            setAppliedCoupons(updatedData.appliedCoupons || []);
+            setCartData(updatedData);
+            setOrderPhone(finalPhone);
+
+        } else {
+             if (tabId) {
+                parsedData = { dineInTabId: tabId, deliveryType: 'dine-in', phone: phone };
+                setCartData(parsedData);
+            } else {
+                router.push(`/order/${restaurantId}${tableId ? `?table=${tableId}`: ''}`);
                 return;
             }
+        }
+        
+        try {
+             const res = await fetch(`/api/owner/settings?restaurantId=${restaurantId}`);
+             if (res.ok) {
+                const data = await res.json();
+                 const deliveryType = tableId ? 'dine-in' : (parsedData.deliveryType || 'delivery');
 
-            let parsedData;
-            const savedCartData = localStorage.getItem(`cart_${restaurantId}`);
-            if (savedCartData) {
-                parsedData = JSON.parse(savedCartData);
-                const finalPhone = phone || parsedData.phone;
-                
-                const deliveryType = tableId ? 'dine-in' : (parsedData.deliveryType || 'delivery');
-
-                const updatedData = { ...parsedData, phone: finalPhone, tableId: tableId || null, dineInTabId: tabId || null, deliveryType };
-
-                setCart(updatedData.cart || []);
-                setAppliedCoupons(updatedData.appliedCoupons || []);
-                setCartData(updatedData);
-                setOrderPhone(finalPhone); // Set initial order phone
-
-            } else {
-                 if (tabId) { // User is here to pay an existing tab
-                    parsedData = { dineInTabId: tabId, deliveryType: 'dine-in', phone: phone };
-                    setCartData(parsedData);
+                if (deliveryType === 'delivery') {
+                    setCodEnabled(data.deliveryCodEnabled);
+                } else if (deliveryType === 'pickup') {
+                     setCodEnabled(data.pickupPodEnabled);
+                } else if (deliveryType === 'dine-in') {
+                    setCodEnabled(data.dineInPayAtCounterEnabled);
                 } else {
-                    router.push(`/order/${restaurantId}${tableId ? `?table=${tableId}`: ''}`);
-                    return;
+                    setCodEnabled(false);
                 }
-            }
-            
-            try {
-                 const res = await fetch(`/api/owner/settings?restaurantId=${restaurantId}`);
-                 if (res.ok) {
-                    const data = await res.json();
-                     const deliveryType = tableId ? 'dine-in' : (parsedData.deliveryType || 'delivery');
+             }
+        } catch (err) {
+            console.error("Could not fetch restaurant settings for COD:", err);
+            setCodEnabled(false);
+        } finally {
+            setLoading(false);
+        }
+    };
 
-                    if (deliveryType === 'delivery') {
-                        setCodEnabled(data.deliveryCodEnabled);
-                    } else if (deliveryType === 'pickup') {
-                         setCodEnabled(data.pickupPodEnabled);
-                    } else if (deliveryType === 'dine-in') {
-                        setCodEnabled(data.dineInPayAtCounterEnabled);
-                    } else {
-                        setCodEnabled(false);
-                    }
-
-                 }
-            } catch (err) {
-                console.error("Could not fetch restaurant settings for COD:", err);
-                setCodEnabled(false);
-            } finally {
-                setLoading(false);
-            }
-        };
-
+    useEffect(() => {
         fetchInitialData();
     }, [restaurantId, router, phone, tableId, tabId]);
 
@@ -337,7 +335,7 @@ const CheckoutPageInternal = () => {
                         setOrderName(data.name);
                         setUserAddresses(data.addresses || []);
                         if (data.addresses && data.addresses.length > 0) {
-                            setSelectedAddress(data.addresses[0].id); // Default to first address ID
+                            setSelectedAddress(data.addresses[0].id);
                             setOrderName(data.addresses[0].name || data.name);
                             setOrderPhone(data.addresses[0].phone || cartData.phone);
                         }
@@ -369,12 +367,60 @@ const CheckoutPageInternal = () => {
     }, [selectedAddress, userAddresses]);
     
     const handleAddNewAddress = async (newAddress) => {
-        // Here you would typically call an API to save the new address to the user's profile.
-        // For this demo, we'll just update the local state.
-        const updatedAddresses = [...userAddresses, newAddress];
-        setUserAddresses(updatedAddresses);
-        setSelectedAddress(newAddress.id);
-        setIsAddAddressModalOpen(false);
+        try {
+            const user = auth.currentUser;
+            if (!user) throw new Error("You must be logged in to save an address.");
+            const idToken = await user.getIdToken();
+
+            const res = await fetch('/api/user/addresses', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${idToken}` },
+                body: JSON.stringify(newAddress)
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.message || 'Failed to save address.');
+
+            const updatedAddresses = [...userAddresses, data.address];
+            setUserAddresses(updatedAddresses);
+            setSelectedAddress(data.address.id);
+            setIsAddAddressModalOpen(false);
+        } catch (error) {
+            console.error("Error saving new address:", error);
+            throw error; // Re-throw to be caught in the modal
+        }
+    };
+    
+    const handleDeleteAddress = async (addressId) => {
+        if (window.confirm("Are you sure you want to delete this address?")) {
+            try {
+                const user = auth.currentUser;
+                if (!user) throw new Error("Authentication required.");
+                const idToken = await user.getIdToken();
+
+                const res = await fetch('/api/user/addresses', {
+                    method: 'DELETE',
+                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${idToken}` },
+                    body: JSON.stringify({ addressId })
+                });
+
+                if (!res.ok) {
+                    const data = await res.json();
+                    throw new Error(data.message || 'Failed to delete address.');
+                }
+                
+                // Update local state
+                const updatedAddresses = userAddresses.filter(addr => addr.id !== addressId);
+                setUserAddresses(updatedAddresses);
+                
+                // If the deleted address was selected, reset selection
+                if(selectedAddress === addressId) {
+                    setSelectedAddress(updatedAddresses.length > 0 ? updatedAddresses[0].id : null);
+                }
+
+            } catch (error) {
+                setError("Error deleting address: " + error.message);
+            }
+        }
     };
 
     const subtotal = useMemo(() => cart.reduce((sum, item) => sum + item.totalPrice * item.quantity, 0), [cart]);
@@ -547,7 +593,7 @@ const CheckoutPageInternal = () => {
                                 <Label htmlFor="address">Delivery Address</Label>
                                 <div className="space-y-2 mt-2">
                                     {userAddresses.map(addr => (
-                                        <div key={addr.id} className="flex items-center space-x-2 p-3 rounded-md bg-muted has-[:checked]:bg-primary/10 has-[:checked]:border-primary border border-transparent">
+                                        <div key={addr.id} className="flex items-start gap-2 p-3 rounded-md bg-muted has-[:checked]:bg-primary/10 has-[:checked]:border-primary border border-transparent">
                                             <input
                                                 type="radio"
                                                 id={addr.id}
@@ -555,16 +601,17 @@ const CheckoutPageInternal = () => {
                                                 value={addr.id}
                                                 checked={selectedAddress === addr.id}
                                                 onChange={(e) => setSelectedAddress(e.target.value)}
-                                                className="h-4 w-4 text-primary border-gray-300 focus:ring-primary"
+                                                className="h-4 w-4 mt-1 text-primary border-gray-300 focus:ring-primary"
                                             />
                                             <Label htmlFor={addr.id} className="flex-1 cursor-pointer">
                                                 <p className="font-semibold">
-                                                    {addr.name}
+                                                     {addr.name}
                                                     {addr.label && <span className="font-normal text-muted-foreground"> ({addr.label})</span>}
                                                 </p>
                                                 <p className="text-xs text-muted-foreground">{addr.full}</p>
                                                 <p className="text-xs text-muted-foreground">Ph: {addr.phone} {addr.alternatePhone && ` / ${addr.alternatePhone}`}</p>
                                             </Label>
+                                             <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive" onClick={(e) => {e.stopPropagation(); handleDeleteAddress(addr.id);}}><Trash2 size={14}/></Button>
                                         </div>
                                     ))}
                                     <Button variant="outline" className="w-full" onClick={() => setIsAddAddressModalOpen(true)}>
