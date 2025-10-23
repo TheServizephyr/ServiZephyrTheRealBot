@@ -788,22 +788,27 @@ const OrderPageInternal = () => {
     }, [restaurantId, phoneFromUrl, tableIdFromUrl, tabIdFromUrl]);
     
     // --- CART PERSISTENCE ---
-    const updateCart = useCallback((newCart, newNotes, newDeliveryType) => {
-        setCart(newCart);
-        if (newNotes !== undefined) {
-            setNotes(newNotes);
-        }
-        if (newDeliveryType !== undefined) {
-            setDeliveryType(newDeliveryType);
-        }
-        
-        // Add expiry timestamp to the cart data
-        const expiryTimestamp = new Date().getTime() + (24 * 60 * 60 * 1000); // 24 hours from now
+    const cartPersistenceDependencies = [
+        restaurantId,
+        restaurantData.name,
+        restaurantData.coupons,
+        restaurantData.deliveryCharge,
+        restaurantData.deliveryEnabled,
+        restaurantData.pickupEnabled,
+        loyaltyPoints,
+        phoneFromUrl,
+    ];
 
+    // Persist cart to localStorage whenever it changes
+    useEffect(() => {
+        if (!restaurantId || loading) return;
+
+        const expiryTimestamp = new Date().getTime() + (24 * 60 * 60 * 1000); // 24 hours from now
+        
         const cartDataToSave = {
-            cart: newCart,
-            notes: newNotes !== undefined ? newNotes : notes,
-            deliveryType: newDeliveryType !== undefined ? newDeliveryType : deliveryType,
+            cart,
+            notes,
+            deliveryType,
             restaurantId,
             restaurantName: restaurantData.name,
             phone: phoneFromUrl || localStorage.getItem('lastKnownPhone'),
@@ -812,26 +817,23 @@ const OrderPageInternal = () => {
             deliveryCharge: restaurantData.deliveryCharge,
             deliveryEnabled: restaurantData.deliveryEnabled,
             pickupEnabled: restaurantData.pickupEnabled,
-            expiryTimestamp: expiryTimestamp, // Save the expiry time
+            expiryTimestamp,
         };
         localStorage.setItem(`cart_${restaurantId}`, JSON.stringify(cartDataToSave));
-    }, [notes, restaurantId, restaurantData, loyaltyPoints, phoneFromUrl, deliveryType]);
-    
+    }, [cart, notes, deliveryType, ...cartPersistenceDependencies, loading]);
+
+    // Load cart from localStorage on initial load
     useEffect(() => {
         if (restaurantId) {
             const savedCartData = localStorage.getItem(`cart_${restaurantId}`);
             if (savedCartData) {
                 const parsedData = JSON.parse(savedCartData);
-
-                // Check if the cart has expired
                 const now = new Date().getTime();
                 if (parsedData.expiryTimestamp && now > parsedData.expiryTimestamp) {
-                    // Cart has expired, clear it
                     localStorage.removeItem(`cart_${restaurantId}`);
                     setCart([]);
                     setNotes('');
                 } else {
-                    // Cart is still valid
                     setCart(parsedData.cart || []);
                     setNotes(parsedData.notes || '');
                     if (parsedData.deliveryType && !tableIdFromUrl) {
@@ -841,7 +843,6 @@ const OrderPageInternal = () => {
             }
         }
     }, [restaurantId, tableIdFromUrl]);
-
 
     // --- MENU PROCESSING & FILTERING ---
     const searchPlaceholder = useMemo(() => {
@@ -901,19 +902,18 @@ const OrderPageInternal = () => {
     // --- CART ACTIONS ---
 
     const subtotal = useMemo(() => cart.reduce((sum, item) => sum + item.totalPrice * item.quantity, 0), [cart]);
-
+    
     const handleAddToCart = useCallback((item, portion, selectedAddOns, totalPrice) => {
         const cartItemId = `${item.id}-${portion.name}-${(selectedAddOns || []).map(a => a.name).sort().join('-')}`;
         
         setCart(currentCart => {
             const existingItemIndex = currentCart.findIndex(cartItem => cartItem.cartItemId === cartItemId);
-            let newCart;
             if (existingItemIndex > -1) {
-                newCart = currentCart.map((cartItem, index) =>
+                return currentCart.map((cartItem, index) =>
                     index === existingItemIndex ? { ...cartItem, quantity: cartItem.quantity + 1 } : cartItem
                 );
             } else {
-                newCart = [...currentCart, { 
+                return [...currentCart, { 
                     ...item, 
                     cartItemId, 
                     portion, 
@@ -922,10 +922,8 @@ const OrderPageInternal = () => {
                     quantity: 1 
                 }];
             }
-            updateCart(newCart, notes, deliveryType);
-            return newCart;
         });
-    }, [notes, deliveryType, updateCart]);
+    }, []);
 
     const handleIncrement = (item) => {
         // Direct add if item is simple (1 portion, 0 addons)
@@ -956,7 +954,7 @@ const OrderPageInternal = () => {
             newCart[lastMatchingItemIndex].quantity--;
         }
 
-        updateCart(newCart);
+        setCart(newCart);
     };
     
     const handleDeliveryTypeChange = (type) => {
@@ -967,7 +965,7 @@ const OrderPageInternal = () => {
             setIsDineInModalOpen(true);
             return;
         }
-        updateCart(cart, notes, type);
+        setDeliveryType(type);
     };
 
     const handleBookTable = async (bookingDetails) => {
