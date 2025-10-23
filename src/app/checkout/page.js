@@ -1,4 +1,3 @@
-
 'use client';
 
 import React, { useState, useEffect, useMemo, Suspense } from 'react';
@@ -132,9 +131,22 @@ const AddAddressModal = ({ isOpen, onClose, onSave }) => {
     const [isSaving, setIsSaving] = useState(false);
     const [error, setError] = useState('');
 
+    useEffect(() => {
+        if (isOpen) {
+            // Reset form fields when modal opens
+            setLabel('');
+            setRecipientName('');
+            setPhone('');
+            setAlternatePhone('');
+            setAddress('');
+            setError('');
+            setIsSaving(false);
+        }
+    }, [isOpen]);
+
     const handleSave = () => {
-        if (!label.trim() || !recipientName.trim() || !phone.trim() || !address.trim()) {
-            setError('Please fill all required fields: Label, Recipient Name, Phone, and Address.');
+        if (!recipientName.trim() || !phone.trim() || !address.trim()) {
+            setError('Please fill all required fields: Recipient Name, Phone, and Address.');
             return;
         }
         if (!/^\d{10}$/.test(phone.trim())) {
@@ -148,11 +160,11 @@ const AddAddressModal = ({ isOpen, onClose, onSave }) => {
         setIsSaving(true);
         const newAddress = {
             id: `addr_${Date.now()}`,
-            label,
-            name: recipientName,
-            phone,
-            alternatePhone,
-            full: address,
+            label: label.trim(),
+            name: recipientName.trim(),
+            phone: phone.trim(),
+            alternatePhone: alternatePhone.trim(),
+            full: address.trim(),
         };
         onSave(newAddress).finally(() => setIsSaving(false));
     };
@@ -168,7 +180,7 @@ const AddAddressModal = ({ isOpen, onClose, onSave }) => {
                      {error && <p className="text-destructive text-sm bg-destructive/10 p-2 rounded-md">{error}</p>}
                     <div>
                         <Label htmlFor="addr-label">Address Label (e.g., Home, Office)</Label>
-                        <Input id="addr-label" value={label} onChange={(e) => setLabel(e.target.value)} required />
+                        <Input id="addr-label" value={label} onChange={(e) => setLabel(e.target.value)} />
                     </div>
                     <div>
                         <Label htmlFor="addr-name">Recipient Name</Label>
@@ -526,7 +538,10 @@ const CheckoutPageInternal = () => {
                                                 className="h-4 w-4 text-primary border-gray-300 focus:ring-primary"
                                             />
                                             <Label htmlFor={addr.id} className="flex-1 cursor-pointer">
-                                                <p className="font-semibold">{addr.label} <span className="font-normal text-muted-foreground">({addr.name})</span></p>
+                                                <p className="font-semibold">
+                                                    {addr.name}
+                                                    {addr.label && <span className="font-normal text-muted-foreground"> ({addr.label})</span>}
+                                                </p>
                                                 <p className="text-xs text-muted-foreground">{addr.full}</p>
                                                 <p className="text-xs text-muted-foreground">Ph: {addr.phone} {addr.alternatePhone && ` / ${addr.alternatePhone}`}</p>
                                             </Label>
@@ -662,3 +677,5 @@ const CheckoutPage = () => (
 );
 
 export default CheckoutPage;
+
+    
