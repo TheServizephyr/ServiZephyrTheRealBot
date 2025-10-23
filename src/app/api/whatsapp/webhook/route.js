@@ -188,7 +188,6 @@ export async function POST(request) {
             const conversationRef = business.ref.collection('conversations').doc(customerPhone);
             const messagesCollectionRef = conversationRef.collection('messages');
             
-            // --- FINAL FIX: Check if any messages exist in the subcollection ---
             const messagesSnap = await messagesCollectionRef.limit(1).get();
             const isNewConversation = messagesSnap.empty;
 
@@ -197,14 +196,12 @@ export async function POST(request) {
                 const menuLink = `https://servizephyr.com/order/${business.id}?phone=${customerPhone}`;
                 const replyText = `Thanks for contacting *${business.data.name}*. We have received your message and will get back to you shortly.\n\nYou can also view our menu and place an order directly here:\n${menuLink}`;
                 
-                // Send the reply BEFORE writing to the database
                 await sendWhatsAppMessage(fromWithCode, replyText, botPhoneNumberId);
                 console.log(`[Webhook] Automatic reply sent to ${customerPhone}.`);
             } else {
-                 console.log(`[Webhook] Not the first message from ${customerPhone}. Skipping automatic reply.`);
+                 console.log(`[Webhook] Existing conversation with ${customerPhone}. Skipping automatic reply.`);
             }
 
-            // Now, save the message to the database
             const messageRef = messagesCollectionRef.doc();
             console.log(`[Webhook] Saving message to Firestore for customer ${customerPhone} at path: ${messageRef.path}`);
             
