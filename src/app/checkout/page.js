@@ -1,10 +1,9 @@
-
 'use client';
 
 import React, { useState, useEffect, useMemo, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { motion } from 'framer-motion';
-import { ArrowLeft, Wallet, IndianRupee, CreditCard, Landmark, Split, Users as UsersIcon, QrCode } from 'lucide-react';
+import { ArrowLeft, Wallet, IndianRupee, CreditCard, Landmark, Split, Users as UsersIcon, QrCode, PlusCircle } from 'lucide-react';
 import Script from 'next/script';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose } from "@/components/ui/dialog";
@@ -123,6 +122,65 @@ const SplitBillInterface = ({ totalAmount, onBack, orderDetails }) => {
     return null;
 };
 
+const AddAddressModal = ({ isOpen, onClose, onSave }) => {
+    const [name, setName] = useState('');
+    const [phone, setPhone] = useState('');
+    const [address, setAddress] = useState('');
+    const [isSaving, setIsSaving] = useState(false);
+    const [error, setError] = useState('');
+
+    const handleSave = () => {
+        if (!name.trim() || !phone.trim() || !address.trim()) {
+            setError('Please fill all fields.');
+            return;
+        }
+        if (!/^\d{10}$/.test(phone.trim())) {
+            setError('Please enter a valid 10-digit phone number.');
+            return;
+        }
+        setIsSaving(true);
+        const newAddress = {
+            id: `addr_${Date.now()}`,
+            name,
+            phone,
+            full: address
+        };
+        onSave(newAddress).finally(() => setIsSaving(false));
+    };
+
+    return (
+        <Dialog open={isOpen} onOpenChange={onClose}>
+            <DialogContent className="bg-background border-border text-foreground">
+                <DialogHeader>
+                    <DialogTitle>Add a New Address</DialogTitle>
+                    <DialogDescription>Save an address to your address book for future orders.</DialogDescription>
+                </DialogHeader>
+                <div className="py-4 space-y-4">
+                     {error && <p className="text-destructive text-sm bg-destructive/10 p-2 rounded-md">{error}</p>}
+                    <div>
+                        <Label htmlFor="addr-name">Label (e.g., Home, Office, Friend's Place)</Label>
+                        <Input id="addr-name" value={name} onChange={(e) => setName(e.target.value)} />
+                    </div>
+                    <div>
+                        <Label htmlFor="addr-phone">Phone Number</Label>
+                        <Input id="addr-phone" type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} />
+                    </div>
+                    <div>
+                        <Label htmlFor="addr-full">Full Address</Label>
+                        <Input id="addr-full" value={address} onChange={(e) => setAddress(e.target.value)} />
+                    </div>
+                </div>
+                <DialogFooter>
+                    <DialogClose asChild><Button variant="secondary" disabled={isSaving}>Cancel</Button></DialogClose>
+                    <Button onClick={handleSave} disabled={isSaving}>
+                        {isSaving ? 'Saving...' : 'Save Address'}
+                    </Button>
+                </DialogFooter>
+            </DialogContent>
+        </Dialog>
+    );
+};
+
 
 const CheckoutPageInternal = () => {
     const router = useRouter();
@@ -135,14 +193,17 @@ const CheckoutPageInternal = () => {
     const [cart, setCart] = useState([]);
     const [cartData, setCartData] = useState(null);
     const [appliedCoupons, setAppliedCoupons] = useState([]);
-    const [name, setName] = useState('');
+    
+    // Order details state
+    const [orderName, setOrderName] = useState('');
+    const [orderPhone, setOrderPhone] = useState('');
+    const [selectedAddress, setSelectedAddress] = useState(null);
     
     const [userAddresses, setUserAddresses] = useState([]);
-    const [selectedAddress, setSelectedAddress] = useState(null);
-
     const [isExistingUser, setIsExistingUser] = useState(false);
     const [codEnabled, setCodEnabled] = useState(false);
     const [isModalOpen, setIsModalOpen] = useState(false);
+    const [isAddAddressModalOpen, setIsAddAddressModalOpen] = useState(false);
     const [selectedPaymentMethod, setSelectedPaymentMethod] = useState(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
@@ -170,6 +231,7 @@ const CheckoutPageInternal = () => {
                 setCart(updatedData.cart || []);
                 setAppliedCoupons(updatedData.appliedCoupons || []);
                 setCartData(updatedData);
+                setOrderPhone(finalPhone); // Set initial order phone
 
             } else {
                  if (tabId) { // User is here to pay an existing tab
@@ -223,19 +285,18 @@ const CheckoutPageInternal = () => {
                     });
                     if (res.ok) {
                         const data = await res.json();
-                        setName(data.name);
+                        setOrderName(data.name);
                         setUserAddresses(data.addresses || []);
                         if (data.addresses && data.addresses.length > 0) {
-                            setSelectedAddress(data.addresses[0].full); // Default to first address
+                            setSelectedAddress(data.addresses[0].id); // Default to first address ID
+                            setOrderName(data.addresses[0].name || data.name);
+                            setOrderPhone(data.addresses[0].phone || cartData.phone);
                         }
                         setIsExistingUser(true);
                     } else {
                         setIsExistingUser(false);
-                        setName('');
+                        setOrderName('');
                         setUserAddresses([]);
-                        // For new users, we might want to pre-fill from localStorage if available
-                        const savedLocation = JSON.parse(localStorage.getItem('customerLocation') || '{}');
-                        setSelectedAddress(savedLocation.full || '');
                     }
                 } catch (err) {
                     setError('Could not fetch user details. Please enter manually.');
@@ -247,7 +308,26 @@ const CheckoutPageInternal = () => {
         };
         fetchUserData();
     }, [isModalOpen, cartData?.phone]);
+
+    useEffect(() => {
+        if (selectedAddress) {
+            const address = userAddresses.find(a => a.id === selectedAddress);
+            if (address) {
+                setOrderName(address.name);
+                setOrderPhone(address.phone);
+            }
+        }
+    }, [selectedAddress, userAddresses]);
     
+    const handleAddNewAddress = async (newAddress) => {
+        // Here you would typically call an API to save the new address to the user's profile.
+        // For this demo, we'll just update the local state.
+        const updatedAddresses = [...userAddresses, newAddress];
+        setUserAddresses(updatedAddresses);
+        setSelectedAddress(newAddress.id);
+        setIsAddAddressModalOpen(false);
+    };
+
     const subtotal = useMemo(() => cart.reduce((sum, item) => sum + item.totalPrice * item.quantity, 0), [cart]);
     
     const { totalDiscount, finalDeliveryCharge, cgst, sgst, grandTotal } = useMemo(() => {
@@ -295,14 +375,16 @@ const CheckoutPageInternal = () => {
     };
 
     const handleConfirmOrder = async () => {
-        if (!name.trim()) {
+        if (!orderName.trim()) {
             setError("Please enter your name.");
             return;
         }
 
+        const deliveryAddress = userAddresses.find(a => a.id === selectedAddress);
+
         const orderData = {
-            name,
-            phone: cartData.phone,
+            name: orderName,
+            phone: orderPhone,
             restaurantId,
             items: cart,
             notes: cartData.notes,
@@ -325,11 +407,11 @@ const CheckoutPageInternal = () => {
         };
 
         if (orderData.deliveryType === 'delivery') {
-            if (!selectedAddress) {
-                setError("Please select or confirm a delivery address.");
+            if (!deliveryAddress) {
+                setError("Please select or add a delivery address.");
                 return;
             }
-            orderData.address = selectedAddress;
+            orderData.address = deliveryAddress.full;
         }
 
         setLoading(true);
@@ -368,9 +450,9 @@ const CheckoutPageInternal = () => {
                         }
                     },
                     prefill: {
-                        name: name,
+                        name: orderName,
                         email: "customer@servizephyr.com",
-                        contact: phone,
+                        contact: orderPhone,
                     },
                 };
                 const rzp = new window.Razorpay(options);
@@ -406,6 +488,7 @@ const CheckoutPageInternal = () => {
     return (
         <>
             <Script src="https://checkout.razorpay.com/v1/checkout.js" />
+            <AddAddressModal isOpen={isAddAddressModalOpen} onClose={() => setIsAddAddressModalOpen(false)} onSave={handleAddNewAddress} />
             <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
                  <DialogContent className="bg-background border-border text-foreground">
                     <DialogHeader>
@@ -413,33 +496,37 @@ const CheckoutPageInternal = () => {
                         {error && <p className="text-destructive text-sm bg-destructive/10 p-2 rounded-md mt-2">{error}</p>}
                     </DialogHeader>
                     <div className="py-4 space-y-4 max-h-[70vh] overflow-y-auto">
-                        <div>
-                            <Label htmlFor="name">Your Name</Label>
-                            <Input id="name" value={name} onChange={(e) => setName(e.target.value)} disabled={loading} />
-                        </div>
-                        {deliveryType === 'delivery' && (
+                        {deliveryType === 'delivery' ? (
                              <div>
                                 <Label htmlFor="address">Delivery Address</Label>
-                                {userAddresses.length > 0 ? (
-                                    <div className="space-y-2 mt-2">
-                                        {userAddresses.map(addr => (
-                                            <div key={addr.id} className="flex items-center space-x-2 p-3 rounded-md bg-muted has-[:checked]:bg-primary/10 has-[:checked]:border-primary border border-transparent">
-                                                <input
-                                                    type="radio"
-                                                    id={addr.id}
-                                                    name="address"
-                                                    value={addr.full}
-                                                    checked={selectedAddress === addr.full}
-                                                    onChange={(e) => setSelectedAddress(e.target.value)}
-                                                    className="h-4 w-4 text-primary border-gray-300 focus:ring-primary"
-                                                />
-                                                <Label htmlFor={addr.id} className="flex-1 cursor-pointer">{addr.full}</Label>
-                                            </div>
-                                        ))}
-                                    </div>
-                                ) : (
-                                    <p className="text-sm p-3 bg-muted rounded-md min-h-[40px] mt-2">{selectedAddress || 'No saved address. Use location page to set one.'}</p>
-                                )}
+                                <div className="space-y-2 mt-2">
+                                    {userAddresses.map(addr => (
+                                        <div key={addr.id} className="flex items-center space-x-2 p-3 rounded-md bg-muted has-[:checked]:bg-primary/10 has-[:checked]:border-primary border border-transparent">
+                                            <input
+                                                type="radio"
+                                                id={addr.id}
+                                                name="address"
+                                                value={addr.id}
+                                                checked={selectedAddress === addr.id}
+                                                onChange={(e) => setSelectedAddress(e.target.value)}
+                                                className="h-4 w-4 text-primary border-gray-300 focus:ring-primary"
+                                            />
+                                            <Label htmlFor={addr.id} className="flex-1 cursor-pointer">
+                                                <p className="font-semibold">{addr.name}</p>
+                                                <p className="text-xs text-muted-foreground">{addr.full}</p>
+                                                <p className="text-xs text-muted-foreground">Ph: {addr.phone}</p>
+                                            </Label>
+                                        </div>
+                                    ))}
+                                    <Button variant="outline" className="w-full" onClick={() => setIsAddAddressModalOpen(true)}>
+                                        <PlusCircle className="mr-2 h-4 w-4" /> Add New Address
+                                    </Button>
+                                </div>
+                            </div>
+                        ) : (
+                             <div>
+                                <Label htmlFor="name">Your Name</Label>
+                                <Input id="name" value={orderName} onChange={(e) => setOrderName(e.target.value)} disabled={loading} />
                             </div>
                         )}
                     </div>
