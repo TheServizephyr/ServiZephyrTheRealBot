@@ -83,6 +83,7 @@ export async function POST(req) {
             };
 
             const rzpOrder = await makeRazorpayRequest(fetchOrderOptions);
+            // --- FIX: Correctly parse the nested payload string ---
             const payloadString = rzpOrder.notes?.servizephyr_payload;
             
             if (!payloadString) {
@@ -100,6 +101,7 @@ export async function POST(req) {
                 bill_details: billDetailsString,
                 notes: customNotes 
             } = JSON.parse(payloadString);
+            // --- END FIX ---
             
             if (!firestoreOrderId || !userId || !restaurantId || !businessType) {
                 console.error(`[Webhook] CRITICAL: Missing key identifiers in payload for Razorpay Order ${razorpayOrderId}`);
@@ -128,7 +130,7 @@ export async function POST(req) {
                  batch.set(unclaimedUserRef, {
                     name: customerDetails.name, 
                     phone: customerDetails.phone, 
-                    addresses: [{ id: `addr_${Date.now()}`, full: customerDetails.address }],
+                    addresses: [customerDetails.address], // Save the full address object
                     createdAt: FieldValue.serverTimestamp(),
                     orderedFrom: FieldValue.arrayUnion({
                         restaurantId: restaurantId,
@@ -181,7 +183,7 @@ export async function POST(req) {
             }
 
             batch.set(newOrderRef, {
-                customerName: customerDetails.name, customerId: userId, customerAddress: customerDetails.address, customerPhone: customerDetails.phone,
+                customerName: customerDetails.name, customerId: userId, customerAddress: customerDetails.address.full, customerPhone: customerDetails.phone,
                 restaurantId: restaurantId,
                 businessType: businessType,
                 deliveryType: billDetails.deliveryType || 'delivery',
@@ -261,3 +263,5 @@ export async function POST(req) {
         return NextResponse.json({ status: 'error', message: 'Internal server error' }, { status: 200 });
     }
 }
+
+    

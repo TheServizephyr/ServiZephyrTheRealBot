@@ -10,14 +10,15 @@ import { sendNewOrderToOwner } from '@/lib/notifications';
 export async function POST(req) {
     try {
         const firestore = getFirestore();
-        const { name, address, phone, restaurantId, items, notes, coupon, loyaltyDiscount, grandTotal, paymentMethod, businessType = 'restaurant', deliveryType = 'delivery', pickupTime = '', tipAmount = 0, subtotal, cgst, sgst, deliveryCharge, tableId = null } = await req.json();
+        const { name, address, phone, restaurantId, items, notes, coupon, loyaltyDiscount, grandTotal, paymentMethod, businessType = 'restaurant', deliveryType = 'delivery', pickupTime = '', tipAmount = 0, subtotal, cgst, sgst, deliveryCharge, tableId = null, pax_count, tab_name, dineInTabId } = await req.json();
 
         // --- VALIDATION ---
-        if (!name || !phone || !restaurantId || !items || grandTotal === undefined || subtotal === undefined) {
+        if (!name || !phone || !restaurantId || (!items && !dineInTabId) || grandTotal === undefined || subtotal === undefined) {
             return NextResponse.json({ message: 'Missing required fields for order creation.' }, { status: 400 });
         }
-        if (deliveryType === 'delivery' && !address) {
-            return NextResponse.json({ message: 'Address is required for delivery orders.' }, { status: 400 });
+        // --- FIX: For delivery orders, address MUST be a structured object with a 'full' property ---
+        if (deliveryType === 'delivery' && (!address || !address.full)) {
+            return NextResponse.json({ message: 'A full, structured address is required for delivery orders.' }, { status: 400 });
         }
 
         const normalizedPhone = phone.length > 10 ? phone.slice(-10) : phone;
@@ -56,6 +57,7 @@ export async function POST(req) {
             
             const firestoreOrderId = firestore.collection('orders').doc().id;
 
+            // --- FIX: Correctly structure the payload inside a single JSON string ---
             const servizephyrOrderPayload = {
                 order_id: firestoreOrderId,
                 user_id: userId,
@@ -63,18 +65,22 @@ export async function POST(req) {
                 business_type: businessType,
                 customer_details: JSON.stringify({ name, address, phone: normalizedPhone }),
                 items: JSON.stringify(items),
-                bill_details: JSON.stringify({ subtotal, coupon, loyaltyDiscount, grandTotal, deliveryType, tipAmount, pickupTime, cgst, sgst, deliveryCharge, tableId }),
+                bill_details: JSON.stringify({ subtotal, coupon, loyaltyDiscount, grandTotal, deliveryType, tipAmount, pickupTime, cgst, sgst, deliveryCharge, tableId, pax_count, tab_name, dineInTabId }),
                 notes: notes || null
             };
+            // --- END FIX ---
+
 
             const razorpayOrderOptions = {
                 amount: Math.round(grandTotal * 100), // Amount in paisa
                 currency: 'INR',
                 receipt: firestoreOrderId,
                 payment_capture: 1,
+                 // --- FIX: Store the entire payload under a single key ---
                 notes: {
                     servizephyr_payload: JSON.stringify(servizephyrOrderPayload)
                 }
+                // --- END FIX ---
             };
 
             const razorpayOrder = await razorpay.orders.create(razorpayOrderOptions);
@@ -92,16 +98,19 @@ export async function POST(req) {
         // --- FIRESTORE BATCH WRITE FOR COD / POD / DINE-IN ---
         const batch = firestore.batch();
         
+        // --- FIX: Save structured address for new users ---
         if (isNewUser) {
             const unclaimedUserRef = firestore.collection('unclaimed_profiles').doc(normalizedPhone);
             const newOrderedFrom = { restaurantId, restaurantName: businessData.name, businessType };
-            const newAddress = { id: `addr_${Date.now()}`, label: 'Default', ...address };
+            // Ensure address is saved as a structured object inside an array
+            const addressesToSave = address ? [address] : []; 
             batch.set(unclaimedUserRef, {
-                name: name, phone: normalizedPhone, addresses: [newAddress],
+                name: name, phone: normalizedPhone, addresses: addressesToSave,
                 createdAt: FieldValue.serverTimestamp(),
                 orderedFrom: FieldValue.arrayUnion(newOrderedFrom)
             }, { merge: true });
         }
+        // --- END FIX ---
         
         const couponDiscountAmount = coupon?.discount || 0;
         const finalLoyaltyDiscount = loyaltyDiscount || 0;
@@ -134,13 +143,36 @@ export async function POST(req) {
             const couponRef = businessRef.collection('coupons').doc(coupon.id);
             batch.update(couponRef, { timesUsed: FieldValue.increment(1) });
         }
+        
+        // DINE IN LOGIC: Handle new tab creation if it was a dine-in order
+        let finalDineInTabId = dineInTabId;
+        if (deliveryType === 'dine-in' && tableId && !finalDineInTabId) {
+             const newTabRef = businessRef.collection('dineInTabs').doc();
+             finalDineInTabId = newTabRef.id;
+
+             batch.set(newTabRef, {
+                id: finalDineInTabId,
+                tableId: tableId,
+                status: 'active',
+                tab_name: tab_name || "Guest",
+                pax_count: pax_count || 1,
+                createdAt: FieldValue.serverTimestamp(),
+             });
+             
+             const tableRef = businessRef.collection('tables').doc(tableId);
+             batch.update(tableRef, {
+                current_pax: FieldValue.increment(pax_count || 1),
+                state: 'occupied'
+             });
+        }
+
 
         const newOrderRef = firestore.collection('orders').doc();
         batch.set(newOrderRef, {
-            customerName: name, customerId: userId, customerAddress: address.full || address, customerPhone: normalizedPhone,
+            customerName: name, customerId: userId, customerAddress: address?.full || address, customerPhone: normalizedPhone,
             customerLocation: customerLocation,
             restaurantId: restaurantId, restaurantName: businessData.name,
-            businessType, deliveryType, pickupTime, tipAmount, tableId,
+            businessType, deliveryType, pickupTime, tipAmount, tableId, dineInTabId: finalDineInTabId,
             items: items,
             subtotal, coupon, loyaltyDiscount, discount: finalDiscount, cgst, sgst, deliveryCharge,
             totalAmount: grandTotal,
@@ -162,6 +194,7 @@ export async function POST(req) {
         return NextResponse.json({ 
             message: 'Order created successfully.',
             firestore_order_id: newOrderRef.id,
+            dine_in_tab_id: finalDineInTabId,
         }, { status: 200 });
 
     } catch (error) {
@@ -172,3 +205,5 @@ export async function POST(req) {
         return NextResponse.json({ message: `Backend Error: ${error.message}` }, { status: 500 });
     }
 }
+
+    

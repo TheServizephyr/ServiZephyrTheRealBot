@@ -170,15 +170,19 @@ const AddAddressModal = ({ isOpen, onClose, onSave, isExistingUser, userName, us
             return;
         }
 
+        // --- FIX: CONSTRUCT THE 'full' ADDRESS STRING ---
+        const fullAddress = `${address.street.trim()}, ${address.landmark ? address.landmark.trim() + ', ' : ''}${address.city.trim()}, ${address.state.trim()} - ${address.pincode.trim()}`;
+
         const newAddress = {
             id: `addr_${Date.now()}`,
             label: address.label,
             name: finalName,
             phone: finalPhone,
             alternatePhone: alternatePhone.trim(),
-            full: `${address.street}, ${address.landmark ? address.landmark + ', ' : ''}${address.city}, ${address.state} - ${address.pincode}`,
+            full: fullAddress, // Add the constructed full address
             ...address
         };
+        // --- END FIX ---
 
         setIsSaving(true);
         try {
@@ -351,13 +355,14 @@ const CheckoutPageInternal = () => {
     useEffect(() => {
         const address = userAddresses.find(a => a.id === selectedAddress);
         if (address) {
-            setOrderName(address.name || orderName); // THE FIX: Only set if address has a name, otherwise keep existing orderName
+            // --- FIX: Only set name if address has a name, otherwise keep existing orderName ---
+            setOrderName(address.name || orderName || ''); 
+            // --- END FIX ---
             setOrderPhone(address.phone || '');
         } else if (userAddresses.length > 0 && !selectedAddress) {
             setSelectedAddress(userAddresses[0].id);
         } else if (userAddresses.length === 0) {
             setSelectedAddress(null);
-            // Don't clear orderName here if it was already fetched from lookup
         }
     }, [selectedAddress, userAddresses, orderName]);
     
@@ -495,6 +500,13 @@ const CheckoutPageInternal = () => {
             return;
         }
         
+        // --- FIX: Ensure deliveryAddress object has all required fields ---
+        const finalAddress = deliveryType === 'delivery' ? {
+            ...deliveryAddress,
+            full: deliveryAddress.full || `${deliveryAddress.street}, ${deliveryAddress.city}, ${deliveryAddress.state} - ${deliveryAddress.pincode}`
+        } : null;
+        // --- END FIX ---
+
         const orderData = {
             name: orderName,
             phone: orderPhone,
@@ -517,11 +529,10 @@ const CheckoutPageInternal = () => {
             dineInTabId: cartData.dineInTabId || null,
             pax_count: cartData.pax_count || null,
             tab_name: cartData.tab_name || null,
+            // --- FIX: Pass the structured address object to the backend ---
+            address: finalAddress 
+            // --- END FIX ---
         };
-
-        if (orderData.deliveryType === 'delivery') {
-            orderData.address = deliveryAddress.full;
-        }
 
         setLoading(true);
         setError('');
