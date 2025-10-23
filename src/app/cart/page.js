@@ -236,9 +236,14 @@ const CartPageInternal = () => {
 
     const handleTipChange = (amount) => {
         const newTip = Number(amount);
-        setTipAmount(newTip);
-        if(customTip && newTip !== Number(customTip)) setCustomTip('');
-        updateCartInStorage({ tipAmount: newTip });
+        // If the user clicks the same tip amount again, deselect it by setting it to 0.
+        if (newTip === tipAmount) {
+            handleTipChange(0);
+        } else {
+            setTipAmount(newTip);
+            if (customTip && newTip !== Number(customTip)) setCustomTip('');
+            updateCartInStorage({ tipAmount: newTip });
+        }
     };
 
     const handleCustomTipChange = (e) => {
