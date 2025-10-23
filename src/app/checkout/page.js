@@ -348,6 +348,10 @@ const CheckoutPageInternal = () => {
 
     useEffect(() => {
         const address = userAddresses.find(a => a.id === selectedAddress);
+        if (address?.name) {
+            // Only update name if it exists on the address, preserving fetched name otherwise
+            setOrderName(address.name);
+        }
         if (address?.phone) {
             setOrderPhone(address.phone);
         }
@@ -364,27 +368,28 @@ const CheckoutPageInternal = () => {
 
         try {
             const user = auth.currentUser;
-            if (!user) {
-                console.log("User not logged in. Address will be saved with order.");
-                return;
-            }
+            // The API call should be made regardless of whether the user is fully registered
+            // As long as they are signed in (even anonymously), they should have an ID token.
+            if (user) {
+                const idToken = await user.getIdToken();
+                const res = await fetch('/api/user/addresses', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${idToken}` },
+                    body: JSON.stringify(newAddress)
+                });
 
-            const idToken = await user.getIdToken();
-            const res = await fetch('/api/user/addresses', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${idToken}` },
-                body: JSON.stringify(newAddress)
-            });
-
-            if (!res.ok) {
-                const data = await res.json();
-                // Revert optimistic update on failure
-                setUserAddresses(prev => prev.filter(a => a.id !== newAddress.id));
-                throw new Error(data.message || 'Failed to save address.');
+                if (!res.ok) {
+                    const data = await res.json();
+                    throw new Error(data.message || 'Failed to save address to your profile.');
+                }
+            } else {
+                 console.log("User not logged in. Address is saved locally for this order.");
             }
         } catch (error) {
             console.error("Error saving new address:", error);
-            // Re-throw to be caught by the modal
+            // Revert optimistic update on failure
+            setUserAddresses(prev => prev.filter(a => a.id !== newAddress.id));
+             // Re-throw to be caught by the modal
             throw error;
         }
     };

@@ -41,13 +41,26 @@ export async function POST(req) {
                 // Ensure addresses are always in the correct format
                 addresses: (unclaimedData.addresses || []).map(addr => {
                      if (typeof addr === 'string') {
-                        return { full: addr };
+                        // This is an old, simple address string. Convert it to the new object format.
+                        return { 
+                            id: `addr_unclaimed_${Date.now()}`,
+                            label: 'Default',
+                            name: unclaimedData.name || 'User',
+                            phone: unclaimedData.phone || '',
+                            street: addr,
+                            city: '',
+                            state: '',
+                            pincode: '',
+                            country: 'IN',
+                            full: addr 
+                        };
                      }
-                     if (addr && !addr.full) {
+                     // If it's already an object, ensure it has a 'full' property.
+                     if (addr && typeof addr === 'object' && !addr.full) {
                         addr.full = `${addr.street || ''}, ${addr.city || ''}, ${addr.state || ''} - ${addr.pincode || ''}`.replace(/, , /g, ', ').trim();
                      }
                      return addr;
-                }).filter(Boolean),
+                }).filter(Boolean), // Filter out any null/undefined entries
                 isVerified: false, // Mark that this is an unclaimed profile
             };
              return NextResponse.json(responseData, { status: 200 });
