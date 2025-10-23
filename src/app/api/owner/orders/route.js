@@ -83,6 +83,7 @@ export async function GET(req) {
             // If customerId is provided, fetch customer details as well
             let customerData = null;
             if (customerId) {
+                // THE FIX: Determine the correct collection based on the business type
                 const businessCollectionName = businessData.businessType === 'shop' ? 'shops' : 'restaurants';
                 const customerRef = firestore.collection(businessCollectionName).doc(businessId).collection('customers').doc(customerId);
                 const customerSnap = await customerRef.get();
