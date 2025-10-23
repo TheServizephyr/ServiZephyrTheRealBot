@@ -34,7 +34,10 @@ const CustomizationDrawer = ({ item, isOpen, onClose, onAddToCart }) => {
 
     useEffect(() => {
         if (item) {
-            setSelectedPortion(item.portions?.[0] || null);
+            // THE FIX: Find the minimum price portion and select it by default
+            const minPricePortion = item.portions?.reduce((min, p) => p.price < min.price ? p : min, item.portions[0]) || null;
+            setSelectedPortion(minPricePortion);
+            
             // Initialize add-ons state
             const initialAddOns = {};
             (item.addOnGroups || []).forEach(group => {
@@ -84,7 +87,9 @@ const CustomizationDrawer = ({ item, isOpen, onClose, onAddToCart }) => {
 
     if (!item) return null;
     
-    const showPortions = item.portions && item.portions.length > 1;
+    // THE FIX: Sort portions by price before rendering
+    const sortedPortions = item.portions ? [...item.portions].sort((a, b) => a.price - b.price) : [];
+    const showPortions = sortedPortions.length > 1;
 
     return (
         <AnimatePresence>
@@ -115,7 +120,7 @@ const CustomizationDrawer = ({ item, isOpen, onClose, onAddToCart }) => {
                             {showPortions && (
                                 <div className="space-y-2">
                                     <h4 className="font-semibold text-lg">Size</h4>
-                                    {item.portions.map(portion => (
+                                    {sortedPortions.map(portion => (
                                         <div
                                             key={portion.name}
                                             onClick={() => setSelectedPortion(portion)}
