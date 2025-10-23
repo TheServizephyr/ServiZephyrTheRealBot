@@ -1,7 +1,7 @@
 
 
 import { NextResponse } from 'next/server';
-import { getFirestore } from '@/lib/firebase-admin';
+import { getFirestore, FieldValue } from '@/lib/firebase-admin';
 import { sendWhatsAppMessage } from '@/lib/whatsapp';
 // **THE FIX**: Removed unused import of sendOrderConfirmationToCustomer
 import { sendOrderStatusUpdateToCustomer } from '@/lib/notifications';
@@ -35,13 +35,13 @@ async function getBusiness(firestore, botPhoneNumberId) {
     const restaurantsQuery = await firestore.collection('restaurants').where('botPhoneNumberId', '==', botPhoneNumberId).limit(1).get();
     if (!restaurantsQuery.empty) {
         const doc = restaurantsQuery.docs[0];
-        return { id: doc.id, data: doc.data() };
+        return { id: doc.id, data: doc.data(), collectionName: 'restaurants' };
     }
     
     const shopsQuery = await firestore.collection('shops').where('botPhoneNumberId', '==', botPhoneNumberId).limit(1).get();
     if (!shopsQuery.empty) {
         const doc = shopsQuery.docs[0];
-        return { id: doc.id, data: doc.data() };
+        return { id: doc.id, data: doc.data(), collectionName: 'shops' };
     }
     
     return null;
@@ -143,6 +143,7 @@ export async function POST(request) {
         else if (change?.value?.messages?.[0]?.text) {
             const message = change.value.messages[0];
             const fromWithCode = message.from; 
+            const customerName = change.value?.contacts?.[0]?.profile?.name || 'Customer';
             const botPhoneNumberId = change.value.metadata.phone_number_id;
 
             const business = await getBusiness(firestore, botPhoneNumberId);
@@ -155,32 +156,48 @@ export async function POST(request) {
             
             const businessData = business.data;
             const businessId = business.id;
-            const businessName = businessData.name;
-
-            if (!businessData.isOpen) {
-                const closedMessage = `We apologize, but ${businessName} is currently closed. Please check back later.`;
-                await sendWhatsAppMessage(fromWithCode, closedMessage, botPhoneNumberId);
-                return NextResponse.json({ message: 'Business is closed' }, { status: 200 });
-            }
-
+            const businessCollection = business.collectionName;
 
             const customerPhone = fromWithCode.startsWith('91') ? fromWithCode.substring(2) : fromWithCode;
-            const usersRef = firestore.collection('users');
-            const userQuery = await usersRef.where('phone', '==', customerPhone).limit(1).get();
+
+            const conversationRef = firestore.collection(businessCollection).doc(businessId).collection('conversations').doc(customerPhone);
+            const messageRef = conversationRef.collection('messages').doc();
+
+            const batch = firestore.batch();
             
-            let welcomeMessage = `Welcome to ${businessName}! 😃`;
-            if (!userQuery.empty) {
-                const user = userQuery.docs[0].data();
-                if(user.name) {
-                    welcomeMessage = `Welcome back to ${businessName}, ${user.name}! 🥳`;
-                }
+            // Save the incoming message
+            batch.set(messageRef, {
+                id: messageRef.id,
+                text: message.text.body,
+                sender: 'customer',
+                timestamp: FieldValue.serverTimestamp(),
+                status: 'unread'
+            });
+
+            // Update the conversation summary
+            batch.set(conversationRef, {
+                id: customerPhone,
+                customerName: customerName,
+                customerPhone: customerPhone,
+                lastMessage: message.text.body,
+                lastMessageTimestamp: FieldValue.serverTimestamp(),
+                unreadCount: FieldValue.increment(1),
+            }, { merge: true });
+
+            await batch.commit();
+
+            // Check if it's the first message or if the business is open, then reply.
+            if (!businessData.isOpen) {
+                const closedMessage = `We apologize, but ${businessData.name} is currently closed. Please check back later.`;
+                await sendWhatsAppMessage(fromWithCode, closedMessage, botPhoneNumberId);
+                return NextResponse.json({ message: 'Business is closed, message saved.' }, { status: 200 });
             }
 
             const menuUrl = `https://servizephyr.com/order/${businessId}?phone=${customerPhone}`;
-            const reply_body = `${welcomeMessage}\n\nWhat would you like to order today? You can view our full menu and place your order by clicking the link below:\n\n${menuUrl}`;
+            const welcomeMessage = `Welcome to ${businessData.name}! 😃\n\nYou can view our full menu and place your order by clicking the link below:\n\n${menuUrl}\n\nOr, type a message if you need help.`;
             
             const customerPhoneForApi = '91' + customerPhone;
-            await sendWhatsAppMessage(customerPhoneForApi, reply_body, botPhoneNumberId);
+            await sendWhatsAppMessage(customerPhoneForApi, welcomeMessage, botPhoneNumberId);
         }
         
         return NextResponse.json({ message: 'Event received' }, { status: 200 });
