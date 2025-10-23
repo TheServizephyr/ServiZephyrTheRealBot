@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useState, useEffect, useMemo } from 'react';
@@ -543,6 +544,7 @@ export default function LiveOrdersPage() {
   const impersonatedOwnerId = searchParams.get('impersonate_owner_id');
 
   const fetchInitialData = async (isManualRefresh = false) => {
+    console.log(`[LiveOrders] Fetching data... Manual refresh: ${isManualRefresh}`);
     if (!isManualRefresh) setLoading(true);
     
     try {
@@ -557,10 +559,16 @@ export default function LiveOrdersPage() {
             ridersUrl.searchParams.append('impersonate_owner_id', impersonatedOwnerId);
         }
         
+        console.log(`[LiveOrders] Fetching orders from: ${ordersUrl}`);
+        console.log(`[LiveOrders] Fetching riders from: ${ridersUrl}`);
+        
         const [ordersRes, ridersRes] = await Promise.all([
             fetch(ordersUrl.toString(), { headers: { 'Authorization': `Bearer ${idToken}` } }),
             fetch(ridersUrl.toString(), { headers: { 'Authorization': `Bearer ${idToken}` } })
         ]);
+
+        console.log(`[LiveOrders] Orders API response status: ${ordersRes.status}`);
+        console.log(`[LiveOrders] Riders API response status: ${ridersRes.status}`);
 
         if (!ordersRes.ok) throw new Error('Failed to fetch orders');
         const ordersData = await ordersRes.json();
@@ -568,24 +576,37 @@ export default function LiveOrdersPage() {
         if (ridersRes.ok) {
             const ridersData = await ridersRes.json();
             setRiders(ridersData.boys || []);
+             console.log(`[LiveOrders] Fetched ${ridersData.boys?.length || 0} riders.`);
         }
 
         setOrders(ordersData.orders || []);
+        console.log(`[LiveOrders] Fetched ${ordersData.orders?.length || 0} orders.`);
     } catch (error) {
-        console.error(error);
+        console.error("[LiveOrders] Error fetching initial data:", error);
         setInfoDialog({ isOpen: true, title: 'Error', message: `Could not load data: ${error.message}` });
     } finally {
         if(!isManualRefresh) setLoading(false);
+        console.log("[LiveOrders] Data fetch finished.");
     }
   };
   
   useEffect(() => {
+    console.log("[LiveOrders] Component mounted. Setting up auth listener.");
     const unsubscribe = auth.onAuthStateChanged(user => {
-      if (user) fetchInitialData();
-      else setLoading(false);
+      if (user) {
+        console.log("[LiveOrders] Auth state changed: user found. Fetching initial data.");
+        fetchInitialData();
+      }
+      else {
+        console.log("[LiveOrders] Auth state changed: no user. Setting loading to false.");
+        setLoading(false);
+      }
     });
 
-    const interval = setInterval(() => fetchInitialData(true), 30000);
+    const interval = setInterval(() => {
+        console.log("[LiveOrders] Interval: Triggering background refresh.");
+        fetchInitialData(true);
+    }, 30000); // Poll every 30 seconds
     return () => {
         unsubscribe();
         clearInterval(interval);
@@ -593,6 +614,7 @@ export default function LiveOrdersPage() {
   }, [impersonatedOwnerId]);
 
   const handleAPICall = async (method, body, endpoint = '/api/owner/orders') => {
+    console.log(`[LiveOrders] Making API call. Endpoint: ${endpoint}, Method: ${method}`);
     const user = auth.currentUser;
     if (!user) throw new Error("Authentication required.");
     const idToken = await user.getIdToken();
@@ -611,11 +633,16 @@ export default function LiveOrdersPage() {
         body: method !== 'GET' ? JSON.stringify(body) : undefined,
     });
     const data = await res.json();
-    if (!res.ok) throw new Error(data.message || 'API call failed');
+    console.log(`[LiveOrders] API call response. Status: ${res.status}`);
+    if (!res.ok) {
+        console.error(`[LiveOrders] API call failed:`, data.message);
+        throw new Error(data.message || 'API call failed');
+    }
     return data;
   };
 
   const handleUpdateStatus = async (orderId, newStatus) => {
+    console.log(`[LiveOrders] Updating status for order ${orderId} to ${newStatus}`);
     setUpdatingOrderId(orderId);
     try {
       await handleAPICall('PATCH', { orderId, newStatus });
@@ -628,16 +655,18 @@ export default function LiveOrdersPage() {
   };
   
   const handleAssignRider = async (orderId, riderId, activateRider) => {
+    console.log(`[LiveOrders] Assigning rider ${riderId} to order ${orderId}. Activate rider: ${activateRider}`);
     setUpdatingOrderId(orderId);
     try {
         if (activateRider) {
-             console.log(`Activating rider ${riderId}...`);
+             console.log(`[LiveOrders] Activating rider ${riderId}...`);
              handleAPICall('PATCH', { boy: { id: riderId, status: 'Available' } }, '/api/owner/delivery');
         }
         
         await handleAPICall('PATCH', { orderId, newStatus: 'dispatched', deliveryBoyId: riderId });
         await fetchInitialData(true);
         setAssignModalData({ isOpen: false, order: null });
+        console.log(`[LiveOrders] Rider assigned successfully.`);
     } catch (error) {
         setInfoDialog({ isOpen: true, title: 'Error', message: `Error assigning rider: ${error.message}` });
         setAssignModalData({ isOpen: false, order: null });
@@ -649,10 +678,12 @@ export default function LiveOrdersPage() {
 
 
   const handleRejectOrder = async (orderId, reason) => {
+    console.log(`[LiveOrders] Rejecting order ${orderId}. Reason: ${reason}`);
     setUpdatingOrderId(orderId);
     try {
         await handleAPICall('PATCH', { orderId, newStatus: 'rejected', rejectionReason: reason });
         await fetchInitialData(true);
+         console.log(`[LiveOrders] Order rejected successfully.`);
     } catch (error) {
         setInfoDialog({ isOpen: true, title: 'Error', message: `Error rejecting order: ${error.message}` });
         throw error; // Re-throw so modal knows it failed
@@ -662,9 +693,11 @@ export default function LiveOrdersPage() {
   }
 
   const handlePrintClick = async (orderId) => {
+      console.log(`[LiveOrders] Preparing to print bill for order ${orderId}.`);
       try {
         setUpdatingOrderId(orderId);
         const data = await handleAPICall('GET', { id: orderId });
+        console.log("[LiveOrders] Fetched bill data:", data);
         setBillData({ order: data.order, restaurant: data.restaurant });
       } catch(e) {
         setInfoDialog({ isOpen: true, title: 'Error', message: `Could not load bill data: ${e.message}` });
@@ -674,8 +707,10 @@ export default function LiveOrdersPage() {
   };
 
   const handleDetailClick = async (orderId, customerId) => {
+     console.log(`[LiveOrders] Fetching details for order ${orderId}, customer ${customerId}.`);
     try {
       const data = await handleAPICall('GET', { id: orderId, customerId });
+       console.log("[LiveOrders] Fetched detail data:", data);
       setDetailModalData({ isOpen: true, data });
     } catch(e) {
       setInfoDialog({ isOpen: true, title: 'Error', message: `Could not load details: ${e.message}` });

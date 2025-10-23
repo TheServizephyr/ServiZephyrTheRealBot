@@ -3,13 +3,15 @@
 import { sendWhatsAppMessage } from './whatsapp';
 
 export const sendNewOrderToOwner = async ({ ownerPhone, botPhoneNumberId, customerName, totalAmount, orderId }) => {
+    console.log(`[Notification Lib] Preparing 'new_order' notification for owner ${ownerPhone}.`);
 
     if (!ownerPhone || !botPhoneNumberId) {
         console.error(`[Notification Lib] CRITICAL: Cannot send new order notification. Owner phone or Bot ID is missing. Owner Phone: ${ownerPhone}, Bot ID: ${botPhoneNumberId}`);
         return;
     }
     const ownerPhoneWithCode = '91' + ownerPhone;
-    const orderDetailsUrl = `https://servizephyr.com/owner-dashboard/live-orders`;
+    
+    console.log(`[Notification Lib] New order details: Customer: ${customerName}, Amount: ${totalAmount}, OrderID: ${orderId}`);
 
     const notificationPayload = {
         name: "new_order_notification_v2",
@@ -38,11 +40,15 @@ export const sendNewOrderToOwner = async ({ ownerPhone, botPhoneNumberId, custom
         ]
     };
 
+    console.log(`[Notification Lib] Sending 'new_order' template to owner.`);
     await sendWhatsAppMessage(ownerPhoneWithCode, notificationPayload, botPhoneNumberId);
+    console.log(`[Notification Lib] 'new_order' notification sent.`);
 };
 
 
 export const sendOrderStatusUpdateToCustomer = async ({ customerPhone, botPhoneNumberId, customerName, orderId, restaurantName, status, deliveryBoy = null, businessType = 'restaurant' }) => {
+    console.log(`[Notification Lib] Preparing status update for customer ${customerPhone}. Order: ${orderId}, New Status: ${status}.`);
+    
     if (!customerPhone || !botPhoneNumberId) {
         console.warn(`[Notification Lib] Customer phone or Bot ID not found. Cannot send status update for order ${orderId}.`);
         return;
@@ -64,6 +70,7 @@ export const sendOrderStatusUpdateToCustomer = async ({ customerPhone, botPhoneN
     };
     
     const preparingMessage = statusMessages[businessType]?.preparing || "Your order is being prepared";
+    console.log(`[Notification Lib] Business type is '${businessType}', using preparing message: "${preparingMessage}"`);
 
 
     switch (status) {
@@ -79,6 +86,7 @@ export const sendOrderStatusUpdateToCustomer = async ({ customerPhone, botPhoneN
                 { type: "text", text: trackingUrl }
             ];
             components.push({ type: "body", parameters: bodyParams });
+            console.log(`[Notification Lib] Using template '${templateName}' with tracking URL.`);
             break;
         
         case 'confirmed':
@@ -91,6 +99,7 @@ export const sendOrderStatusUpdateToCustomer = async ({ customerPhone, botPhoneN
                  { type: "text", text: orderStatusUrl }
             ];
             components.push({ type: "body", parameters: confirmationParams });
+            console.log(`[Notification Lib] Using template '${templateName}' for order confirmation.`);
             break;
 
         case 'delivered':
@@ -105,6 +114,7 @@ export const sendOrderStatusUpdateToCustomer = async ({ customerPhone, botPhoneN
                 { type: "text", text: capitalizedStatus },
             ];
             components.push({ type: "body", parameters: statusUpdateParams });
+            console.log(`[Notification Lib] Using template '${templateName}' for final status update.`);
             break;
         
         case 'preparing':
@@ -116,10 +126,11 @@ export const sendOrderStatusUpdateToCustomer = async ({ customerPhone, botPhoneN
                 { type: "text", text: preparingMessage },
             ];
             components.push({ type: "body", parameters: preparingParams });
+            console.log(`[Notification Lib] Using template '${templateName}' for 'preparing' status.`);
             break;
 
         default:
-            console.log(`[Notification Lib] No template configured for status: ${status}. Using default.`);
+            console.log(`[Notification Lib] No specific template configured for status: '${status}'. Using default.`);
             templateName = 'order_status_update';
              const defaultParams = [
                 { type: "text", text: customerName },
@@ -138,14 +149,18 @@ export const sendOrderStatusUpdateToCustomer = async ({ customerPhone, botPhoneN
     };
     
     try {
+      console.log(`[Notification Lib] Sending status update to customer.`);
       await sendWhatsAppMessage(customerPhoneWithCode, statusPayload, botPhoneNumberId);
+      console.log(`[Notification Lib] Status update sent successfully.`);
     } catch(e) {
-      console.error("[Notification Lib] Failed to send WhatsApp status update.", e);
-      throw e;
+      console.error("[Notification Lib] CRITICAL: Failed to send WhatsApp status update.", e);
+      throw e; // Re-throw to let the caller know it failed
     }
 };
 
 export const sendRestaurantStatusChangeNotification = async ({ ownerPhone, botPhoneNumberId, newStatus, restaurantId }) => {
+    console.log(`[Notification Lib] Preparing 'status_change_alert' for owner ${ownerPhone}. New status: ${newStatus}`);
+    
     if (!ownerPhone || !botPhoneNumberId) {
         console.error(`[Notification Lib] Cannot send status change notification. Owner phone or Bot ID is missing.`);
         return;
@@ -182,5 +197,7 @@ export const sendRestaurantStatusChangeNotification = async ({ ownerPhone, botPh
         ]
     };
     
+    console.log(`[Notification Lib] Sending 'status_change_alert' template to owner.`);
     await sendWhatsAppMessage(ownerPhoneWithCode, payload, botPhoneNumberId);
+    console.log(`[Notification Lib] 'status_change_alert' sent.`);
 }

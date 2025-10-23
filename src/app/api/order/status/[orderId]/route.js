@@ -4,6 +4,7 @@ import { NextResponse } from 'next/server';
 import { getFirestore } from '@/lib/firebase-admin';
 
 export async function GET(request, { params }) {
+    console.log("[API][Order Status] Request received.");
     try {
         const { orderId } = params;
         const firestore = getFirestore();
@@ -24,6 +25,7 @@ export async function GET(request, { params }) {
         
         const orderData = orderSnap.data();
         let deliveryBoyData = null;
+        console.log(`[API][Order Status] Order data found. Status: ${orderData.status}, Delivery Boy ID: ${orderData.deliveryBoyId}`);
 
         if (orderData.deliveryBoyId) {
             console.log(`[API][Order Status] Fetching delivery boy: ${orderData.deliveryBoyId}`);
@@ -72,7 +74,7 @@ export async function GET(request, { params }) {
             } : null
         };
         
-        console.log("[API][Order Status] Successfully built response payload.");
+        console.log("[API][Order Status] Successfully built response payload:", JSON.stringify(responsePayload));
         return NextResponse.json(responsePayload, { status: 200 });
 
     } catch (error) {

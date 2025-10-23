@@ -9,6 +9,7 @@ import { sendOrderStatusUpdateToCustomer } from '@/lib/notifications';
 const VERIFY_TOKEN = process.env.WHATSAPP_VERIFY_TOKEN;
 
 export async function GET(request) {
+  console.log("[Webhook] Received GET request for verification.");
   try {
     const { searchParams } = new URL(request.url);
     
@@ -16,64 +17,79 @@ export async function GET(request) {
     const token = searchParams.get('hub.verify_token');
     const challenge = searchParams.get('hub.challenge');
 
+    console.log(`[Webhook] Mode: ${mode}, Token: ${token ? 'Present' : 'Missing'}, Challenge: ${challenge ? 'Present' : 'Missing'}`);
 
     if (mode === 'subscribe' && token === VERIFY_TOKEN) {
       console.log("[Webhook] Verification SUCCESS. Responding with challenge.");
       return new NextResponse(challenge, { status: 200 });
     } else {
-      console.error("[Webhook] Verification FAILED. Tokens do not match.");
+      console.error("[Webhook] Verification FAILED. Tokens do not match or mode is not 'subscribe'.");
       return new NextResponse('Verification Failed', { status: 403 });
     }
   } catch (error) {
-    console.error('[Webhook] Error in GET handler:', error);
+    console.error('[Webhook] CRITICAL ERROR in GET handler:', error);
     return new NextResponse('Server Error', { status: 500 });
   }
 }
 
 async function getBusiness(firestore, botPhoneNumberId) {
+    console.log(`[Webhook] getBusiness: Searching for business with botPhoneNumberId: ${botPhoneNumberId}`);
     const restaurantsQuery = await firestore.collection('restaurants').where('botPhoneNumberId', '==', botPhoneNumberId).limit(1).get();
     if (!restaurantsQuery.empty) {
         const doc = restaurantsQuery.docs[0];
+        console.log(`[Webhook] getBusiness: Found business in 'restaurants' collection with ID: ${doc.id}`);
         return { id: doc.id, ref: doc.ref, data: doc.data(), collectionName: 'restaurants' };
     }
     
     const shopsQuery = await firestore.collection('shops').where('botPhoneNumberId', '==', botPhoneNumberId).limit(1).get();
     if (!shopsQuery.empty) {
         const doc = shopsQuery.docs[0];
+        console.log(`[Webhook] getBusiness: Found business in 'shops' collection with ID: ${doc.id}`);
         return { id: doc.id, ref: doc.ref, data: doc.data(), collectionName: 'shops' };
     }
     
+    console.warn(`[Webhook] getBusiness: No business found for botPhoneNumberId: ${botPhoneNumberId}`);
     return null;
 }
 
 export async function POST(request) {
+    console.log("[Webhook] Received POST request.");
     try {
         const body = await request.json();
         
-        if (process.env.NODE_ENV !== 'production') {
-            console.log("[Webhook] Request Body:", JSON.stringify(body, null, 2));
-        }
+        // Log the entire body in dev for deep debugging if needed, but keep it concise for production
+        console.log("[Webhook] Request Body Received:", JSON.stringify(body, null, 2));
 
         if (body.object !== 'whatsapp_business_account') {
+            console.log("[Webhook] Event is not from a WhatsApp Business Account. Skipping.");
             return NextResponse.json({ message: 'Not a WhatsApp event' }, { status: 200 });
         }
 
         const firestore = getFirestore();
         const change = body.entry?.[0]?.changes?.[0];
         
+        if (!change || !change.value) {
+            console.log("[Webhook] No 'change' or 'value' object found in payload. Skipping.");
+            return NextResponse.json({ message: 'No change data' }, { status: 200 });
+        }
+        
         // --- Handler for Button Clicks ---
-        if (change?.value?.messages?.[0]?.interactive?.button_reply) {
+        if (change.value.messages?.[0]?.interactive?.button_reply) {
             const message = change.value.messages[0];
             const buttonReply = message.interactive.button_reply;
             const buttonId = buttonReply.id;
             const fromNumber = message.from; 
             const businessPhoneNumberId = change.value.metadata.phone_number_id;
             
+            console.log(`[Webhook] Button click detected. Button ID: "${buttonId}", From: ${fromNumber}, Bot ID: ${businessPhoneNumberId}`);
+            
             const [action, ...payloadParts] = buttonId.split('_');
 
             // --- Handler for Order Accept/Reject ---
             if (action === 'accept' || action === 'reject') {
                 const orderId = payloadParts.join('_').replace('order_', '');
+                console.log(`[Webhook] Order action detected. Action: ${action}, Order ID: ${orderId}`);
+                
                 if (!orderId) {
                     console.warn(`[Webhook] Invalid order button ID format: ${buttonId}`);
                     return NextResponse.json({ message: 'Invalid button ID' }, { status: 200 });
@@ -83,6 +99,7 @@ export async function POST(request) {
                 const orderDoc = await orderRef.get();
 
                 if (!orderDoc.exists) {
+                     console.error(`[Webhook] Action failed: Order with ID ${orderId} was not found.`);
                      await sendWhatsAppMessage(fromNumber, `⚠️ Action failed: Order with ID ${orderId} was not found.`, businessPhoneNumberId);
                      return NextResponse.json({ message: 'Order not found' }, { status: 200 });
                 }
@@ -97,6 +114,7 @@ export async function POST(request) {
                 }
 
                 if (action === 'accept') {
+                    console.log(`[Webhook] Accepting order ${orderId}. Updating status to 'confirmed'.`);
                     await orderRef.update({ status: 'confirmed' });
                     
                     await sendOrderStatusUpdateToCustomer({
@@ -109,9 +127,11 @@ export async function POST(request) {
                         businessType: business.data.businessType || 'restaurant',
                     });
                     
+                    console.log(`[Webhook] Sending confirmation back to owner at ${fromNumber}.`);
                     await sendWhatsAppMessage(fromNumber, `✅ Action complete: Order ${orderId} has been confirmed. You can now start preparing it.`, businessPhoneNumberId);
 
                 } else if (action === 'reject') {
+                    console.log(`[Webhook] Rejecting order ${orderId}. Updating status to 'rejected'.`);
                     await orderRef.update({ status: 'rejected' });
                     await sendOrderStatusUpdateToCustomer({
                         customerPhone: orderData.customerPhone,
@@ -122,13 +142,15 @@ export async function POST(request) {
                         status: 'rejected',
                          businessType: business.data.businessType || 'restaurant',
                     });
+                    console.log(`[Webhook] Sending rejection confirmation back to owner at ${fromNumber}.`);
                     await sendWhatsAppMessage(fromNumber, `✅ Action complete: Order ${orderId} has been rejected. The customer will be notified.`, businessPhoneNumberId);
                 }
             } 
             // --- Handler for Restaurant Status Change ---
             else if (action === 'retain' || action === 'revert') {
                 const [_, __, businessId, status] = payloadParts;
-                
+                console.log(`[Webhook] Restaurant status action detected. Action: ${action}, Business ID: ${businessId}, Status: ${status}`);
+
                 if(!businessId || !status) {
                     console.warn(`[Webhook] Invalid status button ID format: ${buttonId}`);
                     return NextResponse.json({ message: 'Invalid button ID' }, { status: 200 });
@@ -140,9 +162,11 @@ export async function POST(request) {
 
                 if (action === 'revert') {
                     const revertToOpen = status === 'open';
+                    console.log(`[Webhook] Reverting status for ${businessId}. Setting isOpen to: ${revertToOpen}`);
                     await firestore.collection(collectionName).doc(businessId).update({ isOpen: revertToOpen });
                     await sendWhatsAppMessage(fromNumber, `✅ Action reverted. Your business has been set to **${revertToOpen ? 'OPEN' : 'CLOSED'}**.`, businessPhoneNumberId);
                 } else { // retain
+                    console.log(`[Webhook] Retaining status for ${businessId}. No change.`);
                     await sendWhatsAppMessage(fromNumber, `✅ Understood. Your business status will remain **${status.toUpperCase()}**.`, businessPhoneNumberId);
                 }
             }
@@ -156,17 +180,20 @@ export async function POST(request) {
             const customerName = change.value?.contacts?.[0]?.profile?.name || 'Customer';
             const botPhoneNumberId = change.value.metadata.phone_number_id;
 
+            console.log(`[Webhook] Text message received. From: ${fromWithCode}, Name: ${customerName}, Message: "${messageBody}"`);
+
             const business = await getBusiness(firestore, botPhoneNumberId);
             
             if (!business) {
-                console.error(`[Webhook] No business found for Bot Phone Number ID: ${botPhoneNumberId}`);
-                // Do not auto-reply, just log the error and exit.
+                console.error(`[Webhook] No business found for Bot Phone Number ID: ${botPhoneNumberId}. Cannot process text message.`);
                 return NextResponse.json({ message: 'Business not found' }, { status: 404 });
             }
             
             const customerPhone = fromWithCode.startsWith('91') ? fromWithCode.substring(2) : fromWithCode;
             const conversationRef = business.ref.collection('conversations').doc(customerPhone);
             const messageRef = conversationRef.collection('messages').doc();
+
+            console.log(`[Webhook] Saving message to Firestore for customer ${customerPhone} at path: ${messageRef.path}`);
 
             const batch = firestore.batch();
             
@@ -188,14 +215,16 @@ export async function POST(request) {
             }, { merge: true });
 
             await batch.commit();
-
-            // Auto-reply logic has been removed to enable manual chat.
+            console.log(`[Webhook] Message saved successfully for ${customerPhone}.`);
+        } else {
+            console.log("[Webhook] Received a non-text, non-button event. Skipping.");
         }
         
         return NextResponse.json({ message: 'Event received' }, { status: 200 });
 
     } catch (error) {
-        console.error('[Webhook] Error processing POST request:', error);
+        console.error('[Webhook] CRITICAL Error processing POST request:', error);
+        // It's important to still return a 200 OK to WhatsApp to prevent them from resending the webhook.
         return NextResponse.json({ message: 'Error processing request, but acknowledged.' }, { status: 200 });
     }
 }

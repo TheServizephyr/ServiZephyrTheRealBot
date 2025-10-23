@@ -210,16 +210,18 @@ function PageContent() {
 
   useEffect(() => {
     const fetchInitialData = async () => {
+        console.log(`[Dashboard] Starting to fetch data for filter: ${activeFilter}`);
         setLoading(true);
         try {
             const user = auth.currentUser;
             if (!user) {
-              console.error("User not authenticated");
+              console.error("[Dashboard] User not authenticated. Cannot fetch data.");
               setLoading(false);
               return;
             }
 
             const idToken = await user.getIdToken(true);
+            console.log("[Dashboard] Got ID token.");
             
             // API URLs
             let dashboardApiUrl = `/api/owner/dashboard-data?filter=${activeFilter}`;
@@ -232,35 +234,48 @@ function PageContent() {
                 connectionsApiUrl += `?impersonate_owner_id=${impersonatedOwnerId}`;
             }
             
+            console.log(`[Dashboard] Fetching dashboard data from: ${dashboardApiUrl}`);
+            console.log(`[Dashboard] Fetching connections data from: ${connectionsApiUrl}`);
+
             // Fetch both endpoints concurrently
             const [dashboardRes, connectionsRes] = await Promise.all([
                 fetch(dashboardApiUrl, { headers: { 'Authorization': `Bearer ${idToken}` } }),
                 fetch(connectionsApiUrl, { headers: { 'Authorization': `Bearer ${idToken}` } })
             ]);
 
+            console.log(`[Dashboard] Dashboard API Response Status: ${dashboardRes.status}`);
+            console.log(`[Dashboard] Connections API Response Status: ${connectionsRes.status}`);
+
             if (!dashboardRes.ok || !connectionsRes.ok) {
                  const errorData = !dashboardRes.ok ? await dashboardRes.json() : await connectionsRes.json();
+                 console.error("[Dashboard] API Error:", errorData.message);
                  throw new Error(errorData.message || 'Failed to fetch initial data');
             }
 
             const dashboardData = await dashboardRes.json();
             const connectionsData = await connectionsRes.json();
             
+            console.log("[Dashboard] Successfully fetched dashboard data:", dashboardData);
+            console.log("[Dashboard] Successfully fetched connections data:", connectionsData);
+            
             setDashboardData(dashboardData);
             setBotCount(connectionsData.connections?.length || 0);
 
         } catch (error) {
-            console.error("Error fetching initial data:", error);
+            console.error("[Dashboard] CRITICAL Error fetching initial data:", error);
             setInfoDialog({ isOpen: true, title: 'Error', message: `Error: ${error.message}` });
         } finally {
+            console.log("[Dashboard] Finished fetching data.");
             setLoading(false);
         }
     };
     
     const unsubscribe = auth.onAuthStateChanged(user => {
       if (user) {
+        console.log("[Dashboard] Auth state changed, user found. Fetching data.");
         fetchInitialData();
       } else {
+        console.log("[Dashboard] Auth state changed, no user. Setting loading to false.");
         setLoading(false);
         router.push('/');
       }
