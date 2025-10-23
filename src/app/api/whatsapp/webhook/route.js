@@ -1,9 +1,7 @@
 
-
 import { NextResponse } from 'next/server';
 import { getFirestore, FieldValue } from '@/lib/firebase-admin';
 import { sendWhatsAppMessage } from '@/lib/whatsapp';
-// **THE FIX**: Removed unused import of sendOrderConfirmationToCustomer
 import { sendOrderStatusUpdateToCustomer } from '@/lib/notifications';
 
 
@@ -114,6 +112,15 @@ export async function POST(request) {
 
                 } else if (action === 'reject') {
                     await orderRef.update({ status: 'rejected' });
+                    await sendOrderStatusUpdateToCustomer({
+                        customerPhone: orderData.customerPhone,
+                        botPhoneNumberId: businessPhoneNumberId,
+                        customerName: orderData.customerName,
+                        orderId: orderId,
+                        restaurantName: business.data.name,
+                        status: 'rejected',
+                         businessType: business.data.businessType || 'restaurant',
+                    });
                     await sendWhatsAppMessage(fromNumber, `✅ Action complete: Order ${orderId} has been rejected. The customer will be notified.`, businessPhoneNumberId);
                 }
             } 
@@ -145,7 +152,6 @@ export async function POST(request) {
             const fromWithCode = message.from;
             const messageBody = message.text.body;
 
-            // **THE FIX**: Safely get customer name and phone, then message body.
             const customerName = change.value?.contacts?.[0]?.profile?.name || 'Customer';
             const botPhoneNumberId = change.value.metadata.phone_number_id;
 
@@ -153,19 +159,16 @@ export async function POST(request) {
             
             if (!business) {
                 console.error(`[Webhook] No business found for Bot Phone Number ID: ${botPhoneNumberId}`);
-                await sendWhatsAppMessage(fromWithCode, "We're sorry, we couldn't identify the business you're trying to reach.", botPhoneNumberId);
+                // Do not auto-reply, just log the error and exit.
                 return NextResponse.json({ message: 'Business not found' }, { status: 404 });
             }
             
             const customerPhone = fromWithCode.startsWith('91') ? fromWithCode.substring(2) : fromWithCode;
-
-            // Use the business's reference which includes the correct collection path.
             const conversationRef = business.ref.collection('conversations').doc(customerPhone);
             const messageRef = conversationRef.collection('messages').doc();
 
             const batch = firestore.batch();
             
-            // Save the incoming message
             batch.set(messageRef, {
                 id: messageRef.id,
                 text: messageBody,
@@ -174,7 +177,6 @@ export async function POST(request) {
                 status: 'unread'
             });
 
-            // Update the conversation summary
             batch.set(conversationRef, {
                 id: customerPhone,
                 customerName: customerName,
@@ -186,9 +188,7 @@ export async function POST(request) {
 
             await batch.commit();
 
-            // Check if it's the first message or if the business is open, then reply.
-            // For now, we will stop auto-replying to allow owners to chat manually.
-            // In a future version, this could be a setting.
+            // Auto-reply logic has been removed to enable manual chat.
         }
         
         return NextResponse.json({ message: 'Event received' }, { status: 200 });

@@ -63,7 +63,6 @@ export const sendOrderStatusUpdateToCustomer = async ({ customerPhone, botPhoneN
         }
     };
     
-    // Get the right message or default to a generic "preparing"
     const preparingMessage = statusMessages[businessType]?.preparing || "Your order is being prepared";
 
 
@@ -83,6 +82,17 @@ export const sendOrderStatusUpdateToCustomer = async ({ customerPhone, botPhoneN
             break;
         
         case 'confirmed':
+            templateName = 'order_confirmation_with_tracking'; // Use the correct template for confirmation
+            const orderStatusUrl = `https://servizephyr.com/track/${orderId}`;
+            const confirmationParams = [
+                 { type: "text", text: customerName },
+                 { type: "text", text: orderId.substring(0, 8) },
+                 { type: "text", text: restaurantName },
+                 { type: "text", text: orderStatusUrl }
+            ];
+            components.push({ type: "body", parameters: confirmationParams });
+            break;
+
         case 'delivered':
         case 'rejected':
             templateName = 'order_status_update';
