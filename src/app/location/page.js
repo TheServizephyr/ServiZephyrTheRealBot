@@ -57,9 +57,16 @@ const LocationPageInternal = () => {
                 console.error("[LocationPage] Geolocation error:", err);
                 setError('Could not get your location. Please search manually or allow location access.');
                 setLoading(false);
-                setMapCenter({ lat: 28.6139, lng: 77.2090 });
+                // Fallback to a central location like Delhi if everything fails
+                if (!mapCenter) {
+                    setMapCenter({ lat: 28.6139, lng: 77.2090 });
+                }
             },
-            { enableHighAccuracy: true }
+            { 
+                enableHighAccuracy: true, // Force high accuracy
+                timeout: 10000, // Stop trying after 10 seconds
+                maximumAge: 0 // Don't use a cached position
+            }
         );
     };
 
@@ -74,9 +81,6 @@ const LocationPageInternal = () => {
         setLoading(true);
         setError('');
         try {
-            // Since we're using Leaflet now, we can switch to a free geocoding service like Nominatim
-            // For simplicity and to avoid another dependency, we'll keep our Mappls API route for now, assuming it's still functional for geocoding.
-            // A better solution would be to replace this with Nominatim or another free service.
             const res = await fetch(`/api/location/geocode?lat=${coords.lat}&lng=${coords.lng}`);
             console.log(`[LocationPage] /api/location/geocode response status: ${res.status}`);
             const data = await res.json();
@@ -111,7 +115,6 @@ const LocationPageInternal = () => {
             debounceTimeout.current = setTimeout(async () => {
                 console.log("[LocationPage] Searching for:", searchQuery);
                 try {
-                    // This can also be switched to Nominatim if the Mappls API is fully deprecated
                     const res = await fetch(`/api/location/search?query=${searchQuery}`);
                     console.log(`[LocationPage] /api/location/search response status: ${res.status}`);
                     if (!res.ok) throw new Error('Search failed.');
@@ -219,7 +222,7 @@ const LocationPageInternal = () => {
                 ) : (
                     <div className="space-y-3">
                          <div>
-                            <p className="font-bold text-lg flex items-center gap-2"><MapPin size={20} className="text-primary"/> {addressDetails.city}</p>
+                            <p className="font-bold text-lg flex items-center gap-2"><MapPin size={20} className="text-primary"/> {addressDetails.city || 'Location'}</p>
                             <p className="text-sm text-muted-foreground">{addressDetails.fullAddress}</p>
                          </div>
                          <div className="grid grid-cols-2 gap-3">
