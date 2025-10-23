@@ -1,4 +1,3 @@
-
 'use client';
 
 import React, { useState, useEffect, useMemo } from 'react';
@@ -412,10 +411,9 @@ const OrderDetailModal = ({ data, isOpen, onClose }) => {
 
 const ActionButton = ({ status, onNext, onRevert, order, onRejectClick, isUpdating, onPrintClick, onAssignClick }) => {
     const isPickup = order.deliveryType === 'pickup';
-    const currentStatus = status === 'paid' ? 'pending' : status;
     const statusFlow = isPickup ? pickupStatusFlow : deliveryStatusFlow;
     
-    const currentIndex = statusFlow.indexOf(currentStatus);
+    const currentIndex = statusFlow.indexOf(status);
     
     const isFinalStatus = status === 'delivered' || status === 'rejected' || status === 'picked_up';
 
@@ -458,7 +456,7 @@ const ActionButton = ({ status, onNext, onRevert, order, onRejectClick, isUpdati
         'dispatched': { text: 'Mark Delivered', icon: PartyPopper, action: () => onNext(nextStatus) },
     };
 
-    const action = actionConfig[currentStatus];
+    const action = actionConfig[status];
     
     if (!action) {
          return (
@@ -468,7 +466,7 @@ const ActionButton = ({ status, onNext, onRevert, order, onRejectClick, isUpdati
         );
     }
     const ActionIcon = action.icon;
-    const isConfirmable = status === 'pending' || status === 'paid';
+    const isConfirmable = status === 'pending';
 
     return (
         <div className="flex flex-col sm:flex-row items-stretch gap-2 w-full">
@@ -702,11 +700,11 @@ export default function LiveOrdersPage() {
 
     const filterMap = {
         'All': () => true,
-        'New': order => order.status === 'pending' || order.status === 'paid',
+        'New': order => order.status === 'pending',
         'Confirmed': order => order.status === 'confirmed',
         'Preparing': order => order.status === 'preparing',
-        'Dispatched': order => order.status === 'dispatched',
-        'Delivered': order => order.status === 'delivered',
+        'Dispatched': order => order.status === 'dispatched' || order.status === 'ready_for_pickup',
+        'Delivered': order => order.status === 'delivered' || order.status === 'picked_up',
         'Rejected': order => order.status === 'rejected',
     };
 

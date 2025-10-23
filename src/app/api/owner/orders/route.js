@@ -184,30 +184,28 @@ export async function PATCH(req) {
         await orderRef.update(updateData);
         console.log(`[API][PATCH /orders] Order ${orderId} successfully updated in Firestore.`);
         
-        const statusesThatNotifyCustomer = ['confirmed', 'preparing', 'dispatched', 'delivered', 'rejected', 'ready_for_pickup', 'picked_up'];
-        if (statusesThatNotifyCustomer.includes(newStatus)) {
-            const orderData = orderDoc.data();
-            const businessData = businessSnap.data();
-            
-            const notificationPayload = {
-                customerPhone: orderData.customerPhone,
-                botPhoneNumberId: businessData.botPhoneNumberId,
-                customerName: orderData.customerName,
-                orderId: orderId,
-                restaurantName: businessData.name,
-                status: newStatus,
-                deliveryBoy: deliveryBoyData,
-                businessType: businessData.businessType || 'restaurant', // Pass business type
-            };
-            
-            console.log('[API][PATCH /orders] Preparing to send notification with payload:', notificationPayload);
+        // Always send notification on status change
+        const orderData = orderDoc.data();
+        const businessData = businessSnap.data();
+        
+        const notificationPayload = {
+            customerPhone: orderData.customerPhone,
+            botPhoneNumberId: businessData.botPhoneNumberId,
+            customerName: orderData.customerName,
+            orderId: orderId,
+            restaurantName: businessData.name,
+            status: newStatus,
+            deliveryBoy: deliveryBoyData,
+            businessType: businessData.businessType || 'restaurant', // Pass business type
+        };
+        
+        console.log('[API][PATCH /orders] Preparing to send notification with payload:', notificationPayload);
 
-            try {
-                await sendOrderStatusUpdateToCustomer(notificationPayload);
-            } catch (notificationError) {
-                // Log the error but don't crash the main process. The status is already updated.
-                console.error(`[API LOG] CRITICAL: Failed to send WhatsApp notification for order ${orderId}, but status was updated successfully. Error:`, notificationError.message);
-            }
+        try {
+            await sendOrderStatusUpdateToCustomer(notificationPayload);
+        } catch (notificationError) {
+            // Log the error but don't crash the main process. The status is already updated.
+            console.error(`[API LOG] CRITICAL: Failed to send WhatsApp notification for order ${orderId}, but status was updated successfully. Error:`, notificationError.message);
         }
         
         console.log(`[API][PATCH /orders] Request for order ${orderId} processed successfully.`);

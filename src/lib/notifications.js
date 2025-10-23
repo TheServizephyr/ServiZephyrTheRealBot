@@ -119,8 +119,16 @@ export const sendOrderStatusUpdateToCustomer = async ({ customerPhone, botPhoneN
             break;
 
         default:
-            console.log(`[Notification Lib] No template configured for status: ${status}. Skipping notification.`);
-            return;
+            console.log(`[Notification Lib] No template configured for status: ${status}. Using default.`);
+            templateName = 'order_status_update';
+             const defaultParams = [
+                { type: "text", text: customerName },
+                { type: "text", text: orderId.substring(0, 8) },
+                { type: "text", text: restaurantName },
+                { type: "text", text: capitalizedStatus },
+            ];
+            components.push({ type: "body", parameters: defaultParams });
+            break;
     }
 
     const statusPayload = {
