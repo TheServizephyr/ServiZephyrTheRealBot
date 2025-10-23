@@ -20,6 +20,7 @@ export async function POST(req) {
             console.error(`[Order API] Validation failed: Missing required fields for order creation. Details: ${missingFields}`);
             return NextResponse.json({ message: 'Missing required fields for order creation.' }, { status: 400 });
         }
+        // For delivery orders, address MUST be a structured object with a 'full' property
         if (deliveryType === 'delivery' && (!address || !address.full)) {
             console.error("[Order API] Validation failed: A full, structured address is required for delivery orders.");
             return NextResponse.json({ message: 'A full, structured address is required for delivery orders.' }, { status: 400 });
@@ -110,6 +111,7 @@ export async function POST(req) {
             console.log(`[Order API] Creating unclaimed profile for new user ${normalizedPhone}.`);
             const unclaimedUserRef = firestore.collection('unclaimed_profiles').doc(normalizedPhone);
             const newOrderedFrom = { restaurantId, restaurantName: businessData.name, businessType };
+            // Ensure address is saved as a structured object inside an array, including the 'full' property
             const addressesToSave = address ? [{ ...address, full: address.full }] : []; 
             batch.set(unclaimedUserRef, {
                 name: name, phone: normalizedPhone, addresses: addressesToSave,

@@ -28,9 +28,9 @@ export async function POST(req) {
 
         const userRef = getFirestore().collection('users').doc(uid);
         
-        await userRef.update({
+        await userRef.set({
             addresses: FieldValue.arrayUnion(newAddress)
-        });
+        }, { merge: true });
 
         return NextResponse.json({ message: 'Address added successfully!', address: newAddress }, { status: 200 });
 
