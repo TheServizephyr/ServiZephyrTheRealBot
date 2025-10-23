@@ -16,7 +16,7 @@ export async function POST(req) {
         if (!name || !phone || !restaurantId || (!items && !dineInTabId) || grandTotal === undefined || subtotal === undefined) {
             return NextResponse.json({ message: 'Missing required fields for order creation.' }, { status: 400 });
         }
-        // --- FIX: For delivery orders, address MUST be a structured object with a 'full' property ---
+        // For delivery orders, address MUST be a structured object with a 'full' property
         if (deliveryType === 'delivery' && (!address || !address.full)) {
             return NextResponse.json({ message: 'A full, structured address is required for delivery orders.' }, { status: 400 });
         }
@@ -57,7 +57,6 @@ export async function POST(req) {
             
             const firestoreOrderId = firestore.collection('orders').doc().id;
 
-            // --- FIX: Correctly structure the payload inside a single JSON string ---
             const servizephyrOrderPayload = {
                 order_id: firestoreOrderId,
                 user_id: userId,
@@ -68,19 +67,15 @@ export async function POST(req) {
                 bill_details: JSON.stringify({ subtotal, coupon, loyaltyDiscount, grandTotal, deliveryType, tipAmount, pickupTime, cgst, sgst, deliveryCharge, tableId, pax_count, tab_name, dineInTabId }),
                 notes: notes || null
             };
-            // --- END FIX ---
-
 
             const razorpayOrderOptions = {
                 amount: Math.round(grandTotal * 100), // Amount in paisa
                 currency: 'INR',
                 receipt: firestoreOrderId,
                 payment_capture: 1,
-                 // --- FIX: Store the entire payload under a single key ---
                 notes: {
                     servizephyr_payload: JSON.stringify(servizephyrOrderPayload)
                 }
-                // --- END FIX ---
             };
 
             const razorpayOrder = await razorpay.orders.create(razorpayOrderOptions);
@@ -98,19 +93,17 @@ export async function POST(req) {
         // --- FIRESTORE BATCH WRITE FOR COD / POD / DINE-IN ---
         const batch = firestore.batch();
         
-        // --- FIX: Save structured address for new users ---
         if (isNewUser) {
             const unclaimedUserRef = firestore.collection('unclaimed_profiles').doc(normalizedPhone);
             const newOrderedFrom = { restaurantId, restaurantName: businessData.name, businessType };
-            // Ensure address is saved as a structured object inside an array
-            const addressesToSave = address ? [address] : []; 
+            // Ensure address is saved as a structured object inside an array, including the 'full' property
+            const addressesToSave = address ? [{ ...address, full: address.full }] : []; 
             batch.set(unclaimedUserRef, {
                 name: name, phone: normalizedPhone, addresses: addressesToSave,
                 createdAt: FieldValue.serverTimestamp(),
                 orderedFrom: FieldValue.arrayUnion(newOrderedFrom)
             }, { merge: true });
         }
-        // --- END FIX ---
         
         const couponDiscountAmount = coupon?.discount || 0;
         const finalLoyaltyDiscount = loyaltyDiscount || 0;
@@ -205,5 +198,3 @@ export async function POST(req) {
         return NextResponse.json({ message: `Backend Error: ${error.message}` }, { status: 500 });
     }
 }
-
-    
