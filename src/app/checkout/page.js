@@ -303,7 +303,7 @@ const CheckoutPageInternal = () => {
                 });
                 if (userRes.ok) {
                     const userData = await userRes.json();
-                    setOrderName(userData.name || '');
+                    setOrderName(userData.name || ''); // This sets the name
                     setUserAddresses(userData.addresses || []);
                     if (userData.addresses && userData.addresses.length > 0) {
                         setSelectedAddress(userData.addresses[0].id);
@@ -346,17 +346,15 @@ const CheckoutPageInternal = () => {
     useEffect(() => {
         const address = userAddresses.find(a => a.id === selectedAddress);
         if (address) {
-            setOrderName(address.name || '');
+            setOrderName(address.name || ''); // THE FIX: Set orderName when an address is selected
             setOrderPhone(address.phone || '');
         } else if (userAddresses.length > 0 && !selectedAddress) {
-            // Auto-select the first address if none is selected
             setSelectedAddress(userAddresses[0].id);
         } else if (userAddresses.length === 0) {
             setSelectedAddress(null);
-            setOrderName('');
-            setOrderPhone(cartData?.phone || '');
+            // Don't clear orderName here if it was already fetched from lookup
         }
-    }, [selectedAddress, userAddresses, cartData?.phone]);
+    }, [selectedAddress, userAddresses]);
     
     const handleAddNewAddress = async (newAddress) => {
         try {
@@ -477,7 +475,7 @@ const CheckoutPageInternal = () => {
             return;
         }
 
-        if (!orderName.trim()) {
+        if (!orderName || !orderName.trim()) {
             setError("Please provide a name for the order.");
             if (deliveryType === 'delivery') setIsModalOpen(true);
             return;
@@ -749,3 +747,5 @@ const CheckoutPage = () => (
 );
 
 export default CheckoutPage;
+
+    
