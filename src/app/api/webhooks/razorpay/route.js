@@ -1,7 +1,7 @@
 
 
 import { NextResponse } from 'next/server';
-import { getFirestore } from '@/lib/firebase-admin';
+import { getFirestore, FieldValue } from '@/lib/firebase-admin';
 import { sendNewOrderToOwner } from '@/lib/notifications';
 import crypto from 'crypto';
 import https from 'https';
@@ -129,8 +129,8 @@ export async function POST(req) {
                     name: customerDetails.name, 
                     phone: customerDetails.phone, 
                     addresses: [{ id: `addr_${Date.now()}`, full: customerDetails.address }],
-                    createdAt: firestore.FieldValue.serverTimestamp(),
-                    orderedFrom: firestore.FieldValue.arrayUnion({
+                    createdAt: FieldValue.serverTimestamp(),
+                    orderedFrom: FieldValue.arrayUnion({
                         restaurantId: restaurantId,
                         restaurantName: rzpOrder.notes?.restaurantName || 'Unknown',
                         businessType: businessType,
@@ -150,10 +150,10 @@ export async function POST(req) {
             batch.set(restaurantCustomerRef, {
                 name: customerDetails.name, phone: customerDetails.phone, 
                 status: isNewUser ? 'unclaimed' : 'verified',
-                totalSpend: firestore.FieldValue.increment(subtotal),
-                loyaltyPoints: firestore.FieldValue.increment(pointsEarned - pointsSpent),
-                lastOrderDate: firestore.FieldValue.serverTimestamp(),
-                totalOrders: firestore.FieldValue.increment(1),
+                totalSpend: FieldValue.increment(subtotal),
+                loyaltyPoints: FieldValue.increment(pointsEarned - pointsSpent),
+                lastOrderDate: FieldValue.serverTimestamp(),
+                totalOrders: FieldValue.increment(1),
             }, { merge: true });
             
             const newOrderRef = firestore.collection('orders').doc(firestoreOrderId);
@@ -170,12 +170,12 @@ export async function POST(req) {
                     status: 'active',
                     tab_name: billDetails.tab_name || "Guest",
                     pax_count: billDetails.pax_count || 1,
-                    createdAt: firestore.FieldValue.serverTimestamp(),
+                    createdAt: FieldValue.serverTimestamp(),
                 });
                 
                 const tableRef = firestore.collection(businessCollectionName).doc(restaurantId).collection('tables').doc(billDetails.tableId);
                 batch.update(tableRef, {
-                    current_pax: firestore.FieldValue.increment(billDetails.pax_count || 1),
+                    current_pax: FieldValue.increment(billDetails.pax_count || 1),
                     state: 'occupied'
                 });
             }
@@ -199,7 +199,7 @@ export async function POST(req) {
                 deliveryCharge: billDetails.deliveryCharge,
                 totalAmount: billDetails.grandTotal,
                 status: 'paid',
-                orderDate: firestore.FieldValue.serverTimestamp(),
+                orderDate: FieldValue.serverTimestamp(),
                 notes: customNotes || null,
                 paymentDetails: {
                     razorpay_payment_id: paymentId,
@@ -261,5 +261,3 @@ export async function POST(req) {
         return NextResponse.json({ status: 'error', message: 'Internal server error' }, { status: 200 });
     }
 }
-
-    

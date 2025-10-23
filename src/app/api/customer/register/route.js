@@ -1,5 +1,6 @@
 
-import { getFirestore } from '@/lib/firebase-admin';
+
+import { getFirestore, FieldValue } from '@/lib/firebase-admin';
 import { NextResponse } from 'next/server';
 import Razorpay from 'razorpay';
 import { nanoid } from 'nanoid';
@@ -40,7 +41,6 @@ export async function POST(req) {
         const isNewUser = existingUserQuery.empty;
         const userId = isNewUser ? normalizedPhone : existingUserQuery.docs[0].id;
 
-        // GeoPoint logic is temporarily disabled as per user request.
         const customerLocation = null;
 
         if (paymentMethod === 'razorpay') {
@@ -57,12 +57,10 @@ export async function POST(req) {
             const firestoreOrderId = firestore.collection('orders').doc().id;
 
             const servizephyrOrderPayload = {
-                // Key identifiers for webhook processing
-                order_id: firestoreOrderId, // Use a pre-generated ID
+                order_id: firestoreOrderId,
                 user_id: userId,
                 restaurant_id: restaurantId,
                 business_type: businessType,
-                // Full data for record keeping and display on Razorpay dashboard
                 customer_details: JSON.stringify({ name, address, phone: normalizedPhone }),
                 items: JSON.stringify(items),
                 bill_details: JSON.stringify({ subtotal, coupon, loyaltyDiscount, grandTotal, deliveryType, tipAmount, pickupTime, cgst, sgst, deliveryCharge, tableId }),
@@ -74,7 +72,9 @@ export async function POST(req) {
                 currency: 'INR',
                 receipt: firestoreOrderId,
                 payment_capture: 1,
-                notes: servizephyrOrderPayload
+                notes: {
+                    servizephyr_payload: JSON.stringify(servizephyrOrderPayload)
+                }
             };
 
             const razorpayOrder = await razorpay.orders.create(razorpayOrderOptions);
@@ -97,8 +97,8 @@ export async function POST(req) {
             const newOrderedFrom = { restaurantId, restaurantName: businessData.name, businessType };
             batch.set(unclaimedUserRef, {
                 name: name, phone: normalizedPhone, addresses: [{ id: `addr_${Date.now()}`, full: address }],
-                createdAt: firestore.FieldValue.serverTimestamp(),
-                orderedFrom: firestore.FieldValue.arrayUnion(newOrderedFrom)
+                createdAt: FieldValue.serverTimestamp(),
+                orderedFrom: FieldValue.arrayUnion(newOrderedFrom)
             }, { merge: true });
         }
         
@@ -112,26 +112,26 @@ export async function POST(req) {
         const restaurantCustomerRef = businessRef.collection('customers').doc(userId);
         batch.set(restaurantCustomerRef, {
             name: name, phone: normalizedPhone, status: isNewUser ? 'unclaimed' : 'verified',
-            totalSpend: firestore.FieldValue.increment(subtotal),
-            loyaltyPoints: firestore.FieldValue.increment(pointsEarned - pointsSpent),
-            lastOrderDate: firestore.FieldValue.serverTimestamp(),
-            totalOrders: firestore.FieldValue.increment(1),
+            totalSpend: FieldValue.increment(subtotal),
+            loyaltyPoints: FieldValue.increment(pointsEarned - pointsSpent),
+            lastOrderDate: FieldValue.serverTimestamp(),
+            totalOrders: FieldValue.increment(1),
         }, { merge: true });
         
         if (!isNewUser) {
             const userRestaurantLinkRef = usersRef.doc(userId).collection('joined_restaurants').doc(restaurantId);
             batch.set(userRestaurantLinkRef, {
-                 restaurantName: businessData.name, joinedAt: firestore.FieldValue.serverTimestamp(),
-                 totalSpend: firestore.FieldValue.increment(subtotal),
-                 loyaltyPoints: firestore.FieldValue.increment(pointsEarned - pointsSpent),
-                 lastOrderDate: firestore.FieldValue.serverTimestamp(),
-                 totalOrders: firestore.FieldValue.increment(1),
+                 restaurantName: businessData.name, joinedAt: FieldValue.serverTimestamp(),
+                 totalSpend: FieldValue.increment(subtotal),
+                 loyaltyPoints: FieldValue.increment(pointsEarned - pointsSpent),
+                 lastOrderDate: FieldValue.serverTimestamp(),
+                 totalOrders: FieldValue.increment(1),
             }, { merge: true });
         }
         
         if (coupon && coupon.id) {
             const couponRef = businessRef.collection('coupons').doc(coupon.id);
-            batch.update(couponRef, { timesUsed: firestore.FieldValue.increment(1) });
+            batch.update(couponRef, { timesUsed: FieldValue.increment(1) });
         }
 
         const newOrderRef = firestore.collection('orders').doc();
@@ -144,7 +144,7 @@ export async function POST(req) {
             subtotal, coupon, loyaltyDiscount, discount: finalDiscount, cgst, sgst, deliveryCharge,
             totalAmount: grandTotal,
             status: deliveryType === 'dine-in' ? 'active_tab' : 'pending',
-            orderDate: firestore.FieldValue.serverTimestamp(),
+            orderDate: FieldValue.serverTimestamp(),
             notes: notes || null,
             paymentDetails: { method: paymentMethod }
         });
