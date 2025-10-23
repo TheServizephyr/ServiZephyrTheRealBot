@@ -187,7 +187,7 @@ export async function POST(request) {
             const customerPhone = fromWithCode.startsWith('91') ? fromWithCode.substring(2) : fromWithCode;
             const conversationRef = business.ref.collection('conversations').doc(customerPhone);
             const messagesCollectionRef = conversationRef.collection('messages');
-
+            
             // --- FINAL FIX: Check if any messages exist in the subcollection ---
             const messagesSnap = await messagesCollectionRef.limit(1).get();
             const isNewConversation = messagesSnap.empty;
@@ -203,7 +203,8 @@ export async function POST(request) {
             } else {
                  console.log(`[Webhook] Not the first message from ${customerPhone}. Skipping automatic reply.`);
             }
-            
+
+            // Now, save the message to the database
             const messageRef = messagesCollectionRef.doc();
             console.log(`[Webhook] Saving message to Firestore for customer ${customerPhone} at path: ${messageRef.path}`);
             
