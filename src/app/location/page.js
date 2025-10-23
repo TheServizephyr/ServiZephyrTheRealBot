@@ -1,4 +1,3 @@
-
 'use client';
 
 import React, { useState, useEffect, Suspense, useRef } from 'react';
@@ -29,6 +28,8 @@ const LocationPageInternal = () => {
     const [error, setError] = useState('');
     const debounceTimeout = useRef(null);
     const [infoDialog, setInfoDialog] = useState({ isOpen: false, title: '', message: '' });
+    const [searchQuery, setSearchQuery] = useState('');
+    const [suggestions, setSuggestions] = useState([]);
 
 
     const getCurrentLocation = () => {
@@ -104,10 +105,6 @@ const LocationPageInternal = () => {
 
         return () => clearTimeout(debounceTimeout.current);
     }, [searchQuery]);
-
-    const [searchQuery, setSearchQuery] = useState('');
-    const [suggestions, setSuggestions] = useState([]);
-
 
     const handleSuggestionClick = (suggestion) => {
         setSearchQuery(suggestion.placeName);
