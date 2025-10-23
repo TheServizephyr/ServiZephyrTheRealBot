@@ -154,7 +154,6 @@ export async function POST(request) {
                 return NextResponse.json({ message: 'Business not found' }, { status: 404 });
             }
             
-            const businessData = business.data;
             const businessId = business.id;
             const businessCollection = business.collectionName;
 

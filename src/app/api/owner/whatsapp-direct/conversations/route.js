@@ -47,9 +47,10 @@ export async function GET(req) {
         const conversations = conversationsSnap.docs.map(doc => {
             const data = doc.data();
             // Ensure timestamp is serializable
+            const lastMessageTimestamp = data.lastMessageTimestamp?.toDate ? data.lastMessageTimestamp.toDate().toISOString() : null;
             return {
                 ...data,
-                lastMessageTimestamp: data.lastMessageTimestamp.toDate().toISOString()
+                lastMessageTimestamp,
             };
         });
 
