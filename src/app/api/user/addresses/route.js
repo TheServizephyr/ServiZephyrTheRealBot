@@ -21,8 +21,8 @@ export async function POST(req) {
         const uid = await getUserId(req);
         const newAddress = await req.json();
 
-        // Validate new address - it is now a structured object
-        if (!newAddress || !newAddress.id || !newAddress.name || !newAddress.phone || !newAddress.street || !newAddress.city || !newAddress.pincode || !newAddress.state) {
+        // Validate new address - it is now a structured object with a 'full' property
+        if (!newAddress || !newAddress.id || !newAddress.name || !newAddress.phone || !newAddress.street || !newAddress.city || !newAddress.pincode || !newAddress.state || !newAddress.full) {
             return NextResponse.json({ message: 'Invalid address data provided. All fields are required.' }, { status: 400 });
         }
 

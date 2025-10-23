@@ -162,7 +162,7 @@ const AddAddressModal = ({ isOpen, onClose, onSave, isExistingUser, userName, us
         const finalName = isExistingUser ? userName : recipientName;
         const finalPhone = isExistingUser ? userPhone : phone;
         
-        if (!finalName.trim() || !finalPhone.trim() || !address.street.trim() || !address.city.trim() || !address.pincode.trim() || !address.state.trim()) {
+        if (!finalName || !finalName.trim() || !finalPhone || !finalPhone.trim() || !address.street.trim() || !address.city.trim() || !address.pincode.trim() || !address.state.trim()) {
             setError('Please fill all required fields.');
             return;
         }
@@ -362,7 +362,7 @@ const CheckoutPageInternal = () => {
         } else if (userAddresses.length === 0) {
             setSelectedAddress(null);
         }
-    }, [selectedAddress, userAddresses]);
+    }, [selectedAddress, userAddresses, orderName]); // Added orderName to dependencies
     
     const handleAddNewAddress = async (newAddress) => {
         try {
@@ -498,11 +498,7 @@ const CheckoutPageInternal = () => {
             return;
         }
         
-        // Ensure deliveryAddress object has all required fields
-        const finalAddress = deliveryType === 'delivery' ? {
-            ...deliveryAddress,
-            full: deliveryAddress.full || `${deliveryAddress.street}, ${deliveryAddress.city}, ${deliveryAddress.state} - ${deliveryAddress.pincode}`
-        } : null;
+        const finalAddress = deliveryType === 'delivery' ? deliveryAddress : null;
 
         const orderData = {
             name: orderName,
