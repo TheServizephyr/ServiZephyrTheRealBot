@@ -348,30 +348,24 @@ const CheckoutPageInternal = () => {
 
     useEffect(() => {
         const address = userAddresses.find(a => a.id === selectedAddress);
-        // --- THE FIX ---
-        // Only update the phone number if the address has one.
-        // DO NOT update the name, as it might be blank in the address object and overwrite the one fetched from the user profile.
-        if (address && address.phone) {
+        if (address?.phone) {
             setOrderPhone(address.phone);
         }
-        
         if (!selectedAddress && userAddresses.length > 0) {
             setSelectedAddress(userAddresses[0].id);
         }
     }, [selectedAddress, userAddresses]);
     
     const handleAddNewAddress = async (newAddress) => {
+        // Optimistically update UI
+        setUserAddresses(prev => [...prev, newAddress]);
+        setSelectedAddress(newAddress.id);
+        setIsAddAddressModalOpen(false);
+
         try {
-            // Optimistically update the UI first for a better UX
-            setUserAddresses(prevAddresses => [...prevAddresses, newAddress]);
-            setSelectedAddress(newAddress.id);
-            setIsAddAddressModalOpen(false);
-            
             const user = auth.currentUser;
             if (!user) {
-                // For non-logged-in users, the address is saved to the unclaimed profile upon order.
-                // The local state update is sufficient for the current session.
-                console.log("User not logged in, address will be saved with order.");
+                console.log("User not logged in. Address will be saved with order.");
                 return;
             }
 
@@ -381,18 +375,17 @@ const CheckoutPageInternal = () => {
                 headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${idToken}` },
                 body: JSON.stringify(newAddress)
             });
-            const data = await res.json();
+
             if (!res.ok) {
-                // If API fails, revert the optimistic update
-                setUserAddresses(prevAddresses => prevAddresses.filter(a => a.id !== newAddress.id));
+                const data = await res.json();
+                // Revert optimistic update on failure
+                setUserAddresses(prev => prev.filter(a => a.id !== newAddress.id));
                 throw new Error(data.message || 'Failed to save address.');
             }
-            // Optional: If the server returns slightly different data, update the state again.
-            // But since we are creating the ID on the client, it should be fine.
-
         } catch (error) {
             console.error("Error saving new address:", error);
-            throw error; // Re-throw to be caught by the modal
+            // Re-throw to be caught by the modal
+            throw error;
         }
     };
     
