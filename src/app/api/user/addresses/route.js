@@ -6,8 +6,6 @@ import { getAuth, getFirestore, FieldValue } from '@/lib/firebase-admin';
 async function getUserId(req) {
     const authHeader = req.headers.get('authorization');
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
-        // Allow non-authenticated users for specific scenarios if needed, otherwise throw.
-        // For now, we enforce authentication for adding/deleting addresses.
         throw { message: 'Unauthorized', status: 401 };
     }
     const token = authHeader.split('Bearer ')[1];
@@ -30,7 +28,6 @@ export async function POST(req) {
         
         // --- THE FIX ---
         // Use `update` with `arrayUnion` to correctly add the new address to the array.
-        // `set` with `merge` does not work as expected with arrayUnion.
         await userRef.update({
             addresses: FieldValue.arrayUnion(newAddress)
         });
@@ -39,6 +36,9 @@ export async function POST(req) {
 
     } catch (error) {
         console.error("POST /api/user/addresses ERROR:", error);
+        if (error.code === 'not-found') {
+             return NextResponse.json({ message: 'User profile not found. Cannot save address.' }, { status: 404 });
+        }
         return NextResponse.json({ message: error.message || 'Internal Server Error' }, { status: error.status || 500 });
     }
 }

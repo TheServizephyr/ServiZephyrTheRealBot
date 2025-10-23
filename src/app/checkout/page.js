@@ -13,6 +13,7 @@ import { cn } from '@/lib/utils';
 import QRCode from 'qrcode.react';
 import { Input } from '@/components/ui/input';
 import { auth } from '@/lib/firebase';
+import { onAuthStateChanged } from 'firebase/auth';
 import InfoDialog from '@/components/InfoDialog';
 
 
@@ -348,9 +349,9 @@ const CheckoutPageInternal = () => {
 
     useEffect(() => {
         const address = userAddresses.find(a => a.id === selectedAddress);
-        if (address?.name) {
-            // Only update name if it exists on the address, preserving fetched name otherwise
-            setOrderName(address.name);
+        if (address?.name && address.name !== orderName) {
+            // Only update name if it exists on the address AND is different
+            // setOrderName(address.name);
         }
         if (address?.phone) {
             setOrderPhone(address.phone);
@@ -358,7 +359,7 @@ const CheckoutPageInternal = () => {
         if (!selectedAddress && userAddresses.length > 0) {
             setSelectedAddress(userAddresses[0].id);
         }
-    }, [selectedAddress, userAddresses]);
+    }, [selectedAddress, userAddresses, orderName]);
     
     const handleAddNewAddress = async (newAddress) => {
         // Optimistically update UI
@@ -366,30 +367,32 @@ const CheckoutPageInternal = () => {
         setSelectedAddress(newAddress.id);
         setIsAddAddressModalOpen(false);
 
+        // API call to persist
         try {
-            const user = auth.currentUser;
-            // The API call should be made regardless of whether the user is fully registered
-            // As long as they are signed in (even anonymously), they should have an ID token.
-            if (user) {
-                const idToken = await user.getIdToken();
-                const res = await fetch('/api/user/addresses', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${idToken}` },
-                    body: JSON.stringify(newAddress)
-                });
+            // Using onAuthStateChanged to ensure auth state is loaded.
+            const unsubscribe = onAuthStateChanged(auth, async (user) => {
+                unsubscribe(); // Unsubscribe after first run
+                if (user) {
+                    const idToken = await user.getIdToken();
+                    const res = await fetch('/api/user/addresses', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${idToken}` },
+                        body: JSON.stringify(newAddress)
+                    });
 
-                if (!res.ok) {
-                    const data = await res.json();
-                    throw new Error(data.message || 'Failed to save address to your profile.');
+                    if (!res.ok) {
+                        const data = await res.json();
+                        throw new Error(data.message || 'Failed to save address to your profile.');
+                    }
+                    console.log("Address saved to profile successfully");
+                } else {
+                    console.log("User not logged in. Address is saved locally for this order.");
                 }
-            } else {
-                 console.log("User not logged in. Address is saved locally for this order.");
-            }
+            });
         } catch (error) {
             console.error("Error saving new address:", error);
             // Revert optimistic update on failure
             setUserAddresses(prev => prev.filter(a => a.id !== newAddress.id));
-             // Re-throw to be caught by the modal
             throw error;
         }
     };
