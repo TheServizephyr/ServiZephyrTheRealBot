@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useState, useEffect, useMemo } from 'react';
@@ -871,10 +872,8 @@ export default function LiveOrdersPage() {
                                             >
                                                 {order.customer}
                                             </div>
-                                            <Link href={`/owner-dashboard/customers?customerId=${order.customerId}`}>
-                                                <a title="View Full Customer Profile">
-                                                    <User size={14} className="text-muted-foreground hover:text-primary transition-colors"/>
-                                                </a>
+                                            <Link href={`/owner-dashboard/customers?customerId=${order.customerId}`} title="View Full Customer Profile">
+                                                <User size={14} className="text-muted-foreground hover:text-primary transition-colors"/>
                                             </Link>
                                         </div>
                                         <div className="mt-1 flex items-center gap-2">
