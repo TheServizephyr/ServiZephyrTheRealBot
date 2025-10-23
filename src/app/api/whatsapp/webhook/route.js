@@ -186,6 +186,23 @@ export async function POST(request) {
             
             const customerPhone = fromWithCode.startsWith('91') ? fromWithCode.substring(2) : fromWithCode;
             const conversationRef = business.ref.collection('conversations').doc(customerPhone);
+            
+            // --- FIX START: Check for existing conversation BEFORE saving the message ---
+            const conversationSnap = await conversationRef.get();
+            const isNewConversation = !conversationSnap.exists;
+
+            if (isNewConversation) {
+                console.log(`[Webhook] First message from ${customerPhone}. Sending automatic reply.`);
+                const menuLink = `https://servizephyr.com/order/${business.id}?phone=${customerPhone}`;
+                const replyText = `Thanks for contacting *${business.data.name}*. We have received your message and will get back to you shortly.\n\nYou can also view our menu and place an order directly here:\n${menuLink}`;
+                
+                await sendWhatsAppMessage(fromWithCode, replyText, botPhoneNumberId);
+                console.log(`[Webhook] Automatic reply sent to ${customerPhone}.`);
+            } else {
+                 console.log(`[Webhook] Not the first message from ${customerPhone}. Skipping automatic reply.`);
+            }
+            // --- FIX END ---
+            
             const messageRef = conversationRef.collection('messages').doc();
 
             console.log(`[Webhook] Saving message to Firestore for customer ${customerPhone} at path: ${messageRef.path}`);
@@ -211,18 +228,6 @@ export async function POST(request) {
 
             await batch.commit();
             console.log(`[Webhook] Message saved successfully for ${customerPhone}.`);
-            
-            const messagesSnap = await conversationRef.collection('messages').limit(2).get();
-            if (messagesSnap.docs.length <= 1) {
-                console.log(`[Webhook] First message from ${customerPhone}. Sending automatic reply.`);
-                const menuLink = `https://servizephyr.com/order/${business.id}?phone=${customerPhone}`;
-                const replyText = `Thanks for contacting *${business.data.name}*. We have received your message and will get back to you shortly.\n\nYou can also view our menu and place an order directly here:\n${menuLink}`;
-                
-                await sendWhatsAppMessage(fromWithCode, replyText, botPhoneNumberId);
-                console.log(`[Webhook] Automatic reply sent to ${customerPhone}.`);
-            } else {
-                 console.log(`[Webhook] Not the first message from ${customerPhone}. Skipping automatic reply.`);
-            }
 
         } else {
             console.log("[Webhook] Received a non-text, non-button event. Skipping.");
