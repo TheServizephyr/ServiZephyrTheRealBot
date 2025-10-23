@@ -1,5 +1,4 @@
 
-
 import { NextResponse } from 'next/server';
 import { getFirestore, FieldValue } from '@/lib/firebase-admin';
 import { sendWhatsAppMessage } from '@/lib/whatsapp';
@@ -186,27 +185,27 @@ export async function POST(request) {
             
             const customerPhone = fromWithCode.startsWith('91') ? fromWithCode.substring(2) : fromWithCode;
             const conversationRef = business.ref.collection('conversations').doc(customerPhone);
-            
-            // --- FIX START: Check for existing conversation BEFORE saving the message ---
-            const conversationSnap = await conversationRef.get();
-            const isNewConversation = !conversationSnap.exists;
+            const messagesCollectionRef = conversationRef.collection('messages');
+
+            // --- FINAL FIX: Check if any messages exist in the subcollection ---
+            const messagesSnap = await messagesCollectionRef.limit(1).get();
+            const isNewConversation = messagesSnap.empty;
 
             if (isNewConversation) {
                 console.log(`[Webhook] First message from ${customerPhone}. Sending automatic reply.`);
                 const menuLink = `https://servizephyr.com/order/${business.id}?phone=${customerPhone}`;
                 const replyText = `Thanks for contacting *${business.data.name}*. We have received your message and will get back to you shortly.\n\nYou can also view our menu and place an order directly here:\n${menuLink}`;
                 
+                // Send the reply BEFORE writing to the database
                 await sendWhatsAppMessage(fromWithCode, replyText, botPhoneNumberId);
                 console.log(`[Webhook] Automatic reply sent to ${customerPhone}.`);
             } else {
                  console.log(`[Webhook] Not the first message from ${customerPhone}. Skipping automatic reply.`);
             }
-            // --- FIX END ---
             
-            const messageRef = conversationRef.collection('messages').doc();
-
+            const messageRef = messagesCollectionRef.doc();
             console.log(`[Webhook] Saving message to Firestore for customer ${customerPhone} at path: ${messageRef.path}`);
-
+            
             const batch = firestore.batch();
             
             batch.set(messageRef, {
