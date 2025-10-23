@@ -11,13 +11,11 @@ export async function POST(req) {
             return NextResponse.json({ message: 'Phone number is required.' }, { status: 400 });
         }
         
-        // Normalize phone to 10 digits if it starts with 91
         const normalizedPhone = phone.length > 10 ? phone.slice(-10) : phone;
         
         const usersRef = firestore.collection('users');
         const userQuery = await usersRef.where('phone', '==', normalizedPhone).limit(1).get();
 
-        // 1. Check for a verified, master user profile first
         if (!userQuery.empty) {
             const userDoc = userQuery.docs[0];
             const userData = userDoc.data();
@@ -25,12 +23,11 @@ export async function POST(req) {
             const responseData = {
                 name: userData.name,
                 addresses: userData.addresses || [],
-                isVerified: true, // Mark that this is a master profile
+                isVerified: true,
             };
             return NextResponse.json(responseData, { status: 200 });
         }
         
-        // 2. If no master profile, check for an unclaimed profile
         const unclaimedProfileRef = firestore.collection('unclaimed_profiles').doc(normalizedPhone);
         const unclaimedProfileSnap = await unclaimedProfileRef.get();
         
@@ -39,12 +36,11 @@ export async function POST(req) {
             const responseData = {
                 name: unclaimedData.name,
                 addresses: unclaimedData.addresses || [],
-                isVerified: false, // Mark that this is an unclaimed profile
+                isVerified: false, 
             };
              return NextResponse.json(responseData, { status: 200 });
         }
         
-        // 3. If neither exists, the user is completely new.
         return NextResponse.json({ message: 'User not found.' }, { status: 404 });
 
     } catch (error) {
@@ -52,3 +48,5 @@ export async function POST(req) {
         return NextResponse.json({ message: `Backend Error: ${error.message}` }, { status: 500 });
     }
 }
+
+    

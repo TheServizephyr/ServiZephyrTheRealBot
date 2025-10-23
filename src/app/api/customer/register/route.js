@@ -16,7 +16,6 @@ export async function POST(req) {
         if (!name || !phone || !restaurantId || (!items && !dineInTabId) || grandTotal === undefined || subtotal === undefined) {
             return NextResponse.json({ message: 'Missing required fields for order creation.' }, { status: 400 });
         }
-        // For delivery orders, address MUST be a structured object with a 'full' property
         if (deliveryType === 'delivery' && (!address || !address.full)) {
             return NextResponse.json({ message: 'A full, structured address is required for delivery orders.' }, { status: 400 });
         }
@@ -36,7 +35,6 @@ export async function POST(req) {
         let razorpayOrderId = null;
         const businessData = businessDoc.data();
         
-        // Find user ID ahead of time
         const usersRef = firestore.collection('users');
         const existingUserQuery = await usersRef.where('phone', '==', normalizedPhone).limit(1).get();
         const isNewUser = existingUserQuery.empty;
@@ -85,7 +83,7 @@ export async function POST(req) {
             return NextResponse.json({ 
                 message: 'Razorpay order created. Awaiting payment confirmation.',
                 razorpay_order_id: razorpayOrderId,
-                firestore_order_id: firestoreOrderId, // Return the same ID to the client
+                firestore_order_id: firestoreOrderId,
             }, { status: 200 });
         }
 
@@ -96,7 +94,6 @@ export async function POST(req) {
         if (isNewUser) {
             const unclaimedUserRef = firestore.collection('unclaimed_profiles').doc(normalizedPhone);
             const newOrderedFrom = { restaurantId, restaurantName: businessData.name, businessType };
-            // Ensure address is saved as a structured object inside an array, including the 'full' property
             const addressesToSave = address ? [{ ...address, full: address.full }] : []; 
             batch.set(unclaimedUserRef, {
                 name: name, phone: normalizedPhone, addresses: addressesToSave,
@@ -137,7 +134,6 @@ export async function POST(req) {
             batch.update(couponRef, { timesUsed: FieldValue.increment(1) });
         }
         
-        // DINE IN LOGIC: Handle new tab creation if it was a dine-in order
         let finalDineInTabId = dineInTabId;
         if (deliveryType === 'dine-in' && tableId && !finalDineInTabId) {
              const newTabRef = businessRef.collection('dineInTabs').doc();
@@ -198,3 +194,5 @@ export async function POST(req) {
         return NextResponse.json({ message: `Backend Error: ${error.message}` }, { status: 500 });
     }
 }
+
+    

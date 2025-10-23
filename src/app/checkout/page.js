@@ -169,7 +169,6 @@ const AddAddressModal = ({ isOpen, onClose, onSave, isExistingUser, userName, us
             return;
         }
 
-        // Construct the 'full' address string
         const fullAddress = `${address.street.trim()}, ${address.landmark ? address.landmark.trim() + ', ' : ''}${address.city.trim()}, ${address.state.trim()} - ${address.pincode.trim()}`;
 
         const newAddress = {
@@ -358,11 +357,9 @@ const CheckoutPageInternal = () => {
     useEffect(() => {
         const address = userAddresses.find(a => a.id === selectedAddress);
         if (address) {
-            // THE FIX: Set name and phone from the selected address, don't reset name
             setOrderName(address.name || ''); 
             setOrderPhone(address.phone || '');
         } else if (userAddresses.length > 0 && !selectedAddress) {
-            // If no address is selected but addresses exist, default to the first one.
             setSelectedAddress(userAddresses[0].id);
         }
     }, [selectedAddress, userAddresses]);
@@ -371,7 +368,6 @@ const CheckoutPageInternal = () => {
         try {
             const user = auth.currentUser;
             if (!user) {
-                // For non-logged in users, just add to local state
                 const updatedAddresses = [...userAddresses, newAddress];
                 setUserAddresses(updatedAddresses);
                 setSelectedAddress(newAddress.id);
@@ -394,7 +390,7 @@ const CheckoutPageInternal = () => {
             setIsAddAddressModalOpen(false);
         } catch (error) {
             console.error("Error saving new address:", error);
-            throw error; // Re-throw to be caught in the modal
+            throw error;
         }
     };
     
@@ -416,11 +412,9 @@ const CheckoutPageInternal = () => {
                     throw new Error(data.message || 'Failed to delete address.');
                 }
                 
-                // Update local state
                 const updatedAddresses = userAddresses.filter(addr => addr.id !== addressId);
                 setUserAddresses(updatedAddresses);
                 
-                // If the deleted address was selected, reset selection
                 if(selectedAddress === addressId) {
                     setSelectedAddress(updatedAddresses.length > 0 ? updatedAddresses[0].id : null);
                 }
@@ -487,7 +481,7 @@ const CheckoutPageInternal = () => {
         const finalPaymentMethod = paymentMethod || selectedPaymentMethod;
         const deliveryType = cartData.tableId ? 'dine-in' : (cartData.deliveryType || 'delivery');
 
-        if (!orderName || !orderName.trim()) {
+        if (!orderName || orderName.trim().length === 0) {
             setError("Please provide a name for the order.");
             if (deliveryType === 'delivery') setIsModalOpen(true);
             return;
@@ -497,7 +491,7 @@ const CheckoutPageInternal = () => {
 
         if (deliveryType === 'delivery' && !deliveryAddress) {
             setError("Please select or add a delivery address.");
-            setIsModalOpen(true); // Open modal if not already open
+            setIsModalOpen(true);
             return;
         }
         
@@ -510,7 +504,7 @@ const CheckoutPageInternal = () => {
             items: cart,
             notes: cartData.notes,
             coupon: appliedCoupons.find(c => !c.customerId) || null,
-            loyaltyDiscount: 0, // This logic can be added later
+            loyaltyDiscount: 0,
             subtotal,
             cgst,
             sgst,
@@ -543,7 +537,6 @@ const CheckoutPageInternal = () => {
                 throw new Error(data.message || "Failed to place order.");
             }
 
-            // If Razorpay, initiate payment
             if (data.razorpay_order_id) {
                 const options = {
                     key: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID,
@@ -568,10 +561,9 @@ const CheckoutPageInternal = () => {
                 };
                 const rzp = new window.Razorpay(options);
                 rzp.open();
-            } else { // For COD/POD/Dine-In
+            } else {
                 localStorage.removeItem(`cart_${restaurantId}`);
                 if (orderData.deliveryType === 'dine-in') {
-                   // Redirect back to the order page with the new tabId
                    router.push(`/order/${restaurantId}?table=${tableId}&tabId=${data.dine_in_tab_id || tabId}&phone=${phone}`);
                 } else {
                    router.push(`/order/placed?orderId=${data.firestore_order_id}`);
@@ -771,3 +763,5 @@ const CheckoutPage = () => (
 );
 
 export default CheckoutPage;
+
+    
