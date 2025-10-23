@@ -3,7 +3,7 @@
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { RefreshCw, Printer, CheckCircle, IndianRupee, Users, Clock, ShoppingBag, Bell, MoreVertical, Trash2, QrCode, Download, Save, Wind, Edit, Table as TableIcon, History, Search, Salad, Fork, Spoon, Droplet, PlusCircle, AlertTriangle } from 'lucide-react';
+import { RefreshCw, Printer, CheckCircle, IndianRupee, Users, Clock, ShoppingBag, Bell, MoreVertical, Trash2, QrCode, Download, Save, Wind, Edit, Table as TableIcon, History, Search, Salad, UtensilsCrossed, Droplet, PlusCircle, AlertTriangle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { auth } from '@/lib/firebase';
@@ -729,7 +729,7 @@ const DineInMenuModal = ({ isOpen, onClose, showInfoDialog }) => {
                         </div>
                         <div className="p-4 border border-dashed border-border rounded-lg">
                             <div className="flex justify-between items-center mb-4">
-                                <h3 className="text-lg font-semibold flex items-center gap-2"><Fork size={20}/> Cutlery & Crockery</h3>
+                                <h3 className="text-lg font-semibold flex items-center gap-2"><UtensilsCrossed size={20}/> Cutlery & Crockery</h3>
                                  <Button variant="outline" size="sm" onClick={() => handleAddItem('Cutlery')}><PlusCircle size={16} className="mr-2"/> Add Item</Button>
                             </div>
                             <div className="space-y-2">
@@ -1132,5 +1132,3 @@ function DineInPage() {
 }
 
 export default DineInPage;
-
-    

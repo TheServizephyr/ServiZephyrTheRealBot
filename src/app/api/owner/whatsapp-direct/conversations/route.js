@@ -2,6 +2,8 @@
 import { NextResponse } from 'next/server';
 import { getAuth, getFirestore } from '@/lib/firebase-admin';
 
+export const dynamic = 'force-dynamic';
+
 async function verifyOwnerAndGetBusinessRef(req) {
     const auth = getAuth();
     const firestore = getFirestore();

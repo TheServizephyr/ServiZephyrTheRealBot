@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
 import { getFirestore } from '@/lib/firebase-admin';
 
+export const dynamic = 'force-dynamic';
+
 // This is a simplified helper, a real app would have more robust auth
 async function getBusinessRef(firestore, restaurantId) {
     let businessRef = firestore.collection('restaurants').doc(restaurantId);

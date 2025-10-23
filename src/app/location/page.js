@@ -5,9 +5,14 @@ import React, { useState, useEffect, Suspense, useRef } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { motion } from 'framer-motion';
 import { MapPin, Search, LocateFixed, Loader2, ArrowLeft, AlertTriangle } from 'lucide-react';
-import MapplsMap from '@/components/MapplsMap';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import dynamic from 'next/dynamic';
+
+const MapplsMap = dynamic(() => import('@/components/MapplsMap'), { 
+    ssr: false,
+    loading: () => <div className="w-full h-full bg-muted flex items-center justify-center"><Loader2 className="animate-spin text-primary"/></div>
+});
 
 const LocationPageInternal = () => {
     const router = useRouter();
