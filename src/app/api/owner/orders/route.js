@@ -127,7 +127,7 @@ export async function PATCH(req) {
     console.log('[API][PATCH /orders] Request received.');
     try {
         const auth = getAuth();
-        const firestore = await getFirestore();
+        const firestore = getFirestore();
         const { businessId, businessSnap } = await verifyOwnerAndGetBusiness(req, auth, firestore);
         const { orderId, newStatus, deliveryBoyId, rejectionReason } = await req.json();
 

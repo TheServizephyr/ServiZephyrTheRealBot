@@ -1,6 +1,4 @@
-
-
-"use client";
+'use client';
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -178,7 +176,7 @@ const BillModal = ({ order, restaurant, onClose, onPrint }) => {
                         <tbody>
                             {order.items.map((item, index) => {
                                 const rate = item.totalPrice ? (item.totalPrice / item.qty) : (item.price || 0);
-                                const amount = item.totalPrice || (item.qty * item.price);
+                                const amount = item.totalPrice || (item.qty * (item.price || 0));
                                 return (
                                 <tr key={index} className="border-b border-dotted border-black">
                                     <td className="py-2">{item.name}</td>
@@ -351,7 +349,7 @@ const OrderDetailModal = ({ data, isOpen, onClose }) => {
                             <h4 className="font-semibold">Items</h4>
                              <ul className="list-disc pl-5 text-muted-foreground text-sm">
                                 {(order.items || []).map((item, index) => (
-                                    <li key={index} className="mb-1">{item.qty}x {item.name} - ₹{((item.totalPrice || item.price) * item.qty).toFixed(2)}</li>
+                                    <li key={index} className="mb-1">{item.qty}x {item.name} - ₹{((item.totalPrice || (item.price || 0)) * item.qty).toFixed(2)}</li>
                                 ))}
                             </ul>
                         </div>
