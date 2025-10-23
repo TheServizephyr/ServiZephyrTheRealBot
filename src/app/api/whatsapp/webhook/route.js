@@ -35,13 +35,13 @@ async function getBusiness(firestore, botPhoneNumberId) {
     const restaurantsQuery = await firestore.collection('restaurants').where('botPhoneNumberId', '==', botPhoneNumberId).limit(1).get();
     if (!restaurantsQuery.empty) {
         const doc = restaurantsQuery.docs[0];
-        return { id: doc.id, data: doc.data(), collectionName: 'restaurants' };
+        return { id: doc.id, ref: doc.ref, data: doc.data(), collectionName: 'restaurants' };
     }
     
     const shopsQuery = await firestore.collection('shops').where('botPhoneNumberId', '==', botPhoneNumberId).limit(1).get();
     if (!shopsQuery.empty) {
         const doc = shopsQuery.docs[0];
-        return { id: doc.id, data: doc.data(), collectionName: 'shops' };
+        return { id: doc.id, ref: doc.ref, data: doc.data(), collectionName: 'shops' };
     }
     
     return null;
@@ -142,7 +142,10 @@ export async function POST(request) {
         // --- Handler for Customer's Text Messages ---
         else if (change?.value?.messages?.[0]?.text) {
             const message = change.value.messages[0];
-            const fromWithCode = message.from; 
+            const fromWithCode = message.from;
+            const messageBody = message.text.body;
+
+            // **THE FIX**: Safely get customer name and phone, then message body.
             const customerName = change.value?.contacts?.[0]?.profile?.name || 'Customer';
             const botPhoneNumberId = change.value.metadata.phone_number_id;
 
@@ -154,12 +157,10 @@ export async function POST(request) {
                 return NextResponse.json({ message: 'Business not found' }, { status: 404 });
             }
             
-            const businessId = business.id;
-            const businessCollection = business.collectionName;
-
             const customerPhone = fromWithCode.startsWith('91') ? fromWithCode.substring(2) : fromWithCode;
 
-            const conversationRef = firestore.collection(businessCollection).doc(businessId).collection('conversations').doc(customerPhone);
+            // Use the business's reference which includes the correct collection path.
+            const conversationRef = business.ref.collection('conversations').doc(customerPhone);
             const messageRef = conversationRef.collection('messages').doc();
 
             const batch = firestore.batch();
@@ -167,7 +168,7 @@ export async function POST(request) {
             // Save the incoming message
             batch.set(messageRef, {
                 id: messageRef.id,
-                text: message.text.body,
+                text: messageBody,
                 sender: 'customer',
                 timestamp: FieldValue.serverTimestamp(),
                 status: 'unread'
@@ -178,7 +179,7 @@ export async function POST(request) {
                 id: customerPhone,
                 customerName: customerName,
                 customerPhone: customerPhone,
-                lastMessage: message.text.body,
+                lastMessage: messageBody,
                 lastMessageTimestamp: FieldValue.serverTimestamp(),
                 unreadCount: FieldValue.increment(1),
             }, { merge: true });
