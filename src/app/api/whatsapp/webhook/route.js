@@ -57,7 +57,6 @@ export async function POST(request) {
     try {
         const body = await request.json();
         
-        // Log the entire body in dev for deep debugging if needed, but keep it concise for production
         console.log("[Webhook] Request Body Received:", JSON.stringify(body, null, 2));
 
         if (body.object !== 'whatsapp_business_account') {
@@ -73,7 +72,6 @@ export async function POST(request) {
             return NextResponse.json({ message: 'No change data' }, { status: 200 });
         }
         
-        // --- Handler for Button Clicks ---
         if (change.value.messages?.[0]?.interactive?.button_reply) {
             const message = change.value.messages[0];
             const buttonReply = message.interactive.button_reply;
@@ -85,7 +83,6 @@ export async function POST(request) {
             
             const [action, ...payloadParts] = buttonId.split('_');
 
-            // --- Handler for Order Accept/Reject ---
             if (action === 'accept' || action === 'reject') {
                 const orderId = payloadParts.join('_').replace('order_', '');
                 console.log(`[Webhook] Order action detected. Action: ${action}, Order ID: ${orderId}`);
@@ -146,7 +143,6 @@ export async function POST(request) {
                     await sendWhatsAppMessage(fromNumber, `✅ Action complete: Order ${orderId} has been rejected. The customer will be notified.`, businessPhoneNumberId);
                 }
             } 
-            // --- Handler for Restaurant Status Change ---
             else if (action === 'retain' || action === 'revert') {
                 const [_, __, businessId, status] = payloadParts;
                 console.log(`[Webhook] Restaurant status action detected. Action: ${action}, Business ID: ${businessId}, Status: ${status}`);
@@ -171,7 +167,6 @@ export async function POST(request) {
                 }
             }
         } 
-        // --- Handler for Customer's Text Messages ---
         else if (change?.value?.messages?.[0]?.text) {
             const message = change.value.messages[0];
             const fromWithCode = message.from;
@@ -217,22 +212,17 @@ export async function POST(request) {
             await batch.commit();
             console.log(`[Webhook] Message saved successfully for ${customerPhone}.`);
             
-            // --- FIX: SEND AUTOMATIC REPLY ---
-            const conversationDoc = await conversationRef.get();
-            const messageCount = (await conversationRef.collection('messages').count().get()).data().count;
-
-            if (messageCount <= 1) { // Send reply only on the first message
+            const messagesSnap = await conversationRef.collection('messages').limit(2).get();
+            if (messagesSnap.docs.length <= 1) {
                 console.log(`[Webhook] First message from ${customerPhone}. Sending automatic reply.`);
                 const menuLink = `https://servizephyr.com/order/${business.id}?phone=${customerPhone}`;
                 const replyText = `Thanks for contacting *${business.data.name}*. We have received your message and will get back to you shortly.\n\nYou can also view our menu and place an order directly here:\n${menuLink}`;
                 
                 await sendWhatsAppMessage(fromWithCode, replyText, botPhoneNumberId);
-                 console.log(`[Webhook] Automatic reply sent to ${customerPhone}.`);
+                console.log(`[Webhook] Automatic reply sent to ${customerPhone}.`);
             } else {
                  console.log(`[Webhook] Not the first message from ${customerPhone}. Skipping automatic reply.`);
             }
-            // --- END FIX ---
-
 
         } else {
             console.log("[Webhook] Received a non-text, non-button event. Skipping.");
@@ -242,7 +232,6 @@ export async function POST(request) {
 
     } catch (error) {
         console.error('[Webhook] CRITICAL Error processing POST request:', error);
-        // It's important to still return a 200 OK to WhatsApp to prevent them from resending the webhook.
         return NextResponse.json({ message: 'Error processing request, but acknowledged.' }, { status: 200 });
     }
 }

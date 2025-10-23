@@ -34,14 +34,11 @@ const CustomizationDrawer = ({ item, isOpen, onClose, onAddToCart }) => {
 
     useEffect(() => {
         if (item) {
-            // THE FIX: Find the minimum price portion and select it by default
             const minPricePortion = item.portions?.reduce((min, p) => p.price < min.price ? p : min, item.portions[0]) || null;
             setSelectedPortion(minPricePortion);
             
-            // Initialize add-ons state
             const initialAddOns = {};
             (item.addOnGroups || []).forEach(group => {
-                // Always initialize as an array for multi-select
                 initialAddOns[group.title] = [];
             });
             setSelectedAddOns(initialAddOns);
@@ -55,10 +52,8 @@ const CustomizationDrawer = ({ item, isOpen, onClose, onAddToCart }) => {
             const isSelected = currentSelection.some(a => a.name === addOn.name);
 
             if (isSelected) {
-                // If it's already selected, remove it
                 newSelections[groupTitle] = currentSelection.filter(a => a.name !== addOn.name);
             } else {
-                // If not selected, add it
                 newSelections[groupTitle] = [...currentSelection, addOn];
             }
             return newSelections;
@@ -71,7 +66,6 @@ const CustomizationDrawer = ({ item, isOpen, onClose, onAddToCart }) => {
         let total = selectedPortion.price;
         for (const groupTitle in selectedAddOns) {
             const selection = selectedAddOns[groupTitle];
-            // Always treat selection as an array of addons
             if (Array.isArray(selection)) {
                 total += selection.reduce((sum, addon) => sum + addon.price, 0);
             }
@@ -87,7 +81,6 @@ const CustomizationDrawer = ({ item, isOpen, onClose, onAddToCart }) => {
 
     if (!item) return null;
     
-    // THE FIX: Sort portions by price before rendering
     const sortedPortions = item.portions ? [...item.portions].sort((a, b) => a.price - b.price) : [];
     const showPortions = sortedPortions.length > 1;
 
@@ -116,7 +109,6 @@ const CustomizationDrawer = ({ item, isOpen, onClose, onAddToCart }) => {
                         </div>
 
                         <div className="py-4 space-y-6 overflow-y-auto flex-grow">
-                             {/* Portions - ONLY show if there are more than 1 */}
                             {showPortions && (
                                 <div className="space-y-2">
                                     <h4 className="font-semibold text-lg">Size</h4>
@@ -136,7 +128,6 @@ const CustomizationDrawer = ({ item, isOpen, onClose, onAddToCart }) => {
                                 </div>
                             )}
                             
-                            {/* Add-on Groups */}
                             {(item.addOnGroups || []).map(group => (
                                 <div key={group.title} className="space-y-2 pt-4 border-t border-dashed border-border">
                                     <h4 className="font-semibold text-lg">{group.title}</h4>
@@ -280,7 +271,6 @@ const DineInModal = ({ isOpen, onClose, onBookTable, tableStatus, onStartNewTab,
     const [infoDialog, setInfoDialog] = useState({ isOpen: false, title: '', message: '' });
     const [minTime, setMinTime] = useState('00:00');
     
-    // New states for New Tab flow
     const [newTabPax, setNewTabPax] = useState(1);
     const [newTabName, setNewTabName] = useState('');
     const [isQrScannerOpen, setIsQrScannerOpen] = useState(false);
@@ -290,7 +280,6 @@ const DineInModal = ({ isOpen, onClose, onBookTable, tableStatus, onStartNewTab,
         if (isOpen) {
             const now = new Date();
             
-            // Set initial time to next half hour
             const newTime = new Date(now.getTime() + 30 * 60000);
             const initialHours = newTime.getHours().toString().padStart(2, '0');
             const initialMinutes = (Math.ceil(newTime.getMinutes() / 30) * 30 % 60).toString().padStart(2, '0');
@@ -414,8 +403,8 @@ const DineInModal = ({ isOpen, onClose, onBookTable, tableStatus, onStartNewTab,
                                  <button
                                     onClick={() => {
                                         console.log("[DEBUG] DineInModal: 'I'm at the Restaurant' button clicked. Closing modal, opening scanner.");
-                                        onClose(); // Close this modal
-                                        setIsQrScannerOpen(true); // Open the scanner
+                                        onClose();
+                                        setIsQrScannerOpen(true);
                                     }}
                                     className="p-6 border-2 border-border rounded-lg text-center flex flex-col items-center justify-center gap-3 hover:bg-muted hover:border-primary transition-all group"
                                 >
@@ -557,7 +546,7 @@ const BannerCarousel = ({ images, onClick, restaurantName, logoUrl }) => {
       if (images.length <= 1) return;
       const interval = setInterval(() => {
         setIndex(prev => (prev + 1) % images.length);
-      }, 5000); // Change image every 5 seconds
+      }, 5000);
       return () => clearInterval(interval);
     }, [images.length]);
   
@@ -613,7 +602,6 @@ const OrderPageInternal = () => {
     const tableIdFromUrl = searchParams.get('table');
     const tabIdFromUrl = searchParams.get('tabId');
     
-    // --- STATE MANAGEMENT ---
     const [customerLocation, setCustomerLocation] = useState(null);
     const [restaurantData, setRestaurantData] = useState({
         name: '',
@@ -625,7 +613,7 @@ const OrderPageInternal = () => {
         coupons: [],
         deliveryEnabled: true,
         pickupEnabled: false,
-        dineInEnabled: false,
+        dineInEnabled: true,
         businessAddress: null,
     });
     const [tableStatus, setTableStatus] = useState(null);
@@ -650,8 +638,7 @@ const OrderPageInternal = () => {
     const [isQrScannerOpen, setIsQrScannerOpen] = useState(false);
     const [infoDialog, setInfoDialog] = useState({ isOpen: false, title: '', message: '' });
     
-    // --- DINE-IN GATEWAY LOGIC ---
-    const [dineInState, setDineInState] = useState('loading'); // loading, needs_setup, ready
+    const [dineInState, setDineInState] = useState('loading');
     const [activeTabInfo, setActiveTabInfo] = useState({ id: null, name: '', total: 0 });
 
 
@@ -670,7 +657,7 @@ const OrderPageInternal = () => {
         }
 
         localStorage.setItem(`dineInSetup_${restaurantId}_${tableIdFromUrl}`, JSON.stringify({ pax_count: paxCount, tab_name: tabName }));
-        setActiveTabInfo({ id: null, name: tabName, total: 0 }); // Temporarily set name
+        setActiveTabInfo({ id: null, name: tabName, total: 0 });
         setDineInState('ready');
         setIsDineInModalOpen(false);
     };
@@ -684,7 +671,6 @@ const OrderPageInternal = () => {
     };
 
 
-    // --- LOCATION & DATA FETCHING ---
     useEffect(() => {
         console.log("[DEBUG] OrderPage: Initial render/dependencies changed. restaurantId:", restaurantId);
         const phone = phoneFromUrl || localStorage.getItem('lastKnownPhone');
@@ -740,7 +726,7 @@ const OrderPageInternal = () => {
                     logoUrl: menuData.logoUrl || '', bannerUrls: (menuData.bannerUrls?.length > 0) ? menuData.bannerUrls : ['/order_banner.jpg'],
                     deliveryCharge: menuData.deliveryCharge || 0, menu: menuData.menu || {}, coupons: menuData.coupons || [],
                     deliveryEnabled: menuData.deliveryEnabled, pickupEnabled: menuData.pickupEnabled,
-                    dineInEnabled: menuData.dineInEnabled !== undefined ? menuData.dineInEnabled : true,
+                    dineInEnabled: menuData.dineInEnabled,
                     businessAddress: menuData.businessAddress || null,
                 });
 
@@ -752,7 +738,7 @@ const OrderPageInternal = () => {
                         const setup = dineInSetup ? JSON.parse(dineInSetup) : {};
                         const currentTabId = tabIdFromUrl || setup.join_tab_id;
                         if (currentTabId) {
-                           setActiveTabInfo({ id: currentTabId, name: setup.tab_name || 'Active Tab', total: 0 }); // Placeholder
+                           setActiveTabInfo({ id: currentTabId, name: setup.tab_name || 'Active Tab', total: 0 });
                         }
                         setDineInState('ready');
                     } else {
@@ -774,7 +760,7 @@ const OrderPageInternal = () => {
                     setDeliveryType('pickup');
                     setDineInState('ready');
                 } else {
-                     setDineInState('ready'); // Default to ready if no other option
+                     setDineInState('ready');
                 }
             } catch (err) {
                 setError(err.message);
@@ -787,7 +773,6 @@ const OrderPageInternal = () => {
         fetchInitialData();
     }, [restaurantId, phoneFromUrl, tableIdFromUrl, tabIdFromUrl]);
     
-    // --- CART PERSISTENCE ---
     const cartPersistenceDependencies = [
         restaurantId,
         restaurantData.name,
@@ -799,11 +784,10 @@ const OrderPageInternal = () => {
         phoneFromUrl,
     ];
 
-    // Persist cart to localStorage whenever it changes
     useEffect(() => {
         if (!restaurantId || loading) return;
 
-        const expiryTimestamp = new Date().getTime() + (24 * 60 * 60 * 1000); // 24 hours from now
+        const expiryTimestamp = new Date().getTime() + (24 * 60 * 60 * 1000);
         
         const cartDataToSave = {
             cart,
@@ -822,7 +806,6 @@ const OrderPageInternal = () => {
         localStorage.setItem(`cart_${restaurantId}`, JSON.stringify(cartDataToSave));
     }, [cart, notes, deliveryType, ...cartPersistenceDependencies, loading]);
 
-    // Load cart from localStorage on initial load
     useEffect(() => {
         if (restaurantId) {
             const savedCartData = localStorage.getItem(`cart_${restaurantId}`);
@@ -844,7 +827,6 @@ const OrderPageInternal = () => {
         }
     }, [restaurantId, tableIdFromUrl]);
 
-    // --- MENU PROCESSING & FILTERING ---
     const searchPlaceholder = useMemo(() => {
         return restaurantData.businessType === 'shop' ? 'Search for a product...' : 'Search for a dish...';
     }, [restaurantData.businessType]);
@@ -899,8 +881,6 @@ const OrderPageInternal = () => {
         setSortBy(prev => prev === sortValue ? 'default' : sortValue);
     }
     
-    // --- CART ACTIONS ---
-
     const subtotal = useMemo(() => cart.reduce((sum, item) => sum + item.totalPrice * item.quantity, 0), [cart]);
     
     const handleAddToCart = useCallback((item, portion, selectedAddOns, totalPrice) => {
@@ -926,12 +906,10 @@ const OrderPageInternal = () => {
     }, []);
 
     const handleIncrement = (item) => {
-        // Direct add if item is simple (1 portion, 0 addons)
         if (item.portions?.length === 1 && (item.addOnGroups?.length || 0) === 0) {
             const portion = item.portions[0];
             handleAddToCart(item, portion, [], portion.price);
         } else {
-            // Otherwise, open customization
             setCustomizationItem(item);
         }
     };
@@ -974,7 +952,6 @@ const OrderPageInternal = () => {
         if(date){
             localDate = setMinutes(setHours(date, parseInt(time.split(':')[0])), parseInt(time.split(':')[1]));
         } else {
-            // Handle case where date is not selected
             setInfoDialog({isOpen: true, title: "Booking Failed", message: "Please select a date."});
             return;
         }
@@ -1072,7 +1049,6 @@ const OrderPageInternal = () => {
     
     const handleCloseDineInModal = () => {
         setIsDineInModalOpen(false);
-        // This is the fix: reset the state so the page doesn't get stuck
         setDineInState('ready');
     }
 
