@@ -154,7 +154,7 @@ const AddAddressModal = ({ isOpen, onClose, onSave, userName, userPhone }) => {
 
     const handleSave = async () => {
         if (!recipientName.trim() || !phone.trim() || !address.street.trim() || !address.city.trim() || !address.pincode.trim() || !address.state.trim()) {
-            setError('Please fill all required fields.');
+            setError('Please fill all required fields: Name, Phone, Street, City, Pincode, and State.');
             return;
         }
         if (!/^\d{10}$/.test(phone.trim())) {
@@ -167,8 +167,8 @@ const AddAddressModal = ({ isOpen, onClose, onSave, userName, userPhone }) => {
         const newAddress = {
             id: `addr_${Date.now()}`,
             label: address.label,
-            name: recipientName,
-            phone: phone,
+            name: recipientName.trim(),
+            phone: phone.trim(),
             alternatePhone: alternatePhone.trim(),
             street: address.street.trim(),
             landmark: address.landmark.trim(),
@@ -201,8 +201,8 @@ const AddAddressModal = ({ isOpen, onClose, onSave, userName, userPhone }) => {
                 <div className="py-4 space-y-4 max-h-[70vh] overflow-y-auto pr-2">
                      {error && <p className="text-destructive text-sm bg-destructive/10 p-2 rounded-md">{error}</p>}
                     
-                    <Input value={recipientName} onChange={e => setRecipientName(e.target.value)} placeholder="Recipient Name" required disabled={!!userName}/>
-                    <Input type="tel" value={phone} onChange={e => setPhone(e.target.value)} placeholder="Primary Phone Number" required disabled={!!userPhone}/>
+                    <Input value={recipientName} onChange={e => setRecipientName(e.target.value)} placeholder="Recipient Name" required />
+                    <Input type="tel" value={phone} onChange={e => setPhone(e.target.value)} placeholder="Primary Phone Number" required />
                         
                     <Input value={address.street} onChange={e => handleAddressChange('street', e.target.value)} placeholder="House/Flat No., Building, Street, Area" required/>
                     <Input value={address.landmark} onChange={e => handleAddressChange('landmark', e.target.value)} placeholder="Landmark (Optional)"/>
@@ -348,44 +348,48 @@ const CheckoutPageInternal = () => {
 
     useEffect(() => {
         const address = userAddresses.find(a => a.id === selectedAddress);
-        if (address) {
-            if (address.name && address.name.trim() !== '') {
-                setOrderName(address.name);
-            }
-            if (address.phone && address.phone.trim() !== '') {
-                setOrderPhone(address.phone);
-            }
-        } else if (userAddresses.length > 0 && !selectedAddress) {
-            // Auto-select the first address if none is selected
+        // --- THE FIX ---
+        // Only update the phone number if the address has one.
+        // DO NOT update the name, as it might be blank in the address object and overwrite the one fetched from the user profile.
+        if (address && address.phone) {
+            setOrderPhone(address.phone);
+        }
+        
+        if (!selectedAddress && userAddresses.length > 0) {
             setSelectedAddress(userAddresses[0].id);
         }
     }, [selectedAddress, userAddresses]);
     
     const handleAddNewAddress = async (newAddress) => {
         try {
+            // Optimistically update the UI first for a better UX
+            setUserAddresses(prevAddresses => [...prevAddresses, newAddress]);
+            setSelectedAddress(newAddress.id);
+            setIsAddAddressModalOpen(false);
+            
             const user = auth.currentUser;
             if (!user) {
-                // For non-logged-in users, just update the state locally
-                const updatedAddresses = [...userAddresses, newAddress];
-                setUserAddresses(updatedAddresses);
-                setSelectedAddress(newAddress.id);
-                setIsAddAddressModalOpen(false);
+                // For non-logged-in users, the address is saved to the unclaimed profile upon order.
+                // The local state update is sufficient for the current session.
+                console.log("User not logged in, address will be saved with order.");
                 return;
             }
-            const idToken = await user.getIdToken();
 
+            const idToken = await user.getIdToken();
             const res = await fetch('/api/user/addresses', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${idToken}` },
                 body: JSON.stringify(newAddress)
             });
             const data = await res.json();
-            if (!res.ok) throw new Error(data.message || 'Failed to save address.');
+            if (!res.ok) {
+                // If API fails, revert the optimistic update
+                setUserAddresses(prevAddresses => prevAddresses.filter(a => a.id !== newAddress.id));
+                throw new Error(data.message || 'Failed to save address.');
+            }
+            // Optional: If the server returns slightly different data, update the state again.
+            // But since we are creating the ID on the client, it should be fine.
 
-            const updatedAddresses = [...userAddresses, data.address];
-            setUserAddresses(updatedAddresses);
-            setSelectedAddress(data.address.id);
-            setIsAddAddressModalOpen(false);
         } catch (error) {
             console.error("Error saving new address:", error);
             throw error; // Re-throw to be caught by the modal
