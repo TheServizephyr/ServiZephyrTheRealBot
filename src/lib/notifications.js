@@ -63,15 +63,16 @@ export const sendOrderStatusUpdateToCustomer = async ({ customerPhone, botPhoneN
     const statusMessages = {
         restaurant: {
             preparing: "Your food is being prepared",
+            confirmed: "Your order is confirmed and will be prepared shortly"
         },
         shop: {
             preparing: "Your items are being packed",
+            confirmed: "Your order is confirmed and will be packed shortly"
         }
     };
     
     const preparingMessage = statusMessages[businessType]?.preparing || "Your order is being prepared";
-    console.log(`[Notification Lib] Business type is '${businessType}', using preparing message: "${preparingMessage}"`);
-
+    const confirmedMessage = statusMessages[businessType]?.confirmed || "Your order is confirmed";
 
     switch (status) {
         case 'dispatched':
@@ -90,33 +91,17 @@ export const sendOrderStatusUpdateToCustomer = async ({ customerPhone, botPhoneN
             break;
         
         case 'confirmed':
-            templateName = 'order_confirmation_with_tracking'; // Use the correct template for confirmation
-            const orderStatusUrl = `https://servizephyr.com/track/${orderId}`;
+            templateName = 'order_status_update';
             const confirmationParams = [
                  { type: "text", text: customerName },
                  { type: "text", text: orderId.substring(0, 8) },
                  { type: "text", text: restaurantName },
-                 { type: "text", text: orderStatusUrl }
+                 { type: "text", text: confirmedMessage }
             ];
             components.push({ type: "body", parameters: confirmationParams });
             console.log(`[Notification Lib] Using template '${templateName}' for order confirmation.`);
             break;
 
-        case 'delivered':
-        case 'rejected':
-        case 'ready_for_pickup':
-        case 'picked_up':
-            templateName = 'order_status_update';
-            const statusUpdateParams = [
-                { type: "text", text: customerName },
-                { type: "text", text: orderId.substring(0, 8) },
-                { type: "text", text: restaurantName },
-                { type: "text", text: capitalizedStatus },
-            ];
-            components.push({ type: "body", parameters: statusUpdateParams });
-            console.log(`[Notification Lib] Using template '${templateName}' for final status update.`);
-            break;
-        
         case 'preparing':
             templateName = 'order_status_update';
              const preparingParams = [
@@ -129,8 +114,12 @@ export const sendOrderStatusUpdateToCustomer = async ({ customerPhone, botPhoneN
             console.log(`[Notification Lib] Using template '${templateName}' for 'preparing' status.`);
             break;
 
+        case 'delivered':
+        case 'rejected':
+        case 'ready_for_pickup':
+        case 'picked_up':
         default:
-            console.log(`[Notification Lib] No specific template configured for status: '${status}'. Using default.`);
+            console.log(`[Notification Lib] No specific template configured for status: '${status}'. Using default 'order_status_update'.`);
             templateName = 'order_status_update';
              const defaultParams = [
                 { type: "text", text: customerName },
