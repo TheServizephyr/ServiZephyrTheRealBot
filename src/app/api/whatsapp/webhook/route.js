@@ -187,17 +187,8 @@ export async function POST(request) {
             await batch.commit();
 
             // Check if it's the first message or if the business is open, then reply.
-            if (!businessData.isOpen) {
-                const closedMessage = `We apologize, but ${businessData.name} is currently closed. Please check back later.`;
-                await sendWhatsAppMessage(fromWithCode, closedMessage, botPhoneNumberId);
-                return NextResponse.json({ message: 'Business is closed, message saved.' }, { status: 200 });
-            }
-
-            const menuUrl = `https://servizephyr.com/order/${businessId}?phone=${customerPhone}`;
-            const welcomeMessage = `Welcome to ${businessData.name}! 😃\n\nYou can view our full menu and place your order by clicking the link below:\n\n${menuUrl}\n\nOr, type a message if you need help.`;
-            
-            const customerPhoneForApi = '91' + customerPhone;
-            await sendWhatsAppMessage(customerPhoneForApi, welcomeMessage, botPhoneNumberId);
+            // For now, we will stop auto-replying to allow owners to chat manually.
+            // In a future version, this could be a setting.
         }
         
         return NextResponse.json({ message: 'Event received' }, { status: 200 });
