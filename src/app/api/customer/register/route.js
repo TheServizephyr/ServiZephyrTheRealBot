@@ -95,8 +95,9 @@ export async function POST(req) {
         if (isNewUser) {
             const unclaimedUserRef = firestore.collection('unclaimed_profiles').doc(normalizedPhone);
             const newOrderedFrom = { restaurantId, restaurantName: businessData.name, businessType };
+            const newAddress = { id: `addr_${Date.now()}`, label: 'Default', ...address };
             batch.set(unclaimedUserRef, {
-                name: name, phone: normalizedPhone, addresses: [{ id: `addr_${Date.now()}`, full: address }],
+                name: name, phone: normalizedPhone, addresses: [newAddress],
                 createdAt: FieldValue.serverTimestamp(),
                 orderedFrom: FieldValue.arrayUnion(newOrderedFrom)
             }, { merge: true });
@@ -136,7 +137,7 @@ export async function POST(req) {
 
         const newOrderRef = firestore.collection('orders').doc();
         batch.set(newOrderRef, {
-            customerName: name, customerId: userId, customerAddress: address, customerPhone: normalizedPhone,
+            customerName: name, customerId: userId, customerAddress: address.full || address, customerPhone: normalizedPhone,
             customerLocation: customerLocation,
             restaurantId: restaurantId, restaurantName: businessData.name,
             businessType, deliveryType, pickupTime, tipAmount, tableId,

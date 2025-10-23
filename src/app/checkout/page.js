@@ -4,7 +4,7 @@
 import React, { useState, useEffect, useMemo, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { motion } from 'framer-motion';
-import { ArrowLeft, Wallet, IndianRupee, CreditCard, Landmark, Split, Users as UsersIcon, QrCode, PlusCircle, Trash2 } from 'lucide-react';
+import { ArrowLeft, Wallet, IndianRupee, CreditCard, Landmark, Split, Users as UsersIcon, QrCode, PlusCircle, Trash2, Home, Building, MapPin } from 'lucide-react';
 import Script from 'next/script';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose } from "@/components/ui/dialog";
@@ -13,6 +13,8 @@ import { cn } from '@/lib/utils';
 import QRCode from 'qrcode.react';
 import { Input } from '@/components/ui/input';
 import { auth } from '@/lib/firebase';
+import InfoDialog from '@/components/InfoDialog';
+
 
 // Main component for the split bill interface
 const SplitBillInterface = ({ totalAmount, onBack, orderDetails }) => {
@@ -124,100 +126,103 @@ const SplitBillInterface = ({ totalAmount, onBack, orderDetails }) => {
     return null;
 };
 
-const AddAddressModal = ({ isOpen, onClose, onSave, existingAddresses }) => {
-    const [label, setLabel] = useState('');
+const AddAddressModal = ({ isOpen, onClose, onSave, isExistingUser, userName, userPhone }) => {
+    const [address, setAddress] = useState({
+        label: 'Home',
+        street: '',
+        landmark: '',
+        city: '',
+        pincode: '',
+        state: '',
+        country: 'IN'
+    });
     const [recipientName, setRecipientName] = useState('');
     const [phone, setPhone] = useState('');
     const [alternatePhone, setAlternatePhone] = useState('');
-    const [address, setAddress] = useState('');
     const [isSaving, setIsSaving] = useState(false);
     const [error, setError] = useState('');
-
+    
     useEffect(() => {
         if (isOpen) {
-            setLabel('');
-            setRecipientName('');
-            setPhone('');
+            setAddress({ label: 'Home', street: '', landmark: '', city: '', pincode: '', state: '', country: 'IN' });
+            setRecipientName(isExistingUser ? userName : '');
+            setPhone(isExistingUser ? userPhone : '');
             setAlternatePhone('');
-            setAddress('');
             setError('');
             setIsSaving(false);
         }
-    }, [isOpen]);
+    }, [isOpen, isExistingUser, userName, userPhone]);
+    
+    const handleAddressChange = (field, value) => {
+        setAddress(prev => ({...prev, [field]: value}));
+    };
 
     const handleSave = async () => {
-        if (!recipientName.trim() || !phone.trim() || !address.trim()) {
-            setError('Please fill all required fields: Recipient Name, Phone, and Address.');
+        const finalName = isExistingUser ? userName : recipientName;
+        const finalPhone = isExistingUser ? userPhone : phone;
+        
+        if (!finalName.trim() || !finalPhone.trim() || !address.street.trim() || !address.city.trim() || !address.pincode.trim() || !address.state.trim()) {
+            setError('Please fill all required fields.');
             return;
         }
-        if (!/^\d{10}$/.test(phone.trim())) {
+        if (!/^\d{10}$/.test(finalPhone.trim())) {
             setError('Please enter a valid 10-digit primary phone number.');
-            return;
-        }
-        if (alternatePhone && !/^\d{10}$/.test(alternatePhone.trim())) {
-            setError('Please enter a valid 10-digit alternate phone number.');
             return;
         }
 
         const newAddress = {
             id: `addr_${Date.now()}`,
-            label: label.trim(),
-            name: recipientName.trim(),
-            phone: phone.trim(),
+            label: address.label,
+            name: finalName,
+            phone: finalPhone,
             alternatePhone: alternatePhone.trim(),
-            full: address.trim(),
+            full: `${address.street}, ${address.landmark ? address.landmark + ', ' : ''}${address.city}, ${address.state} - ${address.pincode}`,
+            ...address
         };
-
-        const isDuplicate = existingAddresses.some(addr => 
-            addr.name === newAddress.name &&
-            addr.phone === newAddress.phone &&
-            addr.full === newAddress.full &&
-            addr.alternatePhone === newAddress.alternatePhone
-        );
-
-        if (isDuplicate) {
-            setError('This address already exists in your address book.');
-            return;
-        }
 
         setIsSaving(true);
         try {
             await onSave(newAddress);
+            onClose();
         } catch (err) {
              setError(err.message);
         } finally {
             setIsSaving(false);
         }
     };
-
+    
     return (
         <Dialog open={isOpen} onOpenChange={onClose}>
             <DialogContent className="bg-background border-border text-foreground">
                 <DialogHeader>
                     <DialogTitle>Add a New Address</DialogTitle>
-                    <DialogDescription>Save an address to your address book for future orders.</DialogDescription>
+                    <DialogDescription>Save a new address to your address book.</DialogDescription>
                 </DialogHeader>
-                <div className="py-4 space-y-4">
+                <div className="py-4 space-y-4 max-h-[70vh] overflow-y-auto pr-2">
                      {error && <p className="text-destructive text-sm bg-destructive/10 p-2 rounded-md">{error}</p>}
-                    <div>
-                        <Label htmlFor="addr-label">Address Label (e.g., Home, Office)</Label>
-                        <Input id="addr-label" value={label} onChange={(e) => setLabel(e.target.value)} />
+                    {!isExistingUser && (
+                        <>
+                            <Input value={recipientName} onChange={e => setRecipientName(e.target.value)} placeholder="Recipient Name" required/>
+                            <Input type="tel" value={phone} onChange={e => setPhone(e.target.value)} placeholder="Primary Phone Number" required/>
+                        </>
+                    )}
+                    <Input value={address.street} onChange={e => handleAddressChange('street', e.target.value)} placeholder="House/Flat No., Building, Street, Area" required/>
+                    <Input value={address.landmark} onChange={e => handleAddressChange('landmark', e.target.value)} placeholder="Landmark (Optional)"/>
+                    <div className="grid grid-cols-2 gap-4">
+                        <Input value={address.pincode} onChange={e => handleAddressChange('pincode', e.target.value)} placeholder="Pincode" required/>
+                        <Input value={address.city} onChange={e => handleAddressChange('city', e.target.value)} placeholder="City" required/>
                     </div>
-                    <div>
-                        <Label htmlFor="addr-name">Recipient Name</Label>
-                        <Input id="addr-name" value={recipientName} onChange={(e) => setRecipientName(e.target.value)} required />
-                    </div>
-                    <div>
-                        <Label htmlFor="addr-phone">Primary Phone Number</Label>
-                        <Input id="addr-phone" type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} required/>
+                     <div className="grid grid-cols-2 gap-4">
+                        <Input value={address.state} onChange={e => handleAddressChange('state', e.target.value)} placeholder="State" required/>
+                        <Input value={alternatePhone} onChange={e => setAlternatePhone(e.target.value)} placeholder="Alternate Phone (Optional)"/>
                     </div>
                      <div>
-                        <Label htmlFor="addr-alt-phone">Alternate Phone Number (Optional)</Label>
-                        <Input id="addr-alt-phone" type="tel" value={alternatePhone} onChange={(e) => setAlternatePhone(e.target.value)} />
-                    </div>
-                    <div>
-                        <Label htmlFor="addr-full">Full Address</Label>
-                        <Input id="addr-full" value={address} onChange={(e) => setAddress(e.target.value)} required/>
+                        <Label>Address Label</Label>
+                        <div className="flex gap-2 mt-2">
+                           <Button type="button" variant={address.label === 'Home' ? 'secondary' : 'outline'} onClick={() => handleAddressChange('label', 'Home')}><Home size={16} className="mr-2"/> Home</Button>
+                           <Button type="button" variant={address.label === 'Work' ? 'secondary' : 'outline'} onClick={() => handleAddressChange('label', 'Work')}><Building size={16} className="mr-2"/> Work</Button>
+                           <Button type="button" variant={address.label === 'Other' ? 'secondary' : 'outline'} onClick={() => handleAddressChange('label', 'Other')}><MapPin size={16} className="mr-2"/> Other</Button>
+                        </div>
                     </div>
                 </div>
                 <DialogFooter>
@@ -308,7 +313,7 @@ const CheckoutPageInternal = () => {
                     if (userData.addresses && userData.addresses.length > 0) {
                         setSelectedAddress(userData.addresses[0].id);
                     }
-                    setIsExistingUser(true);
+                    setIsExistingUser(userData.isVerified);
                 } else {
                      setIsExistingUser(false);
                 }
@@ -346,7 +351,7 @@ const CheckoutPageInternal = () => {
     useEffect(() => {
         const address = userAddresses.find(a => a.id === selectedAddress);
         if (address) {
-            setOrderName(address.name || ''); // THE FIX: Set orderName when an address is selected
+            setOrderName(address.name || orderName); // THE FIX: Only set if address has a name, otherwise keep existing orderName
             setOrderPhone(address.phone || '');
         } else if (userAddresses.length > 0 && !selectedAddress) {
             setSelectedAddress(userAddresses[0].id);
@@ -354,12 +359,19 @@ const CheckoutPageInternal = () => {
             setSelectedAddress(null);
             // Don't clear orderName here if it was already fetched from lookup
         }
-    }, [selectedAddress, userAddresses]);
+    }, [selectedAddress, userAddresses, orderName]);
     
     const handleAddNewAddress = async (newAddress) => {
         try {
             const user = auth.currentUser;
-            if (!user) throw new Error("You must be logged in to save an address.");
+            if (!user) {
+                // For non-logged in users, just add to local state
+                const updatedAddresses = [...userAddresses, newAddress];
+                setUserAddresses(updatedAddresses);
+                setSelectedAddress(newAddress.id);
+                setIsAddAddressModalOpen(false);
+                return;
+            }
             const idToken = await user.getIdToken();
 
             const res = await fetch('/api/user/addresses', {
@@ -469,20 +481,20 @@ const CheckoutPageInternal = () => {
         const finalPaymentMethod = paymentMethod || selectedPaymentMethod;
         const deliveryType = cartData.tableId ? 'dine-in' : (cartData.deliveryType || 'delivery');
 
-        if (deliveryType === 'delivery' && !selectedAddress) {
-            setError("Please select or add a delivery address.");
-            setIsModalOpen(true); // Open modal if not already open
-            return;
-        }
-
         if (!orderName || !orderName.trim()) {
             setError("Please provide a name for the order.");
             if (deliveryType === 'delivery') setIsModalOpen(true);
             return;
         }
-
+        
         const deliveryAddress = userAddresses.find(a => a.id === selectedAddress);
 
+        if (deliveryType === 'delivery' && !deliveryAddress) {
+            setError("Please select or add a delivery address.");
+            setIsModalOpen(true); // Open modal if not already open
+            return;
+        }
+        
         const orderData = {
             name: orderName,
             phone: orderPhone,
@@ -583,17 +595,24 @@ const CheckoutPageInternal = () => {
     return (
         <>
             <Script src="https://checkout.razorpay.com/v1/checkout.js" />
-            <AddAddressModal isOpen={isAddAddressModalOpen} onClose={() => setIsAddAddressModalOpen(false)} onSave={handleAddNewAddress} existingAddresses={userAddresses} />
+            <AddAddressModal 
+                isOpen={isAddAddressModalOpen} 
+                onClose={() => setIsAddAddressModalOpen(false)} 
+                onSave={handleAddNewAddress} 
+                isExistingUser={isExistingUser}
+                userName={orderName}
+                userPhone={orderPhone}
+            />
             <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
                  <DialogContent className="bg-background border-border text-foreground">
                     <DialogHeader>
-                        <DialogTitle>Confirm Details</DialogTitle>
+                        <DialogTitle>Confirm Delivery Address</DialogTitle>
                         {error && <p className="text-destructive text-sm bg-destructive/10 p-2 rounded-md mt-2">{error}</p>}
                     </DialogHeader>
                     <div className="py-4 space-y-4 max-h-[70vh] overflow-y-auto">
                         {deliveryType === 'delivery' ? (
                              <div>
-                                <Label htmlFor="address">Delivery Address</Label>
+                                <Label htmlFor="address">Select an address</Label>
                                 <div className="space-y-2 mt-2">
                                     {userAddresses.map(addr => (
                                         <div key={addr.id} className="flex items-start gap-2 p-3 rounded-md bg-muted has-[:checked]:bg-primary/10 has-[:checked]:border-primary border border-transparent">

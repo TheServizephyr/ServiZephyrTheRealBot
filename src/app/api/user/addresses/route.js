@@ -6,6 +6,8 @@ import { getAuth, getFirestore, FieldValue } from '@/lib/firebase-admin';
 async function getUserId(req) {
     const authHeader = req.headers.get('authorization');
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
+        // Allow non-authenticated users for specific scenarios if needed, otherwise throw.
+        // For now, we enforce authentication for adding/deleting addresses.
         throw { message: 'Unauthorized', status: 401 };
     }
     const token = authHeader.split('Bearer ')[1];
@@ -19,9 +21,9 @@ export async function POST(req) {
         const uid = await getUserId(req);
         const newAddress = await req.json();
 
-        // Validate new address
-        if (!newAddress || !newAddress.id || !newAddress.name || !newAddress.phone || !newAddress.full) {
-            return NextResponse.json({ message: 'Invalid address data provided.' }, { status: 400 });
+        // Validate new address - it is now a structured object
+        if (!newAddress || !newAddress.id || !newAddress.name || !newAddress.phone || !newAddress.street || !newAddress.city || !newAddress.pincode || !newAddress.state) {
+            return NextResponse.json({ message: 'Invalid address data provided. All fields are required.' }, { status: 400 });
         }
 
         const userRef = getFirestore().collection('users').doc(uid);
@@ -76,4 +78,3 @@ export async function DELETE(req) {
         return NextResponse.json({ message: error.message || 'Internal Server Error' }, { status: error.status || 500 });
     }
 }
-
