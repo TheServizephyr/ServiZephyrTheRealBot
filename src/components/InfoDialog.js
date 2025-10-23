@@ -2,7 +2,7 @@
 'use client';
 
 import { useState } from 'react';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogPortal } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { CheckCircle, AlertTriangle, Send } from 'lucide-react';
 import { usePathname } from 'next/navigation';
@@ -64,35 +64,37 @@ const InfoDialog = ({ isOpen, onClose, title, message }) => {
   
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="bg-card border-border text-foreground">
-        <DialogHeader className="flex flex-col items-center text-center">
-            {isError ? (
-                <AlertTriangle className="h-12 w-12 text-destructive mb-4" />
-            ) : (
-                <CheckCircle className="h-12 w-12 text-green-500 mb-4" />
+      <DialogPortal>
+        <DialogContent className="bg-card border-border text-foreground">
+          <DialogHeader className="flex flex-col items-center text-center">
+              {isError ? (
+                  <AlertTriangle className="h-12 w-12 text-destructive mb-4" />
+              ) : (
+                  <CheckCircle className="h-12 w-12 text-green-500 mb-4" />
+              )}
+            <DialogTitle className="text-xl">{title}</DialogTitle>
+            {message && <DialogDescription className="pt-2">{message}</DialogDescription>}
+          </DialogHeader>
+          <DialogFooter className="flex-col sm:flex-row sm:justify-center gap-2">
+            <Button onClick={onClose} className="w-full sm:w-auto bg-primary hover:bg-primary/90 text-primary-foreground">OK</Button>
+            {isError && (
+              <Button onClick={handleSendReport} variant="secondary" className="w-full sm:w-auto" disabled={isSending || reportSent}>
+                  {isSending ? (
+                      'Sending...'
+                  ) : reportSent ? (
+                      <>
+                      <CheckCircle className="mr-2 h-4 w-4 text-green-500"/> Report Sent!
+                      </>
+                  ) : (
+                      <>
+                      <Send className="mr-2 h-4 w-4"/> Send Report to Admin
+                      </>
+                  )}
+              </Button>
             )}
-          <DialogTitle className="text-xl">{title}</DialogTitle>
-          {message && <DialogDescription className="pt-2">{message}</DialogDescription>}
-        </DialogHeader>
-        <DialogFooter className="flex-col sm:flex-row sm:justify-center gap-2">
-          <Button onClick={onClose} className="w-full sm:w-auto bg-primary hover:bg-primary/90 text-primary-foreground">OK</Button>
-          {isError && (
-            <Button onClick={handleSendReport} variant="secondary" className="w-full sm:w-auto" disabled={isSending || reportSent}>
-                {isSending ? (
-                    'Sending...'
-                ) : reportSent ? (
-                    <>
-                    <CheckCircle className="mr-2 h-4 w-4 text-green-500"/> Report Sent!
-                    </>
-                ) : (
-                    <>
-                    <Send className="mr-2 h-4 w-4"/> Send Report to Admin
-                    </>
-                )}
-            </Button>
-          )}
-        </DialogFooter>
-      </DialogContent>
+          </DialogFooter>
+        </DialogContent>
+      </DialogPortal>
     </Dialog>
   );
 };

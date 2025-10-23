@@ -68,11 +68,11 @@ const LocationPageInternal = () => {
             if (!res.ok) throw new Error(data.message || 'Failed to fetch address details.');
             
             setAddressDetails({
-                street: data.road || data.neighbourhood,
-                city: data.city,
-                pincode: data.pincode,
-                state: data.state,
-                country: data.country,
+                street: data.road || data.neighbourhood || '',
+                city: data.city || data.town || data.village || '',
+                pincode: data.postcode || '',
+                state: data.state || '',
+                country: data.country || '',
                 fullAddress: data.formatted_address,
                 latitude: coords.lat,
                 longitude: coords.lng,
@@ -145,7 +145,6 @@ const LocationPageInternal = () => {
         try {
             const idToken = await user.getIdToken();
             
-            // --- THE FIX: Call the correct API endpoint ---
             const res = await fetch('/api/user/addresses', {
                 method: 'POST',
                 headers: {
@@ -235,7 +234,7 @@ const LocationPageInternal = () => {
                 ) : addressDetails ? (
                     <div className="space-y-3">
                          <div>
-                            <p className="font-bold text-lg flex items-center gap-2"><MapPin size={20} className="text-primary"/> {addressDetails.city || 'Location'}</p>
+                            <p className="font-bold text-lg flex items-center gap-2"><MapPin size={20} className="text-primary"/> {addressDetails.street || addressDetails.city || 'Selected Location'}</p>
                             <p className="text-sm text-muted-foreground">{addressDetails.fullAddress || 'Drag the pin to set your precise location.'}</p>
                          </div>
                          <Button onClick={handleConfirmLocation} disabled={!addressDetails.fullAddress || loading} className="w-full h-12 text-lg font-bold bg-primary text-primary-foreground hover:bg-primary/90">
