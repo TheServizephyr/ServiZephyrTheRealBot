@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useState, useEffect, useMemo } from 'react';
@@ -175,8 +176,8 @@ const BillModal = ({ order, restaurant, onClose, onPrint }) => {
                         </thead>
                         <tbody>
                             {order.items.map((item, index) => {
-                                const rate = item.totalPrice ? (item.totalPrice / item.qty) : (item.price || 0);
-                                const amount = item.totalPrice || (item.qty * (item.price || 0));
+                                const rate = (item.totalPrice || item.price || 0); // Use totalPrice if available (from customized items), else fallback to price
+                                const amount = rate * item.qty;
                                 return (
                                 <tr key={index} className="border-b border-dotted border-black">
                                     <td className="py-2">{item.name}</td>
@@ -861,13 +862,14 @@ export default function LiveOrdersPage() {
                                     transition={{ duration: 0.3 }}
                                     className="hover:bg-muted/50"
                                 >
-                                    <td className="p-4">
+                                    <td className="p-4 align-top">
                                         <div className="font-bold text-foreground text-sm truncate max-w-[100px] sm:max-w-none">{order.id}</div>
-                                        <div className="flex items-center gap-2">
-                                            <div className="text-sm text-muted-foreground">{order.customer}</div>
-                                             <button onClick={() => handleDetailClick(order.id, order.customerId)} title="View Customer & Order Details" className="text-primary hover:text-primary/80 cursor-pointer">
-                                                <User size={14} />
-                                            </button>
+                                        <div 
+                                            onClick={() => handleDetailClick(order.id, order.customerId)} 
+                                            className="text-sm text-muted-foreground hover:text-primary hover:underline cursor-pointer"
+                                            title="View Customer & Order Details"
+                                        >
+                                            {order.customer}
                                         </div>
                                         <div className="mt-1 flex items-center gap-2">
                                             {order.deliveryType === 'pickup' 
@@ -880,17 +882,17 @@ export default function LiveOrdersPage() {
                                             }
                                         </div>
                                     </td>
-                                    <td className="p-4 text-sm text-muted-foreground hidden md:table-cell">
+                                    <td className="p-4 text-sm text-muted-foreground hidden md:table-cell align-top">
                                         <ul className="space-y-1">
                                             {(order.items || []).map((item, index) => (
                                                 <li key={index} className="whitespace-nowrap">{item.qty}x {item.name}</li>
                                             ))}
                                         </ul>
                                     </td>
-                                    <td className="p-4 text-sm text-muted-foreground">
+                                    <td className="p-4 text-sm text-muted-foreground align-top">
                                         {format(new Date(order.orderDate?.seconds ? order.orderDate.seconds * 1000 : order.orderDate), 'dd/MM/yyyy, hh:mm a')}
                                     </td>
-                                    <td className="p-4">
+                                    <td className="p-4 align-top">
                                         <Popover>
                                             <PopoverTrigger asChild>
                                                 <button className={cn('flex items-center gap-2 text-xs font-semibold rounded-full border px-3 py-1 w-fit capitalize transition-transform hover:scale-105', statusConfig[order.status]?.color)}>
@@ -919,7 +921,7 @@ export default function LiveOrdersPage() {
                                             </PopoverContent>
                                         </Popover>
                                     </td>
-                                    <td className="p-4 w-auto md:w-[320px]">
+                                    <td className="p-4 w-auto md:w-[320px] align-top">
                                         <ActionButton
                                             order={order}
                                             status={order.status}
