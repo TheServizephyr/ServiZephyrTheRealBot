@@ -176,7 +176,7 @@ const BillModal = ({ order, restaurant, onClose, onPrint }) => {
                         </thead>
                         <tbody>
                             {order.items.map((item, index) => {
-                                const rate = (item.totalPrice || item.price || 0); // Use totalPrice if available (from customized items), else fallback to price
+                                const rate = (item.totalPrice ? (item.totalPrice / item.qty) : (item.price || 0));
                                 const amount = rate * item.qty;
                                 return (
                                 <tr key={index} className="border-b border-dotted border-black">
@@ -681,7 +681,7 @@ export default function LiveOrdersPage() {
 
   const handleDetailClick = async (orderId, customerId) => {
     try {
-      const data = await handleAPICall('GET', { id: orderId, customerId: customerId });
+      const data = await handleAPICall('GET', { id: orderId, customerId });
       setDetailModalData({ isOpen: true, data });
     } catch(e) {
       setInfoDialog({ isOpen: true, title: 'Error', message: `Could not load details: ${e.message}` });
