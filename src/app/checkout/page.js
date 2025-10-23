@@ -332,12 +332,12 @@ const CheckoutPageInternal = () => {
                     });
                     if (res.ok) {
                         const data = await res.json();
-                        setOrderName(data.name);
+                        setOrderName(data.name || '');
                         setUserAddresses(data.addresses || []);
                         if (data.addresses && data.addresses.length > 0) {
                             setSelectedAddress(data.addresses[0].id);
-                            setOrderName(data.addresses[0].name || data.name);
-                            setOrderPhone(data.addresses[0].phone || cartData.phone);
+                            setOrderName(data.addresses[0].name || data.name || '');
+                            setOrderPhone(data.addresses[0].phone || cartData.phone || '');
                         }
                         setIsExistingUser(true);
                     } else {
@@ -357,14 +357,20 @@ const CheckoutPageInternal = () => {
     }, [isModalOpen, cartData?.phone]);
 
     useEffect(() => {
-        if (selectedAddress) {
-            const address = userAddresses.find(a => a.id === selectedAddress);
-            if (address) {
-                setOrderName(address.name);
-                setOrderPhone(address.phone);
-            }
+        const address = userAddresses.find(a => a.id === selectedAddress);
+        if (address) {
+            setOrderName(address.name || '');
+            setOrderPhone(address.phone || '');
+        } else if (userAddresses.length > 0) {
+            // If selected address is gone, select the first one
+            setSelectedAddress(userAddresses[0].id);
+        } else {
+            // No addresses left, clear fields
+            setSelectedAddress(null);
+            setOrderName('');
+            setOrderPhone(cartData?.phone || '');
         }
-    }, [selectedAddress, userAddresses]);
+    }, [selectedAddress, userAddresses, cartData?.phone]);
     
     const handleAddNewAddress = async (newAddress) => {
         try {
@@ -744,3 +750,5 @@ const CheckoutPage = () => (
 );
 
 export default CheckoutPage;
+
+    
