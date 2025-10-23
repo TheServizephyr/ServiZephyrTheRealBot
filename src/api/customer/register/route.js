@@ -1,6 +1,6 @@
 
 
-import { getFirestore } from '@/lib/firebase-admin';
+import { getFirestore, FieldValue } from '@/lib/firebase-admin';
 import { NextResponse } from 'next/server';
 import Razorpay from 'razorpay';
 import { nanoid } from 'nanoid';
@@ -10,14 +10,15 @@ import { sendNewOrderToOwner } from '@/lib/notifications';
 export async function POST(req) {
     try {
         const firestore = getFirestore();
-        const { name, address, phone, restaurantId, items, notes, coupon, loyaltyDiscount, grandTotal, paymentMethod, businessType = 'restaurant', deliveryType = 'delivery', pickupTime = '', tipAmount = 0, subtotal, cgst, sgst, deliveryCharge, tableId = null } = await req.json();
+        const { name, address, phone, restaurantId, items, notes, coupon, loyaltyDiscount, grandTotal, paymentMethod, businessType = 'restaurant', deliveryType = 'delivery', pickupTime = '', tipAmount = 0, subtotal, cgst, sgst, deliveryCharge, tableId = null, pax_count, tab_name, dineInTabId } = await req.json();
 
         // --- VALIDATION ---
-        if (!name || !phone || !restaurantId || !items || grandTotal === undefined || subtotal === undefined) {
+        if (!name || !phone || !restaurantId || (!items && !dineInTabId) || grandTotal === undefined || subtotal === undefined) {
             return NextResponse.json({ message: 'Missing required fields for order creation.' }, { status: 400 });
         }
-        if (deliveryType === 'delivery' && !address) {
-            return NextResponse.json({ message: 'Address is required for delivery orders.' }, { status: 400 });
+        // For delivery orders, address MUST be a structured object with a 'full' property
+        if (deliveryType === 'delivery' && (!address || !address.full)) {
+            return NextResponse.json({ message: 'A full, structured address is required for delivery orders.' }, { status: 400 });
         }
 
         const normalizedPhone = phone.length > 10 ? phone.slice(-10) : phone;
@@ -41,13 +42,7 @@ export async function POST(req) {
         const isNewUser = existingUserQuery.empty;
         const userId = isNewUser ? normalizedPhone : existingUserQuery.docs[0].id;
 
-
-        // This is a placeholder for a real address-to-coordinate conversion
-        const getCoordinatesFromAddress = (addr) => {
-            if (typeof addr === 'string' && addr.toLowerCase().includes('delhi')) return new firestore.GeoPoint(28.7041, 77.1025);
-            return new firestore.GeoPoint(28.6692, 77.4538);
-        };
-        const customerLocation = deliveryType === 'delivery' ? getCoordinatesFromAddress(address) : null;
+        const customerLocation = null;
 
         if (paymentMethod === 'razorpay') {
             if (!process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID || !process.env.RAZORPAY_KEY_SECRET) {
@@ -63,15 +58,13 @@ export async function POST(req) {
             const firestoreOrderId = firestore.collection('orders').doc().id;
 
             const servizephyrOrderPayload = {
-                // Key identifiers for webhook processing
-                order_id: firestoreOrderId, // Use a pre-generated ID
+                order_id: firestoreOrderId,
                 user_id: userId,
                 restaurant_id: restaurantId,
                 business_type: businessType,
-                // Full data for record keeping and display on Razorpay dashboard
                 customer_details: JSON.stringify({ name, address, phone: normalizedPhone }),
                 items: JSON.stringify(items),
-                bill_details: JSON.stringify({ subtotal, coupon, loyaltyDiscount, grandTotal, deliveryType, tipAmount, pickupTime, cgst, sgst, deliveryCharge, tableId }),
+                bill_details: JSON.stringify({ subtotal, coupon, loyaltyDiscount, grandTotal, deliveryType, tipAmount, pickupTime, cgst, sgst, deliveryCharge, tableId, pax_count, tab_name, dineInTabId }),
                 notes: notes || null
             };
 
@@ -80,7 +73,9 @@ export async function POST(req) {
                 currency: 'INR',
                 receipt: firestoreOrderId,
                 payment_capture: 1,
-                notes: servizephyrOrderPayload
+                notes: {
+                    servizephyr_payload: JSON.stringify(servizephyrOrderPayload)
+                }
             };
 
             const razorpayOrder = await razorpay.orders.create(razorpayOrderOptions);
@@ -101,10 +96,12 @@ export async function POST(req) {
         if (isNewUser) {
             const unclaimedUserRef = firestore.collection('unclaimed_profiles').doc(normalizedPhone);
             const newOrderedFrom = { restaurantId, restaurantName: businessData.name, businessType };
+            // Ensure address is saved as a structured object inside an array, including the 'full' property
+            const addressesToSave = address ? [{ ...address, full: address.full }] : []; 
             batch.set(unclaimedUserRef, {
-                name: name, phone: normalizedPhone, addresses: [{ id: `addr_${Date.now()}`, full: address }],
-                createdAt: firestore.FieldValue.serverTimestamp(),
-                orderedFrom: firestore.FieldValue.arrayUnion(newOrderedFrom)
+                name: name, phone: normalizedPhone, addresses: addressesToSave,
+                createdAt: FieldValue.serverTimestamp(),
+                orderedFrom: FieldValue.arrayUnion(newOrderedFrom)
             }, { merge: true });
         }
         
@@ -118,39 +115,62 @@ export async function POST(req) {
         const restaurantCustomerRef = businessRef.collection('customers').doc(userId);
         batch.set(restaurantCustomerRef, {
             name: name, phone: normalizedPhone, status: isNewUser ? 'unclaimed' : 'verified',
-            totalSpend: firestore.FieldValue.increment(subtotal),
-            loyaltyPoints: firestore.FieldValue.increment(pointsEarned - pointsSpent),
-            lastOrderDate: firestore.FieldValue.serverTimestamp(),
-            totalOrders: firestore.FieldValue.increment(1),
+            totalSpend: FieldValue.increment(subtotal),
+            loyaltyPoints: FieldValue.increment(pointsEarned - pointsSpent),
+            lastOrderDate: FieldValue.serverTimestamp(),
+            totalOrders: FieldValue.increment(1),
         }, { merge: true });
         
         if (!isNewUser) {
             const userRestaurantLinkRef = usersRef.doc(userId).collection('joined_restaurants').doc(restaurantId);
             batch.set(userRestaurantLinkRef, {
-                 restaurantName: businessData.name, joinedAt: firestore.FieldValue.serverTimestamp(),
-                 totalSpend: firestore.FieldValue.increment(subtotal),
-                 loyaltyPoints: firestore.FieldValue.increment(pointsEarned - pointsSpent),
-                 lastOrderDate: firestore.FieldValue.serverTimestamp(),
-                 totalOrders: firestore.FieldValue.increment(1),
+                 restaurantName: businessData.name, joinedAt: FieldValue.serverTimestamp(),
+                 totalSpend: FieldValue.increment(subtotal),
+                 loyaltyPoints: FieldValue.increment(pointsEarned - pointsSpent),
+                 lastOrderDate: FieldValue.serverTimestamp(),
+                 totalOrders: FieldValue.increment(1),
             }, { merge: true });
         }
         
         if (coupon && coupon.id) {
             const couponRef = businessRef.collection('coupons').doc(coupon.id);
-            batch.update(couponRef, { timesUsed: firestore.FieldValue.increment(1) });
+            batch.update(couponRef, { timesUsed: FieldValue.increment(1) });
         }
+        
+        // DINE IN LOGIC: Handle new tab creation if it was a dine-in order
+        let finalDineInTabId = dineInTabId;
+        if (deliveryType === 'dine-in' && tableId && !finalDineInTabId) {
+             const newTabRef = businessRef.collection('dineInTabs').doc();
+             finalDineInTabId = newTabRef.id;
+
+             batch.set(newTabRef, {
+                id: finalDineInTabId,
+                tableId: tableId,
+                status: 'active',
+                tab_name: tab_name || "Guest",
+                pax_count: pax_count || 1,
+                createdAt: FieldValue.serverTimestamp(),
+             });
+             
+             const tableRef = businessRef.collection('tables').doc(tableId);
+             batch.update(tableRef, {
+                current_pax: FieldValue.increment(pax_count || 1),
+                state: 'occupied'
+             });
+        }
+
 
         const newOrderRef = firestore.collection('orders').doc();
         batch.set(newOrderRef, {
-            customerName: name, customerId: userId, customerAddress: address, customerPhone: normalizedPhone,
+            customerName: name, customerId: userId, customerAddress: address?.full || address, customerPhone: normalizedPhone,
             customerLocation: customerLocation,
             restaurantId: restaurantId, restaurantName: businessData.name,
-            businessType, deliveryType, pickupTime, tipAmount, tableId,
+            businessType, deliveryType, pickupTime, tipAmount, tableId, dineInTabId: finalDineInTabId,
             items: items,
             subtotal, coupon, loyaltyDiscount, discount: finalDiscount, cgst, sgst, deliveryCharge,
             totalAmount: grandTotal,
             status: deliveryType === 'dine-in' ? 'active_tab' : 'pending',
-            orderDate: firestore.FieldValue.serverTimestamp(),
+            orderDate: FieldValue.serverTimestamp(),
             notes: notes || null,
             paymentDetails: { method: paymentMethod }
         });
@@ -167,6 +187,7 @@ export async function POST(req) {
         return NextResponse.json({ 
             message: 'Order created successfully.',
             firestore_order_id: newOrderRef.id,
+            dine_in_tab_id: finalDineInTabId,
         }, { status: 200 });
 
     } catch (error) {

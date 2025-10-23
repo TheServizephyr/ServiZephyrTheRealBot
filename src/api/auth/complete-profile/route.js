@@ -1,4 +1,5 @@
 
+
 import { NextResponse } from 'next/server';
 import { getAuth, getFirestore } from '@/lib/firebase-admin';
 
@@ -51,14 +52,22 @@ export async function POST(req) {
                     // Convert old string address to new structured format
                     return {
                         id: `addr_${Date.now()}_${Math.random()}`,
-                        label: 'Default', // Provide a default label
-                        name: unclaimedData.name, // Use the name from the unclaimed profile
+                        label: 'Default',
+                        name: unclaimedData.name,
                         phone: unclaimedData.phone,
                         alternatePhone: '',
-                        full: addr
+                        street: addr,
+                        city: '',
+                        state: '',
+                        pincode: '',
+                        country: 'IN',
+                        full: addr, // Keep the original string as 'full' for compatibility
                     };
                 }
-                // If it's already an object, assume it's in the new format or close enough
+                // If it's already an object, assume it has 'full' or construct it
+                if (!addr.full) {
+                    addr.full = `${addr.street || ''}, ${addr.city || ''}, ${addr.state || ''} - ${addr.pincode || ''}`.replace(/, , /g, ', ').trim();
+                }
                 return addr;
             });
 

@@ -1,4 +1,5 @@
 
+
 'use client';
 
 import React, { useState, useEffect, useMemo, Suspense } from 'react';
@@ -170,7 +171,7 @@ const AddAddressModal = ({ isOpen, onClose, onSave, isExistingUser, userName, us
             return;
         }
 
-        // --- FIX: CONSTRUCT THE 'full' ADDRESS STRING ---
+        // Construct the 'full' address string
         const fullAddress = `${address.street.trim()}, ${address.landmark ? address.landmark.trim() + ', ' : ''}${address.city.trim()}, ${address.state.trim()} - ${address.pincode.trim()}`;
 
         const newAddress = {
@@ -182,8 +183,7 @@ const AddAddressModal = ({ isOpen, onClose, onSave, isExistingUser, userName, us
             full: fullAddress, // Add the constructed full address
             ...address
         };
-        // --- END FIX ---
-
+        
         setIsSaving(true);
         try {
             await onSave(newAddress);
@@ -355,16 +355,14 @@ const CheckoutPageInternal = () => {
     useEffect(() => {
         const address = userAddresses.find(a => a.id === selectedAddress);
         if (address) {
-            // --- FIX: Only set name if address has a name, otherwise keep existing orderName ---
             setOrderName(address.name || orderName || ''); 
-            // --- END FIX ---
             setOrderPhone(address.phone || '');
         } else if (userAddresses.length > 0 && !selectedAddress) {
             setSelectedAddress(userAddresses[0].id);
         } else if (userAddresses.length === 0) {
             setSelectedAddress(null);
         }
-    }, [selectedAddress, userAddresses, orderName]);
+    }, [selectedAddress, userAddresses]);
     
     const handleAddNewAddress = async (newAddress) => {
         try {
@@ -500,12 +498,11 @@ const CheckoutPageInternal = () => {
             return;
         }
         
-        // --- FIX: Ensure deliveryAddress object has all required fields ---
+        // Ensure deliveryAddress object has all required fields
         const finalAddress = deliveryType === 'delivery' ? {
             ...deliveryAddress,
             full: deliveryAddress.full || `${deliveryAddress.street}, ${deliveryAddress.city}, ${deliveryAddress.state} - ${deliveryAddress.pincode}`
         } : null;
-        // --- END FIX ---
 
         const orderData = {
             name: orderName,
@@ -529,9 +526,7 @@ const CheckoutPageInternal = () => {
             dineInTabId: cartData.dineInTabId || null,
             pax_count: cartData.pax_count || null,
             tab_name: cartData.tab_name || null,
-            // --- FIX: Pass the structured address object to the backend ---
             address: finalAddress 
-            // --- END FIX ---
         };
 
         setLoading(true);
