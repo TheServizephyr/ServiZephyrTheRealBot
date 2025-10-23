@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useState, useEffect, useMemo } from 'react';
@@ -20,7 +21,6 @@ import InfoDialog from '@/components/InfoDialog';
 
 const statusConfig = {
   'pending': { color: 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30' },
-  'paid': { color: 'bg-green-500/20 text-green-400 border-green-500/30' },
   'confirmed': { color: 'bg-blue-500/20 text-blue-400 border-blue-500/30' },
   'preparing': { color: 'bg-orange-500/20 text-orange-400 border-orange-500/30' },
   'ready_for_pickup': { color: 'bg-purple-500/20 text-purple-400 border-purple-500/30' },
@@ -28,10 +28,11 @@ const statusConfig = {
   'delivered': { color: 'bg-green-500/20 text-green-400 border-green-500/30' },
   'picked_up': { color: 'bg-green-500/20 text-green-400 border-green-500/30' },
   'rejected': { color: 'bg-red-500/20 text-red-400 border-red-500/30' },
+  'paid': { color: 'bg-green-500/20 text-green-400 border-green-500/30' }, // For display consistency
 };
 
-const deliveryStatusFlow = ['pending', 'paid', 'confirmed', 'preparing', 'dispatched', 'delivered'];
-const pickupStatusFlow = ['pending', 'paid', 'confirmed', 'preparing', 'ready_for_pickup', 'picked_up'];
+const deliveryStatusFlow = ['pending', 'confirmed', 'preparing', 'dispatched', 'delivered'];
+const pickupStatusFlow = ['pending', 'confirmed', 'preparing', 'ready_for_pickup', 'picked_up'];
 
 
 const RejectOrderModal = ({ order, isOpen, onClose, onConfirm }) => {
@@ -415,7 +416,7 @@ const ActionButton = ({ status, onNext, onRevert, order, onRejectClick, isUpdati
     const statusFlow = isPickup ? pickupStatusFlow : deliveryStatusFlow;
     
     // Normalize 'paid' status to 'pending' for flow logic
-    const actionStatus = (status === 'paid') ? 'pending' : status;
+    const actionStatus = status;
     const currentIndex = statusFlow.indexOf(actionStatus);
     
     const isFinalStatus = status === 'delivered' || status === 'rejected' || status === 'picked_up';
@@ -444,10 +445,8 @@ const ActionButton = ({ status, onNext, onRevert, order, onRejectClick, isUpdati
     
     const nextStatus = statusFlow[currentIndex + 1];
     let prevStatus = null;
-    if(currentIndex > 1) { // Can't revert from 'confirmed' to 'pending' as it might be 'paid'
+    if(currentIndex > 0) { 
         prevStatus = statusFlow[currentIndex - 1];
-    } else if (status === 'confirmed') {
-        prevStatus = 'pending';
     }
 
 
@@ -471,7 +470,7 @@ const ActionButton = ({ status, onNext, onRevert, order, onRejectClick, isUpdati
         );
     }
     const ActionIcon = action.icon;
-    const isConfirmable = status === 'pending' || status === 'paid';
+    const isConfirmable = status === 'pending';
 
     return (
         <div className="flex flex-col sm:flex-row items-stretch gap-2 w-full">
@@ -705,7 +704,7 @@ export default function LiveOrdersPage() {
 
     const filterMap = {
         'All': () => true,
-        'New': order => order.status === 'pending' || order.status === 'paid',
+        'New': order => order.status === 'pending',
         'Confirmed': order => order.status === 'confirmed',
         'Preparing': order => order.status === 'preparing',
         'Dispatched': order => order.status === 'dispatched',

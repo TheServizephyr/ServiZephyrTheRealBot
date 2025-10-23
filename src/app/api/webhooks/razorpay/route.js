@@ -198,7 +198,7 @@ export async function POST(req) {
                 sgst: billDetails.sgst, 
                 deliveryCharge: billDetails.deliveryCharge,
                 totalAmount: billDetails.grandTotal,
-                status: 'paid',
+                status: 'pending', // THE FIX: Always set to 'pending' for consistency
                 orderDate: FieldValue.serverTimestamp(),
                 notes: customNotes || null,
                 paymentDetails: {
