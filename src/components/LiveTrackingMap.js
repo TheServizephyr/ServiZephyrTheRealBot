@@ -15,19 +15,19 @@ L.Icon.Default.mergeOptions({
   shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
 });
 
-const restaurantIcon = new L.HtmlIcon({
+const restaurantIcon = new L.DivIcon({
     html: `<div style="font-size: 2rem; color: #ef4444;">🏢</div>`,
     iconSize: [32, 32],
     className: 'leaflet-div-icon'
 });
 
-const customerIcon = new L.HtmlIcon({
+const customerIcon = new L.DivIcon({
     html: `<div style="font-size: 2rem; color: #3b82f6;">🏠</div>`,
     iconSize: [32, 32],
     className: 'leaflet-div-icon'
 });
 
-const riderIcon = new L.HtmlIcon({
+const riderIcon = new L.DivIcon({
     html: `<div style="font-size: 2.5rem; color: #22c55e;">🛵</div>`,
     iconSize: [40, 40],
     className: 'leaflet-div-icon'
