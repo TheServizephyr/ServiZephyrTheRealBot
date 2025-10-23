@@ -1,3 +1,5 @@
+
+
 import { getFirestore } from '@/lib/firebase-admin';
 import { NextResponse } from 'next/server';
 import Razorpay from 'razorpay';
@@ -8,7 +10,7 @@ import { sendNewOrderToOwner } from '@/lib/notifications';
 export async function POST(req) {
     try {
         const firestore = getFirestore();
-        const { name, address, phone, restaurantId, items, notes, coupon, loyaltyDiscount, grandTotal, paymentMethod, businessType = 'restaurant', deliveryType = 'delivery', pickupTime = '', tipAmount = 0, subtotal, cgst, sgst, deliveryCharge, tableId = null, dineInTabId = null, pax_count = 1, tab_name = "Guest" } = await req.json();
+        const { name, address, phone, restaurantId, items, notes, coupon, loyaltyDiscount, grandTotal, paymentMethod, businessType = 'restaurant', deliveryType = 'delivery', pickupTime = '', tipAmount = 0, subtotal, cgst, sgst, deliveryCharge, tableId = null } = await req.json();
 
         // --- VALIDATION ---
         if (!name || !phone || !restaurantId || !items || grandTotal === undefined || subtotal === undefined) {
@@ -29,24 +31,6 @@ export async function POST(req) {
         if (!businessDoc.exists) {
             return NextResponse.json({ message: 'This business does not exist.' }, { status: 404 });
         }
-
-        // --- DINE-IN CAPACITY CHECK LOGIC ---
-        if (deliveryType === 'dine-in' && tableId && !dineInTabId) { // Only check for the FIRST order of a new tab
-            const tableRef = businessRef.collection('tables').doc(tableId);
-            await firestore.runTransaction(async (transaction) => {
-                const tableDoc = await transaction.get(tableRef);
-                if (!tableDoc.exists) throw new Error("Table not found.");
-                
-                const tableData = tableDoc.data();
-                const maxCapacity = tableData.max_capacity || 0;
-                const currentPax = tableData.current_pax || 0;
-                
-                if (currentPax + pax_count > maxCapacity) {
-                    throw new Error(`TABLE_FULL: This table cannot accommodate ${pax_count} more guests. Available space: ${maxCapacity - currentPax}.`);
-                }
-            });
-        }
-        // --- END DINE-IN LOGIC ---
         
         let razorpayOrderId = null;
         const businessData = businessDoc.data();
@@ -57,9 +41,11 @@ export async function POST(req) {
         const isNewUser = existingUserQuery.empty;
         const userId = isNewUser ? normalizedPhone : existingUserQuery.docs[0].id;
 
+
+        // This is a placeholder for a real address-to-coordinate conversion
         const getCoordinatesFromAddress = (addr) => {
-            if (typeof addr === 'string' && addr.toLowerCase().includes('delhi')) return new firestore.GeoPoint(28.7041, 77.1025);
-            return new firestore.GeoPoint(28.6692, 77.4538);
+            if (typeof addr === 'string' && addr.toLowerCase().includes('delhi')) return new (getFirestore().GeoPoint)(28.7041, 77.1025);
+            return new (getFirestore().GeoPoint)(28.6692, 77.4538);
         };
         const customerLocation = deliveryType === 'delivery' ? getCoordinatesFromAddress(address) : null;
 
@@ -85,7 +71,7 @@ export async function POST(req) {
                 // Full data for record keeping and display on Razorpay dashboard
                 customer_details: JSON.stringify({ name, address, phone: normalizedPhone }),
                 items: JSON.stringify(items),
-                bill_details: JSON.stringify({ subtotal, coupon, loyaltyDiscount, grandTotal, deliveryType, tipAmount, pickupTime, cgst, sgst, deliveryCharge, tableId, dineInTabId, pax_count, tab_name }),
+                bill_details: JSON.stringify({ subtotal, coupon, loyaltyDiscount, grandTotal, deliveryType, tipAmount, pickupTime, cgst, sgst, deliveryCharge, tableId }),
                 notes: notes || null
             };
 
@@ -94,7 +80,7 @@ export async function POST(req) {
                 currency: 'INR',
                 receipt: firestoreOrderId,
                 payment_capture: 1,
-                notes: { servizephyr_payload: JSON.stringify(servizephyrOrderPayload) }
+                notes: servizephyrOrderPayload
             };
 
             const razorpayOrder = await razorpay.orders.create(razorpayOrderOptions);
@@ -105,36 +91,12 @@ export async function POST(req) {
                 message: 'Razorpay order created. Awaiting payment confirmation.',
                 razorpay_order_id: razorpayOrderId,
                 firestore_order_id: firestoreOrderId, // Return the same ID to the client
-                dine_in_tab_id: dineInTabId || null,
             }, { status: 200 });
         }
 
 
         // --- FIRESTORE BATCH WRITE FOR COD / POD / DINE-IN ---
         const batch = firestore.batch();
-        
-        let finalDineInTabId = dineInTabId;
-
-        // If it's a new Dine-In Tab, create it
-        if (deliveryType === 'dine-in' && tableId && !finalDineInTabId) {
-            const newTabRef = businessRef.collection('dineInTabs').doc();
-            finalDineInTabId = newTabRef.id;
-
-            batch.set(newTabRef, {
-                id: finalDineInTabId,
-                tableId: tableId,
-                status: 'active',
-                tab_name: tab_name,
-                pax_count: pax_count,
-                createdAt: firestore.FieldValue.serverTimestamp(),
-            });
-            
-            const tableRef = businessRef.collection('tables').doc(tableId);
-            batch.update(tableRef, {
-                current_pax: firestore.FieldValue.increment(pax_count),
-                state: 'occupied'
-            });
-        }
         
         if (isNewUser) {
             const unclaimedUserRef = firestore.collection('unclaimed_profiles').doc(normalizedPhone);
@@ -183,7 +145,7 @@ export async function POST(req) {
             customerName: name, customerId: userId, customerAddress: address, customerPhone: normalizedPhone,
             customerLocation: customerLocation,
             restaurantId: restaurantId, restaurantName: businessData.name,
-            businessType, deliveryType, pickupTime, tipAmount, tableId, dineInTabId: finalDineInTabId,
+            businessType, deliveryType, pickupTime, tipAmount, tableId,
             items: items,
             subtotal, coupon, loyaltyDiscount, discount: finalDiscount, cgst, sgst, deliveryCharge,
             totalAmount: grandTotal,
@@ -205,19 +167,13 @@ export async function POST(req) {
         return NextResponse.json({ 
             message: 'Order created successfully.',
             firestore_order_id: newOrderRef.id,
-            dine_in_tab_id: finalDineInTabId,
         }, { status: 200 });
 
     } catch (error) {
         console.error('CUSTOMER ORDER/REGISTER ERROR:', error);
-        if(error.message?.startsWith('TABLE_FULL')) {
-            return NextResponse.json({ error: 'TABLE_FULL', message: error.message }, { status: 409 });
-        }
         if(error.error && error.error.code === 'BAD_REQUEST_ERROR') {
              return NextResponse.json({ message: `Payment Gateway Error: ${error.error.description}` }, { status: 400 });
         }
         return NextResponse.json({ message: `Backend Error: ${error.message}` }, { status: 500 });
     }
 }
-
-    
