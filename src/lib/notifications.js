@@ -14,7 +14,7 @@ export const sendNewOrderToOwner = async ({ ownerPhone, botPhoneNumberId, custom
     console.log(`[Notification Lib] New order details: Customer: ${customerName}, Amount: ${totalAmount}, OrderID: ${orderId}`);
 
     const notificationPayload = {
-        name: "new_order_notification_v2",
+        name: "new_order_notification",
         language: { code: "en" },
         components: [
             {
@@ -40,9 +40,9 @@ export const sendNewOrderToOwner = async ({ ownerPhone, botPhoneNumberId, custom
         ]
     };
 
-    console.log(`[Notification Lib] Sending 'new_order' template to owner.`);
+    console.log(`[Notification Lib] Sending 'new_order_notification' template to owner.`);
     await sendWhatsAppMessage(ownerPhoneWithCode, notificationPayload, botPhoneNumberId);
-    console.log(`[Notification Lib] 'new_order' notification sent.`);
+    console.log(`[Notification Lib] 'new_order_notification' notification sent.`);
 };
 
 
@@ -190,3 +190,5 @@ export const sendRestaurantStatusChangeNotification = async ({ ownerPhone, botPh
     await sendWhatsAppMessage(ownerPhoneWithCode, payload, botPhoneNumberId);
     console.log(`[Notification Lib] 'status_change_alert' sent.`);
 }
+
+    
