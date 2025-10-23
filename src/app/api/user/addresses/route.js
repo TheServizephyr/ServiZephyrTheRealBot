@@ -13,6 +13,28 @@ async function getUserId(req) {
     return decodedToken.uid;
 }
 
+// GET: Fetch all saved addresses for a user
+export async function GET(req) {
+    try {
+        const uid = await getUserId(req);
+        const userRef = getFirestore().collection('users').doc(uid);
+        const docSnap = await userRef.get();
+        
+        if (!docSnap.exists()) {
+             return NextResponse.json({ addresses: [] }, { status: 200 });
+        }
+
+        const userData = docSnap.data();
+        const addresses = userData.addresses || [];
+
+        return NextResponse.json({ addresses }, { status: 200 });
+    } catch (error) {
+        console.error("GET /api/user/addresses ERROR:", error);
+        return NextResponse.json({ message: error.message || 'Internal Server Error' }, { status: error.status || 500 });
+    }
+}
+
+
 // POST: Add a new address to the user's profile
 export async function POST(req) {
     try {

@@ -166,7 +166,7 @@ const AddAddressModal = ({ isOpen, onClose, onSave, userName, userPhone }) => {
         const fullAddress = `${address.street.trim()}, ${address.landmark ? address.landmark.trim() + ', ' : ''}${address.city.trim()}, ${address.state.trim()} - ${address.pincode.trim()}`;
 
         const newAddress = {
-            id: `loc_${Date.now()}`,
+            id: `addr_${Date.now()}`,
             label: address.label,
             name: recipientName.trim(),
             phone: phone.trim(),
@@ -250,7 +250,7 @@ const CheckoutPageInternal = () => {
     
     const [orderName, setOrderName] = useState('');
     const [orderPhone, setOrderPhone] = useState('');
-    const [selectedAddress, setSelectedAddress] = useState(null);
+    const [selectedAddressId, setSelectedAddressId] = useState(null);
     
     const [userAddresses, setUserAddresses] = useState([]);
     const [isExistingUser, setIsExistingUser] = useState(false);
@@ -263,7 +263,7 @@ const CheckoutPageInternal = () => {
     const [isDineInModalOpen, setDineInModalOpen] = useState(false);
     const [isSplitBillActive, setIsSplitBillActive] = useState(false);
     
-    const fetchInitialData = async () => {
+    const fetchInitialData = async (user) => {
         if (!restaurantId) {
             router.push('/');
             return;
@@ -298,17 +298,19 @@ const CheckoutPageInternal = () => {
         setError('');
         
         try {
-            const user = auth.currentUser;
             if(user) {
                 const idToken = await user.getIdToken();
-                const locationsRes = await fetch('/api/user/locations', {
+                // --- THE FIX: Call the correct API endpoint ---
+                const locationsRes = await fetch('/api/user/addresses', {
+                    method: 'GET', // Assumes GET fetches all addresses
                     headers: { 'Authorization': `Bearer ${idToken}` }
                 });
                 if(locationsRes.ok) {
-                    const { locations } = await locationsRes.json();
-                    setUserAddresses(locations || []);
-                    if (locations && locations.length > 0) {
-                        setSelectedAddress(locations[0].id);
+                    // Assuming the API returns { addresses: [] }
+                    const { addresses } = await locationsRes.json();
+                    setUserAddresses(addresses || []);
+                    if (addresses && addresses.length > 0) {
+                        setSelectedAddressId(addresses[0].id);
                     }
                 }
             } else if (parsedData.phone) {
@@ -320,6 +322,11 @@ const CheckoutPageInternal = () => {
                  if (userRes.ok) {
                     const userData = await userRes.json();
                     setOrderName(userData.name || '');
+                    // For non-logged-in users, we might get addresses from lookup
+                    if (userData.addresses && userData.addresses.length > 0) {
+                        setUserAddresses(userData.addresses);
+                        setSelectedAddressId(userData.addresses[0].id);
+                    }
                 }
             }
 
@@ -348,32 +355,36 @@ const CheckoutPageInternal = () => {
     };
 
     useEffect(() => {
-        fetchInitialData();
+        const unsubscribe = onAuthStateChanged(auth, (user) => {
+            fetchInitialData(user);
+        });
+        return () => unsubscribe();
     }, [restaurantId, router, phone, tableId, tabId]);
 
     useEffect(() => {
-        const address = userAddresses.find(a => a.id === selectedAddress);
+        const address = userAddresses.find(a => a.id === selectedAddressId);
         if (address) {
             setOrderName(address.name);
             setOrderPhone(address.phone);
         }
-        if (!selectedAddress && userAddresses.length > 0) {
-            setSelectedAddress(userAddresses[0].id);
+        if (!selectedAddressId && userAddresses.length > 0) {
+            setSelectedAddressId(userAddresses[0].id);
         }
-    }, [selectedAddress, userAddresses]);
+    }, [selectedAddressId, userAddresses]);
     
      const handleAddNewAddress = async (newAddress) => {
         const user = auth.currentUser;
         if (!user) {
             setUserAddresses(prev => [...prev, newAddress]);
-            setSelectedAddress(newAddress.id);
+            setSelectedAddressId(newAddress.id);
             setIsAddAddressModalOpen(false);
             return;
         }
 
         try {
             const idToken = await user.getIdToken();
-            const res = await fetch('/api/user/locations', {
+            // --- THE FIX: Call the correct API endpoint ---
+            const res = await fetch('/api/user/addresses', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${idToken}` },
                 body: JSON.stringify(newAddress)
@@ -384,7 +395,7 @@ const CheckoutPageInternal = () => {
                 throw new Error(data.message || 'Failed to save address.');
             }
             setUserAddresses(prev => [...prev, newAddress]);
-            setSelectedAddress(newAddress.id);
+            setSelectedAddressId(newAddress.id);
         } catch (error) {
             console.error("Error saving new address:", error);
             throw error;
@@ -397,16 +408,17 @@ const CheckoutPageInternal = () => {
         const user = auth.currentUser;
         if (!user) {
             setUserAddresses(prev => prev.filter(a => a.id !== addressId));
-            if (selectedAddress === addressId) setSelectedAddress(null);
+            if (selectedAddressId === addressId) setSelectedAddressId(null);
             return;
         }
 
         try {
             const idToken = await user.getIdToken();
-            const res = await fetch('/api/user/locations', {
+            // --- THE FIX: Call the correct API endpoint ---
+            const res = await fetch('/api/user/addresses', {
                 method: 'DELETE',
                 headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${idToken}` },
-                body: JSON.stringify({ locationId: addressId })
+                body: JSON.stringify({ addressId }) // Correct payload
             });
 
             if (!res.ok) {
@@ -416,8 +428,8 @@ const CheckoutPageInternal = () => {
             
             const updatedAddresses = userAddresses.filter(addr => addr.id !== addressId);
             setUserAddresses(updatedAddresses);
-            if(selectedAddress === addressId) {
-                setSelectedAddress(updatedAddresses.length > 0 ? updatedAddresses[0].id : null);
+            if(selectedAddressId === addressId) {
+                setSelectedAddressId(updatedAddresses.length > 0 ? updatedAddresses[0].id : null);
             }
         } catch (error) {
             setError("Error deleting address: " + error.message);
@@ -461,7 +473,7 @@ const CheckoutPageInternal = () => {
         const deliveryType = cartData.tableId ? 'dine-in' : (cartData.deliveryType || 'delivery');
         
         if (deliveryType === 'delivery') {
-            const deliveryAddress = userAddresses.find(a => a.id === selectedAddress);
+            const deliveryAddress = userAddresses.find(a => a.id === selectedAddressId);
             if (!deliveryAddress) {
                 setError("Please select or add a delivery address.");
                 setIsModalOpen(true);
@@ -497,7 +509,7 @@ const CheckoutPageInternal = () => {
             return;
         }
         
-        const deliveryAddress = userAddresses.find(a => a.id === selectedAddress);
+        const deliveryAddress = userAddresses.find(a => a.id === selectedAddressId);
 
         if (deliveryType === 'delivery' && !deliveryAddress) {
             setError("Please select or add a delivery address.");
@@ -626,8 +638,8 @@ const CheckoutPageInternal = () => {
                                                 id={addr.id}
                                                 name="address"
                                                 value={addr.id}
-                                                checked={selectedAddress === addr.id}
-                                                onChange={(e) => setSelectedAddress(e.target.value)}
+                                                checked={selectedAddressId === addr.id}
+                                                onChange={(e) => setSelectedAddressId(e.target.value)}
                                                 className="h-4 w-4 mt-1 text-primary border-gray-300 focus:ring-primary"
                                             />
                                             <Label htmlFor={addr.id} className="flex-1 cursor-pointer">

@@ -25,8 +25,6 @@ const LocationPageInternal = () => {
     
     const [mapCenter, setMapCenter] = useState({ lat: 28.7041, lng: 77.1025 }); // Default to Delhi
     const [addressDetails, setAddressDetails] = useState(null);
-    const [searchQuery, setSearchQuery] = useState('');
-    const [suggestions, setSuggestions] = useState([]);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
     const debounceTimeout = useRef(null);
@@ -69,8 +67,7 @@ const LocationPageInternal = () => {
             if (!res.ok) throw new Error(data.message || 'Failed to fetch address details.');
             
             setAddressDetails({
-                house: '',
-                landmark: '',
+                street: data.road || data.neighbourhood,
                 city: data.city,
                 pincode: data.pincode,
                 state: data.state,
@@ -108,6 +105,9 @@ const LocationPageInternal = () => {
         return () => clearTimeout(debounceTimeout.current);
     }, [searchQuery]);
 
+    const [searchQuery, setSearchQuery] = useState('');
+    const [suggestions, setSuggestions] = useState([]);
+
 
     const handleSuggestionClick = (suggestion) => {
         setSearchQuery(suggestion.placeName);
@@ -119,38 +119,52 @@ const LocationPageInternal = () => {
 
     const handleConfirmLocation = async () => {
         const user = auth.currentUser;
+        if (!addressDetails) {
+             setInfoDialog({ isOpen: true, title: "Error", message: "Please set a location first." });
+             return;
+        }
+
+        const addressToSave = {
+            id: `addr_${Date.now()}`,
+            label: 'Other', // default label
+            name: user?.displayName || localStorage.getItem('lastKnownName') || 'User',
+            phone: user?.phoneNumber || localStorage.getItem('lastKnownPhone') || '',
+            street: addressDetails.street,
+            city: addressDetails.city,
+            state: addressDetails.state,
+            pincode: addressDetails.pincode,
+            country: addressDetails.country,
+            full: addressDetails.fullAddress,
+        };
+
         if (!user) {
             // If user is not logged in, save to local storage and redirect
-            localStorage.setItem('customerLocation', JSON.stringify(addressDetails));
+            localStorage.setItem('customerLocation', JSON.stringify(addressToSave));
             router.push(returnUrl);
             return;
         }
 
-        if (!addressDetails) return;
-
         setLoading(true);
         try {
             const idToken = await user.getIdToken();
-            const locationToSave = {
-                id: `loc_${Date.now()}`,
-                label: 'Other',
-                name: user.displayName || 'Me',
-                phone: user.phoneNumber || localStorage.getItem('lastKnownPhone') || '',
-                full: `${addressDetails.house ? addressDetails.house + ', ' : ''}${addressDetails.landmark ? addressDetails.landmark + ', ' : ''}${addressDetails.fullAddress}`,
-                ...addressDetails,
-            };
-
-            await fetch('/api/user/locations', {
+            
+            // --- THE FIX: Call the correct API endpoint ---
+            const res = await fetch('/api/user/addresses', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
                     'Authorization': `Bearer ${idToken}`,
                 },
-                body: JSON.stringify(locationToSave),
+                body: JSON.stringify(addressToSave),
             });
+            
+            const resultData = await res.json();
+            if (!res.ok) {
+                throw new Error(resultData.message || "Failed to save new address.");
+            }
 
-            // Also update local storage for immediate use
-            localStorage.setItem('customerLocation', JSON.stringify(locationToSave));
+            // Also update local storage for immediate use on the next page
+            localStorage.setItem('customerLocation', JSON.stringify(addressToSave));
             router.push(returnUrl);
 
         } catch (err) {
@@ -226,10 +240,6 @@ const LocationPageInternal = () => {
                          <div>
                             <p className="font-bold text-lg flex items-center gap-2"><MapPin size={20} className="text-primary"/> {addressDetails.city || 'Location'}</p>
                             <p className="text-sm text-muted-foreground">{addressDetails.fullAddress || 'Drag the pin to set your precise location.'}</p>
-                         </div>
-                         <div className="grid grid-cols-2 gap-3">
-                            <Input placeholder="House / Flat No." value={addressDetails.house} onChange={e => setAddressDetails(prev => ({...prev, house: e.target.value}))}/>
-                            <Input placeholder="Landmark (Optional)" value={addressDetails.landmark} onChange={e => setAddressDetails(prev => ({...prev, landmark: e.target.value}))}/>
                          </div>
                          <Button onClick={handleConfirmLocation} disabled={!addressDetails.fullAddress || loading} className="w-full h-12 text-lg font-bold bg-primary text-primary-foreground hover:bg-primary/90">
                             {loading ? <Loader2 className="animate-spin" /> : 'Confirm & Save Location'}
