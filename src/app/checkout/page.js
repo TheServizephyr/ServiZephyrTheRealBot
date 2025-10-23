@@ -166,7 +166,7 @@ const AddAddressModal = ({ isOpen, onClose, onSave, userName, userPhone }) => {
         const fullAddress = `${address.street.trim()}, ${address.landmark ? address.landmark.trim() + ', ' : ''}${address.city.trim()}, ${address.state.trim()} - ${address.pincode.trim()}`;
 
         const newAddress = {
-            id: `addr_${Date.now()}`,
+            id: `loc_${Date.now()}`,
             label: address.label,
             name: recipientName.trim(),
             phone: phone.trim(),
@@ -298,23 +298,28 @@ const CheckoutPageInternal = () => {
         setError('');
         
         try {
-            // Fetch user data first to pre-fill name
-             if (parsedData.phone) {
+            const user = auth.currentUser;
+            if(user) {
+                const idToken = await user.getIdToken();
+                const locationsRes = await fetch('/api/user/locations', {
+                    headers: { 'Authorization': `Bearer ${idToken}` }
+                });
+                if(locationsRes.ok) {
+                    const { locations } = await locationsRes.json();
+                    setUserAddresses(locations || []);
+                    if (locations && locations.length > 0) {
+                        setSelectedAddress(locations[0].id);
+                    }
+                }
+            } else if (parsedData.phone) {
                 const userRes = await fetch('/api/customer/lookup', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ phone: parsedData.phone }),
                 });
-                if (userRes.ok) {
+                 if (userRes.ok) {
                     const userData = await userRes.json();
-                    setOrderName(userData.name || ''); // This sets the name
-                    setUserAddresses(userData.addresses || []);
-                    if (userData.addresses && userData.addresses.length > 0) {
-                        setSelectedAddress(userData.addresses[0].id);
-                    }
-                    setIsExistingUser(userData.isVerified);
-                } else {
-                     setIsExistingUser(false);
+                    setOrderName(userData.name || '');
                 }
             }
 
@@ -346,85 +351,76 @@ const CheckoutPageInternal = () => {
         fetchInitialData();
     }, [restaurantId, router, phone, tableId, tabId]);
 
-
     useEffect(() => {
         const address = userAddresses.find(a => a.id === selectedAddress);
-        if (address?.name && address.name !== orderName) {
-            // Only update name if it exists on the address AND is different
-            // setOrderName(address.name);
-        }
-        if (address?.phone) {
+        if (address) {
+            setOrderName(address.name);
             setOrderPhone(address.phone);
         }
         if (!selectedAddress && userAddresses.length > 0) {
             setSelectedAddress(userAddresses[0].id);
         }
-    }, [selectedAddress, userAddresses, orderName]);
+    }, [selectedAddress, userAddresses]);
     
-    const handleAddNewAddress = async (newAddress) => {
-        // Optimistically update UI
-        setUserAddresses(prev => [...prev, newAddress]);
-        setSelectedAddress(newAddress.id);
-        setIsAddAddressModalOpen(false);
+     const handleAddNewAddress = async (newAddress) => {
+        const user = auth.currentUser;
+        if (!user) {
+            setUserAddresses(prev => [...prev, newAddress]);
+            setSelectedAddress(newAddress.id);
+            setIsAddAddressModalOpen(false);
+            return;
+        }
 
-        // API call to persist
         try {
-            // Using onAuthStateChanged to ensure auth state is loaded.
-            const unsubscribe = onAuthStateChanged(auth, async (user) => {
-                unsubscribe(); // Unsubscribe after first run
-                if (user) {
-                    const idToken = await user.getIdToken();
-                    const res = await fetch('/api/user/addresses', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${idToken}` },
-                        body: JSON.stringify(newAddress)
-                    });
-
-                    if (!res.ok) {
-                        const data = await res.json();
-                        throw new Error(data.message || 'Failed to save address to your profile.');
-                    }
-                    console.log("Address saved to profile successfully");
-                } else {
-                    console.log("User not logged in. Address is saved locally for this order.");
-                }
+            const idToken = await user.getIdToken();
+            const res = await fetch('/api/user/locations', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${idToken}` },
+                body: JSON.stringify(newAddress)
             });
+
+            if (!res.ok) {
+                const data = await res.json();
+                throw new Error(data.message || 'Failed to save address.');
+            }
+            setUserAddresses(prev => [...prev, newAddress]);
+            setSelectedAddress(newAddress.id);
         } catch (error) {
             console.error("Error saving new address:", error);
-            // Revert optimistic update on failure
-            setUserAddresses(prev => prev.filter(a => a.id !== newAddress.id));
             throw error;
         }
     };
     
     const handleDeleteAddress = async (addressId) => {
-        if (window.confirm("Are you sure you want to delete this address?")) {
-            try {
-                const user = auth.currentUser;
-                if (!user) throw new Error("Authentication required.");
-                const idToken = await user.getIdToken();
+        if (!window.confirm("Are you sure you want to delete this address?")) return;
 
-                const res = await fetch('/api/user/addresses', {
-                    method: 'DELETE',
-                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${idToken}` },
-                    body: JSON.stringify({ addressId })
-                });
+        const user = auth.currentUser;
+        if (!user) {
+            setUserAddresses(prev => prev.filter(a => a.id !== addressId));
+            if (selectedAddress === addressId) setSelectedAddress(null);
+            return;
+        }
 
-                if (!res.ok) {
-                    const data = await res.json();
-                    throw new Error(data.message || 'Failed to delete address.');
-                }
-                
-                const updatedAddresses = userAddresses.filter(addr => addr.id !== addressId);
-                setUserAddresses(updatedAddresses);
-                
-                if(selectedAddress === addressId) {
-                    setSelectedAddress(updatedAddresses.length > 0 ? updatedAddresses[0].id : null);
-                }
+        try {
+            const idToken = await user.getIdToken();
+            const res = await fetch('/api/user/locations', {
+                method: 'DELETE',
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${idToken}` },
+                body: JSON.stringify({ locationId: addressId })
+            });
 
-            } catch (error) {
-                setError("Error deleting address: " + error.message);
+            if (!res.ok) {
+                const data = await res.json();
+                throw new Error(data.message || 'Failed to delete address.');
             }
+            
+            const updatedAddresses = userAddresses.filter(addr => addr.id !== addressId);
+            setUserAddresses(updatedAddresses);
+            if(selectedAddress === addressId) {
+                setSelectedAddress(updatedAddresses.length > 0 ? updatedAddresses[0].id : null);
+            }
+        } catch (error) {
+            setError("Error deleting address: " + error.message);
         }
     };
 
@@ -461,7 +457,7 @@ const CheckoutPageInternal = () => {
 
 
     const handlePaymentMethodSelect = (method) => {
-        setError(''); // Clear previous errors
+        setError('');
         const deliveryType = cartData.tableId ? 'dine-in' : (cartData.deliveryType || 'delivery');
         
         if (deliveryType === 'delivery') {
@@ -653,7 +649,7 @@ const CheckoutPageInternal = () => {
                         ) : (
                              <div>
                                 <Label htmlFor="name">Your Name</Label>
-                                <Input id="name" value={orderName} onChange={(e) => setOrderName(e.target.value)} disabled={loading || isExistingUser} />
+                                <Input id="name" value={orderName} onChange={(e) => setOrderName(e.target.value)} disabled={loading} />
                             </div>
                         )}
                     </div>
