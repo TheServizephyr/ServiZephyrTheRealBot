@@ -126,15 +126,10 @@ const SplitBillInterface = ({ totalAmount, onBack, orderDetails }) => {
     return null;
 };
 
-const AddAddressModal = ({ isOpen, onClose, onSave, isExistingUser, userName, userPhone }) => {
+const AddAddressModal = ({ isOpen, onClose, onSave, userName, userPhone }) => {
     const [address, setAddress] = useState({
-        label: 'Home',
-        street: '',
-        landmark: '',
-        city: '',
-        pincode: '',
-        state: '',
-        country: 'IN'
+        label: 'Home', street: '', landmark: '', city: '',
+        pincode: '', state: '', country: 'IN'
     });
     const [recipientName, setRecipientName] = useState('');
     const [phone, setPhone] = useState('');
@@ -145,27 +140,24 @@ const AddAddressModal = ({ isOpen, onClose, onSave, isExistingUser, userName, us
     useEffect(() => {
         if (isOpen) {
             setAddress({ label: 'Home', street: '', landmark: '', city: '', pincode: '', state: '', country: 'IN' });
-            setRecipientName(isExistingUser ? userName : '');
-            setPhone(isExistingUser ? userPhone : '');
+            setRecipientName(userName || '');
+            setPhone(userPhone || '');
             setAlternatePhone('');
             setError('');
             setIsSaving(false);
         }
-    }, [isOpen, isExistingUser, userName, userPhone]);
+    }, [isOpen, userName, userPhone]);
     
     const handleAddressChange = (field, value) => {
         setAddress(prev => ({...prev, [field]: value}));
     };
 
     const handleSave = async () => {
-        const finalName = isExistingUser ? userName : recipientName;
-        const finalPhone = isExistingUser ? userPhone : phone;
-        
-        if (!finalName || !finalName.trim() || !finalPhone || !finalPhone.trim() || !address.street.trim() || !address.city.trim() || !address.pincode.trim() || !address.state.trim()) {
+        if (!recipientName.trim() || !phone.trim() || !address.street.trim() || !address.city.trim() || !address.pincode.trim() || !address.state.trim()) {
             setError('Please fill all required fields.');
             return;
         }
-        if (!/^\d{10}$/.test(finalPhone.trim())) {
+        if (!/^\d{10}$/.test(phone.trim())) {
             setError('Please enter a valid 10-digit primary phone number.');
             return;
         }
@@ -175,8 +167,8 @@ const AddAddressModal = ({ isOpen, onClose, onSave, isExistingUser, userName, us
         const newAddress = {
             id: `addr_${Date.now()}`,
             label: address.label,
-            name: finalName,
-            phone: finalPhone,
+            name: recipientName,
+            phone: phone,
             alternatePhone: alternatePhone.trim(),
             street: address.street.trim(),
             landmark: address.landmark.trim(),
@@ -188,6 +180,7 @@ const AddAddressModal = ({ isOpen, onClose, onSave, isExistingUser, userName, us
         };
         
         setIsSaving(true);
+        setError('');
         try {
             await onSave(newAddress);
             onClose();
@@ -207,12 +200,10 @@ const AddAddressModal = ({ isOpen, onClose, onSave, isExistingUser, userName, us
                 </DialogHeader>
                 <div className="py-4 space-y-4 max-h-[70vh] overflow-y-auto pr-2">
                      {error && <p className="text-destructive text-sm bg-destructive/10 p-2 rounded-md">{error}</p>}
-                    {!isExistingUser && (
-                        <>
-                            <Input value={recipientName} onChange={e => setRecipientName(e.target.value)} placeholder="Recipient Name" required/>
-                            <Input type="tel" value={phone} onChange={e => setPhone(e.target.value)} placeholder="Primary Phone Number" required/>
-                        </>
-                    )}
+                    
+                    <Input value={recipientName} onChange={e => setRecipientName(e.target.value)} placeholder="Recipient Name" required disabled={!!userName}/>
+                    <Input type="tel" value={phone} onChange={e => setPhone(e.target.value)} placeholder="Primary Phone Number" required disabled={!!userPhone}/>
+                        
                     <Input value={address.street} onChange={e => handleAddressChange('street', e.target.value)} placeholder="House/Flat No., Building, Street, Area" required/>
                     <Input value={address.landmark} onChange={e => handleAddressChange('landmark', e.target.value)} placeholder="Landmark (Optional)"/>
                     <div className="grid grid-cols-2 gap-4">
@@ -358,12 +349,12 @@ const CheckoutPageInternal = () => {
     useEffect(() => {
         const address = userAddresses.find(a => a.id === selectedAddress);
         if (address) {
-            // THE FIX: Only update name if the address has a valid name.
-            // This prevents overwriting the `orderName` fetched from the user lookup.
             if (address.name && address.name.trim() !== '') {
                 setOrderName(address.name);
             }
-            setOrderPhone(address.phone || '');
+            if (address.phone && address.phone.trim() !== '') {
+                setOrderPhone(address.phone);
+            }
         } else if (userAddresses.length > 0 && !selectedAddress) {
             // Auto-select the first address if none is selected
             setSelectedAddress(userAddresses[0].id);
@@ -374,6 +365,7 @@ const CheckoutPageInternal = () => {
         try {
             const user = auth.currentUser;
             if (!user) {
+                // For non-logged-in users, just update the state locally
                 const updatedAddresses = [...userAddresses, newAddress];
                 setUserAddresses(updatedAddresses);
                 setSelectedAddress(newAddress.id);
@@ -396,7 +388,7 @@ const CheckoutPageInternal = () => {
             setIsAddAddressModalOpen(false);
         } catch (error) {
             console.error("Error saving new address:", error);
-            throw error;
+            throw error; // Re-throw to be caught by the modal
         }
     };
     
@@ -464,7 +456,7 @@ const CheckoutPageInternal = () => {
 
 
     const handlePaymentMethodSelect = (method) => {
-        setSelectedPaymentMethod(method);
+        setError(''); // Clear previous errors
         const deliveryType = cartData.tableId ? 'dine-in' : (cartData.deliveryType || 'delivery');
         
         if (deliveryType === 'delivery') {
@@ -474,13 +466,15 @@ const CheckoutPageInternal = () => {
                 setIsModalOpen(true);
                 return;
             }
-        } else if (!isExistingUser && (!orderName || orderName.trim().length === 0)) {
-            // For new users in pickup/dine-in, ensure name is provided
-             setError("Please provide your name.");
+        }
+        
+        if (!orderName || orderName.trim().length === 0) {
+             setError("Please provide a name for the order.");
              setIsModalOpen(true);
              return;
         }
 
+        setSelectedPaymentMethod(method);
         setIsModalOpen(true);
     };
     
@@ -499,7 +493,6 @@ const CheckoutPageInternal = () => {
 
         if (!orderName || orderName.trim().length === 0) {
             setError("Please provide a name for the order.");
-            if (deliveryType === 'delivery') setIsModalOpen(true);
             return;
         }
         
@@ -507,7 +500,6 @@ const CheckoutPageInternal = () => {
 
         if (deliveryType === 'delivery' && !deliveryAddress) {
             setError("Please select or add a delivery address.");
-            setIsModalOpen(true);
             return;
         }
         
@@ -612,7 +604,6 @@ const CheckoutPageInternal = () => {
                 isOpen={isAddAddressModalOpen} 
                 onClose={() => setIsAddAddressModalOpen(false)} 
                 onSave={handleAddNewAddress} 
-                isExistingUser={isExistingUser}
                 userName={orderName}
                 userPhone={orderPhone}
             />
