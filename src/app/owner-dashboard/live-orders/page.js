@@ -349,7 +349,7 @@ const OrderDetailModal = ({ data, isOpen, onClose }) => {
                             <h4 className="font-semibold">Items</h4>
                              <ul className="list-disc pl-5 text-muted-foreground text-sm">
                                 {(order.items || []).map((item, index) => (
-                                    <li key={index} className="mb-1">{item.qty}x {item.name} - ₹{((item.totalPrice || (item.price || 0)) * item.qty).toFixed(2)}</li>
+                                    <li key={index} className="mb-1">{item.qty}x {item.name} - ₹{(item.price || 0).toFixed(2)}</li>
                                 ))}
                             </ul>
                         </div>
@@ -863,12 +863,19 @@ export default function LiveOrdersPage() {
                                 >
                                     <td className="p-4 align-top">
                                         <div className="font-bold text-foreground text-sm truncate max-w-[100px] sm:max-w-none">{order.id}</div>
-                                        <div 
-                                            onClick={() => handleDetailClick(order.id, order.customerId)} 
-                                            className="text-sm text-muted-foreground hover:text-primary hover:underline cursor-pointer"
-                                            title="View Customer & Order Details"
-                                        >
-                                            {order.customer}
+                                        <div className="flex items-center gap-2">
+                                            <div 
+                                                onClick={() => handleDetailClick(order.id, order.customerId)} 
+                                                className="text-sm text-muted-foreground hover:text-primary hover:underline cursor-pointer"
+                                                title="View Customer & Order Details"
+                                            >
+                                                {order.customer}
+                                            </div>
+                                            <Link href={`/owner-dashboard/customers?customerId=${order.customerId}`}>
+                                                <a title="View Full Customer Profile">
+                                                    <User size={14} className="text-muted-foreground hover:text-primary transition-colors"/>
+                                                </a>
+                                            </Link>
                                         </div>
                                         <div className="mt-1 flex items-center gap-2">
                                             {order.deliveryType === 'pickup' 

@@ -349,7 +349,7 @@ const CustomerDetailPanel = ({ customer, onClose, onSaveNotes, onSendReward }) =
 
 const StatCard = ({ icon: Icon, title, value, detail, isLoading }) => (
     <div className={cn("bg-card p-5 rounded-xl border border-border flex items-start gap-4", isLoading && 'animate-pulse')}>
-        <div className="bg-muted p-3 rounded-lg">
+        <div className="bg-muted p-3 rounded-full">
             <Icon className={cn("h-6 w-6 text-primary", isLoading && 'invisible')} />
         </div>
         <div>
@@ -693,4 +693,3 @@ export default function CustomersPage() {
         </div>
     );
 }
-
