@@ -17,7 +17,8 @@ import {
   Banknote,
   Package as PackageIcon,
   ConciergeBell,
-  CalendarClock
+  CalendarClock,
+  MapPin,
 } from "lucide-react";
 import styles from "./OwnerDashboard.module.css";
 import SidebarLink from "./SidebarLink";
@@ -44,6 +45,7 @@ const getMenuItems = (businessType) => [
 ];
 
 const settingsItems = [
+    { name: "Location", icon: MapPin, href: "/owner-dashboard/location", featureId: "location" },
     { name: "Connections", icon: Bot, href: "/owner-dashboard/connections", featureId: "connections" },
     { name: "Payouts", icon: Banknote, href: "/owner-dashboard/payouts", featureId: "payouts" },
     { name: "Onboarding", icon: Settings, href: "/owner-dashboard/payout-settings", featureId: "payout-settings" },
@@ -96,7 +98,7 @@ export default function Sidebar({ isOpen, setIsOpen, isMobile, isCollapsed, rest
   }, []);
 
   const getIsDisabled = (featureId) => {
-    const alwaysEnabled = ['menu', 'settings', 'connections', 'payout-settings', 'dine-in', 'bookings', 'whatsapp-direct'];
+    const alwaysEnabled = ['menu', 'settings', 'connections', 'payout-settings', 'dine-in', 'bookings', 'whatsapp-direct', 'location'];
     if (alwaysEnabled.includes(featureId)) {
         return false;
     }
