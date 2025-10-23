@@ -1,4 +1,3 @@
-
 'use client';
 
 import React, { useState, useEffect, useMemo } from 'react';
@@ -31,8 +30,8 @@ const statusConfig = {
   'rejected': { color: 'bg-red-500/20 text-red-400 border-red-500/30' },
 };
 
-const deliveryStatusFlow = ['pending', 'confirmed', 'preparing', 'dispatched', 'delivered'];
-const pickupStatusFlow = ['pending', 'confirmed', 'preparing', 'ready_for_pickup', 'picked_up'];
+const deliveryStatusFlow = ['pending', 'paid', 'confirmed', 'preparing', 'dispatched', 'delivered'];
+const pickupStatusFlow = ['pending', 'paid', 'confirmed', 'preparing', 'ready_for_pickup', 'picked_up'];
 
 
 const RejectOrderModal = ({ order, isOpen, onClose, onConfirm }) => {
@@ -416,7 +415,7 @@ const ActionButton = ({ status, onNext, onRevert, order, onRejectClick, isUpdati
     const statusFlow = isPickup ? pickupStatusFlow : deliveryStatusFlow;
     
     // Normalize 'paid' status to 'pending' for flow logic
-    const actionStatus = (status === 'paid' || status === 'picked_up') ? statusFlow[0] : status;
+    const actionStatus = (status === 'paid') ? 'pending' : status;
     const currentIndex = statusFlow.indexOf(actionStatus);
     
     const isFinalStatus = status === 'delivered' || status === 'rejected' || status === 'picked_up';
@@ -864,17 +863,12 @@ export default function LiveOrdersPage() {
                                 >
                                     <td className="p-4 align-top">
                                         <div className="font-bold text-foreground text-sm truncate max-w-[100px] sm:max-w-none">{order.id}</div>
-                                        <div className="flex items-center gap-2">
-                                            <div 
-                                                onClick={() => handleDetailClick(order.id, order.customerId)} 
-                                                className="text-sm text-muted-foreground hover:text-primary hover:underline cursor-pointer"
-                                                title="View Customer & Order Details"
-                                            >
-                                                {order.customer}
-                                            </div>
-                                            <Link href={`/owner-dashboard/customers?customerId=${order.customerId}`} title="View Full Customer Profile">
-                                                <User size={14} className="text-muted-foreground hover:text-primary transition-colors"/>
-                                            </Link>
+                                        <div 
+                                            onClick={() => handleDetailClick(order.id, order.customerId)} 
+                                            className="text-sm text-muted-foreground hover:text-primary hover:underline cursor-pointer"
+                                            title="View Customer & Order Details"
+                                        >
+                                            {order.customer}
                                         </div>
                                         <div className="mt-1 flex items-center gap-2">
                                             {order.deliveryType === 'pickup' 
