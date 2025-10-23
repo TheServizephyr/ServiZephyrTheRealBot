@@ -52,11 +52,11 @@ export const sendOrderStatusUpdateToCustomer = async ({ customerPhone, botPhoneN
     let templateName;
     let components = [];
 
-    const capitalizedStatus = status.charAt(0).toUpperCase() + status.slice(1);
+    const capitalizedStatus = status.charAt(0).toUpperCase() + status.slice(1).replace(/_/g, ' ');
     
     const statusMessages = {
         restaurant: {
-            preparing: "Food is being prepared",
+            preparing: "Your food is being prepared",
         },
         shop: {
             preparing: "Your items are being packed",
@@ -95,6 +95,8 @@ export const sendOrderStatusUpdateToCustomer = async ({ customerPhone, botPhoneN
 
         case 'delivered':
         case 'rejected':
+        case 'ready_for_pickup':
+        case 'picked_up':
             templateName = 'order_status_update';
             const statusUpdateParams = [
                 { type: "text", text: customerName },
