@@ -1,8 +1,7 @@
-
 'use client';
 
 import { useState } from 'react';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogPortal } from "@/components/ui/dialog";
+import { Dialog, DialogPortal, DialogOverlay, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { CheckCircle, AlertTriangle, Send } from 'lucide-react';
 import { usePathname } from 'next/navigation';
@@ -65,7 +64,8 @@ const InfoDialog = ({ isOpen, onClose, title, message }) => {
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogPortal>
-        <DialogContent className="bg-card border-border text-foreground">
+        <DialogOverlay className="z-[9998]" />
+        <DialogContent className="bg-card border-border text-foreground z-[9999]">
           <DialogHeader className="flex flex-col items-center text-center">
               {isError ? (
                   <AlertTriangle className="h-12 w-12 text-destructive mb-4" />

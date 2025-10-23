@@ -3,7 +3,7 @@
 import React, { useState, useEffect, Suspense, useRef } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { motion } from 'framer-motion';
-import { MapPin, Search, LocateFixed, Loader2, ArrowLeft, AlertTriangle } from 'lucide-react';
+import { MapPin, Search, LocateFixed, Loader2, ArrowLeft, AlertTriangle, Save } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import dynamic from 'next/dynamic';
@@ -25,6 +25,7 @@ const LocationPageInternal = () => {
     const [mapCenter, setMapCenter] = useState({ lat: 28.7041, lng: 77.1025 }); // Default to Delhi
     const [addressDetails, setAddressDetails] = useState(null);
     const [loading, setLoading] = useState(false);
+    const [isSaving, setIsSaving] = useState(false);
     const [error, setError] = useState('');
     const debounceTimeout = useRef(null);
     const [infoDialog, setInfoDialog] = useState({ isOpen: false, title: '', message: '' });
@@ -141,7 +142,7 @@ const LocationPageInternal = () => {
             return;
         }
 
-        setLoading(true);
+        setIsSaving(true);
         try {
             const idToken = await user.getIdToken();
             
@@ -166,7 +167,7 @@ const LocationPageInternal = () => {
         } catch (err) {
             setInfoDialog({ isOpen: true, title: "Error", message: `Could not save location: ${err.message}` });
         } finally {
-            setLoading(false);
+            setIsSaving(false);
         }
     };
 
@@ -234,11 +235,11 @@ const LocationPageInternal = () => {
                 ) : addressDetails ? (
                     <div className="space-y-3">
                          <div>
-                            <p className="font-bold text-lg flex items-center gap-2"><MapPin size={20} className="text-primary"/> {addressDetails.street || addressDetails.city || 'Selected Location'}</p>
-                            <p className="text-sm text-muted-foreground">{addressDetails.fullAddress || 'Drag the pin to set your precise location.'}</p>
+                            <p className="font-bold text-lg flex items-center gap-2"><MapPin size={20} className="text-primary"/> {addressDetails.fullAddress || 'Selected Location'}</p>
+                            <p className="text-sm text-muted-foreground">Drag the pin to set your precise location.</p>
                          </div>
-                         <Button onClick={handleConfirmLocation} disabled={!addressDetails.fullAddress || loading} className="w-full h-12 text-lg font-bold bg-primary text-primary-foreground hover:bg-primary/90">
-                            {loading ? <Loader2 className="animate-spin" /> : 'Confirm & Save Location'}
+                         <Button onClick={handleConfirmLocation} disabled={!addressDetails.fullAddress || loading || isSaving} className="w-full h-12 text-lg font-bold bg-primary text-primary-foreground hover:bg-primary/90">
+                            {isSaving ? <Loader2 className="animate-spin" /> : 'Confirm & Save Location'}
                          </Button>
                     </div>
                 ) : (
