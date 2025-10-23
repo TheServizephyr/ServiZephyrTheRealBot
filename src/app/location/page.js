@@ -20,7 +20,8 @@ const LocationPageInternal = () => {
     const restaurantId = searchParams.get('restaurantId');
     const returnUrl = searchParams.get('returnUrl') || `/order/${restaurantId}`;
 
-    const [mapCenter, setMapCenter] = useState(null);
+    // Default to a central location, user will manually fetch their location
+    const [mapCenter, setMapCenter] = useState({ lat: 28.7041, lng: 77.1025 });
     
     const [addressDetails, setAddressDetails] = useState({
         house: '',
@@ -34,15 +35,22 @@ const LocationPageInternal = () => {
     
     const [searchQuery, setSearchQuery] = useState('');
     const [suggestions, setSuggestions] = useState([]);
-    const [loading, setLoading] = useState(true);
+    const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
     const debounceTimeout = useRef(null);
 
-    // 1. Get User's Current Location
+    // Function to get User's Current Location, now triggered by a button
     const getCurrentLocation = () => {
-        console.log("[LocationPage] Attempting to get current GPS location...");
+        console.log("[LocationPage] Attempting to get current GPS location via button click...");
         setLoading(true);
         setError('Fetching your location...');
+        
+        if (!navigator.geolocation) {
+            setError("Geolocation is not supported by your browser.");
+            setLoading(false);
+            return;
+        }
+
         navigator.geolocation.getCurrentPosition(
             (position) => {
                 console.log("[LocationPage] Geolocation successful:", position.coords);
@@ -55,25 +63,16 @@ const LocationPageInternal = () => {
             },
             (err) => {
                 console.error("[LocationPage] Geolocation error:", err);
-                setError('Could not get your location. Please search manually or allow location access.');
+                setError('Could not get your location. Please search manually.');
                 setLoading(false);
-                // Fallback to a central location like Delhi if everything fails
-                if (!mapCenter) {
-                    setMapCenter({ lat: 28.6139, lng: 77.2090 });
-                }
             },
             { 
-                enableHighAccuracy: true, // Force high accuracy
-                timeout: 10000, // Stop trying after 10 seconds
-                maximumAge: 0 // Don't use a cached position
+                enableHighAccuracy: true, 
+                timeout: 10000, 
+                maximumAge: 0
             }
         );
     };
-
-    useEffect(() => {
-        console.log("[LocationPage] Initial mount, calling getCurrentLocation.");
-        getCurrentLocation();
-    }, []);
 
     // 2. Reverse Geocode: Lat/Lng -> Address
     const reverseGeocode = async (coords) => {
@@ -184,23 +183,16 @@ const LocationPageInternal = () => {
             </header>
 
             <div className="flex-grow relative">
-                {mapCenter ? (
-                     <MapplsMap 
-                        initialCenter={mapCenter}
-                        onPinDragEnd={reverseGeocode}
-                     />
-                ) : (
-                    <div className="h-full w-full flex items-center justify-center bg-muted">
-                        <Loader2 className="animate-spin text-primary h-8 w-8"/>
-                    </div>
-                )}
+                 <MapplsMap 
+                    initialCenter={mapCenter}
+                    onPinDragEnd={reverseGeocode}
+                 />
                  <Button 
                     variant="secondary" 
-                    size="icon" 
-                    className="absolute bottom-28 right-4 z-10 h-12 w-12 rounded-full shadow-lg"
+                    className="absolute bottom-28 right-4 z-10 h-12 rounded-full shadow-lg flex items-center gap-2 pr-4"
                     onClick={getCurrentLocation}
                 >
-                    <LocateFixed/>
+                    <LocateFixed/> Use Current Location
                 </Button>
             </div>
 
@@ -223,13 +215,13 @@ const LocationPageInternal = () => {
                     <div className="space-y-3">
                          <div>
                             <p className="font-bold text-lg flex items-center gap-2"><MapPin size={20} className="text-primary"/> {addressDetails.city || 'Location'}</p>
-                            <p className="text-sm text-muted-foreground">{addressDetails.fullAddress}</p>
+                            <p className="text-sm text-muted-foreground">{addressDetails.fullAddress || 'Drag the pin to set your precise location.'}</p>
                          </div>
                          <div className="grid grid-cols-2 gap-3">
                             <Input placeholder="House / Flat No." value={addressDetails.house} onChange={e => setAddressDetails(prev => ({...prev, house: e.target.value}))}/>
                             <Input placeholder="Landmark (Optional)" value={addressDetails.landmark} onChange={e => setAddressDetails(prev => ({...prev, landmark: e.target.value}))}/>
                          </div>
-                         <Button onClick={handleConfirmLocation} className="w-full h-12 text-lg font-bold bg-primary text-primary-foreground hover:bg-primary/90">
+                         <Button onClick={handleConfirmLocation} disabled={!addressDetails.fullAddress} className="w-full h-12 text-lg font-bold bg-primary text-primary-foreground hover:bg-primary/90">
                             Confirm Location
                          </Button>
                     </div>
