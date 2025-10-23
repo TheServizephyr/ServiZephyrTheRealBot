@@ -21,7 +21,6 @@ import InfoDialog from '@/components/InfoDialog';
 
 const statusConfig = {
   'pending': { color: 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30' },
-  'paid': { color: 'bg-green-500/20 text-green-400 border-green-500/30' },
   'confirmed': { color: 'bg-blue-500/20 text-blue-400 border-blue-500/30' },
   'preparing': { color: 'bg-orange-500/20 text-orange-400 border-orange-500/30' },
   'ready_for_pickup': { color: 'bg-purple-500/20 text-purple-400 border-purple-500/30' },
@@ -31,8 +30,8 @@ const statusConfig = {
   'rejected': { color: 'bg-red-500/20 text-red-400 border-red-500/30' },
 };
 
-const deliveryStatusFlow = ['pending', 'paid', 'confirmed', 'preparing', 'dispatched', 'delivered'];
-const pickupStatusFlow = ['pending', 'paid', 'confirmed', 'preparing', 'ready_for_pickup', 'picked_up'];
+const deliveryStatusFlow = ['pending', 'confirmed', 'preparing', 'dispatched', 'delivered'];
+const pickupStatusFlow = ['pending', 'confirmed', 'preparing', 'ready_for_pickup', 'picked_up'];
 
 
 const RejectOrderModal = ({ order, isOpen, onClose, onConfirm }) => {
