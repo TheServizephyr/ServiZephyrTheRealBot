@@ -3,7 +3,6 @@
 
 import React, { useRef, useCallback } from 'react';
 import Map, { Marker, NavigationControl } from 'react-map-gl';
-import 'mappls-gl/dist/mappls-gl.css';
 import { Loader2 } from 'lucide-react';
 
 const MAPPLS_API_KEY = process.env.NEXT_PUBLIC_MAPPLS_API_KEY;
