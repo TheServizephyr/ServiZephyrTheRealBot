@@ -2,90 +2,69 @@
 'use client';
 
 import React, { useEffect, useRef } from 'react';
-import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
-import 'leaflet/dist/leaflet.css';
-import L from 'leaflet';
+import Map, { Marker, Popup, NavigationControl, Source, Layer } from 'react-map-gl';
+import 'mappls-gl/dist/mappls-gl.css';
 import { Loader2 } from 'lucide-react';
 
-// FIX: Default icon issue with Webpack
-delete L.Icon.Default.prototype._getIconUrl;
-L.Icon.Default.mergeOptions({
-  iconRetinaUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png',
-  iconUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
-  shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
-});
-
-const restaurantIcon = new L.DivIcon({
-    html: `<div style="font-size: 2rem; color: #ef4444;">🏢</div>`,
-    iconSize: [32, 32],
-    className: 'leaflet-div-icon'
-});
-
-const customerIcon = new L.DivIcon({
-    html: `<div style="font-size: 2rem; color: #3b82f6;">🏠</div>`,
-    iconSize: [32, 32],
-    className: 'leaflet-div-icon'
-});
-
-const riderIcon = new L.DivIcon({
-    html: `<div style="font-size: 2.5rem; color: #22c55e;">🛵</div>`,
-    iconSize: [40, 40],
-    className: 'leaflet-div-icon'
-});
-
-
-const MapUpdater = ({ restaurantLocation, customerLocation, riderLocation }) => {
-    const map = useMap();
-
-    useEffect(() => {
-        const bounds = [];
-        if (restaurantLocation) bounds.push([restaurantLocation.latitude, restaurantLocation.longitude]);
-        if (customerLocation) bounds.push([customerLocation.latitude, customerLocation.longitude]);
-        if (riderLocation) bounds.push([riderLocation.latitude, riderLocation.longitude]);
-        
-        if (bounds.length > 0) {
-            map.fitBounds(bounds, { padding: [50, 50] });
-        }
-    }, [map, restaurantLocation, customerLocation, riderLocation]);
-
-    return null;
-}
+const MAPPLS_API_KEY = process.env.NEXT_PUBLIC_MAPPLS_API_KEY;
 
 const LiveTrackingMap = ({ restaurantLocation, customerLocation, riderLocation }) => {
-    
+    const mapRef = useRef();
+
+    useEffect(() => {
+        if (mapRef.current && window.mapplsgl) {
+            const mapplsgl = window.mapplsgl;
+            const bounds = new mapplsgl.LngLatBounds();
+            if (restaurantLocation) bounds.extend([restaurantLocation.longitude, restaurantLocation.latitude]);
+            if (customerLocation) bounds.extend([customerLocation.longitude, customerLocation.latitude]);
+            if (riderLocation) bounds.extend([riderLocation.longitude, riderLocation.latitude]);
+            
+            if (!bounds.isEmpty()) {
+                mapRef.current.fitBounds(bounds, { padding: 60, maxZoom: 15 });
+            }
+        }
+    }, [restaurantLocation, customerLocation, riderLocation]);
+
     if (typeof window === 'undefined') {
         return <div className="w-full h-full bg-muted flex items-center justify-center"><Loader2 className="animate-spin text-primary"/></div>;
     }
-    
+     if (!MAPPLS_API_KEY) {
+        return <div className="w-full h-full bg-muted flex items-center justify-center"><p className="text-destructive">Mappls API Key not found.</p></div>;
+    }
+
     const center = customerLocation || restaurantLocation || { latitude: 28.6139, longitude: 77.2090 };
 
     return (
-        <MapContainer center={[center.latitude, center.longitude]} zoom={13} scrollWheelZoom={true} style={{ height: '100%', width: '100%' }}>
-            <TileLayer
-                attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-                url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-            />
+        <Map
+            ref={mapRef}
+            mapLib={typeof window !== 'undefined' ? window.mapplsgl : null}
+            mapplsAccessToken={MAPPLS_API_KEY}
+            initialViewState={{
+                longitude: center.longitude,
+                latitude: center.latitude,
+                zoom: 13
+            }}
+            style={{ width: '100%', height: '100%' }}
+            mapStyle="https://apis.mappls.com/advancedmaps/api/v1/mappls-default-style"
+        >
+            <NavigationControl position="top-right" />
+
             {restaurantLocation && (
-                <Marker position={[restaurantLocation.latitude, restaurantLocation.longitude]} icon={restaurantIcon}>
-                    <Popup>Restaurant</Popup>
+                <Marker longitude={restaurantLocation.longitude} latitude={restaurantLocation.latitude} anchor="bottom">
+                     <div style={{ fontSize: '2rem' }}>🏢</div>
                 </Marker>
             )}
             {customerLocation && (
-                 <Marker position={[customerLocation.latitude, customerLocation.longitude]} icon={customerIcon}>
-                    <Popup>Your Location</Popup>
+                <Marker longitude={customerLocation.longitude} latitude={customerLocation.latitude} anchor="bottom">
+                    <div style={{ fontSize: '2rem' }}>🏠</div>
                 </Marker>
             )}
             {riderLocation && (
-                 <Marker position={[riderLocation.latitude, riderLocation.longitude]} icon={riderIcon}>
-                    <Popup>Delivery Rider</Popup>
+                <Marker longitude={riderLocation.longitude} latitude={riderLocation.latitude} anchor="bottom">
+                     <div style={{ fontSize: '2.5rem' }}>🛵</div>
                 </Marker>
             )}
-            <MapUpdater 
-                restaurantLocation={restaurantLocation} 
-                customerLocation={customerLocation}
-                riderLocation={riderLocation} 
-            />
-        </MapContainer>
+        </Map>
     );
 };
 
