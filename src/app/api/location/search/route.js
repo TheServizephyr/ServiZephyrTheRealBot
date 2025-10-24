@@ -17,16 +17,16 @@ export async function GET(req) {
         return NextResponse.json({ message: "Search query is required." }, { status: 400 });
     }
 
-    // Corrected to use POST with Bearer token as per Mappls docs
+    // THE FIX: The autosuggest API uses POST.
     const url = `https://apis.mappls.com/v1/autosuggest?query=${encodeURIComponent(query)}&filter=country:IND`;
     console.log(`[API search] Calling Mappls Autosuggest API (POST): ${url}`);
 
     try {
         const response = await fetch(url, {
-            method: 'POST',
+            method: 'POST', // Corrected method
             headers: {
                 'Content-Type': 'application/json',
-                'Authorization': `Bearer ${MAPPLS_API_KEY}`
+                'Authorization': `Bearer ${MAPPLS_API_KEY}` // Corrected Authorization
             },
         });
         

@@ -18,15 +18,16 @@ export async function GET(req) {
         return NextResponse.json({ message: "Latitude and longitude are required." }, { status: 400 });
     }
 
-    // Corrected to use GET with Bearer token header as per Mappls v1 API docs
+    // THE FIX: The Mappls rev_geocode for v1 uses POST, not GET.
     const url = `https://apis.mappls.com/v1/rev_geocode?lat=${lat}&lng=${lng}`;
-    console.log(`[API geocode] Calling Mappls v1 rev_geocode API (GET): ${url}`);
+    console.log(`[API geocode] Calling Mappls v1 rev_geocode API (POST): ${url}`);
 
     try {
         const response = await fetch(url, {
-            method: 'GET',
+            method: 'POST', // Corrected method
             headers: {
-                'Authorization': `Bearer ${MAPPLS_API_KEY}`
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${MAPPLS_API_KEY}` // Corrected Authorization
             },
         });
         
