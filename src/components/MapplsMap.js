@@ -15,7 +15,7 @@ const MapplsMap = ({ initialCenter, onPinDragEnd }) => {
         onPinDragEnd({ lat, lng });
     }, [onPinDragEnd]);
 
-    if (typeof window === 'undefined') {
+    if (typeof window === 'undefined' || !window.mapplsgl) {
         return <div className="w-full h-full bg-muted flex items-center justify-center"><Loader2 className="animate-spin text-primary"/></div>;
     }
 
@@ -26,7 +26,7 @@ const MapplsMap = ({ initialCenter, onPinDragEnd }) => {
     return (
         <Map
             ref={mapRef}
-            mapLib={typeof window !== 'undefined' ? window.mapplsgl : null}
+            mapLib={window.mapplsgl}
             mapplsAccessToken={MAPPLS_API_KEY}
             initialViewState={{
                 longitude: initialCenter.lng,

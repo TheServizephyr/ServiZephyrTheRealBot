@@ -24,7 +24,7 @@ const LiveTrackingMap = ({ restaurantLocation, customerLocation, riderLocation }
         }
     }, [restaurantLocation, customerLocation, riderLocation]);
 
-    if (typeof window === 'undefined') {
+    if (typeof window === 'undefined' || !window.mapplsgl) {
         return <div className="w-full h-full bg-muted flex items-center justify-center"><Loader2 className="animate-spin text-primary"/></div>;
     }
      if (!MAPPLS_API_KEY) {
@@ -36,7 +36,7 @@ const LiveTrackingMap = ({ restaurantLocation, customerLocation, riderLocation }
     return (
         <Map
             ref={mapRef}
-            mapLib={typeof window !== 'undefined' ? window.mapplsgl : null}
+            mapLib={window.mapplsgl}
             mapplsAccessToken={MAPPLS_API_KEY}
             initialViewState={{
                 longitude: center.longitude,

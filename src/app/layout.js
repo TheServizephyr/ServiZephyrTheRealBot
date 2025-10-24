@@ -30,7 +30,7 @@ export default function RootLayout({ children }) {
     <html lang="en" className={`${alegreya.variable} ${playfairDisplay.variable}`}>
        <head>
          <link rel="stylesheet" href={`https://apis.mappls.com/advancedmaps/api/${MAPPLS_API_KEY}/map_sdk_v3.0.css`} />
-         <Script src={`https://apis.mappls.com/advancedmaps/api/${MAPPLS_API_KEY}/map_sdk?layer=vector&v=3.0&callback=initMap`} strategy="beforeInteractive" />
+         <Script src={`https://apis.mappls.com/advancedmaps/api/${MAPPLS_API_KEY}/map_sdk?layer=vector&v=3.0`} strategy="beforeInteractive" />
        </head>
        <body>
         <FirebaseClientProvider>
