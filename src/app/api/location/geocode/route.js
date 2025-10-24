@@ -9,6 +9,7 @@ export async function GET(req) {
         return NextResponse.json({ message: "Geocoding service is not configured on the server." }, { status: 500 });
     }
 
+    console.log("[API geocode] Request received for Reverse Geocoding via Mappls.");
     const { searchParams } = new URL(req.url);
     const lat = searchParams.get('lat');
     const lng = searchParams.get('lng');
@@ -17,16 +18,15 @@ export async function GET(req) {
         return NextResponse.json({ message: "Latitude and longitude are required." }, { status: 400 });
     }
 
-    // THE FIX: Mappls rev_geocode requires a GET request with the API key in the URL, not an Authorization header.
+    // Corrected to use GET with Bearer token header as per Mappls v1 API docs
     const url = `https://apis.mappls.com/v1/rev_geocode?lat=${lat}&lng=${lng}`;
-    
     console.log(`[API geocode] Calling Mappls v1 rev_geocode API (GET): ${url}`);
 
     try {
         const response = await fetch(url, {
             method: 'GET',
             headers: {
-                'Authorization': `Bearer ${MAPPLS_API_KEY}` // Keeping the header as Mappls requires it for v1
+                'Authorization': `Bearer ${MAPPLS_API_KEY}`
             },
         });
         
