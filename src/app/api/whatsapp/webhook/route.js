@@ -2,6 +2,7 @@
 
 import { NextResponse } from 'next/server';
 import { getFirestore, FieldValue } from '@/lib/firebase-admin';
+import { getStorage } from 'firebase-admin/storage';
 import { sendWhatsAppMessage } from '@/lib/whatsapp';
 import { sendOrderStatusUpdateToCustomer } from '@/lib/notifications';
 import axios from 'axios';
@@ -55,18 +56,24 @@ async function getBusiness(firestore, botPhoneNumberId) {
 
 const handleImageMessage = async (firestore, business, message) => {
     const fromWithCode = message.from;
-    const customerName = business.contacts?.[0]?.profile?.name || 'Customer';
+    const customerName = business.data?.contacts?.[0]?.profile?.name || 'Customer'; // Safely access nested property
     const mediaId = message.image.id;
+    const whatsAppToken = process.env.WHATSAPP_ACCESS_TOKEN;
+
+    if (!whatsAppToken) {
+        console.error("[Webhook][handleImageMessage] CRITICAL: WHATSAPP_ACCESS_TOKEN is not set.");
+        return;
+    }
 
     // 1. Get media URL from Meta
     const mediaUrlRes = await axios.get(`https://graph.facebook.com/v19.0/${mediaId}`, {
-        headers: { 'Authorization': `Bearer ${process.env.WHATSAPP_ACCESS_TOKEN}` }
+        headers: { 'Authorization': `Bearer ${whatsAppToken}` }
     });
     const mediaUrl = mediaUrlRes.data.url;
 
     // 2. Download the image
     const imageRes = await axios.get(mediaUrl, {
-        headers: { 'Authorization': `Bearer ${process.env.WHATSAPP_ACCESS_TOKEN}` },
+        headers: { 'Authorization': `Bearer ${whatsAppToken}` },
         responseType: 'arraybuffer'
     });
     const imageBuffer = Buffer.from(imageRes.data, 'binary');
@@ -74,18 +81,16 @@ const handleImageMessage = async (firestore, business, message) => {
     const fileExtension = mimeType.split('/')[1] || 'jpg';
     
     // 3. Upload to Firebase Storage
-    const bucket = getFirestore().storage().bucket(`gs://${process.env.FIREBASE_PROJECT_ID}.appspot.com`);
+    const bucket = getStorage().bucket(`gs://${process.env.FIREBASE_PROJECT_ID}.appspot.com`);
     const fileName = `whatsapp_media/${business.id}/${fromWithCode}_${Date.now()}.${fileExtension}`;
     const file = bucket.file(fileName);
     await file.save(imageBuffer, {
         metadata: { contentType: mimeType }
     });
     
-    // 4. Get public URL
-    const [publicUrl] = await file.getSignedUrl({
-        action: 'read',
-        expires: '03-09-2491'
-    });
+    // 4. Get public URL (set to be publicly readable)
+    await file.makePublic();
+    const publicUrl = file.publicUrl();
 
     // 5. Save message to Firestore
     const customerPhone = fromWithCode.startsWith('91') ? fromWithCode.substring(2) : fromWithCode;
@@ -288,7 +293,7 @@ export async function POST(request) {
                 batch.set(botMessageRef, {
                     id: botMessageRef.id,
                     text: replyText,
-                    sender: 'owner',
+                    sender: 'owner', // Representing the bot as the owner
                     timestamp: FieldValue.serverTimestamp(),
                     status: 'sent' 
                 });

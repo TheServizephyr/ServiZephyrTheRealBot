@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
@@ -46,13 +47,13 @@ const ConversationItem = ({ conversation, active, onClick }) => (
 );
 
 const MessageBubble = ({ message }) => {
-    const isOwner = message.sender === 'owner';
     const timestamp = message.timestamp?.seconds ? new Date(message.timestamp.seconds * 1000) : new Date(message.timestamp);
+    const isOwner = message.sender === 'owner';
 
     return (
         <div className={`flex ${isOwner ? 'justify-end' : 'justify-start'} mb-3`}>
             <div className={`max-w-xs lg:max-w-md px-1 py-2 rounded-2xl ${isOwner ? 'bg-primary text-primary-foreground rounded-br-none' : 'bg-muted rounded-bl-none'}`}>
-                {message.type === 'image' ? (
+                {message.type === 'image' && message.mediaUrl ? (
                     <div className="p-2">
                         <a href={message.mediaUrl} target="_blank" rel="noopener noreferrer">
                            <Image src={message.mediaUrl} alt="Chat image" width={250} height={250} className="rounded-lg cursor-pointer" />
@@ -213,44 +214,41 @@ export default function WhatsAppDirectPage() {
     };
 
     const handleImageUpload = async (file) => {
+        if (!activeConversation) return;
         setUploadingFile(file.name);
-        setUploadProgress(0);
+        setUploadProgress(0); // Reset progress
+        
         try {
             // Get presigned URL from our backend
-            const { url, fields } = await handleApiCall('/api/owner/whatsapp-direct/upload-url', 'POST', {
+            const { presignedUrl, publicUrl } = await handleApiCall('/api/owner/whatsapp-direct/upload-url', 'POST', {
                 fileName: file.name,
                 fileType: file.type,
                 conversationId: activeConversation.id
             });
             
-            // Upload to Firebase Storage via presigned URL
-            const formData = new FormData();
-            Object.entries(fields).forEach(([key, value]) => {
-                formData.append(key, value);
+            // Upload to Firebase Storage via presigned URL using fetch
+            const uploadResponse = await fetch(presignedUrl, {
+                method: 'PUT',
+                body: file,
+                headers: {
+                    'Content-Type': file.type,
+                },
             });
-            formData.append('file', file);
-            
-            const uploadResponse = await fetch(url, {
-                method: 'POST',
-                body: formData,
-            });
-
+    
             if (!uploadResponse.ok) {
-                 const errorXml = await uploadResponse.text();
-                 console.error("Firebase upload failed:", errorXml);
+                 const errorText = await uploadResponse.text();
+                 console.error("Firebase upload failed:", errorText);
                  throw new Error('Failed to upload image to storage.');
             }
-            
-            const publicUrl = `${url}/${fields.key}`;
             
             // Now, send the public URL to our backend to send as a WhatsApp message
             await handleApiCall('/api/owner/whatsapp-direct/messages', 'POST', {
                 conversationId: activeConversation.id,
                 imageUrl: publicUrl
             });
-
+    
             await fetchMessages(activeConversation.id);
-
+    
         } catch (error) {
             setInfoDialog({isOpen: true, title: "Upload Failed", message: "Could not send image: " + error.message});
         } finally {

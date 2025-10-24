@@ -1,4 +1,5 @@
 
+
 import { NextResponse } from 'next/server';
 import { getAuth, getFirestore, FieldValue } from '@/lib/firebase-admin';
 import { sendWhatsAppMessage } from '@/lib/whatsapp';
@@ -55,10 +56,11 @@ export async function GET(req) {
             
         const messages = messagesSnap.docs.map(doc => {
             const data = doc.data();
+            const timestamp = data.timestamp?.toDate ? data.timestamp.toDate().toISOString() : new Date().toISOString();
             return {
                 id: doc.id,
                 ...data,
-                timestamp: data.timestamp.toDate().toISOString()
+                timestamp: timestamp,
             };
         });
         
@@ -121,8 +123,8 @@ export async function POST(req) {
 
         batch.set(conversationRef, {
             lastMessage: imageUrl ? '📷 Image' : text,
-            lastMessageTimestamp: FieldValue.serverTimestamp(),
             lastMessageType: imageUrl ? 'image' : 'text',
+            lastMessageTimestamp: FieldValue.serverTimestamp(),
         }, { merge: true });
 
         await batch.commit();
