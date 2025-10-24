@@ -18,12 +18,13 @@ export async function GET(req) {
         return NextResponse.json({ message: "Latitude and longitude are required." }, { status: 400 });
     }
 
+    // THE FIX: The API endpoint for rev_geocode is v1 and it uses GET method.
     const url = `https://apis.mappls.com/v1/rev_geocode?lat=${lat}&lng=${lng}`;
     console.log(`[API geocode] Calling Mappls API: ${url}`);
 
     try {
         const response = await fetch(url, {
-            method: 'POST', // Mappls reverse geocode uses POST
+            method: 'GET', // Corrected from POST to GET
             headers: {
                 'Content-Type': 'application/json',
                 'Authorization': `Bearer ${MAPPLS_API_KEY}`
