@@ -9,7 +9,6 @@ export async function GET(req) {
         return NextResponse.json({ message: "Search service is not configured on the server." }, { status: 500 });
     }
 
-    console.log("[API search] Request received for location search via Mappls.");
     const { searchParams } = new URL(req.url);
     const query = searchParams.get('query');
 
@@ -17,15 +16,16 @@ export async function GET(req) {
         return NextResponse.json({ message: "Search query is required." }, { status: 400 });
     }
 
+    // THE FIX: Mappls autosuggest requires a GET request with the API key in the URL.
     const url = `https://apis.mappls.com/v1/autosuggest?query=${encodeURIComponent(query)}&filter=country:IND`;
-    console.log(`[API search] Calling Mappls Autosuggest API: ${url}`);
+    
+    console.log(`[API search] Calling Mappls Autosuggest API (GET): ${url}`);
 
     try {
         const response = await fetch(url, {
-            method: 'POST',
+            method: 'GET',
             headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${MAPPLS_API_KEY}`
+                 'Authorization': `Bearer ${MAPPLS_API_KEY}`
             },
         });
         
@@ -38,7 +38,6 @@ export async function GET(req) {
             return NextResponse.json({ message: errorMessage }, { status: response.status });
         }
 
-        // Transform Mappls data to match the expected `suggestedLocations` format
         const suggestedLocations = (data.suggestedLocations || []).map(item => ({
             placeName: item.placeName,
             placeAddress: item.placeAddress,

@@ -9,7 +9,6 @@ export async function GET(req) {
         return NextResponse.json({ message: "Geocoding service is not configured on the server." }, { status: 500 });
     }
 
-    console.log("[API geocode] Request received for Reverse Geocoding via Mappls.");
     const { searchParams } = new URL(req.url);
     const lat = searchParams.get('lat');
     const lng = searchParams.get('lng');
@@ -18,16 +17,16 @@ export async function GET(req) {
         return NextResponse.json({ message: "Latitude and longitude are required." }, { status: 400 });
     }
 
-    // THE FIX: The API endpoint for rev_geocode is v1 and it uses GET method.
+    // THE FIX: Mappls rev_geocode requires a GET request with the API key in the URL, not an Authorization header.
     const url = `https://apis.mappls.com/v1/rev_geocode?lat=${lat}&lng=${lng}`;
-    console.log(`[API geocode] Calling Mappls API: ${url}`);
+    
+    console.log(`[API geocode] Calling Mappls v1 rev_geocode API (GET): ${url}`);
 
     try {
         const response = await fetch(url, {
-            method: 'GET', // Corrected from POST to GET
+            method: 'GET',
             headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${MAPPLS_API_KEY}`
+                'Authorization': `Bearer ${MAPPLS_API_KEY}` // Keeping the header as Mappls requires it for v1
             },
         });
         
@@ -52,7 +51,7 @@ export async function GET(req) {
             return NextResponse.json(result, { status: 200 });
         } else {
             const errorMessage = data?.error || `Mappls returned status ${response.status}`;
-            console.warn(`[API geocode] Mappls API returned an error:`, errorMessage);
+            console.warn(`[API geocode] Mappls API returned an error:`, errorMessage, data);
             return NextResponse.json({ message: errorMessage }, { status: response.status });
         }
     } catch (error) {
