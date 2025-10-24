@@ -1,15 +1,16 @@
-
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Search, Archive, MessageSquare, Send, Paperclip, Loader2, ArrowLeft } from 'lucide-react';
+import { Search, Archive, MessageSquare, Send, Paperclip, Loader2, ArrowLeft, Image as ImageIcon, X } from 'lucide-react';
 import Image from 'next/image';
 import { auth } from '@/lib/firebase';
 import { useSearchParams } from 'next/navigation';
 import InfoDialog from '@/components/InfoDialog';
 import { format, isToday, isYesterday } from 'date-fns';
 import { cn } from '@/lib/utils';
+import { Button } from '@/components/ui/button';
+import { Progress } from '@/components/ui/progress';
 
 const formatTimestamp = (timestamp) => {
     if (!timestamp) return '';
@@ -36,7 +37,10 @@ const ConversationItem = ({ conversation, active, onClick }) => (
                 <h3 className="font-semibold text-foreground truncate">{conversation.customerName}</h3>
                 <p className="text-xs text-muted-foreground flex-shrink-0 ml-2">{formatTimestamp(conversation.lastMessageTimestamp)}</p>
             </div>
-            <p className="text-sm text-muted-foreground truncate">{conversation.lastMessage}</p>
+            <p className="text-sm text-muted-foreground truncate flex items-center gap-1">
+                 {conversation.lastMessageType === 'image' && <ImageIcon size={14} />}
+                 {conversation.lastMessage}
+            </p>
         </div>
     </div>
 );
@@ -47,9 +51,17 @@ const MessageBubble = ({ message }) => {
 
     return (
         <div className={`flex ${isOwner ? 'justify-end' : 'justify-start'} mb-3`}>
-            <div className={`max-w-xs lg:max-w-md px-4 py-2 rounded-2xl ${isOwner ? 'bg-primary text-primary-foreground rounded-br-none' : 'bg-muted rounded-bl-none'}`}>
-                <p>{message.text}</p>
-                <p className={`text-xs mt-1 ${isOwner ? 'text-primary-foreground/70' : 'text-muted-foreground'} text-right`}>
+            <div className={`max-w-xs lg:max-w-md px-1 py-2 rounded-2xl ${isOwner ? 'bg-primary text-primary-foreground rounded-br-none' : 'bg-muted rounded-bl-none'}`}>
+                {message.type === 'image' ? (
+                    <div className="p-2">
+                        <a href={message.mediaUrl} target="_blank" rel="noopener noreferrer">
+                           <Image src={message.mediaUrl} alt="Chat image" width={250} height={250} className="rounded-lg cursor-pointer" />
+                        </a>
+                    </div>
+                ) : (
+                    <p className="px-3">{message.text}</p>
+                )}
+                <p className={`text-xs mt-1 px-3 ${isOwner ? 'text-primary-foreground/70' : 'text-muted-foreground'} text-right`}>
                     {format(timestamp, 'p')}
                 </p>
             </div>
@@ -70,12 +82,15 @@ export default function WhatsAppDirectPage() {
     const searchParams = useSearchParams();
     const impersonatedOwnerId = searchParams.get('impersonate_owner_id');
     const messagesEndRef = useRef(null);
+    const fileInputRef = useRef(null);
+    const [uploadProgress, setUploadProgress] = useState(0);
+    const [uploadingFile, setUploadingFile] = useState(null);
     
     const scrollToBottom = () => {
         messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
     }
 
-    useEffect(scrollToBottom, [messages]);
+    useEffect(scrollToBottom, [messages, uploadingFile]);
     
     const handleApiCall = async (endpoint, method = 'GET', body = null) => {
         const user = auth.currentUser;
@@ -105,7 +120,7 @@ export default function WhatsAppDirectPage() {
     }
     
     const fetchConversations = async (isBackgroundRefresh = false) => {
-        if (conversations.length === 0 && !isBackgroundRefresh) {
+         if (!isBackgroundRefresh) {
             setLoadingConversations(true);
         }
         try {
@@ -148,7 +163,7 @@ export default function WhatsAppDirectPage() {
         if (activeConversation) {
             interval = setInterval(() => {
                 fetchMessages(activeConversation.id);
-            }, 30000); // Poll every 30 seconds for messages of the active chat
+            }, 30000);
         }
         return () => {
             if (interval) clearInterval(interval);
@@ -167,13 +182,7 @@ export default function WhatsAppDirectPage() {
         if (!newMessage.trim() || !activeConversation) return;
         
         setIsSending(true);
-        const tempMessageId = 'temp-' + Date.now();
-        const optimisticMessage = {
-            id: tempMessageId,
-            text: newMessage,
-            sender: 'owner',
-            timestamp: new Date().toISOString()
-        };
+        const optimisticMessage = { id: 'temp-' + Date.now(), text: newMessage, sender: 'owner', timestamp: new Date().toISOString() };
         setMessages(prev => [...prev, optimisticMessage]);
         const messageToSend = newMessage;
         setNewMessage('');
@@ -183,17 +192,72 @@ export default function WhatsAppDirectPage() {
                 conversationId: activeConversation.id,
                 text: messageToSend
             });
-            // Immediately fetch the latest messages to get the real one from DB
-            const data = await handleApiCall('/api/owner/whatsapp-direct/messages', 'GET', { conversationId: activeConversation.id });
-            setMessages(data.messages || []);
+            await fetchMessages(activeConversation.id);
         } catch(error) {
             setInfoDialog({ isOpen: true, title: 'Error', message: 'Failed to send message: ' + error.message });
-            // On failure, remove the optimistic message
-            setMessages(prev => prev.filter(m => m.id !== tempMessageId));
+            setMessages(prev => prev.filter(m => m.id !== optimisticMessage.id));
         } finally {
             setIsSending(false);
         }
-    }
+    };
+
+    const handleFileChange = (e) => {
+        const file = e.target.files[0];
+        if (file && activeConversation) {
+            handleImageUpload(file);
+        }
+        // Reset file input
+        if (fileInputRef.current) {
+            fileInputRef.current.value = '';
+        }
+    };
+
+    const handleImageUpload = async (file) => {
+        setUploadingFile(file.name);
+        setUploadProgress(0);
+        try {
+            // Get presigned URL from our backend
+            const { url, fields } = await handleApiCall('/api/owner/whatsapp-direct/upload-url', 'POST', {
+                fileName: file.name,
+                fileType: file.type,
+                conversationId: activeConversation.id
+            });
+            
+            // Upload to Firebase Storage via presigned URL
+            const formData = new FormData();
+            Object.entries(fields).forEach(([key, value]) => {
+                formData.append(key, value);
+            });
+            formData.append('file', file);
+            
+            const uploadResponse = await fetch(url, {
+                method: 'POST',
+                body: formData,
+            });
+
+            if (!uploadResponse.ok) {
+                 const errorXml = await uploadResponse.text();
+                 console.error("Firebase upload failed:", errorXml);
+                 throw new Error('Failed to upload image to storage.');
+            }
+            
+            const publicUrl = `${url}/${fields.key}`;
+            
+            // Now, send the public URL to our backend to send as a WhatsApp message
+            await handleApiCall('/api/owner/whatsapp-direct/messages', 'POST', {
+                conversationId: activeConversation.id,
+                imageUrl: publicUrl
+            });
+
+            await fetchMessages(activeConversation.id);
+
+        } catch (error) {
+            setInfoDialog({isOpen: true, title: "Upload Failed", message: "Could not send image: " + error.message});
+        } finally {
+            setUploadingFile(null);
+            setUploadProgress(0);
+        }
+    };
 
 
     const ConversationList = (
@@ -245,10 +309,27 @@ export default function WhatsAppDirectPage() {
                        ) : (
                            messages.map(msg => <MessageBubble key={msg.id} message={msg} />)
                        )}
+                       {uploadingFile && (
+                          <div className="flex justify-end mb-3">
+                            <div className="max-w-xs lg:max-w-md px-4 py-3 rounded-2xl bg-primary text-primary-foreground rounded-br-none">
+                               <div className="flex items-center gap-3">
+                                <Loader2 className="animate-spin"/>
+                                <div>
+                                    <p className="text-sm font-semibold">Sending image...</p>
+                                    <p className="text-xs truncate max-w-xs text-primary-foreground/80">{uploadingFile}</p>
+                                </div>
+                               </div>
+                            </div>
+                           </div>
+                       )}
                        <div ref={messagesEndRef} />
                     </div>
                     <footer className="p-4 border-t border-border bg-card">
                         <form onSubmit={handleSendMessage} className="flex items-center gap-3">
+                             <input type="file" ref={fileInputRef} onChange={handleFileChange} className="hidden" accept="image/png, image/jpeg" />
+                             <Button type="button" variant="ghost" size="icon" onClick={() => fileInputRef.current?.click()} className="flex-shrink-0">
+                                <Paperclip/>
+                             </Button>
                             <input 
                                 type="text" 
                                 placeholder="Type your message..." 
@@ -286,7 +367,6 @@ export default function WhatsAppDirectPage() {
                 message={infoDialog.message}
             />
             <div className="h-[calc(100vh-100px)] md:h-[calc(100vh-65px)] flex bg-card border border-border rounded-xl overflow-hidden">
-                {/* Mobile View */}
                 <div className="md:hidden w-full h-full">
                     <AnimatePresence mode="wait">
                         {activeConversation ? (
@@ -314,7 +394,6 @@ export default function WhatsAppDirectPage() {
                     </AnimatePresence>
                 </div>
 
-                {/* Desktop View */}
                 <div className="hidden md:flex w-full h-full">
                     {ConversationList}
                     {ChatWindow}

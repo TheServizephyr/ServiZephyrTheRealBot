@@ -50,12 +50,11 @@ export async function GET(req) {
         const businessDoc = await verifyOwnerAndGetBusinessRef(req);
         
         const messagesSnap = await businessDoc.ref.collection('conversations').doc(conversationId).collection('messages')
-            .orderBy('timestamp', 'asc') // THE FIX: Explicitly sort messages by timestamp
+            .orderBy('timestamp', 'asc')
             .get();
             
         const messages = messagesSnap.docs.map(doc => {
             const data = doc.data();
-            // Ensure timestamp is serializable to ISO string for the client
             return {
                 id: doc.id,
                 ...data,
@@ -63,7 +62,6 @@ export async function GET(req) {
             };
         });
         
-        // Mark conversation as read after fetching messages
         await businessDoc.ref.collection('conversations').doc(conversationId).set({ unreadCount: 0 }, { merge: true });
 
         return NextResponse.json({ messages }, { status: 200 });
@@ -78,10 +76,10 @@ export async function GET(req) {
 // Send a new message from the owner
 export async function POST(req) {
     try {
-        const { conversationId, text } = await req.json();
+        const { conversationId, text, imageUrl } = await req.json();
 
-        if (!conversationId || !text) {
-            return NextResponse.json({ message: 'Conversation ID and text are required.' }, { status: 400 });
+        if (!conversationId || (!text && !imageUrl)) {
+            return NextResponse.json({ message: 'Conversation ID and text or imageUrl are required.' }, { status: 400 });
         }
         
         const businessDoc = await verifyOwnerAndGetBusinessRef(req);
@@ -91,12 +89,22 @@ export async function POST(req) {
         if (!botPhoneNumberId) {
             throw { message: 'WhatsApp bot is not connected for this business.', status: 400 };
         }
-
-        // Send message via WhatsApp
-        const customerPhoneWithCode = '91' + conversationId;
-        await sendWhatsAppMessage(customerPhoneWithCode, text, botPhoneNumberId);
         
-        // Save message to Firestore
+        const customerPhoneWithCode = '91' + conversationId;
+
+        let messagePayload;
+        let firestoreMessageData;
+        
+        if (imageUrl) {
+            messagePayload = { type: 'image', link: imageUrl };
+            firestoreMessageData = { type: 'image', mediaUrl: imageUrl, text: 'Image' };
+        } else {
+            messagePayload = text;
+            firestoreMessageData = { type: 'text', text: text };
+        }
+        
+        await sendWhatsAppMessage(customerPhoneWithCode, messagePayload, botPhoneNumberId);
+        
         const firestore = getFirestore();
         const conversationRef = businessDoc.ref.collection('conversations').doc(conversationId);
         const messageRef = conversationRef.collection('messages').doc();
@@ -105,16 +113,16 @@ export async function POST(req) {
         
         batch.set(messageRef, {
             id: messageRef.id,
-            text: text,
             sender: 'owner',
             timestamp: FieldValue.serverTimestamp(),
-            status: 'sent'
+            status: 'sent',
+            ...firestoreMessageData
         });
 
-        // Update the last message and timestamp on the main conversation document
         batch.set(conversationRef, {
-            lastMessage: text,
+            lastMessage: imageUrl ? '📷 Image' : text,
             lastMessageTimestamp: FieldValue.serverTimestamp(),
+            lastMessageType: imageUrl ? 'image' : 'text',
         }, { merge: true });
 
         await batch.commit();

@@ -4,6 +4,7 @@ import { NextResponse } from 'next/server';
 import { getFirestore, FieldValue } from '@/lib/firebase-admin';
 import { sendWhatsAppMessage } from '@/lib/whatsapp';
 import { sendOrderStatusUpdateToCustomer } from '@/lib/notifications';
+import axios from 'axios';
 
 
 const VERIFY_TOKEN = process.env.WHATSAPP_VERIFY_TOKEN;
@@ -52,6 +53,70 @@ async function getBusiness(firestore, botPhoneNumberId) {
     return null;
 }
 
+const handleImageMessage = async (firestore, business, message) => {
+    const fromWithCode = message.from;
+    const customerName = business.contacts?.[0]?.profile?.name || 'Customer';
+    const mediaId = message.image.id;
+
+    // 1. Get media URL from Meta
+    const mediaUrlRes = await axios.get(`https://graph.facebook.com/v19.0/${mediaId}`, {
+        headers: { 'Authorization': `Bearer ${process.env.WHATSAPP_ACCESS_TOKEN}` }
+    });
+    const mediaUrl = mediaUrlRes.data.url;
+
+    // 2. Download the image
+    const imageRes = await axios.get(mediaUrl, {
+        headers: { 'Authorization': `Bearer ${process.env.WHATSAPP_ACCESS_TOKEN}` },
+        responseType: 'arraybuffer'
+    });
+    const imageBuffer = Buffer.from(imageRes.data, 'binary');
+    const mimeType = message.image.mime_type;
+    const fileExtension = mimeType.split('/')[1] || 'jpg';
+    
+    // 3. Upload to Firebase Storage
+    const bucket = getFirestore().storage().bucket(`gs://${process.env.FIREBASE_PROJECT_ID}.appspot.com`);
+    const fileName = `whatsapp_media/${business.id}/${fromWithCode}_${Date.now()}.${fileExtension}`;
+    const file = bucket.file(fileName);
+    await file.save(imageBuffer, {
+        metadata: { contentType: mimeType }
+    });
+    
+    // 4. Get public URL
+    const [publicUrl] = await file.getSignedUrl({
+        action: 'read',
+        expires: '03-09-2491'
+    });
+
+    // 5. Save message to Firestore
+    const customerPhone = fromWithCode.startsWith('91') ? fromWithCode.substring(2) : fromWithCode;
+    const conversationRef = business.ref.collection('conversations').doc(customerPhone);
+    const messageRef = conversationRef.collection('messages').doc();
+
+    const batch = firestore.batch();
+    
+    batch.set(messageRef, {
+        id: messageRef.id,
+        type: 'image',
+        mediaUrl: publicUrl,
+        sender: 'customer',
+        timestamp: FieldValue.serverTimestamp(),
+        status: 'unread'
+    });
+
+    batch.set(conversationRef, {
+        id: customerPhone,
+        customerName: customerName,
+        customerPhone: customerPhone,
+        lastMessage: '📷 Image',
+        lastMessageType: 'image',
+        lastMessageTimestamp: FieldValue.serverTimestamp(),
+        unreadCount: FieldValue.increment(1),
+    }, { merge: true });
+
+    await batch.commit();
+}
+
+
 export async function POST(request) {
     console.log("[Webhook] Received POST request.");
     try {
@@ -72,12 +137,26 @@ export async function POST(request) {
             return NextResponse.json({ message: 'No change data' }, { status: 200 });
         }
         
-        if (change.value.messages?.[0]?.interactive?.button_reply) {
-            const message = change.value.messages[0];
+        const message = change.value.messages?.[0];
+        if (!message) {
+            console.log("[Webhook] No message object found. Skipping.");
+            return NextResponse.json({ message: 'Not a message event' }, { status: 200 });
+        }
+
+        const businessPhoneNumberId = change.value.metadata.phone_number_id;
+        const business = await getBusiness(firestore, businessPhoneNumberId);
+        if (!business) {
+             console.error(`[Webhook] No business found for Bot Phone Number ID: ${businessPhoneNumberId}`);
+             return NextResponse.json({ message: 'Business not found' }, { status: 404 });
+        }
+
+        if (message.type === 'image') {
+            await handleImageMessage(firestore, business, message);
+        }
+        else if (message.interactive?.button_reply) {
             const buttonReply = message.interactive.button_reply;
             const buttonId = buttonReply.id;
             const fromNumber = message.from; 
-            const businessPhoneNumberId = change.value.metadata.phone_number_id;
             
             console.log(`[Webhook] Button click detected. Button ID: "${buttonId}", From: ${fromNumber}, Bot ID: ${businessPhoneNumberId}`);
             
@@ -102,14 +181,7 @@ export async function POST(request) {
                 }
                 
                 const orderData = orderDoc.data();
-                const business = await getBusiness(firestore, businessPhoneNumberId);
                 
-                if (!business) {
-                     console.error(`[Webhook] No business found for Bot Phone Number ID: ${businessPhoneNumberId}`);
-                     await sendWhatsAppMessage(fromNumber, `⚠️ Action failed: Could not identify the business associated with this bot.`, businessPhoneNumberId);
-                     return NextResponse.json({ message: 'Business not found' }, { status: 404 });
-                }
-
                 if (action === 'accept') {
                     console.log(`[Webhook] Accepting order ${orderId}. Updating status to 'confirmed'.`);
                     await orderRef.update({ status: 'confirmed' });
@@ -152,8 +224,6 @@ export async function POST(request) {
                     return NextResponse.json({ message: 'Invalid button ID' }, { status: 200 });
                 }
 
-                const business = await getBusiness(firestore, businessPhoneNumberId);
-                if (!business) return NextResponse.json({ message: 'Business not found' }, { status: 404 });
                 const collectionName = business.data.businessType === 'shop' ? 'shops' : 'restaurants';
 
                 if (action === 'revert') {
@@ -167,22 +237,13 @@ export async function POST(request) {
                 }
             }
         } 
-        else if (change?.value?.messages?.[0]?.text) {
-            const message = change.value.messages[0];
+        else if (message.text) {
             const fromWithCode = message.from;
             const messageBody = message.text.body;
 
             const customerName = change.value?.contacts?.[0]?.profile?.name || 'Customer';
-            const botPhoneNumberId = change.value.metadata.phone_number_id;
-
-            console.log(`[Webhook] Text message received. From: ${fromWithCode}, Name: ${customerName}, Message: "${messageBody}"`);
-
-            const business = await getBusiness(firestore, botPhoneNumberId);
             
-            if (!business) {
-                console.error(`[Webhook] No business found for Bot Phone Number ID: ${botPhoneNumberId}. Cannot process text message.`);
-                return NextResponse.json({ message: 'Business not found' }, { status: 404 });
-            }
+            console.log(`[Webhook] Text message received. From: ${fromWithCode}, Name: ${customerName}, Message: "${messageBody}"`);
             
             const customerPhone = fromWithCode.startsWith('91') ? fromWithCode.substring(2) : fromWithCode;
             const conversationRef = business.ref.collection('conversations').doc(customerPhone);
@@ -209,6 +270,7 @@ export async function POST(request) {
                 customerName: customerName,
                 customerPhone: customerPhone,
                 lastMessage: messageBody,
+                lastMessageType: 'text',
                 lastMessageTimestamp: FieldValue.serverTimestamp(),
                 unreadCount: FieldValue.increment(1),
             }, { merge: true });
@@ -219,21 +281,19 @@ export async function POST(request) {
                 const menuLink = `https://servizephyr.com/order/${business.id}?phone=${customerPhone}`;
                 const replyText = `Thanks for contacting *${business.data.name}*. We have received your message and will get back to you shortly.\n\nYou can also view our menu and place an order directly here:\n${menuLink}`;
                 
-                await sendWhatsAppMessage(fromWithCode, replyText, botPhoneNumberId);
+                await sendWhatsAppMessage(fromWithCode, replyText, businessPhoneNumberId);
                 console.log(`[Webhook] Automatic reply sent to ${customerPhone}.`);
                 
-                // --- THE FIX: Save the bot's automatic reply to the chat history ---
                 const botMessageRef = messagesCollectionRef.doc();
                 batch.set(botMessageRef, {
                     id: botMessageRef.id,
                     text: replyText,
-                    sender: 'owner', // Represent bot as owner for simplicity
+                    sender: 'owner',
                     timestamp: FieldValue.serverTimestamp(),
                     status: 'sent' 
                 });
-                 batch.set(conversationRef, { lastMessage: replyText, lastMessageTimestamp: FieldValue.serverTimestamp() }, { merge: true });
+                 batch.set(conversationRef, { lastMessage: replyText, lastMessageType: 'text', lastMessageTimestamp: FieldValue.serverTimestamp() }, { merge: true });
                  console.log(`[Webhook] Saved bot's automatic reply to Firestore at path: ${botMessageRef.path}`);
-                 // --- END FIX ---
             } else {
                  console.log(`[Webhook] Existing conversation with ${customerPhone}. Skipping automatic reply.`);
             }
@@ -242,7 +302,7 @@ export async function POST(request) {
             console.log(`[Webhook] Batch for customer message (and potential bot reply) saved successfully for ${customerPhone}.`);
 
         } else {
-            console.log("[Webhook] Received a non-text, non-button event. Skipping.");
+            console.log("[Webhook] Received a non-text, non-button, non-image event. Skipping.");
         }
         
         return NextResponse.json({ message: 'Event received' }, { status: 200 });
