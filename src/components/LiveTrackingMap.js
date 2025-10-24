@@ -44,7 +44,7 @@ const LiveTrackingMap = ({ restaurantLocation, customerLocation, riderLocation }
                 zoom: 13
             }}
             style={{ width: '100%', height: '100%' }}
-            mapStyle="https://apis.mappls.com/advancedmaps/api/v1/mappls-default-style"
+            mapplsStyle="https://apis.mappls.com/advancedmaps/api/v1/mappls-default-style"
         >
             <NavigationControl position="top-right" />
 

@@ -34,7 +34,7 @@ const MapplsMap = ({ initialCenter, onPinDragEnd }) => {
                 zoom: 14
             }}
             style={{ width: '100%', height: '100%' }}
-            mapStyle="https://apis.mappls.com/advancedmaps/api/v1/mappls-default-style"
+            mapplsStyle="https://apis.mappls.com/advancedmaps/api/v1/mappls-default-style"
         >
             <NavigationControl position="top-right" />
             <Marker
