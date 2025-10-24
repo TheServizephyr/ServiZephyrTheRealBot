@@ -104,8 +104,8 @@ export default function WhatsAppDirectPage() {
         return data;
     }
     
-    const fetchConversations = async () => {
-        if (conversations.length === 0) {
+    const fetchConversations = async (isBackgroundRefresh = false) => {
+        if (conversations.length === 0 && !isBackgroundRefresh) {
             setLoadingConversations(true);
         }
         try {
@@ -114,7 +114,7 @@ export default function WhatsAppDirectPage() {
         } catch (error) {
             setInfoDialog({ isOpen: true, title: 'Error', message: 'Could not load conversations: ' + error.message });
         } finally {
-            setLoadingConversations(false);
+            if (!isBackgroundRefresh) setLoadingConversations(false);
         }
     };
 
@@ -135,7 +135,7 @@ export default function WhatsAppDirectPage() {
             else setLoadingConversations(false);
         });
         
-        const interval = setInterval(fetchConversations, 30000); 
+        const interval = setInterval(() => fetchConversations(true), 30000); 
 
         return () => {
             unsubscribe();

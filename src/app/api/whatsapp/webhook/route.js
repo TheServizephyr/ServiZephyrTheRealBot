@@ -213,8 +213,6 @@ export async function POST(request) {
                 unreadCount: FieldValue.increment(1),
             }, { merge: true });
 
-            await batch.commit();
-            console.log(`[Webhook] Message saved successfully for ${customerPhone}.`);
             
             if (isNewConversation) {
                 console.log(`[Webhook] First message from ${customerPhone}. Sending automatic reply.`);
@@ -223,9 +221,25 @@ export async function POST(request) {
                 
                 await sendWhatsAppMessage(fromWithCode, replyText, botPhoneNumberId);
                 console.log(`[Webhook] Automatic reply sent to ${customerPhone}.`);
+                
+                // --- THE FIX: Save the bot's automatic reply to the chat history ---
+                const botMessageRef = messagesCollectionRef.doc();
+                batch.set(botMessageRef, {
+                    id: botMessageRef.id,
+                    text: replyText,
+                    sender: 'owner', // Represent bot as owner for simplicity
+                    timestamp: FieldValue.serverTimestamp(),
+                    status: 'sent' 
+                });
+                 batch.set(conversationRef, { lastMessage: replyText, lastMessageTimestamp: FieldValue.serverTimestamp() }, { merge: true });
+                 console.log(`[Webhook] Saved bot's automatic reply to Firestore at path: ${botMessageRef.path}`);
+                 // --- END FIX ---
             } else {
                  console.log(`[Webhook] Existing conversation with ${customerPhone}. Skipping automatic reply.`);
             }
+
+            await batch.commit();
+            console.log(`[Webhook] Batch for customer message (and potential bot reply) saved successfully for ${customerPhone}.`);
 
         } else {
             console.log("[Webhook] Received a non-text, non-button event. Skipping.");
