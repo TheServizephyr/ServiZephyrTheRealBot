@@ -191,17 +191,6 @@ export async function POST(request) {
             const messagesSnap = await messagesCollectionRef.limit(1).get();
             const isNewConversation = messagesSnap.empty;
 
-            if (isNewConversation) {
-                console.log(`[Webhook] First message from ${customerPhone}. Sending automatic reply.`);
-                const menuLink = `https://servizephyr.com/order/${business.id}?phone=${customerPhone}`;
-                const replyText = `Thanks for contacting *${business.data.name}*. We have received your message and will get back to you shortly.\n\nYou can also view our menu and place an order directly here:\n${menuLink}`;
-                
-                await sendWhatsAppMessage(fromWithCode, replyText, botPhoneNumberId);
-                console.log(`[Webhook] Automatic reply sent to ${customerPhone}.`);
-            } else {
-                 console.log(`[Webhook] Existing conversation with ${customerPhone}. Skipping automatic reply.`);
-            }
-
             const messageRef = messagesCollectionRef.doc();
             console.log(`[Webhook] Saving message to Firestore for customer ${customerPhone} at path: ${messageRef.path}`);
             
@@ -226,6 +215,17 @@ export async function POST(request) {
 
             await batch.commit();
             console.log(`[Webhook] Message saved successfully for ${customerPhone}.`);
+            
+            if (isNewConversation) {
+                console.log(`[Webhook] First message from ${customerPhone}. Sending automatic reply.`);
+                const menuLink = `https://servizephyr.com/order/${business.id}?phone=${customerPhone}`;
+                const replyText = `Thanks for contacting *${business.data.name}*. We have received your message and will get back to you shortly.\n\nYou can also view our menu and place an order directly here:\n${menuLink}`;
+                
+                await sendWhatsAppMessage(fromWithCode, replyText, botPhoneNumberId);
+                console.log(`[Webhook] Automatic reply sent to ${customerPhone}.`);
+            } else {
+                 console.log(`[Webhook] Existing conversation with ${customerPhone}. Skipping automatic reply.`);
+            }
 
         } else {
             console.log("[Webhook] Received a non-text, non-button event. Skipping.");

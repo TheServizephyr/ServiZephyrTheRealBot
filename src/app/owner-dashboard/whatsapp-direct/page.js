@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
@@ -42,7 +43,7 @@ const ConversationItem = ({ conversation, active, onClick }) => (
 
 const MessageBubble = ({ message }) => {
     const isOwner = message.sender === 'owner';
-    const timestamp = message.timestamp.seconds ? new Date(message.timestamp.seconds * 1000) : new Date(message.timestamp);
+    const timestamp = message.timestamp?.seconds ? new Date(message.timestamp.seconds * 1000) : new Date(message.timestamp);
 
     return (
         <div className={`flex ${isOwner ? 'justify-end' : 'justify-start'} mb-3`}>
@@ -104,7 +105,6 @@ export default function WhatsAppDirectPage() {
     }
     
     const fetchConversations = async () => {
-        // Don't show main loader on background refresh
         if (conversations.length === 0) {
             setLoadingConversations(true);
         }
@@ -118,26 +118,9 @@ export default function WhatsAppDirectPage() {
         }
     };
 
-    useEffect(() => {
-        const unsubscribe = auth.onAuthStateChanged(user => {
-            if (user) fetchConversations();
-            else setLoadingConversations(false);
-        });
-        
-        const interval = setInterval(fetchConversations, 30000); // Refresh conversations every 30 seconds
-
-        return () => {
-            unsubscribe();
-            clearInterval(interval);
-        };
-    }, [impersonatedOwnerId]);
-    
-    const handleConversationClick = async (conversation) => {
-        setActiveConversation(conversation);
-        setLoadingMessages(true);
-        setMessages([]);
+    const fetchMessages = async (conversationId) => {
         try {
-            const data = await handleApiCall('/api/owner/whatsapp-direct/messages', 'GET', { conversationId: conversation.id });
+            const data = await handleApiCall('/api/owner/whatsapp-direct/messages', 'GET', { conversationId });
             setMessages(data.messages || []);
         } catch(error) {
              setInfoDialog({ isOpen: true, title: 'Error', message: 'Could not load messages: ' + error.message });
@@ -145,32 +128,68 @@ export default function WhatsAppDirectPage() {
             setLoadingMessages(false);
         }
     };
+
+    useEffect(() => {
+        const unsubscribe = auth.onAuthStateChanged(user => {
+            if (user) fetchConversations();
+            else setLoadingConversations(false);
+        });
+        
+        const interval = setInterval(fetchConversations, 30000); 
+
+        return () => {
+            unsubscribe();
+            clearInterval(interval);
+        };
+    }, [impersonatedOwnerId]);
+
+    useEffect(() => {
+        let interval;
+        if (activeConversation) {
+            interval = setInterval(() => {
+                fetchMessages(activeConversation.id);
+            }, 30000); // Poll every 30 seconds for messages of the active chat
+        }
+        return () => {
+            if (interval) clearInterval(interval);
+        };
+    }, [activeConversation]);
+    
+    const handleConversationClick = async (conversation) => {
+        setActiveConversation(conversation);
+        setLoadingMessages(true);
+        setMessages([]);
+        await fetchMessages(conversation.id);
+    };
     
     const handleSendMessage = async (e) => {
         e.preventDefault();
         if (!newMessage.trim() || !activeConversation) return;
         
         setIsSending(true);
-        const tempMessage = {
-            id: 'temp-' + Date.now(),
+        const tempMessageId = 'temp-' + Date.now();
+        const optimisticMessage = {
+            id: tempMessageId,
             text: newMessage,
             sender: 'owner',
             timestamp: new Date().toISOString()
         };
-        setMessages(prev => [...prev, tempMessage]);
+        setMessages(prev => [...prev, optimisticMessage]);
+        const messageToSend = newMessage;
         setNewMessage('');
         
         try {
             await handleApiCall('/api/owner/whatsapp-direct/messages', 'POST', {
                 conversationId: activeConversation.id,
-                text: tempMessage.text
+                text: messageToSend
             });
-            // Refresh messages to get the real saved message
+            // Immediately fetch the latest messages to get the real one from DB
             const data = await handleApiCall('/api/owner/whatsapp-direct/messages', 'GET', { conversationId: activeConversation.id });
             setMessages(data.messages || []);
         } catch(error) {
             setInfoDialog({ isOpen: true, title: 'Error', message: 'Failed to send message: ' + error.message });
-            setMessages(prev => prev.filter(m => m.id !== tempMessage.id)); // Remove optimistic message on failure
+            // On failure, remove the optimistic message
+            setMessages(prev => prev.filter(m => m.id !== tempMessageId));
         } finally {
             setIsSending(false);
         }
