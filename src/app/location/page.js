@@ -9,7 +9,7 @@ import { Input } from '@/components/ui/input';
 import dynamic from 'next/dynamic';
 import { auth } from '@/lib/firebase';
 import InfoDialog from '@/components/InfoDialog';
-
+import { useAuth } from '@/firebase'; // Import useAuth to get user info
 
 const GoogleMap = dynamic(() => import('@/components/GoogleMap'), { 
     ssr: false,
@@ -22,6 +22,7 @@ const LocationPageInternal = () => {
     const restaurantId = searchParams.get('restaurantId');
     const returnUrl = searchParams.get('returnUrl') || `/order/${restaurantId}`;
     
+    const { user } = useAuth(); // Get the authenticated user
     const [mapCenter, setMapCenter] = useState({ lat: 28.7041, lng: 77.1025 }); // Default to Delhi
     const [addressDetails, setAddressDetails] = useState(null);
     const [loading, setLoading] = useState(false);
@@ -116,7 +117,6 @@ const LocationPageInternal = () => {
     };
 
     const handleConfirmLocation = async () => {
-        const user = auth.currentUser;
         if (!addressDetails) {
              setInfoDialog({ isOpen: true, title: "Error", message: "Please set a location first." });
              return;

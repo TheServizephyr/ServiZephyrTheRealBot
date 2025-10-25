@@ -383,7 +383,6 @@ const CheckoutPageInternal = () => {
 
         try {
             const idToken = await user.getIdToken();
-            // --- THE FIX: Call the correct API endpoint ---
             const res = await fetch('/api/user/addresses', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${idToken}` },
@@ -414,7 +413,6 @@ const CheckoutPageInternal = () => {
 
         try {
             const idToken = await user.getIdToken();
-            // --- THE FIX: Call the correct API endpoint ---
             const res = await fetch('/api/user/addresses', {
                 method: 'DELETE',
                 headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${idToken}` },
