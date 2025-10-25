@@ -231,9 +231,8 @@ const AnimatedSubheadline = () => {
 
 const FeatureCard = ({ icon, title, description, benefits }) => {
     return (
-        <motion.div 
+        <div 
             className="bg-card border border-border rounded-xl p-6 hover:shadow-lg hover:-translate-y-1 transition-all duration-300"
-            variants={cardVariants}
         >
             <div className="flex items-center gap-4 mb-4">
                 <div className="p-3 bg-primary/10 rounded-full text-primary">{icon}</div>
@@ -248,7 +247,7 @@ const FeatureCard = ({ icon, title, description, benefits }) => {
                     </li>
                 ))}
             </ul>
-        </motion.div>
+        </div>
     )
 }
 
@@ -465,13 +464,7 @@ export default function Home() {
             </TabsList>
             
             <TabsContent value="ordering" className="mt-8">
-              <motion.div
-                key="ordering"
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.5 }}
-                className="grid md:grid-cols-2 lg:grid-cols-3 gap-6"
-              >
+              <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
                 <FeatureCard
                   icon={<MessageSquare/>}
                   title="Live Interactive Menu"
@@ -490,16 +483,10 @@ export default function Home() {
                   description="Keep customers informed with automated confirmations, status updates, and feedback requests."
                   benefits={["Saves staff time", "Improves customer experience", "Builds trust and transparency"]}
                 />
-              </motion.div>
+              </div>
             </TabsContent>
             <TabsContent value="dashboard" className="mt-8">
-              <motion.div
-                key="dashboard"
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.5 }}
-                className="grid md:grid-cols-2 lg:grid-cols-3 gap-6"
-              >
+              <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
                 <FeatureCard
                   icon={<BarChart2/>}
                   title="Real-time Analytics"
@@ -518,16 +505,10 @@ export default function Home() {
                   description="Finally, own your customer data. See who your most loyal customers are and understand their habits."
                   benefits={["Identify your VIPs", "View order history and preferences", "Build long-term relationships"]}
                 />
-              </motion.div>
+              </div>
             </TabsContent>
             <TabsContent value="growth" className="mt-8">
-              <motion.div
-                key="growth"
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.5 }}
-                className="grid md:grid-cols-2 lg:grid-cols-3 gap-6"
-              >
+              <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
                 <FeatureCard
                   icon={<Rocket/>}
                   title="WhatsApp Marketing"
@@ -546,7 +527,7 @@ export default function Home() {
                   description="Generate unique QR codes for tables, flyers, or packaging that open your WhatsApp menu instantly."
                   benefits={["Enable contactless dine-in ordering", "Bridge offline marketing with online sales", "Track campaign effectiveness"]}
                 />
-              </motion.div>
+              </div>
             </TabsContent>
           </Tabs>
         </motion.section>
