@@ -1,4 +1,3 @@
-
 'use client'
 
 import { motion, useInView, animate, AnimatePresence } from 'framer-motion'
@@ -254,8 +253,7 @@ const FeatureCard = ({ icon, title, description, benefits }) => {
 
 export default function Home() {
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [animationFinished, setAnimationFinished] = useState(true); // Always show content now
-  const [activeTab, setActiveTab] = useState("ordering");
+  const [animationFinished, setAnimationFinished] = useState(true);
 
   const testimonials = [
     {
@@ -460,7 +458,7 @@ export default function Home() {
           <p className="mx-auto mb-12 max-w-2xl text-center text-lg text-muted-foreground md:text-xl">
             From seamless ordering to powerful analytics and marketing, ServiZephyr is packed with features designed to help you succeed.
           </p>
-          <Tabs defaultValue="ordering" className="w-full" onValueChange={setActiveTab}>
+          <Tabs defaultValue="ordering" className="w-full">
             <TabsList className="relative grid w-full grid-cols-1 md:grid-cols-3 bg-muted p-1 h-auto rounded-lg">
               <TabsTrigger value="ordering" className="relative h-10"><ShoppingCart className="mr-2 h-4 w-4" /> WhatsApp Ordering</TabsTrigger>
               <TabsTrigger value="dashboard" className="h-10"><BarChart2 className="mr-2 h-4 w-4" /> Owner Command Center</TabsTrigger>
@@ -468,15 +466,15 @@ export default function Home() {
             </TabsList>
             
             <AnimatePresence mode="wait">
-              <motion.div
-                  key={activeTab}
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -20 }}
-                  transition={{ duration: 0.3 }}
-              >
                 <TabsContent value="ordering" className="mt-8">
-                  <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+                  <motion.div
+                    key="ordering"
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -20 }}
+                    transition={{ duration: 0.3 }}
+                    className="grid md:grid-cols-2 lg:grid-cols-3 gap-6"
+                  >
                     <FeatureCard
                       icon={<MessageSquare/>}
                       title="Live Interactive Menu"
@@ -495,10 +493,17 @@ export default function Home() {
                       description="Keep customers informed with automated confirmations, status updates, and feedback requests."
                       benefits={["Saves staff time", "Improves customer experience", "Builds trust and transparency"]}
                     />
-                  </div>
+                  </motion.div>
                 </TabsContent>
                 <TabsContent value="dashboard" className="mt-8">
-                   <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+                  <motion.div
+                    key="dashboard"
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -20 }}
+                    transition={{ duration: 0.3 }}
+                    className="grid md:grid-cols-2 lg:grid-cols-3 gap-6"
+                  >
                     <FeatureCard
                       icon={<BarChart2/>}
                       title="Real-time Analytics"
@@ -517,10 +522,17 @@ export default function Home() {
                       description="Finally, own your customer data. See who your most loyal customers are and understand their habits."
                       benefits={["Identify your VIPs", "View order history and preferences", "Build long-term relationships"]}
                     />
-                  </div>
+                  </motion.div>
                 </TabsContent>
                 <TabsContent value="growth" className="mt-8">
-                   <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+                  <motion.div
+                    key="growth"
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -20 }}
+                    transition={{ duration: 0.3 }}
+                    className="grid md:grid-cols-2 lg:grid-cols-3 gap-6"
+                  >
                     <FeatureCard
                       icon={<Rocket/>}
                       title="WhatsApp Marketing"
@@ -539,9 +551,8 @@ export default function Home() {
                       description="Generate unique QR codes for tables, flyers, or packaging that open your WhatsApp menu instantly."
                       benefits={["Enable contactless dine-in ordering", "Bridge offline marketing with online sales", "Track campaign effectiveness"]}
                     />
-                  </div>
+                  </motion.div>
                 </TabsContent>
-              </motion.div>
             </AnimatePresence>
           </Tabs>
         </motion.section>
