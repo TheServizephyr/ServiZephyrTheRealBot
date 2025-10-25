@@ -1,7 +1,7 @@
 
 'use client'
 
-import { motion, useInView, animate, AnimatePresence } from 'framer-motion'
+import { motion, useInView, animate } from 'framer-motion'
 import { CheckCircle, Bot, Zap, Rocket, Users, ArrowRight, Star, ShoppingCart, BarChart2, MessageSquare, Briefcase, Store, Soup, Pizza, Feather, Check, Salad } from 'lucide-react'
 import Image from 'next/image'
 import Link from 'next/link'
@@ -329,8 +329,7 @@ export default function Home() {
                 <AnimatedWhatShop />
               </div>
 
-              <AnimatePresence>
-                {animationFinished && (
+              {animationFinished && (
                   <motion.div
                     className="flex flex-col items-center w-full"
                     initial={{ opacity: 0, y: 20 }}
@@ -351,7 +350,6 @@ export default function Home() {
                     </MotionLink>
                   </motion.div>
                 )}
-              </AnimatePresence>
             </div>
           </div>
         </section>
@@ -471,8 +469,7 @@ export default function Home() {
                 key="ordering"
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -20 }}
-                transition={{ duration: 0.3 }}
+                transition={{ duration: 0.5 }}
                 className="grid md:grid-cols-2 lg:grid-cols-3 gap-6"
               >
                 <FeatureCard
@@ -500,8 +497,7 @@ export default function Home() {
                 key="dashboard"
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -20 }}
-                transition={{ duration: 0.3 }}
+                transition={{ duration: 0.5 }}
                 className="grid md:grid-cols-2 lg:grid-cols-3 gap-6"
               >
                 <FeatureCard
@@ -529,8 +525,7 @@ export default function Home() {
                 key="growth"
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -20 }}
-                transition={{ duration: 0.3 }}
+                transition={{ duration: 0.5 }}
                 className="grid md:grid-cols-2 lg:grid-cols-3 gap-6"
               >
                 <FeatureCard
