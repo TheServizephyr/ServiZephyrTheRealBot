@@ -251,13 +251,13 @@ const OwnerLocationPage = () => {
             </div>
 
             <div className="flex-grow flex flex-col md:flex-row relative">
-                <div className="w-full h-64 md:h-full md:w-2/3 flex-shrink-0">
+                <div className="w-full h-64 md:h-full md:flex-1">
                     <GoogleMap 
                         center={mapCenter}
                         onPinDragEnd={reverseGeocode}
                     />
                 </div>
-                <div className="w-full md:w-1/3 flex-shrink-0 bg-card border-t md:border-t-0 md:border-l border-border p-4 space-y-4 overflow-y-auto">
+                <div className="w-full md:w-1/3 md:max-w-md flex-shrink-0 bg-card border-t md:border-t-0 md:border-l border-border p-4 space-y-4 overflow-y-auto">
                       <Button 
                         variant="secondary" 
                         className="w-full h-12 shadow-lg flex items-center gap-2"
@@ -305,6 +305,3 @@ const OwnerLocationPage = () => {
 };
 
 export default OwnerLocationPage;
-
-
-    

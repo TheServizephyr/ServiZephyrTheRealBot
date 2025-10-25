@@ -1,3 +1,4 @@
+
 'use client';
 
 import React from 'react';
@@ -21,6 +22,8 @@ const GoogleMap = ({ center, onPinDragEnd }) => {
                 defaultZoom={15}
                 gestureHandling={'greedy'}
                 disableDefaultUI={true}
+                draggable={true}
+                zoomable={true}
             >
                 <AdvancedMarker 
                     position={center}

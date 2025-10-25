@@ -193,7 +193,7 @@ const LocationPageInternal = () => {
                 title={infoDialog.title}
                 message={infoDialog.message}
             />
-             <header className="p-4 border-b border-border flex items-center gap-4 flex-shrink-0 z-10">
+             <header className="p-4 border-b border-border flex items-center gap-4 flex-shrink-0 z-10 bg-background/80 backdrop-blur-sm">
                 <Button variant="ghost" size="icon" onClick={() => router.back()}><ArrowLeft/></Button>
                 <div className="relative w-full">
                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground"/>
@@ -224,7 +224,7 @@ const LocationPageInternal = () => {
                  />
                  <Button 
                     variant="secondary" 
-                    className="absolute bottom-28 right-4 z-10 h-12 rounded-full shadow-lg flex items-center gap-2 pr-4"
+                    className="absolute bottom-4 right-4 z-10 h-12 rounded-full shadow-lg flex items-center gap-2 pr-4"
                     onClick={getCurrentLocation}
                 >
                     <LocateFixed/> Use Current Location
