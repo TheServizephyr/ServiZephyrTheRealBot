@@ -3,7 +3,7 @@
 'use client'
 
 import { motion, useInView, animate, AnimatePresence } from 'framer-motion'
-import { CheckCircle, Bot, Zap, Rocket, Users, ArrowRight, Star, ShoppingCart, BarChart2, MessageSquare, Briefcase, Store, Soup, Pizza } from 'lucide-react'
+import { CheckCircle, Bot, Zap, Rocket, Users, ArrowRight, Star, ShoppingCart, BarChart2, MessageSquare, Briefcase, Store, Soup, Pizza, Feather } from 'lucide-react'
 import Image from 'next/image'
 import Link from 'next/link'
 import React, { useEffect, useRef, useState } from 'react'
@@ -319,12 +319,14 @@ export default function Home() {
                      <h2 className="text-2xl sm:text-3xl md:text-4xl font-bold tracking-tight text-foreground mt-6">
                         Cut Commission. Boost Profits by <span className="text-green-500">25%+.</span>
                     </h2>
-                    <button 
-                        onClick={() => setIsModalOpen(true)}
-                        className="mt-8 bg-primary text-primary-foreground font-bold py-3 px-8 rounded-lg text-lg hover:bg-primary/90 transition-transform transform hover:scale-105"
+                     <MotionLink 
+                        href="/join-waitlist"
+                        className="mt-8 bg-primary text-primary-foreground font-bold py-4 px-10 rounded-lg text-xl hover:bg-primary/90 transition-transform transform hover:scale-105 inline-flex items-center gap-3 shadow-lg shadow-primary/30"
+                        whileHover={{ scale: 1.05 }}
+                        whileTap={{ scale: 0.95 }}
                     >
-                      Start Your Free Trial
-                    </button>
+                      <Feather size={24} /> Join the Waitlist Now
+                    </MotionLink>
                   </motion.div>
                 )}
               </AnimatePresence>
@@ -621,9 +623,14 @@ export default function Home() {
                 <li className="flex items-center"><CheckCircle className="mr-2 h-5 w-5 text-primary" /> Growth Toolkit</li>
                  <li className="flex items-center"><CheckCircle className="mr-2 h-5 w-5 text-primary" /> Customer Hub (CRM)</li>
               </ul>
-              <button onClick={() => setIsModalOpen(true)} className="btn-shine mt-8 inline-flex h-12 w-full items-center justify-center rounded-md bg-primary text-lg font-bold text-primary-foreground shadow-lg shadow-primary/50 transition-transform duration-300 hover:scale-105">
-                Choose Plan
-              </button>
+              <MotionLink
+                href="/join-waitlist"
+                className="btn-shine mt-8 inline-flex h-12 w-full items-center justify-center rounded-md bg-primary text-lg font-bold text-primary-foreground shadow-lg shadow-primary/50 transition-transform duration-300 hover:scale-105"
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
+              >
+                Join the Waitlist
+              </MotionLink>
             </div>
           </div>
         </motion.section>

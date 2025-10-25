@@ -1,4 +1,5 @@
 
+
 'use client';
 
 import { useState, useEffect } from 'react';
@@ -15,6 +16,7 @@ import {
   Sun,
   Moon,
   Mail, // Changed from MessageSquare
+  List, // Import List for Waitlist
 } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
@@ -139,6 +141,9 @@ function AdminLayoutContent({ children }) {
               </SidebarLink>
               <SidebarLink href="/admin-dashboard/users" icon={Users} isCollapsed={isCollapsed}>
                 Users
+              </SidebarLink>
+              <SidebarLink href="/admin-dashboard/waitlist" icon={List} isCollapsed={isCollapsed}>
+                Waitlist
               </SidebarLink>
               <SidebarLink href="/admin-dashboard/analytics" icon={BarChart2} isCollapsed={isCollapsed}>
                 Analytics
