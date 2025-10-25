@@ -1046,7 +1046,7 @@ const OrderPageInternal = () => {
     useEffect(() => {
         if (isQrScannerOpen) {
             const timer = setTimeout(() => {
-                onClose(); // Assuming onClose is passed down to close DineInModal
+                setIsDineInModalOpen(false);
             }, 300); // Small delay to allow scanner to transition in
             return () => clearTimeout(timer);
         }
