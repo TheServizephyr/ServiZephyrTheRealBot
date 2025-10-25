@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useState, useEffect, Suspense, useRef } from 'react';
@@ -18,7 +19,7 @@ const GoogleMap = dynamic(() => import('@/components/GoogleMap'), {
 const OwnerLocationPage = () => {
     const router = useRouter();
     
-    // Default to Agra, near Tundla, for a better initial experience.
+    // Default to Agra, for a better initial experience if everything fails.
     const [mapCenter, setMapCenter] = useState({ lat: 27.1767, lng: 78.0081 }); 
     const [addressDetails, setAddressDetails] = useState(null);
     const [loading, setLoading] = useState(true);
@@ -26,8 +27,10 @@ const OwnerLocationPage = () => {
     const [error, setError] = useState('');
     const [infoDialog, setInfoDialog] = useState({ isOpen: false, title: '', message: '' });
 
-    // Try to get user's current location on initial load.
-    const getCurrentLocationAndSetMap = (fallbackToSaved = false) => {
+    // Function to get user's current location via browser geolocation
+    const getCurrentGeolocation = () => {
+        setLoading(true);
+        setError('');
         if ('geolocation' in navigator) {
             navigator.geolocation.getCurrentPosition(
                 (position) => {
@@ -39,20 +42,23 @@ const OwnerLocationPage = () => {
                     reverseGeocode(coords);
                 },
                 (err) => {
-                    // If user denies permission, then try fetching saved location.
-                    setError('Could not get your location. Please search manually or allow location access.');
-                    if (fallbackToSaved) fetchInitialLocation(); else setLoading(false);
+                    setError('Could not get your location. Please search manually or check browser permissions.');
+                    setLoading(false);
+                    // Fallback to Agra if geolocation fails
+                    setMapCenter({ lat: 27.1767, lng: 78.0081 });
                 },
-                { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+                { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
             );
         } else {
-            if (fallbackToSaved) fetchInitialLocation(); else setLoading(false);
+            setError("Geolocation is not supported by your browser.");
+            setLoading(false);
         }
     };
     
     // Function to fetch already saved location from backend.
     const fetchInitialLocation = async () => {
         setLoading(true);
+        setError('');
         try {
             const user = auth.currentUser;
             if (!user) {
@@ -65,21 +71,22 @@ const OwnerLocationPage = () => {
             });
             if (res.ok) {
                 const data = await res.json();
-                if (data.location) {
+                if (data.location && data.location.latitude) {
                     const { latitude, longitude, address } = data.location;
                     const coords = { lat: latitude, lng: longitude };
                     setMapCenter(coords);
                     setAddressDetails({ fullAddress: address, latitude, longitude });
                 } else {
-                    // If no saved location, try to get current geo-location.
-                    getCurrentLocationAndSetMap(false);
+                    // If no saved location, THEN try to get current geo-location.
+                    getCurrentGeolocation();
                 }
             } else {
-                 getCurrentLocationAndSetMap(false);
+                 // If API fails, also try to get current geo-location.
+                 getCurrentGeolocation();
             }
         } catch (err) {
-            setError("Failed to fetch current location.");
-            getCurrentLocationAndSetMap(false); // Fallback to geolocation
+            setError("Failed to fetch saved location. Trying to get current location...");
+            getCurrentGeolocation();
         } finally {
             setLoading(false);
         }
@@ -181,7 +188,7 @@ const OwnerLocationPage = () => {
             <motion.div 
                 className="bg-card border-t border-border p-4 rounded-t-2xl shadow-lg flex-shrink-0 z-10"
             >
-                {loading ? (
+                {loading && !addressDetails ? (
                     <div className="flex items-center gap-3">
                         <Loader2 className="animate-spin text-primary"/>
                         <span className="text-muted-foreground">{error || 'Fetching location...'}</span>
@@ -190,7 +197,7 @@ const OwnerLocationPage = () => {
                     <div className="flex flex-col md:flex-row items-center gap-4">
                         <div className="flex-grow w-full">
                             <p className="font-bold text-lg flex items-center gap-2"><MapPin size={20} className="text-primary"/> Selected Location</p>
-                            <p className="text-sm text-muted-foreground">{addressDetails?.fullAddress || 'Drag the pin on the map to set your location.'}</p>
+                            <p className="text-sm text-muted-foreground">{addressDetails?.fullAddress || error || 'Drag the pin on the map to set your location.'}</p>
                         </div>
                         <Button onClick={handleSaveLocation} disabled={!addressDetails || isSaving} className="w-full md:w-auto h-12 text-lg font-bold bg-primary text-primary-foreground hover:bg-primary/90">
                             {isSaving ? <Loader2 className="animate-spin mr-2" /> : <Save className="mr-2"/>}
