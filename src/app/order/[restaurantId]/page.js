@@ -264,7 +264,7 @@ const MenuBrowserModal = ({ isOpen, onClose, categories, onCategoryClick }) => {
   );
 };
 
-const DineInModal = ({ isOpen, onClose, onBookTable, tableStatus, onStartNewTab, onJoinTab }) => {
+const DineInModal = ({ isOpen, onClose, onBookTable, tableStatus, onStartNewTab, onJoinTab, setIsQrScannerOpen }) => {
     const [activeModal, setActiveModal] = useState('main'); // 'main', 'book', 'success'
     const [bookingDetails, setBookingDetails] = useState({ name: '', phone: '', guests: 2, date: new Date(), time: '19:00' });
     const [isSaving, setIsSaving] = useState(false);
@@ -273,7 +273,6 @@ const DineInModal = ({ isOpen, onClose, onBookTable, tableStatus, onStartNewTab,
     
     const [newTabPax, setNewTabPax] = useState(1);
     const [newTabName, setNewTabName] = useState('');
-    const [isQrScannerOpen, setIsQrScannerOpen] = useState(false);
 
 
     useEffect(() => {
@@ -312,6 +311,34 @@ const DineInModal = ({ isOpen, onClose, onBookTable, tableStatus, onStartNewTab,
             }
         }
     }, [bookingDetails.date]);
+    
+    useEffect(() => {
+        if (isOpen) {
+            const phoneFromStorage = localStorage.getItem('lastKnownPhone');
+            if (phoneFromStorage) {
+                setBookingDetails(prev => ({...prev, phone: phoneFromStorage}));
+            }
+        }
+
+        if (!isOpen) {
+            setTimeout(() => {
+                setActiveModal('main');
+                setIsSaving(false);
+                setNewTabPax(1);
+                setNewTabName('');
+            }, 300);
+        } else {
+            if (tableStatus?.state === 'available') {
+                setActiveModal('new_tab');
+            } else if (tableStatus?.state === 'partially_occupied') {
+                setActiveModal('join_or_new');
+            } else if (tableStatus?.state === 'full') {
+                 setActiveModal('full');
+            } else {
+                setActiveModal('main');
+            }
+        }
+    }, [isOpen, tableStatus]);
 
     const handleBookingChange = (field, value) => {
         setBookingDetails(prev => ({...prev, [field]: value}));
@@ -337,31 +364,6 @@ const DineInModal = ({ isOpen, onClose, onBookTable, tableStatus, onStartNewTab,
             setIsSaving(false);
         }
     };
-
-    useEffect(() => {
-        const phoneFromStorage = localStorage.getItem('lastKnownPhone');
-        if (phoneFromStorage) {
-            setBookingDetails(prev => ({...prev, phone: phoneFromStorage}));
-        }
-        if (!isOpen) {
-            setTimeout(() => {
-                setActiveModal('main');
-                setIsSaving(false);
-                setNewTabPax(1);
-                setNewTabName('');
-            }, 300);
-        } else {
-            if (tableStatus?.state === 'available') {
-                setActiveModal('new_tab');
-            } else if (tableStatus?.state === 'partially_occupied') {
-                setActiveModal('join_or_new');
-            } else if (tableStatus?.state === 'full') {
-                 setActiveModal('full');
-            } else {
-                setActiveModal('main');
-            }
-        }
-    }, [isOpen, tableStatus]);
     
     const today = new Date();
     const maxDate = new Date();
@@ -371,15 +373,6 @@ const DineInModal = ({ isOpen, onClose, onBookTable, tableStatus, onStartNewTab,
     return (
         <>
             <InfoDialog isOpen={infoDialog.isOpen} onClose={() => setInfoDialog({isOpen: false, title: '', message: ''})} title={infoDialog.title} message={infoDialog.message} />
-             {isQrScannerOpen && (
-                <QrScanner 
-                    onClose={() => setIsQrScannerOpen(false)}
-                    onScanSuccess={(decodedText) => {
-                        setIsQrScannerOpen(false);
-                        window.location.href = decodedText;
-                    }}
-                />
-            )}
             <Dialog open={isOpen} onOpenChange={onClose}>
                 <DialogContent className="bg-background border-border text-foreground p-0 max-w-lg">
                     <AnimatePresence mode="wait">
@@ -1051,6 +1044,15 @@ const OrderPageInternal = () => {
         setDineInState('ready');
     }
 
+    useEffect(() => {
+        if (isQrScannerOpen) {
+            const timer = setTimeout(() => {
+                setIsDineInModalOpen(false);
+            }, 300); // Small delay to allow scanner to transition in
+            return () => clearTimeout(timer);
+        }
+    }, [isQrScannerOpen]);
+
     if (loading || dineInState === 'loading') {
         return (
             <div className="min-h-screen bg-background flex items-center justify-center">
@@ -1079,6 +1081,7 @@ const OrderPageInternal = () => {
                     onStartNewTab={handleStartNewTab}
                     onJoinTab={handleJoinTab}
                     onBookTable={handleBookTable}
+                    setIsQrScannerOpen={setIsQrScannerOpen}
                 />
             </div>
          )
@@ -1139,6 +1142,7 @@ const OrderPageInternal = () => {
                   tableStatus={tableStatus}
                   onStartNewTab={handleStartNewTab}
                   onJoinTab={handleJoinTab}
+                  setIsQrScannerOpen={setIsQrScannerOpen}
                 />
                 <CustomizationDrawer
                     item={customizationItem}
@@ -1173,7 +1177,7 @@ const OrderPageInternal = () => {
                                 )}
                                 {restaurantData.pickupEnabled && (
                                     <button onClick={() => handleDeliveryTypeChange('pickup')} className={cn("flex-1 p-2 rounded-md flex items-center justify-center gap-2 font-semibold transition-all", deliveryType === 'pickup' && 'bg-primary text-primary-foreground')}>
-                                        <Store size={16} /> Pickup
+                                        <ShoppingBag size={16} /> Pickup
                                     </button>
                                 )}
                                 {restaurantData.dineInEnabled && (
