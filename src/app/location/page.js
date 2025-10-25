@@ -9,7 +9,7 @@ import { Input } from '@/components/ui/input';
 import dynamic from 'next/dynamic';
 import { auth } from '@/lib/firebase';
 import InfoDialog from '@/components/InfoDialog';
-import { useAuth } from '@/firebase'; // Import useAuth to get user info
+import { useAuth } from '@/firebase';
 
 const GoogleMap = dynamic(() => import('@/components/GoogleMap'), { 
     ssr: false,
@@ -22,8 +22,8 @@ const LocationPageInternal = () => {
     const restaurantId = searchParams.get('restaurantId');
     const returnUrl = searchParams.get('returnUrl') || `/order/${restaurantId}`;
     
-    const { user } = useAuth(); // Get the authenticated user
-    const [mapCenter, setMapCenter] = useState({ lat: 28.7041, lng: 77.1025 }); // Default to Delhi
+    const { user } = useAuth();
+    const [mapCenter, setMapCenter] = useState({ lat: 27.1767, lng: 78.0081 }); // Default to Agra
     const [addressDetails, setAddressDetails] = useState(null);
     const [loading, setLoading] = useState(false);
     const [isSaving, setIsSaving] = useState(false);
@@ -74,11 +74,12 @@ const LocationPageInternal = () => {
                 city: data.city || data.town || data.village || '',
                 pincode: data.pincode || '',
                 state: data.state || '',
-                country: data.country || '',
+                country: data.country || 'IN',
                 fullAddress: data.formatted_address,
                 latitude: coords.lat,
                 longitude: coords.lng,
             });
+            setSearchQuery(data.formatted_address);
             
         } catch (err) {
             setError('Could not fetch address details for this location.');
@@ -88,9 +89,14 @@ const LocationPageInternal = () => {
     };
     
     useEffect(() => {
+        // Automatically try to get location on first load
+        getCurrentLocation();
+    }, []);
+
+    useEffect(() => {
         if (debounceTimeout.current) clearTimeout(debounceTimeout.current);
 
-        if (searchQuery.length > 2) {
+        if (searchQuery && searchQuery !== addressDetails?.fullAddress) {
             debounceTimeout.current = setTimeout(async () => {
                 try {
                     const res = await fetch(`/api/location/search?query=${searchQuery}`);
@@ -106,15 +112,20 @@ const LocationPageInternal = () => {
         }
 
         return () => clearTimeout(debounceTimeout.current);
-    }, [searchQuery]);
+    }, [searchQuery, addressDetails]);
 
     const handleSuggestionClick = (suggestion) => {
-        setSearchQuery(suggestion.placeName);
+        setSearchQuery(suggestion.placeAddress);
         setSuggestions([]);
         const coords = { lat: suggestion.latitude, lng: suggestion.longitude };
         setMapCenter(coords); 
         reverseGeocode(coords);
     };
+    
+    const handleAddressFieldChange = (field, value) => {
+        setAddressDetails(prev => ({ ...prev, [field]: value }));
+    };
+
 
     const handleConfirmLocation = async () => {
         if (!addressDetails) {
@@ -124,7 +135,7 @@ const LocationPageInternal = () => {
 
         const addressToSave = {
             id: `addr_${Date.now()}`,
-            label: 'Other', // default label
+            label: 'Other',
             name: user?.displayName || localStorage.getItem('lastKnownName') || 'User',
             phone: user?.phoneNumber || localStorage.getItem('lastKnownPhone') || '',
             street: addressDetails.street,
@@ -132,11 +143,10 @@ const LocationPageInternal = () => {
             state: addressDetails.state,
             pincode: addressDetails.pincode,
             country: addressDetails.country,
-            full: addressDetails.fullAddress,
+            full: `${addressDetails.street}, ${addressDetails.city}, ${addressDetails.state} - ${addressDetails.pincode}`,
         };
 
         if (!user) {
-            // If user is not logged in, save to local storage and redirect
             localStorage.setItem('customerLocation', JSON.stringify(addressToSave));
             router.push(returnUrl);
             return;
@@ -160,7 +170,6 @@ const LocationPageInternal = () => {
                 throw new Error(resultData.message || "Failed to save new address.");
             }
 
-            // Also update local storage for immediate use on the next page
             localStorage.setItem('customerLocation', JSON.stringify(addressToSave));
             router.push(returnUrl);
 
@@ -234,11 +243,16 @@ const LocationPageInternal = () => {
                      </div>
                 ) : addressDetails ? (
                     <div className="space-y-3">
-                         <div>
-                            <p className="font-bold text-lg flex items-center gap-2"><MapPin size={20} className="text-primary"/> {addressDetails.fullAddress || 'Selected Location'}</p>
-                            <p className="text-sm text-muted-foreground">Drag the pin to set your precise location.</p>
-                         </div>
-                         <Button onClick={handleConfirmLocation} disabled={!addressDetails.fullAddress || loading || isSaving} className="w-full h-12 text-lg font-bold bg-primary text-primary-foreground hover:bg-primary/90">
+                        <div>
+                             <p className="font-bold text-lg flex items-center gap-2 mb-2"><MapPin size={20} className="text-primary"/> Fine-tune Address</p>
+                             <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                                <Input value={addressDetails.street || ''} onChange={(e) => handleAddressFieldChange('street', e.target.value)} placeholder="Street / Area"/>
+                                <Input value={addressDetails.city || ''} onChange={(e) => handleAddressFieldChange('city', e.target.value)} placeholder="City"/>
+                                <Input value={addressDetails.pincode || ''} onChange={(e) => handleAddressFieldChange('pincode', e.target.value)} placeholder="Pincode"/>
+                                <Input value={addressDetails.state || ''} onChange={(e) => handleAddressFieldChange('state', e.target.value)} placeholder="State"/>
+                            </div>
+                        </div>
+                         <Button onClick={handleConfirmLocation} disabled={!addressDetails.street || loading || isSaving} className="w-full h-12 text-lg font-bold bg-primary text-primary-foreground hover:bg-primary/90">
                             {isSaving ? <Loader2 className="animate-spin" /> : 'Confirm & Save Location'}
                          </Button>
                     </div>
