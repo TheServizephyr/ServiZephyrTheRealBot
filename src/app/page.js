@@ -1,9 +1,8 @@
 
-
 'use client'
 
 import { motion, useInView, animate, AnimatePresence } from 'framer-motion'
-import { CheckCircle, Bot, Zap, Rocket, Users, ArrowRight, Star, ShoppingCart, BarChart2, MessageSquare, Briefcase, Store, Soup, Pizza, Feather } from 'lucide-react'
+import { CheckCircle, Bot, Zap, Rocket, Users, ArrowRight, Star, ShoppingCart, BarChart2, MessageSquare, Briefcase, Store, Soup, Pizza, Feather, Check } from 'lucide-react'
 import Image from 'next/image'
 import Link from 'next/link'
 import React, { useEffect, useRef, useState } from 'react'
@@ -35,6 +34,7 @@ import {
 } from "@/components/ui/tabs"
 import placeholderData from '@/app/lib/placeholder-images.json'
 import AuthModal from '@/components/AuthModal'
+import { cn } from '@/lib/utils'
 
 
 const MotionLink = motion(Link);
@@ -229,10 +229,33 @@ const AnimatedSubheadline = () => {
     );
 };
 
+const FeatureCard = ({ icon, title, description, benefits }) => {
+    return (
+        <motion.div 
+            className="bg-card border border-border rounded-xl p-6 hover:shadow-lg hover:-translate-y-1 transition-all duration-300"
+            variants={cardVariants}
+        >
+            <div className="flex items-center gap-4 mb-4">
+                <div className="p-3 bg-primary/10 rounded-full text-primary">{icon}</div>
+                <h4 className="text-xl font-bold text-foreground">{title}</h4>
+            </div>
+            <p className="text-muted-foreground text-sm mb-4">{description}</p>
+            <ul className="space-y-2">
+                {benefits.map((benefit, i) => (
+                    <li key={i} className="flex items-start gap-2 text-sm">
+                        <Check size={16} className="text-green-500 mt-1 flex-shrink-0" />
+                        <span className="text-muted-foreground">{benefit}</span>
+                    </li>
+                ))}
+            </ul>
+        </motion.div>
+    )
+}
 
 export default function Home() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [animationFinished, setAnimationFinished] = useState(true); // Always show content now
+  const [activeTab, setActiveTab] = useState("ordering");
 
   const testimonials = [
     {
@@ -437,57 +460,89 @@ export default function Home() {
           <p className="mx-auto mb-12 max-w-2xl text-center text-lg text-muted-foreground md:text-xl">
             From seamless ordering to powerful analytics and marketing, ServiZephyr is packed with features designed to help you succeed.
           </p>
-          <Tabs defaultValue="ordering" className="w-full">
-            <TabsList className="grid w-full grid-cols-1 md:grid-cols-3 bg-muted">
-              <TabsTrigger value="ordering"><ShoppingCart className="mr-2 h-4 w-4" /> WhatsApp Ordering</TabsTrigger>
-              <TabsTrigger value="dashboard"><BarChart2 className="mr-2 h-4 w-4" /> Owner Command Center</TabsTrigger>
-              <TabsTrigger value="growth"><Rocket className="mr-2 h-4 w-4" /> Growth Toolkit</TabsTrigger>
+          <Tabs defaultValue="ordering" className="w-full" onValueChange={setActiveTab}>
+            <TabsList className="relative grid w-full grid-cols-1 md:grid-cols-3 bg-muted p-1 h-auto rounded-lg">
+              <TabsTrigger value="ordering" className="relative h-10"><ShoppingCart className="mr-2 h-4 w-4" /> WhatsApp Ordering</TabsTrigger>
+              <TabsTrigger value="dashboard" className="h-10"><BarChart2 className="mr-2 h-4 w-4" /> Owner Command Center</TabsTrigger>
+              <TabsTrigger value="growth" className="h-10"><Rocket className="mr-2 h-4 w-4" /> Growth Toolkit</TabsTrigger>
             </TabsList>
-            <TabsContent value="ordering" className="mt-8">
-               <Card>
-                <CardHeader>
-                  <CardTitle className="text-foreground">Commission-Free Direct Orders</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-4 text-muted-foreground">
-                  <p>Let customers order from a beautiful, interactive menu directly on WhatsApp. No apps, no logins, no friction.</p>
-                  <ul className="list-disc pl-5 space-y-2">
-                    <li><span className="font-semibold text-foreground">Live Interactive Menu:</span> Customers browse and add items to cart within WhatsApp.</li>
-                    <li><span className="font-semibold text-foreground">Integrated Payments:</span> Accept UPI, Cards, and Netbanking payments right in the chat.</li>
-                    <li><span className="font-semibold text-foreground">Automated Order Confirmations:</span> Keep customers updated without lifting a finger.</li>
-                  </ul>
-                </CardContent>
-              </Card>
-            </TabsContent>
-            <TabsContent value="dashboard" className="mt-8">
-              <Card>
-                <CardHeader>
-                  <CardTitle className="text-foreground">Your Business at Your Fingertips</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-4 text-muted-foreground">
-                  <p>Make data-driven decisions with a powerful dashboard that gives you a 360-degree view of your restaurant's performance.</p>
-                  <ul className="list-disc pl-5 space-y-2">
-                    <li><span className="font-semibold text-foreground">Real-time Sales Analytics:</span> Track your revenue, top-selling items, and busiest hours.</li>
-                    <li><span className="font-semibold text-foreground">Menu & Inventory Management:</span> Update your menu, change prices, or mark items "out of stock" instantly.</li>
-                    <li><span className="font-semibold text-foreground">Customer Hub (CRM):</span> See who your most loyal customers are and understand their ordering habits.</li>
-                  </ul>
-                </CardContent>
-              </Card>
-            </TabsContent>
-            <TabsContent value="growth" className="mt-8">
-              <Card>
-                <CardHeader>
-                  <CardTitle className="text-foreground">Tools to Grow Your Brand</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-4 text-muted-foreground">
-                  <p>Stop relying on aggregators for discovery. Use our built-in marketing tools to build your own brand and drive repeat business.</p>
-                  <ul className="list-disc pl-5 space-y-2">
-                    <li><span className="font-semibold text-foreground">WhatsApp Marketing:</span> Send promotions, new menu alerts, and festival offers to your customers (with their consent!).</li>
-                    <li><span className="font-semibold text-foreground">Customer Feedback & Reviews:</span> Automatically collect feedback after every order to improve your service.</li>
-                    <li><span className="font-semibold text-foreground">QR Code Generator:</span> Create a unique QR code for your tables or flyers that opens your WhatsApp menu.</li>
-                  </ul>
-                </CardContent>
-              </Card>
-            </TabsContent>
+            
+            <AnimatePresence mode="wait">
+              <motion.div
+                  key={activeTab}
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -20 }}
+                  transition={{ duration: 0.3 }}
+              >
+                <TabsContent value="ordering" className="mt-8">
+                  <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    <FeatureCard
+                      icon={<MessageSquare/>}
+                      title="Live Interactive Menu"
+                      description="Customers browse and add items to cart within WhatsApp, just like a normal app."
+                      benefits={["No app download needed", "Familiar and fast interface", "Reduces ordering friction"]}
+                    />
+                    <FeatureCard
+                      icon={<Zap/>}
+                      title="Integrated Payments"
+                      description="Securely accept payments via UPI, Credit/Debit Cards, and Netbanking right in the chat."
+                      benefits={["Supports all major payment methods", "Instant payment confirmations", "Reduces COD dependency"]}
+                    />
+                    <FeatureCard
+                      icon={<Bot/>}
+                      title="Automated Communication"
+                      description="Keep customers informed with automated confirmations, status updates, and feedback requests."
+                      benefits={["Saves staff time", "Improves customer experience", "Builds trust and transparency"]}
+                    />
+                  </div>
+                </TabsContent>
+                <TabsContent value="dashboard" className="mt-8">
+                   <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    <FeatureCard
+                      icon={<BarChart2/>}
+                      title="Real-time Analytics"
+                      description="Track revenue, top-selling items, and busiest hours to make smarter business decisions."
+                      benefits={["Identify popular dishes", "Optimize your pricing strategy", "Understand sales trends instantly"]}
+                    />
+                    <FeatureCard
+                      icon={<Salad/>}
+                      title="Dynamic Menu Control"
+                      description="Update your menu, change prices, or mark items 'out of stock' from anywhere, at any time."
+                      benefits={["Instantly reflect changes to customers", "Avoid disappointed customers", "Run flash sales or daily specials easily"]}
+                    />
+                    <FeatureCard
+                      icon={<Users/>}
+                      title="Customer Hub (CRM)"
+                      description="Finally, own your customer data. See who your most loyal customers are and understand their habits."
+                      benefits={["Identify your VIPs", "View order history and preferences", "Build long-term relationships"]}
+                    />
+                  </div>
+                </TabsContent>
+                <TabsContent value="growth" className="mt-8">
+                   <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    <FeatureCard
+                      icon={<Rocket/>}
+                      title="WhatsApp Marketing"
+                      description="Send promotions, new menu alerts, and festival offers directly to your customers' phones."
+                      benefits={["Highest open rates in the industry", "Run targeted campaigns for specific customer segments", "Drive repeat business effectively"]}
+                    />
+                    <FeatureCard
+                      icon={<Star/>}
+                      title="Feedback & Reviews"
+                      description="Automatically request feedback after every order to improve your service and build social proof."
+                      benefits={["Address issues proactively", "Understand customer satisfaction", "Encourage positive online reviews"]}
+                    />
+                    <FeatureCard
+                      icon={<CheckCircle/>}
+                      title="QR Code Ordering"
+                      description="Generate unique QR codes for tables, flyers, or packaging that open your WhatsApp menu instantly."
+                      benefits={["Enable contactless dine-in ordering", "Bridge offline marketing with online sales", "Track campaign effectiveness"]}
+                    />
+                  </div>
+                </TabsContent>
+              </motion.div>
+            </AnimatePresence>
           </Tabs>
         </motion.section>
 
