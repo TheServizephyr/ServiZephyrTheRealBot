@@ -1,19 +1,12 @@
 'use client';
 
-import React, { useRef, useCallback } from 'react';
+import React from 'react';
 import { APIProvider, Map, AdvancedMarker } from '@vis.gl/react-google-maps';
 import { Loader2 } from 'lucide-react';
 
 const GOOGLE_MAPS_API_KEY = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
 
-const GoogleMap = ({ initialCenter, onPinDragEnd }) => {
-    const mapRef = useRef();
-
-    const onMarkerDragEnd = useCallback(event => {
-        const { lat, lng } = event.latLng.toJSON();
-        onPinDragEnd({ lat, lng });
-    }, [onPinDragEnd]);
-
+const GoogleMap = ({ center, onPinDragEnd }) => {
     if (!GOOGLE_MAPS_API_KEY) {
         return <div className="w-full h-full bg-muted flex items-center justify-center"><p className="text-destructive">Google Maps API Key not found.</p></div>;
     }
@@ -21,19 +14,18 @@ const GoogleMap = ({ initialCenter, onPinDragEnd }) => {
     return (
         <APIProvider apiKey={GOOGLE_MAPS_API_KEY}>
             <Map
-                ref={mapRef}
-                mapId={'servizephyr_location_selector'}
+                mapId="servizephyr_map"
                 style={{ width: '100%', height: '100%' }}
-                defaultCenter={initialCenter}
-                center={initialCenter}
+                defaultCenter={center}
+                center={center}
                 defaultZoom={15}
                 gestureHandling={'greedy'}
                 disableDefaultUI={true}
             >
-                <AdvancedMarker
-                    position={initialCenter}
-                    draggable
-                    onDragEnd={onMarkerDragEnd}
+                <AdvancedMarker 
+                    position={center}
+                    draggable={true}
+                    onDragEnd={(e) => onPinDragEnd(e.latLng.toJSON())}
                 >
                     <div style={{ fontSize: '2.5rem' }}>📍</div>
                 </AdvancedMarker>

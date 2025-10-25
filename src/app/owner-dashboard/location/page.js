@@ -11,7 +11,7 @@ import dynamic from 'next/dynamic';
 import { auth } from '@/lib/firebase';
 import InfoDialog from '@/components/InfoDialog';
 
-const MapplsMap = dynamic(() => import('@/components/MapplsMap'), { 
+const GoogleMap = dynamic(() => import('@/components/GoogleMap'), { 
     ssr: false,
     loading: () => <div className="w-full h-full bg-muted flex items-center justify-center"><Loader2 className="animate-spin text-primary"/></div>
 });
@@ -132,8 +132,8 @@ const OwnerLocationPage = () => {
             </header>
 
             <div className="flex-grow relative">
-                 <MapplsMap 
-                    initialCenter={mapCenter}
+                 <GoogleMap 
+                    center={mapCenter}
                     onPinDragEnd={reverseGeocode}
                  />
             </div>
