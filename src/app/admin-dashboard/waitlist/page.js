@@ -1,4 +1,3 @@
-
 'use client';
 
 import { useState, useEffect } from 'react';
@@ -71,6 +70,7 @@ export default function WaitlistPage() {
                         <Table>
                             <TableHeader>
                                 <TableRow>
+                                    <TableHead className="w-[50px]">Rank</TableHead>
                                     <TableHead>Contact</TableHead>
                                     <TableHead>Business</TableHead>
                                     <TableHead>Address</TableHead>
@@ -80,11 +80,12 @@ export default function WaitlistPage() {
                             <TableBody>
                                 {loading ? (
                                     [...Array(5)].map((_, i) => (
-                                        <TableRow key={i}><TableCell colSpan={4} className="p-4"><div className="h-8 bg-muted rounded-md animate-pulse"></div></TableCell></TableRow>
+                                        <TableRow key={i}><TableCell colSpan={5} className="p-4"><div className="h-8 bg-muted rounded-md animate-pulse"></div></TableCell></TableRow>
                                     ))
                                 ) : waitlistEntries.length > 0 ? (
-                                    waitlistEntries.map(entry => (
+                                    waitlistEntries.map((entry, index) => (
                                         <TableRow key={entry.id}>
+                                            <TableCell className="font-bold text-lg text-muted-foreground text-center">{index + 1}</TableCell>
                                             <TableCell>
                                                 <div className="flex items-center gap-2 font-medium"><User size={14} /> {entry.name}</div>
                                                 <div className="text-sm text-muted-foreground flex items-center gap-2 mt-1"><Phone size={14} /> {entry.phone}</div>
@@ -105,7 +106,7 @@ export default function WaitlistPage() {
                                     ))
                                 ) : (
                                     <TableRow>
-                                        <TableCell colSpan={4} className="text-center p-16 text-muted-foreground">
+                                        <TableCell colSpan={5} className="text-center p-16 text-muted-foreground">
                                             <User className="mx-auto h-12 w-12" />
                                             <p className="mt-4 font-semibold">The waitlist is empty!</p>
                                             <p className="text-sm">No one has joined the waitlist yet.</p>
