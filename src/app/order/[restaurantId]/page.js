@@ -402,6 +402,7 @@ const DineInModal = ({ isOpen, onClose, onBookTable, tableStatus, onStartNewTab,
                                 </button>
                                  <button
                                     onClick={() => {
+                                        onClose();
                                         setIsQrScannerOpen(true);
                                     }}
                                     className="p-6 border-2 border-border rounded-lg text-center flex flex-col items-center justify-center gap-3 hover:bg-muted hover:border-primary transition-all group"
