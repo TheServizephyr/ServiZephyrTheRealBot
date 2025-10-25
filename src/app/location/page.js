@@ -3,13 +3,15 @@
 import React, { useState, useEffect, Suspense, useRef } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { motion } from 'framer-motion';
-import { MapPin, Search, LocateFixed, Loader2, ArrowLeft, AlertTriangle, Save } from 'lucide-react';
+import { MapPin, Search, LocateFixed, Loader2, ArrowLeft, AlertTriangle, Save, Home, Building } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import dynamic from 'next/dynamic';
 import { auth } from '@/lib/firebase';
 import InfoDialog from '@/components/InfoDialog';
 import { useAuth } from '@/firebase';
+import { cn } from '@/lib/utils';
+
 
 const GoogleMap = dynamic(() => import('@/components/GoogleMap'), { 
     ssr: false,
@@ -23,8 +25,9 @@ const LocationPageInternal = () => {
     const returnUrl = searchParams.get('returnUrl') || `/order/${restaurantId}`;
     
     const { user } = useAuth();
-    const [mapCenter, setMapCenter] = useState({ lat: 27.1767, lng: 78.0081 }); // Default to Agra
+    const [mapCenter, setMapCenter] = useState({ lat: 28.6139, lng: 77.2090 }); // Default to Delhi
     const [addressDetails, setAddressDetails] = useState(null);
+    const [addressLabel, setAddressLabel] = useState('Home');
     const [loading, setLoading] = useState(false);
     const [isSaving, setIsSaving] = useState(false);
     const [error, setError] = useState('');
@@ -135,7 +138,7 @@ const LocationPageInternal = () => {
 
         const addressToSave = {
             id: `addr_${Date.now()}`,
-            label: 'Other',
+            label: addressLabel,
             name: user?.displayName || localStorage.getItem('lastKnownName') || 'User',
             phone: user?.phoneNumber || localStorage.getItem('lastKnownPhone') || '',
             street: addressDetails.street,
@@ -251,6 +254,12 @@ const LocationPageInternal = () => {
                                 <Input value={addressDetails.pincode || ''} onChange={(e) => handleAddressFieldChange('pincode', e.target.value)} placeholder="Pincode"/>
                                 <Input value={addressDetails.state || ''} onChange={(e) => handleAddressFieldChange('state', e.target.value)} placeholder="State"/>
                             </div>
+                        </div>
+                         <div className="flex items-center gap-2 pt-2">
+                             <Label>Label as:</Label>
+                             <Button type="button" variant={addressLabel === 'Home' ? 'secondary' : 'outline'} size="sm" onClick={() => setAddressLabel('Home')}><Home size={14} className="mr-2"/> Home</Button>
+                             <Button type="button" variant={addressLabel === 'Work' ? 'secondary' : 'outline'} size="sm" onClick={() => setAddressLabel('Work')}><Building size={14} className="mr-2"/> Work</Button>
+                             <Button type="button" variant={addressLabel === 'Other' ? 'secondary' : 'outline'} size="sm" onClick={() => setAddressLabel('Other')}><MapPin size={14} className="mr-2"/> Other</Button>
                         </div>
                          <Button onClick={handleConfirmLocation} disabled={!addressDetails.street || loading || isSaving} className="w-full h-12 text-lg font-bold bg-primary text-primary-foreground hover:bg-primary/90">
                             {isSaving ? <Loader2 className="animate-spin" /> : 'Confirm & Save Location'}
