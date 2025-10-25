@@ -1,3 +1,4 @@
+
 'use client'
 
 import { motion, useInView, animate, AnimatePresence } from 'framer-motion'
@@ -445,7 +446,7 @@ export default function Home() {
             </div>
         </motion.section>
 
-        {/* Feature Breakdown Section */}
+        {/* Feature Breakdown Section - REBUILT AND FIXED */}
         <motion.section 
           id="features"
           initial="hidden"
@@ -465,95 +466,93 @@ export default function Home() {
               <TabsTrigger value="growth" className="h-10"><Rocket className="mr-2 h-4 w-4" /> Growth Toolkit</TabsTrigger>
             </TabsList>
             
-            <AnimatePresence mode="wait">
-                <TabsContent value="ordering" className="mt-8">
-                  <motion.div
-                    key="ordering"
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, y: -20 }}
-                    transition={{ duration: 0.3 }}
-                    className="grid md:grid-cols-2 lg:grid-cols-3 gap-6"
-                  >
-                    <FeatureCard
-                      icon={<MessageSquare/>}
-                      title="Live Interactive Menu"
-                      description="Let customers order from a beautiful, interactive menu directly on WhatsApp. No apps, no logins, no friction."
-                      benefits={["No app download needed", "Familiar and fast interface", "Reduces ordering friction"]}
-                    />
-                    <FeatureCard
-                      icon={<Zap/>}
-                      title="Integrated Payments"
-                      description="Securely accept payments via UPI, Credit/Debit Cards, and Netbanking right in the chat."
-                      benefits={["Supports all major payment methods", "Instant payment confirmations", "Reduces COD dependency"]}
-                    />
-                    <FeatureCard
-                      icon={<Bot/>}
-                      title="Automated Communication"
-                      description="Keep customers informed with automated confirmations, status updates, and feedback requests."
-                      benefits={["Saves staff time", "Improves customer experience", "Builds trust and transparency"]}
-                    />
-                  </motion.div>
-                </TabsContent>
-                <TabsContent value="dashboard" className="mt-8">
-                  <motion.div
-                    key="dashboard"
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, y: -20 }}
-                    transition={{ duration: 0.3 }}
-                    className="grid md:grid-cols-2 lg:grid-cols-3 gap-6"
-                  >
-                    <FeatureCard
-                      icon={<BarChart2/>}
-                      title="Real-time Analytics"
-                      description="Track revenue, top-selling items, and busiest hours to make smarter business decisions."
-                      benefits={["Identify popular dishes", "Optimize your pricing strategy", "Understand sales trends instantly"]}
-                    />
-                    <FeatureCard
-                      icon={<Salad/>}
-                      title="Dynamic Menu Control"
-                      description="Update your menu, change prices, or mark items 'out of stock' from anywhere, at any time."
-                      benefits={["Instantly reflect changes to customers", "Avoid disappointed customers", "Run flash sales or daily specials easily"]}
-                    />
-                    <FeatureCard
-                      icon={<Users/>}
-                      title="Customer Hub (CRM)"
-                      description="Finally, own your customer data. See who your most loyal customers are and understand their habits."
-                      benefits={["Identify your VIPs", "View order history and preferences", "Build long-term relationships"]}
-                    />
-                  </motion.div>
-                </TabsContent>
-                <TabsContent value="growth" className="mt-8">
-                  <motion.div
-                    key="growth"
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, y: -20 }}
-                    transition={{ duration: 0.3 }}
-                    className="grid md:grid-cols-2 lg:grid-cols-3 gap-6"
-                  >
-                    <FeatureCard
-                      icon={<Rocket/>}
-                      title="WhatsApp Marketing"
-                      description="Send promotions, new menu alerts, and festival offers directly to your customers' phones."
-                      benefits={["Highest open rates in the industry", "Run targeted campaigns for specific customer segments", "Drive repeat business effectively"]}
-                    />
-                    <FeatureCard
-                      icon={<Star/>}
-                      title="Feedback & Reviews"
-                      description="Automatically request feedback after every order to improve your service and build social proof."
-                      benefits={["Address issues proactively", "Understand customer satisfaction", "Encourage positive online reviews"]}
-                    />
-                    <FeatureCard
-                      icon={<CheckCircle/>}
-                      title="QR Code Ordering"
-                      description="Generate unique QR codes for tables, flyers, or packaging that open your WhatsApp menu instantly."
-                      benefits={["Enable contactless dine-in ordering", "Bridge offline marketing with online sales", "Track campaign effectiveness"]}
-                    />
-                  </motion.div>
-                </TabsContent>
-            </AnimatePresence>
+            <TabsContent value="ordering" className="mt-8">
+              <motion.div
+                key="ordering"
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -20 }}
+                transition={{ duration: 0.3 }}
+                className="grid md:grid-cols-2 lg:grid-cols-3 gap-6"
+              >
+                <FeatureCard
+                  icon={<MessageSquare/>}
+                  title="Live Interactive Menu"
+                  description="Let customers order from a beautiful, interactive menu directly on WhatsApp. No apps, no logins, no friction."
+                  benefits={["No app download needed", "Familiar and fast interface", "Reduces ordering friction"]}
+                />
+                <FeatureCard
+                  icon={<Zap/>}
+                  title="Integrated Payments"
+                  description="Securely accept payments via UPI, Credit/Debit Cards, and Netbanking right in the chat."
+                  benefits={["Supports all major payment methods", "Instant payment confirmations", "Reduces COD dependency"]}
+                />
+                <FeatureCard
+                  icon={<Bot/>}
+                  title="Automated Communication"
+                  description="Keep customers informed with automated confirmations, status updates, and feedback requests."
+                  benefits={["Saves staff time", "Improves customer experience", "Builds trust and transparency"]}
+                />
+              </motion.div>
+            </TabsContent>
+            <TabsContent value="dashboard" className="mt-8">
+              <motion.div
+                key="dashboard"
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -20 }}
+                transition={{ duration: 0.3 }}
+                className="grid md:grid-cols-2 lg:grid-cols-3 gap-6"
+              >
+                <FeatureCard
+                  icon={<BarChart2/>}
+                  title="Real-time Analytics"
+                  description="Track revenue, top-selling items, and busiest hours to make smarter business decisions."
+                  benefits={["Identify popular dishes", "Optimize your pricing strategy", "Understand sales trends instantly"]}
+                />
+                <FeatureCard
+                  icon={<Salad/>}
+                  title="Dynamic Menu Control"
+                  description="Update your menu, change prices, or mark items 'out of stock' from anywhere, at any time."
+                  benefits={["Instantly reflect changes to customers", "Avoid disappointed customers", "Run flash sales or daily specials easily"]}
+                />
+                <FeatureCard
+                  icon={<Users/>}
+                  title="Customer Hub (CRM)"
+                  description="Finally, own your customer data. See who your most loyal customers are and understand their habits."
+                  benefits={["Identify your VIPs", "View order history and preferences", "Build long-term relationships"]}
+                />
+              </motion.div>
+            </TabsContent>
+            <TabsContent value="growth" className="mt-8">
+              <motion.div
+                key="growth"
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -20 }}
+                transition={{ duration: 0.3 }}
+                className="grid md:grid-cols-2 lg:grid-cols-3 gap-6"
+              >
+                <FeatureCard
+                  icon={<Rocket/>}
+                  title="WhatsApp Marketing"
+                  description="Send promotions, new menu alerts, and festival offers directly to your customers' phones."
+                  benefits={["Highest open rates in the industry", "Run targeted campaigns for specific customer segments", "Drive repeat business effectively"]}
+                />
+                <FeatureCard
+                  icon={<Star/>}
+                  title="Feedback & Reviews"
+                  description="Automatically request feedback after every order to improve your service and build social proof."
+                  benefits={["Address issues proactively", "Understand customer satisfaction", "Encourage positive online reviews"]}
+                />
+                <FeatureCard
+                  icon={<CheckCircle/>}
+                  title="QR Code Ordering"
+                  description="Generate unique QR codes for tables, flyers, or packaging that open your WhatsApp menu instantly."
+                  benefits={["Enable contactless dine-in ordering", "Bridge offline marketing with online sales", "Track campaign effectiveness"]}
+                />
+              </motion.div>
+            </TabsContent>
           </Tabs>
         </motion.section>
 
