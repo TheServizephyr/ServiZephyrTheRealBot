@@ -160,9 +160,9 @@ export default function OrderTrackingPage() {
         console.log("[TrackPage] Memoizing locations:", { restaurantLoc, customerLoc, riderLoc });
 
         return {
-            restaurantLocation: restaurantLoc ? { latitude: restaurantLoc._latitude, longitude: restaurantLoc._longitude } : null,
-            customerLocation: customerLoc ? { latitude: customerLoc._latitude, longitude: customerLoc._longitude } : null,
-            riderLocation: riderLoc ? { latitude: riderLoc._latitude, longitude: riderLoc._longitude } : null,
+            restaurantLocation: restaurantLoc ? { lat: restaurantLoc._latitude, lng: restaurantLoc._longitude } : null,
+            customerLocation: customerLoc ? { lat: customerLoc._latitude, lng: customerLoc._longitude } : null,
+            riderLocation: riderLoc ? { lat: riderLoc._latitude, lng: riderLoc._longitude } : null,
         };
     }, [orderData]);
 

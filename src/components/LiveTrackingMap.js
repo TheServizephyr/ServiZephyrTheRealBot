@@ -1,69 +1,61 @@
-
 'use client';
 
 import React, { useEffect, useRef } from 'react';
-import Map, { Marker, Popup, NavigationControl, Source, Layer } from 'react-map-gl';
+import { APIProvider, Map, AdvancedMarker } from '@vis.gl/react-google-maps';
 import { Loader2 } from 'lucide-react';
 
-const MAPPLS_API_KEY = process.env.NEXT_PUBLIC_MAPPLS_API_KEY;
+const GOOGLE_MAPS_API_KEY = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
 
 const LiveTrackingMap = ({ restaurantLocation, customerLocation, riderLocation }) => {
     const mapRef = useRef();
 
     useEffect(() => {
-        if (mapRef.current && window.mapplsgl) {
-            const mapplsgl = window.mapplsgl;
-            const bounds = new mapplsgl.LngLatBounds();
-            if (restaurantLocation) bounds.extend([restaurantLocation.longitude, restaurantLocation.latitude]);
-            if (customerLocation) bounds.extend([customerLocation.longitude, customerLocation.latitude]);
-            if (riderLocation) bounds.extend([riderLocation.longitude, riderLocation.latitude]);
-            
-            if (!bounds.isEmpty()) {
-                mapRef.current.fitBounds(bounds, { padding: 60, maxZoom: 15 });
+        if (mapRef.current && window.google) {
+            const bounds = new window.google.maps.LatLngBounds();
+            if (restaurantLocation) bounds.extend({ lat: restaurantLocation.lat, lng: restaurantLocation.lng });
+            if (customerLocation) bounds.extend({ lat: customerLocation.lat, lng: customerLocation.lng });
+            if (riderLocation) bounds.extend({ lat: riderLocation.lat, lng: riderLocation.lng });
+
+            if (mapRef.current.map && !bounds.isEmpty()) {
+                mapRef.current.map.fitBounds(bounds, 60);
             }
         }
-    }, [restaurantLocation, customerLocation, riderLocation]);
+    }, [restaurantLocation, customerLocation, riderLocation, mapRef.current]);
 
-    if (typeof window === 'undefined' || !window.mapplsgl) {
-        return <div className="w-full h-full bg-muted flex items-center justify-center"><Loader2 className="animate-spin text-primary"/></div>;
-    }
-     if (!MAPPLS_API_KEY) {
-        return <div className="w-full h-full bg-muted flex items-center justify-center"><p className="text-destructive">Mappls API Key not found.</p></div>;
+    if (!GOOGLE_MAPS_API_KEY) {
+        return <div className="w-full h-full bg-muted flex items-center justify-center"><p className="text-destructive">Google Maps API Key not found.</p></div>;
     }
 
-    const center = customerLocation || restaurantLocation || { latitude: 28.6139, longitude: 77.2090 };
+    const center = customerLocation || restaurantLocation || { lat: 28.6139, lng: 77.2090 };
 
     return (
-        <Map
-            ref={mapRef}
-            mapLib={window.mapplsgl}
-            mapplsAccessToken={MAPPLS_API_KEY}
-            initialViewState={{
-                longitude: center.longitude,
-                latitude: center.latitude,
-                zoom: 13
-            }}
-            style={{ width: '100%', height: '100%' }}
-            mapplsStyle="https://apis.mappls.com/advancedmaps/api/v1/mappls-default-style"
-        >
-            <NavigationControl position="top-right" />
-
-            {restaurantLocation && (
-                <Marker longitude={restaurantLocation.longitude} latitude={restaurantLocation.latitude} anchor="bottom">
-                     <div style={{ fontSize: '2rem' }}>🏢</div>
-                </Marker>
-            )}
-            {customerLocation && (
-                <Marker longitude={customerLocation.longitude} latitude={customerLocation.latitude} anchor="bottom">
-                    <div style={{ fontSize: '2rem' }}>🏠</div>
-                </Marker>
-            )}
-            {riderLocation && (
-                <Marker longitude={riderLocation.longitude} latitude={riderLocation.latitude} anchor="bottom">
-                     <div style={{ fontSize: '2.5rem' }}>🛵</div>
-                </Marker>
-            )}
-        </Map>
+        <APIProvider apiKey={GOOGLE_MAPS_API_KEY}>
+            <Map
+                ref={mapRef}
+                mapId={'live_tracking_map'}
+                style={{ width: '100%', height: '100%' }}
+                defaultCenter={center}
+                defaultZoom={12}
+                gestureHandling={'greedy'}
+                disableDefaultUI={true}
+            >
+                {restaurantLocation && (
+                    <AdvancedMarker position={{ lat: restaurantLocation.lat, lng: restaurantLocation.lng }}>
+                        <div style={{ fontSize: '2rem' }}>🏢</div>
+                    </AdvancedMarker>
+                )}
+                {customerLocation && (
+                    <AdvancedMarker position={{ lat: customerLocation.lat, lng: customerLocation.lng }}>
+                        <div style={{ fontSize: '2rem' }}>🏠</div>
+                    </AdvancedMarker>
+                )}
+                {riderLocation && (
+                    <AdvancedMarker position={{ lat: riderLocation.lat, lng: riderLocation.lng }}>
+                         <div style={{ fontSize: '2.5rem' }}>🛵</div>
+                    </AdvancedMarker>
+                )}
+            </Map>
+        </APIProvider>
     );
 };
 

@@ -11,7 +11,7 @@ import { auth } from '@/lib/firebase';
 import InfoDialog from '@/components/InfoDialog';
 
 
-const MapplsMap = dynamic(() => import('@/components/MapplsMap'), { 
+const GoogleMap = dynamic(() => import('@/components/GoogleMap'), { 
     ssr: false,
     loading: () => <div className="w-full h-full bg-muted flex items-center justify-center"><Loader2 className="animate-spin text-primary"/></div>
 });
@@ -71,7 +71,7 @@ const LocationPageInternal = () => {
             setAddressDetails({
                 street: data.road || data.neighbourhood || '',
                 city: data.city || data.town || data.village || '',
-                pincode: data.postcode || '',
+                pincode: data.pincode || '',
                 state: data.state || '',
                 country: data.country || '',
                 fullAddress: data.formatted_address,
@@ -204,8 +204,8 @@ const LocationPageInternal = () => {
             </header>
 
             <div className="flex-grow relative">
-                 <MapplsMap 
-                    initialCenter={mapCenter}
+                 <GoogleMap 
+                    center={mapCenter}
                     onPinDragEnd={reverseGeocode}
                  />
                  <Button 

@@ -9,6 +9,7 @@
     "lint": "echo \"linting...\" && next lint"
   },
   "dependencies": {
+    "@googlemaps/react-wrapper": "^1.1.35",
     "@hello-pangea/dnd": "^16.6.0",
     "@heroicons/react": "^2.2.0",
     "@radix-ui/react-alert-dialog": "^1.1.1",
@@ -19,6 +20,7 @@
     "@radix-ui/react-slot": "^1.2.3",
     "@radix-ui/react-switch": "^1.0.3",
     "@radix-ui/react-tabs": "^1.0.4",
+    "@vis.gl/react-google-maps": "^0.10.0",
     "axios": "^1.7.2",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
@@ -30,7 +32,6 @@
     "framer-motion": "^11.3.19",
     "html5-qrcode": "^2.3.8",
     "lucide-react": "^0.395.0",
-    "mapbox-gl": "^2.15.0",
     "nanoid": "^3.3.7",
     "next": "^14.2.33",
     "next-themes": "^0.3.0",
