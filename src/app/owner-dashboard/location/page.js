@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useState, useEffect, Suspense, useRef } from 'react';
@@ -6,6 +7,7 @@ import { motion } from 'framer-motion';
 import { MapPin, Search, LocateFixed, Loader2, ArrowLeft, AlertTriangle, Save, Home, Building } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import dynamic from 'next/dynamic';
 import { auth } from '@/lib/firebase';
 import InfoDialog from '@/components/InfoDialog';
@@ -21,7 +23,7 @@ const GoogleMap = dynamic(() => import('@/components/GoogleMap'), {
 const OwnerLocationPage = () => {
     const router = useRouter();
     
-    const [mapCenter, setMapCenter] = useState({ lat: 28.7041, lng: 77.1025 }); // Default Delhi
+    const [mapCenter, setMapCenter] = useState({ lat: 27.1751, lng: 78.0421 }); // Default Agra
     const [addressDetails, setAddressDetails] = useState(null);
     const [addressLabel, setAddressLabel] = useState('Work');
     const [loading, setLoading] = useState(true);
@@ -64,6 +66,7 @@ const OwnerLocationPage = () => {
                         longitude 
                     });
                      setSearchQuery(addr.street ? `${addr.street}, ${addr.city}` : '');
+                     setLoading(false);
                 } else {
                     getCurrentGeolocation(); // No saved location, get current
                 }
@@ -73,8 +76,6 @@ const OwnerLocationPage = () => {
         } catch (err) {
             setError("Failed to fetch saved location. Trying to get current location...");
             getCurrentGeolocation();
-        } finally {
-            setLoading(false);
         }
     };
 
@@ -303,5 +304,7 @@ const OwnerLocationPage = () => {
     );
 };
 
-
 export default OwnerLocationPage;
+
+
+    
