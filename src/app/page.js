@@ -2,7 +2,7 @@
 'use client'
 
 import { motion, useInView, animate, AnimatePresence } from 'framer-motion'
-import { CheckCircle, Bot, Zap, Rocket, Users, ArrowRight, Star, ShoppingCart, BarChart2, MessageSquare, Briefcase, Store, Soup, Pizza, Feather, Check } from 'lucide-react'
+import { CheckCircle, Bot, Zap, Rocket, Users, ArrowRight, Star, ShoppingCart, BarChart2, MessageSquare, Briefcase, Store, Soup, Pizza, Feather, Check, Salad } from 'lucide-react'
 import Image from 'next/image'
 import Link from 'next/link'
 import React, { useEffect, useRef, useState } from 'react'
@@ -480,7 +480,7 @@ export default function Home() {
                     <FeatureCard
                       icon={<MessageSquare/>}
                       title="Live Interactive Menu"
-                      description="Customers browse and add items to cart within WhatsApp, just like a normal app."
+                      description="Let customers order from a beautiful, interactive menu directly on WhatsApp. No apps, no logins, no friction."
                       benefits={["No app download needed", "Familiar and fast interface", "Reduces ordering friction"]}
                     />
                     <FeatureCard
