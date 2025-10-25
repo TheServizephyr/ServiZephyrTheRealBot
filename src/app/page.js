@@ -614,7 +614,7 @@ export default function Home() {
             <h2 className="text-center text-3xl font-bold tracking-tighter sm:text-4xl md:text-5xl text-foreground">Simple & Transparent Pricing</h2>
             <div className="mt-12 w-full max-w-md rounded-2xl border-2 border-primary bg-card p-8 shadow-2xl shadow-primary/20 transition-transform duration-300 hover:scale-105">
               <h3 className="text-3xl font-bold text-center text-foreground">Pro Plan</h3>
-              <p className="mt-4 text-center text-5xl font-bold text-foreground">₹999 <span className="text-lg font-normal text-muted-foreground">/ month</span></p>
+              <p className="mt-4 text-center text-5xl font-bold text-foreground">Coming Soon</p>
               <ul className="mt-8 space-y-4">
                 <li className="flex items-center"><CheckCircle className="mr-2 h-5 w-5 text-primary" /> Unlimited Orders</li>
                 <li className="flex items-center"><CheckCircle className="mr-2 h-5 w-5 text-primary" /> WhatsApp Bot</li>
