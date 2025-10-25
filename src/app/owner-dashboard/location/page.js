@@ -1,4 +1,3 @@
-
 'use client';
 
 import React, { useState, useEffect, Suspense, useRef } from 'react';
@@ -19,43 +18,84 @@ const GoogleMap = dynamic(() => import('@/components/GoogleMap'), {
 const OwnerLocationPage = () => {
     const router = useRouter();
     
-    const [mapCenter, setMapCenter] = useState({ lat: 28.7041, lng: 77.1025 }); // Default to Delhi
+    // Default to Agra, near Tundla, for a better initial experience.
+    const [mapCenter, setMapCenter] = useState({ lat: 27.1767, lng: 78.0081 }); 
     const [addressDetails, setAddressDetails] = useState(null);
     const [loading, setLoading] = useState(true);
     const [isSaving, setIsSaving] = useState(false);
     const [error, setError] = useState('');
     const [infoDialog, setInfoDialog] = useState({ isOpen: false, title: '', message: '' });
 
-    useEffect(() => {
-        const fetchInitialLocation = async () => {
-            setLoading(true);
-            try {
-                const user = auth.currentUser;
-                if (!user) {
-                    router.push('/');
-                    return;
-                }
-                const idToken = await user.getIdToken();
-                const res = await fetch('/api/owner/locations', {
-                    headers: { 'Authorization': `Bearer ${idToken}` }
-                });
-                if (res.ok) {
-                    const data = await res.json();
-                    if (data.location) {
-                        const { latitude, longitude, address } = data.location;
-                        const coords = { lat: latitude, lng: longitude };
-                        setMapCenter(coords);
-                        setAddressDetails({ fullAddress: address, latitude, longitude });
-                    }
-                }
-            } catch (err) {
-                setError("Failed to fetch current location.");
-            } finally {
-                setLoading(false);
+    // Try to get user's current location on initial load.
+    const getCurrentLocationAndSetMap = (fallbackToSaved = false) => {
+        if ('geolocation' in navigator) {
+            navigator.geolocation.getCurrentPosition(
+                (position) => {
+                    const coords = {
+                        lat: position.coords.latitude,
+                        lng: position.coords.longitude,
+                    };
+                    setMapCenter(coords);
+                    reverseGeocode(coords);
+                },
+                (err) => {
+                    // If user denies permission, then try fetching saved location.
+                    setError('Could not get your location. Please search manually or allow location access.');
+                    if (fallbackToSaved) fetchInitialLocation(); else setLoading(false);
+                },
+                { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+            );
+        } else {
+            if (fallbackToSaved) fetchInitialLocation(); else setLoading(false);
+        }
+    };
+    
+    // Function to fetch already saved location from backend.
+    const fetchInitialLocation = async () => {
+        setLoading(true);
+        try {
+            const user = auth.currentUser;
+            if (!user) {
+                router.push('/');
+                return;
             }
-        };
-        fetchInitialLocation();
+            const idToken = await user.getIdToken();
+            const res = await fetch('/api/owner/locations', {
+                headers: { 'Authorization': `Bearer ${idToken}` }
+            });
+            if (res.ok) {
+                const data = await res.json();
+                if (data.location) {
+                    const { latitude, longitude, address } = data.location;
+                    const coords = { lat: latitude, lng: longitude };
+                    setMapCenter(coords);
+                    setAddressDetails({ fullAddress: address, latitude, longitude });
+                } else {
+                    // If no saved location, try to get current geo-location.
+                    getCurrentLocationAndSetMap(false);
+                }
+            } else {
+                 getCurrentLocationAndSetMap(false);
+            }
+        } catch (err) {
+            setError("Failed to fetch current location.");
+            getCurrentLocationAndSetMap(false); // Fallback to geolocation
+        } finally {
+            setLoading(false);
+        }
+    };
+    
+    useEffect(() => {
+        const unsubscribe = auth.onAuthStateChanged(user => {
+            if (user) {
+                fetchInitialLocation();
+            } else {
+                router.push('/');
+            }
+        });
+        return () => unsubscribe();
     }, [router]);
+
 
     const reverseGeocode = async (coords) => {
         setLoading(true);
