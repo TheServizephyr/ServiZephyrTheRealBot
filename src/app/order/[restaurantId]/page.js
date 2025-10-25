@@ -402,8 +402,6 @@ const DineInModal = ({ isOpen, onClose, onBookTable, tableStatus, onStartNewTab,
                                 </button>
                                  <button
                                     onClick={() => {
-                                        console.log("[DEBUG] DineInModal: 'I'm at the Restaurant' button clicked. Closing modal, opening scanner.");
-                                        onClose();
                                         setIsQrScannerOpen(true);
                                     }}
                                     className="p-6 border-2 border-border rounded-lg text-center flex flex-col items-center justify-center gap-3 hover:bg-muted hover:border-primary transition-all group"
