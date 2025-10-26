@@ -100,7 +100,8 @@ const AddAddressPageInternal = () => {
             // If user is logged in, use their details
             if (user) {
                 setRecipientName(user.displayName || '');
-                setRecipientPhone(user.phoneNumber || phoneFromUrl || '');
+                // Prioritize phone from URL, then from user object
+                setRecipientPhone(phoneFromUrl || user.phoneNumber || '');
             } 
             // If user is not logged in, but we have a phone number, lookup their profile
             else if (phoneFromUrl) {
@@ -129,7 +130,7 @@ const AddAddressPageInternal = () => {
             // Default to a location if not using current
             reverseGeocode(mapCenter);
         }
-    }, [user, useCurrent]);
+    }, [user, useCurrent, searchParams.get('phone')]);
 
 
     // --- Save Logic ---

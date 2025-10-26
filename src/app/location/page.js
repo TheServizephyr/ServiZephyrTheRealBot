@@ -70,15 +70,8 @@ const SelectLocationInternal = () => {
     }, [user]);
 
     useEffect(() => {
-        const unsubscribe = auth.onAuthStateChanged((user) => {
-            if (user) {
-                fetchAddresses();
-            } else {
-                setLoading(false);
-            }
-        });
-        return () => unsubscribe();
-    }, [fetchAddresses]);
+        fetchAddresses();
+    }, [user, fetchAddresses]);
 
     const handleSelectAddress = (address) => {
         localStorage.setItem('customerLocation', JSON.stringify(address));
