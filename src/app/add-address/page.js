@@ -101,7 +101,7 @@ const AddAddressPageInternal = () => {
         const prefillData = async () => {
             const phoneFromUrl = searchParams.get('phone');
             
-            // **THE FIX**: Prioritize logged-in user's data first.
+            // Prioritize logged-in user's data first.
             if (user) {
                 console.log("[add-address] User is logged in. Using user's data.");
                 setRecipientName(user.displayName || '');
@@ -138,7 +138,7 @@ const AddAddressPageInternal = () => {
             // Default to a location if not using current
             reverseGeocode(mapCenter);
         }
-    }, [user, isUserLoading, useCurrent, searchParams.get('phone')]);
+    }, [user, isUserLoading, useCurrent, searchParams]);
 
 
     // --- Save Logic ---
@@ -308,3 +308,5 @@ const AddAddressPage = () => (
 );
 
 export default AddAddressPage;
+
+  

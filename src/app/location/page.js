@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useState, useEffect, Suspense, useCallback } from 'react';
@@ -8,7 +9,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { auth } from '@/lib/firebase';
 import InfoDialog from '@/components/InfoDialog';
-import { useUser } from '@/firebase'; // THE FIX: Import useUser instead of useAuth
+import { useUser } from '@/firebase';
 
 const SavedAddressCard = ({ address, onSelect, onDelete }) => {
     const Icon = address.label === 'Home' ? Home : address.label === 'Work' ? Building : MapPin;
@@ -39,7 +40,7 @@ const SelectLocationInternal = () => {
     console.log("[LOCATION PAGE] Rendering...");
     const router = useRouter();
     const searchParams = useSearchParams();
-    const { user, isUserLoading } = useUser(); // THE FIX: Use the correct hook
+    const { user, isUserLoading } = useUser();
 
     const [addresses, setAddresses] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -193,3 +194,5 @@ export default function SelectLocationPage() {
         </Suspense>
     );
 }
+
+  
