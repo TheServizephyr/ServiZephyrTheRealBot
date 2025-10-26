@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useState, useEffect, Suspense, useRef, useCallback } from 'react';
@@ -10,7 +11,7 @@ import { Label } from '@/components/ui/label';
 import dynamic from 'next/dynamic';
 import { auth } from '@/lib/firebase';
 import InfoDialog from '@/components/InfoDialog';
-import { useAuth } from '@/firebase';
+import { useUser } from '@/firebase';
 import { cn } from '@/lib/utils';
 
 const GoogleMap = dynamic(() => import('@/components/GoogleMap'), { 
@@ -23,7 +24,7 @@ const AddAddressPageInternal = () => {
     const searchParams = useSearchParams();
     const geocodeTimeoutRef = useRef(null);
     
-    const { user } = useAuth();
+    const { user, isUserLoading } = useUser();
     const [mapCenter, setMapCenter] = useState({ lat: 28.6139, lng: 77.2090 });
     const [addressDetails, setAddressDetails] = useState(null);
     const [loading, setLoading] = useState(true);
@@ -95,6 +96,8 @@ const AddAddressPageInternal = () => {
     }, [reverseGeocode]);
 
     useEffect(() => {
+        if (isUserLoading) return;
+
         const prefillData = async () => {
             const phoneFromUrl = searchParams.get('phone');
             // If user is logged in, use their details
@@ -130,7 +133,7 @@ const AddAddressPageInternal = () => {
             // Default to a location if not using current
             reverseGeocode(mapCenter);
         }
-    }, [user, useCurrent, searchParams.get('phone')]);
+    }, [user, isUserLoading, useCurrent, searchParams.get('phone')]);
 
 
     // --- Save Logic ---
