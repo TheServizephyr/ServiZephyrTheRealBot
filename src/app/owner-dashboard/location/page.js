@@ -146,16 +146,14 @@ const OwnerLocationPage = () => {
         setAddressDetails(prev => ({ ...prev, [field]: value }));
     };
 
-    const handleMapCenterChange = (coords, skipLoading = false) => {
+    const handleMapCenterChange = (coords) => {
         setMapCenter(coords);
-        reverseGeocode(coords, skipLoading);
+        reverseGeocode(coords);
     };
     
 
-    const reverseGeocode = async (coords, skipLoading = false) => {
-        if (!skipLoading) {
-            setLoading(true);
-        }
+    const reverseGeocode = async (coords) => {
+        setLoading(true);
         setError('');
         try {
             const res = await fetch(`/api/location/geocode?lat=${coords.lat}&lng=${coords.lng}`);
@@ -177,9 +175,7 @@ const OwnerLocationPage = () => {
         } catch (err) {
             setError('Could not fetch address details for this pin location.');
         } finally {
-            if (!skipLoading) {
-                setLoading(false);
-            }
+            setLoading(false);
         }
     };
     
@@ -262,7 +258,7 @@ const OwnerLocationPage = () => {
                 <div className="w-full h-64 md:h-full md:flex-1">
                     <GoogleMap 
                         center={mapCenter}
-                        onCenterChanged={handleMapCenterChange}
+                        onIdle={handleMapCenterChange}
                     />
                 </div>
                 <div className="w-full md:w-1/3 md:max-w-md flex-shrink-0 bg-card border-t md:border-t-0 md:border-l border-border p-4 space-y-4 overflow-y-auto">
@@ -312,5 +308,3 @@ const OwnerLocationPage = () => {
 };
 
 export default OwnerLocationPage;
-
-    
