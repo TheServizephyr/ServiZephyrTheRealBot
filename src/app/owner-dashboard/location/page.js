@@ -1,4 +1,3 @@
-
 'use client';
 
 import React, { useState, useEffect, Suspense, useRef } from 'react';
@@ -150,7 +149,7 @@ const OwnerLocationPage = () => {
     };
 
     const reverseGeocode = async (coords) => {
-        setLoading(true);
+        // No need to set loading here to prevent flickering
         setError('');
         try {
             const res = await fetch(`/api/location/geocode?lat=${coords.lat}&lng=${coords.lng}`);
@@ -172,9 +171,14 @@ const OwnerLocationPage = () => {
         } catch (err) {
             setError('Could not fetch address details for this pin location.');
         } finally {
-            setLoading(false);
+            setLoading(false); // Only set loading false here
         }
     };
+    
+    const handleMapCenterChange = (coords) => {
+        setMapCenter(coords);
+        reverseGeocode(coords);
+    }
 
     const handleSaveLocation = async () => {
         const currentUser = auth.currentUser;
@@ -254,7 +258,7 @@ const OwnerLocationPage = () => {
                 <div className="w-full h-64 md:h-full md:flex-1">
                     <GoogleMap 
                         center={mapCenter}
-                        onCenterChanged={reverseGeocode}
+                        onCenterChanged={handleMapCenterChange}
                     />
                 </div>
                 <div className="w-full md:w-1/3 md:max-w-md flex-shrink-0 bg-card border-t md:border-t-0 md:border-l border-border p-4 space-y-4 overflow-y-auto">
@@ -305,5 +309,3 @@ const OwnerLocationPage = () => {
 };
 
 export default OwnerLocationPage;
-
-    
