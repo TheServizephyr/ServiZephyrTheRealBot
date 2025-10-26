@@ -28,6 +28,9 @@ const MapInnerComponent = ({ center, onCenterChanged }) => {
         
         const idleListener = map.addListener('idle', () => {
             const newCenter = map.getCenter().toJSON();
+            // *** THE FIX ***
+            // The previous check was flawed. Now, we directly call the handler.
+            // The parent component (`location/page.js`) is responsible for managing state.
             onCenterChanged(newCenter);
         });
         
@@ -95,7 +98,7 @@ const GoogleMap = ({ center, onCenterChanged }) => {
                 <Map
                     mapId="servizephyr_map"
                     style={{ width: '100%', height: '100%' }}
-                    center={center} // Controlled component for programmatic updates
+                    center={center}
                     defaultZoom={15}
                     gestureHandling={'greedy'}
                     disableDefaultUI={true}
