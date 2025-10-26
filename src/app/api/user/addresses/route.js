@@ -37,10 +37,10 @@ export async function GET(req) {
 
 // POST: Add a new address to the user's profile
 export async function POST(req) {
-    try {
-        const uid = await getUserId(req);
-        const newAddress = await req.json();
+    const uid = await getUserId(req);
+    const newAddress = await req.json();
 
+    try {
         // Validate new address - it is now a structured object with a 'full' property
         if (!newAddress || !newAddress.id || !newAddress.name || !newAddress.phone || !newAddress.street || !newAddress.city || !newAddress.pincode || !newAddress.state || !newAddress.full) {
             return NextResponse.json({ message: 'Invalid address data provided. All fields are required.' }, { status: 400 });
@@ -58,8 +58,16 @@ export async function POST(req) {
 
     } catch (error) {
         console.error("POST /api/user/addresses ERROR:", error);
+        // --- THE FIX: If the user document doesn't exist (`not-found` error), create it. ---
         if (error.code === 'not-found') {
-             return NextResponse.json({ message: 'User profile not found. Cannot save address.' }, { status: 404 });
+             try {
+                const userRef = getFirestore().collection('users').doc(uid);
+                await userRef.set({ addresses: [newAddress] }, { merge: true });
+                return NextResponse.json({ message: 'User profile created and address added!', address: newAddress }, { status: 201 });
+             } catch (createError) {
+                 console.error("POST /api/user/addresses (CREATE) ERROR:", createError);
+                 return NextResponse.json({ message: createError.message || 'Internal Server Error' }, { status: 500 });
+             }
         }
         return NextResponse.json({ message: error.message || 'Internal Server Error' }, { status: error.status || 500 });
     }

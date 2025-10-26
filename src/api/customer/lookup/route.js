@@ -1,4 +1,5 @@
 
+
 import { NextResponse } from 'next/server';
 import { getFirestore } from '@/lib/firebase-admin';
 
@@ -15,7 +16,12 @@ export async function POST(req) {
         const normalizedPhone = phone.length > 10 ? phone.slice(-10) : phone;
         
         const usersRef = firestore.collection('users');
-        const userQuery = await usersRef.where('phone', '==', normalizedPhone).limit(1).get();
+        // --- THE FIX: Added a check for role to ensure we only get customers ---
+        const userQuery = await usersRef
+            .where('phone', '==', normalizedPhone)
+            .where('role', '==', 'customer')
+            .limit(1)
+            .get();
 
         // 1. Check for a verified, master user profile first
         if (!userQuery.empty) {
@@ -38,7 +44,29 @@ export async function POST(req) {
             const unclaimedData = unclaimedProfileSnap.data();
             const responseData = {
                 name: unclaimedData.name,
-                addresses: unclaimedData.addresses || [],
+                // Ensure addresses are always in the correct format
+                addresses: (unclaimedData.addresses || []).map(addr => {
+                     if (typeof addr === 'string') {
+                        // This is an old, simple address string. Convert it to the new object format.
+                        return { 
+                            id: `addr_unclaimed_${Date.now()}`,
+                            label: 'Default',
+                            name: unclaimedData.name || 'User',
+                            phone: unclaimedData.phone || '',
+                            street: addr,
+                            city: '',
+                            state: '',
+                            pincode: '',
+                            country: 'IN',
+                            full: addr 
+                        };
+                     }
+                     // If it's already an object, ensure it has a 'full' property.
+                     if (addr && typeof addr === 'object' && !addr.full) {
+                        addr.full = `${addr.street || ''}, ${addr.city || ''}, ${addr.state || ''} - ${addr.pincode || ''}`.replace(/, , /g, ', ').trim();
+                     }
+                     return addr;
+                }).filter(Boolean), // Filter out any null/undefined entries
                 isVerified: false, // Mark that this is an unclaimed profile
             };
              return NextResponse.json(responseData, { status: 200 });
