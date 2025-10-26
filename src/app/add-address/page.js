@@ -73,7 +73,7 @@ const AddAddressPageInternal = () => {
     }, []);
 
     const handleMapIdle = useCallback((coords) => {
-        setMapCenter(coords);
+        // No longer setting mapCenter here to allow smooth dragging
         reverseGeocode(coords);
     }, [reverseGeocode]);
 
@@ -96,17 +96,41 @@ const AddAddressPageInternal = () => {
     }, [reverseGeocode]);
 
     useEffect(() => {
-        if (user) {
-            setRecipientName(user.displayName || '');
-            setRecipientPhone(user.phoneNumber || '');
-        }
+        const prefillData = async () => {
+            const phoneFromUrl = searchParams.get('phone');
+            // If user is logged in, use their details
+            if (user) {
+                setRecipientName(user.displayName || '');
+                setRecipientPhone(user.phoneNumber || phoneFromUrl || '');
+            } 
+            // If user is not logged in, but we have a phone number, lookup their profile
+            else if (phoneFromUrl) {
+                try {
+                    const res = await fetch('/api/customer/lookup', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ phone: phoneFromUrl })
+                    });
+                    if (res.ok) {
+                        const data = await res.json();
+                        setRecipientName(data.name || '');
+                        setRecipientPhone(phoneFromUrl);
+                    }
+                } catch (e) {
+                    console.warn("Could not prefill user data:", e.message);
+                }
+            }
+        };
+
+        prefillData();
+
         if (useCurrent) {
             getCurrentGeolocation();
         } else {
             // Default to a location if not using current
             reverseGeocode(mapCenter);
         }
-    }, [user, useCurrent]);
+    }, [user, useCurrent, searchParams]);
 
 
     // --- Save Logic ---
