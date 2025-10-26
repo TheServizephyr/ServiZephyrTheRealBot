@@ -271,7 +271,7 @@ const LocationPageInternal = () => {
                         transition={{ duration: 0.4, ease: [0.04, 0.62, 0.23, 0.98] }}
                         className="overflow-hidden"
                     >
-                        <div className="px-4 pb-4">
+                        <div className="px-4 pb-4 max-h-[50vh] overflow-y-auto">
                             {loading ? (
                                 <div className="flex items-center gap-3">
                                     <Loader2 className="animate-spin text-primary"/>
@@ -333,4 +333,3 @@ const LocationPage = () => (
 );
 
 export default LocationPage;
-
