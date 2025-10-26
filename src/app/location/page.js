@@ -1,6 +1,7 @@
+
 'use client';
 
-import React, { useState, useEffect, Suspense, useRef } from 'react';
+import React, { useState, useEffect, Suspense, useRef, useCallback } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import { MapPin, Search, LocateFixed, Loader2, ArrowLeft, AlertTriangle, Save, Home, Building, ChevronUp } from 'lucide-react';
@@ -40,39 +41,8 @@ const LocationPageInternal = () => {
     const [suggestions, setSuggestions] = useState([]);
     const [isPanelOpen, setIsPanelOpen] = useState(true);
 
-    const handleMapCenterChange = (coords) => {
-        setMapCenter(coords);
-        reverseGeocode(coords, true); // Pass true to skip setting global loading state for a smoother drag experience
-    };
 
-    const getCurrentLocation = () => {
-        setLoading(true);
-        setError('Fetching your location...');
-        
-        if (!navigator.geolocation) {
-            setError("Geolocation is not supported by your browser.");
-            setLoading(false);
-            return;
-        }
-
-        navigator.geolocation.getCurrentPosition(
-            (position) => {
-                const coords = {
-                    lat: position.coords.latitude,
-                    lng: position.coords.longitude,
-                };
-                handleMapCenterChange(coords); 
-                reverseGeocode(coords); // Also call reverseGeocode to show the loader and fetch address
-            },
-            (err) => {
-                setError('Could not get your location. Please search manually or allow location access.');
-                setLoading(false);
-            },
-            { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
-        );
-    };
-
-    const reverseGeocode = async (coords, isDrag = false) => {
+    const reverseGeocode = useCallback(async (coords, isDrag = false) => {
         if (!isDrag) {
             setLoading(true);
         }
@@ -101,7 +71,41 @@ const LocationPageInternal = () => {
                 setLoading(false);
             }
         }
+    }, []);
+
+    const handleMapCenterChange = useCallback((coords) => {
+        setMapCenter(coords);
+        reverseGeocode(coords, true);
+    }, [reverseGeocode]);
+
+
+    const getCurrentLocation = () => {
+        setLoading(true);
+        setError('Fetching your location...');
+        
+        if (!navigator.geolocation) {
+            setError("Geolocation is not supported by your browser.");
+            setLoading(false);
+            return;
+        }
+
+        navigator.geolocation.getCurrentPosition(
+            (position) => {
+                const coords = {
+                    lat: position.coords.latitude,
+                    lng: position.coords.longitude,
+                };
+                handleMapCenterChange(coords); 
+                reverseGeocode(coords); 
+            },
+            (err) => {
+                setError('Could not get your location. Please search manually or allow location access.');
+                setLoading(false);
+            },
+            { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+        );
     };
+
     
     // Automatically try to get location on first load
     useEffect(() => {
@@ -341,5 +345,3 @@ const LocationPage = () => (
 );
 
 export default LocationPage;
-
-    
