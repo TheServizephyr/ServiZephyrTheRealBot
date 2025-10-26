@@ -64,7 +64,7 @@ export async function POST(req) {
                         full: addr, // Keep the original string as 'full' for compatibility
                     };
                 }
-                // If it's already an object, assume it has 'full' or construct it
+                // If it's already an object, ensure it has a 'full' property.
                 if (addr && !addr.full) {
                     addr.full = `${addr.street || ''}, ${addr.city || ''}, ${addr.state || ''} - ${addr.pincode || ''}`.replace(/, , /g, ', ').trim();
                 }
