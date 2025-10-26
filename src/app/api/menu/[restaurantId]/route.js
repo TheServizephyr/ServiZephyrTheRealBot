@@ -41,6 +41,45 @@ export async function GET(request, { params }) {
 
         const restaurantRef = restaurantDoc.ref;
         const restaurantData = restaurantDoc.data();
+        
+        // --- CUSTOMER DATA FETCHING LOGS ---
+        let loyaltyPoints = 0;
+        let customerData = null;
+        if (phone) {
+            console.log(`[DEBUG] Menu API: Phone number provided: ${phone}. Fetching customer data.`);
+            const usersRef = firestore.collection('users');
+            console.log(`[DEBUG] Menu API: Searching for user with phone '${phone}' in 'users' collection.`);
+            const userQuery = await usersRef.where('phone', '==', phone).limit(1).get();
+
+            if (!userQuery.empty) {
+                const userDoc = userQuery.docs[0];
+                const userId = userDoc.id;
+                customerData = userDoc.data();
+                console.log(`[DEBUG] Menu API: User found in 'users' collection. UID: ${userId}`);
+
+                const customerInBusinessRef = restaurantRef.collection('customers').doc(userId);
+                const customerInBusinessSnap = await customerInBusinessRef.get();
+                if(customerInBusinessSnap.exists) {
+                    loyaltyPoints = customerInBusinessSnap.data().loyaltyPoints || 0;
+                    console.log(`[DEBUG] Menu API: Customer loyalty points found: ${loyaltyPoints}`);
+                } else {
+                    console.log(`[DEBUG] Menu API: Customer has a main profile but has not ordered from this business yet. Loyalty points are 0.`);
+                }
+            } else {
+                 console.log(`[DEBUG] Menu API: No user found in 'users' collection. Checking 'unclaimed_profiles'.`);
+                 const unclaimedProfileRef = firestore.collection('unclaimed_profiles').doc(phone);
+                 const unclaimedSnap = await unclaimedProfileRef.get();
+                 if (unclaimedSnap.exists) {
+                     customerData = unclaimedSnap.data();
+                     console.log(`[DEBUG] Menu API: User found in 'unclaimed_profiles'. Data:`, customerData);
+                 } else {
+                     console.log(`[DEBUG] Menu API: No profile found for this phone number anywhere.`);
+                 }
+            }
+        } else {
+            console.log("[DEBUG] Menu API: No phone number provided. Skipping customer data fetch.");
+        }
+        // --- END CUSTOMER DATA FETCHING LOGS ---
 
         // ** NEW **: Check restaurant status
         if (restaurantData.approvalStatus !== 'approved' || !restaurantData.isOpen) {
@@ -132,6 +171,7 @@ export async function GET(request, { params }) {
             bannerUrls: restaurantData.bannerUrls,
             menu: menuData,
             coupons: allCoupons,
+            loyaltyPoints: loyaltyPoints, // Send loyalty points
             businessType: restaurantData.businessType || 'restaurant',
             // ** NEW **: Pass all order and payment settings to the client
             approvalStatus: restaurantData.approvalStatus,

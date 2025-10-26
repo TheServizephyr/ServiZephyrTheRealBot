@@ -721,6 +721,9 @@ const OrderPageInternal = () => {
                     businessAddress: menuData.businessAddress || null,
                 });
 
+                // THE FIX: Set loyalty points from the API response
+                setLoyaltyPoints(menuData.loyaltyPoints || 0);
+
                 if (tableIdFromUrl) {
                     setDeliveryType('dine-in');
                     const dineInSetup = localStorage.getItem(`dineInSetup_${restaurantId}_${tableIdFromUrl}`);
