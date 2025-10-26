@@ -1,4 +1,3 @@
-
 'use client';
 
 import React, { useState, useEffect, Suspense, useRef, useCallback } from 'react';
@@ -98,35 +97,19 @@ const AddAddressPageInternal = () => {
     useEffect(() => {
         if (isUserLoading) return; // Wait until auth state is confirmed
 
-        const prefillData = async () => {
+        const prefillData = () => {
             const phoneFromUrl = searchParams.get('phone');
             
-            // Prioritize logged-in user's data first.
+            // **THE FIX: Prioritize logged-in user's data first ALWAYS.**
             if (user) {
-                console.log("[add-address] User is logged in. Using user's data.");
+                console.log("[add-address] User is logged in. Using user's profile data.");
                 setRecipientName(user.displayName || '');
-                // Use phone from URL if present, otherwise from logged-in user profile
-                setRecipientPhone(phoneFromUrl || user.phoneNumber || '');
+                setRecipientPhone(user.phoneNumber || phoneFromUrl || '');
             } 
-            // Only if user is NOT logged in, then try to look up by phone.
+            // Only if user is NOT logged in, then use the phone from URL.
             else if (phoneFromUrl) {
-                 console.log("[add-address] User not logged in. Looking up by phone:", phoneFromUrl);
-                try {
-                    const res = await fetch('/api/customer/lookup', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ phone: phoneFromUrl })
-                    });
-                    if (res.ok) {
-                        const data = await res.json();
-                        setRecipientName(data.name || '');
-                        setRecipientPhone(phoneFromUrl);
-                    } else {
-                         console.warn("[add-address] Lookup failed or no customer profile found for phone:", phoneFromUrl);
-                    }
-                } catch (e) {
-                    console.error("[add-address] Error during customer lookup:", e.message);
-                }
+                 console.log("[add-address] User not logged in, using phone from URL:", phoneFromUrl);
+                 setRecipientPhone(phoneFromUrl);
             }
         };
 
@@ -308,5 +291,3 @@ const AddAddressPage = () => (
 );
 
 export default AddAddressPage;
-
-  

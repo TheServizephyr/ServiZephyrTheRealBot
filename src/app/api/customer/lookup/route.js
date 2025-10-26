@@ -16,6 +16,7 @@ export async function POST(req) {
         console.log(`[DEBUG] /api/customer/lookup: Received lookup request for phone: ${normalizedPhone}`);
         
         const usersRef = firestore.collection('users');
+        // **THE FIX: Only look for users with the role of 'customer'**
         const userQuery = await usersRef
             .where('phone', '==', normalizedPhone)
             .where('role', '==', 'customer')
@@ -25,7 +26,7 @@ export async function POST(req) {
         if (!userQuery.empty) {
             const userDoc = userQuery.docs[0];
             const userData = userDoc.data();
-            console.log(`[DEBUG] /api/customer/lookup: Found verified user in 'users' collection. UID: ${userDoc.id}`);
+            console.log(`[DEBUG] /api/customer/lookup: Found verified user in 'users' collection with role 'customer'. UID: ${userDoc.id}`);
             
             const responseData = {
                 name: userData.name,
@@ -35,6 +36,7 @@ export async function POST(req) {
             return NextResponse.json(responseData, { status: 200 });
         }
         
+        // **This part is now safer, as it's only reached if a verified 'customer' is not found.**
         console.log(`[DEBUG] /api/customer/lookup: No verified customer found. Checking 'unclaimed_profiles'.`);
         const unclaimedProfileRef = firestore.collection('unclaimed_profiles').doc(normalizedPhone);
         const unclaimedProfileSnap = await unclaimedProfileRef.get();
@@ -77,5 +79,3 @@ export async function POST(req) {
         return NextResponse.json({ message: `Backend Error: ${error.message}` }, { status: 500 });
     }
 }
-
-  
