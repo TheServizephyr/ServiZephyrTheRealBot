@@ -4,7 +4,7 @@
 import React, { useState, useEffect, Suspense, useRef } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { motion } from 'framer-motion';
-import { MapPin, Search, LocateFixed, Loader2, ArrowLeft, AlertTriangle, Save, Home, Building } from 'lucide-react';
+import { MapPin, Search, LocateFixed, Loader2, ArrowLeft, AlertTriangle, Save, Home, Building, Globe, Compass } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -30,7 +30,7 @@ const LocationPageInternal = () => {
     const [mapCenter, setMapCenter] = useState({ lat: 28.6139, lng: 77.2090 }); // Default to Delhi
     const [addressDetails, setAddressDetails] = useState(null);
     const [addressLabel, setAddressLabel] = useState('Home');
-    const [loading, setLoading] = useState(false);
+    const [loading, setLoading] = useState(true);
     const [isSaving, setIsSaving] = useState(false);
     const [error, setError] = useState('');
     const debounceTimeout = useRef(null);
@@ -220,11 +220,11 @@ const LocationPageInternal = () => {
             <div className="flex-grow relative">
                  <GoogleMap 
                     center={mapCenter}
-                    onPinDragEnd={reverseGeocode}
+                    onCenterChanged={reverseGeocode}
                  />
                  <Button 
                     variant="secondary" 
-                    className="absolute bottom-4 right-4 z-10 h-12 rounded-full shadow-lg flex items-center gap-2 pr-4"
+                    className="absolute top-4 right-4 z-10 h-12 rounded-full shadow-lg flex items-center gap-2 pr-4"
                     onClick={getCurrentLocation}
                 >
                     <LocateFixed/> Use Current Location
