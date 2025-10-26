@@ -1,4 +1,3 @@
-
 'use client';
 
 import React, { useState, useEffect, Suspense, useRef, useCallback, lazy } from 'react';
@@ -149,14 +148,6 @@ const useSearchParams = () => {
     };
 };
 
-
-// Mock for process.env (Important for GoogleMap component)
-// In your actual Next.js app, this would be set via environment variables
-const process = {
-    env: {
-        NEXT_PUBLIC_GOOGLE_MAPS_API_KEY: "YOUR_API_KEY_HERE" // Replace with your actual key or logic to get it
-    }
-};
 // --- END OF MOCKS ---
 
 
@@ -578,9 +569,8 @@ const LocationPageInternal = () => {
             return;
         }
 
-        // Use the API Key from the mocked process.env
         const apiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
-         if (!apiKey || apiKey === "YOUR_API_KEY_HERE") {
+         if (!apiKey) {
              console.error("API Key is missing or placeholder.");
              setMapsInitError("Google Maps API Key is not configured.");
              setMapsInitializing(false);
@@ -983,5 +973,4 @@ const App = () => {
 
 
 export default App; // Export App as default
-
-
+bhai is code me se sabhi mocks hata do please
