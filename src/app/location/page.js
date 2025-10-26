@@ -70,7 +70,14 @@ const SelectLocationInternal = () => {
     }, [user]);
 
     useEffect(() => {
-        fetchAddresses();
+        const unsubscribe = auth.onAuthStateChanged((user) => {
+            if (user) {
+                fetchAddresses();
+            } else {
+                setLoading(false);
+            }
+        });
+        return () => unsubscribe();
     }, [fetchAddresses]);
 
     const handleSelectAddress = (address) => {
@@ -101,12 +108,13 @@ const SelectLocationInternal = () => {
     };
     
     const handleAddNewAddress = () => {
-        router.push(`/add-address?returnUrl=${encodeURIComponent(returnUrl)}`);
+        const phone = user?.phoneNumber || searchParams.get('phone') || '';
+        router.push(`/add-address?returnUrl=${encodeURIComponent(returnUrl)}&phone=${phone}`);
     }
     
     const handleUseCurrentLocation = () => {
-        // Redirect to the same add-address page with a flag to auto-trigger geolocation
-        router.push(`/add-address?useCurrent=true&returnUrl=${encodeURIComponent(returnUrl)}`);
+        const phone = user?.phoneNumber || searchParams.get('phone') || '';
+        router.push(`/add-address?useCurrent=true&returnUrl=${encodeURIComponent(returnUrl)}&phone=${phone}`);
     };
 
     return (

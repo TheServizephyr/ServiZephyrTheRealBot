@@ -73,7 +73,6 @@ const AddAddressPageInternal = () => {
     }, []);
 
     const handleMapIdle = useCallback((coords) => {
-        // No longer setting mapCenter here to allow smooth dragging
         reverseGeocode(coords);
     }, [reverseGeocode]);
 
@@ -130,7 +129,7 @@ const AddAddressPageInternal = () => {
             // Default to a location if not using current
             reverseGeocode(mapCenter);
         }
-    }, [user, useCurrent, searchParams]);
+    }, [user, useCurrent]);
 
 
     // --- Save Logic ---
