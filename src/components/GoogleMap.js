@@ -57,7 +57,7 @@ const GoogleMap = ({ center, onCenterChanged }) => {
 
     const handleIdle = (ev) => {
         if(onCenterChanged) {
-            onCenterChanged(ev.detail.center);
+            onCenterChanged(ev.detail.center, true); // Pass true to skip loading indicator
         }
     }
 

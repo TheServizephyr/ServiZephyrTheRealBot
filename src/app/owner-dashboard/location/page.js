@@ -148,8 +148,16 @@ const OwnerLocationPage = () => {
         setAddressDetails(prev => ({ ...prev, [field]: value }));
     };
 
-    const reverseGeocode = async (coords) => {
-        // No need to set loading here to prevent flickering
+    const handleMapCenterChange = (coords, skipLoading = false) => {
+        setMapCenter(coords);
+        reverseGeocode(coords, skipLoading);
+    };
+    
+
+    const reverseGeocode = async (coords, skipLoading = false) => {
+        if (!skipLoading) {
+            setLoading(true);
+        }
         setError('');
         try {
             const res = await fetch(`/api/location/geocode?lat=${coords.lat}&lng=${coords.lng}`);
@@ -171,15 +179,13 @@ const OwnerLocationPage = () => {
         } catch (err) {
             setError('Could not fetch address details for this pin location.');
         } finally {
-            setLoading(false); // Only set loading false here
+            if (!skipLoading) {
+                setLoading(false);
+            }
         }
     };
     
-    const handleMapCenterChange = (coords) => {
-        setMapCenter(coords);
-        reverseGeocode(coords);
-    }
-
+    
     const handleSaveLocation = async () => {
         const currentUser = auth.currentUser;
         if (!currentUser || !addressDetails) {
