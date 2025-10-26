@@ -30,6 +30,8 @@ const LocationPageInternal = () => {
     const [mapCenter, setMapCenter] = useState({ lat: 28.6139, lng: 77.2090 }); // Default to Delhi
     const [addressDetails, setAddressDetails] = useState(null);
     const [addressLabel, setAddressLabel] = useState('Home');
+    const [customLabel, setCustomLabel] = useState('');
+    const [showCustomLabelInput, setShowCustomLabelInput] = useState(false);
     const [loading, setLoading] = useState(true);
     const [isSaving, setIsSaving] = useState(false);
     const [error, setError] = useState('');
@@ -132,6 +134,14 @@ const LocationPageInternal = () => {
         setAddressDetails(prev => ({ ...prev, [field]: value }));
     };
 
+    const handleLabelClick = (label) => {
+        setAddressLabel(label);
+        setShowCustomLabelInput(label === 'Other');
+        if (label !== 'Other') {
+            setCustomLabel('');
+        }
+    };
+
 
     const handleConfirmLocation = async () => {
         if (!addressDetails) {
@@ -139,9 +149,11 @@ const LocationPageInternal = () => {
              return;
         }
 
+        const finalLabel = addressLabel === 'Other' ? (customLabel.trim() || 'Other') : addressLabel;
+
         const addressToSave = {
             id: `addr_${Date.now()}`,
-            label: addressLabel,
+            label: finalLabel,
             name: user?.displayName || localStorage.getItem('lastKnownName') || 'User',
             phone: user?.phoneNumber || localStorage.getItem('lastKnownPhone') || '',
             street: addressDetails.street,
@@ -277,11 +289,24 @@ const LocationPageInternal = () => {
                                         <Input value={addressDetails.pincode || ''} onChange={(e) => handleAddressFieldChange('pincode', e.target.value)} placeholder="Pincode"/>
                                         <Input value={addressDetails.state || ''} onChange={(e) => handleAddressFieldChange('state', e.target.value)} placeholder="State"/>
                                     </div>
-                                    <div className="flex items-center gap-2 pt-2">
+                                    <div className="pt-2">
                                         <Label>Label as:</Label>
-                                        <Button type="button" variant={addressLabel === 'Home' ? 'secondary' : 'outline'} size="sm" onClick={() => setAddressLabel('Home')}><Home size={14} className="mr-2"/> Home</Button>
-                                        <Button type="button" variant={addressLabel === 'Work' ? 'secondary' : 'outline'} size="sm" onClick={() => setAddressLabel('Work')}><Building size={14} className="mr-2"/> Work</Button>
-                                        <Button type="button" variant={addressLabel === 'Other' ? 'secondary' : 'outline'} size="sm" onClick={() => setAddressLabel('Other')}><MapPin size={14} className="mr-2"/> Other</Button>
+                                        <div className="flex items-center flex-wrap gap-2 mt-2">
+                                            <Button type="button" variant={addressLabel === 'Home' ? 'secondary' : 'outline'} size="sm" onClick={() => handleLabelClick('Home')}><Home size={14} className="mr-2"/> Home</Button>
+                                            <Button type="button" variant={addressLabel === 'Work' ? 'secondary' : 'outline'} size="sm" onClick={() => handleLabelClick('Work')}><Building size={14} className="mr-2"/> Work</Button>
+                                            <Button type="button" variant={addressLabel === 'Other' ? 'secondary' : 'outline'} size="sm" onClick={() => handleLabelClick('Other')}><MapPin size={14} className="mr-2"/> Other</Button>
+                                            {showCustomLabelInput && (
+                                                <motion.div initial={{ width: 0, opacity: 0 }} animate={{ width: 'auto', opacity: 1 }} transition={{ duration: 0.3 }}>
+                                                    <Input
+                                                        type="text"
+                                                        value={customLabel}
+                                                        onChange={(e) => setCustomLabel(e.target.value)}
+                                                        placeholder="e.g., Friend's House"
+                                                        className="h-9"
+                                                    />
+                                                </motion.div>
+                                            )}
+                                        </div>
                                     </div>
                                     <Button onClick={handleConfirmLocation} disabled={!addressDetails.street || loading || isSaving} className="w-full h-12 text-lg font-bold bg-primary text-primary-foreground hover:bg-primary/90">
                                         {isSaving ? <Loader2 className="animate-spin" /> : 'Confirm & Save Location'}
