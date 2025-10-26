@@ -240,7 +240,8 @@ const LocationPageInternal = () => {
                     className="absolute top-4 right-4 z-10 h-12 rounded-full shadow-lg flex items-center gap-2 pr-4"
                     onClick={getCurrentLocation}
                 >
-                    <LocateFixed/> Use Current Location
+                    {loading && !addressDetails ? <Loader2 className="animate-spin" /> : <LocateFixed />}
+                    Use Current Location
                 </Button>
             </div>
             
@@ -334,5 +335,7 @@ const LocationPage = () => (
 
 export default LocationPage;
 
+
+    
 
     
