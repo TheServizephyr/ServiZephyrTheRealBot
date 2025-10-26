@@ -41,6 +41,10 @@ const LocationPageInternal = () => {
     const [suggestions, setSuggestions] = useState([]);
     const [isPanelOpen, setIsPanelOpen] = useState(true);
 
+    const handleMapCenterChange = (coords) => {
+        setMapCenter(coords);
+        reverseGeocode(coords, true); // Pass true to skip setting global loading state for a smoother drag experience
+    };
 
     const getCurrentLocation = () => {
         setLoading(true);
@@ -58,7 +62,8 @@ const LocationPageInternal = () => {
                     lat: position.coords.latitude,
                     lng: position.coords.longitude,
                 };
-                handleMapCenterChange(coords); // Use the new handler
+                handleMapCenterChange(coords); 
+                reverseGeocode(coords); // Also call reverseGeocode to show the loader and fetch address
             },
             (err) => {
                 setError('Could not get your location. Please search manually or allow location access.');
@@ -68,8 +73,10 @@ const LocationPageInternal = () => {
         );
     };
 
-    const reverseGeocode = async (coords) => {
-        setLoading(true);
+    const reverseGeocode = async (coords, isDrag = false) => {
+        if (!isDrag) {
+            setLoading(true);
+        }
         setError('');
         try {
             const res = await fetch(`/api/location/geocode?lat=${coords.lat}&lng=${coords.lng}`);
@@ -91,18 +98,14 @@ const LocationPageInternal = () => {
         } catch (err) {
             setError('Could not fetch address details for this pin location.');
         } finally {
-            setLoading(false);
+            if (!isDrag) {
+                setLoading(false);
+            }
         }
     };
     
-    // New handler to update state and fetch address
-    const handleMapCenterChange = (coords) => {
-        setMapCenter(coords);
-        reverseGeocode(coords);
-    };
-
+    // Automatically try to get location on first load
     useEffect(() => {
-        // Automatically try to get location on first load
         getCurrentLocation();
     }, []);
 
@@ -131,7 +134,8 @@ const LocationPageInternal = () => {
         setSearchQuery(suggestion.placeAddress);
         setSuggestions([]);
         const coords = { lat: suggestion.latitude, lng: suggestion.longitude };
-        handleMapCenterChange(coords); // Use the new handler
+        handleMapCenterChange(coords);
+        reverseGeocode(coords);
     };
     
     const handleAddressFieldChange = (field, value) => {
@@ -244,7 +248,7 @@ const LocationPageInternal = () => {
                     className="absolute top-4 right-4 z-10 h-12 rounded-full shadow-lg flex items-center gap-2 pr-4"
                     onClick={getCurrentLocation}
                 >
-                    {loading && error === 'Fetching your location...' ? <Loader2 className="animate-spin" /> : <LocateFixed />}
+                    {(loading && error === 'Fetching your location...') ? <Loader2 className="animate-spin" /> : <LocateFixed />}
                     Use Current Location
                 </Button>
             </div>
@@ -277,7 +281,7 @@ const LocationPageInternal = () => {
                         className="overflow-hidden"
                     >
                         <div className="px-4 pb-4 max-h-[50vh] overflow-y-auto">
-                            {loading ? (
+                            {loading && !addressDetails ? (
                                 <div className="flex items-center gap-3">
                                     <Loader2 className="animate-spin text-primary"/>
                                     <span className="text-muted-foreground">{error || 'Fetching address...'}</span>
