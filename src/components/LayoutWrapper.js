@@ -18,6 +18,7 @@ const LayoutWrapper = ({ children }) => {
     '/checkout',
     '/track',
     '/location',
+    '/add-address', // Added this line
     '/customer-form',
     '/bill',
     '/order/placed'
