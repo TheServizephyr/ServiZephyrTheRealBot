@@ -70,7 +70,7 @@ const LocationPageInternal = () => {
     };
 
     const reverseGeocode = async (coords) => {
-        setLoading(true);
+        if (!loading) setLoading(true);
         setError('');
         try {
             const res = await fetch(`/api/location/geocode?lat=${coords.lat}&lng=${coords.lng}`);
@@ -199,7 +199,7 @@ const LocationPageInternal = () => {
     };
 
     return (
-        <div className="h-screen w-screen flex flex-col bg-background text-foreground">
+        <div className="h-screen w-screen flex flex-col bg-background text-foreground green-theme">
             <InfoDialog
                 isOpen={infoDialog.isOpen}
                 onClose={() => setInfoDialog({ isOpen: false, title: '', message: '' })}
@@ -292,9 +292,9 @@ const LocationPageInternal = () => {
                                     <div className="pt-2">
                                         <Label>Label as:</Label>
                                         <div className="flex items-center flex-wrap gap-2 mt-2">
-                                            <Button type="button" variant={addressLabel === 'Home' ? 'secondary' : 'outline'} size="sm" onClick={() => handleLabelClick('Home')}><Home size={14} className="mr-2"/> Home</Button>
-                                            <Button type="button" variant={addressLabel === 'Work' ? 'secondary' : 'outline'} size="sm" onClick={() => handleLabelClick('Work')}><Building size={14} className="mr-2"/> Work</Button>
-                                            <Button type="button" variant={addressLabel === 'Other' ? 'secondary' : 'outline'} size="sm" onClick={() => handleLabelClick('Other')}><MapPin size={14} className="mr-2"/> Other</Button>
+                                            <Button type="button" variant={addressLabel === 'Home' ? 'default' : 'outline'} size="sm" onClick={() => handleLabelClick('Home')}><Home size={14} className="mr-2"/> Home</Button>
+                                            <Button type="button" variant={addressLabel === 'Work' ? 'default' : 'outline'} size="sm" onClick={() => handleLabelClick('Work')}><Building size={14} className="mr-2"/> Work</Button>
+                                            <Button type="button" variant={addressLabel === 'Other' ? 'default' : 'outline'} size="sm" onClick={() => handleLabelClick('Other')}><MapPin size={14} className="mr-2"/> Other</Button>
                                             {showCustomLabelInput && (
                                                 <motion.div initial={{ width: 0, opacity: 0 }} animate={{ width: 'auto', opacity: 1 }} transition={{ duration: 0.3 }}>
                                                     <Input
