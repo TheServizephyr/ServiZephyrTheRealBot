@@ -14,6 +14,7 @@ export async function POST(req) {
         
         // Normalize phone to 10 digits if it starts with 91
         const normalizedPhone = phone.length > 10 ? phone.slice(-10) : phone;
+        console.log(`[DEBUG] /api/customer/lookup: Received lookup request for phone: ${normalizedPhone}`);
         
         const usersRef = firestore.collection('users');
         // --- THE FIX: Added a check for role to ensure we only get customers ---
@@ -27,6 +28,7 @@ export async function POST(req) {
         if (!userQuery.empty) {
             const userDoc = userQuery.docs[0];
             const userData = userDoc.data();
+            console.log(`[DEBUG] /api/customer/lookup: Found verified user in 'users' collection. UID: ${userDoc.id}`);
             
             const responseData = {
                 name: userData.name,
@@ -36,12 +38,14 @@ export async function POST(req) {
             return NextResponse.json(responseData, { status: 200 });
         }
         
+        console.log(`[DEBUG] /api/customer/lookup: No verified user found. Checking 'unclaimed_profiles'.`);
         // 2. If no master profile, check for an unclaimed profile
         const unclaimedProfileRef = firestore.collection('unclaimed_profiles').doc(normalizedPhone);
         const unclaimedProfileSnap = await unclaimedProfileRef.get();
         
         if (unclaimedProfileSnap.exists) {
             const unclaimedData = unclaimedProfileSnap.data();
+            console.log(`[DEBUG] /api/customer/lookup: Found unclaimed profile for phone: ${normalizedPhone}`);
             const responseData = {
                 name: unclaimedData.name,
                 // Ensure addresses are always in the correct format
@@ -72,6 +76,7 @@ export async function POST(req) {
              return NextResponse.json(responseData, { status: 200 });
         }
         
+        console.log(`[DEBUG] /api/customer/lookup: No profile found for ${normalizedPhone} in any collection.`);
         // 3. If neither exists, the user is completely new.
         return NextResponse.json({ message: 'User not found.' }, { status: 404 });
 
