@@ -96,18 +96,21 @@ const AddAddressPageInternal = () => {
     }, [reverseGeocode]);
 
     useEffect(() => {
-        if (isUserLoading) return;
+        if (isUserLoading) return; // Wait until auth state is confirmed
 
         const prefillData = async () => {
             const phoneFromUrl = searchParams.get('phone');
-            // If user is logged in, use their details
+            
+            // **THE FIX**: Prioritize logged-in user's data first.
             if (user) {
+                console.log("[add-address] User is logged in. Using user's data.");
                 setRecipientName(user.displayName || '');
-                // Prioritize phone from URL, then from user object
+                // Use phone from URL if present, otherwise from logged-in user profile
                 setRecipientPhone(phoneFromUrl || user.phoneNumber || '');
             } 
-            // If user is not logged in, but we have a phone number, lookup their profile
+            // Only if user is NOT logged in, then try to look up by phone.
             else if (phoneFromUrl) {
+                 console.log("[add-address] User not logged in. Looking up by phone:", phoneFromUrl);
                 try {
                     const res = await fetch('/api/customer/lookup', {
                         method: 'POST',
@@ -118,9 +121,11 @@ const AddAddressPageInternal = () => {
                         const data = await res.json();
                         setRecipientName(data.name || '');
                         setRecipientPhone(phoneFromUrl);
+                    } else {
+                         console.warn("[add-address] Lookup failed or no customer profile found for phone:", phoneFromUrl);
                     }
                 } catch (e) {
-                    console.warn("Could not prefill user data:", e.message);
+                    console.error("[add-address] Error during customer lookup:", e.message);
                 }
             }
         };
