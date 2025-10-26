@@ -21,6 +21,7 @@ const GoogleMap = dynamic(() => import('@/components/GoogleMap'), {
 const AddAddressPageInternal = () => {
     const router = useRouter();
     const searchParams = useSearchParams();
+    const geocodeTimeoutRef = useRef(null);
     
     const { user } = useAuth();
     const [mapCenter, setMapCenter] = useState({ lat: 28.6139, lng: 77.2090 });
@@ -42,28 +43,33 @@ const AddAddressPageInternal = () => {
     // --- Geocoding and Location Logic ---
 
     const reverseGeocode = useCallback(async (coords) => {
-        setLoading(true);
-        setError('');
-        try {
-            const res = await fetch(`/api/location/geocode?lat=${coords.lat}&lng=${coords.lng}`);
-            const data = await res.json();
-            if (!res.ok) throw new Error(data.message || 'Failed to fetch address details.');
-    
-            setAddressDetails({
-                street: data.road || data.neighbourhood || '',
-                city: data.city || data.town || data.village || '',
-                pincode: data.pincode || '',
-                state: data.state || '',
-                country: data.country || 'IN',
-                latitude: coords.lat,
-                longitude: coords.lng,
-            });
-        } catch (err) {
-            setError('Could not fetch address details for this pin location.');
-            setAddressDetails(null);
-        } finally {
-            setLoading(false);
+        if (geocodeTimeoutRef.current) {
+            clearTimeout(geocodeTimeoutRef.current);
         }
+        geocodeTimeoutRef.current = setTimeout(async () => {
+            setLoading(true);
+            setError('');
+            try {
+                const res = await fetch(`/api/location/geocode?lat=${coords.lat}&lng=${coords.lng}`);
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.message || 'Failed to fetch address details.');
+        
+                setAddressDetails({
+                    street: data.road || data.neighbourhood || '',
+                    city: data.city || data.town || data.village || '',
+                    pincode: data.pincode || '',
+                    state: data.state || '',
+                    country: data.country || 'IN',
+                    latitude: coords.lat,
+                    longitude: coords.lng,
+                });
+            } catch (err) {
+                setError('Could not fetch address details for this pin location.');
+                setAddressDetails(null);
+            } finally {
+                setLoading(false);
+            }
+        }, 1000);
     }, []);
 
     const handleMapIdle = useCallback((coords) => {
