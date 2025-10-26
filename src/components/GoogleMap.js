@@ -7,42 +7,7 @@ import { Button } from '@/components/ui/button';
 
 const GOOGLE_MAPS_API_KEY = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
 
-// This is the key component that syncs the map state with React state
-const MapInnerComponent = ({ center, onIdle }) => {
-    const map = useMap(); // Get map instance from the context
-
-    // Effect 1: Imperatively update map center when the 'center' prop changes from parent
-    useEffect(() => {
-        if (map && center) {
-            const currentMapCenter = map.getCenter().toJSON();
-            // Check if the center has actually changed to avoid infinite loops
-            if (currentMapCenter.lat.toFixed(6) !== center.lat.toFixed(6) || currentMapCenter.lng.toFixed(6) !== center.lng.toFixed(6)) {
-                 map.setCenter(center);
-            }
-        }
-    }, [map, center]);
-
-    // Effect 2: Add the 'idle' listener for drag detection
-    useEffect(() => {
-        if (!map || !onIdle) return;
-        
-        const idleListener = map.addListener('idle', () => {
-            const newCenter = map.getCenter().toJSON();
-            onIdle(newCenter);
-        });
-        
-        // Cleanup listener on unmount
-        return () => {
-            if (idleListener) {
-                idleListener.remove();
-            }
-        };
-    }, [map, onIdle]);
-
-    return null; // This component does not render anything itself
-};
-
-
+// MapControls component (No change needed)
 const MapControls = () => {
     const map = useMap();
     const [mapTypeId, setMapTypeId] = useState('roadmap');
@@ -84,7 +49,19 @@ const MapControls = () => {
 };
 
 
+// Main GoogleMap Component (This is where the fix is)
 const GoogleMap = ({ center, onIdle }) => {
+    // We use a ref to get the map instance for the onIdle callback
+    const mapRef = useRef(null);
+
+    // This handler will be called *after* the drag (pan) or zoom finishes
+    const handleIdle = () => {
+        if (mapRef.current && onIdle) {
+            const newCenter = mapRef.current.getCenter().toJSON();
+            onIdle(newCenter);
+        }
+    };
+
     if (!GOOGLE_MAPS_API_KEY) {
         return <div className="w-full h-full bg-muted flex items-center justify-center"><p className="text-destructive">Google Maps API Key not found.</p></div>;
     }
@@ -95,13 +72,15 @@ const GoogleMap = ({ center, onIdle }) => {
                 <Map
                     mapId="servizephyr_map"
                     style={{ width: '100%', height: '100%' }}
-                    center={center}
+                    center={center} // Sets the initial center
                     defaultZoom={15}
-                    gestureHandling={'greedy'}
+                    gestureHandling={'greedy'} // Allows all gestures (zoom and drag)
                     disableDefaultUI={true}
                     tilt={0}
+                    onCameraChanged={(ev) => (mapRef.current = ev.map)} // Get the map instance
+                    onIdle={handleIdle} // Call handleIdle AFTER dragging/zooming stops
                 >
-                  <MapInnerComponent center={center} onIdle={onIdle} />
+                    {/* The MapInnerComponent is no longer needed */}
                 </Map>
                 <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 pointer-events-none">
                      <div style={{ fontSize: '2.5rem' }}>📍</div>
