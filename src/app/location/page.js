@@ -1,348 +1,183 @@
 'use client';
 
-import React, { useState, useEffect, Suspense, useRef, useCallback } from 'react';
+import React, { useState, useEffect, Suspense, useCallback } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { motion, AnimatePresence } from 'framer-motion';
-import { MapPin, Search, LocateFixed, Loader2, ArrowLeft, AlertTriangle, Save, Home, Building, ChevronUp } from 'lucide-react';
+import { motion } from 'framer-motion';
+import { MapPin, Search, LocateFixed, Loader2, Plus, Home, Building, Trash2, ArrowLeft } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import dynamic from 'next/dynamic';
 import { auth } from '@/lib/firebase';
 import InfoDialog from '@/components/InfoDialog';
 import { useAuth } from '@/firebase';
-import { cn } from '@/lib/utils';
 
-const GoogleMap = dynamic(() => import('@/components/GoogleMap'), { 
-    ssr: false,
-    loading: () => <div className="w-full h-full bg-muted flex items-center justify-center"><Loader2 className="animate-spin text-primary"/></div>
-});
+const SavedAddressCard = ({ address, onSelect, onDelete }) => {
+    const Icon = address.label === 'Home' ? Home : address.label === 'Work' ? Building : MapPin;
+    return (
+        <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="bg-card border border-border rounded-xl p-4 flex gap-4 transition-all hover:border-primary hover:shadow-lg"
+        >
+            <div className="bg-muted p-3 rounded-full h-fit">
+                <Icon size={24} className="text-primary" />
+            </div>
+            <div className="flex-grow cursor-pointer" onClick={() => onSelect(address)}>
+                <h3 className="font-bold text-foreground">{address.label}</h3>
+                <p className="text-sm text-muted-foreground mt-1">{address.full}</p>
+                <p className="text-xs text-muted-foreground mt-2">Phone: {address.phone}</p>
+            </div>
+            <div className="flex-shrink-0">
+                <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive" onClick={(e) => { e.stopPropagation(); onDelete(address.id); }}>
+                    <Trash2 size={16} />
+                </Button>
+            </div>
+        </motion.div>
+    );
+}
 
-const LocationPageInternal = () => {
+const SelectLocationInternal = () => {
     const router = useRouter();
     const searchParams = useSearchParams();
-    
     const { user } = useAuth();
-    const [mapCenter, setMapCenter] = useState({ lat: 28.6139, lng: 77.2090 }); // Default to Delhi
-    const [addressDetails, setAddressDetails] = useState(null);
-    const [addressLabel, setAddressLabel] = useState('Home');
-    const [customLabel, setCustomLabel] = useState('');
-    const [showCustomLabelInput, setShowCustomLabelInput] = useState(false);
+
+    const [addresses, setAddresses] = useState([]);
     const [loading, setLoading] = useState(true);
-    const [isSaving, setIsSaving] = useState(false);
     const [error, setError] = useState('');
-    const debounceTimeout = useRef(null);
-    const geocodeTimeoutRef = useRef(null);
-    const initialLocationFetched = useRef(false);
     const [infoDialog, setInfoDialog] = useState({ isOpen: false, title: '', message: '' });
-    const [searchQuery, setSearchQuery] = useState('');
-    const [suggestions, setSuggestions] = useState([]);
-    const [isPanelOpen, setIsPanelOpen] = useState(true);
+
+    const returnUrl = searchParams.get('returnUrl') || '/';
     
-    const [restaurantId, setRestaurantId] = useState(null);
-    const [returnUrl, setReturnUrl] = useState('');
-
-    useEffect(() => {
-        const id = searchParams.get('restaurantId');
-        const url = searchParams.get('returnUrl');
-        setRestaurantId(id);
-        setReturnUrl(url || `/order/${id}`);
-    }, [searchParams]);
-
-    const reverseGeocode = useCallback(async (coords) => {
-        if (geocodeTimeoutRef.current) {
-            clearTimeout(geocodeTimeoutRef.current);
-        }
-        setLoading(true);
-        setError('');
-        geocodeTimeoutRef.current = setTimeout(async () => {
-            try {
-                const res = await fetch(`/api/location/geocode?lat=${coords.lat}&lng=${coords.lng}`);
-                const data = await res.json();
-                if (!res.ok) throw new Error(data.message || 'Failed to fetch address details.');
-    
-                setAddressDetails({
-                    street: data.road || data.neighbourhood || '',
-                    city: data.city || data.town || data.village || '',
-                    pincode: data.pincode || '',
-                    state: data.state || '',
-                    country: data.country || 'IN',
-                    fullAddress: data.formatted_address,
-                    latitude: coords.lat,
-                    longitude: coords.lng,
-                });
-                setSearchQuery(data.formatted_address);
-                
-            } catch (err) {
-                setError('Could not fetch address details for this pin location.');
-            } finally {
-                setLoading(false);
-            }
-        }, 500);
-    }, []);
-
-    const handleMapIdle = useCallback((coords) => {
-        // Just fetch the address. Do not set the map center.
-        reverseGeocode(coords);
-    }, [reverseGeocode]);
-
-    const getCurrentLocation = useCallback(() => {
-        setLoading(true);
-        setError('Fetching your location...');
-        
-        if (!navigator.geolocation) {
-            setError("Geolocation is not supported by your browser.");
+    const fetchAddresses = useCallback(async () => {
+        if (!user) {
             setLoading(false);
             return;
         }
-
-        navigator.geolocation.getCurrentPosition(
-            (position) => {
-                const coords = {
-                    lat: position.coords.latitude,
-                    lng: position.coords.longitude,
-                };
-                setMapCenter(coords); 
-                reverseGeocode(coords);
-            },
-            (err) => {
-                setError('Could not get your location. Please search manually or allow location access.');
-                setLoading(false);
-            },
-            { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
-        );
-    }, [reverseGeocode]);
+        setLoading(true);
+        setError('');
+        try {
+            const idToken = await user.getIdToken();
+            const res = await fetch('/api/user/addresses', {
+                headers: { 'Authorization': `Bearer ${idToken}` }
+            });
+            if (!res.ok) throw new Error('Failed to fetch addresses.');
+            const data = await res.json();
+            setAddresses(data.addresses || []);
+        } catch (err) {
+            setError(err.message);
+        } finally {
+            setLoading(false);
+        }
+    }, [user]);
 
     useEffect(() => {
-        if (typeof window !== 'undefined' && !initialLocationFetched.current) {
-            getCurrentLocation();
-            initialLocationFetched.current = true;
+        fetchAddresses();
+    }, [fetchAddresses]);
+
+    const handleSelectAddress = (address) => {
+        localStorage.setItem('customerLocation', JSON.stringify(address));
+        router.push(returnUrl);
+    };
+
+    const handleDeleteAddress = async (addressId) => {
+        if (!window.confirm("Are you sure you want to delete this address?")) return;
+
+        try {
+            if (!user) throw new Error("Authentication required.");
+            const idToken = await user.getIdToken();
+            const res = await fetch('/api/user/addresses', {
+                method: 'DELETE',
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${idToken}` },
+                body: JSON.stringify({ addressId })
+            });
+            if (!res.ok) {
+                 const data = await res.json();
+                 throw new Error(data.message || 'Failed to delete address.');
+            }
+            setInfoDialog({isOpen: true, title: 'Success', message: 'Address deleted successfully.'});
+            fetchAddresses(); // Refresh list
+        } catch (err) {
+            setInfoDialog({isOpen: true, title: 'Error', message: err.message});
         }
-    }, [getCurrentLocation]);
-
-    useEffect(() => {
-        if (debounceTimeout.current) clearTimeout(debounceTimeout.current);
-
-        if (searchQuery && searchQuery.length > 2 && searchQuery !== addressDetails?.fullAddress) {
-            debounceTimeout.current = setTimeout(async () => {
-                try {
-                    const res = await fetch(`/api/location/search?query=${searchQuery}`);
-                    if (!res.ok) throw new Error('Search failed.');
-                    const data = await res.json();
-                    setSuggestions(data || []);
-                } catch (err) {
-                    console.error("Search API error:", err);
-                }
-            }, 300);
-        } else {
-            setSuggestions([]);
-        }
-
-        return () => clearTimeout(debounceTimeout.current);
-    }, [searchQuery, addressDetails]);
-
-    const handleSuggestionClick = (suggestion) => {
-        setSearchQuery(suggestion.placeAddress);
-        setSuggestions([]);
-        const coords = { lat: suggestion.latitude, lng: suggestion.longitude };
-        setMapCenter(coords); 
-        reverseGeocode(coords);
     };
     
-    const handleAddressFieldChange = (field, value) => {
-        setAddressDetails(prev => ({ ...prev, [field]: value }));
-    };
-
-    const handleLabelClick = (label) => {
-        setAddressLabel(label);
-        setShowCustomLabelInput(label === 'Other');
-        if (label !== 'Other') {
-            setCustomLabel('');
-        }
-    };
-
-    const handleConfirmLocation = async () => {
-        if (!addressDetails) {
-             setInfoDialog({ isOpen: true, title: "Error", message: "Please set a location first." });
-             return;
-        }
-
-        const finalLabel = addressLabel === 'Other' ? (customLabel.trim() || 'Other') : addressLabel;
-
-        const addressToSave = {
-            id: `addr_${Date.now()}`,
-            label: finalLabel,
-            name: user?.displayName || 'Guest User',
-            phone: user?.phoneNumber || '',
-            street: addressDetails.street,
-            city: addressDetails.city,
-            state: addressDetails.state,
-            pincode: addressDetails.pincode,
-            country: addressDetails.country,
-            full: `${addressDetails.street}, ${addressDetails.city}, ${addressDetails.state} - ${addressDetails.pincode}`,
-            latitude: addressDetails.latitude,
-            longitude: addressDetails.longitude,
-        };
-
-        localStorage.setItem('customerLocation', JSON.stringify(addressToSave));
-
-        if (user) {
-            setIsSaving(true);
-            try {
-                const idToken = await user.getIdToken();
-                const res = await fetch('/api/user/addresses', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${idToken}` },
-                    body: JSON.stringify(addressToSave)
-                });
-
-                if (!res.ok) {
-                    const errData = await res.json();
-                    throw new Error(errData.message || 'Failed to save address to profile.');
-                }
-                router.push(returnUrl);
-            } catch (err) {
-                setInfoDialog({ isOpen: true, title: "Error", message: `Could not save location: ${err.message}` });
-            } finally {
-                setIsSaving(false);
-            }
-        } else {
-            router.push(returnUrl);
-        }
+    const handleAddNewAddress = () => {
+        router.push(`/add-address?returnUrl=${encodeURIComponent(returnUrl)}`);
+    }
+    
+    const handleUseCurrentLocation = () => {
+        // Redirect to the same add-address page with a flag to auto-trigger geolocation
+        router.push(`/add-address?useCurrent=true&returnUrl=${encodeURIComponent(returnUrl)}`);
     };
 
     return (
-        <div className="h-screen w-screen flex flex-col bg-background text-foreground green-theme">
+        <div className="min-h-screen bg-background text-foreground">
             <InfoDialog
                 isOpen={infoDialog.isOpen}
                 onClose={() => setInfoDialog({ isOpen: false, title: '', message: '' })}
                 title={infoDialog.title}
                 message={infoDialog.message}
             />
-             <header className="p-4 border-b border-border flex items-center gap-4 flex-shrink-0 z-10 bg-background/80 backdrop-blur-sm">
+            <header className="sticky top-0 z-20 bg-background/80 backdrop-blur-lg border-b border-border p-4 flex items-center gap-4">
                  <Button variant="ghost" size="icon" onClick={() => router.back()}><ArrowLeft/></Button>
-                 <div className="relative w-full">
-                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground"/>
-                     <Input
-                        type="text"
-                        placeholder="Search for your location..."
-                        className="w-full pl-10 h-11"
-                        value={searchQuery}
-                        onChange={(e) => setSearchQuery(e.target.value)}
-                    />
-                    {suggestions.length > 0 && (
-                        <div className="absolute top-full mt-2 w-full bg-card border border-border rounded-lg shadow-lg max-h-60 overflow-y-auto z-20">
-                            {suggestions.map(s => (
-                                <div key={s.eLoc} onClick={() => handleSuggestionClick(s)} className="p-3 hover:bg-muted cursor-pointer border-b border-border last:border-b-0">
-                                    <p className="font-semibold text-sm">{s.placeName}</p>
-                                    <p className="text-xs text-muted-foreground">{s.placeAddress}</p>
-                                </div>
-                            ))}
-                        </div>
-                    )}
-                 </div>
+                 <h1 className="text-xl font-bold">Select a Location</h1>
             </header>
 
-            <div className="flex-grow relative">
-                <GoogleMap 
-                   center={mapCenter}
-                   onIdle={handleMapIdle}
-                />
-                <Button 
-                   variant="secondary" 
-                   className="absolute top-4 right-4 z-10 h-12 rounded-full shadow-lg flex items-center gap-2 pr-4 bg-white text-foreground hover:bg-muted"
-                   onClick={getCurrentLocation}
-                   disabled={loading && error === 'Fetching your location...'}
-               >
-                   {(loading && error === 'Fetching your location...') ? <Loader2 className="animate-spin" /> : <LocateFixed />}
-                   Use Current Location
-               </Button>
-            </div>
-            
-            <div className="fixed bottom-0 left-0 right-0 z-20 bg-card border-t border-border rounded-t-2xl shadow-lg">
-                <button
-                   onClick={() => setIsPanelOpen(prev => !prev)}
-                   className="w-full flex justify-between items-center cursor-pointer p-4"
-                   aria-expanded={isPanelOpen}
-                   aria-controls="location-details-panel"
-                >
-                    <p className="font-bold text-lg flex items-center gap-2">
-                        <MapPin size={20} className="text-primary"/> Set Delivery Location
-                    </p>
-                    <motion.div animate={{ rotate: isPanelOpen ? 180 : 0 }}>
-                        <ChevronUp/>
-                    </motion.div>
-                </button>
-                <AnimatePresence initial={false}>
-                {isPanelOpen && (
-                    <motion.div
-                       id="location-details-panel"
-                       key="content"
-                       initial="collapsed"
-                       animate="open"
-                       exit="collapsed"
-                       variants={{
-                           open: { opacity: 1, height: "auto" },
-                           collapsed: { opacity: 0, height: 0 }
-                       }}
-                       transition={{ duration: 0.3, ease: "easeOut" }}
-                       className="overflow-hidden"
-                    >
-                       <div className="px-4 pb-4 max-h-[calc(50vh - 60px)] overflow-y-auto">
-                            {loading ? (
-                                 <div className="flex items-center justify-center gap-3 p-4">
-                                     <Loader2 className="animate-spin text-primary"/>
-                                     <span className="text-muted-foreground">{error || 'Fetching address details...'}</span>
-                                 </div>
-                             ) : error && !addressDetails ? (
-                                 <div className="text-destructive text-center font-semibold p-4 bg-destructive/10 rounded-lg flex items-center justify-center gap-2 my-2">
-                                     <AlertTriangle size={16}/> {error}
-                                 </div>
-                             ) : addressDetails ? (
-                                 <div className="space-y-3 pt-2">
-                                     <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                                         <Input value={addressDetails.street || ''} onChange={(e) => handleAddressFieldChange('street', e.target.value)} placeholder="Street / Area"/>
-                                         <Input value={addressDetails.city || ''} onChange={(e) => handleAddressFieldChange('city', e.target.value)} placeholder="City"/>
-                                         <Input value={addressDetails.pincode || ''} onChange={(e) => handleAddressFieldChange('pincode', e.target.value)} placeholder="Pincode"/>
-                                         <Input value={addressDetails.state || ''} onChange={(e) => handleAddressFieldChange('state', e.target.value)} placeholder="State"/>
-                                     </div>
-                                     <div className="pt-2">
-                                         <Label>Label as:</Label>
-                                         <div className="flex items-center flex-wrap gap-2 mt-2">
-                                             <Button type="button" variant={addressLabel === 'Home' ? 'default' : 'outline'} size="sm" onClick={() => handleLabelClick('Home')}><Home size={14} className="mr-2"/> Home</Button>
-                                             <Button type="button" variant={addressLabel === 'Work' ? 'default' : 'outline'} size="sm" onClick={() => handleLabelClick('Work')}><Building size={14} className="mr-2"/> Work</Button>
-                                             <Button type="button" variant={addressLabel === 'Other' ? 'default' : 'outline'} size="sm" onClick={() => handleLabelClick('Other')}><MapPin size={14} className="mr-2"/> Other</Button>
-                                             {showCustomLabelInput && (
-                                                 <motion.div initial={{ width: 0, opacity: 0 }} animate={{ width: 'auto', opacity: 1 }}>
-                                                     <Input
-                                                         type="text"
-                                                         value={customLabel}
-                                                         onChange={(e) => setCustomLabel(e.target.value)}
-                                                         placeholder="e.g., Friend's House"
-                                                         className="h-9"
-                                                     />
-                                                 </motion.div>
-                                             )}
-                                         </div>
-                                     </div>
-                                     <Button onClick={handleConfirmLocation} disabled={!addressDetails.street || loading || isSaving} className="w-full h-12 text-lg font-bold bg-primary text-primary-foreground hover:bg-primary/90">
-                                         {isSaving ? <Loader2 className="animate-spin" /> : 'Confirm & Save Location'}
-                                     </Button>
-                                 </div>
-                             ) : null}
+            <main className="p-4 container mx-auto">
+                <div className="relative mb-6">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
+                    <Input placeholder="Search for area, street name..." className="w-full pl-10 h-12" />
+                </div>
+                
+                <div className="space-y-4">
+                     <button onClick={handleUseCurrentLocation} className="w-full flex items-center text-left p-4 bg-card rounded-xl border border-border hover:bg-muted transition-colors">
+                        <LocateFixed className="text-primary mr-4" />
+                        <div>
+                            <p className="font-semibold text-foreground">Use current location</p>
+                            <p className="text-xs text-muted-foreground">Using GPS</p>
                         </div>
-                    </motion.div>
-                )}
-                </AnimatePresence>
-            </div>
+                    </button>
+                     <button onClick={handleAddNewAddress} className="w-full flex items-center text-left p-4 bg-card rounded-xl border border-border hover:bg-muted transition-colors">
+                        <Plus className="text-primary mr-4" />
+                        <div>
+                            <p className="font-semibold text-foreground">Add a new address</p>
+                            <p className="text-xs text-muted-foreground">Pin your location on the map</p>
+                        </div>
+                    </button>
+                </div>
+
+                <div className="mt-8">
+                    <h2 className="font-bold text-muted-foreground mb-4">SAVED ADDRESSES</h2>
+                    {loading ? (
+                        <div className="flex justify-center py-8"><Loader2 className="animate-spin text-primary" /></div>
+                    ) : error ? (
+                        <div className="text-center py-8 text-destructive">{error}</div>
+                    ) : addresses.length > 0 ? (
+                        <div className="space-y-4">
+                            {addresses.map(address => (
+                                <SavedAddressCard 
+                                    key={address.id} 
+                                    address={address} 
+                                    onSelect={handleSelectAddress}
+                                    onDelete={handleDeleteAddress}
+                                />
+                            ))}
+                        </div>
+                    ) : (
+                        <div className="text-center py-8 text-muted-foreground">
+                            <p>No saved addresses found.</p>
+                            <p className="text-sm">Add a new address to get started.</p>
+                        </div>
+                    )}
+                </div>
+            </main>
         </div>
     );
 };
 
-const LocationPage = () => (
-    <Suspense fallback={<div className="min-h-screen bg-background flex items-center justify-center"><Loader2 className="animate-spin text-primary h-16 w-16"/></div>}>
-       <LocationPageInternal/>
-    </Suspense>
-);
-
-export default LocationPage;
+export default function SelectLocationPage() {
+    return (
+        <Suspense fallback={<div className="min-h-screen bg-background flex items-center justify-center"><Loader2 className="animate-spin text-primary h-16 w-16"/></div>}>
+            <SelectLocationInternal />
+        </Suspense>
+    );
+}

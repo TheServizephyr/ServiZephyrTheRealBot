@@ -48,6 +48,9 @@ export async function POST(req) {
 
         const userRef = getFirestore().collection('users').doc(uid);
         
+        // --- THE FIX ---
+        // Use `update` with `arrayUnion` to correctly add the new address to the array.
+        // This will create the 'addresses' field if it doesn't exist.
         await userRef.update({
             addresses: FieldValue.arrayUnion(newAddress)
         });
@@ -57,7 +60,12 @@ export async function POST(req) {
     } catch (error) {
         console.error("POST /api/user/addresses ERROR:", error);
         if (error.code === 'not-found') {
-             return NextResponse.json({ message: 'User profile not found. Cannot save address.' }, { status: 404 });
+             // If user document doesn't exist, we can create it with the address
+             const uid = await getUserId(req);
+             const userRef = getFirestore().collection('users').doc(uid);
+             const newAddress = await req.json();
+             await userRef.set({ addresses: [newAddress] }, { merge: true });
+             return NextResponse.json({ message: 'User profile created and address added!', address: newAddress }, { status: 201 });
         }
         return NextResponse.json({ message: error.message || 'Internal Server Error' }, { status: error.status || 500 });
     }
@@ -87,7 +95,8 @@ export async function DELETE(req) {
         const addressToRemove = currentAddresses.find(addr => addr.id === addressId);
 
         if (!addressToRemove) {
-            return NextResponse.json({ message: 'Address not found in user profile.' }, { status: 404 });
+            // This is not a critical error, maybe the address was already deleted.
+            return NextResponse.json({ message: 'Address not found in user profile.' }, { status: 200 });
         }
         
         await userRef.update({
