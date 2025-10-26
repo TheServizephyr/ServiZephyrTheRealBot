@@ -68,7 +68,7 @@ const GoogleMap = ({ center, onCenterChanged }) => {
                     mapId="servizephyr_map"
                     style={{ width: '100%', height: '100%' }}
                     defaultCenter={center}
-                    center={center}
+                    key={center.lat + '-' + center.lng} // Re-mount if center prop changes significantly
                     defaultZoom={15}
                     gestureHandling={'greedy'}
                     disableDefaultUI={true}
@@ -88,5 +88,4 @@ const GoogleMap = ({ center, onCenterChanged }) => {
 };
 
 export default GoogleMap;
-
     
