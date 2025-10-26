@@ -240,7 +240,7 @@ const LocationPageInternal = () => {
                     <p className="font-bold text-lg flex items-center gap-2">
                         <MapPin size={20} className="text-primary"/> Fine-tune Address
                     </p>
-                    <motion.div animate={{ rotate: isPanelOpen ? 0 : 180 }}>
+                    <motion.div animate={{ rotate: isPanelOpen ? 180 : 0 }}>
                         <ChevronUp/>
                     </motion.div>
                 </button>
