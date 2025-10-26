@@ -1,21 +1,23 @@
 'use client';
 
-import React, { useEffect } from 'react';
-import { APIProvider, Map, useMap } from '@vis.gl/react-google-maps';
+import React, { useState, useEffect, useRef } from 'react';
+import { APIProvider, Map, useMap, AdvancedMarker } from '@vis.gl/react-google-maps';
 import { Loader2, Globe, Compass } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
 const GOOGLE_MAPS_API_KEY = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
 
+// This is the key component that syncs the map state with React state
 const MapInnerComponent = ({ center, onCenterChanged }) => {
-    const map = useMap();
+    const map = useMap(); // Get map instance from the context
 
-    // Effect 1: Imperatively update map center when 'center' prop changes (for button clicks)
+    // Effect 1: Imperatively update map center when the 'center' prop changes from parent
     useEffect(() => {
         if (map && center) {
             const currentMapCenter = map.getCenter().toJSON();
+            // Check if the center has actually changed to avoid infinite loops
             if (currentMapCenter.lat.toFixed(6) !== center.lat.toFixed(6) || currentMapCenter.lng.toFixed(6) !== center.lng.toFixed(6)) {
-                map.setCenter(center);
+                 map.setCenter(center);
             }
         }
     }, [map, center]);
@@ -23,17 +25,23 @@ const MapInnerComponent = ({ center, onCenterChanged }) => {
     // Effect 2: Add the 'idle' listener for drag detection
     useEffect(() => {
         if (!map || !onCenterChanged) return;
+        
         const idleListener = map.addListener('idle', () => {
             const newCenter = map.getCenter().toJSON();
-            // Call the handler passed from parent to update the state there
             onCenterChanged(newCenter);
         });
+        
         // Cleanup listener on unmount
-        return () => idleListener.remove();
+        return () => {
+            if (idleListener) {
+                idleListener.remove();
+            }
+        };
     }, [map, onCenterChanged]);
 
     return null; // This component does not render anything itself
 };
+
 
 const MapControls = () => {
     const map = useMap();
@@ -87,7 +95,7 @@ const GoogleMap = ({ center, onCenterChanged }) => {
                 <Map
                     mapId="servizephyr_map"
                     style={{ width: '100%', height: '100%' }}
-                    center={center} // Controlled component
+                    center={center} // Controlled component for programmatic updates
                     defaultZoom={15}
                     gestureHandling={'greedy'}
                     disableDefaultUI={true}
@@ -105,5 +113,3 @@ const GoogleMap = ({ center, onCenterChanged }) => {
 };
 
 export default GoogleMap;
-
-    
