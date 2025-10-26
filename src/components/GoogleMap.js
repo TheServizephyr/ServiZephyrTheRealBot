@@ -74,6 +74,8 @@ const GoogleMap = ({ center, onCenterChanged }) => {
                     disableDefaultUI={true}
                     onIdle={handleIdle}
                     tilt={45}
+                    draggable={true} 
+                    zoomable={true}
                 >
                 </Map>
                 <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 pointer-events-none">
