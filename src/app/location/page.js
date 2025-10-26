@@ -37,6 +37,7 @@ const SavedAddressCard = ({ address, onSelect, onDelete }) => {
 }
 
 const SelectLocationInternal = () => {
+    console.log("[LOCATION PAGE] Rendering...");
     const router = useRouter();
     const searchParams = useSearchParams();
     const { user } = useAuth();
@@ -50,20 +51,25 @@ const SelectLocationInternal = () => {
     
     const fetchAddresses = useCallback(async () => {
         if (!user) {
+            console.log("[LOCATION PAGE] fetchAddresses called, but user is not available. Aborting.");
             setLoading(false);
             return;
         }
         setLoading(true);
         setError('');
+        console.log(`[LOCATION PAGE] Fetching addresses for user: ${user.uid}`);
         try {
             const idToken = await user.getIdToken();
             const res = await fetch('/api/user/addresses', {
                 headers: { 'Authorization': `Bearer ${idToken}` }
             });
+            console.log(`[LOCATION PAGE] API response received. Status: ${res.status}`);
             if (!res.ok) throw new Error('Failed to fetch addresses.');
             const data = await res.json();
+            console.log(`[LOCATION PAGE] Fetched ${data.addresses?.length || 0} addresses.`);
             setAddresses(data.addresses || []);
         } catch (err) {
+            console.error("[LOCATION PAGE] Error fetching addresses:", err);
             setError(err.message);
         } finally {
             setLoading(false);
@@ -71,7 +77,12 @@ const SelectLocationInternal = () => {
     }, [user]);
 
     useEffect(() => {
-        fetchAddresses();
+        console.log("[LOCATION PAGE] Auth state changed. User:", user ? user.uid : 'null');
+        if (user) {
+            fetchAddresses();
+        } else {
+            setLoading(false);
+        }
     }, [user, fetchAddresses]);
 
     const handleSelectAddress = (address) => {
