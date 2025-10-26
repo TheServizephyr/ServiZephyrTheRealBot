@@ -68,6 +68,7 @@ const LocationPageInternal = () => {
     };
 
     const reverseGeocode = async (coords) => {
+        if (!loading) setLoading(true);
         setError('');
         try {
             const res = await fetch(`/api/location/geocode?lat=${coords.lat}&lng=${coords.lng}`);
@@ -87,7 +88,7 @@ const LocationPageInternal = () => {
             setSearchQuery(data.formatted_address);
             
         } catch (err) {
-            setError('Could not fetch address details for this location.');
+            setError('Could not fetch address details for this pin location.');
         } finally {
             setLoading(false);
         }
@@ -241,7 +242,18 @@ const LocationPageInternal = () => {
                         transition={{ type: "spring", stiffness: 300, damping: 30 }}
                         className="bg-card border-t border-border p-4 rounded-t-2xl shadow-lg"
                     >
-                         {loading && !addressDetails ? (
+                         <button
+                            onClick={() => setIsPanelOpen(false)}
+                            className="w-full flex justify-between items-center cursor-pointer mb-3"
+                        >
+                            <p className="font-bold text-lg flex items-center gap-2">
+                                <MapPin size={20} className="text-primary"/> Fine-tune Address
+                            </p>
+                            <motion.div animate={{ rotate: 0 }}>
+                                <ChevronUp/>
+                            </motion.div>
+                        </button>
+                        {loading ? (
                             <div className="flex items-center gap-3">
                                 <Loader2 className="animate-spin text-primary"/>
                                 <span className="text-muted-foreground">{error || 'Fetching address...'}</span>
@@ -252,17 +264,6 @@ const LocationPageInternal = () => {
                             </div>
                         ) : addressDetails ? (
                             <div className="space-y-3">
-                                <button
-                                    onClick={() => setIsPanelOpen(false)}
-                                    className="w-full flex justify-between items-center cursor-pointer"
-                                >
-                                    <p className="font-bold text-lg flex items-center gap-2">
-                                        <MapPin size={20} className="text-primary"/> Fine-tune Address
-                                    </p>
-                                    <motion.div animate={{ rotate: 0 }}>
-                                        <ChevronUp/>
-                                    </motion.div>
-                                </button>
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
                                     <Input value={addressDetails.street || ''} onChange={(e) => handleAddressFieldChange('street', e.target.value)} placeholder="Street / Area"/>
                                     <Input value={addressDetails.city || ''} onChange={(e) => handleAddressFieldChange('city', e.target.value)} placeholder="City"/>
@@ -311,3 +312,4 @@ const LocationPage = () => (
 );
 
 export default LocationPage;
+
