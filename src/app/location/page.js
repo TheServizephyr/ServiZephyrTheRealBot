@@ -1,4 +1,3 @@
-
 'use client';
 
 import React, { useState, useEffect, Suspense, useCallback } from 'react';
@@ -9,7 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { auth } from '@/lib/firebase';
 import InfoDialog from '@/components/InfoDialog';
-import { useAuth } from '@/firebase';
+import { useUser } from '@/firebase'; // THE FIX: Import useUser instead of useAuth
 
 const SavedAddressCard = ({ address, onSelect, onDelete }) => {
     const Icon = address.label === 'Home' ? Home : address.label === 'Work' ? Building : MapPin;
@@ -40,17 +39,17 @@ const SelectLocationInternal = () => {
     console.log("[LOCATION PAGE] Rendering...");
     const router = useRouter();
     const searchParams = useSearchParams();
-    const { user, isUserLoading } = useAuth(); // THE FIX: Get loading state
+    const { user, isUserLoading } = useUser(); // THE FIX: Use the correct hook
 
     const [addresses, setAddresses] = useState([]);
-    const [loading, setLoading] = useState(true); // This now means 'fetching addresses'
+    const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
     const [infoDialog, setInfoDialog] = useState({ isOpen: false, title: '', message: '' });
 
     const returnUrl = searchParams.get('returnUrl') || '/';
     
     const fetchAddresses = useCallback(async () => {
-        // This function now assumes user is available
+        if (!user) return; // Guard clause
         setLoading(true);
         setError('');
         console.log(`[LOCATION PAGE] Fetching addresses for user: ${user.uid}`);
@@ -72,7 +71,6 @@ const SelectLocationInternal = () => {
         }
     }, [user]);
 
-    // THE FIX: The main logic change is here
     useEffect(() => {
         console.log(`[LOCATION PAGE] Auth state changed. Loading: ${isUserLoading}, User: ${user ? user.uid : 'null'}`);
         if (!isUserLoading) { // Only run logic when auth state is resolved
@@ -84,7 +82,7 @@ const SelectLocationInternal = () => {
                 setAddresses([]);
             }
         }
-    }, [user, isUserLoading, fetchAddresses]); // Depends on user and loading state
+    }, [user, isUserLoading, fetchAddresses]);
 
     const handleSelectAddress = (address) => {
         localStorage.setItem('customerLocation', JSON.stringify(address));
@@ -161,11 +159,11 @@ const SelectLocationInternal = () => {
 
                 <div className="mt-8">
                     <h2 className="font-bold text-muted-foreground mb-4">SAVED ADDRESSES</h2>
-                    {isUserLoading || loading ? ( // THE FIX: Show loader while auth or data is loading
+                    {isUserLoading || loading ? (
                         <div className="flex justify-center py-8"><Loader2 className="animate-spin text-primary" /></div>
                     ) : error ? (
                         <div className="text-center py-8 text-destructive">{error}</div>
-                    ) : addresses.length > 0 ? (
+                    ) : user && addresses.length > 0 ? (
                         <div className="space-y-4">
                             {addresses.map(address => (
                                 <SavedAddressCard 
