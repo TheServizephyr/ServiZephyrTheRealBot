@@ -8,46 +8,6 @@ import { cn } from '@/lib/utils';
 
 const GOOGLE_MAPS_API_KEY = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
 
-// This inner component is the key to solving both problems.
-const MapInnerComponent = ({ center, onCenterChanged }) => {
-    const map = useMap(); // Get the underlying map instance
-
-    // Effect 1: This handles programmatically moving the map (e.g., from "Use Current Location" button)
-    useEffect(() => {
-        if (map && center) {
-            const currentMapCenter = map.getCenter().toJSON();
-            // Only move the map if the new center is actually different, to avoid unnecessary re-centering
-            if (currentMapCenter.lat.toFixed(6) !== center.lat.toFixed(6) || currentMapCenter.lng.toFixed(6) !== center.lng.toFixed(6)) {
-                map.setCenter(center);
-            }
-        }
-    }, [map, center]); // Reruns when the `center` prop from parent changes
-
-    // Effect 2: This handles detecting when the user has finished dragging the map
-    useEffect(() => {
-        if (!map || !onCenterChanged) return;
-
-        // The 'idle' event fires when the map has stopped moving.
-        const idleListener = map.addListener('idle', () => {
-            const newCenter = map.getCenter().toJSON();
-            // *** THE FIX IS HERE ***
-            // We directly call the onCenterChanged handler with the new center.
-            // The previous conditional check was flawed and preventing this from firing correctly.
-            onCenterChanged(newCenter);
-        });
-
-        // Cleanup function to remove the listener when the component unmounts
-        return () => {
-            if (window.google) {
-                window.google.maps.event.removeListener(idleListener);
-            }
-        };
-    }, [map, onCenterChanged]); // Reruns if the map instance or the callback function changes
-
-    return null; // This component doesn't render any visible UI itself
-};
-
-
 const MapControls = () => {
     const map = useMap();
     const [mapTypeId, setMapTypeId] = useState('roadmap');
@@ -89,25 +49,41 @@ const MapControls = () => {
 };
 
 const GoogleMap = ({ center, onCenterChanged }) => {
+    const mapRef = useRef(null);
+
+    useEffect(() => {
+        if (mapRef.current && mapRef.current.map && center) {
+            const currentMapCenter = mapRef.current.map.getCenter().toJSON();
+            if (currentMapCenter.lat.toFixed(6) !== center.lat.toFixed(6) || currentMapCenter.lng.toFixed(6) !== center.lng.toFixed(6)) {
+                 mapRef.current.map.setCenter(center);
+            }
+        }
+    }, [center]);
+
     if (!GOOGLE_MAPS_API_KEY) {
         return <div className="w-full h-full bg-muted flex items-center justify-center"><p className="text-destructive">Google Maps API Key not found.</p></div>;
     }
+
+    const handleIdle = (ev) => {
+        if (onCenterChanged) {
+            onCenterChanged(ev.map.getCenter().toJSON());
+        }
+    };
 
     return (
         <APIProvider apiKey={GOOGLE_MAPS_API_KEY}>
             <div className="w-full h-full relative">
                 <Map
+                    ref={mapRef}
                     mapId="servizephyr_map"
                     style={{ width: '100%', height: '100%' }}
-                    center={center}
+                    defaultCenter={center}
                     defaultZoom={15}
                     gestureHandling={'greedy'}
                     disableDefaultUI={true}
                     tilt={0}
-                    draggable={true} 
-                    zoomable={true}
+                    onIdle={handleIdle}
                 >
-                  <MapInnerComponent center={center} onCenterChanged={onCenterChanged} />
                 </Map>
                 <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 pointer-events-none">
                      <div style={{ fontSize: '2.5rem' }}>📍</div>
@@ -119,4 +95,3 @@ const GoogleMap = ({ center, onCenterChanged }) => {
 };
 
 export default GoogleMap;
-    
