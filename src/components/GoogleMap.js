@@ -73,7 +73,7 @@ const GoogleMap = ({ center, onCenterChanged }) => {
                     gestureHandling={'greedy'}
                     disableDefaultUI={true}
                     onIdle={handleIdle}
-                    tilt={45}
+                    tilt={0}
                     draggable={true} 
                     zoomable={true}
                 >

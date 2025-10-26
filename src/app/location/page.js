@@ -67,7 +67,6 @@ const LocationPageInternal = () => {
     };
 
     const reverseGeocode = async (coords) => {
-        setLoading(true);
         setError('');
         try {
             const res = await fetch(`/api/location/geocode?lat=${coords.lat}&lng=${coords.lng}`);
