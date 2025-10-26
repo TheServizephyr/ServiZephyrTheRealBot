@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useState, useEffect, Suspense, useRef } from 'react';
@@ -99,8 +100,7 @@ const OwnerLocationPage = () => {
                         lat: position.coords.latitude,
                         lng: position.coords.longitude,
                     };
-                    setMapCenter(coords);
-                    reverseGeocode(coords);
+                    handleMapCenterChange(coords);
                 },
                 (err) => {
                     setError('Could not get your location. Please search manually or check browser permissions.');
@@ -140,8 +140,7 @@ const OwnerLocationPage = () => {
         setSearchQuery(suggestion.placeAddress);
         setSuggestions([]);
         const coords = { lat: suggestion.latitude, lng: suggestion.longitude };
-        setMapCenter(coords); 
-        reverseGeocode(coords);
+        handleMapCenterChange(coords);
     };
 
     const handleAddressFieldChange = (field, value) => {
@@ -272,7 +271,6 @@ const OwnerLocationPage = () => {
                         variant="secondary" 
                         className="w-full h-12 shadow-lg flex items-center gap-2"
                         onClick={getCurrentGeolocation}
-                        disabled={loading}
                     >
                         {loading && !addressDetails ? <Loader2 className="animate-spin"/> : <LocateFixed/>} 
                         Use My Current Location
@@ -315,3 +313,5 @@ const OwnerLocationPage = () => {
 };
 
 export default OwnerLocationPage;
+
+    
