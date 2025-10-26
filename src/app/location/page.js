@@ -68,7 +68,7 @@ const LocationPageInternal = () => {
     };
 
     const reverseGeocode = async (coords) => {
-        if (!loading) setLoading(true);
+        setLoading(true);
         setError('');
         try {
             const res = await fetch(`/api/location/geocode?lat=${coords.lat}&lng=${coords.lng}`);
@@ -232,74 +232,70 @@ const LocationPageInternal = () => {
                 </Button>
             </div>
             
-             <div className="fixed bottom-0 left-0 right-0 z-20">
-                <AnimatePresence>
+             <div className="fixed bottom-0 left-0 right-0 z-20 bg-card border-t border-border rounded-t-2xl shadow-lg">
+                <button
+                    onClick={() => setIsPanelOpen(prev => !prev)}
+                    className="w-full flex justify-between items-center cursor-pointer p-4"
+                >
+                    <p className="font-bold text-lg flex items-center gap-2">
+                        <MapPin size={20} className="text-primary"/> Fine-tune Address
+                    </p>
+                    <motion.div animate={{ rotate: isPanelOpen ? 0 : 180 }}>
+                        <ChevronUp/>
+                    </motion.div>
+                </button>
+
+                <AnimatePresence initial={false}>
                 {isPanelOpen && (
                     <motion.div
-                        initial={{ y: "100%" }}
-                        animate={{ y: 0 }}
-                        exit={{ y: "100%" }}
-                        transition={{ type: "spring", stiffness: 300, damping: 30 }}
-                        className="bg-card border-t border-border p-4 rounded-t-2xl shadow-lg"
+                        key="content"
+                        initial="collapsed"
+                        animate="open"
+                        exit="collapsed"
+                        variants={{
+                            open: { opacity: 1, height: "auto" },
+                            collapsed: { opacity: 0, height: 0 }
+                        }}
+                        transition={{ duration: 0.4, ease: [0.04, 0.62, 0.23, 0.98] }}
+                        className="overflow-hidden"
                     >
-                         <button
-                            onClick={() => setIsPanelOpen(false)}
-                            className="w-full flex justify-between items-center cursor-pointer mb-3"
-                        >
-                            <p className="font-bold text-lg flex items-center gap-2">
-                                <MapPin size={20} className="text-primary"/> Fine-tune Address
-                            </p>
-                            <motion.div animate={{ rotate: 0 }}>
-                                <ChevronUp/>
-                            </motion.div>
-                        </button>
-                        {loading ? (
-                            <div className="flex items-center gap-3">
-                                <Loader2 className="animate-spin text-primary"/>
-                                <span className="text-muted-foreground">{error || 'Fetching address...'}</span>
-                            </div>
-                        ) : error && !addressDetails ? (
-                            <div className="text-destructive text-center font-semibold p-4 bg-destructive/10 rounded-lg flex items-center justify-center gap-2">
-                                <AlertTriangle size={16}/> {error}
-                            </div>
-                        ) : addressDetails ? (
-                            <div className="space-y-3">
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                                    <Input value={addressDetails.street || ''} onChange={(e) => handleAddressFieldChange('street', e.target.value)} placeholder="Street / Area"/>
-                                    <Input value={addressDetails.city || ''} onChange={(e) => handleAddressFieldChange('city', e.target.value)} placeholder="City"/>
-                                    <Input value={addressDetails.pincode || ''} onChange={(e) => handleAddressFieldChange('pincode', e.target.value)} placeholder="Pincode"/>
-                                    <Input value={addressDetails.state || ''} onChange={(e) => handleAddressFieldChange('state', e.target.value)} placeholder="State"/>
+                        <div className="px-4 pb-4">
+                            {loading ? (
+                                <div className="flex items-center gap-3">
+                                    <Loader2 className="animate-spin text-primary"/>
+                                    <span className="text-muted-foreground">{error || 'Fetching address...'}</span>
                                 </div>
-                                <div className="flex items-center gap-2 pt-2">
-                                    <Label>Label as:</Label>
-                                    <Button type="button" variant={addressLabel === 'Home' ? 'secondary' : 'outline'} size="sm" onClick={() => setAddressLabel('Home')}><Home size={14} className="mr-2"/> Home</Button>
-                                    <Button type="button" variant={addressLabel === 'Work' ? 'secondary' : 'outline'} size="sm" onClick={() => setAddressLabel('Work')}><Building size={14} className="mr-2"/> Work</Button>
-                                    <Button type="button" variant={addressLabel === 'Other' ? 'secondary' : 'outline'} size="sm" onClick={() => setAddressLabel('Other')}><MapPin size={14} className="mr-2"/> Other</Button>
+                            ) : error && !addressDetails ? (
+                                <div className="text-destructive text-center font-semibold p-4 bg-destructive/10 rounded-lg flex items-center justify-center gap-2">
+                                    <AlertTriangle size={16}/> {error}
                                 </div>
-                                <Button onClick={handleConfirmLocation} disabled={!addressDetails.street || loading || isSaving} className="w-full h-12 text-lg font-bold bg-primary text-primary-foreground hover:bg-primary/90">
-                                    {isSaving ? <Loader2 className="animate-spin" /> : 'Confirm & Save Location'}
-                                </Button>
-                            </div>
-                        ) : (
-                            <div className="text-center text-muted-foreground p-4">
-                                Search for a location or use the GPS button to find your address.
-                            </div>
-                        )}
+                            ) : addressDetails ? (
+                                <div className="space-y-3">
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                                        <Input value={addressDetails.street || ''} onChange={(e) => handleAddressFieldChange('street', e.target.value)} placeholder="Street / Area"/>
+                                        <Input value={addressDetails.city || ''} onChange={(e) => handleAddressFieldChange('city', e.target.value)} placeholder="City"/>
+                                        <Input value={addressDetails.pincode || ''} onChange={(e) => handleAddressFieldChange('pincode', e.target.value)} placeholder="Pincode"/>
+                                        <Input value={addressDetails.state || ''} onChange={(e) => handleAddressFieldChange('state', e.target.value)} placeholder="State"/>
+                                    </div>
+                                    <div className="flex items-center gap-2 pt-2">
+                                        <Label>Label as:</Label>
+                                        <Button type="button" variant={addressLabel === 'Home' ? 'secondary' : 'outline'} size="sm" onClick={() => setAddressLabel('Home')}><Home size={14} className="mr-2"/> Home</Button>
+                                        <Button type="button" variant={addressLabel === 'Work' ? 'secondary' : 'outline'} size="sm" onClick={() => setAddressLabel('Work')}><Building size={14} className="mr-2"/> Work</Button>
+                                        <Button type="button" variant={addressLabel === 'Other' ? 'secondary' : 'outline'} size="sm" onClick={() => setAddressLabel('Other')}><MapPin size={14} className="mr-2"/> Other</Button>
+                                    </div>
+                                    <Button onClick={handleConfirmLocation} disabled={!addressDetails.street || loading || isSaving} className="w-full h-12 text-lg font-bold bg-primary text-primary-foreground hover:bg-primary/90">
+                                        {isSaving ? <Loader2 className="animate-spin" /> : 'Confirm & Save Location'}
+                                    </Button>
+                                </div>
+                            ) : (
+                                <div className="text-center text-muted-foreground p-4">
+                                    Search for a location or use the GPS button to find your address.
+                                </div>
+                            )}
+                        </div>
                     </motion.div>
                  )}
                  </AnimatePresence>
-                 {!isPanelOpen &&
-                    <div className="flex justify-center">
-                        <button
-                            onClick={() => setIsPanelOpen(true)}
-                            className="bg-card border-t border-x border-border p-2 rounded-t-lg shadow-md"
-                        >
-                             <motion.div animate={{ rotate: 180 }}>
-                                <ChevronUp/>
-                            </motion.div>
-                        </button>
-                    </div>
-                 }
             </div>
         </div>
     );
