@@ -252,14 +252,22 @@ const LocationPageInternal = () => {
                             </div>
                         ) : addressDetails ? (
                             <div className="space-y-3">
-                                <div>
-                                    <p className="font-bold text-lg flex items-center gap-2 mb-2"><MapPin size={20} className="text-primary"/> Fine-tune Address</p>
-                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                                        <Input value={addressDetails.street || ''} onChange={(e) => handleAddressFieldChange('street', e.target.value)} placeholder="Street / Area"/>
-                                        <Input value={addressDetails.city || ''} onChange={(e) => handleAddressFieldChange('city', e.target.value)} placeholder="City"/>
-                                        <Input value={addressDetails.pincode || ''} onChange={(e) => handleAddressFieldChange('pincode', e.target.value)} placeholder="Pincode"/>
-                                        <Input value={addressDetails.state || ''} onChange={(e) => handleAddressFieldChange('state', e.target.value)} placeholder="State"/>
-                                    </div>
+                                <button
+                                    onClick={() => setIsPanelOpen(false)}
+                                    className="w-full flex justify-between items-center cursor-pointer"
+                                >
+                                    <p className="font-bold text-lg flex items-center gap-2">
+                                        <MapPin size={20} className="text-primary"/> Fine-tune Address
+                                    </p>
+                                    <motion.div animate={{ rotate: 0 }}>
+                                        <ChevronUp/>
+                                    </motion.div>
+                                </button>
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                                    <Input value={addressDetails.street || ''} onChange={(e) => handleAddressFieldChange('street', e.target.value)} placeholder="Street / Area"/>
+                                    <Input value={addressDetails.city || ''} onChange={(e) => handleAddressFieldChange('city', e.target.value)} placeholder="City"/>
+                                    <Input value={addressDetails.pincode || ''} onChange={(e) => handleAddressFieldChange('pincode', e.target.value)} placeholder="Pincode"/>
+                                    <Input value={addressDetails.state || ''} onChange={(e) => handleAddressFieldChange('state', e.target.value)} placeholder="State"/>
                                 </div>
                                 <div className="flex items-center gap-2 pt-2">
                                     <Label>Label as:</Label>
@@ -279,16 +287,18 @@ const LocationPageInternal = () => {
                     </motion.div>
                  )}
                  </AnimatePresence>
-                 <div className="flex justify-center">
-                    <button
-                        onClick={() => setIsPanelOpen(!isPanelOpen)}
-                        className="bg-card border-t border-x border-border p-2 rounded-t-lg shadow-md"
-                    >
-                        <motion.div animate={{ rotate: isPanelOpen ? 0 : 180 }}>
-                            <ChevronUp/>
-                        </motion.div>
-                    </button>
-                </div>
+                 {!isPanelOpen &&
+                    <div className="flex justify-center">
+                        <button
+                            onClick={() => setIsPanelOpen(true)}
+                            className="bg-card border-t border-x border-border p-2 rounded-t-lg shadow-md"
+                        >
+                             <motion.div animate={{ rotate: 180 }}>
+                                <ChevronUp/>
+                            </motion.div>
+                        </button>
+                    </div>
+                 }
             </div>
         </div>
     );
