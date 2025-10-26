@@ -70,7 +70,7 @@ const LocationPageInternal = () => {
     };
 
     const reverseGeocode = async (coords) => {
-        if (!loading) setLoading(true);
+        setLoading(true);
         setError('');
         try {
             const res = await fetch(`/api/location/geocode?lat=${coords.lat}&lng=${coords.lng}`);
@@ -250,7 +250,7 @@ const LocationPageInternal = () => {
                     className="w-full flex justify-between items-center cursor-pointer p-4"
                 >
                     <p className="font-bold text-lg flex items-center gap-2">
-                        <MapPin size={20} className="text-primary"/> Fine-tune Address
+                        <MapPin size={20} className="text-primary"/> Set Delivery Location
                     </p>
                     <motion.div animate={{ rotate: isPanelOpen ? 180 : 0 }}>
                         <ChevronUp/>
@@ -333,3 +333,6 @@ const LocationPage = () => (
 );
 
 export default LocationPage;
+
+
+    
