@@ -51,7 +51,6 @@ const MapControls = () => {
 
 // Main GoogleMap Component (This is where the fix is)
 const GoogleMap = ({ center, onIdle }) => {
-    // We use a ref to get the map instance for the onIdle callback
     const mapRef = useRef(null);
 
     // This handler will be called *after* the drag (pan) or zoom finishes
@@ -61,6 +60,17 @@ const GoogleMap = ({ center, onIdle }) => {
             onIdle(newCenter);
         }
     };
+
+    // **THIS IS THE FIX:**
+    // This effect runs ONLY when the 'center' prop changes 
+    // (i.e., when the user clicks 'Search' or 'Use Current Location').
+    // It manually tells the map to move to the new center.
+    useEffect(() => {
+        if (mapRef.current) {
+            console.log("Forcing map to new center:", center);
+            mapRef.current.setCenter(center);
+        }
+    }, [center]); // <-- Runs only when 'center' prop changes
 
     if (!GOOGLE_MAPS_API_KEY) {
         return <div className="w-full h-full bg-muted flex items-center justify-center"><p className="text-destructive">Google Maps API Key not found.</p></div>;
@@ -72,15 +82,22 @@ const GoogleMap = ({ center, onIdle }) => {
                 <Map
                     mapId="servizephyr_map"
                     style={{ width: '100%', height: '100%' }}
-                    center={center} // Sets the initial center
+                    
+                    // **THE FIX:** Use 'defaultCenter' instead of 'center'
+                    // This sets the map's position ONLY on the first load.
+                    defaultCenter={center} 
+
                     defaultZoom={15}
-                    gestureHandling={'greedy'} // Allows all gestures (zoom and drag)
+                    gestureHandling={'greedy'}
                     disableDefaultUI={true}
                     tilt={0}
-                    onCameraChanged={(ev) => (mapRef.current = ev.map)} // Get the map instance
-                    onIdle={handleIdle} // Call handleIdle AFTER dragging/zooming stops
+                    
+                    // We save the map instance to the ref when it's ready
+                    onCameraChanged={(ev) => (mapRef.current = ev.map)} 
+                    
+                    // We still report when the drag/zoom is finished
+                    onIdle={handleIdle} 
                 >
-                    {/* The MapInnerComponent is no longer needed */}
                 </Map>
                 <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 pointer-events-none">
                      <div style={{ fontSize: '2.5rem' }}>📍</div>
