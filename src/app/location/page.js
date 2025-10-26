@@ -1,4 +1,3 @@
-
 'use client';
 
 import React, { useState, useEffect, Suspense, useRef, useCallback } from 'react';
@@ -82,7 +81,7 @@ const LocationPageInternal = () => {
         }, 500);
     }, []);
 
-    const handleMapCenterChange = useCallback((coords) => {
+    const handleMapIdle = useCallback((coords) => {
         setMapCenter(coords);
         reverseGeocode(coords);
     }, [reverseGeocode]);
@@ -115,7 +114,8 @@ const LocationPageInternal = () => {
     }, [reverseGeocode]);
 
     useEffect(() => {
-        if (!initialLocationFetched.current) {
+        // This check ensures window is defined, which is only true on the client-side.
+        if (typeof window !== 'undefined' && !initialLocationFetched.current) {
             getCurrentLocation();
             initialLocationFetched.current = true;
         }
@@ -247,7 +247,7 @@ const LocationPageInternal = () => {
             <div className="flex-grow relative">
                 <GoogleMap 
                    center={mapCenter}
-                   onCenterChanged={handleMapCenterChange}
+                   onIdle={handleMapIdle}
                 />
                 <Button 
                    variant="secondary" 

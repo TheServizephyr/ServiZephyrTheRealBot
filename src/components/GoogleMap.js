@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button';
 const GOOGLE_MAPS_API_KEY = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
 
 // This is the key component that syncs the map state with React state
-const MapInnerComponent = ({ center, onCenterChanged }) => {
+const MapInnerComponent = ({ center, onIdle }) => {
     const map = useMap(); // Get map instance from the context
 
     // Effect 1: Imperatively update map center when the 'center' prop changes from parent
@@ -24,14 +24,11 @@ const MapInnerComponent = ({ center, onCenterChanged }) => {
 
     // Effect 2: Add the 'idle' listener for drag detection
     useEffect(() => {
-        if (!map || !onCenterChanged) return;
+        if (!map || !onIdle) return;
         
         const idleListener = map.addListener('idle', () => {
             const newCenter = map.getCenter().toJSON();
-            // *** THE FIX ***
-            // The previous check was flawed. Now, we directly call the handler.
-            // The parent component (`location/page.js`) is responsible for managing state.
-            onCenterChanged(newCenter);
+            onIdle(newCenter);
         });
         
         // Cleanup listener on unmount
@@ -40,7 +37,7 @@ const MapInnerComponent = ({ center, onCenterChanged }) => {
                 idleListener.remove();
             }
         };
-    }, [map, onCenterChanged]);
+    }, [map, onIdle]);
 
     return null; // This component does not render anything itself
 };
@@ -87,7 +84,7 @@ const MapControls = () => {
 };
 
 
-const GoogleMap = ({ center, onCenterChanged }) => {
+const GoogleMap = ({ center, onIdle }) => {
     if (!GOOGLE_MAPS_API_KEY) {
         return <div className="w-full h-full bg-muted flex items-center justify-center"><p className="text-destructive">Google Maps API Key not found.</p></div>;
     }
@@ -104,7 +101,7 @@ const GoogleMap = ({ center, onCenterChanged }) => {
                     disableDefaultUI={true}
                     tilt={0}
                 >
-                  <MapInnerComponent center={center} onCenterChanged={onCenterChanged} />
+                  <MapInnerComponent center={center} onIdle={onIdle} />
                 </Map>
                 <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 pointer-events-none">
                      <div style={{ fontSize: '2.5rem' }}>📍</div>
