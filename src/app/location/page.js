@@ -58,8 +58,7 @@ const LocationPageInternal = () => {
                     lat: position.coords.latitude,
                     lng: position.coords.longitude,
                 };
-                setMapCenter(coords);
-                reverseGeocode(coords);
+                handleMapCenterChange(coords); // Use the new handler
             },
             (err) => {
                 setError('Could not get your location. Please search manually or allow location access.');
@@ -96,6 +95,12 @@ const LocationPageInternal = () => {
         }
     };
     
+    // New handler to update state and fetch address
+    const handleMapCenterChange = (coords) => {
+        setMapCenter(coords);
+        reverseGeocode(coords);
+    };
+
     useEffect(() => {
         // Automatically try to get location on first load
         getCurrentLocation();
@@ -126,8 +131,7 @@ const LocationPageInternal = () => {
         setSearchQuery(suggestion.placeAddress);
         setSuggestions([]);
         const coords = { lat: suggestion.latitude, lng: suggestion.longitude };
-        setMapCenter(coords); 
-        reverseGeocode(coords);
+        handleMapCenterChange(coords); // Use the new handler
     };
     
     const handleAddressFieldChange = (field, value) => {
@@ -233,14 +237,14 @@ const LocationPageInternal = () => {
             <div className="flex-grow relative">
                  <GoogleMap 
                     center={mapCenter}
-                    onCenterChanged={reverseGeocode}
+                    onCenterChanged={handleMapCenterChange}
                  />
                  <Button 
                     variant="secondary" 
                     className="absolute top-4 right-4 z-10 h-12 rounded-full shadow-lg flex items-center gap-2 pr-4"
                     onClick={getCurrentLocation}
                 >
-                    {loading && !addressDetails ? <Loader2 className="animate-spin" /> : <LocateFixed />}
+                    {loading && error === 'Fetching your location...' ? <Loader2 className="animate-spin" /> : <LocateFixed />}
                     Use Current Location
                 </Button>
             </div>
@@ -334,8 +338,3 @@ const LocationPage = () => (
 );
 
 export default LocationPage;
-
-
-    
-
-    

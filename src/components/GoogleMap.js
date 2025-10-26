@@ -1,7 +1,7 @@
 
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { APIProvider, Map, useMap } from '@vis.gl/react-google-maps';
 import { Loader2, Globe, Compass } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -49,16 +49,46 @@ const MapControls = () => {
     );
 };
 
+const MapInnerComponent = ({ center, onCenterChanged }) => {
+    const map = useMap();
+
+    // Effect to imperatively update map center when 'center' prop changes
+    useEffect(() => {
+        if (map && center) {
+            const currentMapCenter = map.getCenter().toJSON();
+            // Check to avoid redundant re-centering
+            if (currentMapCenter.lat.toFixed(6) !== center.lat.toFixed(6) || currentMapCenter.lng.toFixed(6) !== center.lng.toFixed(6)) {
+                map.setCenter(center);
+            }
+        }
+    }, [map, center]);
+
+    // Effect to add the 'idle' listener for drag detection
+    useEffect(() => {
+        if (!map || !onCenterChanged) return;
+
+        const idleListener = map.addListener('idle', () => {
+            const newCenter = map.getCenter().toJSON();
+             if (center && (newCenter.lat.toFixed(6) !== center.lat.toFixed(6) || newCenter.lng.toFixed(6) !== center.lng.toFixed(6))) {
+                onCenterChanged(newCenter);
+            }
+        });
+
+        return () => {
+            // It's good practice to remove the listener on cleanup
+            if (window.google) {
+                window.google.maps.event.removeListener(idleListener);
+            }
+        };
+    }, [map, onCenterChanged, center]);
+
+    return null; // This component does not render anything itself
+};
+
 
 const GoogleMap = ({ center, onCenterChanged }) => {
     if (!GOOGLE_MAPS_API_KEY) {
         return <div className="w-full h-full bg-muted flex items-center justify-center"><p className="text-destructive">Google Maps API Key not found.</p></div>;
-    }
-
-    const handleIdle = (ev) => {
-        if(onCenterChanged) {
-            onCenterChanged(ev.detail.center, true); // Pass true to skip loading indicator
-        }
     }
 
     return (
@@ -67,15 +97,16 @@ const GoogleMap = ({ center, onCenterChanged }) => {
                 <Map
                     mapId="servizephyr_map"
                     style={{ width: '100%', height: '100%' }}
+                    defaultCenter={center}
                     center={center}
                     defaultZoom={15}
                     gestureHandling={'greedy'}
                     disableDefaultUI={true}
-                    onIdle={handleIdle}
                     tilt={0}
                     draggable={true} 
                     zoomable={true}
                 >
+                  <MapInnerComponent center={center} onCenterChanged={onCenterChanged} />
                 </Map>
                 <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 pointer-events-none">
                      <div style={{ fontSize: '2.5rem' }}>📍</div>
