@@ -1,4 +1,3 @@
-
 'use client';
 
 import React, { useState, useEffect, Suspense, useRef } from 'react';
@@ -342,3 +341,5 @@ const LocationPage = () => (
 );
 
 export default LocationPage;
+
+    

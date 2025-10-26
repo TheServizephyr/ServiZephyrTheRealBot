@@ -271,7 +271,7 @@ const OwnerLocationPage = () => {
                         className="w-full h-12 shadow-lg flex items-center gap-2"
                         onClick={getCurrentGeolocation}
                     >
-                        {loading && !addressDetails ? <Loader2 className="animate-spin"/> : <LocateFixed/>} 
+                        {(loading && error === 'Fetching your location...') ? <Loader2 className="animate-spin"/> : <LocateFixed/>} 
                         Use My Current Location
                     </Button>
                     
@@ -312,3 +312,5 @@ const OwnerLocationPage = () => {
 };
 
 export default OwnerLocationPage;
+
+    
