@@ -226,7 +226,7 @@ const OwnerLocationPage = () => {
             <div className="p-4 border-b border-border flex-shrink-0 z-10 space-y-4">
                 <div>
                     <h1 className="text-2xl font-bold">Set Your Business Location</h1>
-                    <p className="text-muted-foreground text-sm">Search, or drag the pin to set your location. Then, fine-tune the address details below.</p>
+                    <p className="text-muted-foreground text-sm">Search, or drag the map to set your pin. Then, fine-tune the address details below.</p>
                 </div>
                  <div className="relative w-full">
                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground"/>
@@ -254,7 +254,7 @@ const OwnerLocationPage = () => {
                 <div className="w-full h-64 md:h-full md:flex-1">
                     <GoogleMap 
                         center={mapCenter}
-                        onPinDragEnd={reverseGeocode}
+                        onCenterChanged={reverseGeocode}
                     />
                 </div>
                 <div className="w-full md:w-1/3 md:max-w-md flex-shrink-0 bg-card border-t md:border-t-0 md:border-l border-border p-4 space-y-4 overflow-y-auto">
@@ -305,3 +305,5 @@ const OwnerLocationPage = () => {
 };
 
 export default OwnerLocationPage;
+
+    
