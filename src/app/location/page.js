@@ -82,7 +82,7 @@ const LocationPageInternal = () => {
     }, []);
 
     const handleMapIdle = useCallback((coords) => {
-        setMapCenter(coords);
+        // Just fetch the address. Do not set the map center.
         reverseGeocode(coords);
     }, [reverseGeocode]);
 
@@ -114,7 +114,6 @@ const LocationPageInternal = () => {
     }, [reverseGeocode]);
 
     useEffect(() => {
-        // This check ensures window is defined, which is only true on the client-side.
         if (typeof window !== 'undefined' && !initialLocationFetched.current) {
             getCurrentLocation();
             initialLocationFetched.current = true;
