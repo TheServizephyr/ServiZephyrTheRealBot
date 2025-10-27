@@ -39,7 +39,8 @@ export async function POST(req) {
                 console.log(`[DEBUG] /api/auth/check-role: Custom claim 'isAdmin: true' set for UID: ${uid}.`);
             } else if (role !== 'admin' && decodedToken.isAdmin) {
                 // If user is no longer an admin, remove the claim
-                 await auth.setCustomUserClaims(uid, { isAdmin: false });
+                 await auth.setCustomUserClaims(uid, { isAdmin: null });
+                 console.log(`[DEBUG] /api/auth/check-role: User is no longer admin, removing custom claim for UID: ${uid}.`);
             }
 
             if (role) {
