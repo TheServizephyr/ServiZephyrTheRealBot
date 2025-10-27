@@ -16,11 +16,15 @@ export default function WaitlistPage() {
     const [infoDialog, setInfoDialog] = useState({ isOpen: false, title: '', message: '' });
 
     useEffect(() => {
+        console.log("[Waitlist Page] Component mounted. Setting up auth listener.");
         const unsubscribeAuth = auth.onAuthStateChanged(user => {
             if (user) {
+                console.log(`[Waitlist Page] Auth State Change. User found: ${user.email}`);
                 const q = query(collection(db, "waitlist_entries"), orderBy("createdAt", "desc"));
                 
+                console.log("[Waitlist Page] Attaching Firestore listener to 'waitlist_entries' collection.");
                 const unsubscribeSnapshot = onSnapshot(q, (querySnapshot) => {
+                    console.log(`[Waitlist Page] Data received. Entries count: ${querySnapshot.size}`);
                     const entries = [];
                     querySnapshot.forEach((doc) => {
                         const data = doc.data();
@@ -33,18 +37,26 @@ export default function WaitlistPage() {
                     setWaitlistEntries(entries);
                     setLoading(false);
                 }, (error) => {
-                    console.error("Error fetching waitlist:", error);
-                    setInfoDialog({ isOpen: true, title: "Error", message: `Could not load waitlist: ${error.message}` });
+                    console.error("[Waitlist Page] CRITICAL: Firestore snapshot error:", error);
+                    setInfoDialog({ isOpen: true, title: "Error", message: `Could not load waitlist: ${error.message}. Check browser console for details.` });
                     setLoading(false);
                 });
 
-                return () => unsubscribeSnapshot();
+                return () => {
+                    console.log("[Waitlist Page] Unsubscribing from Firestore snapshot.");
+                    unsubscribeSnapshot();
+                }
             } else {
+                console.log("[Waitlist Page] Auth State Change. User not found.");
                 setLoading(false);
+                setInfoDialog({ isOpen: true, title: "Authentication Error", message: "You must be logged in as an admin to view this page."});
             }
         });
 
-        return () => unsubscribeAuth();
+        return () => {
+             console.log("[Waitlist Page] Component unmounting. Cleaning up auth listener.");
+            unsubscribeAuth();
+        }
     }, []);
 
     return (
