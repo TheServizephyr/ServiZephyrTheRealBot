@@ -94,7 +94,7 @@ export default function JoinWaitlistPage() {
                 <div className="text-center">
                     <Feather className="mx-auto h-12 w-12 text-primary mb-4" />
                     <h1 className="text-3xl font-bold text-foreground">Join the Revolution</h1>
-                    <p className="text-muted-foreground mt-2">Get early access to ServiZephyr and start saving on commissions.</p>
+                    <p className="text-muted-foreground mt-2">Get early access to ServiZephyr to get heavy discounts on our plans.</p>
                 </div>
 
                 <form onSubmit={handleSubmit} className="space-y-4">
