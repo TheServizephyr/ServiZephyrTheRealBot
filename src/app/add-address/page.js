@@ -36,6 +36,8 @@ const AddAddressPageInternal = () => {
     const [houseNo, setHouseNo] = useState('');
     const [landmark, setLandmark] = useState('');
     const [addressLabel, setAddressLabel] = useState('Home');
+    const [customAddressLabel, setCustomAddressLabel] = useState('');
+
 
     const returnUrl = searchParams.get('returnUrl') || '/';
     const useCurrent = searchParams.get('useCurrent') === 'true';
@@ -140,9 +142,13 @@ const AddAddressPageInternal = () => {
         
         const fullAddress = `${houseNo}, ${landmark ? landmark + ', ' : ''}${addressDetails.street}, ${addressDetails.city}, ${addressDetails.state} - ${addressDetails.pincode}`;
         
+        const finalLabel = (addressLabel === 'Other' && customAddressLabel.trim()) 
+            ? customAddressLabel.trim() 
+            : addressLabel;
+
         const addressToSave = {
             id: `addr_${Date.now()}`,
-            label: addressLabel,
+            label: finalLabel,
             name: recipientName.trim(),
             phone: recipientPhone.trim(),
             street: houseNo.trim(),
@@ -262,10 +268,28 @@ const AddAddressPageInternal = () => {
 
                             <div>
                                 <Label>Save address as</Label>
-                                <div className="flex items-center flex-wrap gap-2 mt-2">
+                                 <div className="flex items-start flex-wrap gap-2 mt-2">
                                      <Button type="button" variant={addressLabel === 'Home' ? 'secondary' : 'outline'} size="sm" onClick={() => setAddressLabel('Home')}><Home size={14} className="mr-2"/> Home</Button>
                                      <Button type="button" variant={addressLabel === 'Work' ? 'secondary' : 'outline'} size="sm" onClick={() => setAddressLabel('Work')}><Building size={14} className="mr-2"/> Work</Button>
                                      <Button type="button" variant={addressLabel === 'Other' ? 'secondary' : 'outline'} size="sm" onClick={() => setAddressLabel('Other')}><MapPin size={14} className="mr-2"/> Other</Button>
+                                     <AnimatePresence>
+                                        {addressLabel === 'Other' && (
+                                            <motion.div 
+                                                initial={{ width: 0, opacity: 0 }}
+                                                animate={{ width: 'auto', opacity: 1 }}
+                                                exit={{ width: 0, opacity: 0 }}
+                                                className="overflow-hidden"
+                                            >
+                                                <Input 
+                                                    type="text" 
+                                                    value={customAddressLabel}
+                                                    onChange={e => setCustomAddressLabel(e.target.value)}
+                                                    placeholder="Custom Label (e.g., Gym)" 
+                                                    className="h-9"
+                                                />
+                                            </motion.div>
+                                        )}
+                                    </AnimatePresence>
                                 </div>
                             </div>
 
