@@ -416,25 +416,25 @@ export default function Home() {
                             <h3 className="text-2xl font-bold text-primary">Live Order Dashboard</h3>
                             <p className="mt-4 text-muted-foreground">Never miss an order. Get a real-time stream of incoming WhatsApp orders on a clean, intuitive interface. Manage status, accept, and dispatch with a single click.</p>
                              <div className="mt-4 rounded-lg border bg-background p-1.5 shadow-lg">
+                                {/* USER: Replace this with your screenshot */}
                                 <Image 
-                                    src={placeholderData.productShowcase2.src}
+                                    src="/live-orders.png" // BHAI: Yahan apne live orders page ka screenshot daalna. Example: "/live-orders.png"
                                     alt="Live Order Dashboard Mockup"
-                                    width={placeholderData.productShowcase2.width}
-                                    height={placeholderData.productShowcase2.height}
+                                    width={1000} // Screenshot ki width
+                                    height={600} // Screenshot ki height
                                     className="rounded-md"
-                                    data-ai-hint={placeholderData.productShowcase2.hint}
                                 />
                             </div>
                         </motion.div>
                          <motion.div className="md:order-first" initial={{opacity: 0, x: 50}} whileInView={{opacity: 1, x: 0, transition:{duration: 0.7}}} viewport={{ once: true, amount: 0.5 }}>
                             <div className="rounded-lg border bg-background p-1.5 shadow-lg">
+                                {/* USER: Replace this with your screenshot */}
                                 <Image 
-                                    src={placeholderData.productShowcase1.src}
+                                    src="/analytics.png" // BHAI: Yahan apne analytics page ka screenshot daalna. Example: "/analytics.png"
                                     alt="Analytics Chart Mockup"
-                                    width={placeholderData.productShowcase1.width}
-                                    height={placeholderData.productShowcase1.height}
+                                    width={1000} // Screenshot ki width
+                                    height={600} // Screenshot ki height
                                     className="rounded-md"
-                                    data-ai-hint={placeholderData.productShowcase1.hint}
                                 />
                             </div>
                         </motion.div>
