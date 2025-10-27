@@ -1,4 +1,3 @@
-
 'use client'
 
 import { motion, useInView, animate } from 'framer-motion'
@@ -410,12 +409,20 @@ export default function Home() {
                     Stop guessing, start growing. Our dashboard gives you a bird's-eye view of your entire operation, with actionable insights to boost your bottom line.
                 </p>
 
-                <div className="grid gap-16">
-                    <div className="grid items-center gap-8 md:grid-cols-2">
-                        <motion.div initial={{opacity: 0, x: -50}} whileInView={{opacity: 1, x: 0, transition:{duration: 0.7}}} viewport={{ once: true, amount: 0.5 }}>
-                            <h3 className="text-2xl font-bold text-primary">Live Order Dashboard</h3>
-                            <p className="mt-4 text-muted-foreground">Never miss an order. Get a real-time stream of incoming WhatsApp orders on a clean, intuitive interface. Manage status, accept, and dispatch with a single click.</p>
-                             <div className="mt-4 rounded-lg border bg-background p-1.5 shadow-lg">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                    {/* Feature 1: Live Order Dashboard */}
+                    <motion.div 
+                        className="flex flex-col"
+                        initial={{opacity: 0, y: 50}} 
+                        whileInView={{opacity: 1, y: 0, transition:{duration: 0.7}}} 
+                        viewport={{ once: true, amount: 0.5 }}
+                    >
+                        <div className="p-6 bg-background rounded-t-lg">
+                          <h3 className="text-2xl font-bold text-primary">Live Order Dashboard</h3>
+                          <p className="mt-2 text-muted-foreground">Never miss an order. Get a real-time stream of incoming WhatsApp orders on a clean, intuitive interface. Manage status, accept, and dispatch with a single click.</p>
+                        </div>
+                        <div className="flex-grow p-2 bg-muted rounded-b-lg border border-border">
+                            <div className="rounded-lg border bg-background p-1.5 shadow-lg">
                                 {/* USER: Replace this with your screenshot */}
                                 <Image 
                                     src="/live-orders.png" // BHAI: Yahan apne live orders page ka screenshot daalna. Example: "/live-orders.png"
@@ -425,8 +432,21 @@ export default function Home() {
                                     className="rounded-md"
                                 />
                             </div>
-                        </motion.div>
-                         <motion.div className="md:order-first" initial={{opacity: 0, x: 50}} whileInView={{opacity: 1, x: 0, transition:{duration: 0.7}}} viewport={{ once: true, amount: 0.5 }}>
+                        </div>
+                    </motion.div>
+
+                    {/* Feature 2: Analytics */}
+                    <motion.div 
+                        className="flex flex-col"
+                        initial={{opacity: 0, y: 50}} 
+                        whileInView={{opacity: 1, y: 0, transition:{duration: 0.7, delay: 0.2}}} 
+                        viewport={{ once: true, amount: 0.5 }}
+                    >
+                        <div className="p-6 bg-background rounded-t-lg">
+                          <h3 className="text-2xl font-bold text-primary">Growth Engine: Analytics</h3>
+                          <p className="mt-2 text-muted-foreground">Track your sales trends, identify top-selling items, and understand your customers better than ever before. All the data you need, beautifully visualized.</p>
+                        </div>
+                        <div className="flex-grow p-2 bg-muted rounded-b-lg border border-border">
                             <div className="rounded-lg border bg-background p-1.5 shadow-lg">
                                 {/* USER: Replace this with your screenshot */}
                                 <Image 
@@ -437,8 +457,8 @@ export default function Home() {
                                     className="rounded-md"
                                 />
                             </div>
-                        </motion.div>
-                    </div>
+                        </div>
+                    </motion.div>
                 </div>
             </div>
         </motion.section>
