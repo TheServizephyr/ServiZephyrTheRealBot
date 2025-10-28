@@ -30,52 +30,59 @@ const QrScanner = dynamic(() => import('@/components/QrScanner'), {
 
 const CustomizationDrawer = ({ item, isOpen, onClose, onAddToCart }) => {
     const [selectedPortion, setSelectedPortion] = useState(null);
-    const [selectedAddOns, setSelectedAddOns] = useState({});
+    const [addOnQuantities, setAddOnQuantities] = useState({});
 
     useEffect(() => {
         if (item) {
             const minPricePortion = item.portions?.reduce((min, p) => p.price < min.price ? p : min, item.portions[0]) || null;
             setSelectedPortion(minPricePortion);
             
-            const initialAddOns = {};
-            (item.addOnGroups || []).forEach(group => {
-                initialAddOns[group.title] = [];
+            const initialQuantities = {};
+             (item.addOnGroups || []).forEach(group => {
+                group.options.forEach(option => {
+                    initialQuantities[`${group.title}-${option.name}`] = 0;
+                });
             });
-            setSelectedAddOns(initialAddOns);
+            setAddOnQuantities(initialQuantities);
         }
     }, [item]);
 
-    const handleAddOnSelect = (groupTitle, addOn) => {
-        setSelectedAddOns(prev => {
-            const newSelections = { ...prev };
-            const currentSelection = newSelections[groupTitle] || [];
-            const isSelected = currentSelection.some(a => a.name === addOn.name);
-
-            if (isSelected) {
-                newSelections[groupTitle] = currentSelection.filter(a => a.name !== addOn.name);
-            } else {
-                newSelections[groupTitle] = [...currentSelection, addOn];
-            }
-            return newSelections;
+    const handleAddOnQuantityChange = (groupTitle, addOnName, action) => {
+        const key = `${groupTitle}-${addOnName}`;
+        setAddOnQuantities(prev => {
+            const currentQty = prev[key] || 0;
+            const newQty = action === 'increment' ? currentQty + 1 : Math.max(0, currentQty - 1);
+            return { ...prev, [key]: newQty };
         });
     };
-    
 
     const totalPrice = useMemo(() => {
         if (!selectedPortion) return 0;
         let total = selectedPortion.price;
-        for (const groupTitle in selectedAddOns) {
-            const selection = selectedAddOns[groupTitle];
-            if (Array.isArray(selection)) {
-                total += selection.reduce((sum, addon) => sum + addon.price, 0);
-            }
-        }
+        
+        (item.addOnGroups || []).forEach(group => {
+            group.options.forEach(option => {
+                const key = `${group.title}-${option.name}`;
+                const quantity = addOnQuantities[key] || 0;
+                total += quantity * option.price;
+            });
+        });
+        
         return total;
-    }, [selectedPortion, selectedAddOns]);
+    }, [selectedPortion, addOnQuantities, item.addOnGroups]);
 
     const handleFinalAddToCart = () => {
-        const allSelectedAddOns = Object.values(selectedAddOns).flat().filter(Boolean);
-        onAddToCart(item, selectedPortion, allSelectedAddOns, totalPrice);
+        const selectedAddOns = [];
+        (item.addOnGroups || []).forEach(group => {
+            group.options.forEach(option => {
+                const key = `${group.title}-${option.name}`;
+                const quantity = addOnQuantities[key] || 0;
+                if (quantity > 0) {
+                    selectedAddOns.push({ ...option, quantity });
+                }
+            });
+        });
+        onAddToCart(item, selectedPortion, selectedAddOns, totalPrice);
         onClose();
     };
 
@@ -132,24 +139,23 @@ const CustomizationDrawer = ({ item, isOpen, onClose, onAddToCart }) => {
                                 <div key={group.title} className="space-y-2 pt-4 border-t border-dashed border-border">
                                     <h4 className="font-semibold text-lg">{group.title}</h4>
                                      {group.options.map(option => {
-                                        const isSelected = (selectedAddOns[group.title] || []).some(a => a.name === option.name);
+                                        const key = `${group.title}-${option.name}`;
+                                        const quantity = addOnQuantities[key] || 0;
                                         
                                         return (
                                             <div
                                                 key={option.name}
-                                                onClick={() => handleAddOnSelect(group.title, option)}
-                                                className={cn(
-                                                    "flex justify-between items-center p-3 rounded-lg border cursor-pointer transition-all",
-                                                    isSelected ? "border-primary bg-primary/10" : "border-border hover:bg-muted"
-                                                )}
+                                                className="flex justify-between items-center p-3 rounded-lg border border-border"
                                             >
-                                                <div className="flex items-center gap-3">
-                                                    <div className={cn("w-5 h-5 border-2 flex items-center justify-center rounded", isSelected ? 'border-primary bg-primary' : 'border-muted-foreground')}>
-                                                        {isSelected && <Check className="h-4 w-4 text-primary-foreground" />}
-                                                    </div>
+                                                <div>
                                                     <span className="font-medium">{option.name}</span>
+                                                    <p className="text-sm text-muted-foreground">+ ₹{option.price}</p>
                                                 </div>
-                                                <span className="font-bold text-foreground">+ ₹{option.price}</span>
+                                                <div className="flex items-center gap-2">
+                                                    <Button size="icon" variant="outline" className="h-7 w-7 hover:bg-red-500/10 hover:text-red-500 hover:border-red-500" onClick={() => handleAddOnQuantityChange(group.title, option.name, 'decrement')} disabled={quantity === 0}>-</Button>
+                                                    <span className="font-bold w-5 text-center">{quantity}</span>
+                                                    <Button size="icon" variant="outline" className="h-7 w-7 hover:bg-green-500/10 hover:text-green-500 hover:border-green-500" onClick={() => handleAddOnQuantityChange(group.title, option.name, 'increment')}>+</Button>
+                                                </div>
                                             </div>
                                         );
                                      })}
@@ -878,7 +884,7 @@ const OrderPageInternal = () => {
     const subtotal = useMemo(() => cart.reduce((sum, item) => sum + item.totalPrice * item.quantity, 0), [cart]);
     
     const handleAddToCart = useCallback((item, portion, selectedAddOns, totalPrice) => {
-        const cartItemId = `${item.id}-${portion.name}-${(selectedAddOns || []).map(a => a.name).sort().join('-')}`;
+        const cartItemId = `${item.id}-${portion.name}-${(selectedAddOns || []).map(a => `${a.name}x${a.quantity}`).sort().join('-')}`;
         
         setCart(currentCart => {
             const existingItemIndex = currentCart.findIndex(cartItem => cartItem.cartItemId === cartItemId);
