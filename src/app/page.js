@@ -1,7 +1,8 @@
+
 'use client'
 
 import { motion, useInView, animate } from 'framer-motion'
-import { CheckCircle, Bot, Zap, Rocket, Users, ArrowRight, Star, ShoppingCart, BarChart2, MessageSquare, Briefcase, Store, Soup, Pizza, Feather, Check, Salad, Link as LinkIcon, Edit, Share2 } from 'lucide-react'
+import { CheckCircle, Bot, Zap, Rocket, Users, ArrowRight, Star, ShoppingCart, BarChart2, MessageSquare, Briefcase, Store, Soup, Pizza, Feather, Check, Salad, Link as LinkIcon, Edit, Share2, Camera, Split, LayoutDashboard } from 'lucide-react'
 import Image from 'next/image'
 import Link from 'next/link'
 import React, { useEffect, useRef, useState } from 'react'
@@ -250,48 +251,24 @@ const FeatureCard = ({ icon, title, description, benefits }) => {
     )
 }
 
+const UniqueFeatureCard = ({ icon, title, description, custom }) => (
+    <motion.div
+      variants={cardVariants}
+      custom={custom}
+      className="bg-card border border-border rounded-xl p-8 text-center flex flex-col items-center hover:shadow-lg hover:border-primary transition-all duration-300"
+    >
+      <div className="flex h-20 w-20 items-center justify-center rounded-full bg-primary/10 border-2 border-primary text-primary mb-6">
+        {icon}
+      </div>
+      <h4 className="text-2xl font-bold text-foreground mb-3">{title}</h4>
+      <p className="text-muted-foreground flex-grow">{description}</p>
+    </motion.div>
+);
+
+
 export default function Home() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [animationFinished, setAnimationFinished] = useState(true);
-
-  const testimonials = [
-    {
-      name: "Rohan Sharma",
-      title: "Owner, Curry Cloud",
-      quote: "ServiZephyr has been a game-changer for my cloud kitchen. We've saved over ₹50,000 in commissions in just 3 months! The best part is, we now own our customer data.",
-      image: placeholderData.testimonials[0],
-      rating: 5,
-    },
-    {
-      name: "Priya Desai",
-      title: "Manager, The Daily Grind Cafe",
-      quote: "Our regulars love the WhatsApp ordering system. It's so much faster and more convenient for them. Our repeat orders have gone up by 40% since we switched.",
-      image: placeholderData.testimonials[1],
-      rating: 5,
-    },
-    {
-      name: "Amit Patel",
-      title: "Founder, Pizza on Wheels",
-      quote: "I was skeptical at first, but the owner dashboard is incredibly powerful. I can see my sales in real-time and make decisions on the fly. This is the control I've always wanted.",
-      image: placeholderData.testimonials[2],
-      rating: 5,
-    },
-     {
-      name: "Sunita Verma",
-      title: "Co-founder, Healthy Bites",
-      quote: "The best investment we've made. It's simple, powerful, and has given us a direct line to our customers. Our marketing is so much more effective now.",
-      image: placeholderData.testimonials[0],
-      rating: 5,
-    },
-    {
-      name: "Rajesh Kumar",
-      title: "Head Chef, Tandoori Nights",
-      quote: "Finally, a system that understands restaurant owners. The dashboard is brilliant, and not paying high commissions means more profit in our pocket.",
-      image: placeholderData.testimonials[1],
-      rating: 5,
-    },
-  ];
-
 
   return (
     <>
@@ -453,7 +430,7 @@ export default function Home() {
                     >
                         <div className="p-6 bg-background rounded-t-lg">
                           <h3 className="text-2xl font-bold text-primary">Growth Engine: Analytics</h3>
-                          <p className="mt-2 text-muted-foreground">Track your sales trends, identify top-selling items, and understand your customers better than ever before. All the data you need, beautifully visualized.</p>
+                          <p className="mt-2 text-muted-foreground">Track your revenue, top-selling items, and busiest hours to make smarter business decisions. All the data you need, beautifully visualized.</p>
                         </div>
                         <div className="flex-grow p-2 bg-muted rounded-b-lg border border-border">
                             <div className="rounded-lg border bg-background p-1.5 shadow-lg">
@@ -561,6 +538,42 @@ export default function Home() {
           </Tabs>
         </motion.section>
 
+        {/* Unique Features Section */}
+        <motion.section
+          id="unique-features"
+          className="py-20 sm:py-28"
+          initial="hidden"
+          whileInView="visible"
+          viewport={{ once: true, amount: 0.3 }}
+          variants={sectionVariants}
+        >
+          <h2 className="mb-4 text-center text-3xl font-bold tracking-tighter sm:text-4xl md:text-5xl text-foreground">Features That No One Else Offers</h2>
+          <p className="mx-auto mb-16 max-w-3xl text-center text-lg text-muted-foreground md:text-xl">
+            We've built tools with cutting-edge technology to solve the real-world problems of your business.
+          </p>
+          <div className="container mx-auto grid grid-cols-1 md:grid-cols-3 gap-8">
+            <UniqueFeatureCard
+              custom={1}
+              icon={<Camera size={32} />}
+              title="AI Menu Scan"
+              description="Bring your menu online in 5 minutes with our AI. Zero data entry, zero hassle."
+            />
+            <UniqueFeatureCard
+              custom={2}
+              icon={<Split size={32} />}
+              title="Smart Split-Payments"
+              description="End the hassle of splitting bills. Customers can now split payments by dish or equally among themselves."
+            />
+            <UniqueFeatureCard
+              custom={3}
+              icon={<LayoutDashboard size={32} />}
+              title="The Real Command Center"
+              description="Manage Delivery, Dine-in, and Table Bookings all from a single, unified dashboard."
+            />
+          </div>
+        </motion.section>
+
+
         {/* Target Audience Section */}
         <motion.section 
           className="bg-card py-20 sm:py-28"
@@ -589,51 +602,9 @@ export default function Home() {
           </div>
         </motion.section>
 
-        {/* Testimonials Section */}
-        <motion.section
-          className="py-20 sm:py-28"
-          initial="hidden"
-          whileInView="visible"
-          viewport={{ once: true, amount: 0.3 }}
-          variants={sectionVariants}
-        >
-          <h2 className="mb-12 text-center text-3xl font-bold tracking-tighter sm:text-4xl md:text-5xl text-foreground">Don't Just Take Our Word for It</h2>
-          <div className="relative w-full overflow-hidden marquee-container">
-            <div className="flex marquee">
-              {[...testimonials, ...testimonials].map((testimonial, index) => (
-                <Card key={index} className="mx-4 flex-shrink-0" style={{width: '350px'}}>
-                  <CardContent className="p-6 flex flex-col flex-grow h-full">
-                    <div className="flex mb-4">
-                      {[...Array(testimonial.rating)].map((_, i) => (
-                        <Star key={i} className="h-5 w-5 text-yellow-400 fill-yellow-400" />
-                      ))}
-                    </div>
-                    <p className="text-muted-foreground italic flex-grow">"{testimonial.quote}"</p>
-                    <div className="flex items-center mt-6">
-                      <Image
-                        src={testimonial.image.src}
-                        width={testimonial.image.width}
-                        height={testimonial.image.height}
-                        alt={testimonial.name}
-                        className="h-12 w-12 rounded-full border-2 border-primary"
-                        data-ai-hint={testimonial.image.hint}
-                      />
-                      <div className="ml-4">
-                        <p className="font-bold text-foreground">{testimonial.name}</p>
-                        <p className="text-sm text-muted-foreground">{testimonial.title}</p>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
-          </div>
-        </motion.section>
-
-
         {/* Comparison Table Section */}
         <motion.section 
-          className="bg-card py-20 sm:py-28"
+          className="bg-background py-20 sm:py-28"
           initial="hidden"
           whileInView="visible"
           viewport={{ once: true, amount: 0.3 }}
@@ -678,11 +649,11 @@ export default function Home() {
           whileInView="visible"
           viewport={{ once: true, amount: 0.3 }}
           variants={sectionVariants}
-          className="py-20 sm:py-28"
+          className="bg-card py-20 sm:py-28"
         >
           <div className="container mx-auto flex flex-col items-center px-4">
             <h2 className="text-center text-3xl font-bold tracking-tighter sm:text-4xl md:text-5xl text-foreground">Simple & Transparent Pricing</h2>
-            <div className="mt-12 w-full max-w-md rounded-2xl border-2 border-primary bg-card p-8 shadow-2xl shadow-primary/20 transition-transform duration-300 hover:scale-105">
+            <div className="mt-12 w-full max-w-md rounded-2xl border-2 border-primary bg-background p-8 shadow-2xl shadow-primary/20 transition-transform duration-300 hover:scale-105">
               <h3 className="text-3xl font-bold text-center text-foreground">Pro Plan</h3>
               <p className="mt-4 text-center text-5xl font-bold text-foreground">Coming Soon</p>
               <ul className="mt-8 space-y-4">
