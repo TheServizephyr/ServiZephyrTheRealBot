@@ -1,4 +1,3 @@
-
 'use client'
 
 import { motion, useInView, animate } from 'framer-motion'
@@ -363,14 +362,14 @@ export default function Home() {
           variants={sectionVariants}
         >
           <h2 className="mb-4 text-center text-3xl font-bold tracking-tighter sm:text-4xl md:text-5xl text-foreground">
-            Sirf 3 Aasaan Steps Mein Shuru Karein
+            Get Started in 3 Simple Steps
           </h2>
           <p className="mx-auto mb-16 max-w-2xl text-center text-lg text-muted-foreground md:text-xl">
-            Apna khud ka WhatsApp ordering system launch karna ab bachchon ka khel hai. Kisi technical knowledge ki zaroorat nahi.
+            Launch your own WhatsApp ordering system in minutes. No technical expertise required.
           </p>
           <div className="relative grid grid-cols-1 md:grid-cols-3 gap-8">
             {/* Dashed line for desktop */}
-            <div className="absolute top-1/2 left-0 right-0 h-px -translate-y-1/2 hidden md:block">
+            <div className="absolute top-12 left-0 right-0 h-px -translate-y-1/2 hidden md:block">
               <svg width="100%" height="100%">
                 <line x1="0" y1="50%" x2="100%" y2="50%" strokeWidth="2" stroke="hsl(var(--border))" strokeDasharray="8 8"/>
               </svg>
@@ -379,22 +378,22 @@ export default function Home() {
             {[
               {
                 icon: <LinkIcon className="h-8 w-8" />,
-                title: "Step 1: Connect Karein",
-                description: "Sirf ek QR code scan karke apne business WhatsApp number ko hamare dashboard se jodein. 5 minute se bhi kam samay mein."
+                title: "1. Connect Your Number",
+                description: "Fill a simple, secure form from Meta to link your business WhatsApp number. It takes less than 5 minutes."
               },
               {
                 icon: <Edit className="h-8 w-8" />,
-                title: "Step 2: Customize Karein",
-                description: "Apne dashboard se aasaani se apna poora menu ya product catalog upload karein, photos aur prices ke saath."
+                title: "2. Customize Your Store",
+                description: "Easily upload your full menu or product catalog with photos and prices through our intuitive dashboard."
               },
               {
                 icon: <Share2 className="h-8 w-8" />,
-                title: "Step 3: Launch Karein",
-                description: "Apni unique ordering link ko customers ke saath share karein aur seedhe WhatsApp par commission-free orders lena shuru karein."
+                title: "3. Launch & Grow",
+                description: "Share your unique ordering link with customers and start accepting commission-free orders directly on WhatsApp."
               }
             ].map((step, i) => (
               <motion.div key={i} custom={i} variants={cardVariants} className="relative bg-background p-6 text-center">
-                <div className="inline-flex h-20 w-20 items-center justify-center rounded-full bg-primary/10 border-2 border-primary text-primary shadow-lg mb-6">
+                <div className="inline-flex h-24 w-24 items-center justify-center rounded-full bg-primary/10 border-2 border-primary text-primary shadow-lg mb-6">
                   {step.icon}
                 </div>
                 <h3 className="mb-2 text-xl font-bold text-foreground">{step.title}</h3>
