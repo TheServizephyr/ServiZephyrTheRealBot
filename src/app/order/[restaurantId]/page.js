@@ -1235,7 +1235,7 @@ const OrderPageInternal = () => {
                         <Popover>
                             <PopoverTrigger asChild>
                                 <Button variant="outline" className="flex items-center gap-2 flex-shrink-0">
-                                    <SlidersHorizontal size={16} /> Filter &amp; Sort
+                                    <SlidersHorizontal size={16} /> Filter & Sort
                                 </Button>
                             </PopoverTrigger>
                             <PopoverContent className="w-64">
