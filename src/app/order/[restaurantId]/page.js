@@ -1,5 +1,3 @@
-
-
 'use client';
 
 import React, { useState, useEffect, Suspense, useMemo, useCallback, useRef } from 'react';
@@ -57,7 +55,7 @@ const CustomizationDrawer = ({ item, isOpen, onClose, onAddToCart }) => {
     };
 
     const totalPrice = useMemo(() => {
-        if (!selectedPortion) return 0;
+        if (!selectedPortion || !item) return 0;
         let total = selectedPortion.price;
         
         (item.addOnGroups || []).forEach(group => {
@@ -69,7 +67,7 @@ const CustomizationDrawer = ({ item, isOpen, onClose, onAddToCart }) => {
         });
         
         return total;
-    }, [selectedPortion, addOnQuantities, item.addOnGroups]);
+    }, [selectedPortion, addOnQuantities, item]);
 
     const handleFinalAddToCart = () => {
         const selectedAddOns = [];
