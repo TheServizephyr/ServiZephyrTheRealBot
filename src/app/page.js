@@ -1,7 +1,8 @@
+
 'use client'
 
 import { motion, useInView, animate } from 'framer-motion'
-import { CheckCircle, Bot, Zap, Rocket, Users, ArrowRight, Star, ShoppingCart, BarChart2, MessageSquare, Briefcase, Store, Soup, Pizza, Feather, Check, Salad } from 'lucide-react'
+import { CheckCircle, Bot, Zap, Rocket, Users, ArrowRight, Star, ShoppingCart, BarChart2, MessageSquare, Briefcase, Store, Soup, Pizza, Feather, Check, Salad, Link as LinkIcon, Edit, Share2 } from 'lucide-react'
 import Image from 'next/image'
 import Link from 'next/link'
 import React, { useEffect, useRef, useState } from 'react'
@@ -352,45 +353,54 @@ export default function Home() {
           </div>
         </section>
         
-        {/* Animated Stats Section */}
+        {/* How It Works Section */}
         <motion.section
-          className="container mx-auto py-12"
+          id="how-it-works"
+          className="container mx-auto py-20 sm:py-28"
           initial="hidden"
           whileInView="visible"
-          viewport={{ once: true, amount: 0.5 }}
+          viewport={{ once: true, amount: 0.3 }}
           variants={sectionVariants}
         >
-          <div className="grid grid-cols-2 gap-4 text-center sm:grid-cols-3 md:grid-cols-5 md:gap-8">
-            <div className="rounded-lg border bg-secondary p-6 md:p-8 shadow-sm transition-all duration-300 hover:shadow-lg hover:-translate-y-2">
-              <h3 className="text-4xl sm:text-5xl font-bold text-primary">
-                <AnimatedNumber value={25} suffix="%" />+
-              </h3>
-              <p className="mt-2 text-muted-foreground text-sm">Commission Saved</p>
+          <h2 className="mb-4 text-center text-3xl font-bold tracking-tighter sm:text-4xl md:text-5xl text-foreground">
+            Sirf 3 Aasaan Steps Mein Shuru Karein
+          </h2>
+          <p className="mx-auto mb-16 max-w-2xl text-center text-lg text-muted-foreground md:text-xl">
+            Apna khud ka WhatsApp ordering system launch karna ab bachchon ka khel hai. Kisi technical knowledge ki zaroorat nahi.
+          </p>
+          <div className="relative grid grid-cols-1 md:grid-cols-3 gap-8">
+            {/* Dashed line for desktop */}
+            <div className="absolute top-1/2 left-0 right-0 h-px -translate-y-1/2 hidden md:block">
+              <svg width="100%" height="100%">
+                <line x1="0" y1="50%" x2="100%" y2="50%" strokeWidth="2" stroke="hsl(var(--border))" strokeDasharray="8 8"/>
+              </svg>
             </div>
-            <div className="rounded-lg border bg-secondary p-6 md:p-8 shadow-sm transition-all duration-300 hover:shadow-lg hover:-translate-y-2">
-              <h3 className="text-4xl sm:text-5xl font-bold text-primary">
-                <AnimatedNumber value={40} suffix="%" />+
-              </h3>
-              <p className="mt-2 text-muted-foreground text-sm">Increase in Repeat Orders</p>
-            </div>
-            <div className="rounded-lg border bg-secondary p-6 md:p-8 shadow-sm transition-all duration-300 hover:shadow-lg hover:-translate-y-2">
-              <h3 className="text-4xl sm:text-5xl font-bold text-primary">
-                <AnimatedNumber value={100} suffix="%" />
-              </h3>
-              <p className="mt-2 text-muted-foreground text-sm">Customer Data Ownership</p>
-            </div>
-            <div className="rounded-lg border bg-secondary p-6 md:p-8 shadow-sm transition-all duration-300 hover:shadow-lg hover:-translate-y-2">
-              <h3 className="text-4xl sm:text-5xl font-bold text-primary">
-                <AnimatedNumber value={500} suffix="+" />
-              </h3>
-              <p className="mt-2 text-muted-foreground text-sm">Happy Restaurants</p>
-            </div>
-             <div className="rounded-lg border bg-secondary p-6 md:p-8 shadow-sm transition-all duration-300 hover:shadow-lg hover:-translate-y-2 col-span-2 sm:col-span-1">
-              <h3 className="text-4xl sm:text-5xl font-bold text-primary">
-                <AnimatedNumber value={25000} suffix="+" />
-              </h3>
-              <p className="mt-2 text-muted-foreground text-sm">Happy Users</p>
-            </div>
+            
+            {[
+              {
+                icon: <LinkIcon className="h-8 w-8" />,
+                title: "Step 1: Connect Karein",
+                description: "Sirf ek QR code scan karke apne business WhatsApp number ko hamare dashboard se jodein. 5 minute se bhi kam samay mein."
+              },
+              {
+                icon: <Edit className="h-8 w-8" />,
+                title: "Step 2: Customize Karein",
+                description: "Apne dashboard se aasaani se apna poora menu ya product catalog upload karein, photos aur prices ke saath."
+              },
+              {
+                icon: <Share2 className="h-8 w-8" />,
+                title: "Step 3: Launch Karein",
+                description: "Apni unique ordering link ko customers ke saath share karein aur seedhe WhatsApp par commission-free orders lena shuru karein."
+              }
+            ].map((step, i) => (
+              <motion.div key={i} custom={i} variants={cardVariants} className="relative bg-background p-6 text-center">
+                <div className="inline-flex h-20 w-20 items-center justify-center rounded-full bg-primary/10 border-2 border-primary text-primary shadow-lg mb-6">
+                  {step.icon}
+                </div>
+                <h3 className="mb-2 text-xl font-bold text-foreground">{step.title}</h3>
+                <p className="text-muted-foreground">{step.description}</p>
+              </motion.div>
+            ))}
           </div>
         </motion.section>
 
