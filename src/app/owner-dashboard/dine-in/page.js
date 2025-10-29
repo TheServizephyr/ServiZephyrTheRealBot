@@ -1,4 +1,3 @@
-
 'use client';
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
@@ -1083,7 +1082,8 @@ function DineInPage() {
             return;
         }
         setDisplayTable(table);
-        setIsQrDisplayModalOpen(false);
+        setIsManageTablesModalOpen(false); // Close manage modal if open
+        setIsQrDisplayModalOpen(true);
     };
 
     return (
@@ -1151,12 +1151,12 @@ function DineInPage() {
                         <div key={i} className="bg-card border border-border rounded-xl h-96"></div>
                     ))}
                 </div>
-            ) : Object.values(activeTableData).some(data => data.tabs.length > 0 || data.state === 'needs_cleaning') ? (
+            ) : Object.keys(activeTableData).length > 0 ? (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
                     {Object.entries(activeTableData)
-                        .filter(([_, data]) => data.tabs.length > 0 || data.state === 'needs_cleaning')
+                        .sort(([idA], [idB]) => idA.localeCompare(idB, undefined, {numeric: true}))
                         .map(([tableId, tableData]) => (
-                        <TableCard key={tableId} tableId={tableId} tableData={tableData} onMarkAsPaid={() => confirmMarkAsPaid(tableId, tableData.tabs[0]?.id)} onPrintBill={setBillData} onMarkAsCleaned={handleMarkAsCleaned} onShowHistory={handleShowHistory}/>
+                        <TableCard key={tableId} tableId={tableId} tableData={tableData} onMarkAsPaid={confirmMarkAsPaid} onPrintBill={setBillData} onMarkAsCleaned={handleMarkAsCleaned} onShowHistory={handleShowHistory}/>
                     ))}
                 </div>
             ) : (
@@ -1171,6 +1171,3 @@ function DineInPage() {
 }
 
 export default DineInPage;
-
-
-    
