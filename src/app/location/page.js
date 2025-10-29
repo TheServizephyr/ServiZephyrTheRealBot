@@ -1,4 +1,3 @@
-
 'use client';
 
 import React, { useState, useEffect, Suspense, useCallback } from 'react';
@@ -50,7 +49,14 @@ const SelectLocationInternal = () => {
     const returnUrl = searchParams.get('returnUrl') || '/';
     
     const fetchAddresses = useCallback(async () => {
-        if (!user) return; // Guard clause
+        // **THE FIX: Do NOT proceed if the user is not logged in.**
+        if (!user) {
+            console.log("[LOCATION PAGE] User not logged in. Clearing addresses and stopping load.");
+            setAddresses([]);
+            setLoading(false);
+            return;
+        }
+        
         setLoading(true);
         setError('');
         console.log(`[LOCATION PAGE] Fetching addresses for user: ${user.uid}`);
@@ -74,14 +80,9 @@ const SelectLocationInternal = () => {
 
     useEffect(() => {
         console.log(`[LOCATION PAGE] Auth state changed. Loading: ${isUserLoading}, User: ${user ? user.uid : 'null'}`);
-        if (!isUserLoading) { // Only run logic when auth state is resolved
-            if (user) {
-                fetchAddresses();
-            } else {
-                // User is confirmed to be logged out, no need to fetch addresses
-                setLoading(false);
-                setAddresses([]);
-            }
+        // **THE FIX: The check is now inside fetchAddresses, this effect just triggers it.**
+        if (!isUserLoading) {
+            fetchAddresses();
         }
     }, [user, isUserLoading, fetchAddresses]);
 
@@ -178,7 +179,7 @@ const SelectLocationInternal = () => {
                     ) : (
                         <div className="text-center py-8 text-muted-foreground">
                             <p>No saved addresses found.</p>
-                            <p className="text-sm">Add a new address to get started.</p>
+                            <p className="text-sm">Login to see your addresses or add a new one.</p>
                         </div>
                     )}
                 </div>
@@ -194,5 +195,3 @@ export default function SelectLocationPage() {
         </Suspense>
     );
 }
-
-  

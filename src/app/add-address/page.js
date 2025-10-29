@@ -109,9 +109,10 @@ const AddAddressPageInternal = () => {
                 setRecipientPhone(user.phoneNumber || phoneFromUrl || '');
             } 
             // Only if user is NOT logged in, then use the phone from URL.
-            else if (phoneFromUrl) {
+            else {
                  console.log("[add-address] User not logged in, using phone from URL:", phoneFromUrl);
-                 setRecipientPhone(phoneFromUrl);
+                 setRecipientName(''); // <<< THE FIX: Ensure name is empty for new users
+                 setRecipientPhone(phoneFromUrl || '');
             }
         };
 

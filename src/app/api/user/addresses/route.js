@@ -61,19 +61,22 @@ export async function POST(req) {
         const userRef = getFirestore().collection('users').doc(uid);
         
         console.log(`[API][user/addresses] Attempting to add address for user ${uid}.`);
-        await userRef.update({
+        await userRef.set({
             addresses: FieldValue.arrayUnion(newAddress)
-        });
+        }, { merge: true });
 
         console.log(`[API][user/addresses] Address added successfully for user ${uid}.`);
         return NextResponse.json({ message: 'Address added successfully!', address: newAddress }, { status: 200 });
 
     } catch (error) {
         console.error(`[API][user/addresses] POST /api/user/addresses ERROR for UID ${uid}:`, error);
-        if (error.code === 'not-found' || error.message.includes('NOT_FOUND')) {
+        // This handles the case where a user document doesn't exist yet.
+        // It's a common scenario for new users saving their first address.
+        if (error.code === 'not-found' || error.message.includes('NOT_FOUND') || error.code === 5) {
              console.warn(`[API][user/addresses] User document for ${uid} not found. Creating a new one.`);
              try {
                 const userRef = getFirestore().collection('users').doc(uid);
+                // Create the user document and add the first address.
                 await userRef.set({ addresses: [newAddress] }, { merge: true });
                  console.log(`[API][user/addresses] New user document created and address added for UID ${uid}.`);
                 return NextResponse.json({ message: 'User profile created and address added!', address: newAddress }, { status: 201 });
