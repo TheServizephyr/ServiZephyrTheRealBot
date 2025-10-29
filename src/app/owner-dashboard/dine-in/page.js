@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
@@ -16,6 +17,7 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import QRCode from 'qrcode.react';
 import { useReactToPrint } from 'react-to-print';
 import InfoDialog from '@/components/InfoDialog';
+import { Checkbox } from '@/components/ui/checkbox';
 
 
 const formatCurrency = (value) => `₹${Number(value || 0).toLocaleString('en-IN')}`;
@@ -224,7 +226,7 @@ const BillModal = ({ order, restaurant, onClose, onPrint, printRef }) => {
                                 <tr key={index} className="border-b border-dotted border-black">
                                     <td className="py-2">{item.name}</td>
                                     <td className="text-center py-2">{item.qty}</td>
-                                    <td className="text-right py-2">{formatCurrency(item.qty * item.price)}</td>
+                                    <td className="text-right py-2">{formatCurrency(item.qty * (item.totalPrice / item.qty))}</td>
                                 </tr>
                             ))}
                         </tbody>
@@ -270,7 +272,7 @@ const ConfirmationModal = ({ isOpen, onClose, onConfirm, title, description, con
 };
 
 
-const TableCard = ({ tableId, tableData, onMarkAsPaid, onPrintBill, onMarkAsCleaned, onShowHistory }) => {
+const TableCard = ({ tableId, tableData, onMarkAsPaid, onPrintBill, onMarkAsCleaned, onShowHistory, acknowledgedItems, onToggleAcknowledge }) => {
     const tabs = tableData.tabs || [];
     const state = tableData.state;
     const stateConfig = {
@@ -281,7 +283,7 @@ const TableCard = ({ tableId, tableData, onMarkAsPaid, onPrintBill, onMarkAsClea
             icon: <CheckCircle size={16} className="text-green-500" />
         },
         occupied: {
-            title: "Occupied",
+            title: `Occupied (${tableData.pax_count || 0})`,
             bg: "bg-yellow-500/10",
             border: "border-yellow-500",
             icon: <Users size={16} className="text-yellow-500" />
@@ -306,7 +308,7 @@ const TableCard = ({ tableId, tableData, onMarkAsPaid, onPrintBill, onMarkAsClea
         >
             <Card className={cn("flex flex-col h-full shadow-lg hover:shadow-primary/20 transition-shadow duration-300 border-2", currentConfig.border)}>
                 <CardHeader className={cn("flex-row items-center justify-between space-y-0 pb-2", currentConfig.bg)}>
-                    <CardTitle className="text-2xl font-bold">Table {tableId}</CardTitle>
+                    <CardTitle className="text-2xl font-bold">{tableId}</CardTitle>
                     <div className="flex items-center gap-2 text-sm font-semibold">
                         {currentConfig.icon} {currentConfig.title}
                     </div>
@@ -332,12 +334,29 @@ const TableCard = ({ tableId, tableData, onMarkAsPaid, onPrintBill, onMarkAsClea
                                     <Clock size={14}/> Last activity: {tab.latestOrderTime ? format(tab.latestOrderTime, 'p') : 'N/A'}
                                 </div>
                                 <div className="space-y-2 max-h-48 overflow-y-auto pr-2">
-                                    {tab.allItems.map((item, index) => (
-                                        <div key={index} className="flex justify-between items-center text-sm p-2 bg-muted/50 rounded-md">
-                                            <span className="text-foreground">{item.name}</span>
-                                            <span className="font-semibold text-foreground">x{item.qty}</span>
-                                        </div>
-                                    ))}
+                                    {tab.allItems.map((item) => {
+                                        const uniqueItemId = `${tab.id}-${item.name}`;
+                                        const isAcknowledged = acknowledgedItems.has(uniqueItemId);
+                                        return (
+                                            <div 
+                                                key={uniqueItemId} 
+                                                className={cn(
+                                                    "flex justify-between items-center text-sm p-2 rounded-md transition-colors",
+                                                    isAcknowledged ? "bg-muted/50" : "bg-yellow-400/20"
+                                                )}
+                                            >
+                                                <div className="flex items-center gap-2">
+                                                     <Checkbox 
+                                                        checked={isAcknowledged}
+                                                        onCheckedChange={() => onToggleAcknowledge(uniqueItemId)}
+                                                        id={uniqueItemId}
+                                                    />
+                                                    <label htmlFor={uniqueItemId} className="text-foreground">{item.name}</label>
+                                                </div>
+                                                <span className="font-semibold text-foreground">x{item.qty}</span>
+                                            </div>
+                                        );
+                                    })}
                                 </div>
                                 <CardFooter className="flex-col items-start bg-muted/30 p-4 border-t mt-4">
                                     <Button variant="outline" size="sm" className="w-full mb-4" onClick={() => onShowHistory(tableId, tab.id)}>
@@ -772,6 +791,7 @@ function DineInPage() {
     const [historyModalData, setHistoryModalData] = useState(null);
     const [infoDialog, setInfoDialog] = useState({ isOpen: false, title: '', message: '' });
     const [confirmationState, setConfirmationState] = useState({ isOpen: false, onConfirm: () => {}, title: '', description: '', confirmText: '' });
+    const [acknowledgedItems, setAcknowledgedItems] = useState(new Set());
 
     const billPrintRef = useRef();
 
@@ -958,11 +978,12 @@ function DineInPage() {
             const allItemsMap = new Map();
             tabOrders.forEach(order => {
                 (order.items || []).forEach(item => {
+                    const uniqueItemId = `${order.id}-${item.name}`; // Ensure unique ID per order
                     const existing = allItemsMap.get(item.name);
                     if (existing) {
-                        allItemsMap.set(item.name, { ...existing, qty: existing.qty + item.qty });
+                        allItemsMap.set(item.name, { ...existing, qty: existing.qty + item.qty, orderItemIds: [...existing.orderItemIds, uniqueItemId] });
                     } else {
-                        allItemsMap.set(item.name, { ...item });
+                        allItemsMap.set(item.name, { ...item, orderItemIds: [uniqueItemId] });
                     }
                 });
             });
@@ -971,6 +992,7 @@ function DineInPage() {
                 id: tabId,
                 tableId: mainOrder.tableId,
                 tab_name: mainOrder.tab_name || "Guest",
+                pax_count: mainOrder.pax_count || 1,
                 orders: tabOrders,
                 isActive,
                 totalBill,
@@ -985,14 +1007,21 @@ function DineInPage() {
         closedTabs.sort((a,b) => b.closedAt - a.closedAt);
     
         const tableMap = allTables.reduce((acc, table) => {
-            acc[table.id] = { ...table, tabs: [], state: table.state || 'available' };
+            acc[table.id] = { ...table, tabs: [], pax_count: 0 };
             return acc;
         }, {});
     
         tabsData.forEach(tab => {
             if (tab.isActive && tableMap[tab.tableId]) {
                 tableMap[tab.tableId].tabs.push(tab);
+                tableMap[tab.tableId].pax_count += tab.pax_count;
                 tableMap[tab.tableId].state = 'occupied';
+            }
+        });
+        
+         Object.values(tableMap).forEach(table => {
+            if (table.tabs.length === 0 && table.state !== 'needs_cleaning') {
+                table.state = 'available';
             }
         });
     
@@ -1042,35 +1071,37 @@ function DineInPage() {
         setIsManageTablesModalOpen(false); // Close manage modal if open
         setIsQrDisplayModalOpen(true);
     };
+    
+    const handleToggleAcknowledge = (uniqueItemId) => {
+        setAcknowledgedItems(prev => {
+            const newSet = new Set(prev);
+            if (newSet.has(uniqueItemId)) {
+                newSet.delete(uniqueItemId);
+            } else {
+                newSet.add(uniqueItemId);
+            }
+            return newSet;
+        });
+    };
 
     const renderTableCards = () => {
         const sortedTableKeys = Object.keys(activeTableData).sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
 
         return sortedTableKeys.flatMap(tableId => {
             const tableData = activeTableData[tableId];
-            const { tabs } = tableData;
-
-            if (tabs.length === 0 || tableData.state === 'available' || tableData.state === 'needs_cleaning') {
-                return (
-                    <TableCard
-                        key={tableId}
-                        tableId={tableId}
-                        tableData={tableData}
-                        onMarkAsCleaned={handleMarkAsCleaned}
-                    />
-                );
-            }
-
-            return tabs.map(tab => (
-                 <TableCard
-                    key={`${tableId}-${tab.id}`}
+            return (
+                <TableCard
+                    key={tableId}
                     tableId={tableId}
-                    tableData={{ ...tableData, tabs: [tab] }} // Pass only one tab to the card
+                    tableData={tableData}
                     onMarkAsPaid={confirmMarkAsPaid}
                     onPrintBill={setBillData}
+                    onMarkAsCleaned={handleMarkAsCleaned}
                     onShowHistory={handleShowHistory}
+                    acknowledgedItems={acknowledgedItems}
+                    onToggleAcknowledge={handleToggleAcknowledge}
                 />
-            ));
+            );
         });
     };
 
