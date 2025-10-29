@@ -399,6 +399,7 @@ const DineInModal = ({ isOpen, onClose, onBookTable, tableStatus, onStartNewTab,
                                 </button>
                                  <button
                                     onClick={() => {
+                                        onClose();
                                         setIsQrScannerOpen(true);
                                     }}
                                     className="p-6 border-2 border-border rounded-lg text-center flex flex-col items-center justify-center gap-3 hover:bg-muted hover:border-primary transition-all group"
@@ -1357,6 +1358,12 @@ const OrderPageInternal = () => {
 
 const OrderPage = () => (
     <Suspense fallback={<div className="min-h-screen bg-background flex items-center justify-center"><div className="animate-spin rounded-full h-16 w-16 border-b-2 border-primary"></div></div>}>
+        <MenuBrowserModal 
+            isOpen={false} // This needs to be controlled by state
+            onClose={() => {}} 
+            categories={[]} 
+            onCategoryClick={() => {}} 
+        />
         <OrderPageInternal />
     </Suspense>
 );
