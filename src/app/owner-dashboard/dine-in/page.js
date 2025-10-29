@@ -939,37 +939,24 @@ function DineInPage() {
         const dineInStatuses = ['pending', 'confirmed', 'preparing', 'active_tab', 'ready_for_pickup'];
         const thirtyDaysAgo = subDays(new Date(), 30);
     
-        const tabsData = allOrders.reduce((acc, order) => {
-            if (order.deliveryType !== 'dine-in' || !order.dineInTabId) {
-                return acc;
-            }
-            if (!acc[order.dineInTabId]) {
-                acc[order.dineInTabId] = {
-                    id: order.dineInTabId,
-                    tableId: order.tableId,
-                    tab_name: order.tab_name || "Guest",
-                    orders: [],
-                    isActive: false,
-                    closedAt: null,
-                    paymentMethod: 'Unknown'
-                };
-            }
-            acc[order.dineInTabId].orders.push(order);
-            return acc;
-        }, {});
+        const uniqueTabIds = [...new Set(allOrders.filter(o => o.deliveryType === 'dine-in' && o.dineInTabId).map(o => o.dineInTabId))];
     
-        Object.values(tabsData).forEach(tab => {
-            const latestOrder = tab.orders.reduce((latest, current) => {
-                const latestDate = latest.orderDate.seconds ? new Date(latest.orderDate.seconds * 1000) : new Date(latest.orderDate);
-                const currentDate = current.orderDate.seconds ? new Date(current.orderDate.seconds * 1000) : new Date(current.orderDate);
+        const tabsData = uniqueTabIds.map(tabId => {
+            const tabOrders = allOrders.filter(o => o.dineInTabId === tabId);
+            if (tabOrders.length === 0) return null;
+    
+            const mainOrder = tabOrders.find(o => o.tab_name) || tabOrders[0];
+            const latestOrder = tabOrders.reduce((latest, current) => {
+                const latestDate = new Date(latest.orderDate?.seconds ? latest.orderDate.seconds * 1000 : latest.orderDate);
+                const currentDate = new Date(current.orderDate?.seconds ? current.orderDate.seconds * 1000 : current.orderDate);
                 return currentDate > latestDate ? current : latest;
             });
     
-            tab.isActive = dineInStatuses.includes(latestOrder.status);
-            tab.totalBill = tab.orders.reduce((sum, o) => sum + (o.totalAmount || 0), 0);
+            const isActive = dineInStatuses.includes(latestOrder.status);
+            const totalBill = tabOrders.reduce((sum, o) => sum + (o.totalAmount || 0), 0);
             
             const allItemsMap = new Map();
-            tab.orders.forEach(order => {
+            tabOrders.forEach(order => {
                 (order.items || []).forEach(item => {
                     const existing = allItemsMap.get(item.name);
                     if (existing) {
@@ -979,18 +966,22 @@ function DineInPage() {
                     }
                 });
             });
-            tab.allItems = Array.from(allItemsMap.values());
-            
-            const latestTimestamp = Math.max(...tab.orders.map(o => o.orderDate.seconds ? o.orderDate.seconds * 1000 : new Date(o.orderDate).getTime()));
-            tab.latestOrderTime = new Date(latestTimestamp);
-
-            if (!tab.isActive) {
-                tab.closedAt = tab.latestOrderTime;
-                tab.paymentMethod = latestOrder.paymentDetails?.method || 'Pay at Counter';
-            }
-        });
     
-        const closedTabs = Object.values(tabsData).filter(tab => !tab.isActive && tab.closedAt && isAfter(tab.closedAt, thirtyDaysAgo));
+            return {
+                id: tabId,
+                tableId: mainOrder.tableId,
+                tab_name: mainOrder.tab_name || "Guest",
+                orders: tabOrders,
+                isActive,
+                totalBill,
+                allItems: Array.from(allItemsMap.values()),
+                latestOrderTime: new Date(latestOrder.orderDate?.seconds ? latestOrder.orderDate.seconds * 1000 : latestOrder.orderDate),
+                closedAt: !isActive ? new Date(latestOrder.orderDate?.seconds ? latestOrder.orderDate.seconds * 1000 : latestOrder.orderDate) : null,
+                paymentMethod: latestOrder.paymentDetails?.method || 'Pay at Counter',
+            };
+        }).filter(Boolean);
+    
+        const closedTabs = tabsData.filter(tab => !tab.isActive && tab.closedAt && isAfter(tab.closedAt, thirtyDaysAgo));
         closedTabs.sort((a,b) => b.closedAt - a.closedAt);
     
         const tableMap = allTables.reduce((acc, table) => {
@@ -998,7 +989,7 @@ function DineInPage() {
             return acc;
         }, {});
     
-        Object.values(tabsData).forEach(tab => {
+        tabsData.forEach(tab => {
             if (tab.isActive && tableMap[tab.tableId]) {
                 tableMap[tab.tableId].tabs.push(tab);
                 tableMap[tab.tableId].state = 'occupied';
@@ -1006,7 +997,6 @@ function DineInPage() {
         });
     
         return { activeTableData: tableMap, closedTabsData: closedTabs };
-    
     }, [allOrders, allTables]);
     
     const handleShowHistory = (tableId, tabId) => {
