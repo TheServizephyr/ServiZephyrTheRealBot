@@ -1,4 +1,5 @@
 
+
 import { NextResponse } from 'next/server';
 import { getAuth, getFirestore, FieldValue } from '@/lib/firebase-admin';
 
@@ -42,14 +43,21 @@ export async function GET(req) {
     try {
         const businessRef = await verifyOwnerAndGetBusinessRef(req);
         
-        // ** THE FIX: Get from a dedicated subcollection **
-        const locationSnap = await businessRef.collection('operational_settings').doc('location').get();
+        // ** THE FIX: Get from the main document's 'address' field **
+        const businessSnap = await businessRef.get();
 
-        if (!locationSnap.exists) {
+        if (!businessSnap.exists) {
+             return NextResponse.json({ location: null, message: 'Business document not found.' }, { status: 404 });
+        }
+        
+        const businessData = businessSnap.data();
+        const address = businessData.address;
+
+        if (!address || typeof address.latitude !== 'number' || typeof address.longitude !== 'number') {
             return NextResponse.json({ location: null, message: 'No operational location set.' }, { status: 200 });
         }
 
-        return NextResponse.json({ location: locationSnap.data() }, { status: 200 });
+        return NextResponse.json({ location: address }, { status: 200 });
 
     } catch (error) {
         console.error("GET /api/owner/locations ERROR:", error);
@@ -68,19 +76,17 @@ export async function POST(req) {
             return NextResponse.json({ message: 'Valid location object with latitude and longitude is required.' }, { status: 400 });
         }
         
+        // ** THE FIX: Save to the main 'address' field, not a subcollection **
         const locationData = {
-            latitude: location.latitude,
-            longitude: location.longitude,
-            address: location.address || '',
-            updatedAt: FieldValue.serverTimestamp(),
+            address: {
+                ...location, // This includes all fields from the client
+                updatedAt: FieldValue.serverTimestamp(),
+            }
         };
-        
-        // ** THE FIX: Save to a dedicated subcollection document **
-        const locationDocRef = businessRef.collection('operational_settings').doc('location');
 
-        await locationDocRef.set(locationData, { merge: true });
+        await businessRef.set(locationData, { merge: true });
 
-        return NextResponse.json({ message: 'Operational location saved successfully!', location: locationData }, { status: 200 });
+        return NextResponse.json({ message: 'Operational location saved successfully!', location: locationData.address }, { status: 200 });
 
     } catch (error) {
         console.error("POST /api/owner/locations ERROR:", error);
