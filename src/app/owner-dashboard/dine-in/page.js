@@ -272,9 +272,12 @@ const ConfirmationModal = ({ isOpen, onClose, onConfirm, title, description, con
 };
 
 
-const TableCard = ({ tableId, tableData, onMarkAsPaid, onPrintBill, onMarkAsCleaned, onShowHistory, acknowledgedItems, onToggleAcknowledge }) => {
-    const tabs = tableData.tabs || [];
+const TableCard = ({ tableId, tableData, onMarkAsPaid, onPrintBill, onMarkAsCleaned, onShowHistory, acknowledgedItems, onToggleAcknowledge, isTab = false }) => {
     const state = tableData.state;
+    
+    // If it's a tab, we use its own pax_count. If it's a table, we sum up tab counts.
+    const paxCount = isTab ? tableData.pax_count : tableData.tabs?.reduce((sum, tab) => sum + (tab.pax_count || 0), 0) || 0;
+
     const stateConfig = {
         available: {
             title: "Available",
@@ -283,7 +286,7 @@ const TableCard = ({ tableId, tableData, onMarkAsPaid, onPrintBill, onMarkAsClea
             icon: <CheckCircle size={16} className="text-green-500" />
         },
         occupied: {
-            title: `Occupied (${tableData.pax_count || 0})`,
+            title: `Occupied (${paxCount})`,
             bg: "bg-yellow-500/10",
             border: "border-yellow-500",
             icon: <Users size={16} className="text-yellow-500" />
@@ -297,6 +300,8 @@ const TableCard = ({ tableId, tableData, onMarkAsPaid, onPrintBill, onMarkAsClea
     };
     
     const currentConfig = stateConfig[state] || { title: state, bg: "bg-muted", border: "border-border", icon: null };
+
+    const tab = isTab ? tableData : null;
 
     return (
          <motion.div
@@ -318,61 +323,59 @@ const TableCard = ({ tableId, tableData, onMarkAsPaid, onPrintBill, onMarkAsClea
                          <div className="flex-grow p-4 flex flex-col items-center justify-center text-center">
                             <p className="text-muted-foreground">This table's bill has been paid. Mark it as clean once it's ready for the next guests.</p>
                         </div>
-                    ) : tabs.length === 0 ? (
+                    ) : !tab ? (
                         <div className="flex flex-col items-center justify-center h-full text-center text-muted-foreground">
                             <p className="font-semibold">Table is Available</p>
                             <p className="text-xs">Capacity: {tableData.max_capacity} guests</p>
                         </div>
                     ) : (
-                         tabs.map((tab) => (
-                            <div key={tab.id} className="mb-4 last:mb-0">
-                                 <div className="flex justify-between items-center bg-muted/50 p-2 rounded-t-lg">
-                                    <h4 className="font-semibold text-foreground">{tab.tab_name}</h4>
-                                    <span className="text-xs font-mono text-muted-foreground">{tab.id.substring(0,6)}...</span>
-                                </div>
-                                <div className="text-xs text-muted-foreground my-2 flex items-center gap-2">
-                                    <Clock size={14}/> Last activity: {tab.latestOrderTime ? format(tab.latestOrderTime, 'p') : 'N/A'}
-                                </div>
-                                <div className="space-y-2 max-h-48 overflow-y-auto pr-2">
-                                    {tab.allItems.map((item) => {
-                                        const uniqueItemId = `${tab.id}-${item.name}`;
-                                        const isAcknowledged = acknowledgedItems.has(uniqueItemId);
-                                        return (
-                                            <div 
-                                                key={uniqueItemId} 
-                                                className={cn(
-                                                    "flex justify-between items-center text-sm p-2 rounded-md transition-colors",
-                                                    isAcknowledged ? "bg-muted/50" : "bg-yellow-400/20"
-                                                )}
-                                            >
-                                                <div className="flex items-center gap-2">
-                                                     <Checkbox 
-                                                        checked={isAcknowledged}
-                                                        onCheckedChange={() => onToggleAcknowledge(uniqueItemId)}
-                                                        id={uniqueItemId}
-                                                    />
-                                                    <label htmlFor={uniqueItemId} className="text-foreground">{item.name}</label>
-                                                </div>
-                                                <span className="font-semibold text-foreground">x{item.qty}</span>
-                                            </div>
-                                        );
-                                    })}
-                                </div>
-                                <CardFooter className="flex-col items-start bg-muted/30 p-4 border-t mt-4">
-                                    <Button variant="outline" size="sm" className="w-full mb-4" onClick={() => onShowHistory(tableId, tab.id)}>
-                                        <History size={14} className="mr-2"/> See History
-                                    </Button>
-                                    <div className="flex justify-between items-center w-full">
-                                        <span className="text-lg font-bold">Total Bill:</span>
-                                        <span className="text-2xl font-bold text-primary">{formatCurrency(tab.totalBill)}</span>
-                                    </div>
-                                    <div className="grid grid-cols-2 gap-2 w-full mt-4">
-                                        <Button variant="outline" onClick={() => onPrintBill({ tableId, orders: tab.orders })}><Printer size={16} className="mr-2"/> Print Bill</Button>
-                                        <Button className="bg-primary hover:bg-primary/90" onClick={() => onMarkAsPaid(tableId, tab.id)}><CheckCircle size={16} className="mr-2"/> Mark as Paid</Button>
-                                    </div>
-                                </CardFooter>
+                        <div key={tab.id} className="mb-4 last:mb-0">
+                                <div className="flex justify-between items-center bg-muted/50 p-2 rounded-t-lg">
+                                <h4 className="font-semibold text-foreground">{tab.tab_name}</h4>
+                                <span className="text-xs font-mono text-muted-foreground">{tab.id.substring(0,6)}...</span>
                             </div>
-                        ))
+                            <div className="text-xs text-muted-foreground my-2 flex items-center gap-2">
+                                <Clock size={14}/> Last activity: {tab.latestOrderTime ? format(tab.latestOrderTime, 'p') : 'N/A'}
+                            </div>
+                            <div className="space-y-2 max-h-48 overflow-y-auto pr-2">
+                                {tab.allItems.map((item) => {
+                                    const uniqueItemId = `${tab.id}-${item.name}`;
+                                    const isAcknowledged = acknowledgedItems.has(uniqueItemId);
+                                    return (
+                                        <div 
+                                            key={uniqueItemId} 
+                                            className={cn(
+                                                "flex justify-between items-center text-sm p-2 rounded-md transition-colors",
+                                                isAcknowledged ? "bg-muted/50" : "bg-yellow-400/20"
+                                            )}
+                                        >
+                                            <div className="flex items-center gap-2">
+                                                    <Checkbox 
+                                                    checked={isAcknowledged}
+                                                    onCheckedChange={() => onToggleAcknowledge(uniqueItemId)}
+                                                    id={uniqueItemId}
+                                                />
+                                                <label htmlFor={uniqueItemId} className="text-foreground">{item.name}</label>
+                                            </div>
+                                            <span className="font-semibold text-foreground">x{item.qty}</span>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                            <CardFooter className="flex-col items-start bg-muted/30 p-4 border-t mt-4">
+                                <Button variant="outline" size="sm" className="w-full mb-4" onClick={() => onShowHistory(tableId, tab.id)}>
+                                    <History size={14} className="mr-2"/> See History
+                                </Button>
+                                <div className="flex justify-between items-center w-full">
+                                    <span className="text-lg font-bold">Total Bill:</span>
+                                    <span className="text-2xl font-bold text-primary">{formatCurrency(tab.totalBill)}</span>
+                                </div>
+                                <div className="grid grid-cols-2 gap-2 w-full mt-4">
+                                    <Button variant="outline" onClick={() => onPrintBill({ tableId, orders: tab.orders })}><Printer size={16} className="mr-2"/> Print Bill</Button>
+                                    <Button className="bg-primary hover:bg-primary/90" onClick={() => onMarkAsPaid(tableId, tab.id)}><CheckCircle size={16} className="mr-2"/> Mark as Paid</Button>
+                                </div>
+                            </CardFooter>
+                        </div>
                     )}
                 </CardContent>
                 {state === 'needs_cleaning' && (
@@ -958,20 +961,20 @@ function DineInPage() {
     const { activeTableData, closedTabsData } = useMemo(() => {
         const dineInStatuses = ['pending', 'confirmed', 'preparing', 'active_tab', 'ready_for_pickup'];
         const thirtyDaysAgo = subDays(new Date(), 30);
-    
+
         const uniqueTabIds = [...new Set(allOrders.filter(o => o.deliveryType === 'dine-in' && o.dineInTabId).map(o => o.dineInTabId))];
-    
+
         const tabsData = uniqueTabIds.map(tabId => {
             const tabOrders = allOrders.filter(o => o.dineInTabId === tabId);
             if (tabOrders.length === 0) return null;
-    
+
             const mainOrder = tabOrders.find(o => o.tab_name) || tabOrders[0];
             const latestOrder = tabOrders.reduce((latest, current) => {
                 const latestDate = new Date(latest.orderDate?.seconds ? latest.orderDate.seconds * 1000 : latest.orderDate);
                 const currentDate = new Date(current.orderDate?.seconds ? current.orderDate.seconds * 1000 : current.orderDate);
                 return currentDate > latestDate ? current : latest;
             });
-    
+
             const isActive = dineInStatuses.includes(latestOrder.status);
             const totalBill = tabOrders.reduce((sum, o) => sum + (o.totalAmount || 0), 0);
             
@@ -987,7 +990,9 @@ function DineInPage() {
                     }
                 });
             });
-    
+            
+            if (!mainOrder) return null;
+
             return {
                 id: tabId,
                 tableId: mainOrder.tableId,
@@ -1002,29 +1007,29 @@ function DineInPage() {
                 paymentMethod: latestOrder.paymentDetails?.method || 'Pay at Counter',
             };
         }).filter(Boolean);
-    
+
         const closedTabs = tabsData.filter(tab => !tab.isActive && tab.closedAt && isAfter(tab.closedAt, thirtyDaysAgo));
         closedTabs.sort((a,b) => b.closedAt - a.closedAt);
-    
+
         const tableMap = allTables.reduce((acc, table) => {
             acc[table.id] = { ...table, tabs: [], pax_count: 0 };
             return acc;
         }, {});
-    
+
         tabsData.forEach(tab => {
             if (tab.isActive && tableMap[tab.tableId]) {
                 tableMap[tab.tableId].tabs.push(tab);
-                tableMap[tab.tableId].pax_count += tab.pax_count;
-                tableMap[tab.tableId].state = 'occupied';
             }
         });
         
-         Object.values(tableMap).forEach(table => {
-            if (table.tabs.length === 0 && table.state !== 'needs_cleaning') {
+        Object.values(tableMap).forEach(table => {
+            if (table.tabs.length > 0) {
+                 table.state = 'occupied';
+            } else if (table.state !== 'needs_cleaning') {
                 table.state = 'available';
             }
         });
-    
+
         return { activeTableData: tableMap, closedTabsData: closedTabs };
     }, [allOrders, allTables]);
     
@@ -1085,24 +1090,43 @@ function DineInPage() {
     };
 
     const renderTableCards = () => {
+        const cards = [];
         const sortedTableKeys = Object.keys(activeTableData).sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
 
-        return sortedTableKeys.flatMap(tableId => {
-            const tableData = activeTableData[tableId];
-            return (
-                <TableCard
-                    key={tableId}
-                    tableId={tableId}
-                    tableData={tableData}
-                    onMarkAsPaid={confirmMarkAsPaid}
-                    onPrintBill={setBillData}
-                    onMarkAsCleaned={handleMarkAsCleaned}
-                    onShowHistory={handleShowHistory}
-                    acknowledgedItems={acknowledgedItems}
-                    onToggleAcknowledge={handleToggleAcknowledge}
-                />
-            );
-        });
+        for (const tableId of sortedTableKeys) {
+            const table = activeTableData[tableId];
+
+            if (table.state === 'occupied' && table.tabs.length > 0) {
+                // One card per tab
+                table.tabs.forEach(tab => {
+                    cards.push(
+                        <TableCard
+                            key={tab.id}
+                            tableId={tableId}
+                            tableData={{ ...tab, state: 'occupied' }}
+                            isTab={true}
+                            onMarkAsPaid={confirmMarkAsPaid}
+                            onPrintBill={setBillData}
+                            onShowHistory={handleShowHistory}
+                            acknowledgedItems={acknowledgedItems}
+                            onToggleAcknowledge={handleToggleAcknowledge}
+                        />
+                    );
+                });
+            } else {
+                // One card for the empty/cleaning table
+                cards.push(
+                    <TableCard
+                        key={tableId}
+                        tableId={tableId}
+                        tableData={table}
+                        isTab={false}
+                        onMarkAsCleaned={handleMarkAsCleaned}
+                    />
+                );
+            }
+        }
+        return cards;
     };
 
 
@@ -1171,7 +1195,7 @@ function DineInPage() {
                         <div key={i} className="bg-card border border-border rounded-xl h-96"></div>
                     ))}
                 </div>
-            ) : Object.keys(activeTableData).length > 0 ? (
+            ) : Object.keys(activeTableData).length > 0 || allTables.some(t => t.state !== 'occupied') ? (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
                     {renderTableCards()}
                 </div>
