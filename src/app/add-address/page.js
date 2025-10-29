@@ -97,32 +97,50 @@ const AddAddressPageInternal = () => {
     }, [reverseGeocode]);
 
     useEffect(() => {
-        if (isUserLoading) return; // Wait until auth state is confirmed
-
-        const prefillData = () => {
+        const prefillData = async () => {
             const phoneFromUrl = searchParams.get('phone');
-            
-            // **THE FIX: Prioritize logged-in user's data first ALWAYS.**
+
+            // If a user is logged into Firebase Auth, use their details.
             if (user) {
-                console.log("[add-address] User is logged in. Using user's profile data.");
+                console.log("[add-address] Auth user detected. Using profile data.");
                 setRecipientName(user.displayName || '');
                 setRecipientPhone(user.phoneNumber || phoneFromUrl || '');
-            } 
-            // Only if user is NOT logged in, then use the phone from URL.
-            else {
-                 console.log("[add-address] User not logged in, using phone from URL:", phoneFromUrl);
-                 setRecipientName(''); // <<< THE FIX: Ensure name is empty for new users
-                 setRecipientPhone(phoneFromUrl || '');
+                return;
+            }
+
+            // If no auth user, but phone in URL, look up customer data.
+            if (phoneFromUrl) {
+                console.log(`[add-address] No auth user. Looking up customer by phone: ${phoneFromUrl}`);
+                try {
+                    const res = await fetch('/api/customer/lookup', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ phone: phoneFromUrl }),
+                    });
+                    if (res.ok) {
+                        const customerData = await res.json();
+                        setRecipientName(customerData.name || '');
+                    }
+                } catch (e) {
+                    console.warn("Could not prefill name from customer lookup", e);
+                } finally {
+                    setRecipientPhone(phoneFromUrl);
+                }
+            } else {
+                 // Brand new user with no phone number provided.
+                 console.log("[add-address] New user journey. All fields empty.");
+                 setRecipientName('');
+                 setRecipientPhone('');
             }
         };
-
-        prefillData();
-
-        if (useCurrent) {
-            getCurrentGeolocation();
-        } else {
-            // Default to a location if not using current
-            reverseGeocode(mapCenter);
+        
+        if (!isUserLoading) {
+            prefillData();
+            if (useCurrent) {
+                getCurrentGeolocation();
+            } else {
+                reverseGeocode(mapCenter);
+            }
         }
     }, [user, isUserLoading, useCurrent, searchParams]);
 

@@ -13,20 +13,20 @@ export async function POST(req) {
         }
         
         const normalizedPhone = phone.length > 10 ? phone.slice(-10) : phone;
-        console.log(`[DEBUG] /api/customer/lookup: Received lookup request for phone: ${normalizedPhone}`);
+        console.log(`[API /customer/lookup] Received lookup request for phone: ${normalizedPhone}`);
         
         const usersRef = firestore.collection('users');
-        // **THE FIX: Only look for users with the role of 'customer'**
+        // Search for a VERIFIED user first.
         const userQuery = await usersRef
             .where('phone', '==', normalizedPhone)
-            .where('role', '==', 'customer')
+            // .where('role', '==', 'customer') // This might be too restrictive if owners also order as customers. Let's rely on the existence in 'users' collection as a sign of verification.
             .limit(1)
             .get();
 
         if (!userQuery.empty) {
             const userDoc = userQuery.docs[0];
             const userData = userDoc.data();
-            console.log(`[DEBUG] /api/customer/lookup: Found verified user in 'users' collection with role 'customer'. UID: ${userDoc.id}`);
+            console.log(`[API /customer/lookup] Found verified user in 'users' collection. UID: ${userDoc.id}`);
             
             const responseData = {
                 name: userData.name,
@@ -36,16 +36,17 @@ export async function POST(req) {
             return NextResponse.json(responseData, { status: 200 });
         }
         
-        // **This part is now safer, as it's only reached if a verified 'customer' is not found.**
-        console.log(`[DEBUG] /api/customer/lookup: No verified customer found. Checking 'unclaimed_profiles'.`);
+        // If no verified user, check for an UNCLAIMED profile.
+        console.log(`[API /customer/lookup] No verified user found. Checking 'unclaimed_profiles'.`);
         const unclaimedProfileRef = firestore.collection('unclaimed_profiles').doc(normalizedPhone);
         const unclaimedProfileSnap = await unclaimedProfileRef.get();
         
         if (unclaimedProfileSnap.exists) {
             const unclaimedData = unclaimedProfileSnap.data();
-            console.log(`[DEBUG] /api/customer/lookup: Found unclaimed profile for phone: ${normalizedPhone}`);
+            console.log(`[API /customer/lookup] Found unclaimed profile for phone: ${normalizedPhone}`);
             const responseData = {
                 name: unclaimedData.name,
+                // Ensure addresses from unclaimed profiles are also in the correct format
                 addresses: (unclaimedData.addresses || []).map(addr => {
                      if (typeof addr === 'string') {
                         return { 
@@ -71,11 +72,11 @@ export async function POST(req) {
              return NextResponse.json(responseData, { status: 200 });
         }
         
-        console.log(`[DEBUG] /api/customer/lookup: No profile found for ${normalizedPhone} in any collection.`);
+        console.log(`[API /customer/lookup] No profile found for ${normalizedPhone} in any collection.`);
         return NextResponse.json({ message: 'User not found.' }, { status: 404 });
 
     } catch (error) {
-        console.error('CUSTOMER LOOKUP ERROR:', error);
+        console.error('CUSTOMER LOOKUP API ERROR:', error);
         return NextResponse.json({ message: `Backend Error: ${error.message}` }, { status: 500 });
     }
 }

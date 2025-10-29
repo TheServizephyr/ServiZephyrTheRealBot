@@ -10,7 +10,7 @@ import { auth } from '@/lib/firebase';
 import InfoDialog from '@/components/InfoDialog';
 import { useUser } from '@/firebase';
 
-const SavedAddressCard = ({ address, onSelect, onDelete }) => {
+const SavedAddressCard = ({ address, onSelect, onDelete, isAuth }) => {
     const Icon = address.label === 'Home' ? Home : address.label === 'Work' ? Building : MapPin;
     return (
         <motion.div
@@ -26,17 +26,18 @@ const SavedAddressCard = ({ address, onSelect, onDelete }) => {
                 <p className="text-sm text-muted-foreground mt-1">{address.full}</p>
                 <p className="text-xs text-muted-foreground mt-2">Phone: {address.phone}</p>
             </div>
-            <div className="flex-shrink-0">
-                <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive" onClick={(e) => { e.stopPropagation(); onDelete(address.id); }}>
-                    <Trash2 size={16} />
-                </Button>
-            </div>
+            {isAuth && (
+              <div className="flex-shrink-0">
+                  <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive" onClick={(e) => { e.stopPropagation(); onDelete(address.id); }}>
+                      <Trash2 size={16} />
+                  </Button>
+              </div>
+            )}
         </motion.div>
     );
 }
 
 const SelectLocationInternal = () => {
-    console.log("[LOCATION PAGE] Rendering...");
     const router = useRouter();
     const searchParams = useSearchParams();
     const { user, isUserLoading } = useUser();
@@ -47,40 +48,66 @@ const SelectLocationInternal = () => {
     const [infoDialog, setInfoDialog] = useState({ isOpen: false, title: '', message: '' });
 
     const returnUrl = searchParams.get('returnUrl') || '/';
+    const phone = searchParams.get('phone');
     
     const fetchAddresses = useCallback(async () => {
-        // **THE FIX: Do NOT proceed if the user is not logged in.**
-        if (!user) {
-            console.log("[LOCATION PAGE] User not logged in. Clearing addresses and stopping load.");
-            setAddresses([]);
-            setLoading(false);
-            return;
-        }
-        
         setLoading(true);
         setError('');
-        console.log(`[LOCATION PAGE] Fetching addresses for user: ${user.uid}`);
-        try {
-            const idToken = await user.getIdToken();
-            const res = await fetch('/api/user/addresses', {
-                headers: { 'Authorization': `Bearer ${idToken}` }
-            });
-            console.log(`[LOCATION PAGE] API response received. Status: ${res.status}`);
-            if (!res.ok) throw new Error('Failed to fetch addresses.');
-            const data = await res.json();
-            console.log(`[LOCATION PAGE] Fetched ${data.addresses?.length || 0} addresses.`);
-            setAddresses(data.addresses || []);
-        } catch (err) {
-            console.error("[LOCATION PAGE] Error fetching addresses:", err);
-            setError(err.message);
-        } finally {
-            setLoading(false);
+
+        // If a logged-in user is present, fetch their addresses from the secure API.
+        if (user) {
+            console.log(`[LOCATION PAGE] Auth user found. Fetching addresses via secure API for UID: ${user.uid}`);
+            try {
+                const idToken = await user.getIdToken();
+                const res = await fetch('/api/user/addresses', {
+                    headers: { 'Authorization': `Bearer ${idToken}` }
+                });
+                if (!res.ok) throw new Error('Failed to fetch user addresses.');
+                const data = await res.json();
+                setAddresses(data.addresses || []);
+            } catch (err) {
+                console.error("[LOCATION PAGE] Error fetching user addresses:", err);
+                setError(err.message);
+            } finally {
+                setLoading(false);
+            }
+            return;
         }
-    }, [user]);
+
+        // If no logged-in user, but a phone number is in the URL, use the public lookup API.
+        if (phone) {
+            console.log(`[LOCATION PAGE] No auth user. Looking up addresses for phone: ${phone} via public API.`);
+            try {
+                 const res = await fetch('/api/customer/lookup', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ phone }),
+                });
+                 if (res.ok) {
+                    const data = await res.json();
+                    setAddresses(data.addresses || []);
+                 } else if (res.status === 404) {
+                    setAddresses([]); // User not found, so no saved addresses
+                 } else {
+                    throw new Error('Failed to look up customer addresses.');
+                 }
+            } catch (err) {
+                 console.error("[LOCATION PAGE] Error fetching public addresses:", err);
+                 setError(err.message);
+            } finally {
+                 setLoading(false);
+            }
+            return;
+        }
+
+        // If neither a logged-in user nor a phone number is available, there's nothing to fetch.
+        console.log("[LOCATION PAGE] No auth user and no phone number. Clearing addresses.");
+        setAddresses([]);
+        setLoading(false);
+
+    }, [user, phone]);
 
     useEffect(() => {
-        console.log(`[LOCATION PAGE] Auth state changed. Loading: ${isUserLoading}, User: ${user ? user.uid : 'null'}`);
-        // **THE FIX: The check is now inside fetchAddresses, this effect just triggers it.**
         if (!isUserLoading) {
             fetchAddresses();
         }
@@ -94,8 +121,12 @@ const SelectLocationInternal = () => {
     const handleDeleteAddress = async (addressId) => {
         if (!window.confirm("Are you sure you want to delete this address?")) return;
 
+        if (!user) {
+             setInfoDialog({isOpen: true, title: 'Error', message: 'You must be logged in to delete an address.'});
+             return;
+        }
+
         try {
-            if (!user) throw new Error("Authentication required.");
             const idToken = await user.getIdToken();
             const res = await fetch('/api/user/addresses', {
                 method: 'DELETE',
@@ -114,13 +145,11 @@ const SelectLocationInternal = () => {
     };
     
     const handleAddNewAddress = () => {
-        const phone = user?.phoneNumber || searchParams.get('phone') || '';
-        router.push(`/add-address?returnUrl=${encodeURIComponent(returnUrl)}&phone=${phone}`);
+        router.push(`/add-address?returnUrl=${encodeURIComponent(returnUrl)}&phone=${phone || ''}`);
     }
     
     const handleUseCurrentLocation = () => {
-        const phone = user?.phoneNumber || searchParams.get('phone') || '';
-        router.push(`/add-address?useCurrent=true&returnUrl=${encodeURIComponent(returnUrl)}&phone=${phone}`);
+        router.push(`/add-address?useCurrent=true&returnUrl=${encodeURIComponent(returnUrl)}&phone=${phone || ''}`);
     };
 
     return (
@@ -137,11 +166,6 @@ const SelectLocationInternal = () => {
             </header>
 
             <main className="p-4 container mx-auto">
-                <div className="relative mb-6">
-                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
-                    <Input placeholder="Search for area, street name..." className="w-full pl-10 h-12" />
-                </div>
-                
                 <div className="space-y-4">
                      <button onClick={handleUseCurrentLocation} className="w-full flex items-center text-left p-4 bg-card rounded-xl border border-border hover:bg-muted transition-colors">
                         <LocateFixed className="text-primary mr-4" />
@@ -165,7 +189,7 @@ const SelectLocationInternal = () => {
                         <div className="flex justify-center py-8"><Loader2 className="animate-spin text-primary" /></div>
                     ) : error ? (
                         <div className="text-center py-8 text-destructive">{error}</div>
-                    ) : user && addresses.length > 0 ? (
+                    ) : addresses.length > 0 ? (
                         <div className="space-y-4">
                             {addresses.map(address => (
                                 <SavedAddressCard 
@@ -173,13 +197,14 @@ const SelectLocationInternal = () => {
                                     address={address} 
                                     onSelect={handleSelectAddress}
                                     onDelete={handleDeleteAddress}
+                                    isAuth={!!user} // Pass auth status to conditionally show delete button
                                 />
                             ))}
                         </div>
                     ) : (
                         <div className="text-center py-8 text-muted-foreground">
                             <p>No saved addresses found.</p>
-                            <p className="text-sm">Login to see your addresses or add a new one.</p>
+                            <p className="text-sm">{user ? 'Add a new address to get started.' : 'Login to see your addresses or add a new one.'}</p>
                         </div>
                     )}
                 </div>
