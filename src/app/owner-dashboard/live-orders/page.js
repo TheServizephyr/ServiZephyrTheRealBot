@@ -348,7 +348,7 @@ const OrderDetailModal = ({ data, isOpen, onClose }) => {
                             <h4 className="font-semibold">Items</h4>
                              <ul className="list-disc pl-5 text-muted-foreground text-sm">
                                 {(order.items || []).map((item, index) => (
-                                    <li key={index} className="mb-1">{item.qty}x {item.name} - ₹{(item.price || 0).toFixed(2)}</li>
+                                    <li key={index} className="mb-1">{item.qty}x {item.name} - ₹{((item.totalPrice || item.price) / item.qty).toFixed(2)}</li>
                                 ))}
                             </ul>
                         </div>
