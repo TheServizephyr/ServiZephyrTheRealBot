@@ -251,6 +251,26 @@ const BillModal = ({ order, restaurant, onClose, onPrint, printRef }) => {
     );
 };
 
+const ConfirmationModal = ({ isOpen, onClose, onConfirm, title, description, confirmText, isDestructive = false }) => {
+    return (
+        <Dialog open={isOpen} onOpenChange={onClose}>
+            <DialogContent className="bg-background border-border text-foreground">
+                <DialogHeader>
+                    <DialogTitle>{title}</DialogTitle>
+                    <DialogDescription>{description}</DialogDescription>
+                </DialogHeader>
+                <DialogFooter>
+                    <Button variant="secondary" onClick={onClose}>Cancel</Button>
+                    <Button onClick={onConfirm} variant={isDestructive ? "destructive" : "default"}>
+                        {confirmText}
+                    </Button>
+                </DialogFooter>
+            </DialogContent>
+        </Dialog>
+    );
+};
+
+
 const TableCard = ({ tableId, tableData, onMarkAsPaid, onPrintBill, onMarkAsCleaned, onShowHistory }) => {
     const tabs = tableData.tabs || [];
     
@@ -785,6 +805,8 @@ function DineInPage() {
     const [billData, setBillData] = useState(null);
     const [historyModalData, setHistoryModalData] = useState(null);
     const [infoDialog, setInfoDialog] = useState({ isOpen: false, title: '', message: '' });
+    const [confirmationState, setConfirmationState] = useState({ isOpen: false, onConfirm: () => {}, title: '', description: '', confirmText: '' });
+
     const billPrintRef = useRef();
 
     const handlePrint = useReactToPrint({
@@ -908,8 +930,20 @@ function DineInPage() {
         };
       }, [impersonatedOwnerId]);
 
+      const confirmMarkAsPaid = (tableId, tabId) => {
+        setConfirmationState({
+            isOpen: true,
+            title: "Confirm Payment",
+            description: `Are you sure you want to mark all orders for this tab on Table ${tableId} as paid? This will close the tab and mark the table as needing cleaning.`,
+            confirmText: "Yes, Mark as Paid",
+            onConfirm: () => {
+                handleMarkAsPaid(tableId, tabId);
+                setConfirmationState({ isOpen: false });
+            },
+        });
+    };
+
     const handleMarkAsPaid = async (tableId, tabId) => {
-        if (!window.confirm("Are you sure you want to mark this table's orders as paid and completed?")) return;
         setLoading(true);
         try {
             await handleApiCall('PATCH', { tableId, action: 'mark_paid', tabIdToClose: tabId }, '/api/owner/dine-in-tables');
@@ -939,7 +973,6 @@ function DineInPage() {
         const dineInStatuses = ['pending', 'confirmed', 'preparing', 'active_tab', 'ready_for_pickup'];
         const thirtyDaysAgo = subDays(new Date(), 30);
     
-        // 1. Group all orders by their dineInTabId
         const tabsData = allOrders.reduce((acc, order) => {
             if (order.deliveryType !== 'dine-in' || !order.dineInTabId) {
                 return acc;
@@ -959,7 +992,6 @@ function DineInPage() {
             return acc;
         }, {});
     
-        // 2. Process each tab to determine its state (active/closed) and aggregate data
         Object.values(tabsData).forEach(tab => {
             const latestOrder = tab.orders.reduce((latest, current) => {
                 const latestDate = latest.orderDate.seconds ? new Date(latest.orderDate.seconds * 1000) : new Date(latest.orderDate);
@@ -992,11 +1024,9 @@ function DineInPage() {
             }
         });
     
-        // 3. Separate into active tabs and closed tabs (for history)
         const closedTabs = Object.values(tabsData).filter(tab => !tab.isActive && tab.closedAt && isAfter(tab.closedAt, thirtyDaysAgo));
         closedTabs.sort((a,b) => b.closedAt - a.closedAt);
     
-        // 4. Create the final table structure for display
         const tableMap = allTables.reduce((acc, table) => {
             acc[table.id] = { ...table, tabs: [], state: table.state || 'available' };
             return acc;
@@ -1053,7 +1083,7 @@ function DineInPage() {
             return;
         }
         setDisplayTable(table);
-        setIsQrDisplayModalOpen(true);
+        setIsQrDisplayModalOpen(false);
     };
 
     return (
@@ -1079,6 +1109,15 @@ function DineInPage() {
             />
             {restaurantId && <QrGeneratorModal isOpen={isQrModalOpen} onClose={() => setIsQrModalOpen(false)} restaurantId={restaurantId} onSaveTable={handleSaveTable} onEditTable={handleEditTable} onDeleteTable={handleDeleteTable} initialTable={editingTable} showInfoDialog={setInfoDialog} />}
             {restaurantId && <QrCodeDisplayModal isOpen={isQrDisplayModalOpen} onClose={() => setIsQrDisplayModalOpen(false)} restaurantId={restaurantId} table={displayTable} />}
+            <ConfirmationModal 
+                isOpen={confirmationState.isOpen}
+                onClose={() => setConfirmationState({ isOpen: false })}
+                onConfirm={confirmationState.onConfirm}
+                title={confirmationState.title}
+                description={confirmationState.description}
+                confirmText={confirmationState.confirmText}
+            />
+
 
             <div className="flex flex-col md:flex-row justify-between md:items-center mb-6 gap-4">
                 <div>
@@ -1117,7 +1156,7 @@ function DineInPage() {
                     {Object.entries(activeTableData)
                         .filter(([_, data]) => data.tabs.length > 0 || data.state === 'needs_cleaning')
                         .map(([tableId, tableData]) => (
-                        <TableCard key={tableId} tableId={tableId} tableData={tableData} onMarkAsPaid={handleMarkAsPaid} onPrintBill={setBillData} onMarkAsCleaned={handleMarkAsCleaned} onShowHistory={handleShowHistory}/>
+                        <TableCard key={tableId} tableId={tableId} tableData={tableData} onMarkAsPaid={() => confirmMarkAsPaid(tableId, tableData.tabs[0]?.id)} onPrintBill={setBillData} onMarkAsCleaned={handleMarkAsCleaned} onShowHistory={handleShowHistory}/>
                     ))}
                 </div>
             ) : (
@@ -1132,3 +1171,6 @@ function DineInPage() {
 }
 
 export default DineInPage;
+
+
+    
