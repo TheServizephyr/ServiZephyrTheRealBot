@@ -272,9 +272,14 @@ const ConfirmationModal = ({ isOpen, onClose, onConfirm, title, description, con
 
 const TableCard = ({ tableId, tableData, onMarkAsPaid, onPrintBill, onMarkAsCleaned, onShowHistory }) => {
     const tabs = tableData.tabs || [];
-    
     const state = tableData.state;
     const stateConfig = {
+        available: {
+            title: "Available",
+            bg: "bg-card",
+            border: "border-border",
+            icon: <CheckCircle size={16} className="text-green-500" />
+        },
         occupied: {
             title: "Occupied",
             bg: "bg-yellow-500/10",
@@ -291,62 +296,8 @@ const TableCard = ({ tableId, tableData, onMarkAsPaid, onPrintBill, onMarkAsClea
     
     const currentConfig = stateConfig[state] || { title: state, bg: "bg-muted", border: "border-border", icon: null };
 
-    if (state === 'needs_cleaning') {
-        return (
-             <motion.div
-                layout
-                initial={{ scale: 0.9, opacity: 0 }}
-                animate={{ scale: 1, opacity: 1 }}
-                exit={{ scale: 0.9, opacity: 0 }}
-                transition={{ type: 'spring', stiffness: 260, damping: 20 }}
-            >
-                <Card className={cn("flex flex-col h-full shadow-lg border-2", currentConfig.border)}>
-                    <CardHeader className={cn("flex-row items-center justify-between space-y-0 pb-2", currentConfig.bg)}>
-                        <CardTitle className="text-2xl font-bold">Table {tableId}</CardTitle>
-                        <div className="flex items-center gap-2 text-sm font-semibold">
-                            {currentConfig.icon} {currentConfig.title}
-                        </div>
-                    </CardHeader>
-                    <CardContent className="flex-grow p-4 flex flex-col items-center justify-center text-center">
-                        <p className="text-muted-foreground">This table's bill has been paid. Mark it as clean once it's ready for the next guests.</p>
-                    </CardContent>
-                    <CardFooter className="p-4">
-                        <Button className="w-full bg-green-500 hover:bg-green-600" onClick={() => onMarkAsCleaned(tableId)}>
-                            <CheckCircle size={16} className="mr-2"/> Mark as Cleaned
-                        </Button>
-                    </CardFooter>
-                </Card>
-            </motion.div>
-        )
-    }
-
-    if(tabs.length === 0) {
-        return (
-             <motion.div
-                layout
-                initial={{ scale: 0.9, opacity: 0 }}
-                animate={{ scale: 1, opacity: 1 }}
-                exit={{ scale: 0.9, opacity: 0 }}
-                transition={{ type: 'spring', stiffness: 260, damping: 20 }}
-            >
-                <Card className={cn("flex flex-col h-full shadow-lg hover:shadow-primary/20 transition-shadow duration-300 border-2", 'border-border')}>
-                    <CardHeader className={cn("flex-row items-center justify-between space-y-0 pb-2", 'bg-card')}>
-                        <CardTitle className="text-2xl font-bold">Table {tableId}</CardTitle>
-                    </CardHeader>
-                    <CardContent className="flex-grow p-4">
-                        <div className="flex flex-col items-center justify-center h-full text-center text-muted-foreground">
-                            <CheckCircle size={32} className="text-green-500 mb-2"/>
-                            <p className="font-semibold">Table is Available</p>
-                            <p className="text-xs">Capacity: {tableData.max_capacity} guests</p>
-                        </div>
-                    </CardContent>
-                </Card>
-            </motion.div>
-        )
-    }
-
     return (
-        <motion.div
+         <motion.div
             layout
             initial={{ scale: 0.9, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
@@ -354,48 +305,64 @@ const TableCard = ({ tableId, tableData, onMarkAsPaid, onPrintBill, onMarkAsClea
             transition={{ type: 'spring', stiffness: 260, damping: 20 }}
         >
             <Card className={cn("flex flex-col h-full shadow-lg hover:shadow-primary/20 transition-shadow duration-300 border-2", currentConfig.border)}>
-                 <CardHeader className={cn("flex-row items-center justify-between space-y-0 pb-2", currentConfig.bg)}>
+                <CardHeader className={cn("flex-row items-center justify-between space-y-0 pb-2", currentConfig.bg)}>
                     <CardTitle className="text-2xl font-bold">Table {tableId}</CardTitle>
-                    <div className="flex items-center gap-2">
-                        {currentConfig.icon}
-                        <span className="text-sm font-semibold">{currentConfig.title}</span>
+                    <div className="flex items-center gap-2 text-sm font-semibold">
+                        {currentConfig.icon} {currentConfig.title}
                     </div>
                 </CardHeader>
                 <CardContent className="flex-grow p-4">
-                   {tabs.map((tab) => (
-                    <div key={tab.id} className="mb-4 last:mb-0">
-                         <div className="flex justify-between items-center bg-muted/50 p-2 rounded-t-lg">
-                            <h4 className="font-semibold text-foreground">{tab.tab_name}</h4>
-                            <span className="text-xs font-mono text-muted-foreground">{tab.id.substring(0,6)}...</span>
+                    {state === 'needs_cleaning' ? (
+                         <div className="flex-grow p-4 flex flex-col items-center justify-center text-center">
+                            <p className="text-muted-foreground">This table's bill has been paid. Mark it as clean once it's ready for the next guests.</p>
                         </div>
-                        <div className="text-xs text-muted-foreground my-2 flex items-center gap-2">
-                            <Clock size={14}/> Last activity: {tab.latestOrderTime ? format(tab.latestOrderTime, 'p') : 'N/A'}
+                    ) : tabs.length === 0 ? (
+                        <div className="flex flex-col items-center justify-center h-full text-center text-muted-foreground">
+                            <p className="font-semibold">Table is Available</p>
+                            <p className="text-xs">Capacity: {tableData.max_capacity} guests</p>
                         </div>
-                        <div className="space-y-2 max-h-48 overflow-y-auto pr-2">
-                            {tab.allItems.map((item, index) => (
-                                <div key={index} className="flex justify-between items-center text-sm p-2 bg-muted/50 rounded-md">
-                                    <span className="text-foreground">{item.name}</span>
-                                    <span className="font-semibold text-foreground">x{item.qty}</span>
+                    ) : (
+                         tabs.map((tab) => (
+                            <div key={tab.id} className="mb-4 last:mb-0">
+                                 <div className="flex justify-between items-center bg-muted/50 p-2 rounded-t-lg">
+                                    <h4 className="font-semibold text-foreground">{tab.tab_name}</h4>
+                                    <span className="text-xs font-mono text-muted-foreground">{tab.id.substring(0,6)}...</span>
                                 </div>
-                            ))}
-                        </div>
-                        
-                        <CardFooter className="flex-col items-start bg-muted/30 p-4 border-t mt-4">
-                            <Button variant="outline" size="sm" className="w-full mb-4" onClick={() => onShowHistory(tableId, tab.id)}>
-                                <History size={14} className="mr-2"/> See History
-                            </Button>
-                            <div className="flex justify-between items-center w-full">
-                                <span className="text-lg font-bold">Total Bill:</span>
-                                <span className="text-2xl font-bold text-primary">{formatCurrency(tab.totalBill)}</span>
+                                <div className="text-xs text-muted-foreground my-2 flex items-center gap-2">
+                                    <Clock size={14}/> Last activity: {tab.latestOrderTime ? format(tab.latestOrderTime, 'p') : 'N/A'}
+                                </div>
+                                <div className="space-y-2 max-h-48 overflow-y-auto pr-2">
+                                    {tab.allItems.map((item, index) => (
+                                        <div key={index} className="flex justify-between items-center text-sm p-2 bg-muted/50 rounded-md">
+                                            <span className="text-foreground">{item.name}</span>
+                                            <span className="font-semibold text-foreground">x{item.qty}</span>
+                                        </div>
+                                    ))}
+                                </div>
+                                <CardFooter className="flex-col items-start bg-muted/30 p-4 border-t mt-4">
+                                    <Button variant="outline" size="sm" className="w-full mb-4" onClick={() => onShowHistory(tableId, tab.id)}>
+                                        <History size={14} className="mr-2"/> See History
+                                    </Button>
+                                    <div className="flex justify-between items-center w-full">
+                                        <span className="text-lg font-bold">Total Bill:</span>
+                                        <span className="text-2xl font-bold text-primary">{formatCurrency(tab.totalBill)}</span>
+                                    </div>
+                                    <div className="grid grid-cols-2 gap-2 w-full mt-4">
+                                        <Button variant="outline" onClick={() => onPrintBill({ tableId, orders: tab.orders })}><Printer size={16} className="mr-2"/> Print Bill</Button>
+                                        <Button className="bg-primary hover:bg-primary/90" onClick={() => onMarkAsPaid(tableId, tab.id)}><CheckCircle size={16} className="mr-2"/> Mark as Paid</Button>
+                                    </div>
+                                </CardFooter>
                             </div>
-                            <div className="grid grid-cols-2 gap-2 w-full mt-4">
-                                <Button variant="outline" onClick={() => onPrintBill({ tableId, orders: tab.orders })}><Printer size={16} className="mr-2"/> Print Bill</Button>
-                                <Button className="bg-primary hover:bg-primary/90" onClick={() => onMarkAsPaid(tableId, tab.id)}><CheckCircle size={16} className="mr-2"/> Mark as Paid</Button>
-                            </div>
-                        </CardFooter>
-                    </div>
-                   ))}
+                        ))
+                    )}
                 </CardContent>
+                {state === 'needs_cleaning' && (
+                     <CardFooter className="p-4">
+                        <Button className="w-full bg-green-500 hover:bg-green-600" onClick={() => onMarkAsCleaned(tableId)}>
+                            <CheckCircle size={16} className="mr-2"/> Mark as Cleaned
+                        </Button>
+                    </CardFooter>
+                )}
             </Card>
         </motion.div>
     );
@@ -1086,6 +1053,38 @@ function DineInPage() {
         setIsQrDisplayModalOpen(true);
     };
 
+    const renderTableCards = () => {
+        const sortedTableKeys = Object.keys(activeTableData).sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+
+        return sortedTableKeys.flatMap(tableId => {
+            const tableData = activeTableData[tableId];
+            const { tabs } = tableData;
+
+            if (tabs.length === 0 || tableData.state === 'available' || tableData.state === 'needs_cleaning') {
+                return (
+                    <TableCard
+                        key={tableId}
+                        tableId={tableId}
+                        tableData={tableData}
+                        onMarkAsCleaned={handleMarkAsCleaned}
+                    />
+                );
+            }
+
+            return tabs.map(tab => (
+                 <TableCard
+                    key={`${tableId}-${tab.id}`}
+                    tableId={tableId}
+                    tableData={{ ...tableData, tabs: [tab] }} // Pass only one tab to the card
+                    onMarkAsPaid={confirmMarkAsPaid}
+                    onPrintBill={setBillData}
+                    onShowHistory={handleShowHistory}
+                />
+            ));
+        });
+    };
+
+
     return (
         <div className="p-4 md:p-6 text-foreground min-h-screen bg-background">
             <DineInHistoryModal isOpen={isHistoryModalOpen} onClose={() => setIsHistoryModalOpen(false)} closedTabs={closedTabsData} />
@@ -1153,11 +1152,7 @@ function DineInPage() {
                 </div>
             ) : Object.keys(activeTableData).length > 0 ? (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-                    {Object.entries(activeTableData)
-                        .sort(([idA], [idB]) => idA.localeCompare(idB, undefined, {numeric: true}))
-                        .map(([tableId, tableData]) => (
-                        <TableCard key={tableId} tableId={tableId} tableData={tableData} onMarkAsPaid={confirmMarkAsPaid} onPrintBill={setBillData} onMarkAsCleaned={handleMarkAsCleaned} onShowHistory={handleShowHistory}/>
-                    ))}
+                    {renderTableCards()}
                 </div>
             ) : (
                 <div className="text-center py-16 text-muted-foreground border-2 border-dashed border-border rounded-xl">
@@ -1171,5 +1166,3 @@ function DineInPage() {
 }
 
 export default DineInPage;
-
-    
