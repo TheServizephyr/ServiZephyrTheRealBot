@@ -95,8 +95,54 @@ export async function PATCH(req) {
      try {
         const businessRef = await verifyOwnerAndGetBusiness(req);
         const { tableId, action, tabIdToClose, newTableId, newCapacity } = await req.json();
+        
+        // --- THE FIX: Prioritize action handling over edit handling ---
 
-        // Handle Table Edit logic
+        // Handle Table State logic (mark_paid, mark_cleaned)
+        if (action) {
+            if (!tableId) {
+                return NextResponse.json({ message: 'Table ID is required for actions.' }, { status: 400 });
+            }
+            const validActions = ['mark_paid', 'mark_cleaned'];
+            if (!validActions.includes(action)) {
+                return NextResponse.json({ message: 'Invalid action provided.' }, { status: 400 });
+            }
+            
+            const tableRef = businessRef.collection('tables').doc(tableId);
+            const firestore = businessRef.firestore;
+
+            if (action === 'mark_paid') {
+                if (!tabIdToClose) {
+                    return NextResponse.json({ message: 'Tab ID is required to mark a tab as paid.' }, { status: 400 });
+                }
+                
+                await firestore.runTransaction(async (transaction) => {
+                    const tabRef = businessRef.collection('dineInTabs').doc(tabIdToClose);
+                    const tabDoc = await transaction.get(tabRef);
+                    if (!tabDoc.exists) throw new Error("Tab to be closed not found.");
+                    
+                    const tableDoc = await transaction.get(tableRef);
+                    if (!tableDoc.exists) throw new Error("Table document not found.");
+
+                    const paxToReduce = tabDoc.data().pax_count || 0;
+                    
+                    transaction.update(tabRef, { status: 'closed' });
+                    transaction.update(tableRef, { 
+                        current_pax: FieldValue.increment(-paxToReduce),
+                        state: 'needs_cleaning' 
+                    });
+                });
+                return NextResponse.json({ message: `Table ${tableId} marked as needing cleaning.` }, { status: 200 });
+            }
+            
+            if (action === 'mark_cleaned') {
+                 await tableRef.update({ state: 'available' });
+                 return NextResponse.json({ message: `Table ${tableId} cleaning acknowledged.` }, { status: 200 });
+            }
+        }
+
+
+        // Handle Table Edit logic (rename/re-capacity)
         if (newTableId !== undefined || newCapacity !== undefined) {
             if (!tableId) {
                 return NextResponse.json({ message: 'Original Table ID is required for editing.' }, { status: 400 });
@@ -124,50 +170,9 @@ export async function PATCH(req) {
                  return NextResponse.json({ message: `Table ${tableId} updated.` }, { status: 200 });
             }
         }
-
-
-        // Handle Table State logic
-        if (!tableId || !action) {
-            return NextResponse.json({ message: 'Table ID and action are required.' }, { status: 400 });
-        }
         
-        const validActions = ['mark_paid', 'mark_cleaned'];
-        if (!validActions.includes(action)) {
-            return NextResponse.json({ message: 'Invalid action provided.' }, { status: 400 });
-        }
-
-        const tableRef = businessRef.collection('tables').doc(tableId);
-        const firestore = businessRef.firestore;
-
-        if (action === 'mark_paid') {
-            if (!tabIdToClose) {
-                return NextResponse.json({ message: 'Tab ID is required to mark a tab as paid.' }, { status: 400 });
-            }
-            
-            await firestore.runTransaction(async (transaction) => {
-                const tabRef = businessRef.collection('dineInTabs').doc(tabIdToClose);
-                const tabDoc = await transaction.get(tabRef);
-                if (!tabDoc.exists) throw new Error("Tab to be closed not found.");
-                
-                const tableDoc = await transaction.get(tableRef);
-                if (!tableDoc.exists) throw new Error("Table document not found.");
-
-                const paxToReduce = tabDoc.data().pax_count || 0;
-                
-                transaction.update(tabRef, { status: 'closed' });
-                transaction.update(tableRef, { 
-                    current_pax: FieldValue.increment(-paxToReduce),
-                    state: 'needs_cleaning' 
-                });
-            });
-            return NextResponse.json({ message: `Table ${tableId} marked as needing cleaning.` }, { status: 200 });
-        }
-        
-        if (action === 'mark_cleaned') {
-             await tableRef.update({ state: 'available' });
-             return NextResponse.json({ message: `Table ${tableId} cleaning acknowledged.` }, { status: 200 });
-        }
-
+        // If no valid action or edit data was provided
+        return NextResponse.json({ message: 'No valid action or edit data provided.' }, { status: 400 });
 
     } catch (error) {
         console.error("PATCH DINE-IN TABLE ERROR:", error);
@@ -194,5 +199,7 @@ export async function DELETE(req) {
         return NextResponse.json({ message: `Backend Error: ${error.message}` }, { status: error.status || 500 });
     }
 }
+
+    
 
     
