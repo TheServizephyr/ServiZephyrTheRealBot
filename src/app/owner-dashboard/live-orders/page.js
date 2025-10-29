@@ -1,8 +1,9 @@
+
 'use client';
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { RefreshCw, ChevronUp, ChevronDown, Check, CookingPot, Bike, PartyPopper, Undo, Bell, PackageCheck, Printer, X, Loader2, IndianRupee, Wallet, History, ClockIcon, User, Phone, MapPin, Search, ShoppingBag } from 'lucide-react';
+import { RefreshCw, ChevronUp, ChevronDown, Check, CookingPot, Bike, PartyPopper, Undo, Bell, PackageCheck, Printer, X, Loader2, IndianRupee, Wallet, History, ClockIcon, User, Phone, MapPin, Search, ShoppingBag, ConciergeBell } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { auth } from '@/lib/firebase';
 import { cn } from "@/lib/utils";
@@ -411,11 +412,12 @@ const OrderDetailModal = ({ data, isOpen, onClose }) => {
 
 const ActionButton = ({ status, onNext, onRevert, order, onRejectClick, isUpdating, onPrintClick, onAssignClick }) => {
     const isPickup = order.deliveryType === 'pickup';
+    const isDineIn = order.deliveryType === 'dine-in';
     const statusFlow = isPickup ? pickupStatusFlow : deliveryStatusFlow;
     
     const currentIndex = statusFlow.indexOf(status);
     
-    const isFinalStatus = status === 'delivered' || status === 'rejected' || status === 'picked_up';
+    const isFinalStatus = status === 'delivered' || status === 'rejected' || status === 'picked_up' || status === 'active_tab';
 
     if (isUpdating) {
         return (
@@ -424,6 +426,18 @@ const ActionButton = ({ status, onNext, onRevert, order, onRejectClick, isUpdati
                 Processing...
             </div>
         );
+    }
+    
+    if (isDineIn) {
+        return (
+             <div className="flex items-center gap-2">
+                <Link href="/owner-dashboard/dine-in">
+                    <Button size="sm" className="bg-primary hover:bg-primary/90 h-9">
+                        <ConciergeBell size={16} className="mr-2"/> View on Dine-In Board
+                    </Button>
+                </Link>
+             </div>
+        )
     }
 
     if (isFinalStatus) {
@@ -892,23 +906,21 @@ export default function LiveOrdersPage() {
                                 >
                                     <td className="p-4 align-top">
                                         <div className="font-bold text-foreground text-sm truncate max-w-[100px] sm:max-w-none">{order.id}</div>
-                                        <div className="flex items-center gap-2 mt-1">
-                                            <div 
-                                                onClick={() => handleDetailClick(order.id, order.customerId)} 
-                                                className="text-sm text-muted-foreground hover:text-primary hover:underline cursor-pointer"
-                                                title="View Customer & Order Details"
-                                            >
-                                                {order.customer}
-                                            </div>
-                                            <Link href={`/owner-dashboard/customers?customerId=${order.customerId}`} title="View Full Customer Profile">
-                                                <User size={14} className="text-muted-foreground hover:text-primary"/>
-                                            </Link>
+                                        <div 
+                                            onClick={() => handleDetailClick(order.id, order.customerId)} 
+                                            className="text-sm text-muted-foreground hover:text-primary hover:underline cursor-pointer"
+                                            title="View Customer & Order Details"
+                                        >
+                                            {order.customer}
                                         </div>
                                         <div className="mt-1 flex items-center gap-2">
-                                            {order.deliveryType === 'pickup' 
-                                                ? <div className="flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full bg-purple-500/20 text-purple-400 border border-purple-500/30 w-fit"><ShoppingBag size={12}/> Pickup</div>
-                                                : <div className="flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full bg-blue-500/20 text-blue-400 border border-blue-500/30 w-fit"><Bike size={12}/> Delivery</div>
-                                            }
+                                            {order.deliveryType === 'pickup' ? (
+                                                <div className="flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full bg-purple-500/20 text-purple-400 border border-purple-500/30 w-fit"><ShoppingBag size={12}/> Pickup</div>
+                                            ) : order.deliveryType === 'dine-in' ? (
+                                                <div className="flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full bg-cyan-500/20 text-cyan-400 border border-cyan-500/30 w-fit"><ConciergeBell size={12}/> Dine-In</div>
+                                            ) : (
+                                                <div className="flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full bg-blue-500/20 text-blue-400 border border-blue-500/30 w-fit"><Bike size={12}/> Delivery</div>
+                                            )}
                                             {order.paymentDetails?.method === 'cod' 
                                                 ? <div className="flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full bg-yellow-500/20 text-yellow-400 border border-yellow-500/30 w-fit"><IndianRupee size={12}/> COD</div>
                                                 : <div className="flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full bg-green-500/20 text-green-400 border border-green-500/30 w-fit"><Wallet size={12}/> PAID</div>
