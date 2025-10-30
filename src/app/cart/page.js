@@ -278,15 +278,13 @@ const CartPageInternal = () => {
     };
 
     const handleConfirmOrder = () => {
-        let checkoutUrl = `/checkout?restaurantId=${restaurantId}&phone=${phone}`;
-
-        if (deliveryType === 'pickup') {
-            if (!pickupTime) {
-                setIsCheckoutFlow(true);
-                setIsPickupTimeModalOpen(true);
-                return;
-            }
+        if (deliveryType === 'pickup' && !pickupTime) {
+            setIsCheckoutFlow(true);
+            setIsPickupTimeModalOpen(true);
+            return;
         }
+
+        let checkoutUrl = `/checkout?restaurantId=${restaurantId}&phone=${phone}`;
         
         if (deliveryType === 'dine-in' && !tabId) {
             const dineInSetupStr = localStorage.getItem(`dineInSetup_${restaurantId}_${tableId}`);
