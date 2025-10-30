@@ -51,6 +51,8 @@ const SelectLocationInternal = () => {
     const phone = searchParams.get('phone');
     
     const fetchAddresses = useCallback(async () => {
+        if (isUserLoading) return; // Wait until auth state is confirmed
+
         setLoading(true);
         setError('');
 
@@ -79,13 +81,11 @@ const SelectLocationInternal = () => {
         setAddresses([]);
         setLoading(false);
 
-    }, [user]);
+    }, [user, isUserLoading]);
 
     useEffect(() => {
-        if (!isUserLoading) {
-            fetchAddresses();
-        }
-    }, [user, isUserLoading, fetchAddresses]);
+        fetchAddresses();
+    }, [fetchAddresses]);
 
     const handleSelectAddress = (address) => {
         localStorage.setItem('customerLocation', JSON.stringify(address));
