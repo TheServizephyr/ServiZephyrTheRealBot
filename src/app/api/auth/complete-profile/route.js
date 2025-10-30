@@ -126,6 +126,8 @@ export async function POST(req) {
         }
         // --- END MERGE LOGIC ---
 
+        // ** THE FIX IS HERE: Add the server-side timestamp before saving **
+        mergedUserData.createdAt = FieldValue.serverTimestamp();
 
         const masterUserRef = firestore.collection('users').doc(uid);
         batch.set(masterUserRef, mergedUserData, { merge: true });

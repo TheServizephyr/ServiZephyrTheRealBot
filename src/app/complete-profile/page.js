@@ -7,7 +7,7 @@ import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
 import { User, Store, Shield, ShoppingCart, Phone, Key, ArrowRight, MapPin, HelpCircle } from 'lucide-react';
 import { auth, db } from '@/lib/firebase';
-import { doc, getDoc, serverTimestamp } from 'firebase/firestore';
+import { doc, getDoc } from 'firebase/firestore';
 
 
 const cardVariants = {
@@ -145,7 +145,6 @@ export default function CompleteProfile() {
             role: role,
             businessType: businessType,
             profilePictureUrl: user.photoURL || `https://picsum.photos/seed/${user.uid}/200/200`,
-            createdAt: serverTimestamp(),
             notifications: {
                 newOrders: true,
                 dailySummary: false,
