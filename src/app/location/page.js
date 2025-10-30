@@ -51,7 +51,6 @@ const SelectLocationInternal = () => {
     
     useEffect(() => {
         const fetchAddresses = async () => {
-            // Determine which phone number to use, giving priority to the URL parameter.
             const phoneToLookup = phoneFromUrl || user?.phoneNumber;
 
             if (!phoneToLookup) {
@@ -64,7 +63,6 @@ const SelectLocationInternal = () => {
             setError('');
 
             try {
-                console.log(`[LocationPage] Fetching addresses for phone: ${phoneToLookup}`);
                 const res = await fetch('/api/customer/lookup', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -81,7 +79,6 @@ const SelectLocationInternal = () => {
                     throw new Error(errorData.message || 'Failed to look up customer data.');
                 }
             } catch (err) {
-                console.error("[LocationPage] Error fetching addresses:", err);
                 setError(err.message);
                 setAddresses([]);
             } finally {
@@ -89,15 +86,9 @@ const SelectLocationInternal = () => {
             }
         };
 
-        // If a phone number is in the URL, fetch immediately.
-        // Otherwise, wait for the user loading state to resolve.
-        if (phoneFromUrl) {
-            fetchAddresses();
-        } else if (!isUserLoading) {
-            fetchAddresses();
-        }
+        fetchAddresses();
 
-    }, [phoneFromUrl, user, isUserLoading]);
+    }, [phoneFromUrl, user]);
 
 
     const handleSelectAddress = (address) => {
@@ -125,7 +116,7 @@ const SelectLocationInternal = () => {
                  throw new Error(data.message || 'Failed to delete address.');
             }
             setInfoDialog({isOpen: true, title: 'Success', message: 'Address deleted successfully.'});
-            // Re-fetch addresses after deletion
+            
             const phoneToLookup = phoneFromUrl || user?.phoneNumber;
              if (phoneToLookup) {
                 const res = await fetch('/api/customer/lookup', {
