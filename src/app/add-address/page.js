@@ -100,11 +100,28 @@ const AddAddressPageInternal = () => {
         const prefillData = async () => {
             const phoneFromUrl = searchParams.get('phone');
 
-            // If a user is logged into Firebase Auth, use their details.
+            // If a user is logged into Firebase Auth, fetch their full profile data from the backend.
             if (user) {
-                console.log("[add-address] Auth user detected. Using profile data.");
-                setRecipientName(user.displayName || '');
-                setRecipientPhone(user.phoneNumber || phoneFromUrl || '');
+                console.log("[add-address] Auth user detected. Fetching full profile from backend.");
+                try {
+                    const idToken = await user.getIdToken();
+                    const response = await fetch('/api/owner/settings', { // Using the settings API to get full profile
+                        headers: { 'Authorization': `Bearer ${idToken}` }
+                    });
+                    if (response.ok) {
+                        const profileData = await response.json();
+                        setRecipientName(profileData.name || user.displayName || '');
+                        setRecipientPhone(profileData.phone || user.phoneNumber || phoneFromUrl || '');
+                    } else {
+                        // Fallback to basic auth info if API fails
+                        setRecipientName(user.displayName || '');
+                        setRecipientPhone(user.phoneNumber || phoneFromUrl || '');
+                    }
+                } catch (e) {
+                    console.warn("Could not prefill from backend, using basic auth info.", e);
+                    setRecipientName(user.displayName || '');
+                    setRecipientPhone(user.phoneNumber || phoneFromUrl || '');
+                }
                 return;
             }
 
