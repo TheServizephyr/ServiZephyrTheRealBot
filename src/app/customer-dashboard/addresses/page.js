@@ -51,8 +51,10 @@ const AddressesPageInternal = () => {
     
     const fetchAddresses = useCallback(async () => {
         if (!user) {
+            // THE FIX: If there is no authenticated user, don't try to fetch any addresses.
+            // This prevents the lookup API from being called and fetching the wrong data.
             setLoading(false);
-            setError("You must be logged in to view addresses.");
+            setAddresses([]); // Ensure addresses are cleared
             return;
         }
 
@@ -60,6 +62,7 @@ const AddressesPageInternal = () => {
         setError('');
 
         try {
+            console.log(`[Addresses Page] Auth user found. Fetching addresses via secure API for UID: ${user.uid}`);
             const idToken = await user.getIdToken();
             const res = await fetch('/api/user/addresses', {
                 headers: { 'Authorization': `Bearer ${idToken}` }
@@ -153,6 +156,10 @@ const AddressesPageInternal = () => {
                         <div className="flex justify-center py-8"><Loader2 className="animate-spin text-primary" /></div>
                     ) : error ? (
                         <div className="text-center py-8 text-destructive">{error}</div>
+                    ) : !user ? (
+                        <div className="text-center py-8 text-muted-foreground">
+                            <p>Please log in to manage your addresses.</p>
+                        </div>
                     ) : addresses.length > 0 ? (
                         <div className="space-y-4">
                             {addresses.map(address => (
@@ -168,6 +175,7 @@ const AddressesPageInternal = () => {
                     ) : (
                         <div className="text-center py-8 text-muted-foreground">
                             <p>No saved addresses found.</p>
+                            <p className="text-sm">Add a new address to get started.</p>
                         </div>
                     )}
                 </div>
