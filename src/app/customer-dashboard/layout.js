@@ -2,10 +2,13 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Home, Map, MessageSquare, User } from 'lucide-react';
+import { Home, Map, MessageSquare, User, Sun, Moon } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Suspense } from 'react';
 import { Loader2 } from 'lucide-react';
+import { useTheme } from 'next-themes';
+import { Button } from '@/components/ui/button';
+import { ThemeProvider } from '@/components/ThemeProvider';
 
 const navItems = [
   { href: '/customer-dashboard', icon: Home, label: 'My Hub' },
@@ -26,9 +29,25 @@ const NavLink = ({ href, icon: Icon, label }) => {
     )
 }
 
-export default function CustomerDashboardLayout({ children }) {
+const CustomerDashboardContent = ({ children }) => {
+  const { theme, setTheme } = useTheme();
+
   return (
     <div className="min-h-screen bg-background text-foreground flex flex-col">
+        <header className="sticky top-0 z-20 bg-background/80 backdrop-blur-lg border-b border-border">
+          <div className="container mx-auto px-4 py-3 flex items-center justify-between">
+            <h1 className="text-xl font-bold text-primary">ServiZephyr</h1>
+             <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+            >
+              <Sun className="h-[1.2rem] w-[1.2rem] rotate-0 scale-100 transition-all dark:-rotate-90 dark:scale-0" />
+              <Moon className="absolute h-[1.2rem] w-[1.2rem] rotate-90 scale-0 transition-all dark:rotate-0 dark:scale-100" />
+              <span className="sr-only">Toggle theme</span>
+            </Button>
+          </div>
+        </header>
         <main className="flex-grow pb-24">
              <Suspense fallback={<div className="min-h-[80vh] flex items-center justify-center"><Loader2 className="animate-spin text-primary h-10 w-10"/></div>}>
                 {children}
@@ -43,4 +62,17 @@ export default function CustomerDashboardLayout({ children }) {
         </footer>
     </div>
   );
+}
+
+export default function CustomerDashboardLayout({ children }) {
+    return (
+        <ThemeProvider
+            attribute="class"
+            defaultTheme="dark"
+            enableSystem
+            disableTransitionOnChange
+        >
+            <CustomerDashboardContent>{children}</CustomerDashboardContent>
+        </ThemeProvider>
+    )
 }

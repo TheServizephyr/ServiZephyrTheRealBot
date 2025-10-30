@@ -27,7 +27,7 @@ export const metadata = {
 export default function RootLayout({ children }) {
   const GOOGLE_MAPS_API_KEY = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
   return (
-    <html lang="en" className={`${alegreya.variable} ${playfairDisplay.variable}`}>
+    <html lang="en" className={`${alegreya.variable} ${playfairDisplay.variable}`} suppressHydrationWarning>
        <head>
          <Script
             src={`https://maps.googleapis.com/maps/api/js?key=${GOOGLE_MAPS_API_KEY}&libraries=places,marker`}
