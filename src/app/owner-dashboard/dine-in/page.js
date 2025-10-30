@@ -283,7 +283,8 @@ const TableCard = ({ tableId, tableData, onMarkAsPaid, onPrintBill, onMarkAsClea
             title: "Available",
             bg: "bg-card",
             border: "border-border",
-            icon: <CheckCircle size={16} className="text-green-500" />
+            icon: <CheckCircle size={16} className="text-green-500" />,
+            capacityText: `Capacity: ${tableData.max_capacity}`
         },
         occupied: {
             title: `Occupied (${paxCount})`,
@@ -315,69 +316,70 @@ const TableCard = ({ tableId, tableData, onMarkAsPaid, onPrintBill, onMarkAsClea
                 <CardHeader className={cn("flex-row items-center justify-between space-y-0 pb-2", currentConfig.bg)}>
                     <CardTitle className="text-2xl font-bold">{tableId}</CardTitle>
                     <div className="flex items-center gap-2 text-sm font-semibold">
-                        {currentConfig.icon} {currentConfig.title}
+                        {currentConfig.icon} 
+                        {currentConfig.title}
+                        {currentConfig.capacityText && <span className="text-xs text-muted-foreground ml-2">({currentConfig.capacityText})</span>}
                     </div>
                 </CardHeader>
-                <CardContent className="flex-grow p-4">
-                    {state === 'needs_cleaning' ? (
-                         <div className="flex-grow p-4 flex flex-col items-center justify-center text-center">
-                            <p className="text-muted-foreground">This table's bill has been paid. Mark it as clean once it's ready for the next guests.</p>
-                        </div>
-                    ) : !tab ? (
-                        <div className="flex flex-col items-center justify-center h-full text-center text-muted-foreground">
-                            <p className="font-semibold">Table is Available</p>
-                            <p className="text-xs">Capacity: {tableData.max_capacity} guests</p>
-                        </div>
-                    ) : (
-                        <div key={tab.id} className="mb-4 last:mb-0">
-                                <div className="flex justify-between items-center bg-muted/50 p-2 rounded-t-lg">
-                                <h4 className="font-semibold text-foreground">{tab.tab_name}</h4>
-                                <span className="text-xs font-mono text-muted-foreground">{tab.id.substring(0,6)}...</span>
+                
+                {state !== 'available' && (
+                     <CardContent className="flex-grow p-4">
+                        {state === 'needs_cleaning' ? (
+                             <div className="flex-grow p-4 flex flex-col items-center justify-center text-center">
+                                <p className="text-muted-foreground">This table's bill has been paid. Mark it as clean once it's ready for the next guests.</p>
                             </div>
-                            <div className="text-xs text-muted-foreground my-2 flex items-center gap-2">
-                                <Clock size={14}/> Last activity: {tab.latestOrderTime ? format(tab.latestOrderTime, 'p') : 'N/A'}
-                            </div>
-                            <div className="space-y-2 max-h-48 overflow-y-auto pr-2">
-                                {tab.allItems.map((item) => {
-                                    const uniqueItemId = `${tab.id}-${item.name}`;
-                                    const isAcknowledged = acknowledgedItems.has(uniqueItemId);
-                                    return (
-                                        <div 
-                                            key={uniqueItemId} 
-                                            className={cn(
-                                                "flex justify-between items-center text-sm p-2 rounded-md transition-colors",
-                                                isAcknowledged ? "bg-muted/50" : "bg-yellow-400/20"
-                                            )}
-                                        >
-                                            <div className="flex items-center gap-2">
-                                                    <Checkbox 
-                                                    checked={isAcknowledged}
-                                                    onCheckedChange={() => onToggleAcknowledge(uniqueItemId)}
-                                                    id={uniqueItemId}
-                                                />
-                                                <label htmlFor={uniqueItemId} className="text-foreground">{item.name}</label>
+                        ) : tab ? (
+                            <div key={tab.id} className="mb-4 last:mb-0">
+                                    <div className="flex justify-between items-center bg-muted/50 p-2 rounded-t-lg">
+                                    <h4 className="font-semibold text-foreground">{tab.tab_name}</h4>
+                                    <span className="text-xs font-mono text-muted-foreground">{tab.id.substring(0,6)}...</span>
+                                </div>
+                                <div className="text-xs text-muted-foreground my-2 flex items-center gap-2">
+                                    <Clock size={14}/> Last activity: {tab.latestOrderTime ? format(tab.latestOrderTime, 'p') : 'N/A'}
+                                </div>
+                                <div className="space-y-2 max-h-48 overflow-y-auto pr-2">
+                                    {tab.allItems.map((item) => {
+                                        const uniqueItemId = `${tab.id}-${item.name}`;
+                                        const isAcknowledged = acknowledgedItems.has(uniqueItemId);
+                                        return (
+                                            <div 
+                                                key={uniqueItemId} 
+                                                className={cn(
+                                                    "flex justify-between items-center text-sm p-2 rounded-md transition-colors",
+                                                    isAcknowledged ? "bg-muted/50" : "bg-yellow-400/20"
+                                                )}
+                                            >
+                                                <div className="flex items-center gap-2">
+                                                        <Checkbox 
+                                                        checked={isAcknowledged}
+                                                        onCheckedChange={() => onToggleAcknowledge(uniqueItemId)}
+                                                        id={uniqueItemId}
+                                                    />
+                                                    <label htmlFor={uniqueItemId} className="text-foreground">{item.name}</label>
+                                                </div>
+                                                <span className="font-semibold text-foreground">x{item.qty}</span>
                                             </div>
-                                            <span className="font-semibold text-foreground">x{item.qty}</span>
-                                        </div>
-                                    );
-                                })}
+                                        );
+                                    })}
+                                </div>
+                                <CardFooter className="flex-col items-start bg-muted/30 p-4 border-t mt-4">
+                                    <Button variant="outline" size="sm" className="w-full mb-4" onClick={() => onShowHistory(tableId, tab.id)}>
+                                        <History size={14} className="mr-2"/> See History
+                                    </Button>
+                                    <div className="flex justify-between items-center w-full">
+                                        <span className="text-lg font-bold">Total Bill:</span>
+                                        <span className="text-2xl font-bold text-primary">{formatCurrency(tab.totalBill)}</span>
+                                    </div>
+                                    <div className="grid grid-cols-2 gap-2 w-full mt-4">
+                                        <Button variant="outline" onClick={() => onPrintBill({ tableId, orders: tab.orders })}><Printer size={16} className="mr-2"/> Print Bill</Button>
+                                        <Button className="bg-primary hover:bg-primary/90" onClick={() => onMarkAsPaid(tableId, tab.id)}><CheckCircle size={16} className="mr-2"/> Mark as Paid</Button>
+                                    </div>
+                                </CardFooter>
                             </div>
-                            <CardFooter className="flex-col items-start bg-muted/30 p-4 border-t mt-4">
-                                <Button variant="outline" size="sm" className="w-full mb-4" onClick={() => onShowHistory(tableId, tab.id)}>
-                                    <History size={14} className="mr-2"/> See History
-                                </Button>
-                                <div className="flex justify-between items-center w-full">
-                                    <span className="text-lg font-bold">Total Bill:</span>
-                                    <span className="text-2xl font-bold text-primary">{formatCurrency(tab.totalBill)}</span>
-                                </div>
-                                <div className="grid grid-cols-2 gap-2 w-full mt-4">
-                                    <Button variant="outline" onClick={() => onPrintBill({ tableId, orders: tab.orders })}><Printer size={16} className="mr-2"/> Print Bill</Button>
-                                    <Button className="bg-primary hover:bg-primary/90" onClick={() => onMarkAsPaid(tableId, tab.id)}><CheckCircle size={16} className="mr-2"/> Mark as Paid</Button>
-                                </div>
-                            </CardFooter>
-                        </div>
-                    )}
-                </CardContent>
+                        ) : null}
+                    </CardContent>
+                )}
+                
                 {state === 'needs_cleaning' && (
                      <CardFooter className="p-4">
                         <Button className="w-full bg-green-500 hover:bg-green-600" onClick={() => onMarkAsCleaned(tableId)}>
@@ -795,7 +797,6 @@ function DineInPage() {
     const [infoDialog, setInfoDialog] = useState({ isOpen: false, title: '', message: '' });
     const [confirmationState, setConfirmationState] = useState({ isOpen: false, onConfirm: () => {}, title: '', description: '', confirmText: '' });
     
-    // THE FIX: Initialize state from localStorage
     const [acknowledgedItems, setAcknowledgedItems] = useState(() => {
         if (typeof window === 'undefined') {
             return new Set();
@@ -811,7 +812,6 @@ function DineInPage() {
 
     const billPrintRef = useRef();
 
-    // THE FIX: Persist state changes to localStorage
     useEffect(() => {
         if (typeof window !== 'undefined') {
             try {
@@ -999,7 +999,7 @@ function DineInPage() {
                 return currentDate > latestDate ? current : latest;
             });
             
-            const isActive = dineInStatuses.includes(latestOrder.status);
+            const isActive = tabOrders.some(o => dineInStatuses.includes(o.status));
             const totalBill = tabOrders.reduce((sum, o) => sum + (o.totalAmount || 0), 0);
             
             const allItemsMap = new Map();
@@ -1235,3 +1235,5 @@ function DineInPage() {
 }
 
 export default DineInPage;
+
+    
