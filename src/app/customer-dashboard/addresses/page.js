@@ -50,16 +50,17 @@ const AddressesPageInternal = () => {
     const phone = searchParams.get('phone') || user?.phoneNumber;
     
     const fetchAddresses = useCallback(async () => {
+        if (isUserLoading) return; // Wait until auth state is confirmed
+
+        setLoading(true);
+        setError('');
+
         if (!user) {
-            // THE FIX: If there is no authenticated user, don't try to fetch any addresses.
-            // This prevents the lookup API from being called and fetching the wrong data.
+            // If there is no authenticated user, don't try to fetch any addresses.
             setLoading(false);
             setAddresses([]); // Ensure addresses are cleared
             return;
         }
-
-        setLoading(true);
-        setError('');
 
         try {
             console.log(`[Addresses Page] Auth user found. Fetching addresses via secure API for UID: ${user.uid}`);
@@ -67,7 +68,7 @@ const AddressesPageInternal = () => {
             const res = await fetch('/api/user/addresses', {
                 headers: { 'Authorization': `Bearer ${idToken}` }
             });
-            if (!res.ok) throw new Error('Failed to fetch user addresses.');
+            if (!res.ok) throw new Error('Failed to fetch your saved addresses.');
             const data = await res.json();
             setAddresses(data.addresses || []);
         } catch (err) {
@@ -77,13 +78,11 @@ const AddressesPageInternal = () => {
             setLoading(false);
         }
 
-    }, [user]);
+    }, [user, isUserLoading]);
 
     useEffect(() => {
-        if (!isUserLoading) {
-            fetchAddresses();
-        }
-    }, [user, isUserLoading, fetchAddresses]);
+        fetchAddresses();
+    }, [fetchAddresses]);
     
     const handleDeleteAddress = async (addressId) => {
         if (!window.confirm("Are you sure you want to delete this address?")) return;

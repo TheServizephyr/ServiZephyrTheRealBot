@@ -1,4 +1,3 @@
-
 'use client';
 
 import React, { useState, useEffect, Suspense, useCallback } from 'react';
@@ -63,7 +62,7 @@ const SelectLocationInternal = () => {
                 const res = await fetch('/api/user/addresses', {
                     headers: { 'Authorization': `Bearer ${idToken}` }
                 });
-                if (!res.ok) throw new Error('Failed to fetch user addresses.');
+                if (!res.ok) throw new Error('Failed to fetch your saved addresses.');
                 const data = await res.json();
                 setAddresses(data.addresses || []);
             } catch (err) {
@@ -75,38 +74,12 @@ const SelectLocationInternal = () => {
             return;
         }
 
-        // If no logged-in user, but a phone number is in the URL, use the public lookup API.
-        if (phone) {
-            console.log(`[LOCATION PAGE] No auth user. Looking up addresses for phone: ${phone} via public API.`);
-            try {
-                 const res = await fetch('/api/customer/lookup', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ phone }),
-                });
-                 if (res.ok) {
-                    const data = await res.json();
-                    setAddresses(data.addresses || []);
-                 } else if (res.status === 404) {
-                    setAddresses([]); // User not found, so no saved addresses
-                 } else {
-                    throw new Error('Failed to look up customer addresses.');
-                 }
-            } catch (err) {
-                 console.error("[LOCATION PAGE] Error fetching public addresses:", err);
-                 setError(err.message);
-            } finally {
-                 setLoading(false);
-            }
-            return;
-        }
-
-        // If neither a logged-in user nor a phone number is available, there's nothing to fetch.
-        console.log("[LOCATION PAGE] No auth user and no phone number. Clearing addresses.");
+        // If no logged-in user, there's nothing to fetch from the database.
+        console.log("[LOCATION PAGE] No auth user. Saved addresses will be empty.");
         setAddresses([]);
         setLoading(false);
 
-    }, [user, phone]);
+    }, [user]);
 
     useEffect(() => {
         if (!isUserLoading) {
