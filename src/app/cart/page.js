@@ -68,14 +68,12 @@ const PickupTimeModal = ({ isOpen, onClose, onConfirm, pickupTime, setPickupTime
     }, [customHour, customMinute, setPickupTime]);
 
     const renderTimePicker = () => {
-        const hours = Array.from({ length: 12 }, (_, i) => i + 9); // 9 AM to 8 PM
-        const minutes = [0, 15, 30, 45];
         return (
             <div className="flex justify-center gap-4 mt-4">
                 <div className="flex flex-col items-center">
-                    <Button variant="ghost" size="icon" onClick={() => setCustomHour(prev => Math.max(9, (prev || 12) - 1))}><ChevronUp/></Button>
+                    <Button variant="ghost" size="icon" onClick={() => setCustomHour(prev => (prev === 0 ? 23 : (prev || 1) - 1))}><ChevronUp/></Button>
                     <span className="text-4xl font-bold w-20 text-center">{customHour !== null ? String(customHour % 12 === 0 ? 12 : customHour % 12).padStart(2, '0') : '--'}</span>
-                    <Button variant="ghost" size="icon" onClick={() => setCustomHour(prev => Math.min(20, (prev || 11) + 1))}><ChevronDown/></Button>
+                    <Button variant="ghost" size="icon" onClick={() => setCustomHour(prev => ((prev || 0) + 1) % 24)}><ChevronDown/></Button>
                 </div>
                  <span className="text-4xl font-bold">:</span>
                 <div className="flex flex-col items-center">

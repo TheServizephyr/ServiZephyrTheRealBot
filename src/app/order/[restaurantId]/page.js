@@ -445,9 +445,9 @@ const DineInModal = ({ isOpen, onClose, onBookTable, tableStatus, onStartNewTab,
                                        <Label>Time</Label>
                                        <div className="flex justify-center gap-4 mt-2">
                                             <div className="flex flex-col items-center">
-                                                <Button variant="ghost" size="icon" onClick={() => setHour(prev => Math.max(9, (prev || 12) - 1))}><ChevronUp/></Button>
+                                                <Button variant="ghost" size="icon" onClick={() => setHour(prev => (prev === 0 ? 23 : (prev || 1) - 1))}><ChevronUp/></Button>
                                                 <span className="text-4xl font-bold w-20 text-center">{hour !== null ? String(hour % 12 === 0 ? 12 : hour % 12).padStart(2, '0') : '--'}</span>
-                                                <Button variant="ghost" size="icon" onClick={() => setHour(prev => Math.min(20, (prev || 11) + 1))}><ChevronDown/></Button>
+                                                <Button variant="ghost" size="icon" onClick={() => setHour(prev => ((prev || 0) + 1) % 24)}><ChevronDown/></Button>
                                             </div>
                                             <span className="text-4xl font-bold">:</span>
                                             <div className="flex flex-col items-center">
