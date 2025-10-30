@@ -1,11 +1,10 @@
 'use client';
 
-import React, { useState, useEffect, Suspense, useCallback } from 'react';
+import React, { useState, useEffect, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { motion } from 'framer-motion';
-import { MapPin, Search, LocateFixed, Loader2, Plus, Home, Building, Trash2, ArrowLeft } from 'lucide-react';
+import { MapPin, LocateFixed, Loader2, Plus, Home, Building, Trash2, ArrowLeft } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { auth } from '@/lib/firebase';
 import InfoDialog from '@/components/InfoDialog';
 import { useUser } from '@/firebase';
@@ -52,6 +51,7 @@ const SelectLocationInternal = () => {
     
     useEffect(() => {
         const fetchAddresses = async () => {
+            // Determine which phone number to use, giving priority to the URL parameter.
             const phoneToLookup = phoneFromUrl || user?.phoneNumber;
 
             if (!phoneToLookup) {
@@ -89,7 +89,8 @@ const SelectLocationInternal = () => {
             }
         };
 
-        // Don't wait for user loading state if a phone number is present in the URL
+        // If a phone number is in the URL, fetch immediately.
+        // Otherwise, wait for the user loading state to resolve.
         if (phoneFromUrl) {
             fetchAddresses();
         } else if (!isUserLoading) {
