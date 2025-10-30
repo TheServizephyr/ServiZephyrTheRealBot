@@ -275,7 +275,6 @@ const ConfirmationModal = ({ isOpen, onClose, onConfirm, title, description, con
 const TableCard = ({ tableId, tableData, onMarkAsPaid, onPrintBill, onMarkAsCleaned, onShowHistory, acknowledgedItems, onToggleAcknowledge, isTab = false }) => {
     const state = tableData.state;
     
-    // If it's a tab, we use its own pax_count. If it's a table, we sum up tab counts.
     const paxCount = isTab ? tableData.pax_count : tableData.tabs?.reduce((sum, tab) => sum + (tab.pax_count || 0), 0) || 0;
 
     const stateConfig = {
@@ -1235,5 +1234,3 @@ function DineInPage() {
 }
 
 export default DineInPage;
-
-    
