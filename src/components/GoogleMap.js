@@ -67,7 +67,7 @@ const GoogleMap = ({ center, onIdle }) => {
     // (i.e., when the user clicks 'Search' or 'Use Current Location').
     // It manually tells the map to move to the new center.
     useEffect(() => {
-        if (mapRef.current) {
+        if (mapRef.current && center) {
             console.log("Forcing map to new center:", center);
             mapRef.current.setCenter(center);
         }

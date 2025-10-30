@@ -21,6 +21,7 @@ const GoogleMap = dynamic(() => import('@/components/GoogleMap'), {
 
 const OwnerLocationPage = () => {
     const router = useRouter();
+    const geocodeTimeoutRef = useRef(null);
     
     const [mapCenter, setMapCenter] = useState({ lat: 27.1751, lng: 78.0421 }); // Default Agra
     const [addressDetails, setAddressDetails] = useState(null);
@@ -99,7 +100,7 @@ const OwnerLocationPage = () => {
                         lat: position.coords.latitude,
                         lng: position.coords.longitude,
                     };
-                    handleMapCenterChange(coords);
+                    handleMapIdle(coords);
                 },
                 (err) => {
                     setError('Could not get your location. Please search manually or check browser permissions.');
@@ -139,16 +140,21 @@ const OwnerLocationPage = () => {
         setSearchQuery(suggestion.placeAddress);
         setSuggestions([]);
         const coords = { lat: suggestion.latitude, lng: suggestion.longitude };
-        handleMapCenterChange(coords);
+        handleMapIdle(coords);
     };
 
     const handleAddressFieldChange = (field, value) => {
         setAddressDetails(prev => ({ ...prev, [field]: value }));
     };
 
-    const handleMapCenterChange = (coords) => {
+     const handleMapIdle = (coords) => {
         setMapCenter(coords);
-        reverseGeocode(coords);
+        if (geocodeTimeoutRef.current) {
+            clearTimeout(geocodeTimeoutRef.current);
+        }
+        geocodeTimeoutRef.current = setTimeout(() => {
+            reverseGeocode(coords);
+        }, 1000); // 1-second delay
     };
     
 
@@ -258,7 +264,7 @@ const OwnerLocationPage = () => {
                 <div className="w-full h-64 md:h-full md:flex-1">
                     <GoogleMap 
                         center={mapCenter}
-                        onIdle={handleMapCenterChange}
+                        onIdle={handleMapIdle}
                     />
                 </div>
                 <div className="w-full md:w-1/3 md:max-w-md flex-shrink-0 bg-card border-t md:border-t-0 md:border-l border-border p-4 space-y-4 overflow-y-auto">
