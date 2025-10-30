@@ -70,7 +70,7 @@ const generateSecureToken = async (firestore, customerPhone) => {
 const sendWelcomeMessageWithOptions = async (customerPhoneWithCode, business, botPhoneNumberId) => {
     console.log(`[Webhook] Sending interactive welcome message to ${customerPhoneWithCode}`);
     
-    const templateName = 'generic_welcome_options';
+    const templateName = 'order_status_update';
     const payload = {
         name: templateName,
         language: { code: "en_US" },
@@ -78,7 +78,10 @@ const sendWelcomeMessageWithOptions = async (customerPhoneWithCode, business, bo
             {
                 type: "body",
                 parameters: [
-                    { type: "text", text: business.data.name }
+                    { type: "text", text: business.data.name },
+                    { type: "text", text: `What would you like to do today?` },
+                    { type: "text", text: ` ` },
+                    { type: "text", text: ` ` }
                 ]
             },
             {
@@ -119,7 +122,6 @@ const handleButtonActions = async (firestore, buttonId, fromNumber, business, bo
                 break;
             }
             case 'dashboard': {
-                // THE FIX: Send to homepage for Google login, not direct to dashboard.
                 const link = `https://servizephyr.com/`;
                 await sendWhatsAppMessage(fromNumber, `To view your dashboard, please visit our website and log in with your Google account:\n\n${link}`, botPhoneNumberId);
                 break;
@@ -291,3 +293,4 @@ export async function POST(request) {
     
 
     
+
