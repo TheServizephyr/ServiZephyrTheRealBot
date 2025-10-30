@@ -159,7 +159,9 @@ const handleButtonActions = async (firestore, buttonId, fromNumber, business, bo
                 break;
             }
             case 'help': {
-                await sendWhatsAppMessage(fromNumber, `You can reply directly to this chat if you need help. A representative from ${business.data.name} will get back to you shortly.`, botPhoneNumberId);
+                const conversationRef = business.ref.collection('conversations').doc(customerPhone);
+                await conversationRef.set({ state: 'direct_chat' }, { merge: true });
+                await sendWhatsAppMessage(fromNumber, `You can now chat directly with a representative from ${business.data.name}.\n\nWhen you are finished, type **Menu** to see the main options again.`, botPhoneNumberId);
                 break;
             }
             default:
@@ -204,6 +206,46 @@ export async function POST(request) {
         if (change.value.messages && change.value.messages.length > 0) {
             const message = change.value.messages[0];
             const fromNumber = message.from;
+            const fromPhoneNumber = fromNumber.startsWith('91') ? fromNumber.substring(2) : fromNumber;
+
+            // Get conversation state
+            const conversationRef = business.ref.collection('conversations').doc(fromPhoneNumber);
+            const conversationSnap = await conversationRef.get();
+            const conversationData = conversationSnap.exists ? conversationSnap.data() : { state: 'menu' };
+            
+            // --- NEW: DIRECT CHAT & MENU KEYWORD LOGIC ---
+            if (message.type === 'text' && message.text.body.toLowerCase().trim() === 'menu') {
+                await conversationRef.set({ state: 'menu' }, { merge: true });
+                await sendWelcomeMessageWithOptions(fromNumber, business, businessPhoneNumberId);
+                return NextResponse.json({ message: 'Reset to menu' }, { status: 200 });
+            }
+            
+            if (conversationData.state === 'direct_chat') {
+                 // Save message to subcollection for the owner to see
+                const messageRef = conversationRef.collection('messages').doc(message.id);
+                let messageContent = { type: message.type, text: message.type === 'text' ? message.text.body : `Unsupported type: ${message.type}` };
+                
+                await messageRef.set({
+                    id: message.id,
+                    sender: 'customer',
+                    timestamp: FieldValue.serverTimestamp(),
+                    status: 'received',
+                    ...messageContent
+                });
+                
+                await conversationRef.set({
+                    customerName: change.value.contacts[0].profile.name,
+                    customerPhone: fromPhoneNumber,
+                    lastMessage: messageContent.text,
+                    lastMessageType: messageContent.type,
+                    lastMessageTimestamp: FieldValue.serverTimestamp(),
+                    unreadCount: FieldValue.increment(1)
+                }, { merge: true });
+                
+                console.log(`[Webhook] Message from ${fromPhoneNumber} forwarded to owner.`);
+                return NextResponse.json({ message: 'Forwarded to owner' }, { status: 200 });
+            }
+            // --- END DIRECT CHAT LOGIC ---
 
             // Handle button clicks from interactive messages
             if (message.type === 'interactive' && message.interactive.type === 'button_reply') {
@@ -309,6 +351,7 @@ export async function POST(request) {
     
 
     
+
 
 
 
