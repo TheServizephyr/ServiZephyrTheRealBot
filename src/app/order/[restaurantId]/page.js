@@ -287,7 +287,7 @@ const DineInModal = ({ isOpen, onClose, onBookTable, tableStatus, onStartNewTab,
             const initialTime = new Date(now.getTime() + 30 * 60000);
             
             setHour(initialTime.getHours());
-            setMinute(Math.ceil(initialTime.getMinutes() / 15) * 15 % 60);
+            setMinute(Math.ceil(getMinutes(initialTime) / 15) * 15 % 60);
 
             setBookingDetails(prev => ({
                 ...prev,
@@ -1395,3 +1395,5 @@ const OrderPage = () => (
 );
 
 export default OrderPage;
+
+    
