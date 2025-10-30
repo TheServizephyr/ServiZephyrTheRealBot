@@ -1,7 +1,8 @@
+
 'use client';
 
 import { motion } from 'framer-motion';
-import { ArrowRight, RefreshCw, BarChart2, Star, ShoppingBag, Loader2 } from 'lucide-react';
+import { ArrowRight, RefreshCw, ShoppingBag, Loader2 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { useState, useEffect } from 'react';
 import { useUser } from '@/firebase';
@@ -91,7 +92,7 @@ export default function CustomerHubPage() {
                                 <div className="h-6 w-3/4 bg-muted rounded-md animate-pulse"></div>
                                 <div className="h-10 w-48 bg-muted rounded-md animate-pulse"></div>
                             </div>
-                        ) : (
+                        ) : hubData?.quickReorder && (
                             <>
                                 <p className="text-lg">Time for your favorite <span className="font-bold text-foreground">'{hubData.quickReorder.dishName}'</span> from <span className="font-bold text-foreground">{hubData.quickReorder.restaurantName}</span>?</p>
                                 <Link href={`/order/${hubData.quickReorder.restaurantId}`} passHref>
@@ -154,7 +155,7 @@ export default function CustomerHubPage() {
                 </div>
             </motion.div>
 
-            {!loading && !hubData && (
+            {!loading && !hubData?.quickReorder && (
                  <motion.div 
                     variants={itemVariants} 
                     className="text-center py-16 text-muted-foreground border-2 border-dashed border-border rounded-xl"
