@@ -119,6 +119,17 @@ export async function POST(req) {
                     }
                 }
             }
+
+            // *** THE FIX: Migrate orders from phone number ID to UID ***
+            const unclaimedOrdersQuery = firestore.collection('orders').where('customerId', '==', normalizedPhone);
+            const unclaimedOrdersSnap = await unclaimedOrdersQuery.get();
+            if (!unclaimedOrdersSnap.empty) {
+                console.log(`[PROFILE COMPLETION] Found ${unclaimedOrdersSnap.size} orders to migrate for phone ${normalizedPhone}.`);
+                unclaimedOrdersSnap.forEach(orderDoc => {
+                    batch.update(orderDoc.ref, { customerId: uid });
+                    console.log(`[PROFILE COMPLETION] Marked order ${orderDoc.id} to be updated with new UID.`);
+                });
+            }
             
             // Delete the unclaimed profile after processing
             batch.delete(unclaimedProfileRef);
