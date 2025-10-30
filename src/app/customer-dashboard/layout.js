@@ -16,7 +16,7 @@ const navItems = [
 
 const NavLink = ({ href, icon: Icon, label }) => {
     const pathname = usePathname();
-    const isActive = pathname === href;
+    const isActive = pathname === href || (href !== '/customer-dashboard' && pathname.startsWith(href));
 
     return (
         <Link href={href} className="flex flex-col items-center justify-center gap-1 flex-1 text-muted-foreground hover:text-primary transition-colors">
