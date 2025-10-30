@@ -794,9 +794,33 @@ function DineInPage() {
     const [historyModalData, setHistoryModalData] = useState(null);
     const [infoDialog, setInfoDialog] = useState({ isOpen: false, title: '', message: '' });
     const [confirmationState, setConfirmationState] = useState({ isOpen: false, onConfirm: () => {}, title: '', description: '', confirmText: '' });
-    const [acknowledgedItems, setAcknowledgedItems] = useState(new Set());
+    
+    // THE FIX: Initialize state from localStorage
+    const [acknowledgedItems, setAcknowledgedItems] = useState(() => {
+        if (typeof window === 'undefined') {
+            return new Set();
+        }
+        try {
+            const item = window.localStorage.getItem('acknowledgedDineInItems');
+            return item ? new Set(JSON.parse(item)) : new Set();
+        } catch (error) {
+            console.error("Error reading from localStorage", error);
+            return new Set();
+        }
+    });
 
     const billPrintRef = useRef();
+
+    // THE FIX: Persist state changes to localStorage
+    useEffect(() => {
+        if (typeof window !== 'undefined') {
+            try {
+                window.localStorage.setItem('acknowledgedDineInItems', JSON.stringify(Array.from(acknowledgedItems)));
+            } catch (error) {
+                console.error("Error writing to localStorage", error);
+            }
+        }
+    }, [acknowledgedItems]);
 
     const handlePrint = useReactToPrint({
         content: () => billPrintRef.current,
@@ -967,14 +991,14 @@ function DineInPage() {
         const tabsData = uniqueTabIds.map(tabId => {
             const tabOrders = allOrders.filter(o => o.dineInTabId === tabId);
             if (tabOrders.length === 0) return null;
-
+            
             const mainOrder = tabOrders.find(o => o.tab_name) || tabOrders[0];
             const latestOrder = tabOrders.reduce((latest, current) => {
                 const latestDate = new Date(latest.orderDate?.seconds ? latest.orderDate.seconds * 1000 : latest.orderDate);
                 const currentDate = new Date(current.orderDate?.seconds ? current.orderDate.seconds * 1000 : current.orderDate);
                 return currentDate > latestDate ? current : latest;
             });
-
+            
             const isActive = dineInStatuses.includes(latestOrder.status);
             const totalBill = tabOrders.reduce((sum, o) => sum + (o.totalAmount || 0), 0);
             
@@ -990,7 +1014,7 @@ function DineInPage() {
                     }
                 });
             });
-            
+
             if (!mainOrder) return null;
 
             return {
@@ -1103,7 +1127,7 @@ function DineInPage() {
                         <TableCard
                             key={tab.id}
                             tableId={tableId}
-                            tableData={{ ...tab, state: 'occupied' }}
+                            tableData={{ ...tab, state: 'occupied', pax_count: tab.pax_count }}
                             isTab={true}
                             onMarkAsPaid={confirmMarkAsPaid}
                             onPrintBill={setBillData}
