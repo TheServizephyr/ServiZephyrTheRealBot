@@ -1,9 +1,10 @@
+
 'use client';
 
 import React, { useState, useEffect, Suspense, useMemo, useCallback, useRef } from 'react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Utensils, Plus, Minus, X, Home, User, Edit2, ShoppingCart, Star, CookingPot, BookOpen, Check, SlidersHorizontal, ArrowUpDown, PlusCircle, Ticket, Gift, Sparkles, Flame, Search, Trash2, ChevronDown, Tag as TagIcon, RadioGroup, IndianRupee, HardHat, MapPin, Bike, Store, ConciergeBell, QrCode, CalendarClock, Wallet, Users, Camera, BookMarked, Calendar as CalendarIcon, Bell, CheckCircle, AlertTriangle, ExternalLink, ShoppingBag } from 'lucide-react';
+import { Utensils, Plus, Minus, X, Home, User, Edit2, ShoppingCart, Star, CookingPot, BookOpen, Check, SlidersHorizontal, ArrowUpDown, PlusCircle, Ticket, Gift, Sparkles, Flame, Search, Trash2, ChevronDown, Tag as TagIcon, RadioGroup, IndianRupee, HardHat, MapPin, Bike, Store, ConciergeBell, QrCode, CalendarClock, Wallet, Users, Camera, BookMarked, Calendar as CalendarIcon, Bell, CheckCircle, AlertTriangle, ExternalLink, ShoppingBag, Sun, Moon } from 'lucide-react';
 import Image from 'next/image';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
@@ -19,6 +20,9 @@ import InfoDialog from '@/components/InfoDialog';
 import { auth } from '@/lib/firebase';
 import { Input } from '@/components/ui/input';
 import dynamic from 'next/dynamic';
+import { useTheme } from 'next-themes';
+import { ThemeProvider } from '@/components/ThemeProvider';
+
 
 const QrScanner = dynamic(() => import('@/components/QrScanner'), { 
     ssr: false,
@@ -537,6 +541,7 @@ const DineInModal = ({ isOpen, onClose, onBookTable, tableStatus, onStartNewTab,
 
 const BannerCarousel = ({ images, onClick, restaurantName, logoUrl }) => {
     const [index, setIndex] = useState(0);
+    const { theme, setTheme } = useTheme();
   
     useEffect(() => {
       if (images.length <= 1) return;
@@ -570,12 +575,24 @@ const BannerCarousel = ({ images, onClick, restaurantName, logoUrl }) => {
         </div>
         <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-black/20 to-transparent"></div>
         <div className="absolute bottom-[-0.5rem] left-0 right-0 px-4">
-             <div className="container mx-auto bg-background shadow-lg border border-border rounded-xl p-3 flex items-center justify-between">
-                {logoUrl && (
-                    <div className="relative w-16 h-16 rounded-lg overflow-hidden border-2 border-border shadow-md flex-shrink-0">
-                        <Image src={logoUrl} alt={`${restaurantName} logo`} layout="fill" objectFit="cover" />
-                    </div>
-                )}
+             <div className="container mx-auto bg-card shadow-lg border border-border rounded-xl p-3 flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                    {logoUrl && (
+                        <div className="relative w-16 h-16 rounded-lg overflow-hidden border-2 border-border shadow-md flex-shrink-0">
+                            <Image src={logoUrl} alt={`${restaurantName} logo`} layout="fill" objectFit="cover" />
+                        </div>
+                    )}
+                    <Button
+                        variant="outline"
+                        size="icon"
+                        onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
+                        className="h-10 w-10 rounded-full"
+                    >
+                        <Sun className="h-[1.2rem] w-[1.2rem] rotate-0 scale-100 transition-all dark:-rotate-90 dark:scale-0" />
+                        <Moon className="absolute h-[1.2rem] w-[1.2rem] rotate-90 scale-0 transition-all dark:rotate-0 dark:scale-100" />
+                        <span className="sr-only">Toggle theme</span>
+                    </Button>
+                </div>
                 <div className="text-right">
                     <span className="block text-sm font-normal text-muted-foreground">Ordering from</span>
                     <h1 className="font-sans text-2xl md:text-3xl font-bold text-foreground">
@@ -1358,13 +1375,20 @@ const OrderPageInternal = () => {
 
 const OrderPage = () => (
     <Suspense fallback={<div className="min-h-screen bg-background flex items-center justify-center"><div className="animate-spin rounded-full h-16 w-16 border-b-2 border-primary"></div></div>}>
-        <MenuBrowserModal 
-            isOpen={false} // This needs to be controlled by state
-            onClose={() => {}} 
-            categories={[]} 
-            onCategoryClick={() => {}} 
-        />
-        <OrderPageInternal />
+        <ThemeProvider
+          attribute="class"
+          defaultTheme="system"
+          enableSystem
+          disableTransitionOnChange
+        >
+            <MenuBrowserModal 
+                isOpen={false} // This needs to be controlled by state
+                onClose={() => {}} 
+                categories={[]} 
+                onCategoryClick={() => {}} 
+            />
+            <OrderPageInternal />
+        </ThemeProvider>
     </Suspense>
 );
 
