@@ -1,4 +1,3 @@
-
 'use client';
 
 import React, { useState, useEffect, Suspense, useCallback } from 'react';
@@ -49,54 +48,56 @@ const SelectLocationInternal = () => {
     const [infoDialog, setInfoDialog] = useState({ isOpen: false, title: '', message: '' });
 
     const returnUrl = searchParams.get('returnUrl') || '/';
-    const phone = searchParams.get('phone');
+    const phoneFromUrl = searchParams.get('phone');
     
-    const fetchAddresses = useCallback(async () => {
-        if (isUserLoading) return;
-
-        setLoading(true);
-        setError('');
-        
-        const phoneToLookup = phone || user?.phoneNumber;
-
-        if (!phoneToLookup) {
-            setLoading(false);
-            setAddresses([]);
-            return;
-        }
-
-        try {
-            console.log(`[LocationPage] Using /api/customer/lookup with phone: ${phoneToLookup}`);
-            const res = await fetch('/api/customer/lookup', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ phone: phoneToLookup }),
-            });
-
-            if (res.ok) {
-                const data = await res.json();
-                console.log(`[LocationPage] Lookup successful. Found ${data.addresses?.length || 0} addresses.`);
-                setAddresses(data.addresses || []);
-            } else if (res.status === 404) {
-                console.log(`[LocationPage] Lookup returned 404. No addresses found for this number.`);
-                setAddresses([]);
-            } else {
-                const errorData = await res.json();
-                throw new Error(errorData.message || 'Failed to look up customer data.');
-            }
-        } catch (err) {
-            console.error("[LocationPage] Error during address fetch:", err);
-            setError(err.message);
-            setAddresses([]);
-        } finally {
-            setLoading(false);
-        }
-    }, [phone, user, isUserLoading]);
-
-
     useEffect(() => {
-        fetchAddresses();
-    }, [fetchAddresses]);
+        const fetchAddresses = async () => {
+            const phoneToLookup = phoneFromUrl || user?.phoneNumber;
+
+            if (!phoneToLookup) {
+                setLoading(false);
+                setAddresses([]);
+                return;
+            }
+
+            setLoading(true);
+            setError('');
+
+            try {
+                console.log(`[LocationPage] Fetching addresses for phone: ${phoneToLookup}`);
+                const res = await fetch('/api/customer/lookup', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ phone: phoneToLookup }),
+                });
+
+                if (res.ok) {
+                    const data = await res.json();
+                    setAddresses(data.addresses || []);
+                } else if (res.status === 404) {
+                    setAddresses([]); // No addresses found is not an error state
+                } else {
+                    const errorData = await res.json();
+                    throw new Error(errorData.message || 'Failed to look up customer data.');
+                }
+            } catch (err) {
+                console.error("[LocationPage] Error fetching addresses:", err);
+                setError(err.message);
+                setAddresses([]);
+            } finally {
+                setLoading(false);
+            }
+        };
+
+        // Don't wait for user loading state if a phone number is present in the URL
+        if (phoneFromUrl) {
+            fetchAddresses();
+        } else if (!isUserLoading) {
+            fetchAddresses();
+        }
+
+    }, [phoneFromUrl, user, isUserLoading]);
+
 
     const handleSelectAddress = (address) => {
         localStorage.setItem('customerLocation', JSON.stringify(address));
@@ -123,18 +124,32 @@ const SelectLocationInternal = () => {
                  throw new Error(data.message || 'Failed to delete address.');
             }
             setInfoDialog({isOpen: true, title: 'Success', message: 'Address deleted successfully.'});
-            fetchAddresses(); // Refresh list
+            // Re-fetch addresses after deletion
+            const phoneToLookup = phoneFromUrl || user?.phoneNumber;
+             if (phoneToLookup) {
+                const res = await fetch('/api/customer/lookup', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ phone: phoneToLookup }),
+                });
+                 if (res.ok) {
+                    const data = await res.json();
+                    setAddresses(data.addresses || []);
+                } else {
+                    setAddresses([]);
+                }
+            }
         } catch (err) {
             setInfoDialog({isOpen: true, title: 'Error', message: err.message});
         }
     };
     
     const handleAddNewAddress = () => {
-        router.push(`/add-address?returnUrl=${encodeURIComponent(returnUrl)}&phone=${phone || ''}`);
+        router.push(`/add-address?returnUrl=${encodeURIComponent(returnUrl)}&phone=${phoneFromUrl || ''}`);
     }
     
     const handleUseCurrentLocation = () => {
-        router.push(`/add-address?useCurrent=true&returnUrl=${encodeURIComponent(returnUrl)}&phone=${phone || ''}`);
+        router.push(`/add-address?useCurrent=true&returnUrl=${encodeURIComponent(returnUrl)}&phone=${phoneFromUrl || ''}`);
     };
 
     return (
@@ -170,7 +185,7 @@ const SelectLocationInternal = () => {
 
                 <div className="mt-8">
                     <h2 className="font-bold text-muted-foreground mb-4">SAVED ADDRESSES</h2>
-                    {isUserLoading || loading ? (
+                    {loading ? (
                         <div className="flex justify-center py-8"><Loader2 className="animate-spin text-primary" /></div>
                     ) : error ? (
                         <div className="text-center py-8 text-destructive">{error}</div>
@@ -182,14 +197,14 @@ const SelectLocationInternal = () => {
                                     address={address} 
                                     onSelect={handleSelectAddress}
                                     onDelete={handleDeleteAddress}
-                                    isAuth={!!user} // Pass auth status to conditionally show delete button
+                                    isAuth={!!user}
                                 />
                             ))}
                         </div>
                     ) : (
                         <div className="text-center py-8 text-muted-foreground">
                             <p>No saved addresses found.</p>
-                            <p className="text-sm">{phone || user ? 'Add a new address to get started.' : 'Add an address or log in to see your saved ones.'}</p>
+                            <p className="text-sm">Add a new address to get started.</p>
                         </div>
                     )}
                 </div>
