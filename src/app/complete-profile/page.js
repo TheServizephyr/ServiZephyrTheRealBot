@@ -145,6 +145,7 @@ export default function CompleteProfile() {
             role: role,
             businessType: businessType,
             profilePictureUrl: user.photoURL || `https://picsum.photos/seed/${user.uid}/200/200`,
+            createdAt: serverTimestamp(),
             notifications: {
                 newOrders: true,
                 dailySummary: false,

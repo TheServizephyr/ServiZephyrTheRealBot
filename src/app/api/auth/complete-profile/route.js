@@ -2,6 +2,7 @@
 
 import { NextResponse } from 'next/server';
 import { getAuth, getFirestore } from '@/lib/firebase-admin';
+import { FieldValue } from 'firebase-admin/firestore';
 
 
 export async function POST(req) {
@@ -99,7 +100,7 @@ export async function POST(req) {
                             name: finalUserData.name, // Update with master profile name
                             email: finalUserData.email, // Add email
                             status: 'verified', // Mark as verified
-                            lastSeen: firestore.FieldValue.serverTimestamp()
+                            lastSeen: FieldValue.serverTimestamp()
                         };
 
                         batch.set(newCustomerRef, newCustomerPayload, { merge: true });
@@ -109,7 +110,7 @@ export async function POST(req) {
                         const userRestaurantLinkRef = firestore.collection('users').doc(uid).collection('joined_restaurants').doc(restaurantId);
                          batch.set(userRestaurantLinkRef, {
                             restaurantName: restaurantInfo.restaurantName, 
-                            joinedAt: firestore.FieldValue.serverTimestamp(),
+                            joinedAt: FieldValue.serverTimestamp(),
                             totalSpend: oldCustomerData.totalSpend || 0,
                             loyaltyPoints: oldCustomerData.loyaltyPoints || 0,
                             lastOrderDate: oldCustomerData.lastOrderDate,
@@ -137,6 +138,7 @@ export async function POST(req) {
              
              const finalBusinessData = {
                 ...businessData,
+                createdAt: FieldValue.serverTimestamp(),
                 razorpayAccountId: '', 
              };
              batch.set(businessRef, finalBusinessData);
