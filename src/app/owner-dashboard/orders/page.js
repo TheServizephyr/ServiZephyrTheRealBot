@@ -82,7 +82,7 @@ export default function OrdersPage() {
       variants={containerVariants}
       initial="hidden"
       animate="visible"
-      className="space-y-8 p-4 md:p-6 bg-gray-900 text-white min-h-screen"
+      className="space-y-8 p-4 md:p-6 bg-background text-foreground min-h-screen"
     >
       <InfoDialog 
           isOpen={infoDialog.isOpen} 
@@ -97,7 +97,7 @@ export default function OrdersPage() {
         <motion.button
           whileTap={{ scale: 0.95, rotate: -15 }}
           whileHover={{ scale: 1.05 }}
-          className="flex items-center bg-gray-800 text-white border border-gray-700 p-2 rounded-lg font-medium text-sm disabled:opacity-50"
+          className="flex items-center bg-card text-foreground border border-border p-2 rounded-lg font-medium text-sm disabled:opacity-50"
           onClick={() => loadData(true)}
           disabled={loading}
         >

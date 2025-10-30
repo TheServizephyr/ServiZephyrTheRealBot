@@ -5,8 +5,9 @@ import { ArrowLeft, ShoppingBag, Loader2 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { useState, useEffect } from 'react';
-import { auth } from '@/lib/firebase';
 import { useUser } from '@/firebase';
+import { collection, query, where, onSnapshot, orderBy } from 'firebase/firestore';
+import { db } from '@/lib/firebase';
 
 const OrderCard = ({ order }) => {
     const statusClasses = {
@@ -24,6 +25,8 @@ const OrderCard = ({ order }) => {
     const statusText = (order.status || 'pending').replace('_', ' ');
     const capitalizedStatus = statusText.charAt(0).toUpperCase() + statusText.slice(1);
 
+    const orderDate = order.orderDate?.toDate ? order.orderDate.toDate() : new Date(order.orderDate);
+
     return (
         <motion.div 
             initial={{ opacity: 0, y: 20 }}
@@ -40,10 +43,10 @@ const OrderCard = ({ order }) => {
                 </div>
             </div>
             <div className="mt-4 border-t border-dashed border-border pt-4">
-                <p className="text-sm text-muted-foreground">{order.items.map(i => `${i.qty}x ${i.name}`).join(', ')}</p>
+                <p className="text-sm text-muted-foreground">{(order.items || []).map(i => `${i.qty}x ${i.name}`).join(', ')}</p>
                 <div className="flex justify-between items-center mt-2">
                     <p className="text-sm text-muted-foreground">
-                        {order.orderDate ? new Date(order.orderDate).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : 'N/A'}
+                        {orderDate ? orderDate.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : 'N/A'}
                     </p>
                     <p className="font-bold text-lg text-foreground">₹{order.totalAmount?.toFixed(2)}</p>
                 </div>
@@ -60,45 +63,38 @@ export default function MyOrdersPage() {
     const [error, setError] = useState(null);
 
     useEffect(() => {
-        const fetchOrders = async () => {
-            if (isUserLoading) return;
-            if (!user) {
-                setError("Please log in to view your orders.");
-                setLoading(false);
-                return;
-            }
+        if (isUserLoading) {
+            return;
+        }
+        if (!user) {
+            setError("Please log in to view your orders.");
+            setLoading(false);
+            return;
+        }
 
-            setLoading(true);
-            setError(null);
-            try {
-                const idToken = await user.getIdToken();
-                // We use the owner's order API, but it should return orders based on customerId if that's how the backend is designed.
-                // Assuming an API endpoint /api/customer/orders exists or will be created.
-                // For now, let's use a placeholder assuming the backend logic for /api/owner/orders can filter by customer.
-                // A better approach would be a dedicated `/api/customer/orders` endpoint.
-                const response = await fetch('/api/owner/orders', {
-                    headers: { 'Authorization': `Bearer ${idToken}` }
-                });
-                
-                if (!response.ok) {
-                    const errorData = await response.json();
-                    throw new Error(errorData.message || 'Failed to fetch orders.');
-                }
-                const data = await response.json();
-                
-                // Filter orders for the current customer on the client-side
-                const customerOrders = data.orders.filter(order => order.customerId === user.uid || order.customerPhone === user.phoneNumber.slice(-10));
-                setOrders(customerOrders);
+        setLoading(true);
+        setError(null);
+        
+        const q = query(
+            collection(db, "orders"), 
+            where("customerId", "==", user.uid),
+            orderBy("orderDate", "desc")
+        );
 
-            } catch (err) {
-                console.error("Error fetching orders:", err);
-                setError(err.message);
-            } finally {
-                setLoading(false);
-            }
-        };
+        const unsubscribe = onSnapshot(q, (querySnapshot) => {
+            const customerOrders = [];
+            querySnapshot.forEach((doc) => {
+                customerOrders.push({ id: doc.id, ...doc.data() });
+            });
+            setOrders(customerOrders);
+            setLoading(false);
+        }, (err) => {
+            console.error("Error fetching orders:", err);
+            setError("Failed to fetch orders. Please try again.");
+            setLoading(false);
+        });
 
-        fetchOrders();
+        return () => unsubscribe();
     }, [user, isUserLoading]);
 
     return (
