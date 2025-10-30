@@ -150,7 +150,7 @@ const AddAddressPageInternal = () => {
                 reverseGeocode(mapCenter);
             }
         }
-    }, [user, isUserLoading, phoneFromUrl]); // Re-run when user or phone in URL changes
+    }, [user, isUserLoading, phoneFromUrl, useCurrent, getCurrentGeolocation, reverseGeocode]);
 
 
     const handleConfirmLocation = async () => {

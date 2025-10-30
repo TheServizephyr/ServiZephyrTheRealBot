@@ -48,78 +48,60 @@ const SelectLocationInternal = () => {
     const [infoDialog, setInfoDialog] = useState({ isOpen: false, title: '', message: '' });
 
     const returnUrl = searchParams.get('returnUrl') || '/';
-    // THE FIX: Always prioritize the phone number from the URL
     const phone = searchParams.get('phone');
     
     const fetchAddresses = useCallback(async () => {
+        if (isUserLoading) return;
+    
         setLoading(true);
         setError('');
-
-        // Determine which phone number to use for lookup.
-        // If a user is logged in AND their number matches the URL, great.
-        // If not logged in, we MUST use the phone from the URL.
+        
         const phoneToLookup = phone || user?.phoneNumber;
-
-        if (!phoneToLookup) {
-            console.log("[LOCATION PAGE] No phone number in URL and no logged-in user. Cannot fetch addresses.");
-            setAddresses([]);
-            setLoading(false);
-            return;
-        }
-
-        // Logic for logged-in user
-        if (user && user.phoneNumber === phoneToLookup) {
-             console.log(`[LOCATION PAGE] Auth user found (${user.uid}). Fetching addresses via secure API.`);
+    
+        console.log(`[LocationPage] Starting fetch. User loading: ${isUserLoading}, Phone from URL: ${phone}, User phone: ${user?.phoneNumber}. Final phone to lookup: ${phoneToLookup}`);
+    
+        // Case 1: We have a phone number (either from URL for guest, or from logged-in user)
+        if (phoneToLookup) {
             try {
-                const idToken = await user.getIdToken();
-                const res = await fetch('/api/user/addresses', {
-                    headers: { 'Authorization': `Bearer ${idToken}` }
-                });
-                if (!res.ok) throw new Error('Failed to fetch your saved addresses.');
-                const data = await res.json();
-                setAddresses(data.addresses || []);
-            } catch (err) {
-                console.error("[LOCATION PAGE] Error fetching user addresses:", err);
-                setError(err.message);
-            } finally {
-                setLoading(false);
-            }
-        } 
-        // Logic for guest user (or when URL phone differs from logged-in user)
-        else {
-            console.log(`[LOCATION PAGE] No auth user or phone mismatch. Fetching public data for phone: ${phoneToLookup}`);
-             try {
+                // We always use the public lookup now, because it's robust.
+                // It can find a verified user OR an unverified profile by phone number.
+                console.log(`[LocationPage] Using /api/customer/lookup with phone: ${phoneToLookup}`);
                 const res = await fetch('/api/customer/lookup', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ phone: phoneToLookup }),
                 });
-
+    
                 if (res.ok) {
                     const data = await res.json();
+                    console.log(`[LocationPage] Lookup successful. Found ${data.addresses?.length || 0} addresses.`);
                     setAddresses(data.addresses || []);
                 } else if (res.status === 404) {
-                    console.log(`[LOCATION PAGE] No addresses found for guest phone: ${phoneToLookup}`);
-                    setAddresses([]); // No addresses found for this number
+                    console.log(`[LocationPage] Lookup returned 404. No addresses found for this number.`);
+                    setAddresses([]);
                 } else {
-                    throw new Error('Failed to look up customer data.');
+                    const errorData = await res.json();
+                    throw new Error(errorData.message || 'Failed to look up customer data.');
                 }
             } catch (err) {
-                console.error("[LOCATION PAGE] Error fetching guest addresses:", err);
+                console.error("[LocationPage] Error during address fetch:", err);
                 setError(err.message);
+                setAddresses([]);
             } finally {
                 setLoading(false);
             }
+        } 
+        // Case 2: No user is logged in AND no phone number is in the URL.
+        else {
+            console.log("[LocationPage] No user and no phone in URL. Not fetching addresses.");
+            setAddresses([]);
+            setLoading(false);
         }
-
-    }, [phone, user, isUserLoading]); // Depend on phone from URL and user state
+    }, [phone, user, isUserLoading]);
 
     useEffect(() => {
-        // Re-fetch whenever the user or the phone number in the URL changes.
-        if (!isUserLoading) {
-            fetchAddresses();
-        }
-    }, [fetchAddresses, isUserLoading]);
+        fetchAddresses();
+    }, [fetchAddresses]);
 
     const handleSelectAddress = (address) => {
         localStorage.setItem('customerLocation', JSON.stringify(address));
@@ -212,7 +194,7 @@ const SelectLocationInternal = () => {
                     ) : (
                         <div className="text-center py-8 text-muted-foreground">
                             <p>No saved addresses found.</p>
-                            <p className="text-sm">{user ? 'Add a new address to get started.' : 'Add a new address or log in to see your saved ones.'}</p>
+                            <p className="text-sm">{phone || user ? 'Add a new address to get started.' : 'Add an address or log in to see your saved ones.'}</p>
                         </div>
                     )}
                 </div>
