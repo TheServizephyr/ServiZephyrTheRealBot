@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button';
 import { useUser } from '@/firebase';
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Card } from '@/components/ui/card';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import InfoDialog from '@/components/InfoDialog';
@@ -32,11 +32,47 @@ const ProfileOption = ({ icon, title, description, onClick }) => (
 
 export default function ProfilePage() {
     const router = useRouter();
-    const { user, isUserLoading } = useUser();
+    const { user: authUser, isUserLoading: isAuthLoading } = useUser();
+    const [profileData, setProfileData] = useState(null);
     const [isEditing, setIsEditing] = useState(false);
-    const [editedName, setEditedName] = useState(user?.displayName || '');
-    const [editedPhone, setEditedPhone] = useState(user?.phoneNumber || '');
+    const [editedName, setEditedName] = useState('');
+    const [editedPhone, setEditedPhone] = useState('');
     const [infoDialog, setInfoDialog] = useState({ isOpen: false, title: '', message: '' });
+    
+    useEffect(() => {
+        const fetchProfileData = async () => {
+            if (authUser) {
+                try {
+                    const idToken = await authUser.getIdToken();
+                    // Using the same settings API as owner, as it can fetch user data
+                    const response = await fetch('/api/owner/settings', {
+                        headers: { 'Authorization': `Bearer ${idToken}` }
+                    });
+                    if (!response.ok) throw new Error("Failed to fetch profile data.");
+                    const data = await response.json();
+                    setProfileData(data);
+                    setEditedName(data.name || authUser.displayName || '');
+                    setEditedPhone(data.phone || authUser.phoneNumber || '');
+                } catch (error) {
+                    console.error("Error fetching profile data:", error);
+                    setInfoDialog({ isOpen: true, title: 'Error', message: 'Could not load your profile details.' });
+                    // Fallback to authUser data
+                    setProfileData({
+                        name: authUser.displayName,
+                        email: authUser.email,
+                        phone: authUser.phoneNumber,
+                        profilePicture: authUser.photoURL
+                    });
+                     setEditedName(authUser.displayName || '');
+                    setEditedPhone(authUser.phoneNumber || '');
+                }
+            }
+        };
+
+        if (!isAuthLoading) {
+            fetchProfileData();
+        }
+    }, [authUser, isAuthLoading]);
 
     const handleLogout = async () => {
         await auth.signOut();
@@ -44,16 +80,43 @@ export default function ProfilePage() {
         router.push('/');
     };
     
-    const handleSaveProfile = () => {
-        // Here you would typically make an API call to save the user profile
-        console.log("Saving profile:", { name: editedName, phone: editedPhone });
-        // For now, we'll just simulate a success and update the UI
-        setInfoDialog({ isOpen: true, title: 'Success', message: 'Profile updated successfully!' });
+    const handleSaveProfile = async () => {
+        if (!editedName || !editedPhone) {
+            setInfoDialog({ isOpen: true, title: 'Error', message: 'Name and phone cannot be empty.' });
+            return;
+        }
+
+        try {
+            const idToken = await authUser.getIdToken();
+            const response = await fetch('/api/owner/settings', {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${idToken}` },
+                body: JSON.stringify({ name: editedName, phone: editedPhone }),
+            });
+
+             if (!response.ok) {
+                const errorData = await response.json();
+                throw new Error(errorData.message || "Failed to update profile.");
+            }
+            
+            const updatedData = await response.json();
+            setProfileData(updatedData); // Re-sync state with the backend response
+            setInfoDialog({ isOpen: true, title: 'Success', message: 'Profile updated successfully!' });
+            setIsEditing(false);
+
+        } catch (error) {
+            setInfoDialog({ isOpen: true, title: 'Error', message: error.message });
+        }
+    };
+    
+    const handleCancelEdit = () => {
         setIsEditing(false);
-        // Note: In a real app, you'd refetch the user data or update the user object
+        setEditedName(profileData?.name || '');
+        setEditedPhone(profileData?.phone || '');
     }
 
-    if (isUserLoading) {
+
+    if (isAuthLoading || !profileData) {
         return (
             <div className="flex items-center justify-center h-[calc(100vh-100px)]">
                 <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-primary"></div>
@@ -77,7 +140,7 @@ export default function ProfilePage() {
             </div>
              {isEditing ? (
                  <div className="flex gap-2">
-                    <Button variant="secondary" onClick={() => { setIsEditing(false); setEditedName(user?.displayName || ''); }}>
+                    <Button variant="secondary" onClick={handleCancelEdit}>
                         <XCircle size={16} className="mr-2"/> Cancel
                     </Button>
                     <Button onClick={handleSaveProfile} className="bg-primary hover:bg-primary/90 text-primary-foreground">
@@ -99,8 +162,8 @@ export default function ProfilePage() {
             <Card className="p-6">
                 <div className="flex flex-col sm:flex-row items-center gap-4">
                     <Avatar className="h-20 w-20 border-4 border-primary/20">
-                        <AvatarImage src={user?.photoURL || ''} alt={user?.displayName || 'User'} />
-                        <AvatarFallback className="text-2xl bg-muted">{user?.displayName?.charAt(0) || 'U'}</AvatarFallback>
+                        <AvatarImage src={profileData?.profilePicture || authUser?.photoURL || ''} alt={profileData?.name || 'User'} />
+                        <AvatarFallback className="text-2xl bg-muted">{profileData?.name?.charAt(0) || 'U'}</AvatarFallback>
                     </Avatar>
                     <div className="flex-grow w-full">
                          {isEditing ? (
@@ -116,9 +179,9 @@ export default function ProfilePage() {
                             </div>
                         ) : (
                              <div>
-                                <h2 className="text-2xl font-bold">{user?.displayName || 'Hello, User!'}</h2>
-                                <p className="text-muted-foreground">{user?.email}</p>
-                                <p className="text-muted-foreground">{user?.phoneNumber}</p>
+                                <h2 className="text-2xl font-bold">{profileData?.name || 'Hello, User!'}</h2>
+                                <p className="text-muted-foreground">{profileData?.email || authUser?.email}</p>
+                                <p className="text-muted-foreground">{profileData?.phone || 'No phone number'}</p>
                             </div>
                         )}
                     </div>
