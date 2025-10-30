@@ -178,6 +178,7 @@ const CartPageInternal = () => {
     // Pickup Time State
     const [isPickupTimeModalOpen, setIsPickupTimeModalOpen] = useState(false);
     const [pickupTime, setPickupTime] = useState('');
+    const [isCheckoutFlow, setIsCheckoutFlow] = useState(false); // New state to control redirect
     
     useEffect(() => {
         if (!restaurantId) return;
@@ -278,6 +279,7 @@ const CartPageInternal = () => {
 
     const handleConfirmOrder = () => {
         if (deliveryType === 'pickup') {
+            setIsCheckoutFlow(true); // Set the flag for checkout
             setIsPickupTimeModalOpen(true);
             return;
         }
@@ -303,12 +305,24 @@ const CartPageInternal = () => {
         setIsPickupTimeModalOpen(false);
         if (!pickupTime.trim()) {
             setInfoDialog({ isOpen: true, title: "Time Required", message: "Please select a pickup time to continue." });
+            setIsCheckoutFlow(false); // Reset flow if time is not selected
             return;
         }
         updateCartInStorage({ pickupTime });
-        let checkoutUrl = `/checkout?restaurantId=${restaurantId}&phone=${phone}`;
-        router.push(checkoutUrl);
+        
+        // Only redirect if this function was called as part of the checkout flow
+        if (isCheckoutFlow) {
+            let checkoutUrl = `/checkout?restaurantId=${restaurantId}&phone=${phone}`;
+            router.push(checkoutUrl);
+        }
+        // Reset the flow flag after use
+        setIsCheckoutFlow(false);
     };
+
+    const handleEditPickupTime = () => {
+        setIsCheckoutFlow(false); // Ensure we are just editing, not checking out
+        setIsPickupTimeModalOpen(true);
+    }
 
 
     const handleGoBack = () => {
@@ -447,7 +461,10 @@ const CartPageInternal = () => {
         />
         <PickupTimeModal
             isOpen={isPickupTimeModalOpen}
-            onClose={() => setIsPickupTimeModalOpen(false)}
+            onClose={() => {
+                setIsPickupTimeModalOpen(false);
+                setIsCheckoutFlow(false); // Always reset flow on close
+            }}
             onConfirm={handleConfirmPickupTime}
             pickupTime={pickupTime}
             setPickupTime={setPickupTime}
@@ -526,7 +543,7 @@ const CartPageInternal = () => {
                                         <Clock size={16} className="text-primary"/>
                                         <span className="text-sm">Pickup Time: <span className="font-bold text-foreground">{pickupTime || 'Not set'}</span></span>
                                     </div>
-                                    <Button variant="ghost" size="sm" onClick={() => setIsPickupTimeModalOpen(true)} className="text-primary h-auto p-1">
+                                    <Button variant="ghost" size="sm" onClick={handleEditPickupTime} className="text-primary h-auto p-1">
                                         <Edit2 size={14} className="mr-1"/> {pickupTime ? 'Edit' : 'Set Time'}
                                     </Button>
                                 </div>
@@ -721,9 +738,3 @@ const CartPage = () => (
 );
 
 export default CartPage;
-
-    
-
-    
-
-    
