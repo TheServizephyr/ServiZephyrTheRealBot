@@ -55,126 +55,104 @@ async function getBusiness(firestore, botPhoneNumberId) {
     return null;
 }
 
-const handleImageMessage = async (firestore, business, message) => {
-    const fromWithCode = message.from;
-    const customerName = business.data?.contacts?.[0]?.profile?.name || 'Customer'; // Safely access nested property
-    const mediaId = message.image.id;
-    const whatsAppToken = process.env.WHATSAPP_ACCESS_TOKEN;
-
-    if (!whatsAppToken) {
-        console.error("[Webhook][handleImageMessage] CRITICAL: WHATSAPP_ACCESS_TOKEN is not set.");
-        return;
-    }
-
-    // 1. Get media URL from Meta
-    const mediaUrlRes = await axios.get(`https://graph.facebook.com/v19.0/${mediaId}`, {
-        headers: { 'Authorization': `Bearer ${whatsAppToken}` }
-    });
-    const mediaUrl = mediaUrlRes.data.url;
-
-    // 2. Download the image
-    const imageRes = await axios.get(mediaUrl, {
-        headers: { 'Authorization': `Bearer ${whatsAppToken}` },
-        responseType: 'arraybuffer'
-    });
-    const imageBuffer = Buffer.from(imageRes.data, 'binary');
-    const mimeType = message.image.mime_type;
-    const fileExtension = mimeType.split('/')[1] || 'jpg';
-    
-    // 3. Upload to Firebase Storage
-    const bucket = getStorage().bucket(`gs://${process.env.FIREBASE_PROJECT_ID}.appspot.com`);
-    const fileName = `whatsapp_media/${business.id}/${fromWithCode}_${Date.now()}.${fileExtension}`;
-    const file = bucket.file(fileName);
-    await file.save(imageBuffer, {
-        metadata: { contentType: mimeType }
-    });
-    
-    // 4. Get public URL (set to be publicly readable)
-    await file.makePublic();
-    const publicUrl = file.publicUrl();
-
-    // 5. Save message to Firestore
-    const customerPhone = fromWithCode.startsWith('91') ? fromWithCode.substring(2) : fromWithCode;
-    const conversationRef = business.ref.collection('conversations').doc(customerPhone);
-    const messageRef = conversationRef.collection('messages').doc();
-
-    const batch = firestore.batch();
-    
-    batch.set(messageRef, {
-        id: messageRef.id,
-        type: 'image',
-        mediaUrl: publicUrl,
-        sender: 'customer',
-        timestamp: FieldValue.serverTimestamp(),
-        status: 'unread'
-    });
-
-    batch.set(conversationRef, {
-        id: customerPhone,
-        customerName: customerName,
-        customerPhone: customerPhone,
-        lastMessage: '📷 Image',
-        lastMessageType: 'image',
-        lastMessageTimestamp: FieldValue.serverTimestamp(),
-        unreadCount: FieldValue.increment(1),
-    }, { merge: true });
-
-    await batch.commit();
-}
-
-const generateAndSendAuthLink = async (firestore, customerPhoneWithCode, business, botPhoneNumberId) => {
-    const customerPhone = customerPhoneWithCode.startsWith('91') ? customerPhoneWithCode.substring(2) : customerPhoneWithCode;
-    const customerName = business.data?.contacts?.[0]?.profile?.name || 'Customer';
-
-    // 1. Generate a secure, unique token
+const generateSecureToken = async (firestore, customerPhone) => {
     const token = nanoid(24);
-
-    // 2. Set an expiry time (e.g., 20 minutes from now)
-    const expiry = new Date(Date.now() + 20 * 60 * 1000);
-
-    // 3. Save the token, phone number, and expiry to Firestore
+    const expiry = new Date(Date.now() + 2 * 60 * 60 * 1000); // 2-hour validity
     const authTokenRef = firestore.collection('auth_tokens').doc(token);
     await authTokenRef.set({
         phone: customerPhone,
-        expiresAt: FieldValue.serverTimestamp(expiry)
+        expiresAt: expiry
     });
-
-    // 4. Construct the URL with the token
-    const menuLink = `https://servizephyr.com/order/${business.id}?phone=${customerPhone}&token=${token}`;
-    const replyText = `Thanks for contacting *${business.data.name}*. We have received your message and will get back to you shortly.\n\nYou can also view our menu and place an order directly here:\n${menuLink}`;
-
-    // 5. Send the message
-    await sendWhatsAppMessage(customerPhoneWithCode, replyText, botPhoneNumberId);
-    console.log(`[Webhook] Auth link sent to ${customerPhone}.`);
-    
-    // 6. Save messages to Firestore conversation
-    const conversationRef = business.ref.collection('conversations').doc(customerPhone);
-    const messagesCollectionRef = conversationRef.collection('messages');
-    const batch = firestore.batch();
-
-    // Save bot's reply
-    const botMessageRef = messagesCollectionRef.doc();
-    batch.set(botMessageRef, {
-        id: botMessageRef.id,
-        text: replyText,
-        sender: 'owner', // Representing the bot as the owner
-        timestamp: FieldValue.serverTimestamp(),
-        status: 'sent' 
-    });
-    
-    // Update conversation metadata
-    batch.set(conversationRef, {
-        id: customerPhone,
-        customerName: customerName,
-        customerPhone: customerPhone,
-        lastMessage: replyText,
-        lastMessageType: 'text',
-        lastMessageTimestamp: FieldValue.serverTimestamp(),
-    }, { merge: true });
-
-    await batch.commit();
-    console.log(`[Webhook] Saved bot's automatic reply to Firestore for ${customerPhone}.`);
+    return token;
 };
+
+// --- NEW INTERACTIVE WELCOME MESSAGE ---
+const sendWelcomeMessageWithOptions = async (customerPhoneWithCode, business, botPhoneNumberId) => {
+    console.log(`[Webhook] Sending interactive welcome message to ${customerPhoneWithCode}`);
+    
+    const templateName = 'generic_welcome_options';
+    const payload = {
+        name: templateName,
+        language: { code: "en_US" },
+        components: [
+            {
+                type: "body",
+                parameters: [
+                    { type: "text", text: business.data.name }
+                ]
+            },
+            {
+                type: "button", sub_type: "quick_reply", index: "0",
+                parameters: [{ type: "payload", payload: `action_order_${business.id}` }]
+            },
+            {
+                type: "button", sub_type: "quick_reply", index: "1",
+                parameters: [{ type: "payload", payload: `action_dashboard_${business.id}` }]
+            },
+             {
+                type: "button", sub_type: "quick_reply", index: "2",
+                parameters: [{ type: "payload", payload: `action_track_${business.id}` }]
+            },
+        ]
+    };
+    
+    await sendWhatsAppMessage(customerPhoneWithCode, payload, botPhoneNumberId);
+}
+
+// --- NEW ACTION HANDLERS FOR BUTTONS ---
+const handleButtonActions = async (firestore, buttonId, fromNumber, business, botPhoneNumberId) => {
+    const [action, type, ...payloadParts] = buttonId.split('_');
+
+    if (action !== 'action') return; // Not an action button we care about here.
+    
+    const customerPhone = fromNumber.startsWith('91') ? fromNumber.substring(2) : fromNumber;
+    
+    console.log(`[Webhook] Handling action: '${type}' for customer ${customerPhone}`);
+
+    try {
+        switch(type) {
+            case 'order': {
+                const businessId = payloadParts.join('_');
+                const token = await generateSecureToken(firestore, customerPhone);
+                const link = `https://servizephyr.com/order/${businessId}?phone=${customerPhone}&token=${token}`;
+                await sendWhatsAppMessage(fromNumber, `Here is your personal link to place an order:\n\n${link}\n\nThis link is valid for 2 hours.`, botPhoneNumberId);
+                break;
+            }
+            case 'dashboard': {
+                 const businessId = payloadParts.join('_');
+                const token = await generateSecureToken(firestore, customerPhone);
+                const link = `https://servizephyr.com/customer-dashboard?phone=${customerPhone}&token=${token}`;
+                await sendWhatsAppMessage(fromNumber, `Here is the link to your personal dashboard:\n\n${link}\n\nThis link is valid for 2 hours.`, botPhoneNumberId);
+                break;
+            }
+            case 'track': {
+                const ordersRef = firestore.collection('orders');
+                const q = ordersRef.where('customerPhone', '==', customerPhone).orderBy('orderDate', 'desc').limit(1);
+                const querySnapshot = await q.get();
+
+                if (querySnapshot.empty) {
+                    await sendWhatsAppMessage(fromNumber, `You don't have any recent orders to track.`, botPhoneNumberId);
+                } else {
+                    const latestOrder = querySnapshot.docs[0];
+                    const orderId = latestOrder.id;
+                    const token = await generateSecureToken(firestore, customerPhone);
+                    const link = `https://servizephyr.com/track/${orderId}?phone=${customerPhone}&token=${token}`;
+                    await sendWhatsAppMessage(fromNumber, `Here is the tracking link for your latest order (#${orderId.substring(0, 6)}):\n\n${link}`, botPhoneNumberId);
+                }
+                break;
+            }
+            case 'help': {
+                await sendWhatsAppMessage(fromNumber, `You can reply directly to this chat if you need help. A representative from ${business.data.name} will get back to you shortly.`, botPhoneNumberId);
+                break;
+            }
+            default:
+                 console.warn(`[Webhook] Unhandled action type: ${type}`);
+        }
+    } catch (e) {
+        console.error(`[Webhook] Error handling button action '${type}':`, e);
+        await sendWhatsAppMessage(fromNumber, `Sorry, we couldn't process your request right now. Please try again.`, botPhoneNumberId);
+    }
+}
 
 
 export async function POST(request) {
@@ -197,12 +175,6 @@ export async function POST(request) {
             return NextResponse.json({ message: 'No change data' }, { status: 200 });
         }
         
-        const message = change.value.messages?.[0];
-        if (!message) {
-            console.log("[Webhook] No message object found. Skipping.");
-            return NextResponse.json({ message: 'Not a message event' }, { status: 200 });
-        }
-
         const businessPhoneNumberId = change.value.metadata.phone_number_id;
         const business = await getBusiness(firestore, businessPhoneNumberId);
         if (!business) {
@@ -210,137 +182,105 @@ export async function POST(request) {
              return NextResponse.json({ message: 'Business not found' }, { status: 404 });
         }
 
-        if (message.type === 'image') {
-            await handleImageMessage(firestore, business, message);
+        // --- NEW LOGIC ---
+        // Handle incoming messages (text, image, etc.)
+        if (change.value.messages && change.value.messages.length > 0) {
+            const message = change.value.messages[0];
+            const fromNumber = message.from;
+
+            // This is the new main logic: Always send the interactive menu
+            await sendWelcomeMessageWithOptions(fromNumber, business, businessPhoneNumberId);
         }
-        else if (message.interactive?.button_reply) {
-            const buttonReply = message.interactive.button_reply;
+
+        // Handle button clicks from interactive messages
+        else if (change.value.messages?.[0]?.interactive?.button_reply) {
+            const buttonReply = change.value.messages[0].interactive.button_reply;
             const buttonId = buttonReply.id;
-            const fromNumber = message.from; 
+            const fromNumber = change.value.messages[0].from; 
             
-            console.log(`[Webhook] Button click detected. Button ID: "${buttonId}", From: ${fromNumber}, Bot ID: ${businessPhoneNumberId}`);
+            console.log(`[Webhook] Button click detected. Button ID: "${buttonId}", From: ${fromNumber}`);
             
-            const [action, ...payloadParts] = buttonId.split('_');
-
-            if (action === 'accept' || action === 'reject') {
-                const orderId = payloadParts.join('_').replace('order_', '');
-                console.log(`[Webhook] Order action detected. Action: ${action}, Order ID: ${orderId}`);
-                
-                if (!orderId) {
-                    console.warn(`[Webhook] Invalid order button ID format: ${buttonId}`);
-                    return NextResponse.json({ message: 'Invalid button ID' }, { status: 200 });
-                }
-
-                const orderRef = firestore.collection('orders').doc(orderId);
-                const orderDoc = await orderRef.get();
-
-                if (!orderDoc.exists) {
-                     console.error(`[Webhook] Action failed: Order with ID ${orderId} was not found.`);
-                     await sendWhatsAppMessage(fromNumber, `⚠️ Action failed: Order with ID ${orderId} was not found.`, businessPhoneNumberId);
-                     return NextResponse.json({ message: 'Order not found' }, { status: 200 });
-                }
-                
-                const orderData = orderDoc.data();
-                
-                if (action === 'accept') {
-                    console.log(`[Webhook] Accepting order ${orderId}. Updating status to 'confirmed'.`);
-                    await orderRef.update({ status: 'confirmed' });
-                    
-                    await sendOrderStatusUpdateToCustomer({
-                        customerPhone: orderData.customerPhone,
-                        botPhoneNumberId: businessPhoneNumberId,
-                        customerName: orderData.customerName,
-                        orderId: orderId,
-                        restaurantName: business.data.name,
-                        status: 'confirmed',
-                        businessType: business.data.businessType || 'restaurant',
-                    });
-                    
-                    console.log(`[Webhook] Sending confirmation back to owner at ${fromNumber}.`);
-                    await sendWhatsAppMessage(fromNumber, `✅ Action complete: Order ${orderId} has been confirmed. You can now start preparing it.`, businessPhoneNumberId);
-
-                } else if (action === 'reject') {
-                    console.log(`[Webhook] Rejecting order ${orderId}. Updating status to 'rejected'.`);
-                    await orderRef.update({ status: 'rejected' });
-                    await sendOrderStatusUpdateToCustomer({
-                        customerPhone: orderData.customerPhone,
-                        botPhoneNumberId: businessPhoneNumberId,
-                        customerName: orderData.customerName,
-                        orderId: orderId,
-                        restaurantName: business.data.name,
-                        status: 'rejected',
-                         businessType: business.data.businessType || 'restaurant',
-                    });
-                    console.log(`[Webhook] Sending rejection confirmation back to owner at ${fromNumber}.`);
-                    await sendWhatsAppMessage(fromNumber, `✅ Action complete: Order ${orderId} has been rejected. The customer will be notified.`, businessPhoneNumberId);
-                }
-            } 
-            else if (action === 'retain' || action === 'revert') {
-                const [_, __, businessId, status] = payloadParts;
-                console.log(`[Webhook] Restaurant status action detected. Action: ${action}, Business ID: ${businessId}, Status: ${status}`);
-
-                if(!businessId || !status) {
-                    console.warn(`[Webhook] Invalid status button ID format: ${buttonId}`);
-                    return NextResponse.json({ message: 'Invalid button ID' }, { status: 200 });
-                }
-
-                const collectionName = business.data.businessType === 'shop' ? 'shops' : 'restaurants';
-
-                if (action === 'revert') {
-                    const revertToOpen = status === 'open';
-                    console.log(`[Webhook] Reverting status for ${businessId}. Setting isOpen to: ${revertToOpen}`);
-                    await firestore.collection(collectionName).doc(businessId).update({ isOpen: revertToOpen });
-                    await sendWhatsAppMessage(fromNumber, `✅ Action reverted. Your business has been set to **${revertToOpen ? 'OPEN' : 'CLOSED'}**.`, businessPhoneNumberId);
-                } else { // retain
-                    console.log(`[Webhook] Retaining status for ${businessId}. No change.`);
-                    await sendWhatsAppMessage(fromNumber, `✅ Understood. Your business status will remain **${status.toUpperCase()}**.`, businessPhoneNumberId);
-                }
-            }
-        } 
-        else if (message.text) {
-            const fromWithCode = message.from;
-            const messageBody = message.text.body;
-
-            const customerName = change.value?.contacts?.[0]?.profile?.name || 'Customer';
-            const customerPhone = fromWithCode.startsWith('91') ? fromWithCode.substring(2) : fromWithCode;
-            
-            console.log(`[Webhook] Text message received. From: ${fromWithCode}, Name: ${customerName}, Message: "${messageBody}"`);
-            
-            const conversationRef = business.ref.collection('conversations').doc(customerPhone);
-            const messagesCollectionRef = conversationRef.collection('messages');
-            
-            const messagesSnap = await messagesCollectionRef.limit(1).get();
-            const isNewConversation = messagesSnap.empty;
-
-            const messageRef = messagesCollectionRef.doc();
-            console.log(`[Webhook] Saving message to Firestore for customer ${customerPhone} at path: ${messageRef.path}`);
-            
-            // Save the customer's message first
-            await messageRef.set({
-                id: messageRef.id,
-                text: messageBody,
-                sender: 'customer',
-                timestamp: FieldValue.serverTimestamp(),
-                status: 'unread'
-            });
-            
-            // Then, if it's a new conversation, generate and send the auth link
-            if (isNewConversation) {
-                console.log(`[Webhook] First message from ${customerPhone}. Sending automatic reply with auth link.`);
-                await generateAndSendAuthLink(firestore, fromWithCode, business, businessPhoneNumberId);
+            if (buttonId.startsWith('action_')) {
+                await handleButtonActions(firestore, buttonId, fromNumber, business, botPhoneNumberId);
             } else {
-                 // For existing conversations, just update the last message info
-                 await conversationRef.set({
-                    lastMessage: messageBody,
-                    lastMessageType: 'text',
-                    lastMessageTimestamp: FieldValue.serverTimestamp(),
-                    unreadCount: FieldValue.increment(1),
-                 }, { merge: true });
-                 console.log(`[Webhook] Existing conversation with ${customerPhone}. Updated last message.`);
-            }
+                 // --- EXISTING LOGIC for owner order notifications ---
+                 const [action, ...payloadParts] = buttonId.split('_');
 
-        } else {
-            console.log("[Webhook] Received a non-text, non-button, non-image event. Skipping.");
+                 if (action === 'accept' || action === 'reject') {
+                    const orderId = payloadParts.join('_').replace('order_', '');
+                    console.log(`[Webhook] Order action detected. Action: ${action}, Order ID: ${orderId}`);
+                    
+                    if (!orderId) {
+                        console.warn(`[Webhook] Invalid order button ID format: ${buttonId}`);
+                        return NextResponse.json({ message: 'Invalid button ID' }, { status: 200 });
+                    }
+
+                    const orderRef = firestore.collection('orders').doc(orderId);
+                    const orderDoc = await orderRef.get();
+
+                    if (!orderDoc.exists) {
+                        console.error(`[Webhook] Action failed: Order with ID ${orderId} was not found.`);
+                        await sendWhatsAppMessage(fromNumber, `⚠️ Action failed: Order with ID ${orderId} was not found.`, businessPhoneNumberId);
+                        return NextResponse.json({ message: 'Order not found' }, { status: 200 });
+                    }
+                    
+                    const orderData = orderDoc.data();
+                    
+                    if (action === 'accept') {
+                        console.log(`[Webhook] Accepting order ${orderId}. Updating status to 'confirmed'.`);
+                        await orderRef.update({ status: 'confirmed' });
+                        
+                        await sendOrderStatusUpdateToCustomer({
+                            customerPhone: orderData.customerPhone,
+                            botPhoneNumberId: businessPhoneNumberId,
+                            customerName: orderData.customerName,
+                            orderId: orderId,
+                            restaurantName: business.data.name,
+                            status: 'confirmed',
+                            businessType: business.data.businessType || 'restaurant',
+                        });
+                        
+                        console.log(`[Webhook] Sending confirmation back to owner at ${fromNumber}.`);
+                        await sendWhatsAppMessage(fromNumber, `✅ Action complete: Order ${orderId} has been confirmed. You can now start preparing it.`, businessPhoneNumberId);
+
+                    } else if (action === 'reject') {
+                        console.log(`[Webhook] Rejecting order ${orderId}. Updating status to 'rejected'.`);
+                        await orderRef.update({ status: 'rejected' });
+                        await sendOrderStatusUpdateToCustomer({
+                            customerPhone: orderData.customerPhone,
+                            botPhoneNumberId: businessPhoneNumberId,
+                            customerName: orderData.customerName,
+                            orderId: orderId,
+                            restaurantName: business.data.name,
+                            status: 'rejected',
+                            businessType: business.data.businessType || 'restaurant',
+                        });
+                        console.log(`[Webhook] Sending rejection confirmation back to owner at ${fromNumber}.`);
+                        await sendWhatsAppMessage(fromNumber, `✅ Action complete: Order ${orderId} has been rejected. The customer will be notified.`, businessPhoneNumberId);
+                    }
+                } 
+                else if (action === 'retain' || action === 'revert') {
+                    const [_, __, businessId, status] = payloadParts;
+                    console.log(`[Webhook] Restaurant status action detected. Action: ${action}, Business ID: ${businessId}, Status: ${status}`);
+
+                    if(!businessId || !status) {
+                        console.warn(`[Webhook] Invalid status button ID format: ${buttonId}`);
+                        return NextResponse.json({ message: 'Invalid button ID' }, { status: 200 });
+                    }
+
+                    const collectionName = business.data.businessType === 'shop' ? 'shops' : 'restaurants';
+
+                    if (action === 'revert') {
+                        const revertToOpen = status === 'open';
+                        console.log(`[Webhook] Reverting status for ${businessId}. Setting isOpen to: ${revertToOpen}`);
+                        await firestore.collection(collectionName).doc(businessId).update({ isOpen: revertToOpen });
+                        await sendWhatsAppMessage(fromNumber, `✅ Action reverted. Your business has been set to **${revertToOpen ? 'OPEN' : 'CLOSED'}**.`, businessPhoneNumberId);
+                    } else { // retain
+                        console.log(`[Webhook] Retaining status for ${businessId}. No change.`);
+                        await sendWhatsAppMessage(fromNumber, `✅ Understood. Your business status will remain **${status.toUpperCase()}**.`, businessPhoneNumberId);
+                    }
+                }
+            }
         }
         
         return NextResponse.json({ message: 'Event received' }, { status: 200 });
@@ -350,3 +290,5 @@ export async function POST(request) {
         return NextResponse.json({ message: 'Error processing request, but acknowledged.' }, { status: 200 });
     }
 }
+
+    
