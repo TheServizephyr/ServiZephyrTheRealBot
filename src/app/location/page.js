@@ -48,17 +48,28 @@ const SelectLocationInternal = () => {
     const [infoDialog, setInfoDialog] = useState({ isOpen: false, title: '', message: '' });
 
     const returnUrl = searchParams.get('returnUrl') || '/';
+    // THE FIX: Always prioritize the phone number from the URL
     const phone = searchParams.get('phone');
     
     const fetchAddresses = useCallback(async () => {
-        if (isUserLoading) return; // Wait until auth state is confirmed
-
         setLoading(true);
         setError('');
 
-        // If a logged-in user is present, fetch their addresses from the secure API.
-        if (user) {
-            console.log(`[LOCATION PAGE] Auth user found. Fetching addresses via secure API for UID: ${user.uid}`);
+        // Determine which phone number to use for lookup.
+        // If a user is logged in AND their number matches the URL, great.
+        // If not logged in, we MUST use the phone from the URL.
+        const phoneToLookup = phone || user?.phoneNumber;
+
+        if (!phoneToLookup) {
+            console.log("[LOCATION PAGE] No phone number in URL and no logged-in user. Cannot fetch addresses.");
+            setAddresses([]);
+            setLoading(false);
+            return;
+        }
+
+        // Logic for logged-in user
+        if (user && user.phoneNumber === phoneToLookup) {
+             console.log(`[LOCATION PAGE] Auth user found (${user.uid}). Fetching addresses via secure API.`);
             try {
                 const idToken = await user.getIdToken();
                 const res = await fetch('/api/user/addresses', {
@@ -73,19 +84,42 @@ const SelectLocationInternal = () => {
             } finally {
                 setLoading(false);
             }
-            return;
+        } 
+        // Logic for guest user (or when URL phone differs from logged-in user)
+        else {
+            console.log(`[LOCATION PAGE] No auth user or phone mismatch. Fetching public data for phone: ${phoneToLookup}`);
+             try {
+                const res = await fetch('/api/customer/lookup', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ phone: phoneToLookup }),
+                });
+
+                if (res.ok) {
+                    const data = await res.json();
+                    setAddresses(data.addresses || []);
+                } else if (res.status === 404) {
+                    console.log(`[LOCATION PAGE] No addresses found for guest phone: ${phoneToLookup}`);
+                    setAddresses([]); // No addresses found for this number
+                } else {
+                    throw new Error('Failed to look up customer data.');
+                }
+            } catch (err) {
+                console.error("[LOCATION PAGE] Error fetching guest addresses:", err);
+                setError(err.message);
+            } finally {
+                setLoading(false);
+            }
         }
 
-        // If no logged-in user, there's nothing to fetch from the database.
-        console.log("[LOCATION PAGE] No auth user. Saved addresses will be empty.");
-        setAddresses([]);
-        setLoading(false);
-
-    }, [user, isUserLoading]);
+    }, [phone, user, isUserLoading]); // Depend on phone from URL and user state
 
     useEffect(() => {
-        fetchAddresses();
-    }, [fetchAddresses]);
+        // Re-fetch whenever the user or the phone number in the URL changes.
+        if (!isUserLoading) {
+            fetchAddresses();
+        }
+    }, [fetchAddresses, isUserLoading]);
 
     const handleSelectAddress = (address) => {
         localStorage.setItem('customerLocation', JSON.stringify(address));
@@ -178,7 +212,7 @@ const SelectLocationInternal = () => {
                     ) : (
                         <div className="text-center py-8 text-muted-foreground">
                             <p>No saved addresses found.</p>
-                            <p className="text-sm">{user ? 'Add a new address to get started.' : 'Login to see your addresses or add a new one.'}</p>
+                            <p className="text-sm">{user ? 'Add a new address to get started.' : 'Add a new address or log in to see your saved ones.'}</p>
                         </div>
                     )}
                 </div>
