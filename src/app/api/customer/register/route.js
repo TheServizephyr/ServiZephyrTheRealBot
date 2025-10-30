@@ -20,7 +20,6 @@ export async function POST(req) {
             console.error(`[DEBUG] /api/customer/register: Validation failed: Missing required fields for order creation. Details: ${missingFields}`);
             return NextResponse.json({ message: 'Missing required fields for order creation.' }, { status: 400 });
         }
-        // For delivery orders, address MUST be a structured object with a 'full' property
         if (deliveryType === 'delivery' && (!address || !address.full)) {
             console.error("[DEBUG] /api/customer/register: Validation failed: A full, structured address is required for delivery orders.");
             return NextResponse.json({ message: 'A full, structured address is required for delivery orders.' }, { status: 400 });
@@ -48,9 +47,21 @@ export async function POST(req) {
         console.log("[DEBUG] /api/customer/register: Checking for existing user with phone:", normalizedPhone);
         const usersRef = firestore.collection('users');
         const existingUserQuery = await usersRef.where('phone', '==', normalizedPhone).limit(1).get();
-        const isNewUser = existingUserQuery.empty;
-        const userId = isNewUser ? normalizedPhone : existingUserQuery.docs[0].id;
-        console.log(`[DEBUG] /api/customer/register: User status: ${isNewUser ? 'New User (unclaimed)' : 'Existing User (verified)'}. User ID will be: ${userId}`);
+        
+        let isNewUser = true;
+        let userId = normalizedPhone; // Default to phone number for unclaimed profiles
+
+        if (!existingUserQuery.empty) {
+            const userDoc = existingUserQuery.docs[0];
+            const userData = userDoc.data();
+            // **THE FIX: Only use the UID if the user is a customer, not an admin or owner**
+            if (userData.role === 'customer') {
+                isNewUser = false;
+                userId = userDoc.id;
+            }
+        }
+        
+        console.log(`[DEBUG] /api/customer/register: User status: ${isNewUser ? 'New/Unclaimed User' : 'Existing Customer'}. User ID will be: ${userId}`);
 
         const customerLocation = null;
 
@@ -111,7 +122,6 @@ export async function POST(req) {
             console.log(`[DEBUG] /api/customer/register: Creating unclaimed profile for new user ${normalizedPhone}.`);
             const unclaimedUserRef = firestore.collection('unclaimed_profiles').doc(normalizedPhone);
             const newOrderedFrom = { restaurantId, restaurantName: businessData.name, businessType };
-            // Ensure address is saved as a structured object inside an array, including the 'full' property
             const addressesToSave = address ? [{ ...address, full: address.full }] : []; 
             batch.set(unclaimedUserRef, {
                 name: name, phone: normalizedPhone, addresses: addressesToSave,
@@ -140,13 +150,19 @@ export async function POST(req) {
         if (!isNewUser) {
             console.log(`[DEBUG] /api/customer/register: Updating joined_restaurants for existing user ${userId}.`);
             const userRestaurantLinkRef = usersRef.doc(userId).collection('joined_restaurants').doc(restaurantId);
+            
+            // **THE FIX: Use set with merge to create `joinedAt` only once, and update for the rest**
             batch.set(userRestaurantLinkRef, {
-                 restaurantName: businessData.name, joinedAt: FieldValue.serverTimestamp(),
-                 totalSpend: FieldValue.increment(subtotal),
-                 loyaltyPoints: FieldValue.increment(pointsEarned - pointsSpent),
-                 lastOrderDate: FieldValue.serverTimestamp(),
-                 totalOrders: FieldValue.increment(1),
+                restaurantName: businessData.name, 
+                joinedAt: FieldValue.serverTimestamp() // This will ONLY be set if the document is new
             }, { merge: true });
+
+            batch.update(userRestaurantLinkRef, {
+                totalSpend: FieldValue.increment(subtotal),
+                loyaltyPoints: FieldValue.increment(pointsEarned - pointsSpent),
+                lastOrderDate: FieldValue.serverTimestamp(),
+                totalOrders: FieldValue.increment(1),
+            });
         }
         
         if (coupon && coupon.id) {
