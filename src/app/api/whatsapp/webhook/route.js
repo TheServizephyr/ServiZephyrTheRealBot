@@ -119,10 +119,9 @@ const handleButtonActions = async (firestore, buttonId, fromNumber, business, bo
                 break;
             }
             case 'dashboard': {
-                 const businessId = payloadParts.join('_');
-                const token = await generateSecureToken(firestore, customerPhone);
-                const link = `https://servizephyr.com/customer-dashboard?phone=${customerPhone}&token=${token}`;
-                await sendWhatsAppMessage(fromNumber, `Here is the link to your personal dashboard:\n\n${link}\n\nThis link is valid for 2 hours.`, botPhoneNumberId);
+                // THE FIX: Send to homepage for Google login, not direct to dashboard.
+                const link = `https://servizephyr.com/`;
+                await sendWhatsAppMessage(fromNumber, `To view your dashboard, please visit our website and log in with your Google account:\n\n${link}`, botPhoneNumberId);
                 break;
             }
             case 'track': {
@@ -290,5 +289,6 @@ export async function POST(request) {
         return NextResponse.json({ message: 'Error processing request, but acknowledged.' }, { status: 200 });
     }
 }
+    
 
     
