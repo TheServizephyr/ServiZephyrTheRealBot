@@ -8,11 +8,9 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import dynamic from 'next/dynamic';
-import { auth } from '@/lib/firebase';
-import InfoDialog from '@/components/InfoDialog';
 import { useUser } from '@/firebase';
-import { cn } from '@/lib/utils';
 import { Textarea } from '@/components/ui/textarea';
+import InfoDialog from '@/components/InfoDialog';
 
 const GoogleMap = dynamic(() => import('@/components/GoogleMap'), { 
     ssr: false,
@@ -39,11 +37,9 @@ const AddAddressPageInternal = () => {
     const [addressLabel, setAddressLabel] = useState('Home');
     const [customAddressLabel, setCustomAddressLabel] = useState('');
 
-
     const returnUrl = searchParams.get('returnUrl') || '/';
     const useCurrent = searchParams.get('useCurrent') === 'true';
-
-    // --- Geocoding and Location Logic ---
+    const phoneFromUrl = searchParams.get('phone');
 
     const reverseGeocode = useCallback(async (coords) => {
         if (geocodeTimeoutRef.current) {
@@ -73,7 +69,7 @@ const AddAddressPageInternal = () => {
             } finally {
                 setLoading(false);
             }
-        }, 500); // Use a 500ms delay
+        }, 500);
     }, []);
 
     const handleMapIdle = useCallback((coords) => {
@@ -100,44 +96,39 @@ const AddAddressPageInternal = () => {
 
     useEffect(() => {
         const prefillData = async () => {
-            const phoneFromUrl = searchParams.get('phone');
+            setRecipientName(''); // Reset fields on every run
+            setRecipientPhone('');
 
-            // --- REFACTORED LOGIC ---
-            // Priority 1: If a user is logged into Firebase Auth, fetch their full profile data from the backend.
+            const finalPhone = phoneFromUrl || user?.phoneNumber;
+
             if (user) {
                 console.log("[add-address] Auth user detected. Fetching full profile from backend.");
                 try {
                     const idToken = await user.getIdToken();
-                    const response = await fetch('/api/owner/settings', { // Using a versatile API that returns profile data
+                    const response = await fetch('/api/owner/settings', {
                         headers: { 'Authorization': `Bearer ${idToken}` }
                     });
                     if (response.ok) {
                         const profileData = await response.json();
                         setRecipientName(profileData.name || user.displayName || '');
-                        setRecipientPhone(profileData.phone || user.phoneNumber || phoneFromUrl || '');
+                        setRecipientPhone(profileData.phone || user.phoneNumber || '');
                     } else {
-                        // Fallback to basic auth info if the API call fails
-                        console.warn("[add-address] Backend fetch failed, falling back to basic auth info.");
                         setRecipientName(user.displayName || '');
-                        setRecipientPhone(user.phoneNumber || phoneFromUrl || '');
+                        setRecipientPhone(user.phoneNumber || '');
                     }
                 } catch (e) {
                     console.error("[add-address] Error fetching backend profile, using basic auth info.", e);
                     setRecipientName(user.displayName || '');
-                    setRecipientPhone(user.phoneNumber || phoneFromUrl || '');
+                    setRecipientPhone(user.phoneNumber || '');
                 }
-                return; // Stop further execution if auth user data is fetched
-            }
-
-            // Priority 2: If no auth user, but phone in URL, look up UNCLAIMED/public customer data.
-            if (phoneFromUrl) {
-                console.log(`[add-address] No auth user. Looking up public customer data by phone: ${phoneFromUrl}`);
-                setRecipientPhone(phoneFromUrl); // Set phone immediately
+            } else if (finalPhone) {
+                console.log(`[add-address] No auth user. Looking up public customer data by phone: ${finalPhone}`);
+                setRecipientPhone(finalPhone);
                 try {
                     const res = await fetch('/api/customer/lookup', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ phone: phoneFromUrl }),
+                        body: JSON.stringify({ phone: finalPhone }),
                     });
                     if (res.ok) {
                         const customerData = await res.json();
@@ -146,27 +137,21 @@ const AddAddressPageInternal = () => {
                 } catch (e) {
                     console.warn("[add-address] Could not prefill name from customer lookup", e);
                 }
-                return; // Stop further execution
+            } else {
+                 console.log("[add-address] New user journey. All fields will be empty.");
             }
-
-            // Priority 3: Brand new user with no information.
-            console.log("[add-address] New user journey. All fields will be empty.");
-            setRecipientName('');
-            setRecipientPhone('');
         };
         
         if (!isUserLoading) {
             prefillData();
-            if (useCurrent) {
+            if (useCurrent && !addressDetails) { // Only run if address isn't already set
                 getCurrentGeolocation();
-            } else {
+            } else if (!addressDetails) {
                 reverseGeocode(mapCenter);
             }
         }
-    }, [user, isUserLoading, useCurrent, searchParams, reverseGeocode, getCurrentGeolocation]);
+    }, [user, isUserLoading, phoneFromUrl]); // Re-run when user or phone in URL changes
 
-
-    // --- Save Logic ---
 
     const handleConfirmLocation = async () => {
         if (!addressDetails || !recipientName.trim() || !recipientPhone.trim() || !fullAddress.trim()) {
@@ -189,25 +174,23 @@ const AddAddressPageInternal = () => {
             label: finalLabel,
             name: recipientName.trim(),
             phone: recipientPhone.trim(),
-            street: addressDetails.street, // Use the structured street from geocoding
+            street: addressDetails.street,
             landmark: landmark.trim(),
             city: addressDetails.city,
             state: addressDetails.state,
             pincode: addressDetails.pincode,
             country: addressDetails.country,
-            full: fullAddress.trim(), // Ensure 'full' has the final, user-edited address
+            full: fullAddress.trim(),
             latitude: addressDetails.latitude,
             longitude: addressDetails.longitude,
         };
 
-        // If user is not logged in, just save to localStorage and redirect
         if (!user) {
             localStorage.setItem('customerLocation', JSON.stringify(addressToSave));
             router.push(returnUrl);
             return;
         }
         
-        // If user is logged in, save to backend
         try {
             const idToken = await user.getIdToken();
             const res = await fetch('/api/user/addresses', {
@@ -221,7 +204,6 @@ const AddAddressPageInternal = () => {
                 throw new Error(errData.message || 'Failed to save address.');
             }
             
-            // Also set it as the current selected location for this session
             localStorage.setItem('customerLocation', JSON.stringify(addressToSave));
             router.push(returnUrl);
 
@@ -231,7 +213,6 @@ const AddAddressPageInternal = () => {
             setIsSaving(false);
         }
     };
-
 
     return (
         <div className="h-screen w-screen flex flex-col bg-background text-foreground">
@@ -246,24 +227,25 @@ const AddAddressPageInternal = () => {
                  <h1 className="text-xl font-bold">Add Address Details</h1>
             </header>
 
-            <div className="flex-grow flex flex-col">
-                <div className="h-64 md:h-1/2 w-full flex-shrink-0 relative">
+            <div className="flex-grow flex flex-col md:flex-row">
+                <div className="md:w-1/2 h-64 md:h-full flex-shrink-0 relative">
                      <GoogleMap 
                        center={mapCenter}
                        onIdle={handleMapIdle}
                     />
+                   
+                </div>
+                
+                <div className="p-4 flex-grow overflow-y-auto space-y-4 md:w-1/2">
                     <Button 
                        variant="secondary" 
-                       className="absolute bottom-4 right-4 z-10 h-12 rounded-full shadow-lg flex items-center gap-2 pr-4 bg-white text-foreground hover:bg-muted"
+                       className="w-full h-12 shadow-lg flex items-center gap-2 pr-4 bg-white text-foreground hover:bg-muted"
                        onClick={getCurrentGeolocation}
                        disabled={loading && error.includes('Fetching')}
                    >
                        {(loading && error.includes('Fetching')) ? <Loader2 className="animate-spin" /> : <LocateFixed />}
-                       Use Current Location
+                       Use My Current Location
                    </Button>
-                </div>
-                
-                <div className="p-4 flex-grow overflow-y-auto space-y-4">
                      {loading && !addressDetails ? (
                          <div className="flex items-center justify-center gap-3 p-4">
                              <Loader2 className="animate-spin text-primary"/>
@@ -331,16 +313,14 @@ const AddAddressPageInternal = () => {
                                     </AnimatePresence>
                                 </div>
                             </div>
-
+                            <div className="p-4 border-t border-border mt-4">
+                                <Button onClick={handleConfirmLocation} disabled={loading || isSaving || !addressDetails} className="w-full h-12 text-lg font-bold bg-primary text-primary-foreground hover:bg-primary/90">
+                                    {isSaving ? <Loader2 className="animate-spin mr-2" /> : <Save className="mr-2"/>}
+                                    {isSaving ? 'Saving...' : 'Save Address & Continue'}
+                                </Button>
+                            </div>
                          </motion.div>
                      ) : null}
-                </div>
-                
-                <div className="p-4 border-t border-border flex-shrink-0">
-                    <Button onClick={handleConfirmLocation} disabled={loading || isSaving || !addressDetails} className="w-full h-12 text-lg font-bold bg-primary text-primary-foreground hover:bg-primary/90">
-                        {isSaving ? <Loader2 className="animate-spin mr-2" /> : <Save className="mr-2"/>}
-                        {isSaving ? 'Saving...' : 'Save Address & Continue'}
-                    </Button>
                 </div>
             </div>
         </div>

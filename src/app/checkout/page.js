@@ -11,14 +11,12 @@ import { Label } from '@/components/ui/label';
 import { cn } from '@/lib/utils';
 import QRCode from 'qrcode.react';
 import { Input } from '@/components/ui/input';
-import { auth } from '@/lib/firebase';
-import { onAuthStateChanged } from 'firebase/auth';
+import { useUser } from '@/firebase';
 import InfoDialog from '@/components/InfoDialog';
 
 
-// Main component for the split bill interface
 const SplitBillInterface = ({ totalAmount, onBack, orderDetails }) => {
-    const [mode, setMode] = useState(null); // 'equally' or 'items'
+    const [mode, setMode] = useState(null);
     const [splitCount, setSplitCount] = useState(2);
     const [shares, setShares] = useState([]);
     const [loading, setLoading] = useState(false);
@@ -54,11 +52,7 @@ const SplitBillInterface = ({ totalAmount, onBack, orderDetails }) => {
         }
     };
     
-    // Placeholder for item selection logic
     const [selectedItems, setSelectedItems] = useState({});
-    const handleItemSelection = (itemId) => {
-        setSelectedItems(prev => ({...prev, [itemId]: !prev[itemId]}));
-    }
     const selectedItemsTotal = useMemo(() => {
         return 0; // Placeholder
     }, [selectedItems]);
@@ -112,7 +106,6 @@ const SplitBillInterface = ({ totalAmount, onBack, orderDetails }) => {
              <div className="space-y-4">
                  <h3 className="text-lg font-bold">Split by Item</h3>
                  <p className="text-sm text-muted-foreground">Select the items you want to pay for.</p>
-                 {/* Placeholder for item list */}
                  <div className="max-h-60 overflow-y-auto space-y-2 p-2 bg-muted rounded-lg">
                      <p className="text-center py-8 text-muted-foreground">Item selection UI coming soon.</p>
                  </div>
@@ -238,6 +231,7 @@ const AddAddressModal = ({ isOpen, onClose, onSave, userName, userPhone }) => {
 const CheckoutPageInternal = () => {
     const router = useRouter();
     const searchParams = useSearchParams();
+    const { user, isUserLoading } = useUser();
     const restaurantId = searchParams.get('restaurantId');
     const phone = searchParams.get('phone');
     const tableId = searchParams.get('table');
@@ -262,110 +256,86 @@ const CheckoutPageInternal = () => {
     const [isDineInModalOpen, setDineInModalOpen] = useState(false);
     const [isSplitBillActive, setIsSplitBillActive] = useState(false);
     
-    const fetchInitialData = async (user) => {
-        if (!restaurantId) {
-            router.push('/');
-            return;
-        }
-
-        let parsedData;
-        const savedCartData = localStorage.getItem(`cart_${restaurantId}`);
-        if (savedCartData) {
-            parsedData = JSON.parse(savedCartData);
-            const finalPhone = phone || parsedData.phone;
-            
-            const deliveryType = tableId ? 'dine-in' : (parsedData.deliveryType || 'delivery');
-
-            const updatedData = { ...parsedData, phone: finalPhone, tableId: tableId || null, dineInTabId: tabId || null, deliveryType };
-
-            setCart(updatedData.cart || []);
-            setAppliedCoupons(updatedData.appliedCoupons || []);
-            setCartData(updatedData);
-            setOrderPhone(finalPhone);
-
-        } else {
-             if (tabId) {
-                parsedData = { dineInTabId: tabId, deliveryType: 'dine-in', phone: phone };
-                setCartData(parsedData);
-            } else {
-                router.push(`/order/${restaurantId}${tableId ? `?table=${tableId}`: ''}`);
+    useEffect(() => {
+        const fetchInitialData = async () => {
+            if (!restaurantId) {
+                router.push('/');
                 return;
             }
-        }
-        
-        setLoading(true);
-        setError('');
-        
-        try {
-            // --- REFACTORED LOGIC ---
-            // If user is authenticated, fetch their addresses securely.
-            if(user) {
-                const idToken = await user.getIdToken();
-                const locationsRes = await fetch('/api/user/addresses', {
-                    method: 'GET',
-                    headers: { 'Authorization': `Bearer ${idToken}` }
-                });
-                if(locationsRes.ok) {
-                    const { addresses } = await locationsRes.json();
-                    setUserAddresses(addresses || []);
-                    if (addresses && addresses.length > 0) {
-                        setSelectedAddressId(addresses[0].id);
-                        setOrderName(addresses[0].name || '');
-                    } else {
-                        setOrderName(user.displayName || '');
-                    }
+
+            setLoading(true);
+            setError('');
+            setUserAddresses([]); // Reset addresses on re-fetch
+            setSelectedAddressId(null);
+
+            let parsedData;
+            const savedCartData = localStorage.getItem(`cart_${restaurantId}`);
+            if (savedCartData) {
+                parsedData = JSON.parse(savedCartData);
+                const finalPhone = phone || user?.phoneNumber || parsedData.phone;
+                const deliveryType = tableId ? 'dine-in' : (parsedData.deliveryType || 'delivery');
+                const updatedData = { ...parsedData, phone: finalPhone, tableId: tableId || null, dineInTabId: tabId || null, deliveryType };
+
+                setCart(updatedData.cart || []);
+                setAppliedCoupons(updatedData.appliedCoupons || []);
+                setCartData(updatedData);
+                setOrderPhone(finalPhone);
+            } else {
+                 if (tabId) {
+                    parsedData = { dineInTabId: tabId, deliveryType: 'dine-in', phone: phone };
+                    setCartData(parsedData);
                 } else {
-                    setOrderName(user.displayName || '');
-                }
-            } 
-            // If not logged in, but there is a phone number, do a public lookup.
-            else if (parsedData.phone) {
-                const userRes = await fetch('/api/customer/lookup', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ phone: parsedData.phone }),
-                });
-                 if (userRes.ok) {
-                    const userData = await userRes.json();
-                    setOrderName(userData.name || '');
-                    if (userData.addresses && userData.addresses.length > 0) {
-                        setUserAddresses(userData.addresses);
-                        setSelectedAddressId(userData.addresses[0].id);
-                    }
+                    router.push(`/order/${restaurantId}${tableId ? `?table=${tableId}`: ''}`);
+                    return;
                 }
             }
-
-            // Fetch payment settings for the restaurant
-             const res = await fetch(`/api/owner/settings?restaurantId=${restaurantId}`);
-             if (res.ok) {
-                const data = await res.json();
-                 const deliveryType = tableId ? 'dine-in' : (parsedData.deliveryType || 'delivery');
-
-                if (deliveryType === 'delivery') {
-                    setCodEnabled(data.deliveryCodEnabled);
-                } else if (deliveryType === 'pickup') {
-                     setCodEnabled(data.pickupPodEnabled);
-                } else if (deliveryType === 'dine-in') {
-                    setCodEnabled(data.dineInPayAtCounterEnabled);
-                } else {
-                    setCodEnabled(false);
+            
+            try {
+                if (user) {
+                    const idToken = await user.getIdToken();
+                    const locationsRes = await fetch('/api/user/addresses', { headers: { 'Authorization': `Bearer ${idToken}` } });
+                    if (locationsRes.ok) {
+                        const { addresses } = await locationsRes.json();
+                        setUserAddresses(addresses || []);
+                        if (addresses && addresses.length > 0) {
+                            setSelectedAddressId(addresses[0].id);
+                        }
+                    }
+                    setOrderName(user.displayName || '');
+                } else if (parsedData.phone) {
+                    const userRes = await fetch('/api/customer/lookup', {
+                        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ phone: parsedData.phone }),
+                    });
+                     if (userRes.ok) {
+                        const userData = await userRes.json();
+                        setOrderName(userData.name || '');
+                        if (userData.addresses && userData.addresses.length > 0) {
+                            setUserAddresses(userData.addresses);
+                            setSelectedAddressId(userData.addresses[0].id);
+                        }
+                    }
                 }
-             }
-        } catch (err) {
-            console.error("Could not fetch initial data:", err);
-            setError('Failed to load checkout details. Please try again.');
-            setCodEnabled(false);
-        } finally {
-            setLoading(false);
-        }
-    };
 
-    useEffect(() => {
-        const unsubscribe = onAuthStateChanged(auth, (user) => {
-            fetchInitialData(user);
-        });
-        return () => unsubscribe();
-    }, [restaurantId, router, phone, tableId, tabId]);
+                const paymentSettingsRes = await fetch(`/api/owner/settings?restaurantId=${restaurantId}`);
+                 if (paymentSettingsRes.ok) {
+                    const paymentData = await paymentSettingsRes.json();
+                    const deliveryType = tableId ? 'dine-in' : (parsedData.deliveryType || 'delivery');
+                    if (deliveryType === 'delivery') setCodEnabled(paymentData.deliveryCodEnabled);
+                    else if (deliveryType === 'pickup') setCodEnabled(paymentData.pickupPodEnabled);
+                    else if (deliveryType === 'dine-in') setCodEnabled(paymentData.dineInPayAtCounterEnabled);
+                    else setCodEnabled(false);
+                 }
+            } catch (err) {
+                console.error("Could not fetch initial data:", err);
+                setError('Failed to load checkout details. Please try again.');
+            } finally {
+                setLoading(false);
+            }
+        };
+        if (!isUserLoading) {
+            fetchInitialData();
+        }
+    }, [restaurantId, router, phone, tableId, tabId, user, isUserLoading]);
 
     useEffect(() => {
         const address = userAddresses.find(a => a.id === selectedAddressId);
@@ -373,18 +343,13 @@ const CheckoutPageInternal = () => {
             setOrderName(address.name);
             setOrderPhone(address.phone);
         }
-        if (!selectedAddressId && userAddresses.length > 0) {
-            setSelectedAddressId(userAddresses[0].id);
-        }
     }, [selectedAddressId, userAddresses]);
     
      const handleAddNewAddress = async (newAddress) => {
-        const user = auth.currentUser;
         if (!user) {
-            // For non-logged-in users, add to local state and local storage
             setUserAddresses(prev => [...prev, newAddress]);
             setSelectedAddressId(newAddress.id);
-            localStorage.setItem('customerLocation', JSON.stringify(newAddress)); // This can be used by other pages
+            localStorage.setItem('customerLocation', JSON.stringify(newAddress));
             setIsAddAddressModalOpen(false);
             return;
         }
@@ -411,8 +376,6 @@ const CheckoutPageInternal = () => {
     
     const handleDeleteAddress = async (addressId) => {
         if (!window.confirm("Are you sure you want to delete this address?")) return;
-
-        const user = auth.currentUser;
         if (!user) {
             setUserAddresses(prev => prev.filter(a => a.id !== addressId));
             if (selectedAddressId === addressId) setSelectedAddressId(null);
@@ -422,9 +385,7 @@ const CheckoutPageInternal = () => {
         try {
             const idToken = await user.getIdToken();
             const res = await fetch('/api/user/addresses', {
-                method: 'DELETE',
-                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${idToken}` },
-                body: JSON.stringify({ addressId }) // Correct payload
+                method: 'DELETE', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${idToken}` }, body: JSON.stringify({ addressId })
             });
 
             if (!res.ok) {
@@ -448,7 +409,6 @@ const CheckoutPageInternal = () => {
         if (!cartData) return { totalDiscount: 0, finalDeliveryCharge: 0, cgst: 0, sgst: 0, grandTotal: subtotal };
 
         const deliveryType = cartData.tableId ? 'dine-in' : (cartData.deliveryType || 'delivery');
-
         let couponDiscountValue = 0;
         appliedCoupons.forEach(coupon => {
             if (subtotal >= coupon.minOrder) {
@@ -459,18 +419,12 @@ const CheckoutPageInternal = () => {
         
         const hasFreeDelivery = appliedCoupons.some(c => c.type === 'free_delivery' && subtotal >= c.minOrder);
         const deliveryCharge = (deliveryType !== 'delivery' || hasFreeDelivery) ? 0 : (cartData.deliveryCharge || 0);
-
         const tip = (deliveryType === 'delivery' ? (cartData.tipAmount || 0) : 0);
-
         const taxableAmount = subtotal - couponDiscountValue;
         const tax = taxableAmount > 0 ? taxableAmount * 0.05 : 0;
         const finalGrandTotal = taxableAmount + deliveryCharge + (tax * 2) + tip;
         
-        return { 
-            totalDiscount: couponDiscountValue, 
-            finalDeliveryCharge: deliveryCharge, 
-            cgst: tax, sgst: tax, grandTotal: finalGrandTotal
-        };
+        return { totalDiscount: couponDiscountValue, finalDeliveryCharge: deliveryCharge, cgst: tax, sgst: tax, grandTotal: finalGrandTotal };
     }, [cartData, cart, appliedCoupons, subtotal]);
 
 
@@ -516,37 +470,18 @@ const CheckoutPageInternal = () => {
         }
         
         const deliveryAddress = userAddresses.find(a => a.id === selectedAddressId);
-
         if (deliveryType === 'delivery' && !deliveryAddress) {
             setError("Please select or add a delivery address.");
             return;
         }
-        
         const finalAddress = deliveryType === 'delivery' ? deliveryAddress : null;
 
         const orderData = {
-            name: orderName,
-            phone: orderPhone,
-            restaurantId,
-            items: cart,
-            notes: cartData.notes,
-            coupon: appliedCoupons.find(c => !c.customerId) || null,
-            loyaltyDiscount: 0,
-            subtotal,
-            cgst,
-            sgst,
-            deliveryCharge: finalDeliveryCharge,
-            grandTotal,
-            paymentMethod: finalPaymentMethod,
-            deliveryType: cartData.deliveryType,
-            pickupTime: cartData.pickupTime || '',
-            tipAmount: cartData.tipAmount || 0,
-            businessType: cartData.businessType || 'restaurant',
-            tableId: cartData.tableId || null,
-            dineInTabId: cartData.dineInTabId || null,
-            pax_count: cartData.pax_count || null,
-            tab_name: cartData.tab_name || null,
-            address: finalAddress 
+            name: orderName, phone: orderPhone, restaurantId, items: cart, notes: cartData.notes, coupon: appliedCoupons.find(c => !c.customerId) || null,
+            loyaltyDiscount: 0, subtotal, cgst, sgst, deliveryCharge: finalDeliveryCharge, grandTotal, paymentMethod: finalPaymentMethod,
+            deliveryType: cartData.deliveryType, pickupTime: cartData.pickupTime || '', tipAmount: cartData.tipAmount || 0,
+            businessType: cartData.businessType || 'restaurant', tableId: cartData.tableId || null, dineInTabId: cartData.dineInTabId || null,
+            pax_count: cartData.pax_count || null, tab_name: cartData.tab_name || null, address: finalAddress 
         };
 
         setLoading(true);
@@ -554,24 +489,16 @@ const CheckoutPageInternal = () => {
 
         try {
             const res = await fetch('/api/customer/register', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(orderData),
+                method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(orderData),
             });
 
             const data = await res.json();
-            if (!res.ok) {
-                throw new Error(data.message || "Failed to place order.");
-            }
+            if (!res.ok) throw new Error(data.message || "Failed to place order.");
 
             if (data.razorpay_order_id) {
                 const options = {
-                    key: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID,
-                    amount: data.amount,
-                    currency: "INR",
-                    name: cartData.restaurantName,
-                    description: `Order from ${cartData.restaurantName}`,
-                    order_id: data.razorpay_order_id,
+                    key: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID, amount: data.amount, currency: "INR", name: cartData.restaurantName,
+                    description: `Order from ${cartData.restaurantName}`, order_id: data.razorpay_order_id,
                     handler: function (response) {
                         localStorage.removeItem(`cart_${restaurantId}`);
                         if (orderData.deliveryType === 'dine-in') {
@@ -580,11 +507,7 @@ const CheckoutPageInternal = () => {
                            router.push(`/order/placed?orderId=${data.firestore_order_id}`);
                         }
                     },
-                    prefill: {
-                        name: orderName,
-                        email: "customer@servizephyr.com",
-                        contact: orderPhone,
-                    },
+                    prefill: { name: orderName, email: user?.email || "customer@servizephyr.com", contact: orderPhone },
                 };
                 const rzp = new window.Razorpay(options);
                 rzp.open();
@@ -596,7 +519,6 @@ const CheckoutPageInternal = () => {
                    router.push(`/order/placed?orderId=${data.firestore_order_id}`);
                 }
             }
-
         } catch (err) {
             setError(err.message);
         } finally {

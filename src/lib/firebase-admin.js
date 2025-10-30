@@ -3,11 +3,9 @@
 import admin from 'firebase-admin';
 
 function getServiceAccount() {
-  // New Method (Primary for Local): Parse the full JSON string from .env.local
   if (process.env.FIREBASE_SERVICE_ACCOUNT_JSON) {
     console.log("[firebase-admin] Initializing with FIREBASE_SERVICE_ACCOUNT_JSON from .env.local.");
     try {
-      // The variable is a string representation of a JSON object, so it needs to be parsed.
       return JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_JSON);
     } catch (e) {
       console.error("[firebase-admin] CRITICAL: Failed to parse FIREBASE_SERVICE_ACCOUNT_JSON.", e);
@@ -15,7 +13,6 @@ function getServiceAccount() {
     }
   }
 
-  // Vercel Method: Use Base64 encoded service account from Vercel environment variables.
   if (process.env.FIREBASE_SERVICE_ACCOUNT_BASE64) {
     console.log("[firebase-admin] Initializing with Base64 encoded Vercel environment variable.");
     try {
@@ -27,11 +24,11 @@ function getServiceAccount() {
     }
   }
 
-  // Old Fallback Method: For local development if the above are not set.
-  if (process.env.FIREBASE_PRIVATE_KEY && process.env.FIREBASE_CLIENT_EMAIL) {
-    console.warn("[firebase-admin] Using individual Firebase environment variables. FIREBASE_SERVICE_ACCOUNT_JSON is recommended for local dev.");
+  // Fallback for local development if the full JSON isn't provided.
+  if (process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID && process.env.FIREBASE_PRIVATE_KEY && process.env.FIREBASE_CLIENT_EMAIL) {
+    console.warn("[firebase-admin] Using individual Firebase environment variables. Setting FIREBASE_SERVICE_ACCOUNT_JSON is the recommended method for local development.");
     return {
-      projectId: process.env.FIREBASE_PROJECT_ID || 'studio-6552995429-8bffe',
+      projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID,
       privateKey: process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, '\n'),
       clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
     };
@@ -41,7 +38,6 @@ function getServiceAccount() {
   return null;
 }
 
-// Initialize Firebase Admin SDK if not already initialized
 function initializeAdmin() {
   if (!admin.apps.length) {
     const serviceAccount = getServiceAccount();

@@ -14,6 +14,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Input } from '@/components/ui/input';
 import InfoDialog from '@/components/InfoDialog';
 import { format, setHours, setMinutes, getHours, getMinutes, addMinutes } from 'date-fns';
+import { useUser } from '@/firebase'; // Import the useUser hook
 
 const ClearCartDialog = ({ isOpen, onClose, onConfirm }) => {
     return (
@@ -151,51 +152,42 @@ const PickupTimeModal = ({ isOpen, onClose, onConfirm, pickupTime, setPickupTime
 const CartPageInternal = () => {
     const router = useRouter();
     const searchParams = useSearchParams();
+    const { user } = useUser(); // Get user from Firebase
     const restaurantId = searchParams.get('restaurantId');
     
     const phoneFromUrl = searchParams.get('phone');
     const tableId = searchParams.get('table');
     const tabId = searchParams.get('tabId');
-    const phoneFromStorage = typeof window !== 'undefined' ? localStorage.getItem('lastKnownPhone') : null;
-    const initialPhone = phoneFromUrl || phoneFromStorage;
-
+    
     const [cartData, setCartData] = useState(null);
     const [cart, setCart] = useState([]);
     const [notes, setNotes] = useState('');
     const [appliedCoupons, setAppliedCoupons] = useState([]);
     const [isClearCartDialogOpen, setIsClearCartDialogOpen] = useState(false);
-    const [phone, setPhone] = useState(initialPhone);
+    const [phone, setPhone] = useState('');
     const [isBillExpanded, setIsBillExpanded] = useState(false);
-
-    // Tip state now lives in cartData in localStorage
     const [tipAmount, setTipAmount] = useState(0);
-    const [customTip, setCustomTip] = useState('');
-    
-    // Coupon Popover State
     const [isCouponPopoverOpen, setCouponPopoverOpen] = useState(false);
     const [infoDialog, setInfoDialog] = useState({ isOpen: false, title: '', message: '' });
-
-    // Pickup Time State
     const [isPickupTimeModalOpen, setIsPickupTimeModalOpen] = useState(false);
     const [pickupTime, setPickupTime] = useState('');
-    const [isCheckoutFlow, setIsCheckoutFlow] = useState(false); // New state to control redirect
+    const [isCheckoutFlow, setIsCheckoutFlow] = useState(false);
     
     useEffect(() => {
-        if (!restaurantId) return;
-
-        const phoneToUse = phoneFromUrl || phoneFromStorage;
-        if (phoneToUse) {
+        // This effect now sets the phone state based on a clear priority
+        const phoneToUse = phoneFromUrl || user?.phoneNumber || localStorage.getItem('lastKnownPhone');
+        if(phoneToUse) {
             setPhone(phoneToUse);
             if (typeof window !== 'undefined') {
                 localStorage.setItem('lastKnownPhone', phoneToUse);
             }
         }
 
+        if (!restaurantId) return;
+
         const data = localStorage.getItem(`cart_${restaurantId}`);
         if (data) {
             const parsedData = JSON.parse(data);
-
-            // Check for cart expiry
             const now = new Date().getTime();
             if (parsedData.expiryTimestamp && now > parsedData.expiryTimestamp) {
                 localStorage.removeItem(`cart_${restaurantId}`);
@@ -216,8 +208,7 @@ const CartPageInternal = () => {
             setCart([]);
             setAppliedCoupons([]);
         }
-
-    }, [restaurantId, phoneFromUrl, phoneFromStorage, tableId]);
+    }, [restaurantId, phoneFromUrl, user]);
 
     const deliveryType = useMemo(() => {
         if (tableId) return 'dine-in';
@@ -226,7 +217,7 @@ const CartPageInternal = () => {
 
     const updateCartInStorage = (updates) => {
         const currentData = JSON.parse(localStorage.getItem(`cart_${restaurantId}`)) || {};
-        const expiryTimestamp = new Date().getTime() + (24 * 60 * 60 * 1000); // 24 hours from now
+        const expiryTimestamp = new Date().getTime() + (24 * 60 * 60 * 1000);
         const updatedData = { ...currentData, ...updates, expiryTimestamp };
 
         setCartData(updatedData);
@@ -258,7 +249,6 @@ const CartPageInternal = () => {
         updateCartInStorage({ cart: newCart });
     };
 
-
     const handleNotesChange = (e) => {
         const newNotes = e.target.value;
         updateCartInStorage({ notes: newNotes });
@@ -283,7 +273,7 @@ const CartPageInternal = () => {
             setIsPickupTimeModalOpen(true);
             return;
         }
-
+        // Ensure phone state is passed to checkout
         let checkoutUrl = `/checkout?restaurantId=${restaurantId}&phone=${phone}`;
         
         if (deliveryType === 'dine-in' && !tabId) {
@@ -306,7 +296,7 @@ const CartPageInternal = () => {
         setIsPickupTimeModalOpen(false);
         if (!pickupTime.trim()) {
             setInfoDialog({ isOpen: true, title: "Time Required", message: "Please select a pickup time to continue." });
-            setIsCheckoutFlow(false); // Reset flow if time is not selected
+            setIsCheckoutFlow(false);
             return;
         }
         updateCartInStorage({ pickupTime });
@@ -323,7 +313,6 @@ const CartPageInternal = () => {
         setIsPickupTimeModalOpen(true);
     }
 
-
     const handleGoBack = () => {
         let backUrl = `/order/${restaurantId}?phone=${phone}`;
         if (tableId) {
@@ -335,25 +324,13 @@ const CartPageInternal = () => {
         router.push(backUrl);
     };
     
-
     const handleTipChange = (amount) => {
         const newTip = Number(amount);
         if (newTip === tipAmount) {
             handleTipChange(0);
         } else {
             setTipAmount(newTip);
-            if (customTip && newTip !== Number(customTip)) setCustomTip('');
             updateCartInStorage({ tipAmount: newTip });
-        }
-    };
-
-    const handleCustomTipChange = (e) => {
-        const value = e.target.value;
-        setCustomTip(value);
-        if (value === '' || isNaN(value)) {
-            if(tipAmount !== 0 && tipAmount !== 10 && tipAmount !== 20 && tipAmount !== 50) handleTipChange(0);
-        } else {
-            handleTipChange(Number(value));
         }
     };
 
@@ -425,11 +402,9 @@ const CartPageInternal = () => {
         setTimeout(() => setCouponPopoverOpen(false), 1000);
     };
 
-
     const allCoupons = cartData?.coupons || [];
     const specialCoupons = allCoupons.filter(c => c.customerId);
     const normalCoupons = allCoupons.filter(c => !c.customerId);
-
 
     if (!cartData || !restaurantId) {
         return (
@@ -462,7 +437,7 @@ const CartPageInternal = () => {
             isOpen={isPickupTimeModalOpen}
             onClose={() => {
                 setIsPickupTimeModalOpen(false);
-                setIsCheckoutFlow(false); // Always reset flow on close
+                setIsCheckoutFlow(false);
             }}
             onConfirm={handleConfirmPickupTime}
             pickupTime={pickupTime}
@@ -645,8 +620,7 @@ const CartPageInternal = () => {
                                     <Input 
                                         type="number" 
                                         placeholder="Custom" 
-                                        value={customTip}
-                                        onChange={handleCustomTipChange}
+                                        onChange={(e) => handleTipChange(e.target.value ? Number(e.target.value) : 0)}
                                         className={cn("flex-1", tipAmount !== 0 && ![10,20,50].includes(tipAmount) && "border-primary ring-2 ring-primary")} 
                                     />
                                 </div>
@@ -737,5 +711,3 @@ const CartPage = () => (
 );
 
 export default CartPage;
-
-    
