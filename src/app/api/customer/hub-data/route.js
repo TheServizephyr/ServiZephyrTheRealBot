@@ -23,9 +23,9 @@ export async function GET(req) {
         const uid = await getUserId(req, auth);
 
         console.log(`[API hub-data] Fetching orders for customerId: ${uid}`);
+        // ** THE FIX: Removed orderBy from the query to avoid needing a composite index **
         const ordersSnap = await firestore.collection('orders')
             .where('customerId', '==', uid)
-            .orderBy('orderDate', 'desc')
             .get();
 
         console.log(`[API hub-data] Found ${ordersSnap.size} orders for user.`);
@@ -44,6 +44,13 @@ export async function GET(req) {
         }
 
         const orders = ordersSnap.docs.map(doc => doc.data());
+        
+        // ** THE FIX: Sort the orders in the code after fetching **
+        orders.sort((a, b) => {
+            const dateA = a.orderDate?.toDate ? a.orderDate.toDate() : new Date(a.orderDate);
+            const dateB = b.orderDate?.toDate ? b.orderDate.toDate() : new Date(b.orderDate);
+            return dateB - dateA;
+        });
 
         // 1. Quick Re-Order
         const lastOrder = orders[0];
@@ -68,7 +75,7 @@ export async function GET(req) {
         console.log("[API hub-data] My Restaurants data:", myRestaurants);
 
 
-        // 3. My Stats - THE FIX IS HERE
+        // 3. My Stats
         let totalSavings = 0;
         const restaurantFrequency = {};
         const dishFrequency = {};
