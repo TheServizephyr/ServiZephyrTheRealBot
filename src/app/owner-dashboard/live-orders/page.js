@@ -1,4 +1,3 @@
-
 'use client';
 
 import React, { useState, useEffect, useMemo } from 'react';
@@ -915,7 +914,7 @@ export default function LiveOrdersPage() {
                                         </div>
                                         <div className="mt-1 flex items-center gap-2">
                                             {order.deliveryType === 'pickup' ? (
-                                                <div className="flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full bg-purple-500/20 text-purple-400 border border-purple-500/30 w-fit"><ShoppingBag size={12}/> Pickup</div>
+                                                <div className="flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full bg-purple-500/20 text-purple-400 border border-purple-500/30 w-fit"><ShoppingBag size={12}/> Pickup at: {order.pickupTime}</div>
                                             ) : order.deliveryType === 'dine-in' ? (
                                                 <div className="flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full bg-cyan-500/20 text-cyan-400 border border-cyan-500/30 w-fit"><ConciergeBell size={12}/> Dine-In</div>
                                             ) : (

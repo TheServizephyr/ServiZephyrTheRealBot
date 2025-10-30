@@ -99,6 +99,10 @@ const CartPageInternal = () => {
     // Coupon Popover State
     const [isCouponPopoverOpen, setCouponPopoverOpen] = useState(false);
     const [infoDialog, setInfoDialog] = useState({ isOpen: false, title: '', message: '' });
+
+    // Pickup Time State
+    const [isPickupTimeModalOpen, setIsPickupTimeModalOpen] = useState(false);
+    const [pickupTime, setPickupTime] = useState('');
     
     useEffect(() => {
         if (!restaurantId) return;
@@ -130,6 +134,7 @@ const CartPageInternal = () => {
                 setNotes(parsedData.notes || '');
                 setAppliedCoupons(parsedData.appliedCoupons || []);
                 setTipAmount(parsedData.tipAmount || 0);
+                setPickupTime(parsedData.pickupTime || '');
             }
         } else {
             setCart([]);
@@ -153,6 +158,7 @@ const CartPageInternal = () => {
         if(updates.notes !== undefined) setNotes(updates.notes);
         if(updates.appliedCoupons !== undefined) setAppliedCoupons(updates.appliedCoupons);
         if(updates.tipAmount !== undefined) setTipAmount(updates.tipAmount);
+        if(updates.pickupTime !== undefined) setPickupTime(updates.pickupTime);
 
         localStorage.setItem(`cart_${restaurantId}`, JSON.stringify(updatedData));
     };
@@ -196,14 +202,15 @@ const CartPageInternal = () => {
     };
 
     const handleConfirmOrder = () => {
-        // --- NEW DINE-IN LOGIC ---
-        // If it's a dine-in order, we also need to store the setup details
-        // before moving to checkout, so the backend knows to create a new tab.
+        if (deliveryType === 'pickup') {
+            setIsPickupTimeModalOpen(true);
+            return;
+        }
+
         if (deliveryType === 'dine-in' && !tabId) {
             const dineInSetupStr = localStorage.getItem(`dineInSetup_${restaurantId}_${tableId}`);
             if (dineInSetupStr) {
                 const dineInSetup = JSON.parse(dineInSetupStr);
-                // Save these details into the main cart data object that will be used at checkout
                 updateCartInStorage({
                     pax_count: dineInSetup.pax_count,
                     tab_name: dineInSetup.tab_name,
@@ -211,16 +218,19 @@ const CartPageInternal = () => {
             }
         }
 
-        // The rest of the data is already saved in localStorage, just navigate
         let checkoutUrl = `/checkout?restaurantId=${restaurantId}&phone=${phone}`;
-        if (tableId) {
-            checkoutUrl += `&table=${tableId}`;
-        }
-        if (tabId) {
-            checkoutUrl += `&tabId=${tabId}`;
-        }
+        if (tableId) checkoutUrl += `&table=${tableId}`;
+        if (tabId) checkoutUrl += `&tabId=${tabId}`;
         router.push(checkoutUrl);
     };
+
+    const handleConfirmPickupTime = () => {
+        setIsPickupTimeModalOpen(false);
+        updateCartInStorage({ pickupTime });
+        let checkoutUrl = `/checkout?restaurantId=${restaurantId}&phone=${phone}`;
+        router.push(checkoutUrl);
+    };
+
 
     const handleGoBack = () => {
         let backUrl = `/order/${restaurantId}?phone=${phone}`;
@@ -236,7 +246,6 @@ const CartPageInternal = () => {
 
     const handleTipChange = (amount) => {
         const newTip = Number(amount);
-        // If the user clicks the same tip amount again, deselect it by setting it to 0.
         if (newTip === tipAmount) {
             handleTipChange(0);
         } else {
@@ -356,6 +365,13 @@ const CartPageInternal = () => {
             isOpen={isClearCartDialogOpen}
             onClose={() => setIsClearCartDialogOpen(false)}
             onConfirm={handleClearCart}
+        />
+        <PickupTimeModal
+            isOpen={isPickupTimeModalOpen}
+            onClose={() => setIsPickupTimeModalOpen(false)}
+            onConfirm={handleConfirmPickupTime}
+            pickupTime={pickupTime}
+            setPickupTime={setPickupTime}
         />
         
         <div className="min-h-screen bg-background text-foreground flex flex-col green-theme">
