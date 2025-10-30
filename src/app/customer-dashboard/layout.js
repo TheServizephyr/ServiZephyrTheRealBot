@@ -9,6 +9,7 @@ import { Loader2 } from 'lucide-react';
 import { useTheme } from 'next-themes';
 import { Button } from '@/components/ui/button';
 import { ThemeProvider } from '@/components/ThemeProvider';
+import Image from 'next/image';
 
 const navItems = [
   { href: '/customer-dashboard', icon: Home, label: 'My Hub' },
@@ -36,7 +37,9 @@ const CustomerDashboardContent = ({ children }) => {
     <div className="min-h-screen bg-background text-foreground flex flex-col">
         <header className="sticky top-0 z-20 bg-background/80 backdrop-blur-lg border-b border-border">
           <div className="container mx-auto px-4 py-3 flex items-center justify-between">
-            <h1 className="text-xl font-bold text-primary">ServiZephyr</h1>
+            <Link href="/" className="flex items-center justify-center">
+                <Image src="/logo.png" alt="ServiZephyr Logo" width={140} height={35} className="h-9 w-auto" priority />
+            </Link>
              <Button
               variant="ghost"
               size="icon"
