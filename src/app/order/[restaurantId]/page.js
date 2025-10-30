@@ -4,7 +4,7 @@
 import React, { useState, useEffect, Suspense, useMemo, useCallback, useRef } from 'react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Utensils, Plus, Minus, X, Home, User, Edit2, ShoppingCart, Star, CookingPot, BookOpen, Check, SlidersHorizontal, ArrowUpDown, PlusCircle, Ticket, Gift, Sparkles, Flame, Search, Trash2, ChevronDown, Tag as TagIcon, RadioGroup, IndianRupee, HardHat, MapPin, Bike, Store, ConciergeBell, QrCode, CalendarClock, Wallet, Users, Camera, BookMarked, Calendar as CalendarIcon, Bell, CheckCircle, AlertTriangle, ExternalLink, ShoppingBag, Sun, Moon } from 'lucide-react';
+import { Utensils, Plus, Minus, X, Home, User, Edit2, ShoppingCart, Star, CookingPot, BookOpen, Check, SlidersHorizontal, ArrowUpDown, PlusCircle, Ticket, Gift, Sparkles, Flame, Search, Trash2, ChevronDown, Tag as TagIcon, RadioGroup, IndianRupee, HardHat, MapPin, Bike, Store, ConciergeBell, QrCode, CalendarClock, Wallet, Users, Camera, BookMarked, Calendar as CalendarIcon, Bell, CheckCircle, AlertTriangle, ExternalLink, ShoppingBag, Sun, Moon, ChevronUp } from 'lucide-react';
 import Image from 'next/image';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
@@ -13,7 +13,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import Link from 'next/link';
-import { format, isToday, setHours, setMinutes } from 'date-fns';
+import { format, isToday, setHours, setMinutes, getHours, getMinutes } from 'date-fns';
 import { Calendar as CalendarUI } from '@/components/ui/calendar';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import InfoDialog from '@/components/InfoDialog';
@@ -277,49 +277,33 @@ const DineInModal = ({ isOpen, onClose, onBookTable, tableStatus, onStartNewTab,
     const [bookingDetails, setBookingDetails] = useState({ name: '', phone: '', guests: 2, date: new Date(), time: '19:00' });
     const [isSaving, setIsSaving] = useState(false);
     const [infoDialog, setInfoDialog] = useState({ isOpen: false, title: '', message: '' });
-    const [minTime, setMinTime] = useState('00:00');
     
-    const [newTabPax, setNewTabPax] = useState(1);
-    const [newTabName, setNewTabName] = useState('');
-
+    const [hour, setHour] = useState(19);
+    const [minute, setMinute] = useState(0);
 
     useEffect(() => {
         if (isOpen) {
             const now = new Date();
+            const initialTime = new Date(now.getTime() + 30 * 60000);
             
-            const newTime = new Date(now.getTime() + 30 * 60000);
-            const initialHours = newTime.getHours().toString().padStart(2, '0');
-            const initialMinutes = (Math.ceil(newTime.getMinutes() / 30) * 30 % 60).toString().padStart(2, '0');
+            setHour(initialTime.getHours());
+            setMinute(Math.ceil(initialTime.getMinutes() / 15) * 15 % 60);
 
             setBookingDetails(prev => ({
                 ...prev,
                 date: now,
-                time: `${initialHours}:${initialMinutes}`,
             }));
-
-            if (isToday(now)) {
-                const hours = now.getHours().toString().padStart(2, '0');
-                const minutes = now.getMinutes().toString().padStart(2, '0');
-                setMinTime(`${hours}:${minutes}`);
-            } else {
-                setMinTime('00:00');
-            }
         }
     }, [isOpen]);
 
-    useEffect(() => {
-        if (bookingDetails.date) {
-             if (isToday(bookingDetails.date)) {
-                const now = new Date();
-                const hours = now.getHours().toString().padStart(2, '0');
-                const minutes = now.getMinutes().toString().padStart(2, '0');
-                setMinTime(`${hours}:${minutes}`);
-            } else {
-                setMinTime('00:00');
-            }
-        }
-    }, [bookingDetails.date]);
-    
+     useEffect(() => {
+        const dateWithTime = setHours(setMinutes(bookingDetails.date, minute), hour);
+        setBookingDetails(prev => ({
+            ...prev,
+            time: format(dateWithTime, 'HH:mm'),
+        }));
+    }, [hour, minute, bookingDetails.date]);
+
     useEffect(() => {
         if (isOpen) {
             const phoneFromStorage = localStorage.getItem('lastKnownPhone');
@@ -376,6 +360,9 @@ const DineInModal = ({ isOpen, onClose, onBookTable, tableStatus, onStartNewTab,
     const today = new Date();
     const maxDate = new Date();
     maxDate.setDate(today.getDate() + 30);
+    
+    const [newTabPax, setNewTabPax] = useState(1);
+    const [newTabName, setNewTabName] = useState('');
 
 
     return (
@@ -439,7 +426,7 @@ const DineInModal = ({ isOpen, onClose, onBookTable, tableStatus, onStartNewTab,
                                        <Input type="tel" placeholder="10-digit number" value={bookingDetails.phone} onChange={(e) => handleBookingChange('phone', e.target.value)} className="mt-1 h-10"/>
                                    </div>
                                </div>
-                               <div className="grid grid-cols-2 gap-4">
+                                <div className="grid grid-cols-1 gap-4">
                                    <div>
                                        <Label>Date</Label>
                                        <Popover>
@@ -456,7 +443,22 @@ const DineInModal = ({ isOpen, onClose, onBookTable, tableStatus, onStartNewTab,
                                    </div>
                                    <div>
                                        <Label>Time</Label>
-                                       <Input type="time" value={bookingDetails.time} onChange={(e) => handleBookingChange('time', e.target.value)} min={minTime} className="mt-1 h-10"/>
+                                       <div className="flex justify-center gap-4 mt-2">
+                                            <div className="flex flex-col items-center">
+                                                <Button variant="ghost" size="icon" onClick={() => setHour(prev => Math.max(9, (prev || 12) - 1))}><ChevronUp/></Button>
+                                                <span className="text-4xl font-bold w-20 text-center">{hour !== null ? String(hour % 12 === 0 ? 12 : hour % 12).padStart(2, '0') : '--'}</span>
+                                                <Button variant="ghost" size="icon" onClick={() => setHour(prev => Math.min(20, (prev || 11) + 1))}><ChevronDown/></Button>
+                                            </div>
+                                            <span className="text-4xl font-bold">:</span>
+                                            <div className="flex flex-col items-center">
+                                                <Button variant="ghost" size="icon" onClick={() => setMinute(prev => (prev + 45) % 60)}><ChevronUp/></Button>
+                                                <span className="text-4xl font-bold w-20 text-center">{minute !== null ? String(minute).padStart(2, '0') : '--'}</span>
+                                                <Button variant="ghost" size="icon" onClick={() => setMinute(prev => (prev + 15) % 60)}><ChevronDown/></Button>
+                                            </div>
+                                            <div className="flex flex-col items-center justify-center text-2xl font-semibold">
+                                                <span>{hour !== null && hour >= 12 ? 'PM' : 'AM'}</span>
+                                            </div>
+                                        </div>
                                    </div>
                                </div>
                                 <Button onClick={handleConfirmBooking} disabled={isSaving} className="w-full h-12 text-lg">
