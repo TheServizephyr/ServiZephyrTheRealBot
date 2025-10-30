@@ -4,7 +4,7 @@
 import React, { useState, useEffect, useMemo, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Utensils, Plus, Minus, X, Home, User, ShoppingCart, CookingPot, Ticket, Gift, ArrowLeft, Sparkles, Check, PlusCircle, Trash2, ChevronDown, Tag as TagIcon, RadioGroup, IndianRupee, HardHat, Bike, Store, Heart, Wallet, Clock, ChevronUp } from 'lucide-react';
+import { Utensils, Plus, Minus, X, Home, User, ShoppingCart, CookingPot, Ticket, Gift, ArrowLeft, Sparkles, Check, PlusCircle, Trash2, ChevronDown, Tag as TagIcon, RadioGroup, IndianRupee, HardHat, Bike, Store, Heart, Wallet, Clock, ChevronUp, Edit2 } from 'lucide-react';
 import Script from 'next/script';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose } from "@/components/ui/dialog";
@@ -515,6 +515,16 @@ const CartPageInternal = () => {
                             <Button variant="outline" onClick={handleGoBack} className="w-full mt-4 border-green-500 text-green-500 bg-green-500/10 hover:bg-green-500/20 hover:text-green-500">
                                 <PlusCircle className="mr-2 h-4 w-4" /> Add more items
                             </Button>
+
+                            {deliveryType === 'pickup' && pickupTime && (
+                                <div className="mt-4 p-3 bg-muted rounded-lg flex items-center justify-between">
+                                    <div className="flex items-center gap-2">
+                                        <Clock size={16} className="text-primary"/>
+                                        <span className="text-sm">Pickup Time: <span className="font-bold text-foreground">{pickupTime}</span></span>
+                                    </div>
+                                    <Button variant="ghost" size="sm" onClick={() => setIsPickupTimeModalOpen(true)} className="text-primary h-auto p-1"><Edit2 size={14} className="mr-1"/> Edit</Button>
+                                </div>
+                            )}
                             
                             <div className="relative mt-4 pt-4 border-t border-dashed border-border">
                                 <CookingPot className="absolute left-0 top-7 h-5 w-5 text-muted-foreground"/>
@@ -705,5 +715,7 @@ const CartPage = () => (
 );
 
 export default CartPage;
+
+    
 
     
