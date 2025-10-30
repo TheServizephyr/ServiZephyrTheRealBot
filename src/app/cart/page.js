@@ -33,6 +33,22 @@ const ClearCartDialog = ({ isOpen, onClose, onConfirm }) => {
 const PickupTimeModal = ({ isOpen, onClose, onConfirm, pickupTime, setPickupTime }) => {
     const timeOptions = ["In 15 mins", "In 30 mins", "In 45 mins", "In 1 hour", "Tomorrow"];
 
+    const generateTimeSlots = () => {
+        const slots = [];
+        const now = new Date();
+        // Start from the next 15-minute interval
+        const startMinutes = Math.ceil(now.getMinutes() / 15) * 15;
+        let currentTime = new Date(now.getFullYear(), now.getMonth(), now.getDate(), now.getHours(), startMinutes);
+
+        for (let i = 0; i < 8; i++) { // Generate for next 2 hours
+            slots.push(currentTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true }));
+            currentTime.setMinutes(currentTime.getMinutes() + 15);
+        }
+        return slots;
+    };
+
+    const customTimeSlots = generateTimeSlots();
+
     return (
         <Dialog open={isOpen} onOpenChange={onClose}>
             <DialogContent className="bg-background border-border text-foreground">
@@ -53,15 +69,21 @@ const PickupTimeModal = ({ isOpen, onClose, onConfirm, pickupTime, setPickupTime
                             {time}
                         </button>
                     ))}
-                    <Input 
-                        placeholder="Or type custom time..."
-                        value={timeOptions.includes(pickupTime) ? '' : pickupTime}
-                        onChange={(e) => setPickupTime(e.target.value)}
-                        className={cn(
-                            "sm:col-span-3 p-4 rounded-lg border-2 font-semibold transition-all h-auto text-base",
-                            !timeOptions.includes(pickupTime) && pickupTime ? "border-primary bg-primary/10 text-primary" : "border-border"
-                        )}
-                    />
+                    <div className="sm:col-span-3">
+                         <select
+                            value={pickupTime}
+                            onChange={(e) => setPickupTime(e.target.value)}
+                            className={cn(
+                                "w-full p-4 rounded-lg border-2 font-semibold transition-all h-auto text-base bg-input",
+                                !timeOptions.includes(pickupTime) && pickupTime ? "border-primary bg-primary/10 text-primary" : "border-border"
+                            )}
+                        >
+                            <option value="" disabled>Or select a specific time...</option>
+                            {customTimeSlots.map(slot => (
+                                <option key={slot} value={slot}>{slot}</option>
+                            ))}
+                        </select>
+                    </div>
                 </div>
                 <DialogFooter>
                      <DialogClose asChild><Button variant="secondary">Cancel</Button></DialogClose>
