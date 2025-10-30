@@ -278,12 +278,16 @@ const CartPageInternal = () => {
     };
 
     const handleConfirmOrder = () => {
-        if (deliveryType === 'pickup') {
-            setIsCheckoutFlow(true); // Set the flag for checkout
-            setIsPickupTimeModalOpen(true);
-            return;
-        }
+        let checkoutUrl = `/checkout?restaurantId=${restaurantId}&phone=${phone}`;
 
+        if (deliveryType === 'pickup') {
+            if (!pickupTime) {
+                setIsCheckoutFlow(true);
+                setIsPickupTimeModalOpen(true);
+                return;
+            }
+        }
+        
         if (deliveryType === 'dine-in' && !tabId) {
             const dineInSetupStr = localStorage.getItem(`dineInSetup_${restaurantId}_${tableId}`);
             if (dineInSetupStr) {
@@ -295,7 +299,6 @@ const CartPageInternal = () => {
             }
         }
 
-        let checkoutUrl = `/checkout?restaurantId=${restaurantId}&phone=${phone}`;
         if (tableId) checkoutUrl += `&table=${tableId}`;
         if (tabId) checkoutUrl += `&tabId=${tabId}`;
         router.push(checkoutUrl);
@@ -310,17 +313,15 @@ const CartPageInternal = () => {
         }
         updateCartInStorage({ pickupTime });
         
-        // Only redirect if this function was called as part of the checkout flow
         if (isCheckoutFlow) {
             let checkoutUrl = `/checkout?restaurantId=${restaurantId}&phone=${phone}`;
             router.push(checkoutUrl);
         }
-        // Reset the flow flag after use
         setIsCheckoutFlow(false);
     };
 
     const handleEditPickupTime = () => {
-        setIsCheckoutFlow(false); // Ensure we are just editing, not checking out
+        setIsCheckoutFlow(false); 
         setIsPickupTimeModalOpen(true);
     }
 
