@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useState, useEffect, Suspense, useCallback } from 'react';
@@ -52,52 +53,46 @@ const SelectLocationInternal = () => {
     
     const fetchAddresses = useCallback(async () => {
         if (isUserLoading) return;
-    
+
         setLoading(true);
         setError('');
         
         const phoneToLookup = phone || user?.phoneNumber;
-    
-        console.log(`[LocationPage] Starting fetch. User loading: ${isUserLoading}, Phone from URL: ${phone}, User phone: ${user?.phoneNumber}. Final phone to lookup: ${phoneToLookup}`);
-    
-        // Case 1: We have a phone number (either from URL for guest, or from logged-in user)
-        if (phoneToLookup) {
-            try {
-                // We always use the public lookup now, because it's robust.
-                // It can find a verified user OR an unverified profile by phone number.
-                console.log(`[LocationPage] Using /api/customer/lookup with phone: ${phoneToLookup}`);
-                const res = await fetch('/api/customer/lookup', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ phone: phoneToLookup }),
-                });
-    
-                if (res.ok) {
-                    const data = await res.json();
-                    console.log(`[LocationPage] Lookup successful. Found ${data.addresses?.length || 0} addresses.`);
-                    setAddresses(data.addresses || []);
-                } else if (res.status === 404) {
-                    console.log(`[LocationPage] Lookup returned 404. No addresses found for this number.`);
-                    setAddresses([]);
-                } else {
-                    const errorData = await res.json();
-                    throw new Error(errorData.message || 'Failed to look up customer data.');
-                }
-            } catch (err) {
-                console.error("[LocationPage] Error during address fetch:", err);
-                setError(err.message);
-                setAddresses([]);
-            } finally {
-                setLoading(false);
-            }
-        } 
-        // Case 2: No user is logged in AND no phone number is in the URL.
-        else {
-            console.log("[LocationPage] No user and no phone in URL. Not fetching addresses.");
+
+        if (!phoneToLookup) {
+            setLoading(false);
             setAddresses([]);
+            return;
+        }
+
+        try {
+            console.log(`[LocationPage] Using /api/customer/lookup with phone: ${phoneToLookup}`);
+            const res = await fetch('/api/customer/lookup', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ phone: phoneToLookup }),
+            });
+
+            if (res.ok) {
+                const data = await res.json();
+                console.log(`[LocationPage] Lookup successful. Found ${data.addresses?.length || 0} addresses.`);
+                setAddresses(data.addresses || []);
+            } else if (res.status === 404) {
+                console.log(`[LocationPage] Lookup returned 404. No addresses found for this number.`);
+                setAddresses([]);
+            } else {
+                const errorData = await res.json();
+                throw new Error(errorData.message || 'Failed to look up customer data.');
+            }
+        } catch (err) {
+            console.error("[LocationPage] Error during address fetch:", err);
+            setError(err.message);
+            setAddresses([]);
+        } finally {
             setLoading(false);
         }
     }, [phone, user, isUserLoading]);
+
 
     useEffect(() => {
         fetchAddresses();
