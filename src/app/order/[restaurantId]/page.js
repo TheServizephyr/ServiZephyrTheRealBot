@@ -15,7 +15,7 @@ import { Switch } from '@/components/ui/switch';
 import Link from 'next/link';
 import { format, isToday, setHours, setMinutes, getHours, getMinutes } from 'date-fns';
 import { Calendar as CalendarUI } from '@/components/ui/calendar';
-import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import InfoDialog from '@/components/InfoDialog';
 import { auth } from '@/lib/firebase';
 import { Input } from '@/components/ui/input';
@@ -1219,7 +1219,7 @@ const OrderPageInternal = () => {
                                             <MapPin className="text-primary flex-shrink-0" size={20}/>
                                             <p className="text-sm text-muted-foreground truncate">{customerLocation?.full || 'No location set'}</p>
                                         </div>
-                                        <Link href={`/location?restaurantId=${restaurantId}&returnUrl=${encodeURIComponent(window.location.pathname + window.location.search)}`}>
+                                        <Link href={`/location?restaurantId=${restaurantId}&returnUrl=${encodeURIComponent(window.location.pathname + window.location.search)}&phone=${phoneFromUrl || ''}`}>
                                             <Button variant="link" className="text-primary p-0 h-auto font-semibold flex-shrink-0">Change</Button>
                                         </Link>
                                     </>
@@ -1395,5 +1395,3 @@ const OrderPage = () => (
 );
 
 export default OrderPage;
-
-    
