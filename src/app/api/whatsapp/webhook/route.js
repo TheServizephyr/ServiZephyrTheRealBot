@@ -187,98 +187,97 @@ export async function POST(request) {
             const message = change.value.messages[0];
             const fromNumber = message.from;
 
-            // This is the new main logic: Always send the interactive menu
-            await sendWelcomeMessageWithOptions(fromNumber, business, businessPhoneNumberId);
-        }
+            // Handle button clicks from interactive messages
+            if (message.type === 'interactive' && message.interactive.type === 'button_reply') {
+                const buttonReply = message.interactive.button_reply;
+                const buttonId = buttonReply.id;
+                
+                console.log(`[Webhook] Button click detected. Button ID: "${buttonId}", From: ${fromNumber}`);
+                
+                if (buttonId.startsWith('action_')) {
+                    await handleButtonActions(firestore, buttonId, fromNumber, business, businessPhoneNumberId);
+                } else {
+                     // --- EXISTING LOGIC for owner order notifications ---
+                     const [action, ...payloadParts] = buttonId.split('_');
 
-        // Handle button clicks from interactive messages
-        else if (change.value.messages?.[0]?.interactive?.button_reply) {
-            const buttonReply = change.value.messages[0].interactive.button_reply;
-            const buttonId = buttonReply.id;
-            const fromNumber = change.value.messages[0].from; 
-            
-            console.log(`[Webhook] Button click detected. Button ID: "${buttonId}", From: ${fromNumber}`);
-            
-            if (buttonId.startsWith('action_')) {
-                await handleButtonActions(firestore, buttonId, fromNumber, business, botPhoneNumberId);
-            } else {
-                 // --- EXISTING LOGIC for owner order notifications ---
-                 const [action, ...payloadParts] = buttonId.split('_');
-
-                 if (action === 'accept' || action === 'reject') {
-                    const orderId = payloadParts.join('_').replace('order_', '');
-                    console.log(`[Webhook] Order action detected. Action: ${action}, Order ID: ${orderId}`);
-                    
-                    if (!orderId) {
-                        console.warn(`[Webhook] Invalid order button ID format: ${buttonId}`);
-                        return NextResponse.json({ message: 'Invalid button ID' }, { status: 200 });
-                    }
-
-                    const orderRef = firestore.collection('orders').doc(orderId);
-                    const orderDoc = await orderRef.get();
-
-                    if (!orderDoc.exists) {
-                        console.error(`[Webhook] Action failed: Order with ID ${orderId} was not found.`);
-                        await sendWhatsAppMessage(fromNumber, `⚠️ Action failed: Order with ID ${orderId} was not found.`, businessPhoneNumberId);
-                        return NextResponse.json({ message: 'Order not found' }, { status: 200 });
-                    }
-                    
-                    const orderData = orderDoc.data();
-                    
-                    if (action === 'accept') {
-                        console.log(`[Webhook] Accepting order ${orderId}. Updating status to 'confirmed'.`);
-                        await orderRef.update({ status: 'confirmed' });
+                     if (action === 'accept' || action === 'reject') {
+                        const orderId = payloadParts.join('_').replace('order_', '');
+                        console.log(`[Webhook] Order action detected. Action: ${action}, Order ID: ${orderId}`);
                         
-                        await sendOrderStatusUpdateToCustomer({
-                            customerPhone: orderData.customerPhone,
-                            botPhoneNumberId: businessPhoneNumberId,
-                            customerName: orderData.customerName,
-                            orderId: orderId,
-                            restaurantName: business.data.name,
-                            status: 'confirmed',
-                            businessType: business.data.businessType || 'restaurant',
-                        });
+                        if (!orderId) {
+                            console.warn(`[Webhook] Invalid order button ID format: ${buttonId}`);
+                            return NextResponse.json({ message: 'Invalid button ID' }, { status: 200 });
+                        }
+
+                        const orderRef = firestore.collection('orders').doc(orderId);
+                        const orderDoc = await orderRef.get();
+
+                        if (!orderDoc.exists) {
+                            console.error(`[Webhook] Action failed: Order with ID ${orderId} was not found.`);
+                            await sendWhatsAppMessage(fromNumber, `⚠️ Action failed: Order with ID ${orderId} was not found.`, businessPhoneNumberId);
+                            return NextResponse.json({ message: 'Order not found' }, { status: 200 });
+                        }
                         
-                        console.log(`[Webhook] Sending confirmation back to owner at ${fromNumber}.`);
-                        await sendWhatsAppMessage(fromNumber, `✅ Action complete: Order ${orderId} has been confirmed. You can now start preparing it.`, businessPhoneNumberId);
+                        const orderData = orderDoc.data();
+                        
+                        if (action === 'accept') {
+                            console.log(`[Webhook] Accepting order ${orderId}. Updating status to 'confirmed'.`);
+                            await orderRef.update({ status: 'confirmed' });
+                            
+                            await sendOrderStatusUpdateToCustomer({
+                                customerPhone: orderData.customerPhone,
+                                botPhoneNumberId: businessPhoneNumberId,
+                                customerName: orderData.customerName,
+                                orderId: orderId,
+                                restaurantName: business.data.name,
+                                status: 'confirmed',
+                                businessType: business.data.businessType || 'restaurant',
+                            });
+                            
+                            console.log(`[Webhook] Sending confirmation back to owner at ${fromNumber}.`);
+                            await sendWhatsAppMessage(fromNumber, `✅ Action complete: Order ${orderId} has been confirmed. You can now start preparing it.`, businessPhoneNumberId);
 
-                    } else if (action === 'reject') {
-                        console.log(`[Webhook] Rejecting order ${orderId}. Updating status to 'rejected'.`);
-                        await orderRef.update({ status: 'rejected' });
-                        await sendOrderStatusUpdateToCustomer({
-                            customerPhone: orderData.customerPhone,
-                            botPhoneNumberId: businessPhoneNumberId,
-                            customerName: orderData.customerName,
-                            orderId: orderId,
-                            restaurantName: business.data.name,
-                            status: 'rejected',
-                            businessType: business.data.businessType || 'restaurant',
-                        });
-                        console.log(`[Webhook] Sending rejection confirmation back to owner at ${fromNumber}.`);
-                        await sendWhatsAppMessage(fromNumber, `✅ Action complete: Order ${orderId} has been rejected. The customer will be notified.`, businessPhoneNumberId);
-                    }
-                } 
-                else if (action === 'retain' || action === 'revert') {
-                    const [_, __, businessId, status] = payloadParts;
-                    console.log(`[Webhook] Restaurant status action detected. Action: ${action}, Business ID: ${businessId}, Status: ${status}`);
+                        } else if (action === 'reject') {
+                            console.log(`[Webhook] Rejecting order ${orderId}. Updating status to 'rejected'.`);
+                            await orderRef.update({ status: 'rejected' });
+                            await sendOrderStatusUpdateToCustomer({
+                                customerPhone: orderData.customerPhone,
+                                botPhoneNumberId: businessPhoneNumberId,
+                                customerName: orderData.customerName,
+                                orderId: orderId,
+                                restaurantName: business.data.name,
+                                status: 'rejected',
+                                businessType: business.data.businessType || 'restaurant',
+                            });
+                            console.log(`[Webhook] Sending rejection confirmation back to owner at ${fromNumber}.`);
+                            await sendWhatsAppMessage(fromNumber, `✅ Action complete: Order ${orderId} has been rejected. The customer will be notified.`, businessPhoneNumberId);
+                        }
+                    } 
+                    else if (action === 'retain' || action === 'revert') {
+                        const [_, __, businessId, status] = payloadParts;
+                        console.log(`[Webhook] Restaurant status action detected. Action: ${action}, Business ID: ${businessId}, Status: ${status}`);
 
-                    if(!businessId || !status) {
-                        console.warn(`[Webhook] Invalid status button ID format: ${buttonId}`);
-                        return NextResponse.json({ message: 'Invalid button ID' }, { status: 200 });
-                    }
+                        if(!businessId || !status) {
+                            console.warn(`[Webhook] Invalid status button ID format: ${buttonId}`);
+                            return NextResponse.json({ message: 'Invalid button ID' }, { status: 200 });
+                        }
 
-                    const collectionName = business.data.businessType === 'shop' ? 'shops' : 'restaurants';
+                        const collectionName = business.data.businessType === 'shop' ? 'shops' : 'restaurants';
 
-                    if (action === 'revert') {
-                        const revertToOpen = status === 'open';
-                        console.log(`[Webhook] Reverting status for ${businessId}. Setting isOpen to: ${revertToOpen}`);
-                        await firestore.collection(collectionName).doc(businessId).update({ isOpen: revertToOpen });
-                        await sendWhatsAppMessage(fromNumber, `✅ Action reverted. Your business has been set to **${revertToOpen ? 'OPEN' : 'CLOSED'}**.`, businessPhoneNumberId);
-                    } else { // retain
-                        console.log(`[Webhook] Retaining status for ${businessId}. No change.`);
-                        await sendWhatsAppMessage(fromNumber, `✅ Understood. Your business status will remain **${status.toUpperCase()}**.`, businessPhoneNumberId);
+                        if (action === 'revert') {
+                            const revertToOpen = status === 'open';
+                            console.log(`[Webhook] Reverting status for ${businessId}. Setting isOpen to: ${revertToOpen}`);
+                            await firestore.collection(collectionName).doc(businessId).update({ isOpen: revertToOpen });
+                            await sendWhatsAppMessage(fromNumber, `✅ Action reverted. Your business has been set to **${revertToOpen ? 'OPEN' : 'CLOSED'}**.`, businessPhoneNumberId);
+                        } else { // retain
+                            console.log(`[Webhook] Retaining status for ${businessId}. No change.`);
+                            await sendWhatsAppMessage(fromNumber, `✅ Understood. Your business status will remain **${status.toUpperCase()}**.`, businessPhoneNumberId);
+                        }
                     }
                 }
+            } else if (message.type === 'text') {
+                // This is the new main logic: Always send the interactive menu for any text message
+                await sendWelcomeMessageWithOptions(fromNumber, business, businessPhoneNumberId);
             }
         }
         
