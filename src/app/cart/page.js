@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useMemo, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Utensils, Plus, Minus, X, Home, User, ShoppingCart, CookingPot, Ticket, Gift, ArrowLeft, Sparkles, Check, PlusCircle, Trash2, ChevronDown, Tag as TagIcon, RadioGroup, IndianRupee, HardHat, Bike, Store, Heart, Wallet } from 'lucide-react';
+import { Utensils, Plus, Minus, X, Home, User, ShoppingCart, CookingPot, Ticket, Gift, ArrowLeft, Sparkles, Check, PlusCircle, Trash2, ChevronDown, Tag as TagIcon, RadioGroup, IndianRupee, HardHat, Bike, Store, Heart, Wallet, Clock, ChevronUp } from 'lucide-react';
 import Script from 'next/script';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose } from "@/components/ui/dialog";
@@ -12,6 +12,7 @@ import { cn } from '@/lib/utils';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Input } from '@/components/ui/input';
 import InfoDialog from '@/components/InfoDialog';
+import { format, setHours, setMinutes, getHours, getMinutes, addMinutes } from 'date-fns';
 
 const ClearCartDialog = ({ isOpen, onClose, onConfirm }) => {
     return (
@@ -31,23 +32,63 @@ const ClearCartDialog = ({ isOpen, onClose, onConfirm }) => {
 };
 
 const PickupTimeModal = ({ isOpen, onClose, onConfirm, pickupTime, setPickupTime }) => {
-    const timeOptions = ["In 15 mins", "In 30 mins", "In 45 mins", "In 1 hour", "Tomorrow"];
-
-    const generateTimeSlots = () => {
-        const slots = [];
-        const now = new Date();
-        // Start from the next 15-minute interval
-        const startMinutes = Math.ceil(now.getMinutes() / 15) * 15;
-        let currentTime = new Date(now.getFullYear(), now.getMonth(), now.getDate(), now.getHours(), startMinutes);
-
-        for (let i = 0; i < 8; i++) { // Generate for next 2 hours
-            slots.push(currentTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true }));
-            currentTime.setMinutes(currentTime.getMinutes() + 15);
+    const timeOptions = ["In 15 mins", "In 30 mins", "In 45 mins"];
+    const [showCustomTimePicker, setShowCustomTimePicker] = useState(false);
+    const [customHour, setCustomHour] = useState(null);
+    const [customMinute, setCustomMinute] = useState(null);
+    
+    useEffect(() => {
+        if(isOpen) {
+            setShowCustomTimePicker(false);
+            setCustomHour(null);
+            setCustomMinute(null);
         }
-        return slots;
+    }, [isOpen]);
+
+    const handleQuickSelect = (time) => {
+        setPickupTime(time);
+        setShowCustomTimePicker(false);
     };
 
-    const customTimeSlots = generateTimeSlots();
+    const handleCustomClick = () => {
+        const now = new Date();
+        const initialTime = addMinutes(now, 15);
+        setCustomHour(getHours(initialTime));
+        setCustomMinute(Math.ceil(getMinutes(initialTime) / 15) * 15 % 60);
+        setPickupTime(''); // Clear quick selection
+        setShowCustomTimePicker(true);
+    };
+    
+    useEffect(() => {
+        if(customHour !== null && customMinute !== null) {
+            const date = setHours(setMinutes(new Date(), customMinute), customHour);
+            setPickupTime(format(date, 'p'));
+        }
+    }, [customHour, customMinute, setPickupTime]);
+
+    const renderTimePicker = () => {
+        const hours = Array.from({ length: 12 }, (_, i) => i + 9); // 9 AM to 8 PM
+        const minutes = [0, 15, 30, 45];
+        return (
+            <div className="flex justify-center gap-4 mt-4">
+                <div className="flex flex-col items-center">
+                    <Button variant="ghost" size="icon" onClick={() => setCustomHour(prev => Math.max(9, (prev || 12) - 1))}><ChevronUp/></Button>
+                    <span className="text-4xl font-bold w-20 text-center">{customHour !== null ? String(customHour % 12 === 0 ? 12 : customHour % 12).padStart(2, '0') : '--'}</span>
+                    <Button variant="ghost" size="icon" onClick={() => setCustomHour(prev => Math.min(20, (prev || 11) + 1))}><ChevronDown/></Button>
+                </div>
+                 <span className="text-4xl font-bold">:</span>
+                <div className="flex flex-col items-center">
+                    <Button variant="ghost" size="icon" onClick={() => setCustomMinute(prev => (prev + 45) % 60)}><ChevronUp/></Button>
+                    <span className="text-4xl font-bold w-20 text-center">{customMinute !== null ? String(customMinute).padStart(2, '0') : '--'}</span>
+                    <Button variant="ghost" size="icon" onClick={() => setCustomMinute(prev => (prev + 15) % 60)}><ChevronDown/></Button>
+                </div>
+                 <div className="flex flex-col items-center justify-center text-2xl font-semibold">
+                    <span>{customHour !== null && customHour >= 12 ? 'PM' : 'AM'}</span>
+                </div>
+            </div>
+        )
+    };
+
 
     return (
         <Dialog open={isOpen} onOpenChange={onClose}>
@@ -56,34 +97,47 @@ const PickupTimeModal = ({ isOpen, onClose, onConfirm, pickupTime, setPickupTime
                     <DialogTitle>Confirm Pickup Time</DialogTitle>
                     <DialogDescription>Let the restaurant know when you'll be arriving so they can prepare your order accordingly.</DialogDescription>
                 </DialogHeader>
-                <div className="py-4 grid grid-cols-2 sm:grid-cols-3 gap-3">
-                    {timeOptions.map(time => (
-                        <button
-                            key={time}
-                            onClick={() => setPickupTime(time)}
+                <div className="py-4">
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                        {timeOptions.map(time => (
+                            <button
+                                key={time}
+                                onClick={() => handleQuickSelect(time)}
+                                className={cn(
+                                    "p-4 rounded-lg border-2 font-semibold transition-all h-20",
+                                    pickupTime === time ? "border-primary bg-primary/10 text-primary" : "border-border hover:bg-muted"
+                                )}
+                            >
+                                {time}
+                            </button>
+                        ))}
+                         <button
+                            onClick={handleCustomClick}
                             className={cn(
-                                "p-4 rounded-lg border-2 font-semibold transition-all",
-                                pickupTime === time ? "border-primary bg-primary/10 text-primary" : "border-border hover:bg-muted"
+                                "p-4 rounded-lg border-2 font-semibold transition-all h-20 flex flex-col items-center justify-center",
+                                showCustomTimePicker ? "border-primary bg-primary/10 text-primary" : "border-border hover:bg-muted"
                             )}
                         >
-                            {time}
+                            <Clock size={20} className="mb-1"/>
+                            Custom
                         </button>
-                    ))}
-                    <div className="sm:col-span-3">
-                         <select
-                            value={pickupTime}
-                            onChange={(e) => setPickupTime(e.target.value)}
-                            className={cn(
-                                "w-full p-4 rounded-lg border-2 font-semibold transition-all h-auto text-base bg-input",
-                                !timeOptions.includes(pickupTime) && pickupTime ? "border-primary bg-primary/10 text-primary" : "border-border"
-                            )}
-                        >
-                            <option value="" disabled>Or select a specific time...</option>
-                            {customTimeSlots.map(slot => (
-                                <option key={slot} value={slot}>{slot}</option>
-                            ))}
-                        </select>
                     </div>
+
+                    <AnimatePresence>
+                        {showCustomTimePicker && (
+                            <motion.div
+                                initial={{ height: 0, opacity: 0, marginTop: 0 }}
+                                animate={{ height: 'auto', opacity: 1, marginTop: '1rem' }}
+                                exit={{ height: 0, opacity: 0, marginTop: 0 }}
+                                className="overflow-hidden"
+                            >
+                                <div className="border-t border-border pt-4">
+                                    <p className="text-center font-semibold text-muted-foreground">Select a time:</p>
+                                    {renderTimePicker()}
+                                </div>
+                            </motion.div>
+                        )}
+                    </AnimatePresence>
                 </div>
                 <DialogFooter>
                      <DialogClose asChild><Button variant="secondary">Cancel</Button></DialogClose>
