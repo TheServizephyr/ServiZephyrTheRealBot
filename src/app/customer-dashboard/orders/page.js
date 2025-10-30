@@ -75,10 +75,10 @@ export default function MyOrdersPage() {
         setLoading(true);
         setError(null);
         
+        // **THE FIX:** Remove the orderBy from the Firestore query
         const q = query(
             collection(db, "orders"), 
-            where("customerId", "==", user.uid),
-            orderBy("orderDate", "desc")
+            where("customerId", "==", user.uid)
         );
 
         const unsubscribe = onSnapshot(q, (querySnapshot) => {
@@ -86,6 +86,14 @@ export default function MyOrdersPage() {
             querySnapshot.forEach((doc) => {
                 customerOrders.push({ id: doc.id, ...doc.data() });
             });
+            
+            // **THE FIX:** Sort the orders on the client-side after fetching
+            customerOrders.sort((a, b) => {
+                const dateA = a.orderDate?.toDate ? a.orderDate.toDate() : new Date(a.orderDate);
+                const dateB = b.orderDate?.toDate ? b.orderDate.toDate() : new Date(b.orderDate);
+                return dateB - dateA;
+            });
+
             setOrders(customerOrders);
             setLoading(false);
         }, (err) => {
