@@ -69,6 +69,7 @@ function OwnerDashboardContent({ children }) {
   const [restaurantLogo, setRestaurantLogo] = useState(null);
   const router = useRouter();
   const pathname = usePathname();
+  const [infoDialog, setInfoDialog] = useState({ isOpen: false, title: '', message: '' });
 
   useEffect(() => {
     console.log("[DEBUG] OwnerLayout: useEffect running.");

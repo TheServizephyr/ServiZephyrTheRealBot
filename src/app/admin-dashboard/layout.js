@@ -91,8 +91,7 @@ function AdminLayoutContent({ children }) {
   const handleLogout = async () => {
     try {
       await auth.signOut();
-      localStorage.removeItem('role');
-      localStorage.removeItem('token');
+      localStorage.clear();
       router.push('/');
     } catch (error) {
       console.error("Logout failed:", error);

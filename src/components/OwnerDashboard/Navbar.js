@@ -62,7 +62,7 @@ export default function Navbar({ isSidebarOpen, setSidebarOpen, restaurantName, 
   const handleLogout = async () => {
     try {
       await auth.signOut();
-      localStorage.removeItem('role');
+      localStorage.clear();
       router.push('/');
     } catch (error) {
       console.error("Logout failed:", error);
