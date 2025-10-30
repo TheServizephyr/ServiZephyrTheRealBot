@@ -1,64 +1,81 @@
-
 'use client';
 
-import { useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
-import { auth } from '@/lib/firebase';
-import { LogOut } from 'lucide-react';
+import { motion } from 'framer-motion';
+import { ArrowRight, RefreshCw, BarChart2 } from 'lucide-react';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 
-export default function CustomerDashboard() {
-  const router = useRouter();
-  const [user, setUser] = useState(null);
-  const [loading, setLoading] = useState(true);
+const containerVariants = {
+  hidden: { opacity: 0 },
+  visible: { opacity: 1, transition: { staggerChildren: 0.1 } },
+};
 
-  useEffect(() => {
-    const unsubscribe = auth.onAuthStateChanged((currentUser) => {
-      if (currentUser) {
-        setUser(currentUser);
-        // Also check role from localStorage for quick feedback
-        const role = localStorage.getItem('role');
-        if (role && role !== 'customer') {
-            // Redirect if role is not customer
-            router.push('/');
-        }
-      } else {
-        router.push('/');
-      }
-      setLoading(false);
-    });
+const itemVariants = {
+  hidden: { y: 20, opacity: 0 },
+  visible: { y: 0, opacity: 1 },
+};
 
-
-    return () => unsubscribe();
-  }, [router]);
-
-  const handleLogout = async () => {
-    await auth.signOut();
-    localStorage.removeItem('token');
-    localStorage.removeItem('role');
-    router.push('/');
-  };
-
-  if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-background">
-        <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-primary"></div>
-      </div>
-    );
-  }
-
+export default function CustomerHubPage() {
   return (
-    <div className="min-h-screen bg-background flex flex-col items-center justify-center text-center p-4">
-        <h1 className="text-4xl font-bold text-foreground">Welcome, Customer!</h1>
-        <p className="mt-4 text-lg text-muted-foreground">
-            This is your dashboard. You can view your orders and profile here soon.
-        </p>
-        <p className="mt-2 text-muted-foreground">Logged in as: {user?.email}</p>
-        <button 
-            onClick={handleLogout} 
-            className="mt-8 flex items-center gap-2 px-6 py-3 rounded-md bg-card border border-border text-lg font-medium hover:bg-muted"
-        >
-            <LogOut className="w-5 h-5" /> Logout
-        </button>
-    </div>
+    <motion.div
+      variants={containerVariants}
+      initial="hidden"
+      animate="visible"
+      className="p-4 md:p-6 space-y-8"
+    >
+      <header>
+        <h1 className="text-3xl font-bold tracking-tight">My Hub</h1>
+        <p className="text-muted-foreground mt-1">Your personal stats and shortcuts.</p>
+      </header>
+
+      {/* Quick Re-Order Section */}
+      <motion.div variants={itemVariants}>
+        <Card className="bg-primary/10 border-primary/20">
+          <CardHeader>
+            <CardTitle className="text-primary flex items-center gap-2">
+                <RefreshCw size={20} /> Quick Re-Order
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-lg">Time for your favorite <span className="font-bold text-foreground">'Paneer Tikka'</span> from <span className="font-bold text-foreground">Baghel's Restaurant</span>?</p>
+            <button className="mt-4 inline-flex items-center gap-2 px-4 py-2 rounded-md bg-primary text-primary-foreground font-semibold hover:bg-primary/90">
+              Re-order Now <ArrowRight size={16}/>
+            </button>
+          </CardContent>
+        </Card>
+      </motion.div>
+
+      {/* My Restaurants Section */}
+       <motion.div variants={itemVariants}>
+        <h2 className="text-xl font-bold mb-4">My Restaurants</h2>
+        <div className="flex gap-4 overflow-x-auto pb-4">
+          {['Baghel\'s', 'Pizza Point', 'Curry Corner', 'Noodle House', 'Taco Town'].map(name => (
+            <div key={name} className="flex-shrink-0 w-24 text-center">
+                <div className="w-24 h-24 bg-muted rounded-full flex items-center justify-center border-2 border-border">
+                    <span className="text-xs font-bold text-foreground">{name}</span>
+                </div>
+            </div>
+          ))}
+        </div>
+      </motion.div>
+
+      {/* My Stats Section */}
+      <motion.div variants={itemVariants}>
+        <h2 className="text-xl font-bold mb-4">My Stats</h2>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <Card>
+                <CardHeader><CardTitle>Total Savings this Month</CardTitle></CardHeader>
+                <CardContent><p className="text-3xl font-bold text-green-500">₹450</p></CardContent>
+            </Card>
+             <Card>
+                <CardHeader><CardTitle>Your Top Restaurant</CardTitle></CardHeader>
+                <CardContent><p className="text-3xl font-bold">Baghel's</p></CardContent>
+            </Card>
+             <Card>
+                <CardHeader><CardTitle>Your Top Dish</CardTitle></CardHeader>
+                <CardContent><p className="text-3xl font-bold">Paneer Tikka</p></CardContent>
+            </Card>
+        </div>
+      </motion.div>
+    </motion.div>
   );
 }
