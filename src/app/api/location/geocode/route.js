@@ -36,8 +36,7 @@ export async function GET(req) {
             };
 
             const result = {
-                street: `${getComponent('premise') || getComponent('sublocality_level_2') || getComponent('route') || ''}`.trim(),
-                neighbourhood: getComponent('sublocality_level_1'),
+                street: getComponent('route') || getComponent('sublocality_level_1') || '',
                 city: getComponent('locality') || getComponent('administrative_area_level_2'),
                 state: getComponent('administrative_area_level_1'),
                 pincode: getComponent('postal_code'),

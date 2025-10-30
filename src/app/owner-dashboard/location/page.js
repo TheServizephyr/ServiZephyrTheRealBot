@@ -13,6 +13,7 @@ import { auth } from '@/lib/firebase';
 import InfoDialog from '@/components/InfoDialog';
 import { useAuth } from '@/firebase';
 import { cn } from '@/lib/utils';
+import { Textarea } from '@/components/ui/textarea';
 
 
 const GoogleMap = dynamic(() => import('@/components/GoogleMap'), { 
@@ -26,7 +27,7 @@ const OwnerLocationPage = () => {
     
     const [mapCenter, setMapCenter] = useState({ lat: 27.1751, lng: 78.0421 }); // Default Agra
     const [addressDetails, setAddressDetails] = useState(null);
-    const [addressLabel, setAddressLabel] = useState('Work');
+    const [fullAddress, setFullAddress] = useState('');
     const [loading, setLoading] = useState(true);
     const [isSaving, setIsSaving] = useState(false);
     const [error, setError] = useState('');
@@ -61,11 +62,11 @@ const OwnerLocationPage = () => {
                         pincode: addr.postalCode || '',
                         state: addr.state || '',
                         country: addr.country || 'IN',
-                        fullAddress: addr.full || `${addr.street}, ${addr.city}`,
                         latitude, 
                         longitude 
                     });
-                     setSearchQuery(addr.street ? `${addr.street}, ${addr.city}` : '');
+                     setFullAddress(addr.full || `${addr.street}, ${addr.city}`);
+                     setSearchQuery(addr.full || `${addr.street}, ${addr.city}`);
                      setLoading(false);
                 } else {
                     getCurrentGeolocation(); // No saved location, get current
@@ -118,7 +119,7 @@ const OwnerLocationPage = () => {
     useEffect(() => {
         if (debounceTimeout.current) clearTimeout(debounceTimeout.current);
 
-        if (searchQuery.length > 2 && searchQuery !== addressDetails?.fullAddress) {
+        if (searchQuery.length > 2 && searchQuery !== fullAddress) {
             debounceTimeout.current = setTimeout(async () => {
                 try {
                     const res = await fetch(`/api/location/search?query=${searchQuery}`);
@@ -134,17 +135,13 @@ const OwnerLocationPage = () => {
         }
 
         return () => clearTimeout(debounceTimeout.current);
-    }, [searchQuery, addressDetails]);
+    }, [searchQuery, fullAddress]);
     
     const handleSuggestionClick = (suggestion) => {
         setSearchQuery(suggestion.placeAddress);
         setSuggestions([]);
         const coords = { lat: suggestion.latitude, lng: suggestion.longitude };
         handleMapIdle(coords);
-    };
-
-    const handleAddressFieldChange = (field, value) => {
-        setAddressDetails(prev => ({ ...prev, [field]: value }));
     };
 
      const handleMapIdle = (coords) => {
@@ -172,10 +169,10 @@ const OwnerLocationPage = () => {
                 pincode: data.pincode,
                 state: data.state,
                 country: data.country,
-                fullAddress: data.formatted_address,
                 latitude: coords.lat,
                 longitude: coords.lng,
             });
+            setFullAddress(data.formatted_address);
             setSearchQuery(data.formatted_address);
             
         } catch (err) {
@@ -188,7 +185,7 @@ const OwnerLocationPage = () => {
     
     const handleSaveLocation = async () => {
         const currentUser = auth.currentUser;
-        if (!currentUser || !addressDetails) {
+        if (!currentUser || !addressDetails || !fullAddress.trim()) {
             setInfoDialog({ isOpen: true, title: "Error", message: "User not logged in or location not set." });
             return;
         }
@@ -204,7 +201,7 @@ const OwnerLocationPage = () => {
                 country: addressDetails.country,
                 latitude: addressDetails.latitude,
                 longitude: addressDetails.longitude,
-                full: addressDetails.fullAddress,
+                full: fullAddress.trim(),
             };
 
             const res = await fetch('/api/owner/settings', {
@@ -290,19 +287,18 @@ const OwnerLocationPage = () => {
                     ) : addressDetails ? (
                         <div className="space-y-4">
                             <div>
-                                <p className="font-bold text-lg flex items-center gap-2 mb-2"><MapPin size={20} className="text-primary"/> Fine-tune Address</p>
-                                <div className="grid grid-cols-1 gap-3">
-                                    <Input value={addressDetails.street || ''} onChange={(e) => handleAddressFieldChange('street', e.target.value)} placeholder="Street / Area"/>
-                                    <Input value={addressDetails.city || ''} onChange={(e) => handleAddressFieldChange('city', e.target.value)} placeholder="City"/>
-                                    <Input value={addressDetails.pincode || ''} onChange={(e) => handleAddressFieldChange('pincode', e.target.value)} placeholder="Pincode"/>
-                                    <Input value={addressDetails.state || ''} onChange={(e) => handleAddressFieldChange('state', e.target.value)} placeholder="State"/>
-                                </div>
+                                <Label htmlFor="full-address" className="font-bold text-lg flex items-center gap-2 mb-2"><MapPin size={20} className="text-primary"/> Fine-tune Full Address</Label>
+                                 <Textarea
+                                    id="full-address"
+                                    value={fullAddress}
+                                    onChange={(e) => setFullAddress(e.target.value)}
+                                    placeholder="e.g., 123 Main St, Anytown, State 12345"
+                                    className="h-28"
+                                />
+                                <p className="text-xs text-muted-foreground mt-1">This is the complete address that will be saved.</p>
                             </div>
-                            <div className="flex items-center gap-2 pt-2">
-                                <Label>Label as:</Label>
-                                <Button type="button" variant={addressLabel === 'Work' ? 'secondary' : 'outline'} size="sm" onClick={() => setAddressLabel('Work')}><Building size={14} className="mr-2"/> Work</Button>
-                            </div>
-                            <Button onClick={handleSaveLocation} disabled={!addressDetails.street || isSaving} className="w-full h-12 text-lg font-bold bg-primary text-primary-foreground hover:bg-primary/90">
+                            
+                            <Button onClick={handleSaveLocation} disabled={!fullAddress.trim() || isSaving} className="w-full h-12 text-lg font-bold bg-primary text-primary-foreground hover:bg-primary/90">
                                 {isSaving ? <Loader2 className="animate-spin mr-2" /> : <Save className="mr-2"/>}
                                 {isSaving ? 'Saving...' : 'Save Business Location'}
                             </Button>

@@ -13,6 +13,7 @@ import { auth } from '@/lib/firebase';
 import InfoDialog from '@/components/InfoDialog';
 import { useUser } from '@/firebase';
 import { cn } from '@/lib/utils';
+import { Textarea } from '@/components/ui/textarea';
 
 const GoogleMap = dynamic(() => import('@/components/GoogleMap'), { 
     ssr: false,
@@ -34,7 +35,7 @@ const AddAddressPageInternal = () => {
     
     const [recipientName, setRecipientName] = useState('');
     const [recipientPhone, setRecipientPhone] = useState('');
-    const [houseNo, setHouseNo] = useState('');
+    const [fullAddress, setFullAddress] = useState('');
     const [landmark, setLandmark] = useState('');
     const [addressLabel, setAddressLabel] = useState('Home');
     const [customAddressLabel, setCustomAddressLabel] = useState('');
@@ -64,10 +65,9 @@ const AddAddressPageInternal = () => {
                     state: data.state || '',
                     country: data.country || 'IN',
                     latitude: coords.lat,
-                    longitude: coords.lng,
-                    full: data.formatted_address || '',
+                    longitude: coords.lng
                 });
-                setHouseNo(data.street); // Pre-fill the complete address field
+                setFullAddress(data.formatted_address || '');
             } catch (err) {
                 setError('Could not fetch address details for this pin location.');
                 setAddressDetails(null);
@@ -168,8 +168,8 @@ const AddAddressPageInternal = () => {
     // --- Save Logic ---
 
     const handleConfirmLocation = async () => {
-        if (!addressDetails || !recipientName.trim() || !recipientPhone.trim() || !houseNo.trim()) {
-             setInfoDialog({ isOpen: true, title: "Error", message: "Please fill all required fields: Contact Person, Phone, and House/Street No." });
+        if (!addressDetails || !recipientName.trim() || !recipientPhone.trim() || !fullAddress.trim()) {
+             setInfoDialog({ isOpen: true, title: "Error", message: "Please fill all required fields: Contact Person, Phone, and the complete address." });
              return;
         }
         if (!/^\d{10}$/.test(recipientPhone.trim())) {
@@ -188,13 +188,13 @@ const AddAddressPageInternal = () => {
             label: finalLabel,
             name: recipientName.trim(),
             phone: recipientPhone.trim(),
-            street: houseNo.trim(),
+            street: fullAddress.trim(), // Use the full address as the primary street/address line
             landmark: landmark.trim(),
             city: addressDetails.city,
             state: addressDetails.state,
             pincode: addressDetails.pincode,
             country: addressDetails.country,
-            full: `${houseNo}, ${landmark ? landmark + ', ' : ''}${addressDetails.city}, ${addressDetails.state} - ${addressDetails.pincode}`,
+            full: fullAddress.trim(), // Ensure 'full' has the final, user-edited address
             latitude: addressDetails.latitude,
             longitude: addressDetails.longitude,
         };
@@ -275,20 +275,22 @@ const AddAddressPageInternal = () => {
                      ) : addressDetails ? (
                          <motion.div initial={{opacity:0}} animate={{opacity:1}} className="space-y-4">
                             <div>
-                                <Label>Confirm your address</Label>
-                                <div className="p-3 bg-muted rounded-lg text-sm text-muted-foreground border border-border">
-                                    <p className="font-semibold text-foreground">{addressDetails.full}</p>
-                                </div>
-                            </div>
-                            
-                            <div>
-                                <Label htmlFor="houseNo">Complete Address / House No. *</Label>
-                                <Input id="houseNo" value={houseNo} onChange={e => setHouseNo(e.target.value)} placeholder="e.g. House No. 42, Shivam Vihar" required />
+                                <Label htmlFor="fullAddress">Complete Address *</Label>
+                                 <Textarea
+                                    id="fullAddress"
+                                    value={fullAddress}
+                                    onChange={e => setFullAddress(e.target.value)}
+                                    placeholder="e.g. House No. 42, Shivam Vihar, Near Post Office"
+                                    required
+                                    rows={3}
+                                    className="mt-1"
+                                />
+                                <p className="text-xs text-muted-foreground mt-1">Drag the map pin to get the address, then edit it here if needed.</p>
                             </div>
 
                              <div>
                                 <Label htmlFor="landmark">Landmark (Optional)</Label>
-                                <Input id="landmark" value={landmark} onChange={e => setLandmark(e.target.value)} placeholder="e.g. Near Post Office" />
+                                <Input id="landmark" value={landmark} onChange={e => setLandmark(e.target.value)} placeholder="e.g., Near Post Office" />
                             </div>
 
                              <div className="grid grid-cols-2 gap-4">
