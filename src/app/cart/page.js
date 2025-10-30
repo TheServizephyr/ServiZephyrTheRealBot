@@ -301,6 +301,10 @@ const CartPageInternal = () => {
 
     const handleConfirmPickupTime = () => {
         setIsPickupTimeModalOpen(false);
+        if (!pickupTime.trim()) {
+            setInfoDialog({ isOpen: true, title: "Time Required", message: "Please select a pickup time to continue." });
+            return;
+        }
         updateCartInStorage({ pickupTime });
         let checkoutUrl = `/checkout?restaurantId=${restaurantId}&phone=${phone}`;
         router.push(checkoutUrl);
@@ -516,13 +520,15 @@ const CartPageInternal = () => {
                                 <PlusCircle className="mr-2 h-4 w-4" /> Add more items
                             </Button>
 
-                            {deliveryType === 'pickup' && pickupTime && (
+                            {deliveryType === 'pickup' && (
                                 <div className="mt-4 p-3 bg-muted rounded-lg flex items-center justify-between">
                                     <div className="flex items-center gap-2">
                                         <Clock size={16} className="text-primary"/>
-                                        <span className="text-sm">Pickup Time: <span className="font-bold text-foreground">{pickupTime}</span></span>
+                                        <span className="text-sm">Pickup Time: <span className="font-bold text-foreground">{pickupTime || 'Not set'}</span></span>
                                     </div>
-                                    <Button variant="ghost" size="sm" onClick={() => setIsPickupTimeModalOpen(true)} className="text-primary h-auto p-1"><Edit2 size={14} className="mr-1"/> Edit</Button>
+                                    <Button variant="ghost" size="sm" onClick={() => setIsPickupTimeModalOpen(true)} className="text-primary h-auto p-1">
+                                        <Edit2 size={14} className="mr-1"/> {pickupTime ? 'Edit' : 'Set Time'}
+                                    </Button>
                                 </div>
                             )}
                             
@@ -715,6 +721,8 @@ const CartPage = () => (
 );
 
 export default CartPage;
+
+    
 
     
 
