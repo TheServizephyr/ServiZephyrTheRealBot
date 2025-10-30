@@ -58,27 +58,39 @@ export async function GET(req) {
         });
         const myRestaurants = Array.from(restaurantMap.values()).slice(0, 5); // Limit to 5
 
-        // 3. My Stats
+        // 3. My Stats - THE FIX IS HERE
         let totalSavings = 0;
         const restaurantFrequency = {};
         const dishFrequency = {};
 
         orders.forEach(order => {
             totalSavings += order.discount || 0;
-            restaurantFrequency[order.restaurantName] = (restaurantFrequency[order.restaurantName] || 0) + 1;
-            order.items.forEach(item => {
-                dishFrequency[item.name] = (dishFrequency[item.name] || 0) + item.qty;
+            
+            if (order.restaurantName) {
+              restaurantFrequency[order.restaurantName] = (restaurantFrequency[order.restaurantName] || 0) + 1;
+            }
+            
+            (order.items || []).forEach(item => {
+                if(item.name) {
+                  dishFrequency[item.name] = (dishFrequency[item.name] || 0) + (item.qty || 1);
+                }
             });
         });
 
-        const topRestaurant = Object.entries(restaurantFrequency).sort((a, b) => b[1] - a[1])[0]?.[0] || 'N/A';
-        const topDish = Object.entries(dishFrequency).sort((a, b) => b[1] - a[1])[0]?.[0] || 'N/A';
+        const topRestaurant = Object.keys(restaurantFrequency).length > 0 
+            ? Object.entries(restaurantFrequency).sort((a, b) => b[1] - a[1])[0][0] 
+            : 'N/A';
+            
+        const topDish = Object.keys(dishFrequency).length > 0 
+            ? Object.entries(dishFrequency).sort((a, b) => b[1] - a[1])[0][0]
+            : 'N/A';
 
         const myStats = {
             totalSavings,
             topRestaurant,
             topDish,
         };
+        // END FIX
 
         return NextResponse.json({
             quickReorder,

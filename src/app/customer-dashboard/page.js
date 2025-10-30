@@ -77,7 +77,7 @@ export default function CustomerHubPage() {
                 <p className="text-muted-foreground mt-1">Your personal stats and shortcuts.</p>
             </header>
 
-            {/* Quick Re-Order Section */}
+            {/* Quick Re-Order Section - THE FIX IS HERE */}
             {(loading || hubData?.quickReorder) && (
                 <motion.div variants={itemVariants}>
                     <Card className="bg-primary/10 border-primary/20">
@@ -107,7 +107,7 @@ export default function CustomerHubPage() {
                 </motion.div>
             )}
 
-            {/* My Restaurants Section */}
+            {/* My Restaurants Section - THE FIX IS HERE */}
             {(loading || (hubData?.myRestaurants && hubData.myRestaurants.length > 0)) && (
                 <motion.div variants={itemVariants}>
                     <h2 className="text-xl font-bold mb-4">My Restaurants</h2>
