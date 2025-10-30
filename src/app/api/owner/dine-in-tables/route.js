@@ -1,4 +1,5 @@
 
+
 import { NextResponse } from 'next/server';
 import { getAuth, getFirestore, FieldValue } from '@/lib/firebase-admin';
 
@@ -124,13 +125,14 @@ export async function PATCH(req) {
                     const tableDoc = await transaction.get(tableRef);
                     if (!tableDoc.exists) throw new Error("Table document not found.");
 
-                    const paxToReduce = tabDoc.data().pax_count || 0;
-                    
-                    transaction.update(tabRef, { status: 'closed' });
-                    transaction.update(tableRef, { 
-                        current_pax: FieldValue.increment(-paxToReduce),
-                        state: 'needs_cleaning' 
+                    const ordersQuery = firestore.collection('orders').where('dineInTabId', '==', tabIdToClose);
+                    const ordersSnap = await transaction.get(ordersQuery);
+                    ordersSnap.forEach(orderDoc => {
+                        transaction.update(orderDoc.ref, { status: 'delivered' });
                     });
+
+                    transaction.update(tabRef, { status: 'closed' });
+                    transaction.update(tableRef, { state: 'needs_cleaning' });
                 });
                 return NextResponse.json({ message: `Table ${tableId} marked as needing cleaning.` }, { status: 200 });
             }
