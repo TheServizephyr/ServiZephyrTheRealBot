@@ -56,7 +56,6 @@ const OwnerLocationPage = () => {
                     const coords = { lat: latitude, lng: longitude };
                     setMapCenter(coords);
                     setAddressDetails({ 
-                        ...addr,
                         street: addr.street || '',
                         city: addr.city || '',
                         pincode: addr.postalCode || '',
@@ -155,7 +154,7 @@ const OwnerLocationPage = () => {
         }
         geocodeTimeoutRef.current = setTimeout(() => {
             reverseGeocode(coords);
-        }, 500); // 0.5-second delay
+        }, 500);
     };
     
 
@@ -168,11 +167,11 @@ const OwnerLocationPage = () => {
             if (!res.ok) throw new Error(data.message || 'Failed to fetch address details.');
             
             setAddressDetails({
-                street: data.road || data.neighbourhood || '',
-                city: data.city || data.town || data.village || '',
-                pincode: data.pincode || '',
-                state: data.state || '',
-                country: data.country || 'IN',
+                street: data.street,
+                city: data.city,
+                pincode: data.pincode,
+                state: data.state,
+                country: data.country,
                 fullAddress: data.formatted_address,
                 latitude: coords.lat,
                 longitude: coords.lng,
@@ -205,6 +204,7 @@ const OwnerLocationPage = () => {
                 country: addressDetails.country,
                 latitude: addressDetails.latitude,
                 longitude: addressDetails.longitude,
+                full: addressDetails.fullAddress,
             };
 
             const res = await fetch('/api/owner/settings', {
@@ -315,5 +315,3 @@ const OwnerLocationPage = () => {
 };
 
 export default OwnerLocationPage;
-
-    

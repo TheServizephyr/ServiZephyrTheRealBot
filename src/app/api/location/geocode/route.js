@@ -29,17 +29,19 @@ export async function GET(req) {
             const addr = data.results[0];
             const components = addr.address_components;
             
-            const getComponent = (type) => components.find(c => c.types.includes(type))?.long_name || '';
+            const getComponent = (type, preferShort = false) => {
+                const component = components.find(c => c.types.includes(type));
+                if (!component) return '';
+                return preferShort ? component.short_name : component.long_name;
+            };
 
             const result = {
-                house_number: getComponent('street_number'),
-                road: getComponent('route'),
+                street: `${getComponent('premise') || getComponent('sublocality_level_2') || getComponent('route') || ''}`.trim(),
                 neighbourhood: getComponent('sublocality_level_1'),
-                suburb: getComponent('locality'),
-                city: getComponent('administrative_area_level_2') || getComponent('locality'),
+                city: getComponent('locality') || getComponent('administrative_area_level_2'),
                 state: getComponent('administrative_area_level_1'),
                 pincode: getComponent('postal_code'),
-                country: getComponent('country'),
+                country: getComponent('country', true),
                 formatted_address: addr.formatted_address || 'Address not found'
             };
             console.log("[API geocode] Google Maps response successful:", result.formatted_address);

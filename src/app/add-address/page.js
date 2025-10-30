@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useState, useEffect, Suspense, useRef, useCallback } from 'react';
@@ -57,21 +58,23 @@ const AddAddressPageInternal = () => {
                 if (!res.ok) throw new Error(data.message || 'Failed to fetch address details.');
         
                 setAddressDetails({
-                    street: data.road || data.neighbourhood || '',
+                    street: data.street,
                     city: data.city || data.town || data.village || '',
                     pincode: data.pincode || '',
                     state: data.state || '',
                     country: data.country || 'IN',
                     latitude: coords.lat,
                     longitude: coords.lng,
+                    full: data.formatted_address || '',
                 });
+                setHouseNo(data.street); // Pre-fill the complete address field
             } catch (err) {
                 setError('Could not fetch address details for this pin location.');
                 setAddressDetails(null);
             } finally {
                 setLoading(false);
             }
-        }, 1000);
+        }, 500); // Use a 500ms delay
     }, []);
 
     const handleMapIdle = useCallback((coords) => {
@@ -176,8 +179,6 @@ const AddAddressPageInternal = () => {
 
         setIsSaving(true);
         
-        const fullAddress = `${houseNo}, ${landmark ? landmark + ', ' : ''}${addressDetails.street}, ${addressDetails.city}, ${addressDetails.state} - ${addressDetails.pincode}`;
-        
         const finalLabel = (addressLabel === 'Other' && customAddressLabel.trim()) 
             ? customAddressLabel.trim() 
             : addressLabel;
@@ -193,7 +194,7 @@ const AddAddressPageInternal = () => {
             state: addressDetails.state,
             pincode: addressDetails.pincode,
             country: addressDetails.country,
-            full: fullAddress,
+            full: `${houseNo}, ${landmark ? landmark + ', ' : ''}${addressDetails.city}, ${addressDetails.state} - ${addressDetails.pincode}`,
             latitude: addressDetails.latitude,
             longitude: addressDetails.longitude,
         };
@@ -276,8 +277,7 @@ const AddAddressPageInternal = () => {
                             <div>
                                 <Label>Confirm your address</Label>
                                 <div className="p-3 bg-muted rounded-lg text-sm text-muted-foreground border border-border">
-                                    <p className="font-semibold text-foreground">{addressDetails.street}</p>
-                                    <p>{addressDetails.city}, {addressDetails.state} - {addressDetails.pincode}</p>
+                                    <p className="font-semibold text-foreground">{addressDetails.full}</p>
                                 </div>
                             </div>
                             
