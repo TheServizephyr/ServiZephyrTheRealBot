@@ -41,33 +41,38 @@ function getServiceAccount() {
   return null;
 }
 
-// Initialize Firebase Admin SDK
-if (!admin.apps.length) {
-  const serviceAccount = getServiceAccount();
-  if (serviceAccount) {
-    try {
-      admin.initializeApp({
-        credential: admin.credential.cert(serviceAccount)
-      });
-      console.log("[firebase-admin] Firebase Admin SDK initialized successfully.");
-    } catch (error) {
-      console.error("[firebase-admin] CRITICAL: Firebase Admin SDK initialization failed.", error);
+// Initialize Firebase Admin SDK if not already initialized
+function initializeAdmin() {
+  if (!admin.apps.length) {
+    const serviceAccount = getServiceAccount();
+    if (serviceAccount) {
+      try {
+        admin.initializeApp({
+          credential: admin.credential.cert(serviceAccount)
+        });
+        console.log("[firebase-admin] Firebase Admin SDK initialized successfully.");
+      } catch (error) {
+        console.error("[firebase-admin] CRITICAL: Firebase Admin SDK initialization failed.", error);
+      }
     }
   }
+  return admin;
 }
 
+const adminInstance = initializeAdmin();
+
 const getAuth = () => {
-    if (!admin.apps.length || !admin.app()) {
+    if (!adminInstance.apps.length) {
         throw new Error("Firebase Admin SDK not initialized. Check your environment variables.");
     }
-    return admin.auth();
+    return adminInstance.auth();
 };
 
 const getFirestore = () => {
-    if (!admin.apps.length || !admin.app()) {
+    if (!adminInstance.apps.length) {
         throw new Error("Firebase Admin SDK not initialized. Check your environment variables.");
     }
-    return admin.firestore();
+    return adminInstance.firestore();
 };
 
 const FieldValue = admin.firestore.FieldValue;

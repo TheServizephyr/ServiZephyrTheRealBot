@@ -1,4 +1,3 @@
-
 'use client';
 
 import React, { useState, useEffect, useMemo, Suspense } from 'react';
@@ -298,22 +297,29 @@ const CheckoutPageInternal = () => {
         setError('');
         
         try {
+            // --- REFACTORED LOGIC ---
+            // If user is authenticated, fetch their addresses securely.
             if(user) {
                 const idToken = await user.getIdToken();
-                // --- THE FIX: Call the correct API endpoint ---
                 const locationsRes = await fetch('/api/user/addresses', {
-                    method: 'GET', // Assumes GET fetches all addresses
+                    method: 'GET',
                     headers: { 'Authorization': `Bearer ${idToken}` }
                 });
                 if(locationsRes.ok) {
-                    // Assuming the API returns { addresses: [] }
                     const { addresses } = await locationsRes.json();
                     setUserAddresses(addresses || []);
                     if (addresses && addresses.length > 0) {
                         setSelectedAddressId(addresses[0].id);
+                        setOrderName(addresses[0].name || '');
+                    } else {
+                        setOrderName(user.displayName || '');
                     }
+                } else {
+                    setOrderName(user.displayName || '');
                 }
-            } else if (parsedData.phone) {
+            } 
+            // If not logged in, but there is a phone number, do a public lookup.
+            else if (parsedData.phone) {
                 const userRes = await fetch('/api/customer/lookup', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -322,7 +328,6 @@ const CheckoutPageInternal = () => {
                  if (userRes.ok) {
                     const userData = await userRes.json();
                     setOrderName(userData.name || '');
-                    // For non-logged-in users, we might get addresses from lookup
                     if (userData.addresses && userData.addresses.length > 0) {
                         setUserAddresses(userData.addresses);
                         setSelectedAddressId(userData.addresses[0].id);
@@ -330,6 +335,7 @@ const CheckoutPageInternal = () => {
                 }
             }
 
+            // Fetch payment settings for the restaurant
              const res = await fetch(`/api/owner/settings?restaurantId=${restaurantId}`);
              if (res.ok) {
                 const data = await res.json();
@@ -375,8 +381,10 @@ const CheckoutPageInternal = () => {
      const handleAddNewAddress = async (newAddress) => {
         const user = auth.currentUser;
         if (!user) {
+            // For non-logged-in users, add to local state and local storage
             setUserAddresses(prev => [...prev, newAddress]);
             setSelectedAddressId(newAddress.id);
+            localStorage.setItem('customerLocation', JSON.stringify(newAddress)); // This can be used by other pages
             setIsAddAddressModalOpen(false);
             return;
         }

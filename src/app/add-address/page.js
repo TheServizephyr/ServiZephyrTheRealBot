@@ -1,4 +1,3 @@
-
 'use client';
 
 import React, { useState, useEffect, Suspense, useRef, useCallback } from 'react';
@@ -103,12 +102,13 @@ const AddAddressPageInternal = () => {
         const prefillData = async () => {
             const phoneFromUrl = searchParams.get('phone');
 
-            // If a user is logged into Firebase Auth, fetch their full profile data from the backend.
+            // --- REFACTORED LOGIC ---
+            // Priority 1: If a user is logged into Firebase Auth, fetch their full profile data from the backend.
             if (user) {
                 console.log("[add-address] Auth user detected. Fetching full profile from backend.");
                 try {
                     const idToken = await user.getIdToken();
-                    const response = await fetch('/api/owner/settings', { // Using the settings API to get full profile
+                    const response = await fetch('/api/owner/settings', { // Using a versatile API that returns profile data
                         headers: { 'Authorization': `Bearer ${idToken}` }
                     });
                     if (response.ok) {
@@ -116,21 +116,23 @@ const AddAddressPageInternal = () => {
                         setRecipientName(profileData.name || user.displayName || '');
                         setRecipientPhone(profileData.phone || user.phoneNumber || phoneFromUrl || '');
                     } else {
-                        // Fallback to basic auth info if API fails
+                        // Fallback to basic auth info if the API call fails
+                        console.warn("[add-address] Backend fetch failed, falling back to basic auth info.");
                         setRecipientName(user.displayName || '');
                         setRecipientPhone(user.phoneNumber || phoneFromUrl || '');
                     }
                 } catch (e) {
-                    console.warn("Could not prefill from backend, using basic auth info.", e);
+                    console.error("[add-address] Error fetching backend profile, using basic auth info.", e);
                     setRecipientName(user.displayName || '');
                     setRecipientPhone(user.phoneNumber || phoneFromUrl || '');
                 }
-                return;
+                return; // Stop further execution if auth user data is fetched
             }
 
-            // If no auth user, but phone in URL, look up customer data.
+            // Priority 2: If no auth user, but phone in URL, look up UNCLAIMED/public customer data.
             if (phoneFromUrl) {
-                console.log(`[add-address] No auth user. Looking up customer by phone: ${phoneFromUrl}`);
+                console.log(`[add-address] No auth user. Looking up public customer data by phone: ${phoneFromUrl}`);
+                setRecipientPhone(phoneFromUrl); // Set phone immediately
                 try {
                     const res = await fetch('/api/customer/lookup', {
                         method: 'POST',
@@ -142,16 +144,15 @@ const AddAddressPageInternal = () => {
                         setRecipientName(customerData.name || '');
                     }
                 } catch (e) {
-                    console.warn("Could not prefill name from customer lookup", e);
-                } finally {
-                    setRecipientPhone(phoneFromUrl);
+                    console.warn("[add-address] Could not prefill name from customer lookup", e);
                 }
-            } else {
-                 // Brand new user with no phone number provided.
-                 console.log("[add-address] New user journey. All fields empty.");
-                 setRecipientName('');
-                 setRecipientPhone('');
+                return; // Stop further execution
             }
+
+            // Priority 3: Brand new user with no information.
+            console.log("[add-address] New user journey. All fields will be empty.");
+            setRecipientName('');
+            setRecipientPhone('');
         };
         
         if (!isUserLoading) {
@@ -162,7 +163,7 @@ const AddAddressPageInternal = () => {
                 reverseGeocode(mapCenter);
             }
         }
-    }, [user, isUserLoading, useCurrent, searchParams]);
+    }, [user, isUserLoading, useCurrent, searchParams, reverseGeocode, getCurrentGeolocation]);
 
 
     // --- Save Logic ---
@@ -188,7 +189,7 @@ const AddAddressPageInternal = () => {
             label: finalLabel,
             name: recipientName.trim(),
             phone: recipientPhone.trim(),
-            street: fullAddress.trim(), // Use the full address as the primary street/address line
+            street: addressDetails.street, // Use the structured street from geocoding
             landmark: landmark.trim(),
             city: addressDetails.city,
             state: addressDetails.state,
