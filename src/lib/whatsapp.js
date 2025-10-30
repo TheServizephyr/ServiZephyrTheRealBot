@@ -7,7 +7,7 @@ const ACCESS_TOKEN = process.env.WHATSAPP_ACCESS_TOKEN;
 /**
  * Sends a WhatsApp message using the Meta Graph API.
  * @param {string} phoneNumber The recipient's phone number (with country code).
- * @param {object|string} payload The message payload. For images, this should be { type: 'image', link: 'URL' }.
+ * @param {object|string} payload The message payload. For simple text, it's a string. For templates or interactive messages, it's an object.
  * @param {string} businessPhoneNumberId The ID of the WhatsApp Business phone number sending the message.
  */
 export const sendWhatsAppMessage = async (phoneNumber, payload, businessPhoneNumberId) => {
@@ -36,6 +36,13 @@ export const sendWhatsAppMessage = async (phoneNumber, payload, businessPhoneNum
             image: { link: payload.link }
         };
         console.log(`[WhatsApp Lib] Payload is an image message.`);
+    } else if (payload.type === 'interactive') {
+        dataPayload = {
+            messaging_product: 'whatsapp',
+            to: phoneNumber,
+            ...payload
+        };
+        console.log(`[WhatsApp Lib] Payload is an interactive message.`);
     } else {
         dataPayload = {
             messaging_product: 'whatsapp',

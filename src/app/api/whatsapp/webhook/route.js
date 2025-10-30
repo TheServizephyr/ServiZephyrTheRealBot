@@ -66,41 +66,56 @@ const generateSecureToken = async (firestore, customerPhone) => {
     return token;
 };
 
-// --- NEW INTERACTIVE WELCOME MESSAGE ---
+
+// --- NEW INTERACTIVE WELCOME MESSAGE (CORRECTED) ---
 const sendWelcomeMessageWithOptions = async (customerPhoneWithCode, business, botPhoneNumberId) => {
     console.log(`[Webhook] Sending interactive welcome message to ${customerPhoneWithCode}`);
     
-    const templateName = 'order_status_update';
     const payload = {
-        name: templateName,
-        language: { code: "en_US" },
-        components: [
-            {
-                type: "body",
-                parameters: [
-                    { type: "text", text: business.data.name },
-                    { type: "text", text: `What would you like to do today?` },
-                    { type: "text", text: ` ` },
-                    { type: "text", text: ` ` }
+        type: "interactive",
+        interactive: {
+            type: "button",
+            body: {
+                text: `Welcome to ${business.data.name}!\n\nWhat would you like to do today?`
+            },
+            action: {
+                buttons: [
+                    {
+                        type: "reply",
+                        reply: {
+                            id: `action_order_${business.id}`,
+                            title: "Order Food"
+                        }
+                    },
+                    {
+                        type: "reply",
+                        reply: {
+                            id: `action_dashboard_${business.id}`,
+                            title: "My Dashboard"
+                        }
+                    },
+                    {
+                        type: "reply",
+                        reply: {
+                            id: `action_track_${business.id}`,
+                            title: "Track Last Order"
+                        }
+                    },
+                    {
+                        type: "reply",
+                        reply: {
+                            id: "action_help",
+                            title: "Need Help?"
+                        }
+                    }
                 ]
-            },
-            {
-                type: "button", sub_type: "quick_reply", index: "0",
-                parameters: [{ type: "payload", payload: `action_order_${business.id}` }]
-            },
-            {
-                type: "button", sub_type: "quick_reply", index: "1",
-                parameters: [{ type: "payload", payload: `action_dashboard_${business.id}` }]
-            },
-             {
-                type: "button", sub_type: "quick_reply", index: "2",
-                parameters: [{ type: "payload", payload: `action_track_${business.id}` }]
-            },
-        ]
+            }
+        }
     };
     
     await sendWhatsAppMessage(customerPhoneWithCode, payload, botPhoneNumberId);
 }
+
 
 // --- NEW ACTION HANDLERS FOR BUTTONS ---
 const handleButtonActions = async (firestore, buttonId, fromNumber, business, botPhoneNumberId) => {
@@ -293,4 +308,5 @@ export async function POST(request) {
     
 
     
+
 
