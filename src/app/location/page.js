@@ -1,13 +1,23 @@
+
 'use client';
 
 import React, { useState, useEffect, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { motion } from 'framer-motion';
-import { MapPin, LocateFixed, Loader2, Plus, Home, Building, Trash2, ArrowLeft } from 'lucide-react';
+import { MapPin, LocateFixed, Plus, Home, Building, Trash2, ArrowLeft, Lock } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { auth } from '@/lib/firebase';
 import InfoDialog from '@/components/InfoDialog';
 import { useUser } from '@/firebase';
+
+const TokenVerificationLock = ({ message }) => (
+    <div className="min-h-screen bg-background flex flex-col items-center justify-center text-center p-4">
+        <Lock size={48} className="text-destructive mb-4" />
+        <h1 className="text-2xl font-bold text-foreground">Session Invalid</h1>
+        <p className="mt-2 text-muted-foreground max-w-md">{message}</p>
+        <p className="mt-4 text-sm text-muted-foreground">Please initiate a new session by sending a message to the restaurant on WhatsApp.</p>
+    </div>
+);
 
 const SavedAddressCard = ({ address, onSelect, onDelete, isAuth }) => {
     const Icon = address.label === 'Home' ? Home : address.label === 'Work' ? Building : MapPin;
@@ -41,18 +51,51 @@ const SelectLocationInternal = () => {
     const searchParams = useSearchParams();
     const { user, isUserLoading } = useUser();
 
+    // Security State
+    const [isTokenValid, setIsTokenValid] = useState(false);
+    const [tokenError, setTokenError] = useState('');
+    const phone = searchParams.get('phone');
+    const token = searchParams.get('token');
+
     const [addresses, setAddresses] = useState([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
     const [infoDialog, setInfoDialog] = useState({ isOpen: false, title: '', message: '' });
 
     const returnUrl = searchParams.get('returnUrl') || '/';
-    const phoneFromUrl = searchParams.get('phone');
     
     useEffect(() => {
-        const fetchAddresses = async () => {
-            const phoneToLookup = phoneFromUrl || user?.phoneNumber;
+        const verifyAndFetch = async () => {
+            if (!phone || !token) {
+                if (user) {
+                    setIsTokenValid(true);
+                    fetchAddresses(user.phoneNumber);
+                    return;
+                }
+                setTokenError("No session token found. Please start your order from WhatsApp.");
+                setLoading(false);
+                return;
+            }
 
+            try {
+                const res = await fetch('/api/auth/verify-token', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ phone, token }),
+                });
+                if (!res.ok) {
+                    const errData = await res.json();
+                    throw new Error(errData.message || "Session validation failed.");
+                }
+                setIsTokenValid(true);
+                fetchAddresses(phone);
+            } catch (err) {
+                setTokenError(err.message);
+                setLoading(false);
+            }
+        };
+
+        const fetchAddresses = async (phoneToLookup) => {
             if (!phoneToLookup) {
                 setLoading(false);
                 setAddresses([]);
@@ -72,9 +115,7 @@ const SelectLocationInternal = () => {
                 if (res.ok) {
                     const data = await res.json();
                     setAddresses(data.addresses || []);
-                } else if (res.status === 404) {
-                    setAddresses([]); // No addresses found is not an error state
-                } else {
+                } else if (res.status !== 404) {
                     const errorData = await res.json();
                     throw new Error(errorData.message || 'Failed to look up customer data.');
                 }
@@ -86,9 +127,10 @@ const SelectLocationInternal = () => {
             }
         };
 
-        fetchAddresses();
-
-    }, [phoneFromUrl, user]);
+        if (!isUserLoading) {
+            verifyAndFetch();
+        }
+    }, [phone, token, user, isUserLoading]);
 
 
     const handleSelectAddress = (address) => {
@@ -98,51 +140,32 @@ const SelectLocationInternal = () => {
 
     const handleDeleteAddress = async (addressId) => {
         if (!window.confirm("Are you sure you want to delete this address?")) return;
-
         if (!user) {
              setInfoDialog({isOpen: true, title: 'Error', message: 'You must be logged in to delete an address.'});
              return;
         }
-
         try {
             const idToken = await user.getIdToken();
-            const res = await fetch('/api/user/addresses', {
-                method: 'DELETE',
-                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${idToken}` },
-                body: JSON.stringify({ addressId })
-            });
-            if (!res.ok) {
-                 const data = await res.json();
-                 throw new Error(data.message || 'Failed to delete address.');
-            }
+            const res = await fetch('/api/user/addresses', { method: 'DELETE', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${idToken}` }, body: JSON.stringify({ addressId }) });
+            if (!res.ok) throw new Error((await res.json()).message || 'Failed to delete address.');
             setInfoDialog({isOpen: true, title: 'Success', message: 'Address deleted successfully.'});
-            
-            const phoneToLookup = phoneFromUrl || user?.phoneNumber;
-             if (phoneToLookup) {
-                const res = await fetch('/api/customer/lookup', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ phone: phoneToLookup }),
-                });
-                 if (res.ok) {
-                    const data = await res.json();
-                    setAddresses(data.addresses || []);
-                } else {
-                    setAddresses([]);
-                }
-            }
+            setAddresses(prev => prev.filter(addr => addr.id !== addressId));
         } catch (err) {
             setInfoDialog({isOpen: true, title: 'Error', message: err.message});
         }
     };
     
     const handleAddNewAddress = () => {
-        router.push(`/add-address?returnUrl=${encodeURIComponent(returnUrl)}&phone=${phoneFromUrl || ''}`);
+        router.push(`/add-address?returnUrl=${encodeURIComponent(returnUrl)}&phone=${phone || ''}&token=${token || ''}`);
     }
     
     const handleUseCurrentLocation = () => {
-        router.push(`/add-address?useCurrent=true&returnUrl=${encodeURIComponent(returnUrl)}&phone=${phoneFromUrl || ''}`);
+        router.push(`/add-address?useCurrent=true&returnUrl=${encodeURIComponent(returnUrl)}&phone=${phone || ''}&token=${token || ''}`);
     };
+    
+    if (tokenError) {
+        return <TokenVerificationLock message={tokenError} />;
+    }
 
     return (
         <div className="min-h-screen bg-background text-foreground">
@@ -178,7 +201,7 @@ const SelectLocationInternal = () => {
                 <div className="mt-8">
                     <h2 className="font-bold text-muted-foreground mb-4">SAVED ADDRESSES</h2>
                     {loading ? (
-                        <div className="flex justify-center py-8"><Loader2 className="animate-spin text-primary" /></div>
+                        <div className="flex justify-center py-8"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div></div>
                     ) : error ? (
                         <div className="text-center py-8 text-destructive">{error}</div>
                     ) : addresses.length > 0 ? (
@@ -207,7 +230,7 @@ const SelectLocationInternal = () => {
 
 export default function SelectLocationPage() {
     return (
-        <Suspense fallback={<div className="min-h-screen bg-background flex items-center justify-center"><Loader2 className="animate-spin text-primary h-16 w-16"/></div>}>
+        <Suspense fallback={<div className="min-h-screen bg-background flex items-center justify-center"><div className="animate-spin rounded-full h-16 w-16 border-b-2 border-primary"></div></div>}>
             <SelectLocationInternal />
         </Suspense>
     );

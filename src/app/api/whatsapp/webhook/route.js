@@ -6,6 +6,7 @@ import { getStorage } from 'firebase-admin/storage';
 import { sendWhatsAppMessage } from '@/lib/whatsapp';
 import { sendOrderStatusUpdateToCustomer } from '@/lib/notifications';
 import axios from 'axios';
+import { nanoid } from 'nanoid';
 
 
 const VERIFY_TOKEN = process.env.WHATSAPP_VERIFY_TOKEN;
@@ -120,6 +121,60 @@ const handleImageMessage = async (firestore, business, message) => {
 
     await batch.commit();
 }
+
+const generateAndSendAuthLink = async (firestore, customerPhoneWithCode, business, botPhoneNumberId) => {
+    const customerPhone = customerPhoneWithCode.startsWith('91') ? customerPhoneWithCode.substring(2) : customerPhoneWithCode;
+    const customerName = business.data?.contacts?.[0]?.profile?.name || 'Customer';
+
+    // 1. Generate a secure, unique token
+    const token = nanoid(24);
+
+    // 2. Set an expiry time (e.g., 20 minutes from now)
+    const expiry = new Date(Date.now() + 20 * 60 * 1000);
+
+    // 3. Save the token, phone number, and expiry to Firestore
+    const authTokenRef = firestore.collection('auth_tokens').doc(token);
+    await authTokenRef.set({
+        phone: customerPhone,
+        expiresAt: FieldValue.serverTimestamp(expiry)
+    });
+
+    // 4. Construct the URL with the token
+    const menuLink = `https://servizephyr.com/order/${business.id}?phone=${customerPhone}&token=${token}`;
+    const replyText = `Thanks for contacting *${business.data.name}*. We have received your message and will get back to you shortly.\n\nYou can also view our menu and place an order directly here:\n${menuLink}`;
+
+    // 5. Send the message
+    await sendWhatsAppMessage(customerPhoneWithCode, replyText, botPhoneNumberId);
+    console.log(`[Webhook] Auth link sent to ${customerPhone}.`);
+    
+    // 6. Save messages to Firestore conversation
+    const conversationRef = business.ref.collection('conversations').doc(customerPhone);
+    const messagesCollectionRef = conversationRef.collection('messages');
+    const batch = firestore.batch();
+
+    // Save bot's reply
+    const botMessageRef = messagesCollectionRef.doc();
+    batch.set(botMessageRef, {
+        id: botMessageRef.id,
+        text: replyText,
+        sender: 'owner', // Representing the bot as the owner
+        timestamp: FieldValue.serverTimestamp(),
+        status: 'sent' 
+    });
+    
+    // Update conversation metadata
+    batch.set(conversationRef, {
+        id: customerPhone,
+        customerName: customerName,
+        customerPhone: customerPhone,
+        lastMessage: replyText,
+        lastMessageType: 'text',
+        lastMessageTimestamp: FieldValue.serverTimestamp(),
+    }, { merge: true });
+
+    await batch.commit();
+    console.log(`[Webhook] Saved bot's automatic reply to Firestore for ${customerPhone}.`);
+};
 
 
 export async function POST(request) {
@@ -247,10 +302,10 @@ export async function POST(request) {
             const messageBody = message.text.body;
 
             const customerName = change.value?.contacts?.[0]?.profile?.name || 'Customer';
+            const customerPhone = fromWithCode.startsWith('91') ? fromWithCode.substring(2) : fromWithCode;
             
             console.log(`[Webhook] Text message received. From: ${fromWithCode}, Name: ${customerName}, Message: "${messageBody}"`);
             
-            const customerPhone = fromWithCode.startsWith('91') ? fromWithCode.substring(2) : fromWithCode;
             const conversationRef = business.ref.collection('conversations').doc(customerPhone);
             const messagesCollectionRef = conversationRef.collection('messages');
             
@@ -260,51 +315,29 @@ export async function POST(request) {
             const messageRef = messagesCollectionRef.doc();
             console.log(`[Webhook] Saving message to Firestore for customer ${customerPhone} at path: ${messageRef.path}`);
             
-            const batch = firestore.batch();
-            
-            batch.set(messageRef, {
+            // Save the customer's message first
+            await messageRef.set({
                 id: messageRef.id,
                 text: messageBody,
                 sender: 'customer',
                 timestamp: FieldValue.serverTimestamp(),
                 status: 'unread'
             });
-
-            batch.set(conversationRef, {
-                id: customerPhone,
-                customerName: customerName,
-                customerPhone: customerPhone,
-                lastMessage: messageBody,
-                lastMessageType: 'text',
-                lastMessageTimestamp: FieldValue.serverTimestamp(),
-                unreadCount: FieldValue.increment(1),
-            }, { merge: true });
-
             
+            // Then, if it's a new conversation, generate and send the auth link
             if (isNewConversation) {
-                console.log(`[Webhook] First message from ${customerPhone}. Sending automatic reply.`);
-                const menuLink = `https://servizephyr.com/order/${business.id}?phone=${customerPhone}`;
-                const replyText = `Thanks for contacting *${business.data.name}*. We have received your message and will get back to you shortly.\n\nYou can also view our menu and place an order directly here:\n${menuLink}`;
-                
-                await sendWhatsAppMessage(fromWithCode, replyText, businessPhoneNumberId);
-                console.log(`[Webhook] Automatic reply sent to ${customerPhone}.`);
-                
-                const botMessageRef = messagesCollectionRef.doc();
-                batch.set(botMessageRef, {
-                    id: botMessageRef.id,
-                    text: replyText,
-                    sender: 'owner', // Representing the bot as the owner
-                    timestamp: FieldValue.serverTimestamp(),
-                    status: 'sent' 
-                });
-                 batch.set(conversationRef, { lastMessage: replyText, lastMessageType: 'text', lastMessageTimestamp: FieldValue.serverTimestamp() }, { merge: true });
-                 console.log(`[Webhook] Saved bot's automatic reply to Firestore at path: ${botMessageRef.path}`);
+                console.log(`[Webhook] First message from ${customerPhone}. Sending automatic reply with auth link.`);
+                await generateAndSendAuthLink(firestore, fromWithCode, business, businessPhoneNumberId);
             } else {
-                 console.log(`[Webhook] Existing conversation with ${customerPhone}. Skipping automatic reply.`);
+                 // For existing conversations, just update the last message info
+                 await conversationRef.set({
+                    lastMessage: messageBody,
+                    lastMessageType: 'text',
+                    lastMessageTimestamp: FieldValue.serverTimestamp(),
+                    unreadCount: FieldValue.increment(1),
+                 }, { merge: true });
+                 console.log(`[Webhook] Existing conversation with ${customerPhone}. Updated last message.`);
             }
-
-            await batch.commit();
-            console.log(`[Webhook] Batch for customer message (and potential bot reply) saved successfully for ${customerPhone}.`);
 
         } else {
             console.log("[Webhook] Received a non-text, non-button, non-image event. Skipping.");

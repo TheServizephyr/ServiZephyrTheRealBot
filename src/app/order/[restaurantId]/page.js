@@ -1,10 +1,11 @@
 
+
 'use client';
 
 import React, { useState, useEffect, Suspense, useMemo, useCallback, useRef } from 'react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Utensils, Plus, Minus, X, Home, User, Edit2, ShoppingCart, Star, CookingPot, BookOpen, Check, SlidersHorizontal, ArrowUpDown, PlusCircle, Ticket, Gift, Sparkles, Flame, Search, Trash2, ChevronDown, Tag as TagIcon, RadioGroup, IndianRupee, HardHat, MapPin, Bike, Store, ConciergeBell, QrCode, CalendarClock, Wallet, Users, Camera, BookMarked, Calendar as CalendarIcon, Bell, CheckCircle, AlertTriangle, ExternalLink, ShoppingBag, Sun, Moon, ChevronUp } from 'lucide-react';
+import { Utensils, Plus, Minus, X, Home, User, Edit2, ShoppingCart, Star, CookingPot, BookOpen, Check, SlidersHorizontal, ArrowUpDown, PlusCircle, Ticket, Gift, Sparkles, Flame, Search, Trash2, ChevronDown, Tag as TagIcon, RadioGroup, IndianRupee, HardHat, MapPin, Bike, Store, ConciergeBell, QrCode, CalendarClock, Wallet, Users, Camera, BookMarked, Calendar as CalendarIcon, Bell, CheckCircle, AlertTriangle, ExternalLink, ShoppingBag, Sun, Moon, ChevronUp, Lock } from 'lucide-react';
 import Image from 'next/image';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
@@ -28,6 +29,15 @@ const QrScanner = dynamic(() => import('@/components/QrScanner'), {
     ssr: false,
     loading: () => <div className="min-h-screen bg-background flex items-center justify-center"><div className="animate-spin rounded-full h-16 w-16 border-b-2 border-primary"></div></div>
 });
+
+const TokenVerificationLock = ({ message }) => (
+    <div className="min-h-screen bg-background flex flex-col items-center justify-center text-center p-4">
+        <Lock size={48} className="text-destructive mb-4" />
+        <h1 className="text-2xl font-bold text-foreground">Session Invalid</h1>
+        <p className="mt-2 text-muted-foreground max-w-md">{message}</p>
+        <p className="mt-4 text-sm text-muted-foreground">Please initiate a new session by sending a message to the restaurant on WhatsApp.</p>
+    </div>
+);
 
 
 const CustomizationDrawer = ({ item, isOpen, onClose, onAddToCart }) => {
@@ -613,10 +623,12 @@ const OrderPageInternal = () => {
     const searchParams = useSearchParams();
     const { restaurantId } = params;
     
-    const phoneFromUrl = searchParams.get('phone');
-    const tableIdFromUrl = searchParams.get('table');
-    const tabIdFromUrl = searchParams.get('tabId');
-    
+    // Auth Token Security
+    const [isTokenValid, setIsTokenValid] = useState(false);
+    const [tokenError, setTokenError] = useState('');
+    const phone = searchParams.get('phone');
+    const token = searchParams.get('token');
+
     const [customerLocation, setCustomerLocation] = useState(null);
     const [restaurantData, setRestaurantData] = useState({
         name: '',
@@ -656,6 +668,9 @@ const OrderPageInternal = () => {
     const [dineInState, setDineInState] = useState('loading');
     const [activeTabInfo, setActiveTabInfo] = useState({ id: null, name: '', total: 0 });
 
+    const tableIdFromUrl = searchParams.get('table');
+    const tabIdFromUrl = searchParams.get('tabId');
+
 
     const handleStartNewTab = (paxCount, tabName) => {
         if (!paxCount || paxCount < 1) {
@@ -687,109 +702,97 @@ const OrderPageInternal = () => {
 
 
     useEffect(() => {
-        console.log("[DEBUG] OrderPage: Initial render/dependencies changed. restaurantId:", restaurantId);
-        const phone = phoneFromUrl || localStorage.getItem('lastKnownPhone');
-        if (phone && !localStorage.getItem('lastKnownPhone')) {
-            localStorage.setItem('lastKnownPhone', phone);
-        }
-        
-        let locationStr = localStorage.getItem('customerLocation');
-        if(locationStr) {
-            try {
-                setCustomerLocation(JSON.parse(locationStr));
-            } catch (e) {
-                console.error("Failed to parse location.", e);
-            }
-        }
-        const fetchInitialData = async () => {
-            console.log("[DEBUG] OrderPage: Starting to fetch data for restaurantId:", restaurantId);
-            if (!restaurantId || restaurantId === 'undefined') {
-                setError("Restaurant ID is invalid. Please scan the QR code again.");
+        const verifyAndFetch = async () => {
+            if (!phone || !token) {
+                // If user is logged in, they can proceed without a token
+                if (auth.currentUser) {
+                    setIsTokenValid(true);
+                    fetchInitialData();
+                    return;
+                }
+                setTokenError("No session token found. Please start your order from WhatsApp.");
                 setLoading(false);
                 return;
             }
-            setLoading(true);
-            setError(null);
+
+            try {
+                const res = await fetch('/api/auth/verify-token', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ phone, token }),
+                });
+                if (!res.ok) {
+                    const errData = await res.json();
+                    throw new Error(errData.message || "Session validation failed.");
+                }
+                setIsTokenValid(true);
+                fetchInitialData();
+            } catch (err) {
+                setTokenError(err.message);
+                setLoading(false);
+            }
+        };
+
+        const fetchInitialData = async () => {
+            if (!restaurantId || restaurantId === 'undefined') {
+                setError("Restaurant ID is invalid.");
+                setLoading(false);
+                return;
+            }
+            
+            let locationStr = localStorage.getItem('customerLocation');
+            if(locationStr) {
+                try { setCustomerLocation(JSON.parse(locationStr)); } catch (e) {}
+            }
+
             try {
                 const url = `/api/menu/${restaurantId}${phone ? `?phone=${phone}`: ''}`;
-                 console.log("[DEBUG] OrderPage: Fetching URL:", url);
                 const menuRes = await fetch(url);
+                const menuData = await menuRes.json();
 
-                console.log("[DEBUG] OrderPage: API response status:", menuRes.status);
-                const responseText = await menuRes.text();
-                let menuData;
-                try {
-                    menuData = JSON.parse(responseText);
-                } catch(e) {
-                    console.error("[DEBUG] OrderPage: Failed to parse JSON response. Raw text:", responseText);
-                    throw new Error("Received an invalid response from the server.");
-                }
-
-                if (!menuRes.ok) {
-                    throw new Error(menuData.message || 'Failed to fetch menu');
-                }
-                
-                console.log("[DEBUG] OrderPage: API call successful. Data received:", menuData);
-
-                let fullAddress = 'N/A';
-                if(menuData.businessAddress) {
-                    fullAddress = `${menuData.businessAddress.street}, ${menuData.businessAddress.city}`;
-                }
+                if (!menuRes.ok) throw new Error(menuData.message || 'Failed to fetch menu');
 
                 setRestaurantData({
                     name: menuData.restaurantName, status: menuData.approvalStatus,
                     logoUrl: menuData.logoUrl || '', bannerUrls: (menuData.bannerUrls?.length > 0) ? menuData.bannerUrls : ['/order_banner.jpg'],
                     deliveryCharge: menuData.deliveryCharge || 0, menu: menuData.menu || {}, coupons: menuData.coupons || [],
                     deliveryEnabled: menuData.deliveryEnabled, pickupEnabled: menuData.pickupEnabled,
-                    dineInEnabled: menuData.dineInEnabled,
-                    businessAddress: menuData.businessAddress || null,
+                    dineInEnabled: menuData.dineInEnabled, businessAddress: menuData.businessAddress || null,
+                    businessType: menuData.businessType || 'restaurant',
                 });
-
-                // THE FIX: Set loyalty points from the API response
                 setLoyaltyPoints(menuData.loyaltyPoints || 0);
 
                 if (tableIdFromUrl) {
                     setDeliveryType('dine-in');
                     const dineInSetup = localStorage.getItem(`dineInSetup_${restaurantId}_${tableIdFromUrl}`);
-                    
                     if (dineInSetup || tabIdFromUrl) {
                         const setup = dineInSetup ? JSON.parse(dineInSetup) : {};
                         const currentTabId = tabIdFromUrl || setup.join_tab_id;
-                        if (currentTabId) {
-                           setActiveTabInfo({ id: currentTabId, name: setup.tab_name || 'Active Tab', total: 0 });
-                        }
+                        if (currentTabId) setActiveTabInfo({ id: currentTabId, name: setup.tab_name || 'Active Tab', total: 0 });
                         setDineInState('ready');
                     } else {
                         const tableRes = await fetch(`/api/owner/tables?restaurantId=${restaurantId}&tableId=${tableIdFromUrl}`);
                         const tableData = await tableRes.json();
-                        
                         let state = 'available';
                         if (tableData.current_pax >= tableData.max_capacity) state = 'full';
                         else if (tableData.current_pax > 0) state = 'partially_occupied';
-                        
                         setTableStatus({ ...tableData, tableId: tableIdFromUrl, state });
                         setDineInState('needs_setup');
                         setIsDineInModalOpen(true);
                     }
-                } else if (menuData.deliveryEnabled) {
-                    setDeliveryType('delivery');
-                    setDineInState('ready');
-                } else if (menuData.pickupEnabled) {
-                    setDeliveryType('pickup');
-                    setDineInState('ready');
                 } else {
-                     setDineInState('ready');
+                    setDeliveryType(menuData.deliveryEnabled ? 'delivery' : (menuData.pickupEnabled ? 'pickup' : 'delivery'));
+                    setDineInState('ready');
                 }
             } catch (err) {
                 setError(err.message);
             } finally {
-                 console.log("[DEBUG] OrderPage: fetchInitialData finished.");
                 setLoading(false);
             }
         };
 
-        fetchInitialData();
-    }, [restaurantId, phoneFromUrl, tableIdFromUrl, tabIdFromUrl]);
+        verifyAndFetch();
+    }, [restaurantId, phone, token, tableIdFromUrl, tabIdFromUrl]);
     
     const cartPersistenceDependencies = [
         restaurantId,
@@ -799,51 +802,48 @@ const OrderPageInternal = () => {
         restaurantData.deliveryEnabled,
         restaurantData.pickupEnabled,
         loyaltyPoints,
-        phoneFromUrl,
+        phone,
+        token
     ];
 
     useEffect(() => {
-        if (!restaurantId || loading) return;
+        if (!restaurantId || loading || !isTokenValid) return;
 
         const expiryTimestamp = new Date().getTime() + (24 * 60 * 60 * 1000);
         
         const cartDataToSave = {
-            cart,
-            notes,
-            deliveryType,
-            restaurantId,
+            cart, notes, deliveryType, restaurantId,
             restaurantName: restaurantData.name,
-            phone: phoneFromUrl || localStorage.getItem('lastKnownPhone'),
+            phone: phone, // Pass from URL
+            token: token, // Pass from URL
             coupons: restaurantData.coupons,
             loyaltyPoints,
             deliveryCharge: restaurantData.deliveryCharge,
             deliveryEnabled: restaurantData.deliveryEnabled,
             pickupEnabled: restaurantData.pickupEnabled,
+            businessType: restaurantData.businessType,
             expiryTimestamp,
         };
         localStorage.setItem(`cart_${restaurantId}`, JSON.stringify(cartDataToSave));
-    }, [cart, notes, deliveryType, ...cartPersistenceDependencies, loading]);
+    }, [cart, notes, deliveryType, ...cartPersistenceDependencies, loading, isTokenValid]);
 
     useEffect(() => {
-        if (restaurantId) {
+        if (restaurantId && isTokenValid) {
             const savedCartData = localStorage.getItem(`cart_${restaurantId}`);
             if (savedCartData) {
                 const parsedData = JSON.parse(savedCartData);
                 const now = new Date().getTime();
                 if (parsedData.expiryTimestamp && now > parsedData.expiryTimestamp) {
                     localStorage.removeItem(`cart_${restaurantId}`);
-                    setCart([]);
-                    setNotes('');
-                } else {
+                    setCart([]); setNotes('');
+                } else if(parsedData.phone === phone && parsedData.token === token) { // Security check
                     setCart(parsedData.cart || []);
                     setNotes(parsedData.notes || '');
-                    if (parsedData.deliveryType && !tableIdFromUrl) {
-                        setDeliveryType(parsedData.deliveryType);
-                    }
+                    if (parsedData.deliveryType && !tableIdFromUrl) setDeliveryType(parsedData.deliveryType);
                 }
             }
         }
-    }, [restaurantId, tableIdFromUrl]);
+    }, [restaurantId, tableIdFromUrl, isTokenValid, phone, token]);
 
     const searchPlaceholder = useMemo(() => {
         return restaurantData.businessType === 'shop' ? 'Search for a product...' : 'Search for a dish...';
@@ -855,23 +855,13 @@ const OrderPageInternal = () => {
 
         for (const category in newMenu) {
             let items = newMenu[category];
-            
-            if (lowercasedQuery) {
-                items = items.filter(item => item.name.toLowerCase().includes(lowercasedQuery));
-            }
-
+            if (lowercasedQuery) items = items.filter(item => item.name.toLowerCase().includes(lowercasedQuery));
             if (filters.veg) items = items.filter(item => item.isVeg);
             if (filters.nonVeg) items = items.filter(item => !item.isVeg);
             if (filters.recommended) items = items.filter(item => item.isRecommended);
-            
-            if (sortBy === 'price-asc') {
-              items.sort((a, b) => (a.portions?.[0]?.price || 0) - (b.portions?.[0]?.price || 0));
-            } else if (sortBy === 'price-desc') {
-              items.sort((a, b) => (b.portions?.[0]?.price || 0) - (a.portions?.[0]?.price || 0));
-            } else if (sortBy === 'rating-desc') {
-              items.sort((a,b) => (b.rating || 0) - (a.rating || 0));
-            }
-            
+            if (sortBy === 'price-asc') items.sort((a, b) => (a.portions?.[0]?.price || 0) - (b.portions?.[0]?.price || 0));
+            else if (sortBy === 'price-desc') items.sort((a, b) => (b.portions?.[0]?.price || 0) - (a.portions?.[0]?.price || 0));
+            else if (sortBy === 'rating-desc') items.sort((a,b) => (b.rating || 0) - (a.rating || 0));
             newMenu[category] = items;
         }
         return newMenu;
@@ -903,7 +893,6 @@ const OrderPageInternal = () => {
     
     const handleAddToCart = useCallback((item, portion, selectedAddOns, totalPrice) => {
         const cartItemId = `${item.id}-${portion.name}-${(selectedAddOns || []).map(a => `${a.name}x${a.quantity}`).sort().join('-')}`;
-        
         setCart(currentCart => {
             const existingItemIndex = currentCart.findIndex(cartItem => cartItem.cartItemId === cartItemId);
             if (existingItemIndex > -1) {
@@ -911,14 +900,7 @@ const OrderPageInternal = () => {
                     index === existingItemIndex ? { ...cartItem, quantity: cartItem.quantity + 1 } : cartItem
                 );
             } else {
-                return [...currentCart, { 
-                    ...item, 
-                    cartItemId, 
-                    portion, 
-                    selectedAddOns, 
-                    totalPrice, 
-                    quantity: 1 
-                }];
+                return [...currentCart, { ...item, cartItemId, portion, selectedAddOns, totalPrice, quantity: 1 }];
             }
         });
     }, []);
@@ -934,29 +916,15 @@ const OrderPageInternal = () => {
 
     const handleDecrement = (itemId) => {
         let newCart = [...cart];
-        
-        const lastMatchingItemIndex = newCart.reduce((lastIndex, currentItem, currentIndex) => {
-            if (currentItem.id === itemId) {
-                return currentIndex;
-            }
-            return lastIndex;
-        }, -1);
-
+        const lastMatchingItemIndex = newCart.reduce((lastIndex, currentItem, currentIndex) => (currentItem.id === itemId) ? currentIndex : lastIndex, -1);
         if (lastMatchingItemIndex === -1) return;
-
-        if (newCart[lastMatchingItemIndex].quantity === 1) {
-            newCart.splice(lastMatchingItemIndex, 1);
-        } else {
-            newCart[lastMatchingItemIndex].quantity--;
-        }
-
+        if (newCart[lastMatchingItemIndex].quantity === 1) newCart.splice(lastMatchingItemIndex, 1);
+        else newCart[lastMatchingItemIndex].quantity--;
         setCart(newCart);
     };
     
     const handleDeliveryTypeChange = (type) => {
-        console.log("[DEBUG] OrderPage: handleDeliveryTypeChange called with type:", type);
         if (type === 'dine-in' && !tableIdFromUrl) {
-            console.log("[DEBUG] OrderPage: Dine-in clicked without tableId, opening modal.");
             setDineInState('needs_setup');
             setIsDineInModalOpen(true);
             return;
@@ -973,25 +941,9 @@ const OrderPageInternal = () => {
             setInfoDialog({isOpen: true, title: "Booking Failed", message: "Please select a date."});
             return;
         }
-
-        const payload = {
-            restaurantId: restaurantId,
-            name: bookingDetails.name,
-            phone: bookingDetails.phone,
-            guests: bookingDetails.guests,
-            bookingDateTime: localDate.toISOString(),
-        };
-
-        const res = await fetch('/api/owner/bookings', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload),
-        });
-
-        if (!res.ok) {
-            const errorData = await res.json();
-            throw new Error(errorData.message || "Failed to create booking.");
-        }
+        const payload = { restaurantId, name: bookingDetails.name, phone: bookingDetails.phone, guests: bookingDetails.guests, bookingDateTime: localDate.toISOString() };
+        const res = await fetch('/api/owner/bookings', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+        if (!res.ok) throw new Error((await res.json()).message || "Failed to create booking.");
     };
 
     const totalCartItems = cart.reduce((sum, item) => sum + item.quantity, 0);
@@ -999,9 +951,7 @@ const OrderPageInternal = () => {
     const cartItemQuantities = useMemo(() => {
         const quantities = {};
         cart.forEach(item => {
-            if (!quantities[item.id]) {
-                quantities[item.id] = 0;
-            }
+            if (!quantities[item.id]) quantities[item.id] = 0;
             quantities[item.id] += item.quantity;
         });
         return quantities;
@@ -1009,26 +959,9 @@ const OrderPageInternal = () => {
     
     const handleCallWaiter = async () => {
         try {
-            const payload = {
-                restaurantId: restaurantId,
-                tableId: tableIdFromUrl,
-                dineInTabId: activeTabInfo.id
-            };
-
-            const response = await fetch('/api/owner/service-requests', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(payload),
-            });
-
-            if (!response.ok) {
-                const errorData = await response.json();
-                throw new Error(errorData.message || "Failed to send request.");
-            }
-            
+            await fetch('/api/owner/service-requests', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ restaurantId, tableId: tableIdFromUrl, dineInTabId: activeTabInfo.id }) });
             setInfoDialog({ isOpen: true, title: "Request Sent!", message: "A waiter has been notified and will be with you shortly." });
         } catch (error) {
-            console.error("Failed to send service request:", error);
             setInfoDialog({ isOpen: true, title: "Error", message: "Could not send request. " + error.message });
         }
     };
@@ -1043,9 +976,7 @@ const OrderPageInternal = () => {
     }
 
     const handleCheckout = () => {
-        const phone = phoneFromUrl || localStorage.getItem('lastKnownPhone');
         let currentCartData = JSON.parse(localStorage.getItem(`cart_${restaurantId}`)) || {};
-        
         if (deliveryType === 'dine-in') {
             const setupStr = localStorage.getItem(`dineInSetup_${restaurantId}_${tableIdFromUrl}`);
             if (setupStr) {
@@ -1055,13 +986,10 @@ const OrderPageInternal = () => {
                 currentCartData.tab_name = dineInSetup.tab_name;
             }
         }
-        
         localStorage.setItem(`cart_${restaurantId}`, JSON.stringify(currentCartData));
-
-        let url = `/cart?restaurantId=${restaurantId}&phone=${phone}`;
+        let url = `/cart?restaurantId=${restaurantId}&phone=${phone}&token=${token}`;
         if (tableIdFromUrl) url += `&table=${tableIdFromUrl}`;
         if (currentCartData.dineInTabId) url += `&tabId=${currentCartData.dineInTabId}`;
-
         router.push(url);
     };
     
@@ -1072,19 +1000,17 @@ const OrderPageInternal = () => {
 
     useEffect(() => {
         if (isQrScannerOpen) {
-            const timer = setTimeout(() => {
-                setIsDineInModalOpen(false);
-            }, 300); // Small delay to allow scanner to transition in
+            const timer = setTimeout(() => setIsDineInModalOpen(false), 300);
             return () => clearTimeout(timer);
         }
     }, [isQrScannerOpen]);
+    
+    if (loading || (!isTokenValid && !tokenError)) {
+        return <div className="min-h-screen bg-background flex items-center justify-center"><div className="animate-spin rounded-full h-16 w-16 border-b-2 border-primary"></div></div>;
+    }
 
-    if (loading || dineInState === 'loading') {
-        return (
-            <div className="min-h-screen bg-background flex items-center justify-center">
-                <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-primary"></div>
-            </div>
-        );
+    if (tokenError) {
+        return <TokenVerificationLock message={tokenError} />;
     }
     
     if (error || restaurantData.status === 'rejected' || restaurantData.status === 'suspended') {
@@ -1117,65 +1043,21 @@ const OrderPageInternal = () => {
         <>
             <InfoDialog isOpen={infoDialog.isOpen} onClose={() => setInfoDialog({isOpen: false, title: '', message: ''})} title={infoDialog.title} message={infoDialog.message} />
             
-            {isQrScannerOpen && (
-                <QrScanner 
-                    onClose={() => setIsQrScannerOpen(false)}
-                    onScanSuccess={(decodedText) => {
-                        setIsQrScannerOpen(false);
-                        window.location.href = decodedText;
-                    }}
-                />
-            )}
+            {isQrScannerOpen && <QrScanner onClose={() => setIsQrScannerOpen(false)} onScanSuccess={(decodedText) => { setIsQrScannerOpen(false); window.location.href = decodedText; }} />}
 
             <AnimatePresence>
                 {isBannerExpanded && (
-                     <motion.div
-                        className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4"
-                        initial={{ opacity: 0 }}
-                        animate={{ opacity: 1 }}
-                        exit={{ opacity: 0 }}
-                        onClick={() => setIsBannerExpanded(false)}
-                    >
-                        <motion.div 
-                            className="relative w-full max-w-4xl"
-                            style={{ aspectRatio: '16 / 9' }}
-                            onClick={(e) => e.stopPropagation()}
-                        >
-                            <Image
-                              src={restaurantData.bannerUrls[0]}
-                              alt="Banner Expanded"
-                              layout="fill"
-                              objectFit="contain"
-                              unoptimized
-                            />
+                     <motion.div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setIsBannerExpanded(false)}>
+                        <motion.div className="relative w-full max-w-4xl" style={{ aspectRatio: '16 / 9' }} onClick={(e) => e.stopPropagation()}>
+                            <Image src={restaurantData.bannerUrls[0]} alt="Banner Expanded" layout="fill" objectFit="contain" unoptimized />
                         </motion.div>
-                         <Button
-                            variant="ghost"
-                            size="icon"
-                            className="absolute top-4 right-4 text-white bg-black/50 hover:bg-black/70 hover:text-white"
-                            onClick={() => setIsBannerExpanded(false)}
-                        >
-                            <X />
-                        </Button>
+                         <Button variant="ghost" size="icon" className="absolute top-4 right-4 text-white bg-black/50 hover:bg-black/70 hover:text-white" onClick={() => setIsBannerExpanded(false)}><X /></Button>
                     </motion.div>
                 )}
             </AnimatePresence>
             <div className="min-h-screen bg-background text-foreground green-theme">
-                 <DineInModal
-                  isOpen={isDineInModalOpen}
-                  onClose={handleCloseDineInModal}
-                  onBookTable={handleBookTable}
-                  tableStatus={tableStatus}
-                  onStartNewTab={handleStartNewTab}
-                  onJoinTab={handleJoinTab}
-                  setIsQrScannerOpen={setIsQrScannerOpen}
-                />
-                <CustomizationDrawer
-                    item={customizationItem}
-                    isOpen={!!customizationItem}
-                    onClose={() => setCustomizationItem(null)}
-                    onAddToCart={handleAddToCart}
-                />
+                 <DineInModal isOpen={isDineInModalOpen} onClose={handleCloseDineInModal} onBookTable={handleBookTable} tableStatus={tableStatus} onStartNewTab={handleStartNewTab} onJoinTab={handleJoinTab} setIsQrScannerOpen={setIsQrScannerOpen} />
+                <CustomizationDrawer item={customizationItem} isOpen={!!customizationItem} onClose={() => setCustomizationItem(null)} onAddToCart={handleAddToCart} />
 
                  <header>
                     <BannerCarousel images={restaurantData.bannerUrls} onClick={() => setIsBannerExpanded(true)} restaurantName={restaurantData.name} logoUrl={restaurantData.logoUrl} />
@@ -1219,7 +1101,7 @@ const OrderPageInternal = () => {
                                             <MapPin className="text-primary flex-shrink-0" size={20}/>
                                             <p className="text-sm text-muted-foreground truncate">{customerLocation?.full || 'No location set'}</p>
                                         </div>
-                                        <Link href={`/location?returnUrl=${encodeURIComponent(window.location.pathname + window.location.search)}&phone=${phoneFromUrl || ''}`}>
+                                        <Link href={`/location?returnUrl=${encodeURIComponent(window.location.pathname + window.location.search)}&phone=${phone || ''}&token=${token || ''}`}>
                                             <Button variant="link" className="text-primary p-0 h-auto font-semibold flex-shrink-0">Change</Button>
                                         </Link>
                                     </>
