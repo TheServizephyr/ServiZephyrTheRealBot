@@ -90,13 +90,6 @@ const sendWelcomeMessageWithOptions = async (customerPhoneWithCode, business, bo
                     {
                         type: "reply",
                         reply: {
-                            id: `action_dashboard_${business.id}`,
-                            title: "My Dashboard"
-                        }
-                    },
-                    {
-                        type: "reply",
-                        reply: {
                             id: `action_track_${business.id}`,
                             title: "Track Last Order"
                         }
@@ -104,7 +97,7 @@ const sendWelcomeMessageWithOptions = async (customerPhoneWithCode, business, bo
                     {
                         type: "reply",
                         reply: {
-                            id: "action_help",
+                            id: `action_help`,
                             title: "Need Help?"
                         }
                     }
@@ -308,5 +301,6 @@ export async function POST(request) {
     
 
     
+
 
 
