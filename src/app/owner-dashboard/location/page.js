@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useState, useEffect, Suspense, useRef } from 'react';
@@ -154,7 +155,7 @@ const OwnerLocationPage = () => {
         }
         geocodeTimeoutRef.current = setTimeout(() => {
             reverseGeocode(coords);
-        }, 1000); // 1-second delay
+        }, 500); // 0.5-second delay
     };
     
 
@@ -314,3 +315,5 @@ const OwnerLocationPage = () => {
 };
 
 export default OwnerLocationPage;
+
+    
