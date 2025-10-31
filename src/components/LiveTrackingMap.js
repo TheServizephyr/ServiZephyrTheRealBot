@@ -7,37 +7,89 @@ import { Loader2 } from 'lucide-react';
 
 const GOOGLE_MAPS_API_KEY = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
 
-const RouteLine = ({ from, to }) => {
+const RouteLine = ({ from, to, isCurved = false }) => {
     const map = useMap();
     const polylineRef = useRef(null);
   
     useEffect(() => {
-      if (!map || !from || !to) return;
+        if (!map || !from || !to) {
+            // Clean up previous line if it exists
+            if (polylineRef.current) {
+                polylineRef.current.setMap(null);
+            }
+            return;
+        };
   
-      if (!polylineRef.current) {
-        polylineRef.current = new window.google.maps.Polyline({
-          strokeColor: '#000000',
-          strokeOpacity: 0.8,
-          strokeWeight: 4,
-          map: map,
-        });
-      }
-  
-      polylineRef.current.setPath([
-        { lat: from.lat, lng: from.lng },
-        { lat: to.lat, lng: to.lng },
-      ]);
-  
-      // Cleanup on unmount
-      return () => {
-        if (polylineRef.current) {
-          polylineRef.current.setMap(null);
-          polylineRef.current = null;
+        // Define line styles
+        const straightLineOptions = {
+            strokeColor: '#000000',
+            strokeOpacity: 0.8,
+            strokeWeight: 5,
+        };
+
+        const curvedDashedLineOptions = {
+            strokeColor: 'hsl(var(--primary))',
+            strokeOpacity: 0, // The line itself is invisible
+            strokeWeight: 3,
+            icons: [{
+                icon: {
+                    path: 'M 0,-1 0,1',
+                    strokeOpacity: 1,
+                    scale: 3,
+                },
+                offset: '0',
+                repeat: '15px'
+            }],
+        };
+
+        // Create a new polyline if it doesn't exist
+        if (!polylineRef.current) {
+            polylineRef.current = new window.google.maps.Polyline();
         }
-      };
-    }, [map, from, to]);
+
+        let path;
+        if (isCurved) {
+            polylineRef.current.setOptions(curvedDashedLineOptions);
+            
+            // Calculate a curve
+            const fromLatLng = new window.google.maps.LatLng(from.lat, from.lng);
+            const toLatLng = new window.google.maps.LatLng(to.lat, to.lng);
+            
+            const curvePoints = [];
+            const numPoints = 20; // More points for a smoother curve
+            for (let i = 0; i <= numPoints; i++) {
+                const t = i / numPoints;
+                // Simple quadratic curve calculation for a gentle arc
+                const lat = (1 - t) * (1 - t) * fromLatLng.lat() + 2 * (1 - t) * t * (fromLatLng.lat() + toLatLng.lat()) / 2 + t * t * toLatLng.lat();
+                const lng = (1 - t) * (1 - t) * fromLatLng.lng() + 2 * (1 - t) * t * (fromLatLng.lng() + toLatLng.lng()) / 2 + t * t * toLatLng.lng();
+                curvePoints.push({ lat, lng });
+            }
+            path = curvePoints;
+
+        } else {
+            polylineRef.current.setOptions(straightLineOptions);
+            path = [
+                { lat: from.lat, lng: from.lng },
+                { lat: to.lat, lng: to.lng },
+            ];
+        }
   
-    return null; // This component does not render anything itself
+        polylineRef.current.setPath(path);
+        polylineRef.current.setMap(map);
+  
+      // No cleanup function needed here as we are reusing the polyline instance
+    }, [map, from, to, isCurved]);
+  
+    // Cleanup on component unmount
+     useEffect(() => {
+        return () => {
+            if (polylineRef.current) {
+                polylineRef.current.setMap(null);
+            }
+        };
+    }, []);
+
+    return null;
 };
 
 
@@ -52,15 +104,18 @@ const MapComponent = ({ restaurantLocation, customerLocation, riderLocation }) =
             if (riderLocation) bounds.extend(riderLocation);
 
             if (!bounds.isEmpty()) {
-                map.fitBounds(bounds, 60); // 60px padding
+                map.fitBounds(bounds, 80); // 80px padding
             }
         }
     }, [restaurantLocation, customerLocation, riderLocation, map]);
 
     const routeStart = riderLocation || restaurantLocation;
     const routeEnd = customerLocation;
-    const showRoute = routeStart && routeEnd;
     
+    // Determine if the route should be shown and if it should be curved
+    const showRoute = routeStart && routeEnd;
+    const isCurved = !riderLocation && !!restaurantLocation;
+
     return (
         <>
             {restaurantLocation && (
@@ -78,7 +133,7 @@ const MapComponent = ({ restaurantLocation, customerLocation, riderLocation }) =
                      <div style={{ fontSize: '2.5rem' }}>🛵</div>
                 </AdvancedMarker>
             )}
-             {showRoute && <RouteLine from={routeStart} to={routeEnd} />}
+             {showRoute && <RouteLine from={routeStart} to={routeEnd} isCurved={isCurved} />}
         </>
     );
 }
