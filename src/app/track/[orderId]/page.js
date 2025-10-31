@@ -79,7 +79,9 @@ const StatusTimeline = ({ currentStatus }) => {
 
 const RiderDetails = ({ rider }) => {
     if (!rider) return null;
-    const riderLocation = rider.location;
+    const riderLat = rider.location?._latitude;
+    const riderLng = rider.location?._longitude;
+
     return (
         <Card className="shadow-lg">
             <CardContent className="p-4 flex items-center justify-between">
@@ -99,8 +101,8 @@ const RiderDetails = ({ rider }) => {
                     <Button asChild variant="outline" size="icon" className="h-11 w-11">
                         <a href={`tel:${rider.phone}`}><Phone /></a>
                     </Button>
-                     <Button asChild size="icon" className="h-11 w-11 bg-primary text-primary-foreground">
-                        <a href={`https://www.google.com/maps/dir/?api=1&destination=${riderLocation?._latitude},${riderLocation?._longitude}`} target="_blank" rel="noopener noreferrer"><Navigation /></a>
+                     <Button asChild size="icon" className="h-11 w-11 bg-primary text-primary-foreground" disabled={!riderLat || !riderLng}>
+                        <a href={`https://www.google.com/maps/dir/?api=1&destination=${riderLat},${riderLng}`} target="_blank" rel="noopener noreferrer"><Navigation /></a>
                     </Button>
                 </div>
             </CardContent>
@@ -154,15 +156,17 @@ export default function OrderTrackingPage() {
     }, [orderId]);
 
     const { restaurantLocation, customerLocation, riderLocation } = useMemo(() => {
-        // THE FIX: Correctly access latitude and longitude from the address object
-        const restaurantLoc = orderData?.restaurant?.address;
-        const customerLoc = orderData?.order?.customerLocation;
-        const riderLoc = orderData?.deliveryBoy?.location;
+        const restaurantLat = orderData?.restaurant?.address?.latitude;
+        const restaurantLng = orderData?.restaurant?.address?.longitude;
+        const customerLat = orderData?.order?.customerLocation?._latitude;
+        const customerLng = orderData?.order?.customerLocation?._longitude;
+        const riderLat = orderData?.deliveryBoy?.location?._latitude;
+        const riderLng = orderData?.deliveryBoy?.location?._longitude;
 
         return {
-            restaurantLocation: restaurantLoc ? { lat: restaurantLoc.latitude, lng: restaurantLoc.longitude } : null,
-            customerLocation: customerLoc ? { lat: customerLoc._latitude, lng: customerLoc._longitude } : null,
-            riderLocation: riderLoc ? { lat: riderLoc._latitude, lng: riderLoc._longitude } : null,
+            restaurantLocation: (restaurantLat && restaurantLng) ? { lat: restaurantLat, lng: restaurantLng } : null,
+            customerLocation: (customerLat && customerLng) ? { lat: customerLat, lng: customerLng } : null,
+            riderLocation: (riderLat && riderLng) ? { lat: riderLat, lng: riderLng } : null,
         };
     }, [orderData]);
 
