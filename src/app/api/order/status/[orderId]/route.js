@@ -65,7 +65,7 @@ export async function GET(request, { params }) {
             },
             restaurant: {
                 name: businessData.name,
-                location: businessData.address?.location // THE FIX: Correctly path to the GeoPoint object
+                location: businessData.address // THE FIX: Send the entire address object
             },
             deliveryBoy: deliveryBoyData ? {
                 id: deliveryBoyData.id,

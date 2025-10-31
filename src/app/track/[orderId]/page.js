@@ -100,7 +100,7 @@ const RiderDetails = ({ rider }) => {
                         <a href={`tel:${rider.phone}`}><Phone /></a>
                     </Button>
                      <Button asChild size="icon" className="h-11 w-11 bg-primary text-primary-foreground">
-                        <a href={`https://www.google.com/maps/dir/?api=1&destination=${riderLocation?._latitude},${riderLocation?._longitude}`} target="_blank" rel="noopener noreferrer"><Navigation /></a>
+                        <a href={`https://www.google.com/maps/dir/?api=1&destination=${riderLocation?.latitude},${riderLocation?.longitude}`} target="_blank" rel="noopener noreferrer"><Navigation /></a>
                     </Button>
                 </div>
             </CardContent>
@@ -154,12 +154,13 @@ export default function OrderTrackingPage() {
     }, [orderId]);
 
     const { restaurantLocation, customerLocation, riderLocation } = useMemo(() => {
+        // THE FIX: Correctly access latitude and longitude from the address object
         const restaurantLoc = orderData?.restaurant?.location;
         const customerLoc = orderData?.order?.customerLocation;
         const riderLoc = orderData?.deliveryBoy?.location;
 
         return {
-            restaurantLocation: restaurantLoc ? { lat: restaurantLoc._latitude, lng: restaurantLoc._longitude } : null,
+            restaurantLocation: restaurantLoc ? { lat: restaurantLoc.latitude, lng: restaurantLoc.longitude } : null,
             customerLocation: customerLoc ? { lat: customerLoc._latitude, lng: customerLoc._longitude } : null,
             riderLocation: riderLoc ? { lat: riderLoc._latitude, lng: riderLoc._longitude } : null,
         };
