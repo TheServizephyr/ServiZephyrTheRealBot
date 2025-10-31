@@ -66,7 +66,7 @@ const SelectLocationInternal = () => {
     
     useEffect(() => {
         const verifyAndFetch = async () => {
-             const phoneToUse = phone || user?.phoneNumber;
+            const phoneToUse = phone || user?.phoneNumber;
 
             if (!phoneToUse && !token) {
                  setTokenError("No session information found. Please start your journey from WhatsApp or log in.");
@@ -74,7 +74,6 @@ const SelectLocationInternal = () => {
                  return;
             }
             
-             // If token is present, we must verify it.
             if (token) {
                 try {
                     const res = await fetch('/api/auth/verify-token', {
@@ -93,51 +92,59 @@ const SelectLocationInternal = () => {
                     return;
                 }
             } else if (user) {
-                // If no token, but user is logged in, session is valid.
                 setIsTokenValid(true);
             } else {
                  setTokenError("No session token found. Please start your order from WhatsApp.");
                  setLoading(false);
                  return;
             }
-
+            
             fetchAddresses(phoneToUse);
         };
 
         const fetchAddresses = async (phoneToLookup) => {
-            if (!phoneToLookup) {
-                setLoading(false);
-                setAddresses([]);
-                return;
-            }
-
             setLoading(true);
             setError('');
+            
+            if (phoneToLookup) {
+                 try {
+                    const res = await fetch('/api/customer/lookup', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ phone: phoneToLookup }),
+                    });
 
-            try {
-                // Always use the customer lookup API which correctly handles fetching by phone number
-                const res = await fetch('/api/customer/lookup', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ phone: phoneToLookup }),
-                });
-
-                if (res.ok) {
+                    if (res.ok) {
+                        const data = await res.json();
+                        setAddresses(data.addresses || []);
+                    } else if (res.status === 404) {
+                        setAddresses([]);
+                    } else {
+                        const errorData = await res.json();
+                        throw new Error(errorData.message || 'Failed to look up customer data.');
+                    }
+                } catch (err) {
+                    setError(err.message);
+                    setAddresses([]);
+                } finally {
+                    setLoading(false);
+                }
+            } else if (user) {
+                 // Fallback for logged-in user if no phone in URL
+                 try {
+                    const idToken = await user.getIdToken();
+                    const res = await fetch('/api/user/addresses', { headers: { 'Authorization': `Bearer ${idToken}` } });
+                    if (!res.ok) throw new Error('Failed to fetch your saved addresses.');
                     const data = await res.json();
                     setAddresses(data.addresses || []);
-                } else if (res.status === 404) {
-                    // This is not an error, it just means the user has no saved addresses yet.
-                    setAddresses([]);
+                } catch (err) {
+                    setError(err.message);
+                } finally {
+                    setLoading(false);
                 }
-                else {
-                    const errorData = await res.json();
-                    throw new Error(errorData.message || 'Failed to look up customer data.');
-                }
-            } catch (err) {
-                setError(err.message);
-                setAddresses([]);
-            } finally {
+            } else {
                 setLoading(false);
+                setAddresses([]);
             }
         };
 

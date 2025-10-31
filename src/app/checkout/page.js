@@ -153,7 +153,6 @@ const CheckoutPageInternal = () => {
     
     const [userAddresses, setUserAddresses] = useState([]);
     const [codEnabled, setCodEnabled] = useState(false);
-    const [isModalOpen, setIsModalOpen] = useState(false);
     const [selectedPaymentMethod, setSelectedPaymentMethod] = useState(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
@@ -162,36 +161,43 @@ const CheckoutPageInternal = () => {
     
     useEffect(() => {
         const verifyAndFetch = async () => {
-            if (!phone || !token) {
-                 if (user) {
+            const phoneToUse = phone || user?.phoneNumber;
+
+            if (!phoneToUse && !token) {
+                 setTokenError("No session information found. Please start your journey from WhatsApp or log in.");
+                 setLoading(false);
+                 return;
+            }
+            
+            if (token) {
+                try {
+                    const res = await fetch('/api/auth/verify-token', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ phone, token }),
+                    });
+                    if (!res.ok) {
+                        const errData = await res.json();
+                        throw new Error(errData.message || "Session validation failed.");
+                    }
                     setIsTokenValid(true);
-                    fetchInitialData(user, user.phoneNumber);
+                } catch (err) {
+                    setTokenError(err.message);
+                    setLoading(false);
                     return;
                 }
-                setTokenError("No session token found. Please start your order from WhatsApp.");
-                setLoading(false);
-                return;
-            }
-
-            try {
-                const res = await fetch('/api/auth/verify-token', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ phone, token }),
-                });
-                if (!res.ok) {
-                    const errData = await res.json();
-                    throw new Error(errData.message || "Session validation failed.");
-                }
+            } else if (user) {
                 setIsTokenValid(true);
-                fetchInitialData(user, phone);
-            } catch (err) {
-                setTokenError(err.message);
-                setLoading(false);
+            } else {
+                 setTokenError("No session token found. Please start your order from WhatsApp.");
+                 setLoading(false);
+                 return;
             }
+            
+            fetchInitialData(phoneToUse);
         };
 
-        const fetchInitialData = async (currentUser, phoneToUse) => {
+        const fetchInitialData = async (phoneToUse) => {
             if (!restaurantId) {
                 router.push('/');
                 return;
@@ -232,7 +238,6 @@ const CheckoutPageInternal = () => {
                 
                 // --- START FIX: Logic to fetch addresses based on context ---
                 if (phoneToUse) {
-                    // If a phone number is available (from URL or logged-in user), fetch data for THAT number
                     const lookupRes = await fetch('/api/customer/lookup', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
@@ -241,14 +246,13 @@ const CheckoutPageInternal = () => {
                     if (lookupRes.ok) {
                         const data = await lookupRes.json();
                         setUserAddresses(data.addresses || []);
-                        setOrderName(prev => prev || data.name || (currentUser?.displayName || ''));
+                        setOrderName(prev => prev || data.name || '');
                         if (!customerAddressStr && data.addresses?.length > 0) {
                             setSelectedAddress(data.addresses[0]);
                         }
                     }
-                } else if (currentUser) {
-                    // Only fetch for the logged-in user if no phone number is specified
-                    const idToken = await currentUser.getIdToken();
+                } else if (user) {
+                    const idToken = await user.getIdToken();
                     const locationsRes = await fetch('/api/user/addresses', { headers: { 'Authorization': `Bearer ${idToken}` } });
                     if (locationsRes.ok) {
                         const { addresses } = await locationsRes.json();
@@ -257,7 +261,7 @@ const CheckoutPageInternal = () => {
                              setSelectedAddress(addresses[0]);
                         }
                     }
-                     if(!orderName) setOrderName(currentUser.displayName || '');
+                     if(!orderName) setOrderName(user.displayName || '');
                 }
                 // --- END FIX ---
 
@@ -285,7 +289,6 @@ const CheckoutPageInternal = () => {
 
     const handleAddNewAddress = () => {
         const currentUrl = window.location.href;
-        // Ensure phone and token are passed to the add-address page
         router.push(`/add-address?returnUrl=${encodeURIComponent(currentUrl)}&phone=${phone || ''}&token=${token || ''}`);
     };
 
@@ -322,7 +325,6 @@ const CheckoutPageInternal = () => {
              return;
         }
         setSelectedPaymentMethod(method);
-        setIsModalOpen(true);
     };
     
     const handleAddMoreToTab = () => {
@@ -379,7 +381,6 @@ const CheckoutPageInternal = () => {
             setError(err.message);
         } finally {
             setLoading(false);
-            setIsModalOpen(false);
         }
     };
     
@@ -397,7 +398,7 @@ const CheckoutPageInternal = () => {
     return (
         <>
             <Script src="https://checkout.razorpay.com/v1/checkout.js" />
-            <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
+            <Dialog open={!!selectedPaymentMethod} onOpenChange={(isOpen) => !isOpen && setSelectedPaymentMethod(null)}>
                  <DialogContent className="bg-background border-border text-foreground">
                     <DialogHeader>
                         <DialogTitle>Confirm Your Details</DialogTitle>
