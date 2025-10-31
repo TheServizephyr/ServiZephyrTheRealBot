@@ -1,5 +1,4 @@
 
-
 'use client';
 
 import { useState, useEffect, useRef, useMemo } from 'react';
@@ -19,6 +18,8 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
+
 
 const formatTimestamp = (timestamp) => {
     if (!timestamp) return '';
@@ -95,6 +96,21 @@ const MessageBubble = ({ message }) => {
     );
 };
 
+const ConfirmationModal = ({ isOpen, onClose, onConfirm, title, description }) => (
+    <Dialog open={isOpen} onOpenChange={onClose}>
+        <DialogContent className="bg-card border-border text-foreground">
+            <DialogHeader>
+                <DialogTitle>{title}</DialogTitle>
+                <DialogDescription>{description}</DialogDescription>
+            </DialogHeader>
+            <DialogFooter>
+                <Button variant="secondary" onClick={onClose}>Cancel</Button>
+                <Button variant="destructive" onClick={onConfirm}>Confirm End Chat</Button>
+            </DialogFooter>
+        </DialogContent>
+    </Dialog>
+);
+
 
 export default function WhatsAppDirectPage() {
     const [conversations, setConversations] = useState([]);
@@ -112,6 +128,7 @@ export default function WhatsAppDirectPage() {
     const [uploadProgress, setUploadProgress] = useState(0);
     const [uploadingFile, setUploadingFile] = useState(null);
     const [activeFilter, setActiveFilter] = useState('All');
+    const [isConfirmEndChatOpen, setConfirmEndChatOpen] = useState(false);
     
     const scrollToBottom = () => {
         messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -298,22 +315,20 @@ export default function WhatsAppDirectPage() {
         }
     };
 
-    const handleEndChat = async () => {
+    const confirmEndChat = async () => {
         if (!activeConversation) return;
+        setConfirmEndChatOpen(false);
 
-        if (window.confirm("Are you sure you want to end this chat? The customer will be asked for feedback.")) {
-            try {
-                await handleApiCall('/api/owner/whatsapp-direct/conversations', 'PATCH', {
-                    conversationId: activeConversation.id,
-                    action: 'end_chat'
-                });
-                setInfoDialog({ isOpen: true, title: 'Chat Ended', message: 'The chat has been ended. The customer has been asked for feedback.' });
-                 // Optionally clear the active conversation
-                setActiveConversation(null);
-                fetchConversations();
-            } catch (error) {
-                setInfoDialog({ isOpen: true, title: 'Error', message: 'Could not end chat: ' + error.message });
-            }
+        try {
+            await handleApiCall('/api/owner/whatsapp-direct/conversations', 'PATCH', {
+                conversationId: activeConversation.id,
+                action: 'end_chat'
+            });
+            setInfoDialog({ isOpen: true, title: 'Chat Ended', message: 'The chat has been ended. The customer has been asked for feedback.' });
+            setActiveConversation(null);
+            fetchConversations();
+        } catch (error) {
+            setInfoDialog({ isOpen: true, title: 'Error', message: 'Could not end chat: ' + error.message });
         }
     };
 
@@ -416,7 +431,7 @@ export default function WhatsAppDirectPage() {
                                     )}
                                 </DropdownMenuContent>
                             </DropdownMenu>
-                             <Button variant="destructive" size="sm" onClick={handleEndChat}>
+                             <Button variant="destructive" size="sm" onClick={() => setConfirmEndChatOpen(true)}>
                                 <LogOut size={14} className="mr-2"/> End Chat
                             </Button>
                         </div>
@@ -490,6 +505,13 @@ export default function WhatsAppDirectPage() {
                 onClose={() => setInfoDialog({ isOpen: false, title: '', message: '' })}
                 title={infoDialog.title}
                 message={infoDialog.message}
+            />
+            <ConfirmationModal
+                isOpen={isConfirmEndChatOpen}
+                onClose={() => setConfirmEndChatOpen(false)}
+                onConfirm={confirmEndChat}
+                title="End This Chat?"
+                description="Are you sure you want to end this chat? The customer will be asked for feedback."
             />
             <div className="h-[calc(100vh-100px)] md:h-[calc(100vh-65px)] flex bg-card border border-border rounded-xl overflow-hidden">
                 <div className="md:hidden w-full h-full">
