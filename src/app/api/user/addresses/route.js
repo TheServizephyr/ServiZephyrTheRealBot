@@ -3,24 +3,30 @@
 import { NextResponse } from 'next/server';
 import { getAuth, getFirestore, FieldValue } from '@/lib/firebase-admin';
 
-// Helper to get authenticated user UID
-async function getUserId(req) {
-    console.log("[API][user/addresses] Verifying user token...");
-    const authHeader = req.headers.get('authorization');
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-        throw { message: 'Unauthorized', status: 401 };
+// Helper to get authenticated user UID or null if not logged in
+async function getUserIdFromToken(req) {
+    try {
+        const authHeader = req.headers.get('authorization');
+        if (!authHeader || !authHeader.startsWith('Bearer ')) return null;
+        const token = authHeader.split('Bearer ')[1];
+        const decodedToken = await getAuth().verifyIdToken(token);
+        return decodedToken.uid;
+    } catch (error) {
+        // Token is invalid, expired, or not present
+        return null;
     }
-    const token = authHeader.split('Bearer ')[1];
-    const decodedToken = await getAuth().verifyIdToken(token);
-    console.log(`[API][user/addresses] Token verified. UID: ${decodedToken.uid}`);
-    return decodedToken.uid;
 }
+
 
 // GET: Fetch all saved addresses for a user
 export async function GET(req) {
     console.log("[API][user/addresses] GET request received.");
     try {
-        const uid = await getUserId(req);
+        const uid = await getUserIdFromToken(req);
+        if (!uid) {
+            return NextResponse.json({ message: 'User not authenticated.' }, { status: 401 });
+        }
+
         const userRef = getFirestore().collection('users').doc(uid);
         const docSnap = await userRef.get();
         
@@ -34,9 +40,6 @@ export async function GET(req) {
         const addresses = userData.addresses || [];
         
         console.log(`[API][user/addresses] Found ${addresses.length} addresses for user.`);
-        console.log("[API][user/addresses] Sending addresses in response:", JSON.stringify(addresses, null, 2));
-
-
         return NextResponse.json({ addresses }, { status: 200 });
     } catch (error) {
         console.error("GET /api/user/addresses ERROR:", error);
@@ -48,45 +51,55 @@ export async function GET(req) {
 // POST: Add a new address to the user's profile
 export async function POST(req) {
     console.log("[API][user/addresses] POST request received.");
-    const uid = await getUserId(req);
-    const newAddress = await req.json();
-
     try {
-        // --- THE FIX ---
-        // Validate new address. It must have a 'full' property and lat/lng.
-        // Other fields like street, city etc. are optional as geocoding might not return them.
-        if (!newAddress || !newAddress.id || !newAddress.full || typeof newAddress.latitude !== 'number' || typeof newAddress.longitude !== 'number') {
-            console.error("[API][user/addresses] POST validation failed: Invalid address data provided.", newAddress);
-            return NextResponse.json({ message: 'Invalid address data provided. A full address and location coordinates are required.' }, { status: 400 });
+        const uid = await getUserIdFromToken(req);
+        const { address, phone } = await req.json(); // Expect phone number from the client
+
+        // --- VALIDATION ---
+        if (!address || !address.id || !address.full || typeof address.latitude !== 'number' || typeof address.longitude !== 'number') {
+            console.error("[API][user/addresses] POST validation failed: Invalid address data provided.", address);
+            return NextResponse.json({ message: 'Invalid address data. A full address and location coordinates are required.' }, { status: 400 });
+        }
+        
+        const firestore = getFirestore();
+        let targetRef;
+
+        // --- REVISED LOGIC: Determine where to save the address ---
+        if (uid) {
+            // If the user is logged in, always save to their UID-based document.
+            console.log(`[API][user/addresses] User is logged in (UID: ${uid}). Saving address to 'users' collection.`);
+            targetRef = firestore.collection('users').doc(uid);
+        } else if (phone) {
+            // If not logged in, but a phone number is provided (from WhatsApp flow).
+            const normalizedPhone = phone.slice(-10);
+            console.log(`[API][user/addresses] User not logged in. Using phone number: ${normalizedPhone}.`);
+            
+            // First, check if a verified user exists with this phone number.
+            const userQuery = await firestore.collection('users').where('phone', '==', normalizedPhone).limit(1).get();
+            if (!userQuery.empty) {
+                // A verified user exists, save the address to their profile.
+                targetRef = userQuery.docs[0].ref;
+                 console.log(`[API][user/addresses] Found existing verified user for phone. Saving to UID: ${targetRef.id}.`);
+            } else {
+                // No verified user found, save to (or create) an unclaimed profile.
+                targetRef = firestore.collection('unclaimed_profiles').doc(normalizedPhone);
+                 console.log(`[API][user/addresses] No verified user found. Saving to 'unclaimed_profiles' for phone: ${normalizedPhone}.`);
+            }
+        } else {
+            // If no UID and no phone number, we cannot save the address.
+             return NextResponse.json({ message: 'Authentication token or phone number is required to save an address.' }, { status: 401 });
         }
 
-        const userRef = getFirestore().collection('users').doc(uid);
-        
-        console.log(`[API][user/addresses] Attempting to add address for user ${uid}.`);
-        await userRef.set({
-            addresses: FieldValue.arrayUnion(newAddress)
+        // Add the address to the determined target document.
+        await targetRef.set({
+            addresses: FieldValue.arrayUnion(address)
         }, { merge: true });
 
-        console.log(`[API][user/addresses] Address added successfully for user ${uid}.`);
-        return NextResponse.json({ message: 'Address added successfully!', address: newAddress }, { status: 200 });
+        console.log(`[API][user/addresses] Address added successfully to document: ${targetRef.path}.`);
+        return NextResponse.json({ message: 'Address added successfully!', address }, { status: 200 });
 
     } catch (error) {
-        console.error(`[API][user/addresses] POST /api/user/addresses ERROR for UID ${uid}:`, error);
-        // This handles the case where a user document doesn't exist yet.
-        // It's a common scenario for new users saving their first address.
-        if (error.code === 'not-found' || error.message.includes('NOT_FOUND') || error.code === 5) {
-             console.warn(`[API][user/addresses] User document for ${uid} not found. Creating a new one.`);
-             try {
-                const userRef = getFirestore().collection('users').doc(uid);
-                // Create the user document and add the first address.
-                await userRef.set({ addresses: [newAddress] }, { merge: true });
-                 console.log(`[API][user/addresses] New user document created and address added for UID ${uid}.`);
-                return NextResponse.json({ message: 'User profile created and address added!', address: newAddress }, { status: 201 });
-             } catch (createError) {
-                 console.error(`[API][user/addresses] POST (CREATE) ERROR for UID ${uid}:`, createError);
-                 return NextResponse.json({ message: createError.message || 'Internal Server Error' }, { status: 500 });
-             }
-        }
+        console.error(`[API][user/addresses] POST /api/user/addresses ERROR:`, error);
         return NextResponse.json({ message: error.message || 'Internal Server Error' }, { status: error.status || 500 });
     }
 }
@@ -96,7 +109,11 @@ export async function POST(req) {
 export async function DELETE(req) {
     console.log("[API][user/addresses] DELETE request received.");
     try {
-        const uid = await getUserId(req);
+        const uid = await getUserIdFromToken(req);
+        if (!uid) {
+            return NextResponse.json({ message: 'User not authenticated.' }, { status: 401 });
+        }
+        
         const { addressId } = await req.json();
 
         if (!addressId) {
@@ -136,4 +153,4 @@ export async function DELETE(req) {
     }
 }
 
-// PATCH/PUT for updating an address is not implemented, but would go here.
+

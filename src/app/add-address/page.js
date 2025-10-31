@@ -201,16 +201,31 @@ const AddAddressPageInternal = () => {
         
         localStorage.setItem('customerLocation', JSON.stringify(addressToSave));
 
-        if (!user) {
-            router.push(returnUrl);
-            return;
-        }
-        
         try {
-            const idToken = await user.getIdToken();
-            const res = await fetch('/api/user/addresses', { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${idToken}` }, body: JSON.stringify(addressToSave) });
-            if (!res.ok) throw new Error((await res.json()).message || 'Failed to save address.');
+            const apiPayload = {
+                address: addressToSave,
+                phone: phone // Pass the session phone number to the backend
+            };
+
+            const headers = { 'Content-Type': 'application/json' };
+            if (user) {
+                const idToken = await user.getIdToken();
+                headers['Authorization'] = `Bearer ${idToken}`;
+            }
+
+            const res = await fetch('/api/user/addresses', {
+                method: 'POST',
+                headers: headers,
+                body: JSON.stringify(apiPayload)
+            });
+
+            if (!res.ok) {
+                const errData = await res.json();
+                throw new Error(errData.message || 'Failed to save address.');
+            }
+            
             router.push(returnUrl);
+
         } catch (err) {
             setInfoDialog({ isOpen: true, title: "Error", message: `Could not save location: ${err.message}` });
         } finally {
