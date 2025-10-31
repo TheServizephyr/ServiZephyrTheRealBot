@@ -272,10 +272,11 @@ const CheckoutPageInternal = () => {
     
     useEffect(() => {
         const verifyAndFetch = async () => {
+            // Token verification logic remains the same
             if (!phone || !token) {
                  if (user) {
                     setIsTokenValid(true);
-                    fetchInitialData();
+                    fetchInitialData(user); // Pass user to initial fetch
                     return;
                 }
                 setTokenError("No session token found. Please start your order from WhatsApp.");
@@ -294,14 +295,14 @@ const CheckoutPageInternal = () => {
                     throw new Error(errData.message || "Session validation failed.");
                 }
                 setIsTokenValid(true);
-                fetchInitialData();
+                fetchInitialData(user); // Pass user to initial fetch
             } catch (err) {
                 setTokenError(err.message);
                 setLoading(false);
             }
         };
 
-        const fetchInitialData = async () => {
+        const fetchInitialData = async (currentUser) => {
             if (!restaurantId) {
                 router.push('/');
                 return;
@@ -321,7 +322,7 @@ const CheckoutPageInternal = () => {
                 setCart(updatedData.cart || []);
                 setAppliedCoupons(updatedData.appliedCoupons || []);
                 setCartData(updatedData);
-                setOrderPhone(phone);
+                setOrderPhone(phone); // Always set phone from URL if present
             } else if (tabId) {
                 parsedData = { dineInTabId: tabId, deliveryType: 'dine-in', phone, token };
                 setCartData(parsedData);
@@ -331,16 +332,10 @@ const CheckoutPageInternal = () => {
             }
             
             try {
-                if (user) {
-                    const idToken = await user.getIdToken();
-                    const locationsRes = await fetch('/api/user/addresses', { headers: { 'Authorization': `Bearer ${idToken}` } });
-                    if (locationsRes.ok) {
-                        const { addresses } = await locationsRes.json();
-                        setUserAddresses(addresses || []);
-                        if (addresses?.length > 0) setSelectedAddressId(addresses[0].id);
-                    }
-                    setOrderName(user.displayName || '');
-                } else if (phone) {
+                // *** THE FIX IS HERE ***
+                // Prioritize fetching data based on the phone number from the URL
+                if (phone) {
+                    console.log(`[Checkout] Fetching data for URL phone: ${phone}`);
                     const userRes = await fetch('/api/customer/lookup', {
                         method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ phone }),
                     });
@@ -352,8 +347,21 @@ const CheckoutPageInternal = () => {
                             setSelectedAddressId(userData.addresses[0].id);
                         }
                     }
+                } 
+                // Fallback to logged-in user only if no phone number is in the URL
+                else if (currentUser) {
+                    console.log(`[Checkout] No URL phone. Fetching data for logged-in user: ${currentUser.uid}`);
+                    const idToken = await currentUser.getIdToken();
+                    const locationsRes = await fetch('/api/user/addresses', { headers: { 'Authorization': `Bearer ${idToken}` } });
+                    if (locationsRes.ok) {
+                        const { addresses } = await locationsRes.json();
+                        setUserAddresses(addresses || []);
+                        if (addresses?.length > 0) setSelectedAddressId(addresses[0].id);
+                    }
+                    setOrderName(currentUser.displayName || '');
                 }
 
+                // Fetching payment settings is independent of user data
                 const paymentSettingsRes = await fetch(`/api/owner/settings?restaurantId=${restaurantId}`);
                  if (paymentSettingsRes.ok) {
                     const paymentData = await paymentSettingsRes.json();
@@ -380,32 +388,43 @@ const CheckoutPageInternal = () => {
         if (address) {
             setOrderName(address.name);
             setOrderPhone(address.phone);
+        } else if (phone) { // If no address is selected, fall back to the phone from URL
+            setOrderPhone(phone);
         }
-    }, [selectedAddressId, userAddresses]);
+    }, [selectedAddressId, userAddresses, phone]);
     
      const handleAddNewAddress = async (newAddress) => {
+        // If not logged in, just add to local state
         if (!user) {
             setUserAddresses(prev => [...prev, newAddress]);
             setSelectedAddressId(newAddress.id);
-            localStorage.setItem('customerLocation', JSON.stringify(newAddress));
+            // Optionally, save to local storage for persistence across reloads without login
+            // localStorage.setItem('tempAddresses', JSON.stringify([...userAddresses, newAddress]));
             setIsAddAddressModalOpen(false);
             return;
         }
+        // If logged in, save to backend
         try {
             const idToken = await user.getIdToken();
             await fetch('/api/user/addresses', { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${idToken}` }, body: JSON.stringify(newAddress) });
             setUserAddresses(prev => [...prev, newAddress]);
             setSelectedAddressId(newAddress.id);
+            setIsAddAddressModalOpen(false);
         } catch (error) { throw error; }
     };
     
     const handleDeleteAddress = async (addressId) => {
         if (!window.confirm("Are you sure you want to delete this address?")) return;
+        
+        // If not logged in, just remove from local state
         if (!user) {
-            setUserAddresses(prev => prev.filter(a => a.id !== addressId));
-            if (selectedAddressId === addressId) setSelectedAddressId(null);
+            const updatedAddresses = userAddresses.filter(a => a.id !== addressId);
+            setUserAddresses(updatedAddresses);
+            if (selectedAddressId === addressId) setSelectedAddressId(updatedAddresses[0]?.id || null);
             return;
         }
+
+        // If logged in, delete from backend
         try {
             const idToken = await user.getIdToken();
             await fetch('/api/user/addresses', { method: 'DELETE', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${idToken}` }, body: JSON.stringify({ addressId }) });
