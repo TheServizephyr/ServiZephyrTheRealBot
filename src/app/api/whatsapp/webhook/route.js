@@ -1,5 +1,4 @@
 
-
 import { NextResponse } from 'next/server';
 import { getFirestore, FieldValue } from '@/lib/firebase-admin';
 import { getStorage } from 'firebase-admin/storage';
@@ -109,11 +108,10 @@ const sendWelcomeMessageWithOptions = async (customerPhoneWithCode, business, bo
 }
 
 
-// --- NEW ACTION HANDLERS FOR BUTTONS ---
 const handleButtonActions = async (firestore, buttonId, fromNumber, business, botPhoneNumberId) => {
     const [action, type, ...payloadParts] = buttonId.split('_');
 
-    if (action !== 'action') return; // Not an action button we care about here.
+    if (action !== 'action') return;
     
     const customerPhone = fromNumber.startsWith('91') ? fromNumber.substring(2) : fromNumber;
     
@@ -141,16 +139,20 @@ const handleButtonActions = async (firestore, buttonId, fromNumber, business, bo
                 if (querySnapshot.empty) {
                     await sendWhatsAppMessage(fromNumber, `You don't have any recent orders to track.`, botPhoneNumberId);
                 } else {
-                    const allOrders = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                    const allOrders = querySnapshot.docs.map(doc => ({
+                        id: doc.id,
+                        ...doc.data()
+                    }));
 
                     allOrders.sort((a,b) => {
                         const dateA = a.orderDate?.toDate ? a.orderDate.toDate() : new Date(a.orderDate);
                         const dateB = b.orderDate?.toDate ? b.orderDate.toDate() : new Date(b.orderDate);
                         return dateB - dateA;
                     });
-
+                    
                     const latestOrder = allOrders[0];
                     const orderId = latestOrder.id;
+
                     const token = await generateSecureToken(firestore, customerPhone);
                     const link = `https://servizephyr.com/track/${orderId}?phone=${customerPhone}&token=${token}`;
                     await sendWhatsAppMessage(fromNumber, `Here is the tracking link for your latest order (#${orderId.substring(0, 6)}):\n\n${link}`, botPhoneNumberId);
@@ -193,10 +195,10 @@ export async function POST(request) {
             return NextResponse.json({ message: 'No change data' }, { status: 200 });
         }
         
-        const businessPhoneNumberId = change.value.metadata.phone_number_id;
-        const business = await getBusiness(firestore, businessPhoneNumberId);
+        const botPhoneNumberId = change.value.metadata.phone_number_id;
+        const business = await getBusiness(firestore, botPhoneNumberId);
         if (!business) {
-             console.error(`[Webhook] No business found for Bot Phone Number ID: ${businessPhoneNumberId}`);
+             console.error(`[Webhook] No business found for Bot Phone Number ID: ${botPhoneNumberId}`);
              return NextResponse.json({ message: 'Business not found' }, { status: 404 });
         }
 
@@ -259,7 +261,7 @@ export async function POST(request) {
 
                         if (!orderDoc.exists) {
                             console.error(`[Webhook] Action failed: Order with ID ${orderId} was not found.`);
-                            await sendWhatsAppMessage(fromNumber, `⚠️ Action failed: Order with ID ${orderId} was not found.`, businessPhoneNumberId);
+                            await sendWhatsAppMessage(fromNumber, `⚠️ Action failed: Order with ID ${orderId} was not found.`, botPhoneNumberId);
                             return NextResponse.json({ message: 'Order not found' }, { status: 200 });
                         }
                         
@@ -271,7 +273,7 @@ export async function POST(request) {
                             
                             await sendOrderStatusUpdateToCustomer({
                                 customerPhone: orderData.customerPhone,
-                                botPhoneNumberId: businessPhoneNumberId,
+                                botPhoneNumberId: botPhoneNumberId,
                                 customerName: orderData.customerName,
                                 orderId: orderId,
                                 restaurantName: business.data.name,
@@ -280,14 +282,14 @@ export async function POST(request) {
                             });
                             
                             console.log(`[Webhook] Sending confirmation back to owner at ${fromNumber}.`);
-                            await sendWhatsAppMessage(fromNumber, `✅ Action complete: Order ${orderId} has been confirmed. You can now start preparing it.`, businessPhoneNumberId);
+                            await sendWhatsAppMessage(fromNumber, `✅ Action complete: Order ${orderId} has been confirmed. You can now start preparing it.`, botPhoneNumberId);
 
                         } else if (action === 'reject') {
                             console.log(`[Webhook] Rejecting order ${orderId}. Updating status to 'rejected'.`);
                             await orderRef.update({ status: 'rejected' });
                             await sendOrderStatusUpdateToCustomer({
                                 customerPhone: orderData.customerPhone,
-                                botPhoneNumberId: businessPhoneNumberId,
+                                botPhoneNumberId: botPhoneNumberId,
                                 customerName: orderData.customerName,
                                 orderId: orderId,
                                 restaurantName: business.data.name,
@@ -295,7 +297,7 @@ export async function POST(request) {
                                 businessType: business.data.businessType || 'restaurant',
                             });
                             console.log(`[Webhook] Sending rejection confirmation back to owner at ${fromNumber}.`);
-                            await sendWhatsAppMessage(fromNumber, `✅ Action complete: Order ${orderId} has been rejected. The customer will be notified.`, businessPhoneNumberId);
+                            await sendWhatsAppMessage(fromNumber, `✅ Action complete: Order ${orderId} has been rejected. The customer will be notified.`, botPhoneNumberId);
                         }
                     } 
                     else if (action === 'retain' || action === 'revert') {
@@ -313,15 +315,15 @@ export async function POST(request) {
                             const revertToOpen = status === 'open';
                             console.log(`[Webhook] Reverting status for ${businessId}. Setting isOpen to: ${revertToOpen}`);
                             await firestore.collection(collectionName).doc(businessId).update({ isOpen: revertToOpen });
-                            await sendWhatsAppMessage(fromNumber, `✅ Action reverted. Your business has been set to **${revertToOpen ? 'OPEN' : 'CLOSED'}**.`, businessPhoneNumberId);
+                            await sendWhatsAppMessage(fromNumber, `✅ Action reverted. Your business has been set to **${revertToOpen ? 'OPEN' : 'CLOSED'}**.`, botPhoneNumberId);
                         } else { // retain
                             console.log(`[Webhook] Retaining status for ${businessId}. No change.`);
-                            await sendWhatsAppMessage(fromNumber, `✅ Understood. Your business status will remain **${status.toUpperCase()}**.`, businessPhoneNumberId);
+                            await sendWhatsAppMessage(fromNumber, `✅ Understood. Your business status will remain **${status.toUpperCase()}**.`, botPhoneNumberId);
                         }
                     }
                 }
             } else if (message.type === 'text') {
-                await sendWelcomeMessageWithOptions(fromNumber, business, businessPhoneNumberId);
+                await sendWelcomeMessageWithOptions(fromNumber, business, botPhoneNumberId);
             }
         }
         
@@ -335,6 +337,7 @@ export async function POST(request) {
     
 
     
+
 
 
 
