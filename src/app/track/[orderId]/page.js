@@ -100,7 +100,7 @@ const RiderDetails = ({ rider }) => {
                         <a href={`tel:${rider.phone}`}><Phone /></a>
                     </Button>
                      <Button asChild size="icon" className="h-11 w-11 bg-primary text-primary-foreground">
-                        <a href={`https://www.google.com/maps/dir/?api=1&destination=${riderLocation?.latitude},${riderLocation?.longitude}`} target="_blank" rel="noopener noreferrer"><Navigation /></a>
+                        <a href={`https://www.google.com/maps/dir/?api=1&destination=${riderLocation?._latitude},${riderLocation?._longitude}`} target="_blank" rel="noopener noreferrer"><Navigation /></a>
                     </Button>
                 </div>
             </CardContent>
@@ -155,7 +155,7 @@ export default function OrderTrackingPage() {
 
     const { restaurantLocation, customerLocation, riderLocation } = useMemo(() => {
         // THE FIX: Correctly access latitude and longitude from the address object
-        const restaurantLoc = orderData?.restaurant?.location;
+        const restaurantLoc = orderData?.restaurant?.address;
         const customerLoc = orderData?.order?.customerLocation;
         const riderLoc = orderData?.deliveryBoy?.location;
 
