@@ -79,8 +79,8 @@ const StatusTimeline = ({ currentStatus }) => {
 
 const RiderDetails = ({ rider }) => {
     if (!rider) return null;
-    const riderLat = rider.location?._latitude;
-    const riderLng = rider.location?._longitude;
+    const riderLat = rider.location?._latitude || rider.location?.latitude;
+    const riderLng = rider.location?._longitude || rider.location?.longitude;
 
     return (
         <Card className="shadow-lg">
@@ -156,12 +156,15 @@ export default function OrderTrackingPage() {
     }, [orderId]);
 
     const { restaurantLocation, customerLocation, riderLocation } = useMemo(() => {
+        // --- THE FIX: Correctly extract lat/lng from different potential object structures ---
         const restaurantLat = orderData?.restaurant?.address?.latitude;
         const restaurantLng = orderData?.restaurant?.address?.longitude;
-        const customerLat = orderData?.order?.customerLocation?._latitude;
-        const customerLng = orderData?.order?.customerLocation?._longitude;
-        const riderLat = orderData?.deliveryBoy?.location?._latitude;
-        const riderLng = orderData?.deliveryBoy?.location?._longitude;
+
+        const customerLat = orderData?.order?.customerLocation?._latitude || orderData?.order?.customerLocation?.latitude;
+        const customerLng = orderData?.order?.customerLocation?._longitude || orderData?.order?.customerLocation?.longitude;
+
+        const riderLat = orderData?.deliveryBoy?.location?._latitude || orderData?.deliveryBoy?.location?.latitude;
+        const riderLng = orderData?.deliveryBoy?.location?._longitude || orderData?.deliveryBoy?.location?.longitude;
 
         return {
             restaurantLocation: (restaurantLat && restaurantLng) ? { lat: restaurantLat, lng: restaurantLng } : null,

@@ -63,7 +63,13 @@ export async function POST(req) {
         
         console.log(`[DEBUG] /api/customer/register: User status: ${isNewUser ? 'New/Unclaimed User' : 'Existing Customer'}. User ID will be: ${userId}`);
 
-        const customerLocation = null;
+        // --- THE FIX: Correctly extract customer location from the address object ---
+        const customerLocation = (address && typeof address.latitude === 'number' && typeof address.longitude === 'number')
+            ? { latitude: address.latitude, longitude: address.longitude }
+            : null;
+        console.log(`[DEBUG] /api/customer/register: Customer location extracted:`, customerLocation);
+        // --- END FIX ---
+
 
         if (paymentMethod === 'razorpay') {
             console.log("[DEBUG] /api/customer/register: Payment method is Razorpay. Creating Razorpay order...");
@@ -198,7 +204,7 @@ export async function POST(req) {
         const newOrderRef = firestore.collection('orders').doc();
         batch.set(newOrderRef, {
             customerName: name, customerId: userId, customerAddress: address?.full || address, customerPhone: normalizedPhone,
-            customerLocation: customerLocation,
+            customerLocation: customerLocation, // --- THE FIX: Save the extracted location object ---
             restaurantId: restaurantId, restaurantName: businessData.name,
             businessType, deliveryType, pickupTime, tipAmount, tableId, dineInTabId: finalDineInTabId,
             items: items,
