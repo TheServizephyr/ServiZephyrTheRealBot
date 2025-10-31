@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useState, useEffect, Suspense, useCallback } from 'react';
@@ -56,9 +57,8 @@ const AddressesPageInternal = () => {
         setError('');
 
         if (!user) {
-            // If there is no authenticated user, don't try to fetch any addresses.
             setLoading(false);
-            setAddresses([]); // Ensure addresses are cleared
+            setAddresses([]); 
             return;
         }
 
@@ -111,11 +111,13 @@ const AddressesPageInternal = () => {
     };
     
     const handleAddNewAddress = () => {
-        router.push(`/add-address?returnUrl=${encodeURIComponent('/customer-dashboard/addresses')}&phone=${phone || ''}`);
+        const currentUrl = window.location.href;
+        router.push(`/add-address?returnUrl=${encodeURIComponent(currentUrl)}`);
     }
     
     const handleUseCurrentLocation = () => {
-        router.push(`/add-address?useCurrent=true&returnUrl=${encodeURIComponent('/customer-dashboard/addresses')}&phone=${phone || ''}`);
+        const currentUrl = window.location.href;
+        router.push(`/add-address?useCurrent=true&returnUrl=${encodeURIComponent(currentUrl)}`);
     };
 
     return (

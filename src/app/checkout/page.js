@@ -129,115 +129,6 @@ const SplitBillInterface = ({ totalAmount, onBack, orderDetails }) => {
     return null;
 };
 
-const AddAddressModal = ({ isOpen, onClose, onSave, userName, userPhone }) => {
-    const [address, setAddress] = useState({
-        label: 'Home', street: '', landmark: '', city: '',
-        pincode: '', state: '', country: 'IN'
-    });
-    const [recipientName, setRecipientName] = useState('');
-    const [phone, setPhone] = useState('');
-    const [alternatePhone, setAlternatePhone] = useState('');
-    const [isSaving, setIsSaving] = useState(false);
-    const [error, setError] = useState('');
-    
-    useEffect(() => {
-        if (isOpen) {
-            setAddress({ label: 'Home', street: '', landmark: '', city: '', pincode: '', state: '', country: 'IN' });
-            setRecipientName(userName || '');
-            setPhone(userPhone || '');
-            setAlternatePhone('');
-            setError('');
-            setIsSaving(false);
-        }
-    }, [isOpen, userName, userPhone]);
-    
-    const handleAddressChange = (field, value) => {
-        setAddress(prev => ({...prev, [field]: value}));
-    };
-
-    const handleSave = async () => {
-        if (!recipientName.trim() || !phone.trim() || !address.street.trim() || !address.city.trim() || !address.pincode.trim() || !address.state.trim()) {
-            setError('Please fill all required fields: Name, Phone, Street, City, Pincode, and State.');
-            return;
-        }
-        if (!/^\d{10}$/.test(phone.trim())) {
-            setError('Please enter a valid 10-digit primary phone number.');
-            return;
-        }
-
-        const fullAddress = `${address.street.trim()}, ${address.landmark ? address.landmark.trim() + ', ' : ''}${address.city.trim()}, ${address.state.trim()} - ${address.pincode.trim()}`;
-
-        const newAddress = {
-            id: `addr_${Date.now()}`,
-            label: address.label,
-            name: recipientName.trim(),
-            phone: phone.trim(),
-            alternatePhone: alternatePhone.trim(),
-            street: address.street.trim(),
-            landmark: address.landmark.trim(),
-            city: address.city.trim(),
-            pincode: address.pincode.trim(),
-            state: address.state.trim(),
-            country: address.country.trim(),
-            full: fullAddress, 
-        };
-        
-        setIsSaving(true);
-        setError('');
-        try {
-            await onSave(newAddress);
-            onClose();
-        } catch (err) {
-             setError(err.message);
-        } finally {
-            setIsSaving(false);
-        }
-    };
-    
-    return (
-        <Dialog open={isOpen} onOpenChange={onClose}>
-            <DialogContent className="bg-background border-border text-foreground">
-                <DialogHeader>
-                    <DialogTitle>Add a New Address</DialogTitle>
-                    <DialogDescription>Save a new address to your address book.</DialogDescription>
-                </DialogHeader>
-                <div className="py-4 space-y-4 max-h-[70vh] overflow-y-auto pr-2">
-                     {error && <p className="text-destructive text-sm bg-destructive/10 p-2 rounded-md">{error}</p>}
-                    
-                    <Input value={recipientName} onChange={e => setRecipientName(e.target.value)} placeholder="Recipient Name" required />
-                    <Input type="tel" value={phone} onChange={e => setPhone(e.target.value)} placeholder="Primary Phone Number" required />
-                        
-                    <Input value={address.street} onChange={e => handleAddressChange('street', e.target.value)} placeholder="House/Flat No., Building, Street, Area" required/>
-                    <Input value={address.landmark} onChange={e => handleAddressChange('landmark', e.target.value)} placeholder="Landmark (Optional)"/>
-                    <div className="grid grid-cols-2 gap-4">
-                        <Input value={address.pincode} onChange={e => handleAddressChange('pincode', e.target.value)} placeholder="Pincode" required/>
-                        <Input value={address.city} onChange={e => handleAddressChange('city', e.target.value)} placeholder="City" required/>
-                    </div>
-                     <div className="grid grid-cols-2 gap-4">
-                        <Input value={address.state} onChange={e => handleAddressChange('state', e.target.value)} placeholder="State" required/>
-                        <Input value={alternatePhone} onChange={e => setAlternatePhone(e.target.value)} placeholder="Alternate Phone (Optional)"/>
-                    </div>
-                     <div>
-                        <Label>Address Label</Label>
-                        <div className="flex gap-2 mt-2">
-                           <Button type="button" variant={address.label === 'Home' ? 'secondary' : 'outline'} onClick={() => handleAddressChange('label', 'Home')}><Home size={16} className="mr-2"/> Home</Button>
-                           <Button type="button" variant={address.label === 'Work' ? 'secondary' : 'outline'} onClick={() => handleAddressChange('label', 'Work')}><Building size={16} className="mr-2"/> Work</Button>
-                           <Button type="button" variant={address.label === 'Other' ? 'secondary' : 'outline'} onClick={() => handleAddressChange('label', 'Other')}><MapPin size={16} className="mr-2"/> Other</Button>
-                        </div>
-                    </div>
-                </div>
-                <DialogFooter>
-                    <DialogClose asChild><Button variant="secondary" disabled={isSaving}>Cancel</Button></DialogClose>
-                    <Button onClick={handleSave} disabled={isSaving}>
-                        {isSaving ? 'Saving...' : 'Save Address'}
-                    </Button>
-                </DialogFooter>
-            </DialogContent>
-        </Dialog>
-    );
-};
-
-
 const CheckoutPageInternal = () => {
     const router = useRouter();
     const searchParams = useSearchParams();
@@ -258,12 +149,11 @@ const CheckoutPageInternal = () => {
     
     const [orderName, setOrderName] = useState('');
     const [orderPhone, setOrderPhone] = useState('');
-    const [selectedAddressId, setSelectedAddressId] = useState(null);
+    const [selectedAddress, setSelectedAddress] = useState(null);
     
     const [userAddresses, setUserAddresses] = useState([]);
     const [codEnabled, setCodEnabled] = useState(false);
     const [isModalOpen, setIsModalOpen] = useState(false);
-    const [isAddAddressModalOpen, setIsAddAddressModalOpen] = useState(false);
     const [selectedPaymentMethod, setSelectedPaymentMethod] = useState(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
@@ -272,11 +162,10 @@ const CheckoutPageInternal = () => {
     
     useEffect(() => {
         const verifyAndFetch = async () => {
-            // Token verification logic remains the same
             if (!phone || !token) {
                  if (user) {
                     setIsTokenValid(true);
-                    fetchInitialData(user); // Pass user to initial fetch
+                    fetchInitialData(user);
                     return;
                 }
                 setTokenError("No session token found. Please start your order from WhatsApp.");
@@ -295,7 +184,7 @@ const CheckoutPageInternal = () => {
                     throw new Error(errData.message || "Session validation failed.");
                 }
                 setIsTokenValid(true);
-                fetchInitialData(user); // Pass user to initial fetch
+                fetchInitialData(user);
             } catch (err) {
                 setTokenError(err.message);
                 setLoading(false);
@@ -311,7 +200,7 @@ const CheckoutPageInternal = () => {
             setLoading(true);
             setError('');
             setUserAddresses([]);
-            setSelectedAddressId(null);
+            setSelectedAddress(null);
 
             let parsedData;
             const savedCartData = localStorage.getItem(`cart_${restaurantId}`);
@@ -322,7 +211,7 @@ const CheckoutPageInternal = () => {
                 setCart(updatedData.cart || []);
                 setAppliedCoupons(updatedData.appliedCoupons || []);
                 setCartData(updatedData);
-                setOrderPhone(phone); // Always set phone from URL if present
+                setOrderPhone(phone);
             } else if (tabId) {
                 parsedData = { dineInTabId: tabId, deliveryType: 'dine-in', phone, token };
                 setCartData(parsedData);
@@ -332,36 +221,29 @@ const CheckoutPageInternal = () => {
             }
             
             try {
-                // *** THE FIX IS HERE ***
-                // Prioritize fetching data based on the phone number from the URL
-                if (phone) {
-                    console.log(`[Checkout] Fetching data for URL phone: ${phone}`);
-                    const userRes = await fetch('/api/customer/lookup', {
-                        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ phone }),
-                    });
-                     if (userRes.ok) {
-                        const userData = await userRes.json();
-                        setOrderName(userData.name || '');
-                        if (userData.addresses?.length > 0) {
-                            setUserAddresses(userData.addresses);
-                            setSelectedAddressId(userData.addresses[0].id);
-                        }
-                    }
-                } 
-                // Fallback to logged-in user only if no phone number is in the URL
-                else if (currentUser) {
-                    console.log(`[Checkout] No URL phone. Fetching data for logged-in user: ${currentUser.uid}`);
+                const customerAddressStr = localStorage.getItem('customerLocation');
+                if (customerAddressStr) {
+                    const savedAddress = JSON.parse(customerAddressStr);
+                    setSelectedAddress(savedAddress);
+                    setOrderName(savedAddress.name || '');
+                    setOrderPhone(savedAddress.phone || phone);
+                } else if (phone) {
+                     setOrderPhone(phone);
+                }
+
+                if (currentUser) {
                     const idToken = await currentUser.getIdToken();
                     const locationsRes = await fetch('/api/user/addresses', { headers: { 'Authorization': `Bearer ${idToken}` } });
                     if (locationsRes.ok) {
                         const { addresses } = await locationsRes.json();
                         setUserAddresses(addresses || []);
-                        if (addresses?.length > 0) setSelectedAddressId(addresses[0].id);
+                        if (!customerAddressStr && addresses?.length > 0) {
+                             setSelectedAddress(addresses[0]);
+                        }
                     }
-                    setOrderName(currentUser.displayName || '');
+                     if(!orderName) setOrderName(currentUser.displayName || '');
                 }
 
-                // Fetching payment settings is independent of user data
                 const paymentSettingsRes = await fetch(`/api/owner/settings?restaurantId=${restaurantId}`);
                  if (paymentSettingsRes.ok) {
                     const paymentData = await paymentSettingsRes.json();
@@ -383,55 +265,9 @@ const CheckoutPageInternal = () => {
         }
     }, [restaurantId, router, phone, token, tableId, tabId, user, isUserLoading]);
 
-    useEffect(() => {
-        const address = userAddresses.find(a => a.id === selectedAddressId);
-        if (address) {
-            setOrderName(address.name);
-            setOrderPhone(address.phone);
-        } else if (phone) { // If no address is selected, fall back to the phone from URL
-            setOrderPhone(phone);
-        }
-    }, [selectedAddressId, userAddresses, phone]);
-    
-     const handleAddNewAddress = async (newAddress) => {
-        // If not logged in, just add to local state
-        if (!user) {
-            setUserAddresses(prev => [...prev, newAddress]);
-            setSelectedAddressId(newAddress.id);
-            // Optionally, save to local storage for persistence across reloads without login
-            // localStorage.setItem('tempAddresses', JSON.stringify([...userAddresses, newAddress]));
-            setIsAddAddressModalOpen(false);
-            return;
-        }
-        // If logged in, save to backend
-        try {
-            const idToken = await user.getIdToken();
-            await fetch('/api/user/addresses', { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${idToken}` }, body: JSON.stringify(newAddress) });
-            setUserAddresses(prev => [...prev, newAddress]);
-            setSelectedAddressId(newAddress.id);
-            setIsAddAddressModalOpen(false);
-        } catch (error) { throw error; }
-    };
-    
-    const handleDeleteAddress = async (addressId) => {
-        if (!window.confirm("Are you sure you want to delete this address?")) return;
-        
-        // If not logged in, just remove from local state
-        if (!user) {
-            const updatedAddresses = userAddresses.filter(a => a.id !== addressId);
-            setUserAddresses(updatedAddresses);
-            if (selectedAddressId === addressId) setSelectedAddressId(updatedAddresses[0]?.id || null);
-            return;
-        }
-
-        // If logged in, delete from backend
-        try {
-            const idToken = await user.getIdToken();
-            await fetch('/api/user/addresses', { method: 'DELETE', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${idToken}` }, body: JSON.stringify({ addressId }) });
-            const updatedAddresses = userAddresses.filter(addr => addr.id !== addressId);
-            setUserAddresses(updatedAddresses);
-            if(selectedAddressId === addressId) setSelectedAddressId(updatedAddresses.length > 0 ? updatedAddresses[0].id : null);
-        } catch (error) { setError("Error deleting address: " + error.message); }
+    const handleAddNewAddress = () => {
+        const currentUrl = window.location.href;
+        router.push(`/add-address?returnUrl=${encodeURIComponent(currentUrl)}`);
     };
 
     const subtotal = useMemo(() => cart.reduce((sum, item) => sum + item.totalPrice * item.quantity, 0), [cart]);
@@ -458,17 +294,12 @@ const CheckoutPageInternal = () => {
     const handlePaymentMethodSelect = (method) => {
         setError('');
         const deliveryType = cartData.tableId ? 'dine-in' : (cartData.deliveryType || 'delivery');
-        if (deliveryType === 'delivery') {
-            const deliveryAddress = userAddresses.find(a => a.id === selectedAddressId);
-            if (!deliveryAddress) {
-                setError("Please select or add a delivery address.");
-                setIsModalOpen(true);
-                return;
-            }
+        if (deliveryType === 'delivery' && !selectedAddress) {
+            setError("Please select or add a delivery address.");
+            return;
         }
         if (!orderName || orderName.trim().length === 0) {
              setError("Please provide a name for the order.");
-             setIsModalOpen(true);
              return;
         }
         setSelectedPaymentMethod(method);
@@ -490,16 +321,14 @@ const CheckoutPageInternal = () => {
 
         if (!orderName || orderName.trim().length === 0) { setError("Please provide a name for the order."); return; }
         
-        const deliveryAddress = userAddresses.find(a => a.id === selectedAddressId);
-        if (deliveryType === 'delivery' && !deliveryAddress) { setError("Please select or add a delivery address."); return; }
-        const finalAddress = deliveryType === 'delivery' ? deliveryAddress : null;
+        if (deliveryType === 'delivery' && !selectedAddress) { setError("Please select or add a delivery address."); return; }
 
         const orderData = {
             name: orderName, phone: orderPhone, restaurantId, items: cart, notes: cartData.notes, coupon: appliedCoupons.find(c => !c.customerId) || null,
             loyaltyDiscount: 0, subtotal, cgst, sgst, deliveryCharge: finalDeliveryCharge, grandTotal, paymentMethod: finalPaymentMethod,
             deliveryType: cartData.deliveryType, pickupTime: cartData.pickupTime || '', tipAmount: cartData.tipAmount || 0,
             businessType: cartData.businessType || 'restaurant', tableId: cartData.tableId || null, dineInTabId: cartData.dineInTabId || null,
-            pax_count: cartData.pax_count || null, tab_name: cartData.tab_name || null, address: finalAddress 
+            pax_count: cartData.pax_count || null, tab_name: cartData.tab_name || null, address: selectedAddress 
         };
 
         setLoading(true); setError('');
@@ -549,7 +378,6 @@ const CheckoutPageInternal = () => {
     return (
         <>
             <Script src="https://checkout.razorpay.com/v1/checkout.js" />
-            <AddAddressModal isOpen={isAddAddressModalOpen} onClose={() => setIsAddAddressModalOpen(false)} onSave={handleAddNewAddress} userName={orderName} userPhone={orderPhone} />
             <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
                  <DialogContent className="bg-background border-border text-foreground">
                     <DialogHeader>
@@ -563,16 +391,15 @@ const CheckoutPageInternal = () => {
                                 <div className="space-y-2 mt-2">
                                     {userAddresses.map(addr => (
                                         <div key={addr.id} className="flex items-start gap-2 p-3 rounded-md bg-muted has-[:checked]:bg-primary/10 has-[:checked]:border-primary border border-transparent">
-                                            <input type="radio" id={addr.id} name="address" value={addr.id} checked={selectedAddressId === addr.id} onChange={(e) => setSelectedAddressId(e.target.value)} className="h-4 w-4 mt-1 text-primary border-gray-300 focus:ring-primary" />
+                                            <input type="radio" id={addr.id} name="address" value={addr.id} checked={selectedAddress?.id === addr.id} onChange={() => setSelectedAddress(addr)} className="h-4 w-4 mt-1 text-primary border-gray-300 focus:ring-primary" />
                                             <Label htmlFor={addr.id} className="flex-1 cursor-pointer">
                                                 <p className="font-semibold">{addr.name}{addr.label && <span className="font-normal text-muted-foreground"> ({addr.label})</span>}</p>
                                                 <p className="text-xs text-muted-foreground">{addr.full}</p>
                                                 <p className="text-xs text-muted-foreground">Ph: {addr.phone} {addr.alternatePhone && ` / ${addr.alternatePhone}`}</p>
                                             </Label>
-                                             <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive" onClick={(e) => {e.stopPropagation(); handleDeleteAddress(addr.id);}}><Trash2 size={14}/></Button>
                                         </div>
                                     ))}
-                                    <Button variant="outline" className="w-full" onClick={() => { setIsModalOpen(false); setIsAddAddressModalOpen(true); }}><PlusCircle className="mr-2 h-4 w-4" /> Add New Address</Button>
+                                    <Button variant="outline" className="w-full" onClick={handleAddNewAddress}><PlusCircle className="mr-2 h-4 w-4" /> Add New Address</Button>
                                 </div>
                             </div>
                         ) : (
