@@ -52,7 +52,6 @@ export async function GET(req) {
 export async function POST(req) {
     console.log("[API][user/addresses] POST request received.");
     try {
-        const uid = await getUserIdFromToken(req);
         const { address, phone } = await req.json(); // Expect phone number from the client
 
         // --- VALIDATION ---
@@ -61,33 +60,26 @@ export async function POST(req) {
             return NextResponse.json({ message: 'Invalid address data. A full address and location coordinates are required.' }, { status: 400 });
         }
         
+        // ** THE FIX IS HERE: Prioritize phone number from the session **
+        if (!phone) {
+             return NextResponse.json({ message: 'A phone number is required to save an address for a session.' }, { status: 401 });
+        }
+
         const firestore = getFirestore();
         let targetRef;
+        const normalizedPhone = phone.slice(-10);
 
-        // --- REVISED LOGIC: Determine where to save the address ---
-        if (uid) {
-            // If the user is logged in, always save to their UID-based document.
-            console.log(`[API][user/addresses] User is logged in (UID: ${uid}). Saving address to 'users' collection.`);
-            targetRef = firestore.collection('users').doc(uid);
-        } else if (phone) {
-            // If not logged in, but a phone number is provided (from WhatsApp flow).
-            const normalizedPhone = phone.slice(-10);
-            console.log(`[API][user/addresses] User not logged in. Using phone number: ${normalizedPhone}.`);
-            
-            // First, check if a verified user exists with this phone number.
-            const userQuery = await firestore.collection('users').where('phone', '==', normalizedPhone).limit(1).get();
-            if (!userQuery.empty) {
-                // A verified user exists, save the address to their profile.
-                targetRef = userQuery.docs[0].ref;
-                 console.log(`[API][user/addresses] Found existing verified user for phone. Saving to UID: ${targetRef.id}.`);
-            } else {
-                // No verified user found, save to (or create) an unclaimed profile.
-                targetRef = firestore.collection('unclaimed_profiles').doc(normalizedPhone);
-                 console.log(`[API][user/addresses] No verified user found. Saving to 'unclaimed_profiles' for phone: ${normalizedPhone}.`);
-            }
+        // 1. Search for a verified user with this phone number first.
+        const userQuery = await firestore.collection('users').where('phone', '==', normalizedPhone).limit(1).get();
+
+        if (!userQuery.empty) {
+            // A verified user exists. Save the address to their profile.
+            targetRef = userQuery.docs[0].ref;
+            console.log(`[API][user/addresses] Found existing verified user for phone ${normalizedPhone}. Saving to UID: ${targetRef.id}.`);
         } else {
-            // If no UID and no phone number, we cannot save the address.
-             return NextResponse.json({ message: 'Authentication token or phone number is required to save an address.' }, { status: 401 });
+            // No verified user found, save to (or create) an unclaimed profile.
+            targetRef = firestore.collection('unclaimed_profiles').doc(normalizedPhone);
+            console.log(`[API][user/addresses] No verified user found. Saving to 'unclaimed_profiles' for phone: ${normalizedPhone}.`);
         }
 
         // Add the address to the determined target document.
@@ -152,5 +144,6 @@ export async function DELETE(req) {
         return NextResponse.json({ message: error.message || 'Internal Server Error' }, { status: error.status || 500 });
     }
 }
+
 
 
