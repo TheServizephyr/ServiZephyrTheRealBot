@@ -67,7 +67,6 @@ const generateSecureToken = async (firestore, customerPhone) => {
 };
 
 
-// --- NEW INTERACTIVE WELCOME MESSAGE (CORRECTED) ---
 const sendWelcomeMessageWithOptions = async (customerPhoneWithCode, business, botPhoneNumberId) => {
     console.log(`[Webhook] Sending interactive welcome message to ${customerPhoneWithCode}`);
     
@@ -161,7 +160,7 @@ const handleButtonActions = async (firestore, buttonId, fromNumber, business, bo
             case 'help': {
                 const conversationRef = business.ref.collection('conversations').doc(customerPhone);
                 await conversationRef.set({ state: 'direct_chat' }, { merge: true });
-                await sendWhatsAppMessage(fromNumber, `You can now chat directly with a representative from ${business.data.name}.\n\nWhen you are finished, type **Menu** to see the main options again.`, botPhoneNumberId);
+                await sendWhatsAppMessage(fromNumber, `You are now connected directly with a representative from ${business.data.name}. You can ask your questions here.\n\nWhen your query is resolved, the restaurant will end the chat.`, botPhoneNumberId);
                 break;
             }
             default:
@@ -201,27 +200,16 @@ export async function POST(request) {
              return NextResponse.json({ message: 'Business not found' }, { status: 404 });
         }
 
-        // --- NEW LOGIC ---
-        // Handle incoming messages (text, image, etc.)
         if (change.value.messages && change.value.messages.length > 0) {
             const message = change.value.messages[0];
             const fromNumber = message.from;
             const fromPhoneNumber = fromNumber.startsWith('91') ? fromNumber.substring(2) : fromNumber;
 
-            // Get conversation state
             const conversationRef = business.ref.collection('conversations').doc(fromPhoneNumber);
             const conversationSnap = await conversationRef.get();
             const conversationData = conversationSnap.exists ? conversationSnap.data() : { state: 'menu' };
             
-            // --- NEW: DIRECT CHAT & MENU KEYWORD LOGIC ---
-            if (message.type === 'text' && message.text.body.toLowerCase().trim() === 'menu') {
-                await conversationRef.set({ state: 'menu' }, { merge: true });
-                await sendWelcomeMessageWithOptions(fromNumber, business, businessPhoneNumberId);
-                return NextResponse.json({ message: 'Reset to menu' }, { status: 200 });
-            }
-            
             if (conversationData.state === 'direct_chat') {
-                 // Save message to subcollection for the owner to see
                 const messageRef = conversationRef.collection('messages').doc(message.id);
                 let messageContent = { type: message.type, text: message.type === 'text' ? message.text.body : `Unsupported type: ${message.type}` };
                 
@@ -245,9 +233,7 @@ export async function POST(request) {
                 console.log(`[Webhook] Message from ${fromPhoneNumber} forwarded to owner.`);
                 return NextResponse.json({ message: 'Forwarded to owner' }, { status: 200 });
             }
-            // --- END DIRECT CHAT LOGIC ---
 
-            // Handle button clicks from interactive messages
             if (message.type === 'interactive' && message.interactive.type === 'button_reply') {
                 const buttonReply = message.interactive.button_reply;
                 const buttonId = buttonReply.id;
@@ -255,9 +241,8 @@ export async function POST(request) {
                 console.log(`[Webhook] Button click detected. Button ID: "${buttonId}", From: ${fromNumber}`);
                 
                 if (buttonId.startsWith('action_')) {
-                    await handleButtonActions(firestore, buttonId, fromNumber, business, businessPhoneNumberId);
+                    await handleButtonActions(firestore, buttonId, fromNumber, business, botPhoneNumberId);
                 } else {
-                     // --- EXISTING LOGIC for owner order notifications ---
                      const [action, ...payloadParts] = buttonId.split('_');
 
                      if (action === 'accept' || action === 'reject') {
@@ -336,7 +321,6 @@ export async function POST(request) {
                     }
                 }
             } else if (message.type === 'text') {
-                // This is the new main logic: Always send the interactive menu for any text message
                 await sendWelcomeMessageWithOptions(fromNumber, business, businessPhoneNumberId);
             }
         }
@@ -351,6 +335,7 @@ export async function POST(request) {
     
 
     
+
 
 
 

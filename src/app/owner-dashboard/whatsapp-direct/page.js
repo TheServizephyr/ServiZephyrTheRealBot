@@ -1,9 +1,10 @@
 
+
 'use client';
 
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Search, Archive, MessageSquare, Send, Paperclip, Loader2, ArrowLeft, Image as ImageIcon, X, Tag, Star, AlertTriangle, ThumbsUp } from 'lucide-react';
+import { Search, Archive, MessageSquare, Send, Paperclip, Loader2, ArrowLeft, Image as ImageIcon, X, Tag, Star, AlertTriangle, ThumbsUp, LogOut } from 'lucide-react';
 import Image from 'next/image';
 import { auth } from '@/lib/firebase';
 import { useSearchParams } from 'next/navigation';
@@ -232,7 +233,6 @@ export default function WhatsAppDirectPage() {
         if (file && activeConversation) {
             handleImageUpload(file);
         }
-        // Reset file input
         if (fileInputRef.current) {
             fileInputRef.current.value = '';
         }
@@ -241,17 +241,15 @@ export default function WhatsAppDirectPage() {
     const handleImageUpload = async (file) => {
         if (!activeConversation) return;
         setUploadingFile(file.name);
-        setUploadProgress(0); // Reset progress
+        setUploadProgress(0);
         
         try {
-            // Get presigned URL from our backend
             const { presignedUrl, publicUrl } = await handleApiCall('/api/owner/whatsapp-direct/upload-url', 'POST', {
                 fileName: file.name,
                 fileType: file.type,
                 conversationId: activeConversation.id
             });
             
-            // Upload to Firebase Storage via presigned URL using fetch
             const uploadResponse = await fetch(presignedUrl, {
                 method: 'PUT',
                 body: file,
@@ -266,7 +264,6 @@ export default function WhatsAppDirectPage() {
                  throw new Error('Failed to upload image to storage.');
             }
             
-            // Now, send the public URL to our backend to send as a WhatsApp message
             await handleApiCall('/api/owner/whatsapp-direct/messages', 'POST', {
                 conversationId: activeConversation.id,
                 imageUrl: publicUrl
@@ -286,7 +283,6 @@ export default function WhatsAppDirectPage() {
         if (!activeConversation) return;
         const conversationId = activeConversation.id;
 
-        // Optimistic UI update
         const originalTag = activeConversation.tag;
         const newTag = originalTag === tag ? null : tag;
 
@@ -297,11 +293,30 @@ export default function WhatsAppDirectPage() {
             await handleApiCall('/api/owner/whatsapp-direct/conversations', 'PATCH', { conversationId, tag: newTag });
         } catch (error) {
             setInfoDialog({ isOpen: true, title: 'Error', message: 'Failed to update tag: ' + error.message });
-            // Revert UI on error
             setActiveConversation(prev => ({ ...prev, tag: originalTag }));
             setConversations(prev => prev.map(c => c.id === conversationId ? { ...c, tag: originalTag } : c));
         }
     };
+
+    const handleEndChat = async () => {
+        if (!activeConversation) return;
+
+        if (window.confirm("Are you sure you want to end this chat? The customer will be asked for feedback.")) {
+            try {
+                await handleApiCall('/api/owner/whatsapp-direct/conversations', 'PATCH', {
+                    conversationId: activeConversation.id,
+                    action: 'end_chat'
+                });
+                setInfoDialog({ isOpen: true, title: 'Chat Ended', message: 'The chat has been ended. The customer has been asked for feedback.' });
+                 // Optionally clear the active conversation
+                setActiveConversation(null);
+                fetchConversations();
+            } catch (error) {
+                setInfoDialog({ isOpen: true, title: 'Error', message: 'Could not end chat: ' + error.message });
+            }
+        }
+    };
+
 
     const quickReplies = [
         "Namaste! Hum aapki kaise madad kar sakte hain?",
@@ -377,29 +392,34 @@ export default function WhatsAppDirectPage() {
                                 <p className="text-xs text-muted-foreground">+{activeConversation.customerPhone}</p>
                             </div>
                         </div>
-                        <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
-                                <Button variant="outline" size="sm" className="flex items-center gap-2">
-                                    <Tag size={14} /> 
-                                    {activeConversation.tag || 'Tag Chat'}
-                                </Button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent>
-                                {Object.entries(tagConfig).map(([tag, {icon: TagIcon, color}]) => (
-                                    <DropdownMenuItem key={tag} onClick={() => handleTagChange(tag)}>
-                                        <TagIcon className={cn("mr-2 h-4 w-4", color)} /> {tag}
-                                    </DropdownMenuItem>
-                                ))}
-                                 {activeConversation.tag && (
-                                     <>
-                                      <div className="h-px bg-border my-1 mx-[-4px]"></div>
-                                      <DropdownMenuItem onClick={() => handleTagChange(null)} className="text-red-500">
-                                         <X size={14} className="mr-2"/> Clear Tag
-                                      </DropdownMenuItem>
-                                     </>
-                                 )}
-                            </DropdownMenuContent>
-                        </DropdownMenu>
+                        <div className="flex items-center gap-2">
+                           <DropdownMenu>
+                                <DropdownMenuTrigger asChild>
+                                    <Button variant="outline" size="sm" className="flex items-center gap-2">
+                                        <Tag size={14} /> 
+                                        {activeConversation.tag || 'Tag Chat'}
+                                    </Button>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent>
+                                    {Object.entries(tagConfig).map(([tag, {icon: TagIcon, color}]) => (
+                                        <DropdownMenuItem key={tag} onClick={() => handleTagChange(tag)}>
+                                            <TagIcon className={cn("mr-2 h-4 w-4", color)} /> {tag}
+                                        </DropdownMenuItem>
+                                    ))}
+                                    {activeConversation.tag && (
+                                        <>
+                                        <div className="h-px bg-border my-1 mx-[-4px]"></div>
+                                        <DropdownMenuItem onClick={() => handleTagChange(null)} className="text-red-500">
+                                            <X size={14} className="mr-2"/> Clear Tag
+                                        </DropdownMenuItem>
+                                        </>
+                                    )}
+                                </DropdownMenuContent>
+                            </DropdownMenu>
+                             <Button variant="destructive" size="sm" onClick={handleEndChat}>
+                                <LogOut size={14} className="mr-2"/> End Chat
+                            </Button>
+                        </div>
                     </header>
                     <div className="flex-grow p-4 overflow-y-auto">
                        {loadingMessages ? (
