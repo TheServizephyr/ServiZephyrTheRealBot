@@ -165,7 +165,7 @@ const CheckoutPageInternal = () => {
             if (!phone || !token) {
                  if (user) {
                     setIsTokenValid(true);
-                    fetchInitialData(user);
+                    fetchInitialData(user, user.phoneNumber);
                     return;
                 }
                 setTokenError("No session token found. Please start your order from WhatsApp.");
@@ -184,14 +184,14 @@ const CheckoutPageInternal = () => {
                     throw new Error(errData.message || "Session validation failed.");
                 }
                 setIsTokenValid(true);
-                fetchInitialData(user);
+                fetchInitialData(user, phone);
             } catch (err) {
                 setTokenError(err.message);
                 setLoading(false);
             }
         };
 
-        const fetchInitialData = async (currentUser) => {
+        const fetchInitialData = async (currentUser, phoneToUse) => {
             if (!restaurantId) {
                 router.push('/');
                 return;
@@ -207,16 +207,15 @@ const CheckoutPageInternal = () => {
             if (savedCartData) {
                 parsedData = JSON.parse(savedCartData);
                 const deliveryType = tableId ? 'dine-in' : (parsedData.deliveryType || 'delivery');
-                const updatedData = { ...parsedData, phone, token, tableId, dineInTabId: tabId, deliveryType };
+                const updatedData = { ...parsedData, phone: phoneToUse, token, tableId, dineInTabId: tabId, deliveryType };
                 setCart(updatedData.cart || []);
                 setAppliedCoupons(updatedData.appliedCoupons || []);
                 setCartData(updatedData);
-                setOrderPhone(phone);
             } else if (tabId) {
-                parsedData = { dineInTabId: tabId, deliveryType: 'dine-in', phone, token };
+                parsedData = { dineInTabId: tabId, deliveryType: 'dine-in', phone: phoneToUse, token };
                 setCartData(parsedData);
             } else {
-                router.push(`/order/${restaurantId}?phone=${phone}&token=${token}${tableId ? `&table=${tableId}`: ''}`);
+                router.push(`/order/${restaurantId}?phone=${phoneToUse}&token=${token}${tableId ? `&table=${tableId}`: ''}`);
                 return;
             }
             
@@ -226,12 +225,29 @@ const CheckoutPageInternal = () => {
                     const savedAddress = JSON.parse(customerAddressStr);
                     setSelectedAddress(savedAddress);
                     setOrderName(savedAddress.name || '');
-                    setOrderPhone(savedAddress.phone || phone);
-                } else if (phone) {
-                     setOrderPhone(phone);
+                    setOrderPhone(savedAddress.phone || phoneToUse);
+                } else {
+                     setOrderPhone(phoneToUse);
                 }
-
-                if (currentUser) {
+                
+                // --- START FIX: Logic to fetch addresses based on context ---
+                if (phoneToUse) {
+                    // If a phone number is available (from URL or logged-in user), fetch data for THAT number
+                    const lookupRes = await fetch('/api/customer/lookup', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ phone: phoneToUse }),
+                    });
+                    if (lookupRes.ok) {
+                        const data = await lookupRes.json();
+                        setUserAddresses(data.addresses || []);
+                        setOrderName(prev => prev || data.name || (currentUser?.displayName || ''));
+                        if (!customerAddressStr && data.addresses?.length > 0) {
+                            setSelectedAddress(data.addresses[0]);
+                        }
+                    }
+                } else if (currentUser) {
+                    // Only fetch for the logged-in user if no phone number is specified
                     const idToken = await currentUser.getIdToken();
                     const locationsRes = await fetch('/api/user/addresses', { headers: { 'Authorization': `Bearer ${idToken}` } });
                     if (locationsRes.ok) {
@@ -243,6 +259,7 @@ const CheckoutPageInternal = () => {
                     }
                      if(!orderName) setOrderName(currentUser.displayName || '');
                 }
+                // --- END FIX ---
 
                 const paymentSettingsRes = await fetch(`/api/owner/settings?restaurantId=${restaurantId}`);
                  if (paymentSettingsRes.ok) {
@@ -265,9 +282,11 @@ const CheckoutPageInternal = () => {
         }
     }, [restaurantId, router, phone, token, tableId, tabId, user, isUserLoading]);
 
+
     const handleAddNewAddress = () => {
         const currentUrl = window.location.href;
-        router.push(`/add-address?returnUrl=${encodeURIComponent(currentUrl)}`);
+        // Ensure phone and token are passed to the add-address page
+        router.push(`/add-address?returnUrl=${encodeURIComponent(currentUrl)}&phone=${phone || ''}&token=${token || ''}`);
     };
 
     const subtotal = useMemo(() => cart.reduce((sum, item) => sum + item.totalPrice * item.quantity, 0), [cart]);
@@ -381,7 +400,7 @@ const CheckoutPageInternal = () => {
             <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
                  <DialogContent className="bg-background border-border text-foreground">
                     <DialogHeader>
-                        <DialogTitle>{deliveryType === 'delivery' ? 'Confirm Delivery Details' : 'Confirm Your Details'}</DialogTitle>
+                        <DialogTitle>Confirm Your Details</DialogTitle>
                         {error && <p className="text-destructive text-sm bg-destructive/10 p-2 rounded-md mt-2">{error}</p>}
                     </DialogHeader>
                     <div className="py-4 space-y-4 max-h-[70vh] overflow-y-auto">
@@ -395,7 +414,7 @@ const CheckoutPageInternal = () => {
                                             <Label htmlFor={addr.id} className="flex-1 cursor-pointer">
                                                 <p className="font-semibold">{addr.name}{addr.label && <span className="font-normal text-muted-foreground"> ({addr.label})</span>}</p>
                                                 <p className="text-xs text-muted-foreground">{addr.full}</p>
-                                                <p className="text-xs text-muted-foreground">Ph: {addr.phone} {addr.alternatePhone && ` / ${addr.alternatePhone}`}</p>
+                                                <p className="text-xs text-muted-foreground">Ph: {addr.phone}</p>
                                             </Label>
                                         </div>
                                     ))}

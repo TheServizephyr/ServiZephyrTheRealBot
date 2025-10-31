@@ -132,37 +132,37 @@ const AddAddressPageInternal = () => {
     useEffect(() => {
         const prefillData = async () => {
             const finalPhone = phone || user?.phoneNumber;
+            
+            // Prioritize logged-in user data
             if (user) {
-                try {
-                    const idToken = await user.getIdToken();
-                    const response = await fetch('/api/owner/settings', { headers: { 'Authorization': `Bearer ${idToken}` } });
-                    if (response.ok) {
-                        const profileData = await response.json();
-                        setRecipientName(profileData.name || user.displayName || '');
-                        setRecipientPhone(profileData.phone || user.phoneNumber || '');
-                    } else {
-                        setRecipientName(user.displayName || '');
-                        setRecipientPhone(user.phoneNumber || '');
-                    }
-                } catch (e) {
-                    setRecipientName(user.displayName || '');
-                    setRecipientPhone(user.phoneNumber || '');
-                }
-            } else if (finalPhone) {
+                setRecipientName(user.displayName || '');
+                setRecipientPhone(user.phoneNumber || finalPhone || '');
+            } 
+            // If not logged in but phone is available, try to look up customer data
+            else if (finalPhone) {
                 setRecipientPhone(finalPhone);
                 try {
                     const res = await fetch('/api/customer/lookup', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ phone: finalPhone }) });
-                    if (res.ok) setRecipientName((await res.json()).name || '');
-                } catch (e) {}
+                    if (res.ok) {
+                        const customerData = await res.json();
+                        setRecipientName(customerData.name || '');
+                    }
+                } catch (e) {
+                    console.warn("Could not prefill name from customer lookup:", e);
+                }
             }
         };
         
         if (isTokenValid) {
             prefillData();
-            if (useCurrent && !addressDetails) getCurrentGeolocation();
-            else if (!addressDetails) reverseGeocode(mapCenter);
+            if (useCurrent && !addressDetails) {
+                getCurrentGeolocation();
+            } else if (!addressDetails) {
+                // Trigger initial geocode for the default map center
+                reverseGeocode(mapCenter);
+            }
         }
-    }, [isTokenValid, user, phone, useCurrent, getCurrentGeolocation, reverseGeocode]);
+    }, [isTokenValid, user, phone, useCurrent, getCurrentGeolocation, reverseGeocode, mapCenter]);
 
 
     const handleConfirmLocation = async () => {
@@ -185,9 +185,10 @@ const AddAddressPageInternal = () => {
             pincode: addressDetails.pincode, country: addressDetails.country, full: fullAddress.trim(),
             latitude: addressDetails.latitude, longitude: addressDetails.longitude,
         };
+        
+        localStorage.setItem('customerLocation', JSON.stringify(addressToSave));
 
         if (!user) {
-            localStorage.setItem('customerLocation', JSON.stringify(addressToSave));
             router.push(returnUrl);
             return;
         }
@@ -196,7 +197,6 @@ const AddAddressPageInternal = () => {
             const idToken = await user.getIdToken();
             const res = await fetch('/api/user/addresses', { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${idToken}` }, body: JSON.stringify(addressToSave) });
             if (!res.ok) throw new Error((await res.json()).message || 'Failed to save address.');
-            localStorage.setItem('customerLocation', JSON.stringify(addressToSave));
             router.push(returnUrl);
         } catch (err) {
             setInfoDialog({ isOpen: true, title: "Error", message: `Could not save location: ${err.message}` });

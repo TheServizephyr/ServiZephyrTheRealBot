@@ -1,7 +1,7 @@
 
 'use client';
 
-import React, { useState, useEffect, Suspense } from 'react';
+import React, { useState, useEffect, Suspense, useCallback } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { motion } from 'framer-motion';
 import { MapPin, LocateFixed, Plus, Home, Building, Trash2, ArrowLeft, Lock } from 'lucide-react';
@@ -66,33 +66,42 @@ const SelectLocationInternal = () => {
     
     useEffect(() => {
         const verifyAndFetch = async () => {
-            if (!phone || !token) {
-                if (user) {
+             const phoneToUse = phone || user?.phoneNumber;
+
+            if (!phoneToUse && !token) {
+                 setTokenError("No session information found. Please start your journey from WhatsApp or log in.");
+                 setLoading(false);
+                 return;
+            }
+            
+             // If token is present, we must verify it.
+            if (token) {
+                try {
+                    const res = await fetch('/api/auth/verify-token', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ phone, token }),
+                    });
+                    if (!res.ok) {
+                        const errData = await res.json();
+                        throw new Error(errData.message || "Session validation failed.");
+                    }
                     setIsTokenValid(true);
-                    fetchAddresses(user.phoneNumber);
+                } catch (err) {
+                    setTokenError(err.message);
+                    setLoading(false);
                     return;
                 }
-                setTokenError("No session token found. Please start your order from WhatsApp.");
-                setLoading(false);
-                return;
+            } else if (user) {
+                // If no token, but user is logged in, session is valid.
+                setIsTokenValid(true);
+            } else {
+                 setTokenError("No session token found. Please start your order from WhatsApp.");
+                 setLoading(false);
+                 return;
             }
 
-            try {
-                const res = await fetch('/api/auth/verify-token', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ phone, token }),
-                });
-                if (!res.ok) {
-                    const errData = await res.json();
-                    throw new Error(errData.message || "Session validation failed.");
-                }
-                setIsTokenValid(true);
-                fetchAddresses(phone);
-            } catch (err) {
-                setTokenError(err.message);
-                setLoading(false);
-            }
+            fetchAddresses(phoneToUse);
         };
 
         const fetchAddresses = async (phoneToLookup) => {
@@ -106,6 +115,7 @@ const SelectLocationInternal = () => {
             setError('');
 
             try {
+                // Always use the customer lookup API which correctly handles fetching by phone number
                 const res = await fetch('/api/customer/lookup', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -115,7 +125,11 @@ const SelectLocationInternal = () => {
                 if (res.ok) {
                     const data = await res.json();
                     setAddresses(data.addresses || []);
-                } else if (res.status !== 404) {
+                } else if (res.status === 404) {
+                    // This is not an error, it just means the user has no saved addresses yet.
+                    setAddresses([]);
+                }
+                else {
                     const errorData = await res.json();
                     throw new Error(errorData.message || 'Failed to look up customer data.');
                 }
