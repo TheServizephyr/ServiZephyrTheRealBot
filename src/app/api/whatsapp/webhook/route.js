@@ -114,6 +114,7 @@ const handleButtonActions = async (firestore, buttonId, fromNumber, business, bo
     if (action !== 'action') return;
     
     const customerPhone = fromNumber.startsWith('91') ? fromNumber.substring(2) : fromNumber;
+    const conversationRef = business.ref.collection('conversations').doc(customerPhone);
     
     console.log(`[Webhook] Handling action: '${type}' for customer ${customerPhone}`);
 
@@ -151,6 +152,10 @@ const handleButtonActions = async (firestore, buttonId, fromNumber, business, bo
                     });
                     
                     const latestOrder = allOrders[0];
+                    if (!latestOrder || !latestOrder.id) {
+                         await sendWhatsAppMessage(fromNumber, `We couldn't find the ID for your last order. Please contact support.`, botPhoneNumberId);
+                         return;
+                    }
                     const orderId = latestOrder.id;
 
                     const token = await generateSecureToken(firestore, customerPhone);
@@ -160,11 +165,28 @@ const handleButtonActions = async (firestore, buttonId, fromNumber, business, bo
                 break;
             }
             case 'help': {
-                const conversationRef = business.ref.collection('conversations').doc(customerPhone);
                 await conversationRef.set({ state: 'direct_chat' }, { merge: true });
                 await sendWhatsAppMessage(fromNumber, `You are now connected directly with a representative from ${business.data.name}. You can ask your questions here.\n\nWhen your query is resolved, the restaurant will end the chat.`, botPhoneNumberId);
                 break;
             }
+            // --- START FIX: Handle new buttons ---
+            case 'end': { // Corresponds to 'action_end_chat'
+                if (payloadParts[0] === 'chat') {
+                    await conversationRef.set({ state: 'menu' }, { merge: true });
+                    await sendWelcomeMessageWithOptions(fromNumber, business, botPhoneNumberId);
+                }
+                break;
+            }
+            case 'report': { // Corresponds to 'action_report_admin'
+                if (payloadParts[0] === 'admin') {
+                    // In a real app, you'd collect more info or forward the chat.
+                    // For now, just acknowledge.
+                    console.log(`[Webhook] Admin Report triggered by ${customerPhone} for business ${business.id}`);
+                    await sendWhatsAppMessage(fromNumber, `Thank you. Your request to speak with an admin has been noted. We will review the conversation and get back to you shortly.`, botPhoneNumberId);
+                }
+                break;
+            }
+            // --- END FIX ---
             default:
                  console.warn(`[Webhook] Unhandled action type: ${type}`);
         }
@@ -211,23 +233,24 @@ export async function POST(request) {
             const conversationSnap = await conversationRef.get();
             const conversationData = conversationSnap.exists ? conversationSnap.data() : { state: 'menu' };
             
-            if (conversationData.state === 'direct_chat') {
+            // If in direct chat mode, forward message to owner
+            if (conversationData.state === 'direct_chat' && message.type === 'text') {
                 const messageRef = conversationRef.collection('messages').doc(message.id);
-                let messageContent = { type: message.type, text: message.type === 'text' ? message.text.body : `Unsupported type: ${message.type}` };
                 
                 await messageRef.set({
                     id: message.id,
                     sender: 'customer',
                     timestamp: FieldValue.serverTimestamp(),
                     status: 'received',
-                    ...messageContent
+                    type: 'text',
+                    text: message.text.body
                 });
                 
                 await conversationRef.set({
                     customerName: change.value.contacts[0].profile.name,
                     customerPhone: fromPhoneNumber,
-                    lastMessage: messageContent.text,
-                    lastMessageType: messageContent.type,
+                    lastMessage: message.text.body,
+                    lastMessageType: 'text',
                     lastMessageTimestamp: FieldValue.serverTimestamp(),
                     unreadCount: FieldValue.increment(1)
                 }, { merge: true });
@@ -236,93 +259,17 @@ export async function POST(request) {
                 return NextResponse.json({ message: 'Forwarded to owner' }, { status: 200 });
             }
 
+            // Handle button clicks
             if (message.type === 'interactive' && message.interactive.type === 'button_reply') {
                 const buttonReply = message.interactive.button_reply;
                 const buttonId = buttonReply.id;
                 
                 console.log(`[Webhook] Button click detected. Button ID: "${buttonId}", From: ${fromNumber}`);
                 
-                if (buttonId.startsWith('action_')) {
-                    await handleButtonActions(firestore, buttonId, fromNumber, business, botPhoneNumberId);
-                } else {
-                     const [action, ...payloadParts] = buttonId.split('_');
-
-                     if (action === 'accept' || action === 'reject') {
-                        const orderId = payloadParts.join('_').replace('order_', '');
-                        console.log(`[Webhook] Order action detected. Action: ${action}, Order ID: ${orderId}`);
-                        
-                        if (!orderId) {
-                            console.warn(`[Webhook] Invalid order button ID format: ${buttonId}`);
-                            return NextResponse.json({ message: 'Invalid button ID' }, { status: 200 });
-                        }
-
-                        const orderRef = firestore.collection('orders').doc(orderId);
-                        const orderDoc = await orderRef.get();
-
-                        if (!orderDoc.exists) {
-                            console.error(`[Webhook] Action failed: Order with ID ${orderId} was not found.`);
-                            await sendWhatsAppMessage(fromNumber, `⚠️ Action failed: Order with ID ${orderId} was not found.`, botPhoneNumberId);
-                            return NextResponse.json({ message: 'Order not found' }, { status: 200 });
-                        }
-                        
-                        const orderData = orderDoc.data();
-                        
-                        if (action === 'accept') {
-                            console.log(`[Webhook] Accepting order ${orderId}. Updating status to 'confirmed'.`);
-                            await orderRef.update({ status: 'confirmed' });
-                            
-                            await sendOrderStatusUpdateToCustomer({
-                                customerPhone: orderData.customerPhone,
-                                botPhoneNumberId: botPhoneNumberId,
-                                customerName: orderData.customerName,
-                                orderId: orderId,
-                                restaurantName: business.data.name,
-                                status: 'confirmed',
-                                businessType: business.data.businessType || 'restaurant',
-                            });
-                            
-                            console.log(`[Webhook] Sending confirmation back to owner at ${fromNumber}.`);
-                            await sendWhatsAppMessage(fromNumber, `✅ Action complete: Order ${orderId} has been confirmed. You can now start preparing it.`, botPhoneNumberId);
-
-                        } else if (action === 'reject') {
-                            console.log(`[Webhook] Rejecting order ${orderId}. Updating status to 'rejected'.`);
-                            await orderRef.update({ status: 'rejected' });
-                            await sendOrderStatusUpdateToCustomer({
-                                customerPhone: orderData.customerPhone,
-                                botPhoneNumberId: botPhoneNumberId,
-                                customerName: orderData.customerName,
-                                orderId: orderId,
-                                restaurantName: business.data.name,
-                                status: 'rejected',
-                                businessType: business.data.businessType || 'restaurant',
-                            });
-                            console.log(`[Webhook] Sending rejection confirmation back to owner at ${fromNumber}.`);
-                            await sendWhatsAppMessage(fromNumber, `✅ Action complete: Order ${orderId} has been rejected. The customer will be notified.`, botPhoneNumberId);
-                        }
-                    } 
-                    else if (action === 'retain' || action === 'revert') {
-                        const [_, __, businessId, status] = payloadParts;
-                        console.log(`[Webhook] Restaurant status action detected. Action: ${action}, Business ID: ${businessId}, Status: ${status}`);
-
-                        if(!businessId || !status) {
-                            console.warn(`[Webhook] Invalid status button ID format: ${buttonId}`);
-                            return NextResponse.json({ message: 'Invalid button ID' }, { status: 200 });
-                        }
-
-                        const collectionName = business.data.businessType === 'shop' ? 'shops' : 'restaurants';
-
-                        if (action === 'revert') {
-                            const revertToOpen = status === 'open';
-                            console.log(`[Webhook] Reverting status for ${businessId}. Setting isOpen to: ${revertToOpen}`);
-                            await firestore.collection(collectionName).doc(businessId).update({ isOpen: revertToOpen });
-                            await sendWhatsAppMessage(fromNumber, `✅ Action reverted. Your business has been set to **${revertToOpen ? 'OPEN' : 'CLOSED'}**.`, botPhoneNumberId);
-                        } else { // retain
-                            console.log(`[Webhook] Retaining status for ${businessId}. No change.`);
-                            await sendWhatsAppMessage(fromNumber, `✅ Understood. Your business status will remain **${status.toUpperCase()}**.`, botPhoneNumberId);
-                        }
-                    }
-                }
-            } else if (message.type === 'text') {
+                await handleButtonActions(firestore, buttonId, fromNumber, business, botPhoneNumberId);
+            } 
+            // Handle initial text messages when not in direct chat
+            else if (message.type === 'text' && conversationData.state !== 'direct_chat') {
                 await sendWelcomeMessageWithOptions(fromNumber, business, botPhoneNumberId);
             }
         }
@@ -337,6 +284,7 @@ export async function POST(request) {
     
 
     
+
 
 
 

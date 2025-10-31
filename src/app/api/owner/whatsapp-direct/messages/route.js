@@ -97,13 +97,37 @@ export async function POST(req) {
         let messagePayload;
         let firestoreMessageData;
         
-        if (imageUrl) {
+        // --- START FIX: Construct interactive message payload ---
+        if (text) {
+             messagePayload = {
+                type: 'interactive',
+                interactive: {
+                    type: 'button',
+                    body: { text: text },
+                    action: {
+                        buttons: [
+                            {
+                                type: "reply",
+                                reply: { id: "action_end_chat", title: "End This Chat" }
+                            },
+                            {
+                                type: "reply",
+                                reply: { id: "action_report_admin", title: "Report to Admin" }
+                            }
+                        ]
+                    }
+                }
+            };
+            firestoreMessageData = { type: 'text', text: text };
+        } else if (imageUrl) {
+            // Note: WhatsApp API does not support buttons on image messages directly.
+            // We send the image first, then text with buttons as a follow-up.
+            // For simplicity here, we'll just send the image and log a warning.
+            console.warn("[API WARNING] Buttons cannot be sent with image messages. Sending image only.");
             messagePayload = { type: 'image', link: imageUrl };
             firestoreMessageData = { type: 'image', mediaUrl: imageUrl, text: 'Image' };
-        } else {
-            messagePayload = text;
-            firestoreMessageData = { type: 'text', text: text };
         }
+        // --- END FIX ---
         
         await sendWhatsAppMessage(customerPhoneWithCode, messagePayload, botPhoneNumberId);
         
