@@ -1,9 +1,9 @@
 
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Search, Archive, MessageSquare, Send, Paperclip, Loader2, ArrowLeft, Image as ImageIcon, X } from 'lucide-react';
+import { Search, Archive, MessageSquare, Send, Paperclip, Loader2, ArrowLeft, Image as ImageIcon, X, Tag, Star, AlertTriangle, ThumbsUp } from 'lucide-react';
 import Image from 'next/image';
 import { auth } from '@/lib/firebase';
 import { useSearchParams } from 'next/navigation';
@@ -12,6 +12,12 @@ import { format, isToday, isYesterday } from 'date-fns';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 
 const formatTimestamp = (timestamp) => {
     if (!timestamp) return '';
@@ -21,30 +27,48 @@ const formatTimestamp = (timestamp) => {
     return format(date, 'dd/MM/yyyy');
 };
 
-const ConversationItem = ({ conversation, active, onClick }) => (
-    <div 
-        onClick={() => onClick(conversation)}
-        className={cn(
-            'flex items-center p-3 cursor-pointer rounded-lg transition-colors',
-            active ? 'bg-primary/10' : 'hover:bg-muted/50'
-        )}
-    >
-        <div className="relative w-12 h-12 rounded-full mr-3 flex-shrink-0">
-            <Image src={`https://picsum.photos/seed/${conversation.customerPhone}/100`} alt={conversation.customerName} layout="fill" className="rounded-full" />
-            {conversation.unreadCount > 0 && <span className="absolute bottom-0 right-0 bg-primary text-primary-foreground text-xs w-5 h-5 rounded-full flex items-center justify-center font-bold">{conversation.unreadCount}</span>}
-        </div>
-        <div className="flex-grow overflow-hidden">
-            <div className="flex justify-between items-center">
-                <h3 className="font-semibold text-foreground truncate">{conversation.customerName}</h3>
-                <p className="text-xs text-muted-foreground flex-shrink-0 ml-2">{formatTimestamp(conversation.lastMessageTimestamp)}</p>
+const tagConfig = {
+    'Urgent': { icon: AlertTriangle, color: 'text-red-500' },
+    'Feedback': { icon: Star, color: 'text-yellow-500' },
+    'Complaint': { icon: AlertTriangle, color: 'text-orange-500' },
+    'Resolved': { icon: ThumbsUp, color: 'text-green-500' },
+};
+
+
+const ConversationItem = ({ conversation, active, onClick }) => {
+    const TagIcon = tagConfig[conversation.tag]?.icon;
+
+    return (
+        <div 
+            onClick={() => onClick(conversation)}
+            className={cn(
+                'flex items-center p-3 cursor-pointer rounded-lg transition-colors',
+                active ? 'bg-primary/10' : 'hover:bg-muted/50'
+            )}
+        >
+            <div className="relative w-12 h-12 rounded-full mr-3 flex-shrink-0">
+                <Image src={`https://picsum.photos/seed/${conversation.customerPhone}/100`} alt={conversation.customerName} layout="fill" className="rounded-full" />
+                {conversation.unreadCount > 0 && <span className="absolute bottom-0 right-0 bg-primary text-primary-foreground text-xs w-5 h-5 rounded-full flex items-center justify-center font-bold">{conversation.unreadCount}</span>}
             </div>
-            <p className="text-sm text-muted-foreground truncate flex items-center gap-1">
-                 {conversation.lastMessageType === 'image' && <ImageIcon size={14} />}
-                 {conversation.lastMessage}
-            </p>
+            <div className="flex-grow overflow-hidden">
+                <div className="flex justify-between items-center">
+                    <h3 className="font-semibold text-foreground truncate">{conversation.customerName}</h3>
+                    <p className="text-xs text-muted-foreground flex-shrink-0 ml-2">{formatTimestamp(conversation.lastMessageTimestamp)}</p>
+                </div>
+                <div className="flex justify-between items-center">
+                    <p className="text-sm text-muted-foreground truncate flex items-center gap-1">
+                        {conversation.lastMessageType === 'image' && <ImageIcon size={14} />}
+                        {conversation.lastMessage}
+                    </p>
+                    {conversation.tag && TagIcon && (
+                        <TagIcon size={14} className={cn('flex-shrink-0', tagConfig[conversation.tag].color)} />
+                    )}
+                </div>
+            </div>
         </div>
-    </div>
-);
+    );
+};
+
 
 const MessageBubble = ({ message }) => {
     const timestamp = message.timestamp?.seconds ? new Date(message.timestamp.seconds * 1000) : new Date(message.timestamp);
@@ -86,6 +110,7 @@ export default function WhatsAppDirectPage() {
     const fileInputRef = useRef(null);
     const [uploadProgress, setUploadProgress] = useState(0);
     const [uploadingFile, setUploadingFile] = useState(null);
+    const [activeFilter, setActiveFilter] = useState('All');
     
     const scrollToBottom = () => {
         messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -257,20 +282,70 @@ export default function WhatsAppDirectPage() {
         }
     };
 
+    const handleTagChange = async (tag) => {
+        if (!activeConversation) return;
+        const conversationId = activeConversation.id;
+
+        // Optimistic UI update
+        const originalTag = activeConversation.tag;
+        const newTag = originalTag === tag ? null : tag;
+
+        setActiveConversation(prev => ({ ...prev, tag: newTag }));
+        setConversations(prev => prev.map(c => c.id === conversationId ? { ...c, tag: newTag } : c));
+        
+        try {
+            await handleApiCall('/api/owner/whatsapp-direct/conversations', 'PATCH', { conversationId, tag: newTag });
+        } catch (error) {
+            setInfoDialog({ isOpen: true, title: 'Error', message: 'Failed to update tag: ' + error.message });
+            // Revert UI on error
+            setActiveConversation(prev => ({ ...prev, tag: originalTag }));
+            setConversations(prev => prev.map(c => c.id === conversationId ? { ...c, tag: originalTag } : c));
+        }
+    };
+
+    const quickReplies = [
+        "Namaste! Hum aapki kaise madad kar sakte hain?",
+        "Aapka order taiyaar ho raha hai aur jald hi niklega.",
+        "Dhanyavaad, humein aapka feedback mil gaya hai.",
+        "Kripya thoda intezaar karein, hum abhi check kar rahe hain.",
+    ];
+    
+    const filteredConversations = useMemo(() => {
+        if (activeFilter === 'All') return conversations;
+        return conversations.filter(c => c.tag === activeFilter);
+    }, [conversations, activeFilter]);
+
 
     const ConversationList = (
          <aside className="w-full md:w-1/3 border-r border-border flex flex-col h-full">
-            <header className="p-4 border-b border-border">
+            <header className="p-4 border-b border-border space-y-3">
                 <div className="relative">
                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" size={20} />
                     <input type="text" placeholder="Search chats..." className="w-full pl-10 pr-4 py-2 h-10 rounded-md bg-input border border-border" />
+                </div>
+                 <div className="flex gap-2 overflow-x-auto pb-1">
+                    {Object.keys(tagConfig).map(tag => {
+                        const TagIcon = tagConfig[tag].icon;
+                        return (
+                            <Button 
+                                key={tag} 
+                                variant={activeFilter === tag ? 'default' : 'outline'} 
+                                size="sm" 
+                                className="flex items-center gap-2 flex-shrink-0"
+                                onClick={() => setActiveFilter(prev => prev === tag ? 'All' : tag)}
+                            >
+                                <TagIcon size={14} /> {tag}
+                            </Button>
+                        )
+                    })}
+                     {activeFilter !== 'All' && <Button variant="ghost" size="sm" onClick={() => setActiveFilter('All')}>Clear</Button>}
                 </div>
             </header>
             <div className="flex-grow overflow-y-auto p-2 space-y-1">
                 {loadingConversations ? (
                     <div className="flex items-center justify-center h-full"><Loader2 className="animate-spin text-primary"/></div>
-                ) : conversations.length > 0 ? (
-                   conversations.map(convo => (
+                ) : filteredConversations.length > 0 ? (
+                   filteredConversations.map(convo => (
                        <ConversationItem 
                          key={convo.id} 
                          conversation={convo} 
@@ -279,7 +354,7 @@ export default function WhatsAppDirectPage() {
                        />
                    ))
                 ) : (
-                     <div className="text-center text-muted-foreground p-8">No conversations yet.</div>
+                     <div className="text-center text-muted-foreground p-8">No conversations found for this filter.</div>
                 )}
             </div>
         </aside>
@@ -289,17 +364,42 @@ export default function WhatsAppDirectPage() {
         <main className="w-full flex-grow flex flex-col bg-background h-full">
             {activeConversation ? (
                  <>
-                    <header className="p-4 border-b border-border flex items-center gap-3">
-                         <button className="md:hidden" onClick={() => setActiveConversation(null)}>
-                            <ArrowLeft size={20} />
-                         </button>
-                         <div className="relative w-10 h-10 rounded-full">
-                            <Image src={`https://picsum.photos/seed/${activeConversation.customerPhone}/100`} alt={activeConversation.customerName} layout="fill" className="rounded-full" />
+                    <header className="p-4 border-b border-border flex items-center justify-between gap-3">
+                        <div className="flex items-center gap-3">
+                            <button className="md:hidden" onClick={() => setActiveConversation(null)}>
+                                <ArrowLeft size={20} />
+                            </button>
+                            <div className="relative w-10 h-10 rounded-full">
+                                <Image src={`https://picsum.photos/seed/${activeConversation.customerPhone}/100`} alt={activeConversation.customerName} layout="fill" className="rounded-full" />
+                            </div>
+                            <div>
+                                <h3 className="font-semibold text-foreground">{activeConversation.customerName}</h3>
+                                <p className="text-xs text-muted-foreground">+{activeConversation.customerPhone}</p>
+                            </div>
                         </div>
-                        <div>
-                            <h3 className="font-semibold text-foreground">{activeConversation.customerName}</h3>
-                            <p className="text-xs text-muted-foreground">+{activeConversation.customerPhone}</p>
-                        </div>
+                        <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                                <Button variant="outline" size="sm" className="flex items-center gap-2">
+                                    <Tag size={14} /> 
+                                    {activeConversation.tag || 'Tag Chat'}
+                                </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent>
+                                {Object.entries(tagConfig).map(([tag, {icon: TagIcon, color}]) => (
+                                    <DropdownMenuItem key={tag} onClick={() => handleTagChange(tag)}>
+                                        <TagIcon className={cn("mr-2 h-4 w-4", color)} /> {tag}
+                                    </DropdownMenuItem>
+                                ))}
+                                 {activeConversation.tag && (
+                                     <>
+                                      <div className="h-px bg-border my-1 mx-[-4px]"></div>
+                                      <DropdownMenuItem onClick={() => handleTagChange(null)} className="text-red-500">
+                                         <X size={14} className="mr-2"/> Clear Tag
+                                      </DropdownMenuItem>
+                                     </>
+                                 )}
+                            </DropdownMenuContent>
+                        </DropdownMenu>
                     </header>
                     <div className="flex-grow p-4 overflow-y-auto">
                        {loadingMessages ? (
@@ -323,6 +423,13 @@ export default function WhatsAppDirectPage() {
                        <div ref={messagesEndRef} />
                     </div>
                     <footer className="p-4 border-t border-border bg-card">
+                         <div className="flex gap-2 overflow-x-auto mb-3 pb-2">
+                            {quickReplies.map((reply, i) => (
+                                <Button key={i} variant="outline" size="sm" className="flex-shrink-0" onClick={() => setNewMessage(reply)}>
+                                    {reply}
+                                </Button>
+                            ))}
+                        </div>
                         <form onSubmit={handleSendMessage} className="flex items-center gap-3">
                              <input type="file" ref={fileInputRef} onChange={handleFileChange} className="hidden" accept="image/png, image/jpeg" />
                              <Button type="button" variant="ghost" size="icon" onClick={() => fileInputRef.current?.click()} className="flex-shrink-0">

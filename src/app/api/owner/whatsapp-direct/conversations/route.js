@@ -1,6 +1,6 @@
 
 import { NextResponse } from 'next/server';
-import { getAuth, getFirestore } from '@/lib/firebase-admin';
+import { getAuth, getFirestore, FieldValue } from '@/lib/firebase-admin';
 
 export const dynamic = 'force-dynamic';
 
@@ -51,6 +51,7 @@ export async function GET(req) {
             // Ensure timestamp is serializable
             const lastMessageTimestamp = data.lastMessageTimestamp?.toDate ? data.lastMessageTimestamp.toDate().toISOString() : null;
             return {
+                id: doc.id, // THE FIX IS HERE: The document ID is the phone number
                 ...data,
                 lastMessageTimestamp,
             };
@@ -60,6 +61,34 @@ export async function GET(req) {
 
     } catch (error) {
         console.error("GET /api/owner/whatsapp-direct/conversations ERROR:", error);
+        return NextResponse.json({ message: error.message || 'Internal Server Error' }, { status: error.status || 500 });
+    }
+}
+
+
+export async function PATCH(req) {
+    try {
+        const businessRef = await verifyOwnerAndGetBusinessRef(req);
+        const { conversationId, tag } = await req.json();
+
+        if (!conversationId) {
+            return NextResponse.json({ message: 'Conversation ID is required.' }, { status: 400 });
+        }
+        
+        const validTags = ['Urgent', 'Feedback', 'Complaint', 'Resolved', null];
+        if (!validTags.includes(tag)) {
+            return NextResponse.json({ message: 'Invalid tag provided.' }, { status: 400 });
+        }
+        
+        const conversationRef = businessRef.collection('conversations').doc(conversationId);
+        
+        // Use set with merge to either add/update the tag or remove it if null
+        await conversationRef.set({ tag: tag || FieldValue.delete() }, { merge: true });
+
+        return NextResponse.json({ message: 'Tag updated successfully.' }, { status: 200 });
+
+    } catch (error) {
+        console.error("PATCH /api/owner/whatsapp-direct/conversations ERROR:", error);
         return NextResponse.json({ message: error.message || 'Internal Server Error' }, { status: error.status || 500 });
     }
 }
