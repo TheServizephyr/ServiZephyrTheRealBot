@@ -98,9 +98,13 @@ const AddAddressPageInternal = () => {
                 const data = await res.json();
                 if (!res.ok) throw new Error(data.message || 'Failed to fetch address details.');
                 setAddressDetails({
-                    street: data.street, city: data.city || data.town || data.village || '',
-                    pincode: data.pincode || '', state: data.state || '', country: data.country || 'IN',
-                    latitude: coords.lat, longitude: coords.lng
+                    street: data.street || '', 
+                    city: data.city || data.town || data.village || '',
+                    pincode: data.pincode || '', 
+                    state: data.state || '', 
+                    country: data.country || 'IN',
+                    latitude: coords.lat, 
+                    longitude: coords.lng
                 });
                 setFullAddress(data.formatted_address || '');
             } catch (err) {
@@ -180,10 +184,19 @@ const AddAddressPageInternal = () => {
         const finalLabel = (addressLabel === 'Other' && customAddressLabel.trim()) ? customAddressLabel.trim() : addressLabel;
 
         const addressToSave = {
-            id: `addr_${Date.now()}`, label: finalLabel, name: recipientName.trim(), phone: recipientPhone.trim(),
-            street: addressDetails.street, landmark: landmark.trim(), city: addressDetails.city, state: addressDetails.state,
-            pincode: addressDetails.pincode, country: addressDetails.country, full: fullAddress.trim(),
-            latitude: addressDetails.latitude, longitude: addressDetails.longitude,
+            id: `addr_${Date.now()}`, 
+            label: finalLabel, 
+            name: recipientName.trim(), 
+            phone: recipientPhone.trim(),
+            street: addressDetails.street, 
+            landmark: landmark.trim(), 
+            city: addressDetails.city, 
+            state: addressDetails.state,
+            pincode: addressDetails.pincode, 
+            country: addressDetails.country, 
+            full: fullAddress.trim(),
+            latitude: addressDetails.latitude, 
+            longitude: addressDetails.longitude,
         };
         
         localStorage.setItem('customerLocation', JSON.stringify(addressToSave));
@@ -287,5 +300,3 @@ const AddAddressPage = () => (
 );
 
 export default AddAddressPage;
-
-    

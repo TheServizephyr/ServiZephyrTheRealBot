@@ -52,10 +52,12 @@ export async function POST(req) {
     const newAddress = await req.json();
 
     try {
-        // Validate new address - it is now a structured object with a 'full' property
-        if (!newAddress || !newAddress.id || !newAddress.name || !newAddress.phone || !newAddress.street || !newAddress.city || !newAddress.pincode || !newAddress.state || !newAddress.full) {
+        // --- THE FIX ---
+        // Validate new address. It must have a 'full' property and lat/lng.
+        // Other fields like street, city etc. are optional as geocoding might not return them.
+        if (!newAddress || !newAddress.id || !newAddress.full || typeof newAddress.latitude !== 'number' || typeof newAddress.longitude !== 'number') {
             console.error("[API][user/addresses] POST validation failed: Invalid address data provided.", newAddress);
-            return NextResponse.json({ message: 'Invalid address data provided. All fields are required.' }, { status: 400 });
+            return NextResponse.json({ message: 'Invalid address data provided. A full address and location coordinates are required.' }, { status: 400 });
         }
 
         const userRef = getFirestore().collection('users').doc(uid);
