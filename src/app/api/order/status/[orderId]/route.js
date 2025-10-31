@@ -27,7 +27,6 @@ export async function GET(request, { params }) {
         let deliveryBoyData = null;
         console.log(`[API][Order Status] Order data found. Status: ${orderData.status}, Delivery Boy ID: ${orderData.deliveryBoyId}`);
 
-        // --- START FIX: Correctly fetch delivery boy from business subcollection ---
         if (orderData.deliveryBoyId && orderData.restaurantId) {
             const businessType = orderData.businessType || 'restaurant';
             const collectionName = businessType === 'shop' ? 'shops' : 'restaurants';
@@ -44,7 +43,6 @@ export async function GET(request, { params }) {
                  console.warn(`[API][Order Status] Delivery boy with ID ${orderData.deliveryBoyId} not found in subcollection.`);
             }
         }
-        // --- END FIX ---
         
         const businessType = orderData.businessType || 'restaurant';
         const collectionName = businessType === 'shop' ? 'shops' : 'restaurants';
@@ -67,7 +65,7 @@ export async function GET(request, { params }) {
             },
             restaurant: {
                 name: businessData.name,
-                location: businessData.address // Pass the whole address object which contains the location
+                location: businessData.address?.location // THE FIX: Correctly path to the GeoPoint object
             },
             deliveryBoy: deliveryBoyData ? {
                 id: deliveryBoyData.id,

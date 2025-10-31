@@ -79,6 +79,7 @@ const StatusTimeline = ({ currentStatus }) => {
 
 const RiderDetails = ({ rider }) => {
     if (!rider) return null;
+    const riderLocation = rider.location;
     return (
         <Card className="shadow-lg">
             <CardContent className="p-4 flex items-center justify-between">
@@ -99,7 +100,7 @@ const RiderDetails = ({ rider }) => {
                         <a href={`tel:${rider.phone}`}><Phone /></a>
                     </Button>
                      <Button asChild size="icon" className="h-11 w-11 bg-primary text-primary-foreground">
-                        <a href={`https://www.google.com/maps/dir/?api=1&destination=${rider.location?.latitude},${rider.location?.longitude}`} target="_blank" rel="noopener noreferrer"><Navigation /></a>
+                        <a href={`https://www.google.com/maps/dir/?api=1&destination=${riderLocation?._latitude},${riderLocation?._longitude}`} target="_blank" rel="noopener noreferrer"><Navigation /></a>
                     </Button>
                 </div>
             </CardContent>
@@ -153,19 +154,15 @@ export default function OrderTrackingPage() {
     }, [orderId]);
 
     const { restaurantLocation, customerLocation, riderLocation } = useMemo(() => {
-        // --- START FIX: Safely access location from the address object ---
-        const restaurantLoc = orderData?.restaurant?.location?.location; 
+        const restaurantLoc = orderData?.restaurant?.location;
         const customerLoc = orderData?.order?.customerLocation;
         const riderLoc = orderData?.deliveryBoy?.location;
-    
-        console.log("[TrackPage] Memoizing locations:", { restaurantLoc, customerLoc, riderLoc });
-    
+
         return {
             restaurantLocation: restaurantLoc ? { lat: restaurantLoc._latitude, lng: restaurantLoc._longitude } : null,
             customerLocation: customerLoc ? { lat: customerLoc._latitude, lng: customerLoc._longitude } : null,
             riderLocation: riderLoc ? { lat: riderLoc._latitude, lng: riderLoc._longitude } : null,
         };
-        // --- END FIX ---
     }, [orderData]);
 
 
