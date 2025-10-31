@@ -214,7 +214,7 @@ export default function OrderTrackingPage() {
                     <StatusTimeline currentStatus={orderData.order.status} />
                 </div>
 
-                <div className="flex-grow relative h-64 md:h-auto">
+                <div className="w-full h-64 md:h-80 relative">
                     <LiveTrackingMap 
                         restaurantLocation={restaurantLocation}
                         customerLocation={customerLocation}
@@ -222,7 +222,7 @@ export default function OrderTrackingPage() {
                     />
                 </div>
                 
-                <div className="p-4">
+                <div className="p-4 space-y-4">
                    {showRiderDetails && <RiderDetails rider={orderData.deliveryBoy} />}
                 </div>
             </main>
