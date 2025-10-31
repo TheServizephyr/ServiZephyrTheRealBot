@@ -153,17 +153,19 @@ export default function OrderTrackingPage() {
     }, [orderId]);
 
     const { restaurantLocation, customerLocation, riderLocation } = useMemo(() => {
-        const restaurantLoc = orderData?.restaurant?.location;
+        // --- START FIX: Safely access location from the address object ---
+        const restaurantLoc = orderData?.restaurant?.location?.location; 
         const customerLoc = orderData?.order?.customerLocation;
         const riderLoc = orderData?.deliveryBoy?.location;
-
+    
         console.log("[TrackPage] Memoizing locations:", { restaurantLoc, customerLoc, riderLoc });
-
+    
         return {
             restaurantLocation: restaurantLoc ? { lat: restaurantLoc._latitude, lng: restaurantLoc._longitude } : null,
             customerLocation: customerLoc ? { lat: customerLoc._latitude, lng: customerLoc._longitude } : null,
             riderLocation: riderLoc ? { lat: riderLoc._latitude, lng: riderLoc._longitude } : null,
         };
+        // --- END FIX ---
     }, [orderData]);
 
 

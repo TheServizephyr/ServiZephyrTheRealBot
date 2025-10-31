@@ -27,19 +27,24 @@ export async function GET(request, { params }) {
         let deliveryBoyData = null;
         console.log(`[API][Order Status] Order data found. Status: ${orderData.status}, Delivery Boy ID: ${orderData.deliveryBoyId}`);
 
-        if (orderData.deliveryBoyId) {
-            console.log(`[API][Order Status] Fetching delivery boy: ${orderData.deliveryBoyId}`);
-            // This path assumes deliveryBoys is a top-level collection.
-            // If it's a sub-collection, this needs to be adjusted.
-            const deliveryBoyRef = firestore.collection('deliveryBoys').doc(orderData.deliveryBoyId);
+        // --- START FIX: Correctly fetch delivery boy from business subcollection ---
+        if (orderData.deliveryBoyId && orderData.restaurantId) {
+            const businessType = orderData.businessType || 'restaurant';
+            const collectionName = businessType === 'shop' ? 'shops' : 'restaurants';
+            
+            console.log(`[API][Order Status] Fetching delivery boy: ${orderData.deliveryBoyId} from ${collectionName}/${orderData.restaurantId}/deliveryBoys`);
+
+            const deliveryBoyRef = firestore.collection(collectionName).doc(orderData.restaurantId).collection('deliveryBoys').doc(orderData.deliveryBoyId);
             const deliveryBoySnap = await deliveryBoyRef.get();
-            if (deliveryBoySnap.exists()) {
-                deliveryBoyData = { id: deliveryBoySnap.id, ...deliveryBoySnap.data()};
-                console.log("[API][Order Status] Delivery boy found.");
+
+            if (deliveryBoySnap.exists) {
+                deliveryBoyData = { id: deliveryBoySnap.id, ...deliveryBoySnap.data() };
+                console.log("[API][Order Status] Delivery boy found in subcollection.");
             } else {
-                 console.warn(`[API][Order Status] Delivery boy with ID ${orderData.deliveryBoyId} not found in top-level collection.`);
+                 console.warn(`[API][Order Status] Delivery boy with ID ${orderData.deliveryBoyId} not found in subcollection.`);
             }
         }
+        // --- END FIX ---
         
         const businessType = orderData.businessType || 'restaurant';
         const collectionName = businessType === 'shop' ? 'shops' : 'restaurants';
@@ -62,7 +67,7 @@ export async function GET(request, { params }) {
             },
             restaurant: {
                 name: businessData.name,
-                location: businessData.address?.location // Pass the GeoPoint directly
+                location: businessData.address // Pass the whole address object which contains the location
             },
             deliveryBoy: deliveryBoyData ? {
                 id: deliveryBoyData.id,
