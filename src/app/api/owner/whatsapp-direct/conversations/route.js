@@ -1,6 +1,7 @@
 
 import { NextResponse } from 'next/server';
 import { getAuth, getFirestore, FieldValue } from '@/lib/firebase-admin';
+import { sendWhatsAppMessage } from '@/lib/whatsapp';
 
 export const dynamic = 'force-dynamic';
 
@@ -51,7 +52,7 @@ export async function GET(req) {
             // Ensure timestamp is serializable
             const lastMessageTimestamp = data.lastMessageTimestamp?.toDate ? data.lastMessageTimestamp.toDate().toISOString() : null;
             return {
-                id: doc.id, // THE FIX IS HERE: The document ID is the phone number
+                id: doc.id, // The document ID is the phone number
                 ...data,
                 lastMessageTimestamp,
             };
@@ -69,23 +70,66 @@ export async function GET(req) {
 export async function PATCH(req) {
     try {
         const businessRef = await verifyOwnerAndGetBusinessRef(req);
-        const { conversationId, tag } = await req.json();
+        const businessDoc = await businessRef.get();
+        const businessData = businessDoc.data();
+
+        const { conversationId, tag, action } = await req.json();
 
         if (!conversationId) {
             return NextResponse.json({ message: 'Conversation ID is required.' }, { status: 400 });
         }
         
+        const conversationRef = businessRef.collection('conversations').doc(conversationId);
+
+        if (action === 'end_chat') {
+            await conversationRef.set({ state: 'menu' }, { merge: true });
+
+            // Send a welcome message with options again
+            const botPhoneNumberId = businessData.botPhoneNumberId;
+            const customerPhoneWithCode = '91' + conversationId;
+
+            const payload = {
+                type: "interactive",
+                interactive: {
+                    type: "button",
+                    body: {
+                        text: `This chat has been closed by the restaurant. You can now use the menu below or type any message to start again.`
+                    },
+                    action: {
+                        buttons: [
+                             {
+                                type: "reply",
+                                reply: { id: `action_order_${businessDoc.id}`, title: "Order Food" }
+                            },
+                            {
+                                type: "reply",
+                                reply: { id: `action_track_${businessDoc.id}`, title: "Track Last Order" }
+                            },
+                             {
+                                type: "reply",
+                                reply: { id: "action_help", title: "Need More Help?" }
+                            }
+                        ]
+                    }
+                }
+            };
+            await sendWhatsAppMessage(customerPhoneWithCode, payload, botPhoneNumberId);
+            
+            return NextResponse.json({ message: 'Chat ended and menu sent.' }, { status: 200 });
+        }
+
+        // Logic for updating tags
         const validTags = ['Urgent', 'Feedback', 'Complaint', 'Resolved', null];
-        if (!validTags.includes(tag)) {
+        if (tag !== undefined && !validTags.includes(tag)) {
             return NextResponse.json({ message: 'Invalid tag provided.' }, { status: 400 });
         }
         
-        const conversationRef = businessRef.collection('conversations').doc(conversationId);
-        
-        // Use set with merge to either add/update the tag or remove it if null
-        await conversationRef.set({ tag: tag || FieldValue.delete() }, { merge: true });
+        if (tag !== undefined) {
+             await conversationRef.set({ tag: tag || FieldValue.delete() }, { merge: true });
+             return NextResponse.json({ message: 'Tag updated successfully.' }, { status: 200 });
+        }
 
-        return NextResponse.json({ message: 'Tag updated successfully.' }, { status: 200 });
+        return NextResponse.json({ message: 'No valid action or tag provided.' }, { status: 400 });
 
     } catch (error) {
         console.error("PATCH /api/owner/whatsapp-direct/conversations ERROR:", error);
