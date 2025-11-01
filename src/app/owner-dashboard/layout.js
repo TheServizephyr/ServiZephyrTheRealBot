@@ -1,18 +1,16 @@
+
 'use client';
 
 import { useState, useEffect } from "react";
 import Sidebar from "@/components/OwnerDashboard/Sidebar";
 import Navbar from "@/components/OwnerDashboard/Navbar";
 import styles from "@/components/OwnerDashboard/OwnerDashboard.module.css";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion } from "framer-motion";
 import { ThemeProvider } from "@/components/ThemeProvider";
 import "../globals.css";
-import { auth, db } from '@/lib/firebase';
-import { doc, getDoc } from "firebase/firestore";
-import { AlertTriangle, HardHat, ShieldOff, Salad, XCircle, Lock, Mail, Phone, MessageSquare, Menu, X } from 'lucide-react';
+import { AlertTriangle, HardHat, ShieldOff, Salad, Lock, Mail, Phone, MessageSquare } from 'lucide-react';
 import { Button } from "@/components/ui/button";
 import { usePathname, useRouter } from "next/navigation";
-import InfoDialog from "@/components/InfoDialog";
 import { useUser } from "@/firebase";
 
 export const dynamic = 'force-dynamic';
@@ -68,9 +66,7 @@ function OwnerDashboardContent({ children }) {
   const [restaurantLogo, setRestaurantLogo] = useState(null);
   const router = useRouter();
   const pathname = usePathname();
-  const [infoDialog, setInfoDialog] = useState({ isOpen: false, title: '', message: '' });
 
-  // Use the central useUser hook
   const { user, isUserLoading } = useUser();
   const [initialDataLoading, setInitialDataLoading] = useState(true);
 
@@ -87,12 +83,10 @@ function OwnerDashboardContent({ children }) {
 
   useEffect(() => {
     if (isUserLoading) {
-      return; // Wait until Firebase auth state is resolved
+      return; 
     }
 
     if (!user) {
-      console.log("[DEBUG] OwnerLayout: No user found. Redirecting to home.");
-      setInitialDataLoading(false);
       router.push('/');
       return;
     }
@@ -121,9 +115,11 @@ function OwnerDashboardContent({ children }) {
                     suspensionRemark: statusData.suspensionRemark || '',
                 });
             } else if (statusRes.status === 404) {
+                 // If no business is associated yet, treat as pending
                 setRestaurantStatus({ status: 'pending', restrictedFeatures: [], suspensionRemark: '' });
             } else {
                 const errorData = await statusRes.json();
+                console.error("Error fetching status:", errorData.message);
                 setRestaurantStatus({ status: 'error', restrictedFeatures: [], suspensionRemark: '' });
             }
 
@@ -150,24 +146,19 @@ function OwnerDashboardContent({ children }) {
   
   const renderStatusScreen = () => {
       const featureId = pathname.split('/').pop();
-      console.log(`[DEBUG] OwnerLayout: renderStatusScreen called. Current status: '${restaurantStatus.status}', Feature ID: '${featureId}'`);
-
+      
       if (restaurantStatus.status === 'approved') {
-          console.log("[DEBUG] OwnerLayout: Status is 'approved'. No status screen to render.");
           return null;
       }
       
       if (restaurantStatus.status === 'suspended') {
         if (restaurantStatus.restrictedFeatures.includes(featureId)) {
-          console.log(`[DEBUG] OwnerLayout: Feature '${featureId}' is restricted due to suspension. Showing lock screen.`);
           return <FeatureLockScreen remark={restaurantStatus.suspensionRemark} featureId={featureId} />;
         }
-        console.log(`[DEBUG] OwnerLayout: Status is 'suspended' but feature '${featureId}' is NOT restricted. Allowing access.`);
         return null;
       }
       
       if (restaurantStatus.status === 'error') {
-         console.log(`[DEBUG] OwnerLayout: Status is '${restaurantStatus.status}'. Showing error screen.`);
          return (
             <main className={styles.mainContent} style={{padding: '1rem'}}>
               <div className="flex flex-col items-center justify-center text-center h-full p-8 bg-card border border-border rounded-xl">
@@ -214,7 +205,6 @@ function OwnerDashboardContent({ children }) {
 
   return (
     <div className="flex h-screen bg-background text-foreground">
-      {/* Sidebar */}
       <motion.aside 
         className="fixed md:relative h-full z-50 bg-card border-r border-border flex flex-col"
         animate={isMobile ? (isSidebarOpen ? { x: 0 } : { x: '-100%' }) : { width: isCollapsed ? '80px' : '260px' }}
@@ -240,7 +230,6 @@ function OwnerDashboardContent({ children }) {
 
 
       <div className="flex-1 flex flex-col overflow-hidden">
-        {/* Top Bar */}
         <header className="flex items-center justify-between h-[65px] px-4 md:px-6 bg-card border-b border-border shrink-0">
              <Navbar
                 isSidebarOpen={isSidebarOpen}
@@ -249,7 +238,6 @@ function OwnerDashboardContent({ children }) {
                 restaurantLogo={restaurantLogo}
             />
         </header>
-        {/* Main Content */}
         <main className="flex-1 overflow-y-auto p-4 md:p-6">
           {blockedContent || children}
         </main>

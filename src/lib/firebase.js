@@ -1,4 +1,3 @@
-
 // This file is now a bridge to the centralized Firebase initialization.
 // It ensures that any component importing from 'lib/firebase' gets the
 // same, correctly initialized instances.
@@ -14,5 +13,3 @@ const app = firebaseApp;
 
 
 export { app, auth, googleProvider, db };
-
-  

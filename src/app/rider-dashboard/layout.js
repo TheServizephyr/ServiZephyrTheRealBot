@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { auth, db } from '@/lib/firebase';
+import { db } from '@/lib/firebase';
 import { doc, getDoc } from 'firebase/firestore';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -11,7 +11,7 @@ import { LayoutDashboard, Wallet, LogOut, User } from 'lucide-react';
 import { useUser } from '@/firebase';
 
 export default function RiderLayout({ children }) {
-    const { user, isUserLoading } = useUser(); // Use the central hook
+    const { user, isUserLoading } = useUser();
     const router = useRouter();
     const [riderName, setRiderName] = useState('Rider');
     const [riderImage, setRiderImage] = useState('');
@@ -19,30 +19,33 @@ export default function RiderLayout({ children }) {
 
     useEffect(() => {
         if (isUserLoading) {
-            return; // Wait for the auth state to be resolved
+            return;
         }
 
         if (!user) {
-            // If user is null and loading is finished, redirect
             router.push('/rider-dashboard/login');
             return;
         }
 
-        // User is authenticated, now fetch rider-specific data
         const fetchRiderInfo = async () => {
-            const docRef = doc(db, 'drivers', user.uid);
-            const docSnap = await getDoc(docRef);
-            if (docSnap.exists()) {
-                setRiderName(docSnap.data().name || user.displayName || 'Rider');
-                setRiderImage(docSnap.data().profilePictureUrl || user.photoURL || '');
+            if (user) {
+                const docRef = doc(db, 'drivers', user.uid);
+                const docSnap = await getDoc(docRef);
+                if (docSnap.exists()) {
+                    setRiderName(docSnap.data().name || user.displayName || 'Rider');
+                    setRiderImage(docSnap.data().profilePictureUrl || user.photoURL || '');
+                }
             }
              setIsLoading(false);
         };
+        
         fetchRiderInfo();
 
     }, [user, isUserLoading, router]);
 
     const handleLogout = async () => {
+        // Use the auth instance from firebase to sign out
+        const { auth } = await import('@/lib/firebase');
         await auth.signOut();
         router.push('/rider-dashboard/login');
     };
