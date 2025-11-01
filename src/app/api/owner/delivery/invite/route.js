@@ -54,10 +54,9 @@ export async function POST(req) {
         
         const lowercasedEmail = riderEmail.toLowerCase().trim();
 
-        let riderUid;
+        let userRecord;
         try {
-            const userRecord = await auth.getUserByEmail(lowercasedEmail);
-            riderUid = userRecord.uid;
+            userRecord = await auth.getUserByEmail(lowercasedEmail);
         } catch (error) {
             if (error.code === 'auth/user-not-found') {
                  return NextResponse.json({ message: 'No user found with this email address. Please ask them to register on the Rider Portal first.' }, { status: 404 });
@@ -65,31 +64,29 @@ export async function POST(req) {
             throw error; // Re-throw other auth errors
         }
 
-        // Now that we have the UID, verify they are a 'rider'
+        const riderUid = userRecord.uid;
+        
+        // --- THE FIX ---
+        // Get the document *snapshot* using .get() before checking .exists()
         const userDocRef = firestore.collection('users').doc(riderUid);
         const userDoc = await userDocRef.get();
         
-        // --- THE FIX ---
-        // Check `.exists()` on the Firestore document, not the auth record.
         if (!userDoc.exists() || userDoc.data().role !== 'rider') {
             return NextResponse.json({ message: 'This user is not registered as a rider.' }, { status: 400 });
         }
         
-        // 2. Check if this rider is already part of the owner's team.
         const existingRiderRef = restaurantRef.collection('deliveryBoys').doc(riderUid);
         const existingRiderSnap = await existingRiderRef.get();
         if (existingRiderSnap.exists) {
-            return NextResponse.json({ message: 'This rider is already part of your team.' }, { status: 409 }); // 409 Conflict
+            return NextResponse.json({ message: 'This rider is already part of your team.' }, { status: 409 });
         }
         
-        // 3. Check if an invite has already been sent and is pending.
         const inviteRef = firestore.collection('drivers').doc(riderUid).collection('invites').doc(restaurantId);
         const existingInviteSnap = await inviteRef.get();
         if (existingInviteSnap.exists) {
             return NextResponse.json({ message: 'An invitation has already been sent to this rider.' }, { status: 409 });
         }
         
-        // All checks passed, proceed with sending the invite.
         await inviteRef.set({
             restaurantId: restaurantId,
             restaurantName: restaurantData.name,
