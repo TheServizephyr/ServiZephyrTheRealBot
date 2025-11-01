@@ -144,19 +144,41 @@ export default function RiderDashboardPage() {
                     setDriverData(data);
                     setError('');
                     
-                    // --- REAL-TIME RESTAURANT CHECK ---
+                    // --- THE FIX: REAL-TIME RESTAURANT/SHOP CHECK ---
                     if (data.currentRestaurantId) {
                         const restaurantDocRef = doc(db, 'restaurants', data.currentRestaurantId);
+                        const shopDocRef = doc(db, 'shops', data.currentRestaurantId);
                         
+                        // Listen to both collections
                         const unsubscribeRestaurant = onSnapshot(restaurantDocRef, (restaurantSnap) => {
-                            // If restaurant doc exists, rider is employed. If not, they are not.
-                            setIsRestaurantActive(restaurantSnap.exists());
+                            if (restaurantSnap.exists()) {
+                                setIsRestaurantActive(true);
+                            } else {
+                                // If restaurant doesn't exist, check shop
+                                getDoc(shopDocRef).then(shopSnap => {
+                                    setIsRestaurantActive(shopSnap.exists());
+                                });
+                            }
                         });
+
+                        const unsubscribeShop = onSnapshot(shopDocRef, (shopSnap) => {
+                            if (shopSnap.exists()) {
+                                setIsRestaurantActive(true);
+                            } else {
+                                // If shop doesn't exist, check restaurant
+                                getDoc(restaurantDocRef).then(restaurantSnap => {
+                                    setIsRestaurantActive(restaurantSnap.exists());
+                                });
+                            }
+                        });
+
                         unsubscribes.push(unsubscribeRestaurant);
+                        unsubscribes.push(unsubscribeShop);
+
                     } else {
                         setIsRestaurantActive(false);
                     }
-                    // --- END REAL-TIME CHECK ---
+                    // --- END THE FIX ---
 
                 } else {
                     setError('Your rider profile could not be found.');
