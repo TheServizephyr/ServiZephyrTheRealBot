@@ -10,7 +10,7 @@ import { ThemeProvider } from "@/components/ThemeProvider";
 import "../globals.css";
 import { AlertTriangle, HardHat, ShieldOff, Salad, Lock, Mail, Phone, MessageSquare } from 'lucide-react';
 import { Button } from "@/components/ui/button";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useUser } from "@/firebase";
 
 export const dynamic = 'force-dynamic';
@@ -66,6 +66,8 @@ function OwnerDashboardContent({ children }) {
   const [restaurantLogo, setRestaurantLogo] = useState(null);
   const router = useRouter();
   const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const impersonatedOwnerId = searchParams.get('impersonate_owner_id');
 
   const { user, isUserLoading } = useUser();
   const [initialDataLoading, setInitialDataLoading] = useState(true);
@@ -82,6 +84,7 @@ function OwnerDashboardContent({ children }) {
   }, []);
 
   useEffect(() => {
+    // ** THE FIX **: Wait for auth to be confirmed before fetching data.
     if (isUserLoading) {
       return; 
     }
@@ -96,9 +99,17 @@ function OwnerDashboardContent({ children }) {
         try {
             const idToken = await user.getIdToken();
 
+            let statusUrl = '/api/owner/status';
+            let settingsUrl = '/api/owner/settings';
+
+            if (impersonatedOwnerId) {
+                statusUrl += `?impersonate_owner_id=${impersonatedOwnerId}`;
+                settingsUrl += `?impersonate_owner_id=${impersonatedOwnerId}`;
+            }
+
             const [statusRes, settingsRes] = await Promise.all([
-                fetch('/api/owner/status', { headers: { 'Authorization': `Bearer ${idToken}` } }),
-                fetch('/api/owner/settings', { headers: { 'Authorization': `Bearer ${idToken}` } })
+                fetch(statusUrl, { headers: { 'Authorization': `Bearer ${idToken}` } }),
+                fetch(settingsUrl, { headers: { 'Authorization': `Bearer ${idToken}` } })
             ]);
 
             if (settingsRes.ok) {
@@ -133,7 +144,7 @@ function OwnerDashboardContent({ children }) {
     
     fetchRestaurantData();
 
-  }, [user, isUserLoading, router]);
+  }, [user, isUserLoading, router, impersonatedOwnerId]); // Depend on user and impersonation status
 
   if (isUserLoading || initialDataLoading) {
     return (
