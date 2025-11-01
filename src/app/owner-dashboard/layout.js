@@ -1,5 +1,4 @@
 
-
 'use client';
 
 import { useState, useEffect } from "react";
@@ -9,7 +8,8 @@ import styles from "@/components/OwnerDashboard/OwnerDashboard.module.css";
 import { motion, AnimatePresence } from "framer-motion";
 import { ThemeProvider } from "@/components/ThemeProvider";
 import "../globals.css";
-import { auth } from "@/lib/firebase";
+import { auth, db } from "@/lib/firebase"; // Import db
+import { doc, getDoc } from "firebase/firestore"; // Import doc and getDoc
 import { AlertTriangle, HardHat, ShieldOff, Salad, XCircle, Lock, Mail, Phone, MessageSquare, Menu, X } from 'lucide-react';
 import { Button } from "@/components/ui/button";
 import { usePathname, useRouter } from "next/navigation";
@@ -81,10 +81,25 @@ function OwnerDashboardContent({ children }) {
     checkScreenSize();
     window.addEventListener('resize', checkScreenSize);
     
+    // --- START FIX ---
     const fetchRestaurantData = async (user) => {
-        console.log("[DEBUG] OwnerLayout: fetchRestaurantStatus called.");
+        console.log("[DEBUG] OwnerLayout: fetchRestaurantData called.");
         setLoading(true);
+
         try {
+            // Step 1: Check user's role from Firestore first.
+            const userDocRef = doc(db, 'users', user.uid);
+            const userDoc = await getDoc(userDocRef);
+
+            if (!userDoc.exists() || !['owner', 'restaurant-owner', 'shop-owner'].includes(userDoc.data()?.role)) {
+                // If the user is NOT an owner, do not proceed with owner-specific API calls.
+                // Just stop loading and let the app handle redirection if needed.
+                console.log(`[DEBUG] OwnerLayout: User ${user.uid} is not an owner. Skipping owner-specific data fetch.`);
+                setLoading(false);
+                return;
+            }
+            
+            // Step 2: Since the user is confirmed as an owner, proceed to fetch owner data.
             const idToken = await user.getIdToken();
             const [statusRes, settingsRes] = await Promise.all([
                 fetch('/api/owner/status', { headers: { 'Authorization': `Bearer ${idToken}` } }),
@@ -117,10 +132,11 @@ function OwnerDashboardContent({ children }) {
             console.error("[DEBUG] OwnerLayout: CRITICAL error fetching owner data:", e);
             setRestaurantStatus({ status: 'error', restrictedFeatures: [], suspensionRemark: '' });
         } finally {
-            console.log("[DEBUG] OwnerLayout: fetchRestaurantStatus finished, setting loading to false.");
+            console.log("[DEBUG] OwnerLayout: fetchRestaurantData finished, setting loading to false.");
             setLoading(false);
         }
     }
+    // --- END FIX ---
     
     const unsubscribe = auth.onAuthStateChanged(user => {
         if (user) {
