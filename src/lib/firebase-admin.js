@@ -2,6 +2,32 @@
 
 import admin from 'firebase-admin';
 
+let adminInstance;
+
+async function initializeAdmin() {
+  if (admin.apps.length > 0) {
+    return admin;
+  }
+
+  const serviceAccount = getServiceAccount();
+  if (serviceAccount) {
+    try {
+      // Use await to ensure initialization completes
+      admin.initializeApp({
+        credential: admin.credential.cert(serviceAccount)
+      });
+      console.log("[firebase-admin] Firebase Admin SDK initialized successfully.");
+      return admin;
+    } catch (error) {
+      console.error("[firebase-admin] CRITICAL: Firebase Admin SDK initialization failed.", error);
+      // Re-throw or handle error appropriately in a server environment
+      throw new Error("Firebase Admin SDK could not be initialized.");
+    }
+  }
+  throw new Error("FATAL: No Firebase service account credentials found.");
+}
+
+
 function getServiceAccount() {
   if (process.env.FIREBASE_SERVICE_ACCOUNT_JSON) {
     console.log("[firebase-admin] Initializing with FIREBASE_SERVICE_ACCOUNT_JSON from .env.local.");
@@ -38,37 +64,21 @@ function getServiceAccount() {
   return null;
 }
 
-function initializeAdmin() {
-  if (!admin.apps.length) {
-    const serviceAccount = getServiceAccount();
-    if (serviceAccount) {
-      try {
-        admin.initializeApp({
-          credential: admin.credential.cert(serviceAccount)
-        });
-        console.log("[firebase-admin] Firebase Admin SDK initialized successfully.");
-      } catch (error) {
-        console.error("[firebase-admin] CRITICAL: Firebase Admin SDK initialization failed.", error);
-      }
+const getAdminInstance = async () => {
+    if (!adminInstance) {
+        adminInstance = await initializeAdmin();
     }
-  }
-  return admin;
-}
-
-const adminInstance = initializeAdmin();
-
-const getAuth = () => {
-    if (!adminInstance.apps.length) {
-        throw new Error("Firebase Admin SDK not initialized. Check your environment variables.");
-    }
-    return adminInstance.auth();
+    return adminInstance;
 };
 
-const getFirestore = () => {
-    if (!adminInstance.apps.length) {
-        throw new Error("Firebase Admin SDK not initialized. Check your environment variables.");
-    }
-    return adminInstance.firestore();
+const getAuth = async () => {
+    const adminSdk = await getAdminInstance();
+    return adminSdk.auth();
+};
+
+const getFirestore = async () => {
+    const adminSdk = await getAdminInstance();
+    return adminSdk.firestore();
 };
 
 const FieldValue = admin.firestore.FieldValue;
