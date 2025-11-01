@@ -1,16 +1,10 @@
 
 import { NextResponse } from 'next/server';
-import { getAuth, getFirestore, FieldValue } from '@/lib/firebase-admin';
+import { getAuth, getFirestore, FieldValue, verifyAndGetUid } from '@/lib/firebase-admin';
 
 // Helper to verify owner and get their first business ID
 async function verifyOwnerAndGetBusiness(req, auth, firestore) {
-    const authHeader = req.headers.get('authorization');
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-        throw { message: 'Authorization token not found or invalid.', status: 401 };
-    }
-    const token = authHeader.split('Bearer ')[1];
-    const decodedToken = await auth.verifyIdToken(token);
-    const uid = decodedToken.uid;
+    const uid = await verifyAndGetUid(req); // Use the central helper
     
     const url = new URL(req.url, `http://${req.headers.host}`);
     const impersonatedOwnerId = url.searchParams.get('impersonate_owner_id');
@@ -50,8 +44,8 @@ async function verifyOwnerAndGetBusiness(req, auth, firestore) {
 // GET all bookings for the owner's business
 export async function GET(req) {
     try {
-        const auth = getAuth();
-        const firestore = getFirestore();
+        const auth = await getAuth();
+        const firestore = await getFirestore();
         const { businessId, collectionName } = await verifyOwnerAndGetBusiness(req, auth, firestore);
 
         const bookingsRef = firestore.collection(collectionName).doc(businessId).collection('bookings');
@@ -62,8 +56,6 @@ export async function GET(req) {
             return { 
                 id: doc.id, 
                 ...data,
-                // The data is already a Firestore Timestamp, no need to convert here.
-                // The client will handle the conversion.
             };
         });
 
@@ -78,7 +70,7 @@ export async function GET(req) {
 // POST a new booking from a customer
 export async function POST(req) {
     try {
-        const firestore = getFirestore();
+        const firestore = await getFirestore();
         const { restaurantId, name, phone, guests, bookingDateTime } = await req.json();
 
         if (!restaurantId || !name || !phone || !guests || !bookingDateTime) {
@@ -99,9 +91,8 @@ export async function POST(req) {
             customerName: name,
             customerPhone: phone,
             partySize: guests,
-            // Convert the ISO string from the client directly to a Firebase Date object
             bookingDateTime: new Date(bookingDateTime), 
-            status: 'pending', // Default status
+            status: 'pending',
             createdAt: FieldValue.serverTimestamp(),
             notes: '',
         };
@@ -121,8 +112,8 @@ export async function POST(req) {
 // PATCH to update a booking's status
 export async function PATCH(req) {
     try {
-        const auth = getAuth();
-        const firestore = getFirestore();
+        const auth = await getAuth();
+        const firestore = await getFirestore();
         const { businessId, collectionName } = await verifyOwnerAndGetBusiness(req, auth, firestore);
         const { bookingId, status } = await req.json();
 

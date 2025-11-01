@@ -1,15 +1,13 @@
 
 import { NextResponse } from 'next/server';
-import { getAuth, getFirestore, FieldValue } from '@/lib/firebase-admin';
+import { getFirestore, FieldValue, verifyAndGetUid } from '@/lib/firebase-admin';
+import { getAuth } from 'firebase-admin/auth'; // Import for direct use inside helper
 
 // Helper to get authenticated user UID or null if not logged in
 async function getUserIdFromToken(req) {
     try {
-        const authHeader = req.headers.get('authorization');
-        if (!authHeader || !authHeader.startsWith('Bearer ')) return null;
-        const token = authHeader.split('Bearer ')[1];
-        const decodedToken = await getAuth().verifyIdToken(token);
-        return decodedToken.uid;
+        const uid = await verifyAndGetUid(req);
+        return uid;
     } catch (error) {
         // Token is invalid, expired, or not present
         return null;
@@ -59,7 +57,6 @@ export async function POST(req) {
             return NextResponse.json({ message: 'Invalid address data. A full address and location coordinates are required.' }, { status: 400 });
         }
         
-        // ** THE FIX IS HERE: Prioritize phone number from the session **
         if (!phone) {
              return NextResponse.json({ message: 'A phone number is required to save an address for a session.' }, { status: 401 });
         }
@@ -68,20 +65,16 @@ export async function POST(req) {
         let targetRef;
         const normalizedPhone = phone.slice(-10);
 
-        // 1. Search for a verified user with this phone number first.
         const userQuery = await firestore.collection('users').where('phone', '==', normalizedPhone).limit(1).get();
 
         if (!userQuery.empty) {
-            // A verified user exists. Save the address to their profile.
             targetRef = userQuery.docs[0].ref;
             console.log(`[API][user/addresses] Found existing verified user for phone ${normalizedPhone}. Saving to UID: ${targetRef.id}.`);
         } else {
-            // No verified user found, save to (or create) an unclaimed profile.
             targetRef = firestore.collection('unclaimed_profiles').doc(normalizedPhone);
             console.log(`[API][user/addresses] No verified user found. Saving to 'unclaimed_profiles' for phone: ${normalizedPhone}.`);
         }
 
-        // Add the address to the determined target document.
         await targetRef.set({
             addresses: FieldValue.arrayUnion(address)
         }, { merge: true });

@@ -1,21 +1,13 @@
 
 import { NextResponse } from 'next/server';
-import { getAuth, getFirestore } from '@/lib/firebase-admin';
+import { getFirestore, verifyAndGetUid } from '@/lib/firebase-admin';
 import { FieldValue } from 'firebase-admin/firestore';
 
 
 export async function POST(req) {
     try {
-        const auth = getAuth();
+        const uid = await verifyAndGetUid(req); // Use the new helper
         const firestore = getFirestore();
-        const authHeader = req.headers.get('authorization');
-
-        if (!authHeader || !authHeader.startsWith('Bearer ')) {
-            return NextResponse.json({ message: 'Unauthorized' }, { status: 401 });
-        }
-        const token = authHeader.split('Bearer ')[1];
-        const decodedToken = await auth.verifyIdToken(token);
-        const uid = decodedToken.uid;
 
         const { finalUserData, businessData, businessType } = await req.json();
 
@@ -38,7 +30,7 @@ export async function POST(req) {
 
         // --- MERGE UNCLAIMED PROFILE LOGIC ---
         const unclaimedProfileRef = firestore.collection('unclaimed_profiles').doc(normalizedPhone);
-        const unclaimedProfileSnap = await unclaimedProfileRef.get(); // Await the get() call
+        const unclaimedProfileSnap = await unclaimedProfileRef.get();
         let mergedUserData = { ...finalUserData };
 
         if (unclaimedProfileSnap.exists) { 
@@ -46,10 +38,8 @@ export async function POST(req) {
             const unclaimedData = unclaimedProfileSnap.data();
             
             const existingAddresses = finalUserData.addresses || [];
-            // Ensure addresses in unclaimed data are in the new format
             const unclaimedAddresses = (unclaimedData.addresses || []).map(addr => {
                 if (typeof addr === 'string') {
-                    // Convert old string address to new structured format
                     return {
                         id: `addr_${Date.now()}_${Math.random()}`,
                         label: 'Default',
@@ -61,19 +51,17 @@ export async function POST(req) {
                         state: '',
                         pincode: '',
                         country: 'IN',
-                        full: addr, // Keep the original string as 'full' for compatibility
+                        full: addr,
                     };
                 }
-                // If it's already an object, ensure it has a 'full' property.
                 if (addr && !addr.full) {
                     addr.full = `${addr.street || ''}, ${addr.city || ''}, ${addr.state || ''} - ${addr.pincode || ''}`.replace(/, , /g, ', ').trim();
                 }
                 return addr;
-            }).filter(Boolean); // Filter out any null/undefined addresses
+            }).filter(Boolean);
 
             mergedUserData.addresses = [...existingAddresses, ...unclaimedAddresses];
 
-            // NEW & CORRECTED: Handle moving customer data from phone ID to UID
             if (unclaimedData.orderedFrom && Array.isArray(unclaimedData.orderedFrom)) {
                 for (const restaurantInfo of unclaimedData.orderedFrom) {
                     if (restaurantInfo.restaurantId) {
@@ -88,24 +76,21 @@ export async function POST(req) {
                         let oldCustomerData = {};
                         if (oldCustomerSnap.exists) {
                             oldCustomerData = oldCustomerSnap.data();
-                            // Delete the old record keyed by phone number
                             batch.delete(oldCustomerRef);
                             console.log(`[PROFILE COMPLETION] Marked old customer record at ${oldCustomerRef.path} for deletion.`);
                         }
                         
-                        // Create or merge data into the new record keyed by UID
                         const newCustomerPayload = {
                             ...oldCustomerData,
-                            name: finalUserData.name, // Update with master profile name
-                            email: finalUserData.email, // Add email
-                            status: 'verified', // Mark as verified
+                            name: finalUserData.name,
+                            email: finalUserData.email,
+                            status: 'verified',
                             lastSeen: FieldValue.serverTimestamp()
                         };
 
                         batch.set(newCustomerRef, newCustomerPayload, { merge: true });
                         console.log(`[PROFILE COMPLETION] Marked new/updated customer record at ${newCustomerRef.path} for creation.`);
                         
-                        // Also create the entry in the user's `joined_restaurants` subcollection
                         const userRestaurantLinkRef = firestore.collection('users').doc(uid).collection('joined_restaurants').doc(restaurantId);
                          batch.set(userRestaurantLinkRef, {
                             restaurantName: restaurantInfo.restaurantName, 
@@ -119,7 +104,6 @@ export async function POST(req) {
                 }
             }
 
-            // *** THE FIX: Migrate orders from phone number ID to UID ***
             const unclaimedOrdersQuery = firestore.collection('orders').where('customerId', '==', normalizedPhone);
             const unclaimedOrdersSnap = await unclaimedOrdersQuery.get();
             if (!unclaimedOrdersSnap.empty) {
@@ -130,23 +114,21 @@ export async function POST(req) {
                 });
             }
             
-            // Delete the unclaimed profile after processing
             batch.delete(unclaimedProfileRef);
             console.log(`[PROFILE COMPLETION] Unclaimed profile for ${normalizedPhone} marked for deletion.`);
         }
         
-        // --- START: NEW LOGIC FOR RIDER ROLE ---
         if (finalUserData.role === 'rider') {
             const driverRef = firestore.collection('drivers').doc(uid);
             batch.set(driverRef, {
                 uid: uid,
-                role: 'rider', // THE FIX: Add the role field
+                role: 'rider',
                 email: finalUserData.email,
                 name: finalUserData.name,
                 phone: finalUserData.phone,
                 profilePictureUrl: finalUserData.profilePictureUrl,
                 createdAt: FieldValue.serverTimestamp(),
-                status: 'offline', // Default status for new riders
+                status: 'offline',
                 currentLocation: null,
                 currentRestaurantId: null,
                 allowInCommunityPool: false,
@@ -154,9 +136,7 @@ export async function POST(req) {
             }, { merge: true });
             console.log(`[PROFILE COMPLETION] Rider Action: New rider profile for UID ${uid} added to 'drivers' collection.`);
         } 
-        // --- END: NEW LOGIC FOR RIDER ROLE ---
         else {
-            // ** THE FIX IS HERE: Add the server-side timestamp before saving **
             mergedUserData.createdAt = FieldValue.serverTimestamp();
 
             const masterUserRef = firestore.collection('users').doc(uid);
@@ -187,6 +167,10 @@ export async function POST(req) {
         console.error('COMPLETE PROFILE API ERROR:', error);
         if (error.code === 'auth/id-token-expired') {
             return NextResponse.json({ message: 'Login token has expired. Please log in again.' }, { status: 401 });
+        }
+        // Handle custom errors from our helper
+        if (error.status) {
+            return NextResponse.json({ message: error.message }, { status: error.status });
         }
         return NextResponse.json({ message: `Backend Error: ${error.message}` }, { status: 500 });
     }

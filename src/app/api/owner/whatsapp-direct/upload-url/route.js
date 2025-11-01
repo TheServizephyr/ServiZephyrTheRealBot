@@ -1,18 +1,12 @@
 
 import { NextResponse } from 'next/server';
-import { getAuth, getFirestore } from '@/lib/firebase-admin';
+import { getAuth, getFirestore, verifyAndGetUid } from '@/lib/firebase-admin';
 import { getStorage } from 'firebase-admin/storage';
 import { nanoid } from 'nanoid';
 
 async function verifyOwnerAndGetBusinessRef(req) {
-    const auth = getAuth();
-    const firestore = getFirestore();
-    const authHeader = req.headers.get('authorization');
-    if (!authHeader) throw { message: 'Unauthorized', status: 401 };
-    
-    const token = authHeader.split('Bearer ')[1];
-    const decodedToken = await auth.verifyIdToken(token);
-    const uid = decodedToken.uid;
+    const firestore = await getFirestore();
+    const uid = await verifyAndGetUid(req); // Use central helper
     
     const url = new URL(req.url, `http://${req.headers.host}`);
     const impersonatedOwnerId = url.searchParams.get('impersonate_owner_id');
@@ -62,7 +56,6 @@ export async function POST(req) {
             contentType: fileType,
         });
 
-        // The public URL of the file after upload
         const publicUrl = `https://storage.googleapis.com/${bucket.name}/${filePath}`;
 
         return NextResponse.json({ 

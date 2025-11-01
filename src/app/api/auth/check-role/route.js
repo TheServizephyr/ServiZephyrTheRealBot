@@ -1,23 +1,12 @@
 
 import { NextResponse } from 'next/server';
-import { getAuth, getFirestore } from '@/lib/firebase-admin';
+import { getAuth, getFirestore, verifyAndGetUid } from '@/lib/firebase-admin';
 
 export async function POST(req) {
     console.log("[DEBUG] /api/auth/check-role: Received a request.");
     try {
-        const auth = await getAuth();
+        const uid = await verifyAndGetUid(req); // Use the new helper
         const firestore = await getFirestore();
-        const authHeader = req.headers.get('authorization');
-
-        if (!authHeader || !authHeader.startsWith('Bearer ')) {
-            console.error("[DEBUG] /api/auth/check-role: Authorization header missing or malformed.");
-            return NextResponse.json({ message: 'Unauthorized' }, { status: 401 });
-        }
-        const token = authHeader.split('Bearer ')[1];
-        
-        console.log("[DEBUG] /api/auth/check-role: Verifying ID token...");
-        const decodedToken = await auth.verifyIdToken(token);
-        const uid = decodedToken.uid;
         console.log(`[DEBUG] /api/auth/check-role: Token verified for UID: ${uid}`);
 
         // 1. Check the 'users' collection first (for customers, owners, admins)
@@ -30,11 +19,15 @@ export async function POST(req) {
             console.log("[DEBUG] /api/auth/check-role: User document data:", userData);
             const role = userData.role;
             const businessType = userData.businessType || null;
+            
+            // This custom claim logic can be simplified, but let's keep it for now
+            const auth = await getAuth();
+            const { customClaims } = await auth.getUser(uid);
 
-            if (role === 'admin' && !decodedToken.isAdmin) {
+            if (role === 'admin' && !customClaims?.isAdmin) {
                 await auth.setCustomUserClaims(uid, { isAdmin: true });
                 console.log(`[DEBUG] /api/auth/check-role: Custom claim 'isAdmin: true' set for UID: ${uid}.`);
-            } else if (role !== 'admin' && decodedToken.isAdmin) {
+            } else if (role !== 'admin' && customClaims?.isAdmin) {
                  await auth.setCustomUserClaims(uid, { isAdmin: null });
                  console.log(`[DEBUG] /api/auth/check-role: User is no longer admin, removing custom claim for UID: ${uid}.`);
             }
@@ -45,7 +38,6 @@ export async function POST(req) {
             }
         }
         
-        // --- START FIX: Check 'drivers' collection if not found in 'users' ---
         console.log(`[DEBUG] /api/auth/check-role: User not in 'users' or has no role. Checking 'drivers' collection.`);
         const driverRef = firestore.collection('drivers').doc(uid);
         const driverDoc = await driverRef.get();
@@ -55,10 +47,7 @@ export async function POST(req) {
             console.log(`[DEBUG] /api/auth/check-role: Role found in 'drivers': 'rider'. Returning 200.`);
             return NextResponse.json({ role: 'rider', businessType: null }, { status: 200 });
         }
-        // --- END FIX ---
 
-
-        // If the user document doesn't exist in either collection, they are a new user.
         console.log(`[DEBUG] /api/auth/check-role: User not found in any collection for UID: ${uid}. Returning 404.`);
         return NextResponse.json({ message: 'User profile not found.' }, { status: 404 });
 
@@ -67,8 +56,9 @@ export async function POST(req) {
         if (error.code === 'auth/id-token-expired') {
             return NextResponse.json({ message: 'Login token has expired. Please log in again.' }, { status: 401 });
         }
-        if (error.code === 'auth/argument-error' && error.message.includes('Firebase ID token has incorrect "aud" (audience) claim')) {
-            return NextResponse.json({ message: `Critical Backend Mismatch: ${error.message}` }, { status: 500 });
+        // Handle custom errors from our helper
+        if (error.status) {
+            return NextResponse.json({ message: error.message }, { status: error.status });
         }
         return NextResponse.json({ message: `Backend Error: ${error.message}` }, { status: 500 });
     }

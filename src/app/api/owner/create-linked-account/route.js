@@ -2,7 +2,7 @@
 'use server';
 
 import { NextResponse } from 'next/server';
-import { getAuth, getFirestore } from '@/lib/firebase-admin';
+import { getAuth, getFirestore, verifyAndGetUid } from '@/lib/firebase-admin';
 import https from 'https';
 
 // Helper to make Razorpay API requests
@@ -44,16 +44,10 @@ async function makeRazorpayRequest(options, payload = null) {
 // Helper to verify owner and get their restaurant details
 async function verifyOwnerAndGetRestaurant(req, auth) {
     console.log("[API LOG] Verifying owner and fetching data...");
-    const authHeader = req.headers.get('authorization');
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-        throw { message: 'Authorization token not found or invalid.', status: 401 };
-    }
-    const token = authHeader.split('Bearer ')[1];
-    const decodedToken = await auth.verifyIdToken(token);
-    const uid = decodedToken.uid;
+    const uid = await verifyAndGetUid(req); // Use the central helper
     console.log(`[API LOG] UID: ${uid} verified.`);
     
-    const firestore = getFirestore();
+    const firestore = await getFirestore();
     const restaurantsQuery = await firestore.collection('restaurants').where('ownerId', '==', uid).limit(1).get();
     if (restaurantsQuery.empty) {
         throw { message: 'No restaurant associated with this owner.', status: 404 };
@@ -75,13 +69,12 @@ async function verifyOwnerAndGetRestaurant(req, auth) {
 
 export async function POST(req) {
     console.log("[API LOG] Received POST request to /api/owner/create-linked-account");
-    const auth = getAuth();
+    const auth = await getAuth();
     
     try {
         const { restaurantRef, restaurantData, userData } = await verifyOwnerAndGetRestaurant(req, auth);
         const { beneficiaryName, accountNumber, ifsc } = await req.json();
         
-        // Validation from Razorpay's email & our new form
         if (!userData.email || !restaurantData.name || !userData.name || !userData.phone || !restaurantData.address || !restaurantData.address.street) {
              return NextResponse.json({ message: 'User email, name, phone, restaurant name, and a structured address are required.' }, { status: 400 });
         }
@@ -107,7 +100,6 @@ export async function POST(req) {
             }
         };
 
-        // --- STEP 1: Create a Linked Account (using 'route' type) ---
         console.log("[API LOG] Step 1: Creating Razorpay Route Account...");
         const accountPayload = JSON.stringify({
             type: "route", 
@@ -132,79 +124,32 @@ export async function POST(req) {
             }
         });
         
-        const createAccountOptions = {
-            ...baseOptions,
-            path: '/v2/accounts',
-            method: 'POST',
-        };
-
+        const createAccountOptions = { ...baseOptions, path: '/v2/accounts', method: 'POST' };
         const linkedAccount = await makeRazorpayRequest(createAccountOptions, accountPayload);
         const accountId = linkedAccount.id;
         console.log(`[API LOG] Step 1 SUCCESS. Route Account ID: ${accountId}`);
 
-
-        // --- STEP 2: Create a Stakeholder ---
         console.log(`[API LOG] Step 2: Creating Stakeholder for Account ${accountId}...`);
-        const stakeholderPayload = JSON.stringify({
-            name: userData.name,
-            email: userData.email,
-            phone: {
-                primary: userData.phone,
-            }
-        });
-
-        const createStakeholderOptions = {
-            ...baseOptions,
-            path: `/v2/accounts/${accountId}/stakeholders`,
-            method: 'POST',
-        };
+        const stakeholderPayload = JSON.stringify({ name: userData.name, email: userData.email, phone: { primary: userData.phone } });
+        const createStakeholderOptions = { ...baseOptions, path: `/v2/accounts/${accountId}/stakeholders`, method: 'POST' };
         const stakeholder = await makeRazorpayRequest(createStakeholderOptions, stakeholderPayload);
         console.log(`[API LOG] Step 2 SUCCESS. Stakeholder ID: ${stakeholder.id}`);
 
-
-        // --- STEP 3: Request Product Configuration ---
         console.log(`[API LOG] Step 3: Requesting 'route' product configuration for Account ${accountId}...`);
-        const productRequestPayload = JSON.stringify({
-            product_name: "route",
-            tnc_accepted: true,
-        });
-
-        const requestProductOptions = {
-            ...baseOptions,
-            path: `/v2/accounts/${accountId}/products`,
-            method: 'POST',
-        };
+        const productRequestPayload = JSON.stringify({ product_name: "route", tnc_accepted: true });
+        const requestProductOptions = { ...baseOptions, path: `/v2/accounts/${accountId}/products`, method: 'POST' };
         const product = await makeRazorpayRequest(requestProductOptions, productRequestPayload);
         const productId = product.id;
         console.log(`[API LOG] Step 3 SUCCESS. Product ID: ${productId}`);
 
-
-        // --- STEP 4: Update Product Configuration (Activate) ---
         console.log(`[API LOG] Step 4: Activating 'route' for Product ${productId} with bank details...`);
-        
-        const updateProductPayload = JSON.stringify({
-           tnc_accepted: true,
-           settlements: {
-                account_number: accountNumber,
-                ifsc_code: ifsc,
-                beneficiary_name: beneficiaryName,
-           }
-        });
-
-        const updateProductOptions = {
-            ...baseOptions,
-            path: `/v2/accounts/${accountId}/products/${productId}`,
-            method: 'PATCH',
-        };
+        const updateProductPayload = JSON.stringify({ tnc_accepted: true, settlements: { account_number: accountNumber, ifsc_code: ifsc, beneficiary_name: beneficiaryName } });
+        const updateProductOptions = { ...baseOptions, path: `/v2/accounts/${accountId}/products/${productId}`, method: 'PATCH' };
         await makeRazorpayRequest(updateProductOptions, updateProductPayload);
         console.log(`[API LOG] Step 4 SUCCESS. Product configuration updated and activated.`);
 
-
-        // --- FINAL STEP: Save the accountId to Firestore ---
         console.log(`[API LOG] Final Step: Saving Route Account ID ${accountId} to Firestore...`);
-        await restaurantRef.update({
-            razorpayAccountId: accountId,
-        });
+        await restaurantRef.update({ razorpayAccountId: accountId });
         console.log(`[API LOG] Firestore updated successfully.`);
 
         return NextResponse.json({ message: 'Linked account created and activated successfully!', accountId: accountId }, { status: 200 });

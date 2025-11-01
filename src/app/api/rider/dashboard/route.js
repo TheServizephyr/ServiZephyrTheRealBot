@@ -1,26 +1,14 @@
 
 import { NextResponse } from 'next/server';
-import { getAuth, getFirestore } from '@/lib/firebase-admin';
+import { getFirestore, verifyAndGetUid } from '@/lib/firebase-admin';
 import admin from 'firebase-admin';
-
-// Helper to verify user and get UID
-async function getUserId(req, auth) {
-    const authHeader = req.headers.get('authorization');
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-        throw { message: 'Authorization token not found or invalid.', status: 401 };
-    }
-    const token = authHeader.split('Bearer ')[1];
-    const decodedToken = await auth.verifyIdToken(token);
-    return decodedToken.uid;
-}
 
 // GET handler to fetch driver data
 export async function GET(req) {
     console.log("[DEBUG] /api/rider/dashboard: GET request received.");
     try {
-        const auth = getAuth();
-        const firestore = getFirestore();
-        const uid = await getUserId(req, auth);
+        const uid = await verifyAndGetUid(req); // Use the new helper
+        const firestore = await getFirestore();
 
         console.log(`[DEBUG] /api/rider/dashboard: Fetching driver data for UID: ${uid}`);
         const driverRef = firestore.collection('drivers').doc(uid);
@@ -45,9 +33,8 @@ export async function GET(req) {
 export async function PATCH(req) {
     console.log("[DEBUG] /api/rider/dashboard: PATCH request received.");
     try {
-        const auth = getAuth();
-        const firestore = getFirestore();
-        const uid = await getUserId(req, auth);
+        const uid = await verifyAndGetUid(req); // Use the new helper
+        const firestore = await getFirestore();
 
         const { status, location } = await req.json();
         

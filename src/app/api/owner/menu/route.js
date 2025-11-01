@@ -1,17 +1,10 @@
 
 import { NextResponse } from 'next/server';
-
-import { getAuth, getFirestore, FieldValue } from '@/lib/firebase-admin';
+import { getAuth, getFirestore, FieldValue, verifyAndGetUid } from '@/lib/firebase-admin';
 
 // Helper to verify owner and get their first business ID
 async function verifyOwnerAndGetBusiness(req, auth, firestore) {
-    const authHeader = req.headers.get('authorization');
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-        throw { message: 'Authorization token not found or invalid.', status: 401 };
-    }
-    const token = authHeader.split('Bearer ')[1];
-    const decodedToken = await auth.verifyIdToken(token);
-    const uid = decodedToken.uid;
+    const uid = await verifyAndGetUid(req); // Use central helper
     
     // --- ADMIN IMPERSONATION & PERMISSION LOGIC ---
     const url = new URL(req.url, `http://${req.headers.host}`);
@@ -61,7 +54,6 @@ export async function GET(req) {
         const businessData = businessSnap.data();
         const customCategories = businessData.customCategories || [];
 
-        // Determine which default categories to use based on business type
         const businessType = businessData.businessType || (collectionName === 'restaurants' ? 'restaurant' : 'shop');
         
         const defaultRestaurantCategories = ["momos", "burgers", "rolls", "soup", "tandoori-item", "starters", "main-course", "tandoori-khajana", "rice", "noodles", "pasta", "raita", "desserts", "beverages"];
@@ -222,14 +214,12 @@ export async function PATCH(req) {
         
         const menuRef = firestore.collection(collectionName).doc(businessId).collection('menu');
 
-        // Handle single item availability toggle
         if (updates && updates.id) {
             const itemRef = menuRef.doc(updates.id);
             await itemRef.update({ isAvailable: updates.isAvailable });
             return NextResponse.json({ message: 'Item availability updated.' }, { status: 200 });
         }
 
-        // Handle bulk actions
         if (!itemIds || !Array.isArray(itemIds) || itemIds.length === 0 || !action) {
             return NextResponse.json({ message: 'Item IDs array and action are required for bulk updates.' }, { status: 400 });
         }

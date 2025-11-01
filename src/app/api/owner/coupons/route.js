@@ -1,18 +1,11 @@
 
 import { NextResponse } from 'next/server';
-
-import { getAuth, FieldValue, getFirestore } from '@/lib/firebase-admin';
+import { getAuth, FieldValue, getFirestore, verifyAndGetUid } from '@/lib/firebase-admin';
 
 
 // Helper to verify owner and get their first business ID
 async function verifyOwnerAndGetBusiness(req, auth, firestore) {
-    const authHeader = req.headers.get('authorization');
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-        throw { message: 'Authorization token not found or invalid.', status: 401 };
-    }
-    const token = authHeader.split('Bearer ')[1];
-    const decodedToken = await auth.verifyIdToken(token);
-    const uid = decodedToken.uid;
+    const uid = await verifyAndGetUid(req); // Use the central helper
     
     // Admin impersonation logic
     const url = new URL(req.url, `http://${req.headers.host}`);
@@ -53,7 +46,7 @@ async function verifyOwnerAndGetBusiness(req, auth, firestore) {
 export async function GET(req) {
     try {
         const auth = await getAuth();
-        const firestore = getFirestore();
+        const firestore = await getFirestore();
         const { businessId, collectionName } = await verifyOwnerAndGetBusiness(req, auth, firestore);
 
         const couponsRef = firestore.collection(collectionName).doc(businessId).collection('coupons');
@@ -72,8 +65,8 @@ export async function GET(req) {
 
 export async function POST(req) {
     try {
-        const auth = getAuth();
-        const firestore = getFirestore();
+        const auth = await getAuth();
+        const firestore = await getFirestore();
         const { businessId, collectionName } = await verifyOwnerAndGetBusiness(req, auth, firestore);
         const { coupon } = await req.json();
 
@@ -90,7 +83,7 @@ export async function POST(req) {
             ...coupon,
             id: newCouponRef.id,
             timesUsed: 0,
-            value: isFreeDelivery ? 0 : Number(coupon.value), // Ensure value is 0 for free delivery
+            value: isFreeDelivery ? 0 : Number(coupon.value),
             createdAt: FieldValue.serverTimestamp(),
             startDate: new Date(coupon.startDate),
             expiryDate: new Date(coupon.expiryDate),
@@ -108,8 +101,8 @@ export async function POST(req) {
 
 export async function PATCH(req) {
     try {
-        const auth = getAuth();
-        const firestore = getFirestore();
+        const auth = await getAuth();
+        const firestore = await getFirestore();
         const { businessId, collectionName } = await verifyOwnerAndGetBusiness(req, auth, firestore);
         const { coupon } = await req.json();
 
@@ -147,8 +140,8 @@ export async function PATCH(req) {
 
 export async function DELETE(req) {
     try {
-        const auth = getAuth();
-        const firestore = getFirestore();
+        const auth = await getAuth();
+        const firestore = await getFirestore();
         const { businessId, collectionName } = await verifyOwnerAndGetBusiness(req, auth, firestore);
         const { couponId } = await req.json();
 

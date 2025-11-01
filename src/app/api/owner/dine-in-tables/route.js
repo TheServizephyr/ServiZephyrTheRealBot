@@ -1,18 +1,11 @@
 
 import { NextResponse } from 'next/server';
-import { getAuth, getFirestore, FieldValue } from '@/lib/firebase-admin';
+import { getAuth, getFirestore, FieldValue, verifyAndGetUid } from '@/lib/firebase-admin';
 
 // Helper to verify owner and get their first business ID
 async function verifyOwnerAndGetBusiness(req) {
-    const auth = getAuth();
-    const firestore = getFirestore();
-    const authHeader = req.headers.get('authorization');
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-        throw { message: 'Authorization token not found or invalid.', status: 401 };
-    }
-    const token = authHeader.split('Bearer ')[1];
-    const decodedToken = await auth.verifyIdToken(token);
-    const uid = decodedToken.uid;
+    const firestore = await getFirestore();
+    const uid = await verifyAndGetUid(req); // Use central helper
     
     // THE FIX: Read from URL search params instead of referer header
     const { searchParams } = new URL(req.url, `http://${req.headers.host}`);
@@ -74,7 +67,6 @@ export async function POST(req) {
         
         const tableRef = businessRef.collection('tables').doc(tableId);
 
-        // Set max_capacity and initialize current_pax
         await tableRef.set({
             max_capacity: Number(max_capacity),
             current_pax: 0,
@@ -96,9 +88,6 @@ export async function PATCH(req) {
         const businessRef = await verifyOwnerAndGetBusiness(req);
         const { tableId, action, tabIdToClose, newTableId, newCapacity } = await req.json();
         
-        // --- THE FIX: Prioritize action handling over edit handling ---
-
-        // Handle Table State logic (mark_paid, mark_cleaned)
         if (action) {
             if (!tableId) {
                 return NextResponse.json({ message: 'Table ID is required for actions.' }, { status: 400 });
@@ -143,7 +132,6 @@ export async function PATCH(req) {
         }
 
 
-        // Handle Table Edit logic (rename/re-capacity)
         if (newTableId !== undefined || newCapacity !== undefined) {
             if (!tableId) {
                 return NextResponse.json({ message: 'Original Table ID is required for editing.' }, { status: 400 });
@@ -159,7 +147,6 @@ export async function PATCH(req) {
                 updateData.max_capacity = Number(newCapacity);
             }
 
-            // If name is changed, we need to move the document
             if (newTableId && newTableId !== tableId) {
                 const newTableRef = businessRef.collection('tables').doc(newTableId);
                 const tableData = tableSnap.data();
@@ -172,7 +159,6 @@ export async function PATCH(req) {
             }
         }
         
-        // If no valid action or edit data was provided
         return NextResponse.json({ message: 'No valid action or edit data provided.' }, { status: 400 });
 
     } catch (error) {

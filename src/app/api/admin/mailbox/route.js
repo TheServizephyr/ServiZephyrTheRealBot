@@ -1,20 +1,14 @@
 
 import { NextResponse } from 'next/server';
-import { getFirestore, FieldValue } from '@/lib/firebase-admin';
+import { getFirestore, FieldValue, verifyAndGetUid, getAuth } from '@/lib/firebase-admin';
 
 // Helper to verify if the user is an admin
 async function verifyAdmin(req, auth) {
-    const authHeader = req.headers.get('authorization');
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-        throw { message: 'Authorization token not found or invalid.', status: 401 };
-    }
-    const token = authHeader.split('Bearer ')[1];
+    const uid = await verifyAndGetUid(req); // Use the central helper first
+    const userRecord = await auth.getUser(uid);
     
-    // **THE FIX: Verify token and check for the 'isAdmin' custom claim**
-    const decodedToken = await auth.verifyIdToken(token, true); // `true` checks for revoked tokens
-    
-    if (decodedToken.isAdmin === true) {
-        return decodedToken.uid;
+    if (userRecord.customClaims && userRecord.customClaims.isAdmin === true) {
+        return uid;
     }
     
     // If the claim is not present, deny access.
@@ -24,10 +18,10 @@ async function verifyAdmin(req, auth) {
 // GET all reports for the admin
 export async function GET(req) {
     try {
-        const auth = require('@/lib/firebase-admin').getAuth();
+        const auth = await getAuth();
         await verifyAdmin(req, auth);
         
-        const firestore = getFirestore();
+        const firestore = await getFirestore();
         const mailboxRef = firestore.collection('adminMailbox');
         const snapshot = await mailboxRef.orderBy('timestamp', 'desc').get();
         
@@ -44,7 +38,7 @@ export async function GET(req) {
 // POST a new error report
 export async function POST(req) {
     try {
-        const firestore = getFirestore();
+        const firestore = await getFirestore();
         const { errorTitle, errorMessage, pathname, user } = await req.json();
 
         if (!errorTitle || !errorMessage || !pathname || !user) {
@@ -80,7 +74,7 @@ export async function POST(req) {
 // PATCH to update a report's status
 export async function PATCH(req) {
      try {
-        const auth = require('@/lib/firebase-admin').getAuth();
+        const auth = await getAuth();
         await verifyAdmin(req, auth);
         
         const { reportId, status } = await req.json();
@@ -89,7 +83,7 @@ export async function PATCH(req) {
             return NextResponse.json({ message: 'Report ID and status are required.' }, { status: 400 });
         }
         
-        const firestore = getFirestore();
+        const firestore = await getFirestore();
         const reportRef = firestore.collection('adminMailbox').doc(reportId);
         
         await reportRef.update({ status: status });

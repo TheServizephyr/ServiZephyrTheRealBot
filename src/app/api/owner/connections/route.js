@@ -1,18 +1,12 @@
 
 import { NextResponse } from 'next/server';
-import { getAuth, getFirestore } from '@/lib/firebase-admin';
+import { getAuth, getFirestore, verifyAndGetUid } from '@/lib/firebase-admin';
 
 export const dynamic = 'force-dynamic';
 
 // Helper to verify owner and get their UID
 async function verifyOwner(req, auth, firestore) {
-    const authHeader = req.headers.get('authorization');
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-        throw { message: 'Authorization token not found or invalid.', status: 401 };
-    }
-    const token = authHeader.split('Bearer ')[1];
-    const decodedToken = await auth.verifyIdToken(token);
-    const uid = decodedToken.uid;
+    const uid = await verifyAndGetUid(req); // Use the central helper
     
     // Admin impersonation logic
     const url = new URL(req.url, `http://${req.headers.host}`);
@@ -33,8 +27,8 @@ async function verifyOwner(req, auth, firestore) {
 
 export async function GET(req) {
     try {
-        const auth = getAuth();
-        const firestore = getFirestore();
+        const auth = await getAuth();
+        const firestore = await getFirestore();
         const ownerId = await verifyOwner(req, auth, firestore);
 
         const restaurantsQuery = await firestore.collection('restaurants')

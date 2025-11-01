@@ -1,17 +1,11 @@
 
 import { NextResponse } from 'next/server';
-import { getAuth, getFirestore, FieldValue } from '@/lib/firebase-admin';
+import { getAuth, getFirestore, FieldValue, verifyAndGetUid } from '@/lib/firebase-admin';
 import { sendWhatsAppMessage } from '@/lib/whatsapp';
 
 async function verifyOwnerAndGetBusinessRef(req) {
-    const auth = getAuth();
-    const firestore = getFirestore();
-    const authHeader = req.headers.get('authorization');
-    if (!authHeader) throw { message: 'Unauthorized', status: 401 };
-    
-    const token = authHeader.split('Bearer ')[1];
-    const decodedToken = await auth.verifyIdToken(token);
-    const uid = decodedToken.uid;
+    const firestore = await getFirestore();
+    const uid = await verifyAndGetUid(req); // Use central helper
     
     const url = new URL(req.url, `http://${req.headers.host}`);
     const impersonatedOwnerId = url.searchParams.get('impersonate_owner_id');
@@ -96,7 +90,6 @@ export async function POST(req) {
         let messagePayload;
         let firestoreMessageData;
         
-        // --- START FIX: Construct interactive message payload ---
         if (text) {
              messagePayload = {
                 type: 'interactive',
@@ -105,28 +98,18 @@ export async function POST(req) {
                     body: { text: text },
                     action: {
                         buttons: [
-                            {
-                                type: "reply",
-                                reply: { id: "action_end_chat", title: "End This Chat" }
-                            },
-                            {
-                                type: "reply",
-                                reply: { id: "action_report_admin", title: "Report to Admin" }
-                            }
+                            { type: "reply", reply: { id: "action_end_chat", title: "End This Chat" } },
+                            { type: "reply", reply: { id: "action_report_admin", title: "Report to Admin" } }
                         ]
                     }
                 }
             };
             firestoreMessageData = { type: 'text', text: text };
         } else if (imageUrl) {
-            // Note: WhatsApp API does not support buttons on image messages directly.
-            // We send the image first, then text with buttons as a follow-up.
-            // For simplicity here, we'll just send the image and log a warning.
             console.warn("[API WARNING] Buttons cannot be sent with image messages. Sending image only.");
             messagePayload = { type: 'image', link: imageUrl };
             firestoreMessageData = { type: 'image', mediaUrl: imageUrl, text: 'Image' };
         }
-        // --- END FIX ---
         
         await sendWhatsAppMessage(customerPhoneWithCode, messagePayload, botPhoneNumberId);
         

@@ -1,23 +1,14 @@
 
 import { NextResponse } from 'next/server';
-import { getAuth } from '@/lib/firebase-admin';
-import { getFirestore } from 'firebase-admin/firestore';
+import { getAuth, getFirestore, verifyAndGetUid } from '@/lib/firebase-admin';
 import { initializeApp, getApps } from 'firebase-admin/app';
 import { sendRestaurantStatusChangeNotification } from '@/lib/notifications';
 
 export const dynamic = 'force-dynamic';
 
-// This function now verifies the user and fetches both user and their business data if they are an owner.
 async function verifyUserAndGetData(req) {
-    const auth = getAuth();
-    const firestore = getFirestore();
-    const authHeader = req.headers.get('authorization');
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-        throw { message: 'Authorization token not found or invalid.', status: 401 };
-    }
-    const token = authHeader.split('Bearer ')[1];
-    const decodedToken = await auth.verifyIdToken(token);
-    const uid = decodedToken.uid;
+    const firestore = await getFirestore();
+    const uid = await verifyAndGetUid(req); // Use the central helper
     
     // Admin impersonation logic
     const url = new URL(req.url, `http://${req.headers.host}`);
@@ -61,9 +52,8 @@ export async function GET(req) {
         const { searchParams } = new URL(req.url);
         const businessIdFromQuery = searchParams.get('restaurantId') || searchParams.get('businessId');
         
-        // Public endpoint for fetching only COD status
         if (businessIdFromQuery) {
-            const firestore = getFirestore();
+            const firestore = await getFirestore();
             let businessDoc = await firestore.collection('restaurants').doc(businessIdFromQuery).get();
             if (!businessDoc.exists) {
                 businessDoc = await firestore.collection('shops').doc(businessIdFromQuery).get();
@@ -72,7 +62,6 @@ export async function GET(req) {
                 return NextResponse.json({ message: "Business not found." }, { status: 404 });
             }
             const businessData = businessDoc.data();
-            // THE FIX: Return all relevant payment flags, not just a single 'codEnabled'.
             return NextResponse.json({ 
                 deliveryCodEnabled: businessData.deliveryCodEnabled === undefined ? true : businessData.deliveryCodEnabled,
                 pickupPodEnabled: businessData.pickupPodEnabled === undefined ? true : businessData.pickupPodEnabled,
@@ -80,7 +69,6 @@ export async function GET(req) {
             }, { status: 200 });
         }
         
-        // Authenticated endpoint for full settings
         const { uid, userData, businessData, businessId } = await verifyUserAndGetData(req);
         
         const profileData = {
@@ -90,11 +78,7 @@ export async function GET(req) {
             role: userData.role || 'customer',
             restaurantName: businessData?.name || '',
             profilePicture: userData.profilePictureUrl || `https://picsum.photos/seed/${uid}/200/200`,
-            notifications: userData.notifications || {
-                newOrders: true,
-                dailySummary: false,
-                marketing: true,
-            },
+            notifications: userData.notifications || { newOrders: true, dailySummary: false, marketing: true },
             address: businessData?.address || { street: '', city: '', state: '', postalCode: '', country: 'IN' },
             gstin: businessData?.gstin || '',
             fssai: businessData?.fssai || '',
@@ -113,7 +97,7 @@ export async function GET(req) {
             dineInOnlinePaymentEnabled: businessData?.dineInOnlinePaymentEnabled === undefined ? true : businessData.dineInOnlinePaymentEnabled,
             dineInPayAtCounterEnabled: businessData?.dineInPayAtCounterEnabled === undefined ? true : businessData.dineInPayAtCounterEnabled,
             isOpen: businessData?.isOpen === undefined ? true : businessData.isOpen,
-            businessId: businessId // THE FIX: Explicitly include businessId
+            businessId: businessId
         };
 
         return NextResponse.json(profileData, { status: 200 });
@@ -130,7 +114,6 @@ export async function PATCH(req) {
         
         const updates = await req.json();
 
-        // --- Update User's Profile in 'users' collection ---
         const userUpdateData = {};
         if (updates.name !== undefined) userUpdateData.name = updates.name;
         if (updates.phone !== undefined) userUpdateData.phone = updates.phone;
@@ -140,7 +123,6 @@ export async function PATCH(req) {
             await userRef.update(userUpdateData);
         }
 
-        // --- Update Business Profile ---
         if (businessRef) {
             const businessUpdateData = {};
             if (updates.restaurantName !== undefined) businessUpdateData.name = updates.restaurantName;
@@ -152,7 +134,6 @@ export async function PATCH(req) {
             if (updates.bannerUrls !== undefined) businessUpdateData.bannerUrls = updates.bannerUrls;
             if (updates.address !== undefined) businessUpdateData.address = updates.address; 
             
-            // Order & Payment Settings
             if (updates.deliveryEnabled !== undefined) businessUpdateData.deliveryEnabled = updates.deliveryEnabled;
             if (updates.pickupEnabled !== undefined) businessUpdateData.pickupEnabled = updates.pickupEnabled;
             if (updates.dineInEnabled !== undefined) businessUpdateData.dineInEnabled = updates.dineInEnabled;
@@ -183,6 +164,7 @@ export async function PATCH(req) {
             }
         }
         
+        // Re-fetch data to return the latest state
         const { userData: finalUserData, businessData: finalBusinessData, businessId: finalBusinessId } = await verifyUserAndGetData(req);
         const responseData = {
             name: finalUserData.name,
@@ -210,7 +192,7 @@ export async function PATCH(req) {
             dineInPayAtCounterEnabled: finalBusinessData?.dineInPayAtCounterEnabled === undefined ? true : finalBusinessData.dineInPayAtCounterEnabled,
             isOpen: finalBusinessData?.isOpen === undefined ? true : finalBusinessData.isOpen,
             address: finalBusinessData?.address || { street: '', city: '', state: '', postalCode: '', country: 'IN' },
-            businessId: finalBusinessId, // THE FIX: Also return businessId on PATCH
+            businessId: finalBusinessId,
         };
 
         return NextResponse.json(responseData, { status: 200 });

@@ -1,18 +1,12 @@
 
 import { NextResponse } from 'next/server';
-import { getAuth, getFirestore } from '@/lib/firebase-admin';
+import { getAuth, getFirestore, verifyAndGetUid } from '@/lib/firebase-admin';
 import { format } from 'date-fns';
 
 export const dynamic = 'force-dynamic';
 
 async function verifyOwnerAndGetRestaurant(req, auth, firestore) {
-    const authHeader = req.headers.get('authorization');
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-        throw { message: 'Authorization token not found or invalid.', status: 401 };
-    }
-    const token = authHeader.split('Bearer ')[1];
-    const decodedToken = await auth.verifyIdToken(token);
-    const uid = decodedToken.uid;
+    const uid = await verifyAndGetUid(req); // Use the central helper
     
     const url = new URL(req.url, `http://${req.headers.host}`);
     const impersonatedOwnerId = url.searchParams.get('impersonate_owner_id');
@@ -51,8 +45,8 @@ async function verifyOwnerAndGetRestaurant(req, auth, firestore) {
 
 export async function GET(req) {
     try {
-        const auth = getAuth();
-        const firestore = getFirestore();
+        const auth = await getAuth();
+        const firestore = await getFirestore();
         const { restaurantId, restaurantData, businessType } = await verifyOwnerAndGetRestaurant(req, auth, firestore);
 
         const url = new URL(req.url, `http://${req.headers.host}`);
@@ -93,7 +87,6 @@ export async function GET(req) {
         const endDate = (filter === 'Custom Range' && toDate) ? new Date(toDate) : new Date();
         endDate.setHours(23,59,59,999);
 
-        // --- 1. Fetch Sales Data ---
         const ordersRef = firestore.collection('orders').where('restaurantId', '==', restaurantId);
         const businessCollectionName = businessType === 'restaurant' ? 'restaurants' : 'shops';
         
@@ -105,7 +98,6 @@ export async function GET(req) {
             ordersRef.where('orderDate', '>=', startDate).where('orderDate', '<=', endDate).where('status', '==', 'rejected').get(),
         ]);
         
-        // --- 2. Process Sales Overview ---
         let currentSales = 0, currentOrdersCount = 0, salesByDay = {};
         const paymentMethodCounts = { Online: 0, COD: 0 };
         
@@ -119,7 +111,7 @@ export async function GET(req) {
 
             if (data.paymentDetails?.method === 'razorpay') {
                 paymentMethodCounts.Online++;
-            } else { // Includes 'cod', 'pod', 'dine-in' etc.
+            } else {
                 paymentMethodCounts.COD++;
             }
         });
@@ -161,7 +153,6 @@ export async function GET(req) {
             rejectionReasons: rejectionReasonsData,
         };
 
-        // --- 3. Process Menu Analytics ---
         const menuItems = allMenuSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
         const itemSales = {};
         currentOrdersSnap.forEach(doc => {
@@ -175,7 +166,7 @@ export async function GET(req) {
         const menuPerformance = menuItems.map(item => {
             const unitsSold = itemSales[item.name] || 0;
             const price = item.portions?.[0]?.price || 0;
-            const foodCost = price * 0.4; // Dummy food cost
+            const foodCost = price * 0.4;
             const revenue = unitsSold * price;
             const totalCost = unitsSold * foodCost;
             const totalProfit = revenue - totalCost;
@@ -186,7 +177,6 @@ export async function GET(req) {
             };
         });
 
-        // --- 4. Process Customer Analytics ---
         const allCustomers = allCustomersSnap.docs.map(doc => doc.data());
         const newThisMonth = allCustomers.filter(c => c.joinedAt && c.joinedAt.toDate() > new Date(now.getFullYear(), now.getMonth(), 1));
         const repeatCustomers = allCustomers.filter(c => (c.totalOrders || 0) > 1);

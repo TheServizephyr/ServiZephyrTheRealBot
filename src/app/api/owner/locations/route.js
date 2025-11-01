@@ -1,18 +1,11 @@
 
 import { NextResponse } from 'next/server';
-import { getAuth, getFirestore, FieldValue } from '@/lib/firebase-admin';
+import { getAuth, getFirestore, FieldValue, verifyAndGetUid } from '@/lib/firebase-admin';
 
 // Helper to verify owner and get their first business Ref
 async function verifyOwnerAndGetBusinessRef(req) {
-    const auth = getAuth();
-    const firestore = getFirestore();
-    const authHeader = req.headers.get('authorization');
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-        throw { message: 'Authorization token not found or invalid.', status: 401 };
-    }
-    const token = authHeader.split('Bearer ')[1];
-    const decodedToken = await auth.verifyIdToken(token);
-    const uid = decodedToken.uid;
+    const firestore = await getFirestore();
+    const uid = await verifyAndGetUid(req); // Use central helper
     
     const url = new URL(req.url, `http://${req.headers.host}`);
     const impersonatedOwnerId = url.searchParams.get('impersonate_owner_id');
@@ -42,7 +35,6 @@ export async function GET(req) {
     try {
         const businessRef = await verifyOwnerAndGetBusinessRef(req);
         
-        // ** THE FIX: Get from the main document's 'address' field **
         const businessSnap = await businessRef.get();
 
         if (!businessSnap.exists) {
@@ -75,10 +67,9 @@ export async function POST(req) {
             return NextResponse.json({ message: 'Valid location object with latitude and longitude is required.' }, { status: 400 });
         }
         
-        // ** THE FIX: Save to the main 'address' field, not a subcollection **
         const locationData = {
             address: {
-                ...location, // This includes all fields from the client
+                ...location,
                 updatedAt: FieldValue.serverTimestamp(),
             }
         };

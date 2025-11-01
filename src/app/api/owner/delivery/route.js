@@ -1,17 +1,10 @@
 
 import { NextResponse } from 'next/server';
-
-import { getAuth, getFirestore } from '@/lib/firebase-admin';
+import { getAuth, getFirestore, verifyAndGetUid } from '@/lib/firebase-admin';
 
 // Helper to verify owner and get their first business ID
 async function verifyOwnerAndGetBusiness(req, auth, firestore) {
-    const authHeader = req.headers.get('authorization');
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-        throw { message: 'Authorization token not found or invalid.', status: 401 };
-    }
-    const token = authHeader.split('Bearer ')[1];
-    const decodedToken = await auth.verifyIdToken(token);
-    const uid = decodedToken.uid;
+    const uid = await verifyAndGetUid(req); // Use central helper
     
     // --- ADMIN IMPERSONATION & PERMISSION LOGIC ---
     const url = new URL(req.url, `http://${req.headers.host}`);
@@ -58,7 +51,6 @@ export async function GET(req) {
         const boysRef = firestore.collection(collectionName).doc(businessId).collection('deliveryBoys');
         const ordersRef = firestore.collection('orders').where('restaurantId', '==', businessId);
 
-        // Fetch all boys and ready orders concurrently
         const [boysSnap, readyOrdersSnap] = await Promise.all([
             boysRef.get(),
             ordersRef.where('status', '==', 'preparing').get()
@@ -74,7 +66,6 @@ export async function GET(req) {
         const today = new Date();
         today.setHours(0, 0, 0, 0);
 
-        // Fetch all delivered orders for today by all boys in this restaurant
         const deliveredOrdersSnap = await ordersRef
             .where('status', '==', 'delivered')
             .where('orderDate', '>=', today)
@@ -88,7 +79,6 @@ export async function GET(req) {
             }
         });
 
-        // Update boys data with today's delivery count
         boys = boys.map(boy => ({
             ...boy,
             deliveriesToday: deliveriesByBoy[boy.id] || 0
@@ -105,7 +95,7 @@ export async function GET(req) {
             date.setDate(date.getDate() - (6-i));
             return {
                 day: date.toLocaleDateString('en-IN', { weekday: 'short'}),
-                deliveries: 0 // This would need to be calculated from historical order data in a real app
+                deliveries: 0 
             };
         });
 
@@ -166,10 +156,8 @@ export async function PATCH(req) {
 
         const boyRef = firestore.collection(collectionName).doc(businessId).collection('deliveryBoys').doc(boy.id);
         
-        // Remove the id from the object to prevent it from being written to the doc
         const { id, ...updateData } = boy;
 
-        // If a rider is marked as inactive, clear their location.
         if (updateData.status === 'Inactive') {
             updateData.location = null;
         }

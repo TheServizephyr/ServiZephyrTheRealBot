@@ -1,29 +1,14 @@
 
 import { NextResponse } from 'next/server';
-import { getAuth, getFirestore } from '@/lib/firebase-admin';
-
-// Helper to verify user and get UID
-async function getUserId(req, auth) {
-    console.log("[API hub-data] Verifying user token...");
-    const authHeader = req.headers.get('authorization');
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-        throw { message: 'Authorization token not found or invalid.', status: 401 };
-    }
-    const token = authHeader.split('Bearer ')[1];
-    const decodedToken = await auth.verifyIdToken(token);
-    console.log(`[API hub-data] Token verified. UID: ${decodedToken.uid}`);
-    return decodedToken.uid;
-}
+import { getFirestore, verifyAndGetUid } from '@/lib/firebase-admin';
 
 export async function GET(req) {
     console.log("[API hub-data] GET request received.");
     try {
-        const auth = getAuth();
-        const firestore = getFirestore();
-        const uid = await getUserId(req, auth);
+        const uid = await verifyAndGetUid(req); // Use central helper
+        const firestore = await getFirestore();
 
         console.log(`[API hub-data] Fetching orders for customerId: ${uid}`);
-        // ** THE FIX: Removed orderBy from the query to avoid needing a composite index **
         const ordersSnap = await firestore.collection('orders')
             .where('customerId', '==', uid)
             .get();
@@ -35,24 +20,18 @@ export async function GET(req) {
             return NextResponse.json({
                 quickReorder: null,
                 myRestaurants: [],
-                myStats: {
-                    totalSavings: 0,
-                    topRestaurant: 'N/A',
-                    topDish: 'N/A',
-                }
+                myStats: { totalSavings: 0, topRestaurant: 'N/A', topDish: 'N/A' }
             }, { status: 200 });
         }
 
         const orders = ordersSnap.docs.map(doc => doc.data());
         
-        // ** THE FIX: Sort the orders in the code after fetching **
         orders.sort((a, b) => {
             const dateA = a.orderDate?.toDate ? a.orderDate.toDate() : new Date(a.orderDate);
             const dateB = b.orderDate?.toDate ? b.orderDate.toDate() : new Date(b.orderDate);
             return dateB - dateA;
         });
 
-        // 1. Quick Re-Order
         const lastOrder = orders[0];
         const quickReorder = {
             restaurantName: lastOrder.restaurantName,
@@ -61,32 +40,24 @@ export async function GET(req) {
         };
         console.log("[API hub-data] Quick Reorder data:", quickReorder);
 
-        // 2. My Restaurants
         const restaurantMap = new Map();
         orders.forEach(order => {
             if (!restaurantMap.has(order.restaurantId)) {
-                restaurantMap.set(order.restaurantId, {
-                    name: order.restaurantName,
-                    id: order.restaurantId
-                });
+                restaurantMap.set(order.restaurantId, { name: order.restaurantName, id: order.restaurantId });
             }
         });
-        const myRestaurants = Array.from(restaurantMap.values()).slice(0, 5); // Limit to 5
+        const myRestaurants = Array.from(restaurantMap.values()).slice(0, 5);
         console.log("[API hub-data] My Restaurants data:", myRestaurants);
 
-
-        // 3. My Stats
         let totalSavings = 0;
         const restaurantFrequency = {};
         const dishFrequency = {};
 
         orders.forEach(order => {
             totalSavings += order.discount || 0;
-            
             if (order.restaurantName) {
               restaurantFrequency[order.restaurantName] = (restaurantFrequency[order.restaurantName] || 0) + 1;
             }
-            
             (order.items || []).forEach(item => {
                 if(item.name) {
                   dishFrequency[item.name] = (dishFrequency[item.name] || 0) + (item.qty || 1);
@@ -105,18 +76,9 @@ export async function GET(req) {
         
         console.log(`[API hub-data] Top Restaurant: ${topRestaurant}, Top Dish: ${topDish}`);
 
-        const myStats = {
-            totalSavings,
-            topRestaurant,
-            topDish,
-        };
-        // END FIX
+        const myStats = { totalSavings, topRestaurant, topDish };
 
-        const finalPayload = {
-            quickReorder,
-            myRestaurants,
-            myStats,
-        };
+        const finalPayload = { quickReorder, myRestaurants, myStats };
         
         console.log("[API hub-data] Sending final payload to client:", JSON.stringify(finalPayload, null, 2));
 

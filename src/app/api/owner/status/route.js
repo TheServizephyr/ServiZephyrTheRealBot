@@ -1,27 +1,20 @@
 
 import { NextResponse } from 'next/server';
-import { getAuth, getFirestore } from '@/lib/firebase-admin';
+import { getAuth, getFirestore, verifyAndGetUid } from '@/lib/firebase-admin';
 
 export const dynamic = 'force-dynamic';
 
 // Helper to verify owner and get their business
 async function verifyOwnerAndGetBusiness(req) {
-    const auth = getAuth();
-    const firestore = getFirestore();
-    const authHeader = req.headers.get('authorization');
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-        throw { message: 'Authorization token not found or invalid.', status: 401 };
-    }
-    const token = authHeader.split('Bearer ')[1];
-    const decodedToken = await auth.verifyIdToken(token);
-    const uid = decodedToken.uid;
+    const auth = await getAuth();
+    const firestore = await getFirestore();
+    const uid = await verifyAndGetUid(req);
     
     const userDoc = await firestore.collection('users').doc(uid).get();
     if (!userDoc.exists || (userDoc.data().role !== 'owner' && userDoc.data().role !== 'restaurant-owner' && userDoc.data().role !== 'shop-owner')) {
         throw { message: 'Access Denied: You do not have owner privileges.', status: 403 };
     }
     
-    // **THE FIX: Check both collections**
     const restaurantsQuery = await firestore.collection('restaurants').where('ownerId', '==', uid).limit(1).get();
     if (!restaurantsQuery.empty) {
         const restaurantDoc = restaurantsQuery.docs[0];
@@ -44,8 +37,6 @@ async function verifyOwnerAndGetBusiness(req) {
         };
     }
 
-    // If neither is found, it's a new user who just completed profile but doc hasn't been created
-    // Or it could be an error. Let the client decide based on 404.
     throw { message: 'No business associated with this owner.', status: 404 };
 }
 

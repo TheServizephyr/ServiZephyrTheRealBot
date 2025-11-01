@@ -1,19 +1,13 @@
 
 import { NextResponse } from 'next/server';
-import { getAuth, getFirestore, FieldValue } from '@/lib/firebase-admin';
+import { getAuth, getFirestore, FieldValue, verifyAndGetUid } from '@/lib/firebase-admin';
 import { sendWhatsAppMessage } from '@/lib/whatsapp';
 
 export const dynamic = 'force-dynamic';
 
 async function verifyOwnerAndGetBusinessRef(req) {
-    const auth = getAuth();
-    const firestore = getFirestore();
-    const authHeader = req.headers.get('authorization');
-    if (!authHeader) throw { message: 'Unauthorized', status: 401 };
-    
-    const token = authHeader.split('Bearer ')[1];
-    const decodedToken = await auth.verifyIdToken(token);
-    const uid = decodedToken.uid;
+    const firestore = await getFirestore();
+    const uid = await verifyAndGetUid(req); // Use central helper
     
     const url = new URL(req.url, `http://${req.headers.host}`);
     const impersonatedOwnerId = url.searchParams.get('impersonate_owner_id');
@@ -49,10 +43,9 @@ export async function GET(req) {
             
         const conversations = conversationsSnap.docs.map(doc => {
             const data = doc.data();
-            // Ensure timestamp is serializable
             const lastMessageTimestamp = data.lastMessageTimestamp?.toDate ? data.lastMessageTimestamp.toDate().toISOString() : null;
             return {
-                id: doc.id, // The document ID is the phone number
+                id: doc.id,
                 ...data,
                 lastMessageTimestamp,
             };
@@ -84,7 +77,6 @@ export async function PATCH(req) {
         if (action === 'end_chat') {
             await conversationRef.set({ state: 'menu' }, { merge: true });
 
-            // Send a welcome message with options again
             const botPhoneNumberId = businessData.botPhoneNumberId;
             const customerPhoneWithCode = '91' + conversationId;
 
@@ -97,18 +89,9 @@ export async function PATCH(req) {
                     },
                     action: {
                         buttons: [
-                             {
-                                type: "reply",
-                                reply: { id: `action_order_${businessDoc.id}`, title: "Order Food" }
-                            },
-                            {
-                                type: "reply",
-                                reply: { id: `action_track_${businessDoc.id}`, title: "Track Last Order" }
-                            },
-                             {
-                                type: "reply",
-                                reply: { id: "action_help", title: "Need More Help?" }
-                            }
+                             { type: "reply", reply: { id: `action_order_${businessDoc.id}`, title: "Order Food" } },
+                            { type: "reply", reply: { id: `action_track_${businessDoc.id}`, title: "Track Last Order" } },
+                             { type: "reply", reply: { id: "action_help", title: "Need More Help?" } }
                         ]
                     }
                 }
@@ -118,7 +101,6 @@ export async function PATCH(req) {
             return NextResponse.json({ message: 'Chat ended and menu sent.' }, { status: 200 });
         }
 
-        // Logic for updating tags
         const validTags = ['Urgent', 'Feedback', 'Complaint', 'Resolved', null];
         if (tag !== undefined && !validTags.includes(tag)) {
             return NextResponse.json({ message: 'Invalid tag provided.' }, { status: 400 });

@@ -1,17 +1,11 @@
 
 import { NextResponse } from 'next/server';
-import { getAuth, getFirestore } from '@/lib/firebase-admin';
+import { getAuth, getFirestore, verifyAndGetUid } from '@/lib/firebase-admin';
 import axios from 'axios';
 
 // Helper to verify owner and get their first business Ref
 async function verifyOwnerAndGetBusinessRef(req, auth, firestore) {
-    const authHeader = req.headers.get('authorization');
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-        throw { message: 'Authorization token not found or invalid.', status: 401 };
-    }
-    const token = authHeader.split('Bearer ')[1];
-    const decodedToken = await auth.verifyIdToken(token);
-    const uid = decodedToken.uid;
+    const uid = await verifyAndGetUid(req); // Use the central helper
     
     const userDoc = await firestore.collection('users').doc(uid).get();
     if (!userDoc.exists || (userDoc.data().role !== 'owner' && userDoc.data().role !== 'restaurant-owner' && userDoc.data().role !== 'shop-owner')) {
@@ -32,8 +26,8 @@ async function verifyOwnerAndGetBusinessRef(req, auth, firestore) {
 }
 
 export async function POST(req) {
-    const auth = getAuth();
-    const firestore = getFirestore();
+    const auth = await getAuth();
+    const firestore = await getFirestore();
 
     try {
         const businessRef = await verifyOwnerAndGetBusinessRef(req, auth, firestore);
@@ -68,7 +62,7 @@ export async function POST(req) {
         const debugResponse = await axios.get('https://graph.facebook.com/debug_token', {
             params: {
                 input_token: userAccessToken,
-                access_token: `${appId}|${appSecret}` // App Access Token
+                access_token: `${appId}|${appSecret}`
             }
         });
         
@@ -81,9 +75,7 @@ export async function POST(req) {
         const waba_id = embeddedSignupData[0];
 
         const phoneNumbersResponse = await axios.get(`https://graph.facebook.com/v19.0/${waba_id}/phone_numbers`, {
-             params: {
-                access_token: userAccessToken
-            }
+             params: { access_token: userAccessToken }
         });
 
         if (!phoneNumbersResponse.data.data || phoneNumbersResponse.data.data.length === 0) {

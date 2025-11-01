@@ -1,18 +1,11 @@
 
 import { NextResponse } from 'next/server';
-import { getAuth, getFirestore, FieldValue } from '@/lib/firebase-admin';
+import { getAuth, getFirestore, FieldValue, verifyAndGetUid } from '@/lib/firebase-admin';
 
 // Helper to verify owner and get their first business Ref
 async function verifyOwnerAndGetBusinessRef(req) {
-    const auth = getAuth();
-    const firestore = getFirestore();
-    const authHeader = req.headers.get('authorization');
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-        throw { message: 'Authorization token not found or invalid.', status: 401 };
-    }
-    const token = authHeader.split('Bearer ')[1];
-    const decodedToken = await auth.verifyIdToken(token);
-    const uid = decodedToken.uid;
+    const firestore = await getFirestore();
+    const uid = await verifyAndGetUid(req); // Use central helper
     
     const url = new URL(req.url, `http://${req.headers.host}`);
     const impersonatedOwnerId = url.searchParams.get('impersonate_owner_id');
@@ -66,7 +59,7 @@ export async function GET(req) {
 // POST a new service request from a customer
 export async function POST(req) {
     try {
-        const firestore = getFirestore();
+        const firestore = await getFirestore();
         const { restaurantId, tableId, dineInTabId } = await req.json();
 
         if (!restaurantId || !tableId) {

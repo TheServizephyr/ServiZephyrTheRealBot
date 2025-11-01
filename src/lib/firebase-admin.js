@@ -83,4 +83,28 @@ const getFirestore = async () => {
 
 const FieldValue = admin.firestore.FieldValue;
 
-export { getAuth, getFirestore, FieldValue };
+
+// --- NEW CENTRALIZED HELPER FUNCTION ---
+/**
+ * Verifies the authorization token from a request and returns the user's UID.
+ * This is the central point for all API authentication checks.
+ * @param {Request} req The incoming Next.js request object.
+ * @returns {Promise<string>} The user's UID.
+ * @throws Will throw an error with a status code if unauthorized.
+ */
+const verifyAndGetUid = async (req) => {
+  const auth = await getAuth();
+  const authHeader = req.headers.get('authorization');
+
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    throw { message: 'Authorization token not found or invalid.', status: 401 };
+  }
+  const token = authHeader.split('Bearer ')[1];
+  
+  // Using the CORRECT function name here
+  const decodedToken = await auth.verifyIdToken(token);
+  return decodedToken.uid;
+}
+
+
+export { getAuth, getFirestore, FieldValue, verifyAndGetUid };
