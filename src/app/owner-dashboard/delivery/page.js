@@ -3,7 +3,7 @@
 
 import { useState, useMemo, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { Phone, Bike, UserPlus, Search, Edit, RefreshCw, Star, Clock, Trophy, ChevronDown, ChevronUp, BarChart as BarChartIcon, Settings } from 'lucide-react';
+import { Phone, Bike, UserPlus, Search, Edit, RefreshCw, Star, Clock, Trophy, ChevronDown, ChevronUp, BarChart as BarChartIcon, Settings, Mail } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose } from "@/components/ui/dialog";
 import { Label } from '@/components/ui/label';
@@ -29,68 +29,63 @@ const StatusBadge = ({ status }) => {
     );
 };
 
-const AddBoyModal = ({ isOpen, setIsOpen, onSave, boy }) => {
-    const [name, setName] = useState('');
-    const [phone, setPhone] = useState('');
-    const [isSaving, setIsSaving] = useState(false);
+const InviteRiderModal = ({ isOpen, setIsOpen, onInvite }) => {
+    const [email, setEmail] = useState('');
+    const [isSubmitting, setIsSubmitting] = useState(false);
     const [modalError, setModalError] = useState('');
 
     useEffect(() => {
-        if (boy) {
-            setName(boy.name);
-            setPhone(boy.phone);
-        } else {
-            setName('');
-            setPhone('');
+        if (isOpen) {
+            setEmail('');
+            setIsSubmitting(false);
+            setModalError('');
         }
-        setIsSaving(false);
-        setModalError('');
-    }, [boy, isOpen]);
+    }, [isOpen]);
 
     const handleSubmit = async () => {
         setModalError('');
-        if (!name.trim() || !phone.trim() || !/^\d{10}$/.test(phone.trim())) {
-            setModalError('Please enter a valid name and 10-digit phone number.');
+        if (!email.trim() || !/^\S+@\S+\.\S+$/.test(email.trim())) {
+            setModalError('Please enter a valid email address.');
             return;
         }
-        setIsSaving(true);
+        setIsSubmitting(true);
         try {
-            await onSave({ id: boy ? boy.id : null, name, phone });
+            await onInvite(email);
             setIsOpen(false);
-        } catch(error) {
-           setModalError(error.message);
+        } catch (error) {
+            setModalError(error.message);
         } finally {
-            setIsSaving(false);
+            setIsSubmitting(false);
         }
     };
-
+    
     return (
         <Dialog open={isOpen} onOpenChange={setIsOpen}>
             <DialogContent className="bg-card border-border text-foreground">
                 <DialogHeader>
-                    <DialogTitle>{boy ? 'Edit Delivery Rider' : 'Add New Delivery Rider'}</DialogTitle>
+                    <DialogTitle>Invite a New Rider</DialogTitle>
+                    <DialogDescription>
+                        Enter the email address of the rider you want to invite. They must have already registered an account on the Rider Portal.
+                    </DialogDescription>
                 </DialogHeader>
                 <div className="grid gap-4 py-4">
                     <div className="grid grid-cols-4 items-center gap-4">
-                        <Label htmlFor="name" className="text-right">Name</Label>
-                        <input id="name" value={name} onChange={e => setName(e.target.value)} className="col-span-3 p-2 border rounded-md bg-input border-border" />
-                    </div>
-                    <div className="grid grid-cols-4 items-center gap-4">
-                        <Label htmlFor="phone" className="text-right">Phone</Label>
-                        <input id="phone" value={phone} onChange={e => setPhone(e.target.value)} className="col-span-3 p-2 border rounded-md bg-input border-border" />
+                        <Label htmlFor="email" className="text-right">Rider's Email</Label>
+                        <input id="email" value={email} onChange={e => setEmail(e.target.value)} type="email" placeholder="rider@example.com" className="col-span-3 p-2 border rounded-md bg-input border-border" />
                     </div>
                     {modalError && <p className="text-destructive text-center text-sm">{modalError}</p>}
                 </div>
                 <DialogFooter>
-                    <DialogClose asChild><Button variant="secondary" disabled={isSaving}>Cancel</Button></DialogClose>
-                    <Button onClick={handleSubmit} disabled={isSaving}>
-                        {isSaving ? 'Saving...' : 'Save'}
+                    <DialogClose asChild><Button variant="secondary" disabled={isSubmitting}>Cancel</Button></DialogClose>
+                    <Button onClick={handleSubmit} disabled={isSubmitting}>
+                        {isSubmitting ? 'Sending...' : 'Send Invitation'}
                     </Button>
                 </DialogFooter>
             </DialogContent>
         </Dialog>
-    );
+    )
 };
+
 
 const AssignOrderModal = ({ isOpen, setIsOpen, onAssign, boyName, readyOrders }) => {
     const [selectedOrder, setSelectedOrder] = useState(null);
@@ -297,7 +292,7 @@ const DeliveryAnalytics = ({ boysData, weeklyData, isLoading }) => {
 export default function DeliveryPage() {
     const [data, setData] = useState({ boys: [], performance: {}, readyOrders: [], weeklyPerformance: [] });
     const [loading, setLoading] = useState(true);
-    const [isAddModalOpen, setAddModalOpen] = useState(false);
+    const [isInviteModalOpen, setInviteModalOpen] = useState(false);
     const [isAssignModalOpen, setAssignModalOpen] = useState(false);
     const [selectedBoy, setSelectedBoy] = useState(null);
     const [infoDialog, setInfoDialog] = useState({ isOpen: false, title: '', message: '' });
@@ -345,16 +340,16 @@ export default function DeliveryPage() {
         return () => unsubscribe();
     }, [impersonatedOwnerId]);
 
-    const handleSaveBoy = async (boyData) => {
+    const handleInviteRider = async (riderEmail) => {
         try {
-            await handleApiCall(boyData.id ? 'PATCH' : 'POST', { boy: boyData });
-            await fetchData(true);
+            const data = await handleApiCall('POST', { riderEmail }, '/api/owner/delivery/invite');
+            setInfoDialog({ isOpen: true, title: "Success", message: data.message });
         } catch (error) {
             console.error(error);
-            throw new Error(`Error saving delivery boy: ${error.message}`);
+            throw new Error(`Failed to send invite: ${error.message}`);
         }
     };
-
+    
     const handleConfirmAssignment = async (orderId) => {
         if (!selectedBoy) return;
         try {
@@ -370,8 +365,6 @@ export default function DeliveryPage() {
         }
     };
     
-    const handleEdit = (boy) => { setSelectedBoy(boy); setAddModalOpen(true); };
-    const handleAddNew = () => { setSelectedBoy(null); setAddModalOpen(true); };
     const handleAssignClick = (boy) => { setSelectedBoy(boy); setAssignModalOpen(true); };
     
     const handleStatusToggle = async (boy, newStatus) => {
@@ -391,7 +384,7 @@ export default function DeliveryPage() {
                 title={infoDialog.title}
                 message={infoDialog.message}
             />
-            <AddBoyModal isOpen={isAddModalOpen} setIsOpen={setAddModalOpen} onSave={handleSaveBoy} boy={selectedBoy} />
+            <InviteRiderModal isOpen={isInviteModalOpen} setIsOpen={setInviteModalOpen} onInvite={handleInviteRider} />
             {selectedBoy && <AssignOrderModal isOpen={isAssignModalOpen} setIsOpen={setAssignModalOpen} onAssign={handleConfirmAssignment} boyName={selectedBoy.name} readyOrders={data.readyOrders}/>}
             
             <div className="space-y-6">
@@ -407,8 +400,8 @@ export default function DeliveryPage() {
                         <Button onClick={() => fetchData(true)} variant="outline" disabled={loading}>
                             <RefreshCw size={16} className={cn("mr-2", loading && "animate-spin")} /> Refresh
                         </Button>
-                         <Button onClick={handleAddNew}>
-                            <UserPlus size={16} className="mr-2"/> Add Rider
+                         <Button onClick={() => setInviteModalOpen(true)}>
+                            <Mail size={16} className="mr-2"/> Invite Rider
                         </Button>
                     </div>
                 </div>
@@ -464,9 +457,6 @@ export default function DeliveryPage() {
                                         </Label>
                                     </div>
                                     <div className="flex gap-2">
-                                        <Button variant="outline" size="sm" onClick={() => handleEdit(boy)}>
-                                            <Edit size={14} className="mr-1"/> Edit
-                                        </Button>
                                         <Button size="sm" disabled={boy.status !== 'Available'} onClick={() => handleAssignClick(boy)}>
                                             <Bike size={14} className="mr-1"/> Assign Order
                                         </Button>
@@ -475,7 +465,7 @@ export default function DeliveryPage() {
                             </motion.div>
                         ))}
                          {!loading && (!data.boys || data.boys.length === 0) && (
-                            <p className="text-center text-muted-foreground py-10">No delivery riders added yet.</p>
+                            <p className="text-center text-muted-foreground py-10">No delivery riders have been added yet.</p>
                          )}
                     </div>
                 </div>
