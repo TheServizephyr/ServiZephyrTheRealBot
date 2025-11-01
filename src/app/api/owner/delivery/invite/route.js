@@ -54,7 +54,6 @@ export async function POST(req) {
         
         const lowercasedEmail = riderEmail.toLowerCase().trim();
 
-        // --- START FIX: Correctly find user by email ---
         let riderUid;
         try {
             const userRecord = await auth.getUserByEmail(lowercasedEmail);
@@ -70,12 +69,12 @@ export async function POST(req) {
         const userDocRef = firestore.collection('users').doc(riderUid);
         const userDoc = await userDocRef.get();
         
+        // --- THE FIX ---
+        // Check `.exists()` on the Firestore document, not the auth record.
         if (!userDoc.exists() || userDoc.data().role !== 'rider') {
             return NextResponse.json({ message: 'This user is not registered as a rider.' }, { status: 400 });
         }
-        // --- END FIX ---
         
-
         // 2. Check if this rider is already part of the owner's team.
         const existingRiderRef = restaurantRef.collection('deliveryBoys').doc(riderUid);
         const existingRiderSnap = await existingRiderRef.get();
