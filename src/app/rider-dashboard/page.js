@@ -175,11 +175,15 @@ export default function RiderDashboardPage() {
         });
         unsubscribes.push(unsubscribeInvites);
         
+        // --- START FIX ---
+        // This query now ONLY looks for 'dispatched' orders assigned to this rider.
         const ordersQuery = query(collection(db, "orders"), where("deliveryBoyId", "==", user.uid), where("status", "==", "dispatched"));
         const unsubscribeOrders = onSnapshot(ordersQuery, (snapshot) => {
             const newOrders = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            // This component will now only ever contain orders that are ready to be accepted.
             setAssignedOrders(newOrders);
         });
+        // --- END FIX ---
         unsubscribes.push(unsubscribeOrders);
 
         return () => unsubscribes.forEach(unsub => unsub());
