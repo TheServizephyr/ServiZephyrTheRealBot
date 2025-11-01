@@ -118,7 +118,7 @@ export default function RiderDashboardPage() {
         }
     };
 
-    if (loading) {
+    if (loading || isUserLoading) {
         return (
             <div className="min-h-screen flex items-center justify-center bg-background">
                 <Loader2 className="h-16 w-16 animate-spin text-primary" />
@@ -193,3 +193,4 @@ export default function RiderDashboardPage() {
         </div>
     );
 }
+
