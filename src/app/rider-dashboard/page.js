@@ -19,69 +19,79 @@ export default function RiderDashboardPage() {
     const watchIdRef = useRef(null);
 
     useEffect(() => {
+        console.log(`[DEBUG] RiderDashboard: useEffect triggered. isUserLoading: ${isUserLoading}`);
+        
         if (isUserLoading) {
-            // Still checking auth status, do nothing yet.
+            console.log("[DEBUG] RiderDashboard: Auth state is loading, waiting...");
             return;
         }
         if (!user) {
-            // No user found, redirect to login.
+            console.log("[DEBUG] RiderDashboard: No user found, redirecting to login.");
             router.push('/rider-dashboard/login');
             return;
         }
 
-        // User is authenticated, now we can safely fetch their data.
+        console.log(`[DEBUG] RiderDashboard: User authenticated with UID: ${user.uid}. Fetching driver data.`);
         const driverDocRef = doc(db, "drivers", user.uid);
 
         const fetchDriverData = async () => {
+            console.log(`[DEBUG] RiderDashboard: Inside fetchDriverData for UID: ${user.uid}`);
             setLoading(true);
             try {
                 const driverDoc = await getDoc(driverDocRef);
+                console.log(`[DEBUG] RiderDashboard: Firestore getDoc() call completed. Document exists: ${driverDoc.exists()}`);
+
                 if (driverDoc.exists()) {
                     const data = driverDoc.data();
+                    console.log("[DEBUG] RiderDashboard: Driver document data found:", data);
                     setDriverData(data);
                     if (data.status === 'online') {
                         startGpsTracking();
                     }
                 } else {
+                    console.error(`[DEBUG] RiderDashboard: CRITICAL - Driver document does not exist for UID: ${user.uid}.`);
                     setError("Your rider profile could not be found. Please contact support or complete your profile.");
-                    // Optionally sign out and redirect if profile is mandatory
                     await auth.signOut();
                     router.push('/rider-dashboard/login');
                 }
             } catch (err) {
-                console.error("Error fetching driver data:", err);
+                console.error("[DEBUG] RiderDashboard: Error fetching driver data:", err);
                 setError("Could not load your profile. Please try again.");
             } finally {
+                console.log("[DEBUG] RiderDashboard: fetchDriverData finished. Setting loading to false.");
                 setLoading(false);
             }
         };
 
         fetchDriverData();
 
-        // Cleanup function for when the component unmounts
         return () => {
+            console.log("[DEBUG] RiderDashboard: Component unmounting, stopping GPS tracking.");
             stopGpsTracking();
         };
     }, [user, isUserLoading, router]);
 
     const updateStatusInFirestore = async (newStatus) => {
         if (!user) return;
+        console.log(`[DEBUG] RiderDashboard: Updating status to '${newStatus}' in Firestore.`);
         const driverDocRef = doc(db, "drivers", user.uid);
         try {
             await updateDoc(driverDocRef, { status: newStatus });
             setDriverData(prev => ({ ...prev, status: newStatus }));
+            console.log(`[DEBUG] RiderDashboard: Firestore status updated successfully.`);
         } catch (err) {
-            console.error("Failed to update status:", err);
+            console.error("[DEBUG] RiderDashboard: Failed to update status in Firestore:", err);
             setError("Failed to update your status. Please try again.");
         }
     };
 
     const startGpsTracking = () => {
         if (watchIdRef.current !== null) {
-            console.log("GPS tracking is already active.");
+            console.log("[DEBUG] RiderDashboard: GPS tracking is already active.");
             return;
         }
         if (navigator.geolocation) {
+            console.log("[DEBUG] RiderDashboard: Starting GPS tracking.");
             watchIdRef.current = navigator.geolocation.watchPosition(
                 async (position) => {
                     if (!user) return;
@@ -90,21 +100,21 @@ export default function RiderDashboardPage() {
                     const newLocation = new GeoPoint(latitude, longitude);
                     try {
                         await updateDoc(driverDocRef, { currentLocation: newLocation });
-                        console.log("Location updated:", latitude, longitude);
+                        console.log("[DEBUG] RiderDashboard: Location updated:", latitude, longitude);
                     } catch (err) {
-                         console.error("Failed to update location:", err);
+                         console.error("[DEBUG] RiderDashboard: Failed to update location in Firestore:", err);
                     }
                 },
                 (error) => {
-                    console.error("Error watching position:", error);
+                    console.error("[DEBUG] RiderDashboard: Error watching position:", error);
                     setError("GPS Error: " + error.message + ". Please enable location services.");
-                    // If GPS fails, automatically go offline
                     handleToggleOnline('offline');
                 },
                 { enableHighAccuracy: true, timeout: 20000, maximumAge: 0, distanceFilter: 10 }
             );
         } else {
             setError("Geolocation is not supported by this browser.");
+            console.error("[DEBUG] RiderDashboard: Geolocation not supported.");
         }
     };
 
@@ -112,12 +122,13 @@ export default function RiderDashboardPage() {
         if (watchIdRef.current !== null) {
             navigator.geolocation.clearWatch(watchIdRef.current);
             watchIdRef.current = null;
-            console.log("GPS tracking stopped.");
+            console.log("[DEBUG] RiderDashboard: GPS tracking stopped.");
         }
     };
 
     const handleToggleOnline = async () => {
         const newStatus = driverData?.status === 'online' ? 'offline' : 'online';
+        console.log(`[DEBUG] RiderDashboard: Toggling status to ${newStatus}.`);
         await updateStatusInFirestore(newStatus);
         if (newStatus === 'online') {
             startGpsTracking();
