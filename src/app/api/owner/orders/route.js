@@ -66,7 +66,7 @@ export async function GET(req) {
                 return NextResponse.json({ message: 'Access denied to this order.' }, { status: 403 });
             }
             
-            if (orderData.orderDate && orderData.orderDate.toDate) {
+            if (orderData.orderDate && typeof orderData.orderDate.toDate === 'function') {
                 orderData = { ...orderData, orderDate: orderData.orderDate.toDate().toISOString() };
             }
 
@@ -95,7 +95,7 @@ export async function GET(req) {
             const data = doc.data();
             const statusHistory = (data.statusHistory || []).map(h => ({
                 ...h,
-                timestamp: h.timestamp?.toDate ? h.timestamp.toDate().toISOString() : h.timestamp,
+                timestamp: h.timestamp && typeof h.timestamp.toDate === 'function' ? h.timestamp.toDate().toISOString() : h.timestamp,
             }));
             return { 
                 id: doc.id, 
