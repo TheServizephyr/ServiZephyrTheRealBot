@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
@@ -5,7 +6,7 @@ import { useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Power, PowerOff, Loader2, Mail, Check, X, ShoppingBag, Bell } from 'lucide-react';
 import { auth, db } from '@/lib/firebase';
-import { doc, onSnapshot, collection, query, where, getDoc, updateDoc, setDoc, deleteDoc } from 'firebase/firestore';
+import { doc, onSnapshot, collection, query, where, getDoc, deleteDoc } from 'firebase/firestore';
 import { useUser } from '@/firebase';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -74,6 +75,8 @@ export default function RiderDashboardPage() {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
     const [infoDialog, setInfoDialog] = useState({ isOpen: false, title: '', message: '' });
+    const [isRestaurantActive, setIsRestaurantActive] = useState(false);
+
 
     const handleApiCall = useCallback(async (endpoint, method = 'PATCH', body = {}) => {
         if (!user) throw new Error('Authentication Error');
@@ -123,6 +126,7 @@ export default function RiderDashboardPage() {
         };
     }, [driverData?.status, handleApiCall]);
 
+    // Main data fetching and real-time listeners
     useEffect(() => {
         if (isUserLoading) return;
         if (!user) {
@@ -130,61 +134,57 @@ export default function RiderDashboardPage() {
             return;
         }
 
+        let unsubscribes = [];
+
         const driverDocRef = doc(db, 'drivers', user.uid);
         const unsubscribeDriver = onSnapshot(driverDocRef, 
-            (doc) => {
-                if (doc.exists()) {
-                    setDriverData(doc.data());
+            (driverSnap) => {
+                if (driverSnap.exists()) {
+                    const data = driverSnap.data();
+                    setDriverData(data);
                     setError('');
+                    
+                    // --- REAL-TIME RESTAURANT CHECK ---
+                    if (data.currentRestaurantId) {
+                        const restaurantDocRef = doc(db, 'restaurants', data.currentRestaurantId);
+                        
+                        const unsubscribeRestaurant = onSnapshot(restaurantDocRef, (restaurantSnap) => {
+                            // If restaurant doc exists, rider is employed. If not, they are not.
+                            setIsRestaurantActive(restaurantSnap.exists());
+                        });
+                        unsubscribes.push(unsubscribeRestaurant);
+                    } else {
+                        setIsRestaurantActive(false);
+                    }
+                    // --- END REAL-TIME CHECK ---
+
                 } else {
                     setError('Your rider profile could not be found.');
                 }
                 setLoading(false);
             },
             (err) => {
-                 const contextualError = new FirestorePermissionError({
-                  path: driverDocRef.path,
-                  operation: 'get',
-                });
-                errorEmitter.emit('permission-error', contextualError);
-                setError("You don't have permission to view this data. Please contact support.");
-                setLoading(false);
+                 const contextualError = new FirestorePermissionError({ path: driverDocRef.path, operation: 'get' });
+                 errorEmitter.emit('permission-error', contextualError);
+                 setError("You don't have permission to view this data.");
+                 setLoading(false);
             }
         );
+        unsubscribes.push(unsubscribeDriver);
 
         const invitesQuery = query(collection(db, 'drivers', user.uid, 'invites'));
-        const unsubscribeInvites = onSnapshot(invitesQuery, 
-            (snapshot) => {
-                setInvites(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-            },
-            (err) => {
-                 const contextualError = new FirestorePermissionError({
-                  path: (invitesQuery)._query.path.canonicalString(),
-                  operation: 'list',
-                });
-                errorEmitter.emit('permission-error', contextualError);
-            }
-        );
+        const unsubscribeInvites = onSnapshot(invitesQuery, (snapshot) => {
+            setInvites(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+        });
+        unsubscribes.push(unsubscribeInvites);
         
         const ordersQuery = query(collection(db, 'orders'), where('assignedDriverId', '==', user.uid), where('status', '==', 'ready_for_delivery'));
-        const unsubscribeOrders = onSnapshot(ordersQuery, 
-            (snapshot) => {
-                setAssignedOrders(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-            },
-            (err) => {
-                 const contextualError = new FirestorePermissionError({
-                  path: 'orders',
-                  operation: 'list',
-                });
-                errorEmitter.emit('permission-error', contextualError);
-            }
-        );
+        const unsubscribeOrders = onSnapshot(ordersQuery, (snapshot) => {
+            setAssignedOrders(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+        });
+        unsubscribes.push(unsubscribeOrders);
 
-        return () => {
-            unsubscribeDriver();
-            unsubscribeInvites();
-            unsubscribeOrders();
-        };
+        return () => unsubscribes.forEach(unsub => unsub());
 
     }, [user, isUserLoading, router]);
 
@@ -253,7 +253,18 @@ export default function RiderDashboardPage() {
             </motion.div>
 
             <AnimatePresence>
-            {driverData && !driverData.currentRestaurantId && (
+            {driverData && isRestaurantActive && (
+                 <motion.div
+                    layout
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    className="bg-green-500/10 border border-green-500/30 rounded-lg p-4 text-center text-green-400 font-semibold flex items-center justify-center gap-2"
+                >
+                    <Check size={20}/> You are an employee of: {driverData.currentRestaurantName}
+                </motion.div>
+            )}
+            
+            {driverData && !isRestaurantActive && (
                 <Card>
                     <CardHeader>
                         <CardTitle>Restaurant Invitation</CardTitle>
@@ -270,17 +281,6 @@ export default function RiderDashboardPage() {
                         )}
                     </CardContent>
                 </Card>
-            )}
-            
-            {driverData && driverData.currentRestaurantId && (
-                 <motion.div
-                    layout
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    className="bg-green-500/10 border border-green-500/30 rounded-lg p-4 text-center text-green-400 font-semibold flex items-center justify-center gap-2"
-                >
-                    <Check size={20}/> You are an employee of: {driverData.currentRestaurantName}
-                </motion.div>
             )}
             </AnimatePresence>
             
