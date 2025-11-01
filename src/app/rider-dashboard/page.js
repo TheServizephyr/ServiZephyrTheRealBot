@@ -1,4 +1,3 @@
-
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
@@ -6,12 +5,13 @@ import { useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Power, PowerOff, Loader2, Mail, Check, X, ShoppingBag, Bell } from 'lucide-react';
 import { auth, db } from '@/lib/firebase';
-import { doc, onSnapshot, collection, query, where, getDoc, updateDoc, arrayRemove, setDoc, deleteDoc } from 'firebase/firestore';
+import { doc, onSnapshot, collection, query, where, getDoc, updateDoc, setDoc, deleteDoc } from 'firebase/firestore';
 import { useUser } from '@/firebase';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import InfoDialog from '@/components/InfoDialog';
 import { cn } from '@/lib/utils';
+import { FirestorePermissionError, errorEmitter } from '@/firebase';
 
 const InvitationCard = ({ invite, onAccept, onDecline }) => {
     return (
@@ -112,20 +112,45 @@ export default function RiderDashboardPage() {
                 setLoading(false);
             },
             (err) => {
-                setError(`Error fetching driver data: ${err.message}`);
+                const contextualError = new FirestorePermissionError({
+                  path: driverDocRef.path,
+                  operation: 'get',
+                });
+                setError(contextualError.message);
+                errorEmitter.emit('permission-error', contextualError);
                 setLoading(false);
             }
         );
 
         const invitesQuery = query(collection(db, 'drivers', user.uid, 'invites'));
-        const unsubscribeInvites = onSnapshot(invitesQuery, (snapshot) => {
-            setInvites(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-        });
+        const unsubscribeInvites = onSnapshot(invitesQuery, 
+            (snapshot) => {
+                setInvites(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+            },
+            (err) => {
+                 const contextualError = new FirestorePermissionError({
+                  path: `drivers/${user.uid}/invites`,
+                  operation: 'list',
+                });
+                setError(contextualError.message);
+                errorEmitter.emit('permission-error', contextualError);
+            }
+        );
         
         const ordersQuery = query(collection(db, 'orders'), where('assignedDriverId', '==', user.uid), where('status', '==', 'ready_for_delivery'));
-        const unsubscribeOrders = onSnapshot(ordersQuery, (snapshot) => {
-            setAssignedOrders(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-        });
+        const unsubscribeOrders = onSnapshot(ordersQuery, 
+            (snapshot) => {
+                setAssignedOrders(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+            },
+            (err) => {
+                const contextualError = new FirestorePermissionError({
+                  path: 'orders',
+                  operation: 'list',
+                });
+                setError(contextualError.message);
+                errorEmitter.emit('permission-error', contextualError);
+            }
+        );
 
         return () => {
             unsubscribeDriver();
@@ -169,7 +194,6 @@ export default function RiderDashboardPage() {
 
             setInfoDialog({isOpen: true, title: "Success!", message: `You are now an employee of ${invite.restaurantName}.`});
         } catch (err) {
-            console.error("Error accepting invite:", err);
             setInfoDialog({ isOpen: true, title: 'Error', message: "Failed to accept the invitation."});
         }
     };
@@ -191,7 +215,7 @@ export default function RiderDashboardPage() {
         return <div className="min-h-screen flex items-center justify-center bg-background"><Loader2 className="animate-spin text-primary h-16 w-16" /></div>
     }
 
-    if(error){
+    if(error && !driverData){
         return <div className="min-h-screen flex items-center justify-center bg-background"><p className="text-red-500">{error}</p></div>
     }
 
