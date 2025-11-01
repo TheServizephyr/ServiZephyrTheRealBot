@@ -35,8 +35,10 @@ export default function RiderLayout({ children }) {
                     setRiderName(docSnap.data().name || user.displayName || 'Rider');
                     setRiderImage(docSnap.data().profilePictureUrl || user.photoURL || '');
                 }
+                 setIsLoading(false); // Set loading to false AFTER fetching
+            } else {
+                 setIsLoading(false); // Also set loading to false if there's no user for some reason
             }
-             setIsLoading(false);
         };
         
         fetchRiderInfo();
@@ -44,18 +46,24 @@ export default function RiderLayout({ children }) {
     }, [user, isUserLoading, router]);
 
     const handleLogout = async () => {
-        // Use the auth instance from firebase to sign out
         const { auth } = await import('@/lib/firebase');
         await auth.signOut();
         router.push('/rider-dashboard/login');
     };
 
+    // If Firebase Auth is still loading OR we are fetching rider info, show a global loader
     if (isUserLoading || isLoading) {
          return (
              <div className="flex h-screen items-center justify-center bg-background">
                 <div className="h-16 w-16 animate-spin rounded-full border-b-2 border-primary"></div>
              </div>
          );
+    }
+    
+    // If auth is checked and there's no user, the useEffect will redirect.
+    // Return null to prevent content flashing.
+    if (!user) {
+        return null;
     }
 
     return (

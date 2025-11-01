@@ -1,15 +1,16 @@
 'use client';
 
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import { Home, Map, MessageSquare, User, Sun, Moon } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { Suspense } from 'react';
+import { Suspense, useEffect } from 'react'; // Import useEffect
 import { Loader2 } from 'lucide-react';
 import { useTheme } from 'next-themes';
 import { Button } from '@/components/ui/button';
 import { ThemeProvider } from '@/components/ThemeProvider';
 import Image from 'next/image';
+import { useUser } from '@/firebase'; // Import useUser
 
 const navItems = [
   { href: '/customer-dashboard', icon: Home, label: 'My Hub' },
@@ -32,7 +33,35 @@ const NavLink = ({ href, icon: Icon, label }) => {
 
 const CustomerDashboardContent = ({ children }) => {
   const { theme, setTheme } = useTheme();
+  const router = useRouter(); // Import useRouter
+  const { user, isUserLoading } = useUser(); // Use the hook
 
+  // This effect will run when auth state is confirmed
+  useEffect(() => {
+    if (!isUserLoading) {
+      if (!user) {
+        // If auth check is done and there's no user, redirect to login
+        router.push('/');
+      }
+    }
+  }, [user, isUserLoading, router]);
+
+  // If we are still checking the user's auth state, show a loader
+  if (isUserLoading) {
+    return (
+      <div className="flex h-screen items-center justify-center bg-background">
+        <div className="h-16 w-16 animate-spin rounded-full border-b-2 border-primary"></div>
+      </div>
+    );
+  }
+
+  // If auth is checked and no user, the useEffect above will redirect.
+  // We can return null here to prevent flashing the content.
+  if (!user) {
+    return null;
+  }
+  
+  // If user is authenticated, render the dashboard
   return (
     <div className="min-h-screen bg-background text-foreground flex flex-col">
         <header className="sticky top-0 z-20 bg-background/80 backdrop-blur-lg border-b border-border">
