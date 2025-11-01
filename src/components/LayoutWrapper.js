@@ -12,6 +12,7 @@ const LayoutWrapper = ({ children }) => {
     '/owner-dashboard',
     '/admin-dashboard',
     '/customer-dashboard',
+    '/rider-dashboard',
     '/complete-profile',
     '/order',
     '/cart',

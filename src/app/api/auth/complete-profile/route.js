@@ -136,26 +136,47 @@ export async function POST(req) {
             console.log(`[PROFILE COMPLETION] Unclaimed profile for ${normalizedPhone} marked for deletion.`);
         }
         // --- END MERGE LOGIC ---
-
-        // ** THE FIX IS HERE: Add the server-side timestamp before saving **
-        mergedUserData.createdAt = FieldValue.serverTimestamp();
-
-        const masterUserRef = firestore.collection('users').doc(uid);
-        batch.set(masterUserRef, mergedUserData, { merge: true });
-        console.log(`[PROFILE COMPLETION] Step 1: Master user profile for UID ${uid} added to batch.`);
-
-        if (isBusinessOwner && businessData) {
-             const collectionName = businessType === 'restaurant' ? 'restaurants' : 'shops';
-             const businessId = businessData.name.replace(/\s+/g, '-').toLowerCase();
-             const businessRef = firestore.collection(collectionName).doc(businessId);
-             
-             const finalBusinessData = {
-                ...businessData,
+        
+        // --- START: NEW LOGIC FOR RIDER ROLE ---
+        if (finalUserData.role === 'rider') {
+            const driverRef = firestore.collection('drivers').doc(uid);
+            batch.set(driverRef, {
+                uid: uid,
+                email: finalUserData.email,
+                name: finalUserData.name,
+                phone: finalUserData.phone,
+                profilePictureUrl: finalUserData.profilePictureUrl,
                 createdAt: FieldValue.serverTimestamp(),
-                razorpayAccountId: '', 
-             };
-             batch.set(businessRef, finalBusinessData);
-             console.log(`[PROFILE COMPLETION] Owner Action: New ${businessType} '${businessId}' added to batch.`);
+                status: 'offline', // Default status for new riders
+                currentLocation: null,
+                currentRestaurantId: null,
+                allowInCommunityPool: false,
+                walletBalance: 0,
+            }, { merge: true });
+            console.log(`[PROFILE COMPLETION] Rider Action: New rider profile for UID ${uid} added to 'drivers' collection.`);
+        } 
+        // --- END: NEW LOGIC FOR RIDER ROLE ---
+        else {
+            // ** THE FIX IS HERE: Add the server-side timestamp before saving **
+            mergedUserData.createdAt = FieldValue.serverTimestamp();
+
+            const masterUserRef = firestore.collection('users').doc(uid);
+            batch.set(masterUserRef, mergedUserData, { merge: true });
+            console.log(`[PROFILE COMPLETION] Step 1: Master user profile for UID ${uid} added to batch.`);
+
+            if (isBusinessOwner && businessData) {
+                 const collectionName = businessType === 'restaurant' ? 'restaurants' : 'shops';
+                 const businessId = businessData.name.replace(/\s+/g, '-').toLowerCase();
+                 const businessRef = firestore.collection(collectionName).doc(businessId);
+                 
+                 const finalBusinessData = {
+                    ...businessData,
+                    createdAt: FieldValue.serverTimestamp(),
+                    razorpayAccountId: '', 
+                 };
+                 batch.set(businessRef, finalBusinessData);
+                 console.log(`[PROFILE COMPLETION] Owner Action: New ${businessType} '${businessId}' added to batch.`);
+            }
         }
         
         await batch.commit();

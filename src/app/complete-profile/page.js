@@ -5,7 +5,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
-import { User, Store, Shield, ShoppingCart, Phone, Key, ArrowRight, MapPin, HelpCircle } from 'lucide-react';
+import { User, Store, Shield, ShoppingCart, Phone, Key, ArrowRight, MapPin, HelpCircle, Bike } from 'lucide-react';
 import { auth, db } from '@/lib/firebase';
 import { doc, getDoc } from 'firebase/firestore';
 
@@ -14,24 +14,6 @@ const cardVariants = {
   hidden: { opacity: 0, y: 20 },
   visible: { opacity: 1, y: 0, transition: { duration: 0.5 } },
 };
-
-const getUserRoleFromFirestore = async (uid) => {
-    if (!uid) return null;
-    console.log(`[DEBUG] complete-profile: getUserRoleFromFirestore called for UID: ${uid}`);
-    const userRef = doc(db, "users", uid);
-    try {
-        const userSnap = await getDoc(userRef);
-        if (userSnap.exists()) {
-            console.log("[DEBUG] complete-profile: User doc found in Firestore:", userSnap.data());
-            return userSnap.data(); // Return full user data
-        }
-        console.log("[DEBUG] complete-profile: User doc NOT found in Firestore.");
-    } catch (e) {
-        console.warn("[DEBUG] complete-profile: Could not read user role, likely due to security rules for new user.", e);
-    }
-    return null;
-};
-
 
 export default function CompleteProfile() {
   const router = useRouter();
@@ -55,29 +37,36 @@ export default function CompleteProfile() {
       if (user) {
         console.log("[DEBUG] complete-profile: onAuthStateChanged fired. User found:", user.email);
         try {
-          const userData = await getUserRoleFromFirestore(user.uid);
-          const userRole = userData?.role;
-          const businessType = userData?.businessType;
-          console.log(`[DEBUG] complete-profile: Fetched role from Firestore: '${userRole}', BusinessType: '${businessType}'`);
+          const idToken = await user.getIdToken();
+          const res = await fetch('/api/auth/check-role', {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${idToken}` },
+          });
 
-          if (userRole && userRole !== 'none') {
-            console.log(`[DEBUG] complete-profile: User has a valid role ('${userRole}'). Redirecting...`);
-            localStorage.setItem('role', userRole);
-            if (userRole === 'owner' || userRole === 'restaurant-owner' || userRole === 'shop-owner') {
-              // Ensure businessType is also stored for owner roles
-              localStorage.setItem('businessType', businessType || 'restaurant');
+          if (res.ok) {
+            const { role, businessType } = await res.json();
+            console.log(`[DEBUG] complete-profile: Fetched role from API: '${role}', BusinessType: '${businessType}'`);
+            localStorage.setItem('role', role);
+            if (businessType) localStorage.setItem('businessType', businessType);
+
+            if (role === 'owner' || role === 'restaurant-owner' || role === 'shop-owner') {
               router.push('/owner-dashboard');
-            } else if (userRole === 'admin') {
+            } else if (role === 'admin') {
               router.push('/admin-dashboard');
+            } else if (role === 'rider') {
+                router.push('/rider-dashboard');
             } else {
               router.push('/customer-dashboard');
             }
-          } else {
-            console.log("[DEBUG] complete-profile: User has no role or role is 'none'. Staying on page.");
+          } else if (res.status === 404) {
+            console.log("[DEBUG] complete-profile: User has no role (404). Staying on page.");
             const urlParams = new URLSearchParams(window.location.search);
             const phoneFromUrl = urlParams.get('phone');
             setPhone(user.phoneNumber || phoneFromUrl || '');
             setLoading(false);
+          } else {
+             const errorData = await res.json();
+             throw new Error(errorData.message || 'Failed to verify user status.');
           }
         } catch (error) {
           console.error("[DEBUG] complete-profile: Error in auth logic.", error);
@@ -190,13 +179,14 @@ export default function CompleteProfile() {
         }
 
         // --- THE FIX ---
-        // Save role AND businessType to localStorage before redirecting
         localStorage.setItem('role', role);
         if (isBusinessOwner) {
           localStorage.setItem('businessType', businessType);
           router.push('/owner-dashboard');
         } else if (role === 'admin') {
           router.push('/admin-dashboard');
+        } else if (role === 'rider') {
+            router.push('/rider-dashboard');
         } else {
           router.push('/customer-dashboard');
         }
@@ -249,6 +239,7 @@ export default function CompleteProfile() {
     
     switch (role) {
       case 'customer':
+      case 'rider':
         return (
            <motion.div variants={cardVariants} initial="hidden" animate="visible" className="space-y-4">
             <div>
@@ -308,11 +299,12 @@ export default function CompleteProfile() {
         <form onSubmit={handleSubmit} className="space-y-6">
           <div>
             <label className="block text-sm font-medium text-muted-foreground mb-2">I am a...</label>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
               {[
                 {id: 'customer', label: 'Customer', icon: User},
                 {id: 'restaurant-owner', label: 'Restaurant Owner', icon: Store},
                 {id: 'shop-owner', label: 'Shop Owner', icon: ShoppingCart},
+                {id: 'rider', label: 'Rider', icon: Bike},
                 {id: 'admin', label: 'Admin', icon: Shield}
               ].map((r) => (
                 <button
