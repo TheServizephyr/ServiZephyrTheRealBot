@@ -66,12 +66,14 @@ export async function POST(req) {
 
         const riderUid = userRecord.uid;
         
-        const userDocRef = firestore.collection('users').doc(riderUid);
-        const userDoc = await userDocRef.get();
+        // --- THE FIX: Check for rider existence in the 'drivers' collection ---
+        const driverDocRef = firestore.collection('drivers').doc(riderUid);
+        const driverDoc = await driverDocRef.get();
         
-        if (!userDoc.exists || userDoc.data().role !== 'rider') {
+        if (!driverDoc.exists) {
             return NextResponse.json({ message: 'This user is not registered as a rider.' }, { status: 400 });
         }
+        // --- END FIX ---
         
         const existingRiderRef = restaurantRef.collection('deliveryBoys').doc(riderUid);
         const existingRiderSnap = await existingRiderRef.get();
