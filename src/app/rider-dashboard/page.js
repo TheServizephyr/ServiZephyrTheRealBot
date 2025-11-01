@@ -200,29 +200,14 @@ export default function RiderDashboardPage() {
     const handleAcceptInvite = async (invite) => {
         if (!user) return;
         try {
-            const driverDocRef = doc(db, 'drivers', user.uid);
-            await updateDoc(driverDocRef, {
-                currentRestaurantId: invite.restaurantId,
-                currentRestaurantName: invite.restaurantName,
+            const data = await handleApiCall('/api/rider/accept-invite', 'POST', {
+                restaurantId: invite.restaurantId,
+                restaurantName: invite.restaurantName,
+                inviteId: invite.id
             });
-
-            const restaurantRiderRef = doc(db, 'restaurants', invite.restaurantId, 'deliveryBoys', user.uid);
-            const userDoc = await getDoc(doc(db, 'users', user.uid));
-
-            await setDoc(restaurantRiderRef, {
-                id: user.uid,
-                name: user.displayName,
-                phone: user.phoneNumber,
-                status: 'offline',
-                createdAt: new Date(),
-                ...userDoc.data(),
-            });
-            
-            await deleteDoc(doc(db, 'drivers', user.uid, 'invites', invite.id));
-
-            setInfoDialog({isOpen: true, title: "Success!", message: `You are now an employee of ${invite.restaurantName}.`});
+            setInfoDialog({isOpen: true, title: "Success!", message: data.message});
         } catch (err) {
-            setInfoDialog({ isOpen: true, title: 'Error', message: "Failed to accept the invitation."});
+            setInfoDialog({ isOpen: true, title: 'Error', message: `Failed to accept the invitation: ${err.message}`});
         }
     };
 
