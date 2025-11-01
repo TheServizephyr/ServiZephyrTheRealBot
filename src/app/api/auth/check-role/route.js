@@ -1,5 +1,4 @@
 
-
 import { NextResponse } from 'next/server';
 import { getAuth, getFirestore } from '@/lib/firebase-admin';
 
@@ -21,49 +20,53 @@ export async function POST(req) {
         const uid = decodedToken.uid;
         console.log(`[DEBUG] /api/auth/check-role: Token verified for UID: ${uid}`);
 
-        // Check the single 'users' collection for the user's role
+        // 1. Check the 'users' collection first (for customers, owners, admins)
         const userRef = firestore.collection('users').doc(uid);
         const userDoc = await userRef.get();
-        console.log(`[DEBUG] /api/auth/check-role: Firestore document fetched for UID: ${uid}. Exists: ${userDoc.exists}`);
+        console.log(`[DEBUG] /api/auth/check-role: Firestore 'users' document fetched. Exists: ${userDoc.exists}`);
 
         if (userDoc.exists) {
             const userData = userDoc.data();
             console.log("[DEBUG] /api/auth/check-role: User document data:", userData);
             const role = userData.role;
-            const businessType = userData.businessType || null; // Get businessType
+            const businessType = userData.businessType || null;
 
-            // **THE FIX: Set custom claim for admin users**
             if (role === 'admin' && !decodedToken.isAdmin) {
-                console.log(`[DEBUG] /api/auth/check-role: User is admin, setting custom claim...`);
                 await auth.setCustomUserClaims(uid, { isAdmin: true });
                 console.log(`[DEBUG] /api/auth/check-role: Custom claim 'isAdmin: true' set for UID: ${uid}.`);
             } else if (role !== 'admin' && decodedToken.isAdmin) {
-                // If user is no longer an admin, remove the claim
                  await auth.setCustomUserClaims(uid, { isAdmin: null });
                  console.log(`[DEBUG] /api/auth/check-role: User is no longer admin, removing custom claim for UID: ${uid}.`);
             }
 
             if (role) {
-                // User has a role, login is successful.
-                console.log(`[DEBUG] /api/auth/check-role: Role found: '${role}', BusinessType: '${businessType}'. Returning 200.`);
-                return NextResponse.json({ role, businessType }, { status: 200 }); // Return businessType as well
-            } else {
-                 // This case is unlikely if profile completion is enforced, but good to have.
-                 console.warn(`[DEBUG] /api/auth/check-role: User document exists but 'role' field is missing for UID: ${uid}.`);
-                 return NextResponse.json({ message: 'Role not found for this user.' }, { status: 404 });
+                console.log(`[DEBUG] /api/auth/check-role: Role found in 'users': '${role}'. Returning 200.`);
+                return NextResponse.json({ role, businessType }, { status: 200 });
             }
-        } else {
-            // If the user document doesn't exist, they are a new user.
-            console.log(`[DEBUG] /api/auth/check-role: User document does not exist for UID: ${uid}. Returning 404.`);
-            return NextResponse.json({ message: 'User profile not found.' }, { status: 404 });
         }
+        
+        // --- START FIX: Check 'drivers' collection if not found in 'users' ---
+        console.log(`[DEBUG] /api/auth/check-role: User not in 'users' or has no role. Checking 'drivers' collection.`);
+        const driverRef = firestore.collection('drivers').doc(uid);
+        const driverDoc = await driverRef.get();
+        console.log(`[DEBUG] /api/auth/check-role: Firestore 'drivers' document fetched. Exists: ${driverDoc.exists}`);
+
+        if (driverDoc.exists) {
+            console.log(`[DEBUG] /api/auth/check-role: Role found in 'drivers': 'rider'. Returning 200.`);
+            return NextResponse.json({ role: 'rider', businessType: null }, { status: 200 });
+        }
+        // --- END FIX ---
+
+
+        // If the user document doesn't exist in either collection, they are a new user.
+        console.log(`[DEBUG] /api/auth/check-role: User not found in any collection for UID: ${uid}. Returning 404.`);
+        return NextResponse.json({ message: 'User profile not found.' }, { status: 404 });
 
     } catch (error) {
         console.error('[DEBUG] /api/auth/check-role: CRITICAL ERROR:', error);
         if (error.code === 'auth/id-token-expired') {
             return NextResponse.json({ message: 'Login token has expired. Please log in again.' }, { status: 401 });
         }
-        // Specific check for the audience error to provide a clearer message
         if (error.code === 'auth/argument-error' && error.message.includes('Firebase ID token has incorrect "aud" (audience) claim')) {
             return NextResponse.json({ message: `Critical Backend Mismatch: ${error.message}` }, { status: 500 });
         }

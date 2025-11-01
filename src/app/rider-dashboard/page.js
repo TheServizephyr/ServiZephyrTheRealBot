@@ -1,9 +1,10 @@
+
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
-import { Power, PowerOff, MapPin, AlertCircle, CheckCircle, Loader2 } from 'lucide-react';
+import { Power, PowerOff, MapPin, AlertCircle, CheckCircle, Loader2, Bike } from 'lucide-react';
 import { auth, db } from '@/lib/firebase';
 import { doc, getDoc, updateDoc, GeoPoint } from 'firebase/firestore';
 import { Button } from '@/components/ui/button';
@@ -36,10 +37,10 @@ export default function RiderDashboardPage() {
                         startGpsTracking();
                     }
                 } else {
-                    setError("Your rider profile could not be found. Please contact support.");
+                    setError("Your rider profile could not be found. Please contact support or complete your profile.");
                     // Optionally sign out and redirect
-                    // await auth.signOut();
-                    // router.push('/rider-dashboard/login');
+                    await auth.signOut();
+                    router.push('/rider-dashboard/login');
                 }
             } catch (err) {
                 console.error("Error fetching driver data:", err);
@@ -60,8 +61,13 @@ export default function RiderDashboardPage() {
     const updateStatusInFirestore = async (newStatus) => {
         if (!user) return;
         const driverDocRef = doc(db, "drivers", user.uid);
-        await updateDoc(driverDocRef, { status: newStatus });
-        setDriverData(prev => ({ ...prev, status: newStatus }));
+        try {
+            await updateDoc(driverDocRef, { status: newStatus });
+            setDriverData(prev => ({ ...prev, status: newStatus }));
+        } catch (err) {
+            console.error("Failed to update status:", err);
+            setError("Failed to update your status. Please try again.");
+        }
     };
 
     const startGpsTracking = () => {
@@ -76,12 +82,16 @@ export default function RiderDashboardPage() {
                     const { latitude, longitude } = position.coords;
                     const driverDocRef = doc(db, "drivers", user.uid);
                     const newLocation = new GeoPoint(latitude, longitude);
-                    await updateDoc(driverDocRef, { currentLocation: newLocation });
-                    console.log("Location updated:", latitude, longitude);
+                    try {
+                        await updateDoc(driverDocRef, { currentLocation: newLocation });
+                        console.log("Location updated:", latitude, longitude);
+                    } catch (err) {
+                         console.error("Failed to update location:", err);
+                    }
                 },
                 (error) => {
                     console.error("Error watching position:", error);
-                    setError("GPS Error: " + error.message);
+                    setError("GPS Error: " + error.message + ". Please enable location services.");
                 },
                 { enableHighAccuracy: true, timeout: 20000, maximumAge: 0, distanceFilter: 10 }
             );
