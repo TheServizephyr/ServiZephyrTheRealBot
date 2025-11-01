@@ -1,5 +1,3 @@
-
-
 'use client';
 
 import { useState, useEffect } from 'react';
@@ -178,7 +176,6 @@ export default function CompleteProfile() {
             throw new Error(result.message || 'An error occurred during profile setup.');
         }
 
-        // --- THE FIX ---
         localStorage.setItem('role', role);
         if (isBusinessOwner) {
           localStorage.setItem('businessType', businessType);
@@ -353,5 +350,3 @@ export default function CompleteProfile() {
     </div>
   );
 }
-
-    
