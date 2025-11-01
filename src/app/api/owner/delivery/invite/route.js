@@ -51,37 +51,54 @@ export async function POST(req) {
         if (!riderEmail) {
             return NextResponse.json({ message: 'Rider email is required.' }, { status: 400 });
         }
+        
+        const lowercasedEmail = riderEmail.toLowerCase();
 
         // Find the rider in the 'users' collection by email
         const usersRef = firestore.collection('users');
-        const userQuery = await usersRef.where('email', '==', riderEmail).where('role', '==', 'rider').limit(1).get();
+        const userQuery = await usersRef.where('email', '==', lowercasedEmail).where('role', '==', 'rider').limit(1).get();
 
-        if (userQuery.empty) {
-             return NextResponse.json({ message: `No rider found with the email "${riderEmail}". Please ensure they have registered on the rider portal.` }, { status: 404 });
+        let riderUid;
+        let riderName;
+
+        if (!userQuery.empty) {
+             const userDoc = userQuery.docs[0];
+             riderUid = userDoc.id;
+             riderName = userDoc.data().name || 'New Rider';
+
+             // Check if rider is already employed by this restaurant
+            const existingRiderRef = restaurantRef.collection('deliveryBoys').doc(riderUid);
+            const existingRiderSnap = await existingRiderRef.get();
+            if (existingRiderSnap.exists) {
+                return NextResponse.json({ message: 'This rider is already part of your team.' }, { status: 409 });
+            }
         }
-        
-        // If found in 'users' collection (which is the primary place for rider role)
-        const userDoc = userQuery.docs[0];
-        const riderUid = userDoc.id;
-
-        // Check if rider is already employed by this restaurant
-        const existingRiderRef = restaurantRef.collection('deliveryBoys').doc(riderUid);
-        const existingRiderSnap = await existingRiderRef.get();
-        if (existingRiderSnap.exists) {
-            return NextResponse.json({ message: 'This rider is already part of your team.' }, { status: 409 });
+       
+        // Send invite by creating a document in the rider's sub-collection (if registered)
+        // or a general invites collection (if not registered yet).
+        if(riderUid) {
+             const inviteRef = firestore.collection('drivers').doc(riderUid).collection('invites').doc(restaurantId);
+             await inviteRef.set({
+                restaurantId: restaurantId,
+                restaurantName: restaurantData.name,
+                invitedAt: FieldValue.serverTimestamp(),
+                status: 'pending',
+            });
+        } else {
+            // Rider not registered yet, create a pending invite
+            const pendingInvitesRef = firestore.collection('pending_invites').doc(lowercasedEmail);
+            await pendingInvitesRef.set({
+                invites: FieldValue.arrayUnion({
+                    restaurantId: restaurantId,
+                    restaurantName: restaurantData.name,
+                    invitedAt: FieldValue.serverTimestamp(),
+                    status: 'pending'
+                })
+            }, { merge: true });
         }
-        
-        // Send invite by creating a document in the rider's sub-collection
-        const inviteRef = firestore.collection('drivers').doc(riderUid).collection('invites').doc(restaurantId);
-        
-        await inviteRef.set({
-            restaurantId: restaurantId,
-            restaurantName: restaurantData.name,
-            invitedAt: FieldValue.serverTimestamp(),
-            status: 'pending',
-        });
 
-        return NextResponse.json({ message: `Invitation sent successfully to ${userDoc.data().name}!` }, { status: 200 });
+
+        return NextResponse.json({ message: `Invitation sent successfully to ${riderEmail}!` }, { status: 200 });
 
     } catch (error) {
         console.error("POST RIDER INVITE ERROR:", error);

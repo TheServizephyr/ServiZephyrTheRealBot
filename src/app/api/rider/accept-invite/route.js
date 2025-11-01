@@ -37,12 +37,13 @@ export async function POST(req) {
         
         // 3. Create a new document for the rider in the restaurant's 'deliveryBoys' subcollection
         // THE FIX: Check business type to determine collection
-        const restaurantDoc = await firestore.collection('restaurants').doc(restaurantId).get();
+        let restaurantDoc = await firestore.collection('restaurants').doc(restaurantId).get();
         let businessCollection = 'restaurants';
         if (!restaurantDoc.exists) {
             const shopDoc = await firestore.collection('shops').doc(restaurantId).get();
             if (shopDoc.exists) {
                 businessCollection = 'shops';
+                restaurantDoc = shopDoc;
             } else {
                  throw new Error("The specified business does not exist.");
             }
