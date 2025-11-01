@@ -59,12 +59,10 @@ export async function POST(req) {
         const userQuery = await usersRef.where('email', '==', lowercasedEmail).where('role', '==', 'rider').limit(1).get();
 
         let riderUid;
-        let riderName;
 
         if (!userQuery.empty) {
              const userDoc = userQuery.docs[0];
              riderUid = userDoc.id;
-             riderName = userDoc.data().name || 'New Rider';
 
              // Check if rider is already employed by this restaurant
             const existingRiderRef = restaurantRef.collection('deliveryBoys').doc(riderUid);
@@ -72,29 +70,33 @@ export async function POST(req) {
             if (existingRiderSnap.exists) {
                 return NextResponse.json({ message: 'This rider is already part of your team.' }, { status: 409 });
             }
-        }
-       
-        // Send invite by creating a document in the rider's sub-collection (if registered)
-        // or a general invites collection (if not registered yet).
-        if(riderUid) {
-             const inviteRef = firestore.collection('drivers').doc(riderUid).collection('invites').doc(restaurantId);
-             await inviteRef.set({
+
+            // Send invite to the registered rider's sub-collection
+            const inviteRef = firestore.collection('drivers').doc(riderUid).collection('invites').doc(restaurantId);
+            await inviteRef.set({
                 restaurantId: restaurantId,
                 restaurantName: restaurantData.name,
                 invitedAt: FieldValue.serverTimestamp(),
                 status: 'pending',
             });
         } else {
-            // Rider not registered yet, create a pending invite
-            const pendingInvitesRef = firestore.collection('pending_invites').doc(lowercasedEmail);
-            await pendingInvitesRef.set({
-                invites: FieldValue.arrayUnion({
-                    restaurantId: restaurantId,
-                    restaurantName: restaurantData.name,
-                    invitedAt: FieldValue.serverTimestamp(),
-                    status: 'pending'
-                })
-            }, { merge: true });
+            // --- THE FIX: Rider not registered yet. Create a pending invite in a subcollection. ---
+            const pendingInviteRef = firestore.collection('pending_invites').doc(lowercasedEmail).collection('invitations').doc(restaurantId);
+            
+            // Check if an invite already exists for this restaurant
+            const existingPendingInvite = await pendingInviteRef.get();
+            if (existingPendingInvite.exists) {
+                return NextResponse.json({ message: 'An invitation has already been sent to this email for your restaurant.' }, { status: 409 });
+            }
+            
+            await pendingInviteRef.set({
+                restaurantId: restaurantId,
+                restaurantName: restaurantData.name,
+                invitedAt: FieldValue.serverTimestamp(),
+                status: 'pending'
+            });
+            // Also create the parent document to ensure queries work if it's the first invite for this email
+            await firestore.collection('pending_invites').doc(lowercasedEmail).set({ email: lowercasedEmail }, { merge: true });
         }
 
 
