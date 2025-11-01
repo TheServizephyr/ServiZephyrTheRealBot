@@ -1,5 +1,4 @@
 
-
 'use client';
 
 import { useState, useEffect } from 'react';
@@ -34,7 +33,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { useWindowSize } from 'react-use';
-import { auth } from '@/lib/firebase';
+import { useUser } from '@/firebase'; // THE FIX: Import useUser
 import InfoDialog from '@/components/InfoDialog';
 
 
@@ -76,6 +75,19 @@ function AdminLayoutContent({ children }) {
   const { theme, setTheme } = useTheme();
   const router = useRouter();
   const [infoDialog, setInfoDialog] = useState({ isOpen: false, title: '', message: '' });
+  
+  // --- START THE FIX ---
+  const { user, isUserLoading } = useUser();
+
+  useEffect(() => {
+    // Wait until firebase has confirmed the auth state
+    if (!isUserLoading) {
+      // If auth check is done and there's no user, redirect to login
+      if (!user) {
+        router.push('/');
+      }
+    }
+  }, [user, isUserLoading, router]);
 
   useEffect(() => {
     if (!isMobile) {
@@ -89,6 +101,7 @@ function AdminLayoutContent({ children }) {
   const isCollapsed = !isSidebarOpen && !isMobile;
   
   const handleLogout = async () => {
+    const { auth } = await import('@/lib/firebase'); // Import auth here
     try {
       await auth.signOut();
       localStorage.clear();
@@ -98,6 +111,22 @@ function AdminLayoutContent({ children }) {
       setInfoDialog({ isOpen: true, title: "Logout Failed", message: "Could not log out. Please try again." });
     }
   };
+
+  // If we are still checking the user's auth state, show a loader
+  if (isUserLoading) {
+      return (
+          <div className="flex h-screen items-center justify-center bg-background">
+              <div className="h-16 w-16 animate-spin rounded-full border-b-2 border-primary"></div>
+          </div>
+      );
+  }
+
+  // If auth is checked and no user, the useEffect above will redirect. 
+  // We can return null or a loader here as well to prevent flashing the content.
+  if (!user) {
+      return null;
+  }
+  // --- END THE FIX ---
 
   return (
     <>
