@@ -52,21 +52,29 @@ export async function POST(req) {
             return NextResponse.json({ message: 'Rider email is required.' }, { status: 400 });
         }
         
-        const lowercasedEmail = riderEmail.toLowerCase();
+        const lowercasedEmail = riderEmail.toLowerCase().trim();
 
-        // --- START FIX: Stricter Invitation Logic ---
-
-        // 1. Find the rider in the 'users' collection by email. They MUST be a rider.
-        const usersRef = firestore.collection('users');
-        const userQuery = await usersRef.where('email', '==', lowercasedEmail).where('role', '==', 'rider').limit(1).get();
-
-        if (userQuery.empty) {
-            // Rider not found or not registered as a rider. Block the invite.
-            return NextResponse.json({ message: 'No rider found with this email address. Please ask the rider to register on the Rider Portal first.' }, { status: 404 });
+        // --- START FIX: Correctly find user by email ---
+        let riderUid;
+        try {
+            const userRecord = await auth.getUserByEmail(lowercasedEmail);
+            riderUid = userRecord.uid;
+        } catch (error) {
+            if (error.code === 'auth/user-not-found') {
+                 return NextResponse.json({ message: 'No user found with this email address. Please ask them to register on the Rider Portal first.' }, { status: 404 });
+            }
+            throw error; // Re-throw other auth errors
         }
+
+        // Now that we have the UID, verify they are a 'rider'
+        const userDocRef = firestore.collection('users').doc(riderUid);
+        const userDoc = await userDocRef.get();
         
-        const userDoc = userQuery.docs[0];
-        const riderUid = userDoc.id;
+        if (!userDoc.exists() || userDoc.data().role !== 'rider') {
+            return NextResponse.json({ message: 'This user is not registered as a rider.' }, { status: 400 });
+        }
+        // --- END FIX ---
+        
 
         // 2. Check if this rider is already part of the owner's team.
         const existingRiderRef = restaurantRef.collection('deliveryBoys').doc(riderUid);
@@ -81,8 +89,6 @@ export async function POST(req) {
         if (existingInviteSnap.exists) {
             return NextResponse.json({ message: 'An invitation has already been sent to this rider.' }, { status: 409 });
         }
-
-        // --- END FIX ---
         
         // All checks passed, proceed with sending the invite.
         await inviteRef.set({
@@ -96,6 +102,8 @@ export async function POST(req) {
 
     } catch (error) {
         console.error("POST RIDER INVITE ERROR:", error);
-        return NextResponse.json({ message: `Backend Error: ${error.message}` }, { status: error.status || 500 });
+        const message = error.message || 'Internal Server Error';
+        const status = error.status || 500;
+        return NextResponse.json({ message: `Backend Error: ${message}` }, { status: status });
     }
 }
