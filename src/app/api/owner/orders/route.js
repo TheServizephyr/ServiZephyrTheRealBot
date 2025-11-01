@@ -1,4 +1,5 @@
 
+
 import { NextResponse } from 'next/server';
 import { getAuth, getFirestore, FieldValue, verifyAndGetUid } from '@/lib/firebase-admin';
 import { sendOrderStatusUpdateToCustomer } from '@/lib/notifications';
@@ -119,8 +120,8 @@ export async function GET(req) {
 export async function PATCH(req) {
     console.log('[API][PATCH /orders] Request received.');
     try {
-        const auth = getAuth();
-        const firestore = getFirestore();
+        const auth = await getAuth();
+        const firestore = await getFirestore();
         const { businessId, businessSnap } = await verifyOwnerAndGetBusiness(req, auth, firestore);
         const { orderId, newStatus, deliveryBoyId, rejectionReason } = await req.json();
 
