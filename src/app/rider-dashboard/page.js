@@ -1,4 +1,3 @@
-
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
@@ -7,11 +6,12 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Power, PowerOff, Loader2, Mail, Check, X, ShoppingBag, Bell } from 'lucide-react';
 import { auth, db } from '@/lib/firebase';
 import { doc, onSnapshot, collection, query, where, getDoc, updateDoc, setDoc, deleteDoc } from 'firebase/firestore';
-import { useUser, FirestorePermissionError, errorEmitter } from '@/firebase';
+import { useUser } from '@/firebase';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import InfoDialog from '@/components/InfoDialog';
 import { cn } from '@/lib/utils';
+import { FirestorePermissionError, errorEmitter } from '@/firebase';
 
 const InvitationCard = ({ invite, onAccept, onDecline }) => {
     return (
@@ -93,6 +93,36 @@ export default function RiderDashboardPage() {
         return await response.json();
     }, [user]);
 
+    // GPS Tracking useEffect
+    useEffect(() => {
+        let locationInterval;
+        if (driverData?.status === 'online' || driverData?.status === 'on-delivery') {
+            console.log("GPS: Rider is online, starting location updates.");
+            locationInterval = setInterval(() => {
+                navigator.geolocation.getCurrentPosition(
+                    (position) => {
+                        const { latitude, longitude } = position.coords;
+                        console.log(`GPS: Sending location: ${latitude}, ${longitude}`);
+                        handleApiCall('/api/rider/dashboard', 'PATCH', {
+                            location: { latitude, longitude }
+                        }).catch(err => console.error("GPS: Failed to send location update:", err));
+                    },
+                    (err) => {
+                        console.error("GPS: Error getting location:", err);
+                    },
+                    { enableHighAccuracy: true }
+                );
+            }, 20000); // Send location every 20 seconds
+        }
+
+        return () => {
+            if (locationInterval) {
+                console.log("GPS: Rider went offline, stopping location updates.");
+                clearInterval(locationInterval);
+            }
+        };
+    }, [driverData?.status, handleApiCall]);
+
     useEffect(() => {
         if (isUserLoading) return;
         if (!user) {
@@ -112,7 +142,7 @@ export default function RiderDashboardPage() {
                 setLoading(false);
             },
             (err) => {
-                const contextualError = new FirestorePermissionError({
+                 const contextualError = new FirestorePermissionError({
                   path: driverDocRef.path,
                   operation: 'get',
                 });
@@ -128,7 +158,7 @@ export default function RiderDashboardPage() {
                 setInvites(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
             },
             (err) => {
-                const contextualError = new FirestorePermissionError({
+                 const contextualError = new FirestorePermissionError({
                   path: (invitesQuery)._query.path.canonicalString(),
                   operation: 'list',
                 });
@@ -142,7 +172,7 @@ export default function RiderDashboardPage() {
                 setAssignedOrders(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
             },
             (err) => {
-                const contextualError = new FirestorePermissionError({
+                 const contextualError = new FirestorePermissionError({
                   path: 'orders',
                   operation: 'list',
                 });

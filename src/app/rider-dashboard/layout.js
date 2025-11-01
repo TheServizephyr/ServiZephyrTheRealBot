@@ -65,7 +65,7 @@ export default function RiderLayout({ children }) {
                     </Link>
                     <Link href="/rider-dashboard/wallet" className="flex flex-col items-center gap-1 text-muted-foreground hover:text-primary">
                         <Wallet />
-                        <span className="text-xs font-medium">Wallet</span>
+                        <span className="text-xs font-medium">Earnings</span>
                     </Link>
                     <Link href="/rider-dashboard/profile" className="flex flex-col items-center gap-1 text-muted-foreground hover:text-primary">
                         <User />
