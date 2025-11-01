@@ -11,6 +11,8 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import InfoDialog from '@/components/InfoDialog';
 import { cn } from '@/lib/utils';
+import { errorEmitter } from '@/firebase/error-emitter';
+import { FirestorePermissionError } from '@/firebase/errors';
 
 
 const InvitationCard = ({ invite, onAccept, onDecline }) => {
@@ -101,15 +103,26 @@ export default function RiderDashboardPage() {
         }
 
         const driverDocRef = doc(db, 'drivers', user.uid);
-        const unsubscribeDriver = onSnapshot(driverDocRef, (doc) => {
-            if (doc.exists()) {
-                setDriverData(doc.data());
+        const unsubscribeDriver = onSnapshot(driverDocRef, 
+            (doc) => {
+                if (doc.exists()) {
+                    setDriverData(doc.data());
+                    setError('');
+                } else {
+                    setError('Your rider profile could not be found.');
+                }
                 setLoading(false);
-            } else {
-                setError('Your rider profile could not be found.');
+            },
+            (err) => {
+                const contextualError = new FirestorePermissionError({
+                  path: driverDocRef.path,
+                  operation: 'get',
+                });
+                setError(contextualError.message);
+                errorEmitter.emit('permission-error', contextualError);
                 setLoading(false);
             }
-        });
+        );
 
         const invitesQuery = query(collection(db, 'drivers', user.uid, 'invites'));
         const unsubscribeInvites = onSnapshot(invitesQuery, (snapshot) => {
@@ -141,14 +154,12 @@ export default function RiderDashboardPage() {
     const handleAcceptInvite = async (invite) => {
         if (!user) return;
         try {
-            // Update driver's profile
             const driverDocRef = doc(db, 'drivers', user.uid);
             await updateDoc(driverDocRef, {
                 currentRestaurantId: invite.restaurantId,
                 currentRestaurantName: invite.restaurantName,
             });
 
-            // Add rider to restaurant's subcollection
             const restaurantRiderRef = doc(db, 'restaurants', invite.restaurantId, 'deliveryBoys', user.uid);
             const userDoc = await getDoc(doc(db, 'users', user.uid));
 
@@ -158,10 +169,9 @@ export default function RiderDashboardPage() {
                 phone: user.phoneNumber,
                 status: 'offline',
                 createdAt: new Date(),
-                ...userDoc.data(), // add other details if needed
+                ...userDoc.data(),
             });
             
-            // Delete the invite
             await deleteDoc(doc(db, 'drivers', user.uid, 'invites', invite.id));
 
             setInfoDialog({isOpen: true, title: "Success!", message: `You are now an employee of ${invite.restaurantName}.`});
@@ -181,13 +191,15 @@ export default function RiderDashboardPage() {
     }
 
     const handleAcceptOrder = (orderId) => {
-        // Here, we would update the order status. This requires a new API endpoint.
-        // For now, we'll just show an alert.
         setInfoDialog({isOpen: true, title: "Order Accepted", message: `Order ${orderId.substring(0,6)} has been accepted. You should now proceed to the restaurant.`});
     };
 
     if (loading) {
         return <div className="min-h-screen flex items-center justify-center bg-background"><Loader2 className="animate-spin text-primary h-16 w-16" /></div>
+    }
+
+    if(error){
+        return <div className="min-h-screen flex items-center justify-center bg-background"><p className="text-red-500">{error}</p></div>
     }
 
     const isOnline = driverData?.status === 'online';
