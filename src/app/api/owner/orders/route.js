@@ -1,18 +1,11 @@
 
 import { NextResponse } from 'next/server';
-
-import { getAuth, getFirestore, FieldValue } from '@/lib/firebase-admin';
+import { getAuth, getFirestore, FieldValue, verifyAndGetUid } from '@/lib/firebase-admin';
 import { sendOrderStatusUpdateToCustomer } from '@/lib/notifications';
 
 
 async function verifyOwnerAndGetBusiness(req, auth, firestore) {
-    const authHeader = req.headers.get('authorization');
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-        throw { message: 'Authorization token not found or invalid.', status: 401 };
-    }
-    const token = authHeader.split('Bearer ')[1];
-    const decodedToken = await auth.verifyIdToken(token);
-    const uid = decodedToken.uid;
+    const uid = await verifyAndGetUid(req); // Use central helper
     
     const url = new URL(req.url, `http://${req.headers.host}`);
     const impersonatedOwnerId = url.searchParams.get('impersonate_owner_id');
@@ -175,6 +168,7 @@ export async function PATCH(req) {
             if (deliveryBoySnap.exists) {
                 deliveryBoyData = deliveryBoySnap.data();
                 updateData.deliveryBoyId = deliveryBoyId;
+                await deliveryBoyRef.update({ status: 'On Delivery' });
                 console.log(`[API][PATCH /orders] Rider data found:`, deliveryBoyData);
             }
         }

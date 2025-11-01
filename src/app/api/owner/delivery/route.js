@@ -1,6 +1,6 @@
 
 import { NextResponse } from 'next/server';
-import { getAuth, getFirestore, verifyAndGetUid } from '@/lib/firebase-admin';
+import { getAuth, getFirestore, verifyAndGetUid, FieldValue } from '@/lib/firebase-admin';
 
 // Helper to verify owner and get their first business ID
 async function verifyOwnerAndGetBusiness(req, auth, firestore) {
@@ -130,7 +130,7 @@ export async function POST(req) {
             totalDeliveries: 0,
             avgDeliveryTime: 0,
             avgRating: 0,
-            createdAt: firestore.FieldValue.serverTimestamp(),
+            createdAt: FieldValue.serverTimestamp(),
         };
 
         await newBoyRef.set(newBoyData);
