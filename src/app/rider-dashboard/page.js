@@ -1,12 +1,11 @@
-
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
 import { Power, PowerOff, MapPin, AlertCircle, CheckCircle, Loader2, Bike } from 'lucide-react';
-import { auth, db } from '@/lib/firebase';
-import { doc, getDoc, updateDoc, GeoPoint } from 'firebase/firestore';
+import { auth } from '@/lib/firebase';
+import { doc, updateDoc, GeoPoint } from 'firebase/firestore';
 import { Button } from '@/components/ui/button';
 import { useUser } from '@/firebase';
 
@@ -17,6 +16,49 @@ export default function RiderDashboardPage() {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
     const watchIdRef = useRef(null);
+
+    // This is the new, secure way to fetch data
+    const fetchDriverData = async () => {
+        console.log("[DEBUG] RiderDashboard: fetchDriverData started.");
+        if (!user) {
+            console.log("[DEBUG] RiderDashboard: No user found in hook, exiting fetch.");
+            return;
+        }
+
+        try {
+            const idToken = await user.getIdToken();
+            const response = await fetch('/api/rider/dashboard', {
+                headers: { 'Authorization': `Bearer ${idToken}` }
+            });
+            
+            const data = await response.json();
+            console.log(`[DEBUG] RiderDashboard: API response status: ${response.status}`);
+            
+            if (!response.ok) {
+                throw new Error(data.message || 'Failed to fetch rider data.');
+            }
+            
+            console.log("[DEBUG] RiderDashboard: Driver data found via API:", data);
+            setDriverData(data.driver);
+
+            if (data.driver.status === 'online') {
+                console.log("[DEBUG] RiderDashboard: Driver is online. Starting GPS tracking.");
+                startGpsTracking();
+            }
+
+        } catch (err) {
+            console.error("[DEBUG] RiderDashboard: Error fetching driver data via API:", err);
+            setError(err.message);
+            // Optional: Sign out if profile is invalid
+            if (err.message.includes("not found")) {
+                await auth.signOut();
+                router.push('/rider-dashboard/login');
+            }
+        } finally {
+            setLoading(false);
+            console.log("[DEBUG] RiderDashboard: fetchDriverData finished.");
+        }
+    };
 
     useEffect(() => {
         console.log(`[DEBUG] RiderDashboard: useEffect triggered. isUserLoading: ${isUserLoading}`);
@@ -30,39 +72,6 @@ export default function RiderDashboardPage() {
             return;
         }
 
-        console.log(`[DEBUG] RiderDashboard: User found (UID: ${user.uid}). Preparing to fetch driver data.`);
-        const driverDocRef = doc(db, "drivers", user.uid);
-
-        const fetchDriverData = async () => {
-            console.log("[DEBUG] RiderDashboard: fetchDriverData started.");
-            setLoading(true);
-            try {
-                const driverDoc = await getDoc(driverDocRef);
-
-                console.log(`[DEBUG] RiderDashboard: Firestore document fetch attempted. Exists: ${driverDoc.exists()}`);
-                if (driverDoc.exists()) {
-                    const data = driverDoc.data();
-                    console.log("[DEBUG] RiderDashboard: Driver data found:", data);
-                    setDriverData(data);
-                    if (data.status === 'online') {
-                        console.log("[DEBUG] RiderDashboard: Driver is online. Starting GPS tracking.");
-                        startGpsTracking();
-                    }
-                } else {
-                    console.error("[DEBUG] RiderDashboard: CRITICAL - Driver document does not exist in 'drivers' collection.");
-                    setError("Your rider profile could not be found. Please contact support or complete your profile.");
-                    await auth.signOut();
-                    router.push('/rider-dashboard/login');
-                }
-            } catch (err) {
-                console.error("[DEBUG] RiderDashboard: Error fetching driver data:", err);
-                setError("Could not load your profile. Please try again.");
-            } finally {
-                setLoading(false);
-                 console.log("[DEBUG] RiderDashboard: fetchDriverData finished.");
-            }
-        };
-
         fetchDriverData();
 
         // Cleanup function for the effect
@@ -74,36 +83,49 @@ export default function RiderDashboardPage() {
 
     const updateStatusInFirestore = async (newStatus) => {
         if (!user) return;
-        const driverDocRef = doc(db, "drivers", user.uid);
         try {
-            await updateDoc(driverDocRef, { status: newStatus });
-            setDriverData(prev => ({ ...prev, status: newStatus }));
+            const idToken = await user.getIdToken();
+            await fetch('/api/rider/dashboard', {
+                method: 'PATCH',
+                headers: { 
+                    'Authorization': `Bearer ${idToken}`,
+                    'Content-Type': 'application/json'
+                 },
+                body: JSON.stringify({ status: newStatus })
+            });
+            setDriverData(prev => (prev ? { ...prev, status: newStatus } : null));
         } catch (err) {
-            console.error("Failed to update status in Firestore:", err);
+            console.error("Failed to update status via API:", err);
             setError("Failed to update your status. Please try again.");
         }
     };
 
     const startGpsTracking = () => {
-        if (watchIdRef.current !== null) {
-            return;
-        }
+        if (watchIdRef.current !== null) return;
         if (navigator.geolocation) {
             watchIdRef.current = navigator.geolocation.watchPosition(
                 async (position) => {
                     if (!user) return;
                     const { latitude, longitude } = position.coords;
-                    const driverDocRef = doc(db, "drivers", user.uid);
-                    const newLocation = new GeoPoint(latitude, longitude);
                     try {
-                        await updateDoc(driverDocRef, { currentLocation: newLocation });
+                        const idToken = await user.getIdToken();
+                        await fetch('/api/rider/dashboard', {
+                            method: 'PATCH',
+                            headers: { 
+                                'Authorization': `Bearer ${idToken}`,
+                                'Content-Type': 'application/json'
+                            },
+                            body: JSON.stringify({
+                                location: { latitude, longitude }
+                            })
+                        });
                     } catch (err) {
-                         console.error("Failed to update location in Firestore:", err);
+                         console.error("Failed to update location via API:", err);
                     }
                 },
                 (error) => {
                     setError("GPS Error: " + error.message + ". Please enable location services.");
-                    handleToggleOnline('offline');
+                    handleToggleOnline(); // Tries to set status to offline
                 },
                 { enableHighAccuracy: true, timeout: 20000, maximumAge: 0, distanceFilter: 10 }
             );
