@@ -95,17 +95,21 @@ export default function AuthModal({ isOpen, onClose }) {
   
       setTimeout(() => {
         closeModal();
+        // --- START THE FIX ---
         if (role === "owner" || role === "restaurant-owner" || role === "shop-owner") {
           console.log("[DEBUG] AuthModal: Redirecting to /owner-dashboard.");
           router.push("/owner-dashboard");
         } else if (role === "admin") {
           console.log("[DEBUG] AuthModal: Redirecting to /admin-dashboard.");
           router.push("/admin-dashboard");
-        }
-        else {
+        } else if (role === "rider") {
+          console.log("[DEBUG] AuthModal: Redirecting to /rider-dashboard.");
+          router.push("/rider-dashboard");
+        } else {
           console.log("[DEBUG] AuthModal: Redirecting to /customer-dashboard.");
           router.push("/customer-dashboard");
         }
+        // --- END THE FIX ---
       }, 1500);
   
     } catch (err) {
