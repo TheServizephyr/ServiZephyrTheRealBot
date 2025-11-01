@@ -19,51 +19,52 @@ export async function POST(req) {
 
         const batch = firestore.batch();
 
-        // 1. Update the rider's main document in 'drivers' collection
+        // 1. Get the rider's full profile from the correct 'drivers' collection
         const driverDocRef = firestore.collection('drivers').doc(uid);
+        const driverDoc = await driverDocRef.get();
+        if (!driverDoc.exists) {
+            // This error message now correctly reflects the logic.
+            throw new Error("Rider's main user profile does not exist.");
+        }
+        const driverData = driverDoc.data();
+        
+        // 2. Update the rider's main document in 'drivers' collection with the new restaurant
         batch.update(driverDocRef, {
             currentRestaurantId: restaurantId,
             currentRestaurantName: restaurantName,
         });
         console.log(`[API accept-invite] Batch: Marked driver ${uid} to be updated.`);
-
-        // 2. Get the rider's full profile to add to the restaurant's subcollection
-        const userDocRef = firestore.collection('users').doc(uid);
-        const userDoc = await userDocRef.get();
-        if (!userDoc.exists) {
-            throw new Error("Rider's main user profile does not exist.");
-        }
-        const userData = userDoc.data();
         
-        // 3. Create a new document for the rider in the restaurant's 'deliveryBoys' subcollection
-        // THE FIX: Check business type to determine collection
-        let restaurantDoc = await firestore.collection('restaurants').doc(restaurantId).get();
-        let businessCollection = 'restaurants';
-        if (!restaurantDoc.exists) {
+        // 3. Find the business in either 'restaurants' or 'shops' collection
+        let businessRef;
+        const restaurantDoc = await firestore.collection('restaurants').doc(restaurantId).get();
+        if (restaurantDoc.exists) {
+            businessRef = restaurantDoc.ref;
+        } else {
             const shopDoc = await firestore.collection('shops').doc(restaurantId).get();
             if (shopDoc.exists) {
-                businessCollection = 'shops';
-                restaurantDoc = shopDoc;
+                businessRef = shopDoc.ref;
             } else {
                  throw new Error("The specified business does not exist.");
             }
         }
         
-        const restaurantRiderRef = firestore.collection(businessCollection).doc(restaurantId).collection('deliveryBoys').doc(uid);
+        // 4. Create a new document for the rider in the business's 'deliveryBoys' subcollection
+        const restaurantRiderRef = businessRef.collection('deliveryBoys').doc(uid);
         
         batch.set(restaurantRiderRef, {
             id: uid,
-            name: userData.name || 'Unnamed Rider',
-            phone: userData.phone || 'No Phone',
-            email: userData.email,
+            name: driverData.name || 'Unnamed Rider',
+            phone: driverData.phone || 'No Phone',
+            email: driverData.email,
             status: 'offline', // Start as offline
             createdAt: FieldValue.serverTimestamp(),
-            profilePictureUrl: userData.profilePictureUrl || null,
+            profilePictureUrl: driverData.profilePictureUrl || null,
         }, { merge: true });
-        console.log(`[API accept-invite] Batch: Marked rider to be added to ${businessCollection}/${restaurantId}/deliveryBoys.`);
+        console.log(`[API accept-invite] Batch: Marked rider to be added to ${businessRef.path}/deliveryBoys.`);
 
 
-        // 4. Delete the invitation from the rider's subcollection
+        // 5. Delete the invitation from the rider's subcollection
         const inviteRef = firestore.collection('drivers').doc(uid).collection('invites').doc(inviteId);
         batch.delete(inviteRef);
         console.log(`[API accept-invite] Batch: Marked invite ${inviteId} for deletion.`);
