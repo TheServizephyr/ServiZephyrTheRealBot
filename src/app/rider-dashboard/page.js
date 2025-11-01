@@ -18,43 +18,55 @@ export default function RiderDashboardPage() {
     const watchIdRef = useRef(null);
 
     useEffect(() => {
+        console.log(`[DEBUG] RiderDashboard: useEffect triggered. isUserLoading: ${isUserLoading}`);
         if (isUserLoading) {
+            console.log("[DEBUG] RiderDashboard: Still loading user auth state. Waiting...");
             return;
         }
         if (!user) {
+            console.log("[DEBUG] RiderDashboard: No user found. Redirecting to login.");
             router.push('/rider-dashboard/login');
             return;
         }
 
+        console.log(`[DEBUG] RiderDashboard: User found (UID: ${user.uid}). Preparing to fetch driver data.`);
         const driverDocRef = doc(db, "drivers", user.uid);
 
         const fetchDriverData = async () => {
+            console.log("[DEBUG] RiderDashboard: fetchDriverData started.");
             setLoading(true);
             try {
                 const driverDoc = await getDoc(driverDocRef);
 
+                console.log(`[DEBUG] RiderDashboard: Firestore document fetch attempted. Exists: ${driverDoc.exists()}`);
                 if (driverDoc.exists()) {
                     const data = driverDoc.data();
+                    console.log("[DEBUG] RiderDashboard: Driver data found:", data);
                     setDriverData(data);
                     if (data.status === 'online') {
+                        console.log("[DEBUG] RiderDashboard: Driver is online. Starting GPS tracking.");
                         startGpsTracking();
                     }
                 } else {
+                    console.error("[DEBUG] RiderDashboard: CRITICAL - Driver document does not exist in 'drivers' collection.");
                     setError("Your rider profile could not be found. Please contact support or complete your profile.");
                     await auth.signOut();
                     router.push('/rider-dashboard/login');
                 }
             } catch (err) {
-                console.error("RiderDashboard: Error fetching driver data:", err);
+                console.error("[DEBUG] RiderDashboard: Error fetching driver data:", err);
                 setError("Could not load your profile. Please try again.");
             } finally {
                 setLoading(false);
+                 console.log("[DEBUG] RiderDashboard: fetchDriverData finished.");
             }
         };
 
         fetchDriverData();
 
+        // Cleanup function for the effect
         return () => {
+            console.log("[DEBUG] RiderDashboard: Component unmounting. Stopping GPS tracking.");
             stopGpsTracking();
         };
     }, [user, isUserLoading, router]);
