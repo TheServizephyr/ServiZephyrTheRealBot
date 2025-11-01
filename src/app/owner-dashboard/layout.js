@@ -1,4 +1,3 @@
-
 'use client';
 
 import { useState, useEffect } from "react";
@@ -8,7 +7,7 @@ import styles from "@/components/OwnerDashboard/OwnerDashboard.module.css";
 import { motion, AnimatePresence } from "framer-motion";
 import { ThemeProvider } from "@/components/ThemeProvider";
 import "../globals.css";
-import { auth, db } from "@/lib/firebase"; // Import db
+import { auth, db } from '@/lib/firebase'; // Import db
 import { doc, getDoc } from "firebase/firestore"; // Import doc and getDoc
 import { AlertTriangle, HardHat, ShieldOff, Salad, XCircle, Lock, Mail, Phone, MessageSquare, Menu, X } from 'lucide-react';
 import { Button } from "@/components/ui/button";
@@ -81,61 +80,56 @@ function OwnerDashboardContent({ children }) {
     checkScreenSize();
     window.addEventListener('resize', checkScreenSize);
     
-    // --- START FIX ---
+    // --- START THE FIX ---
     const fetchRestaurantData = async (user) => {
         console.log("[DEBUG] OwnerLayout: fetchRestaurantData called.");
         setLoading(true);
 
         try {
-            // Fetch owner-specific data. This will fail gracefully for non-owners at the API level.
             const idToken = await user.getIdToken();
+
             const [statusRes, settingsRes] = await Promise.all([
                 fetch('/api/owner/status', { headers: { 'Authorization': `Bearer ${idToken}` } }),
                 fetch('/api/owner/settings', { headers: { 'Authorization': `Bearer ${idToken}` } })
             ]);
 
-            // Handle status
-            const statusData = await statusRes.json();
-            console.log(`[DEBUG] OwnerLayout: /api/owner/status responded with status ${statusRes.status} and data:`, statusData);
-            if (statusRes.ok) {
-                setRestaurantStatus({
-                    status: statusData.status,
-                    restrictedFeatures: statusData.restrictedFeatures || [],
-                    suspensionRemark: statusData.suspensionRemark || '',
-                });
-            } else if (statusRes.status === 403 || statusRes.status === 404) {
-                 // This handles non-owners (like admin) or owners without a business yet.
-                 // We can default to a state that allows dashboard access.
-                 console.log(`[DEBUG] OwnerLayout: User is not an owner or has no business. Setting default status.`);
-                 setRestaurantStatus({ status: 'approved', restrictedFeatures: [], suspensionRemark: '' });
-            } else {
-                setRestaurantStatus({ status: 'error', restrictedFeatures: [], suspensionRemark: '' });
-            }
-            
-            // Handle settings (for name and logo)
-             if (settingsRes.ok) {
+            // Handle settings first to get name/logo regardless of status
+            if (settingsRes.ok) {
                 const settingsData = await settingsRes.json();
                 setRestaurantName(settingsData.restaurantName || 'My Dashboard');
                 setRestaurantLogo(settingsData.logoUrl || null);
             }
 
+            // Handle status
+            if (statusRes.ok) {
+                const statusData = await statusRes.json();
+                console.log(`[DEBUG] OwnerLayout: /api/owner/status responded with status ${statusRes.status} and data:`, statusData);
+                setRestaurantStatus({
+                    status: statusData.status,
+                    restrictedFeatures: statusData.restrictedFeatures || [],
+                    suspensionRemark: statusData.suspensionRemark || '',
+                });
+            } else if (statusRes.status === 404) {
+                // This means the user is likely a new owner without a created business.
+                // We default to 'pending' to allow access to essential setup pages.
+                console.log(`[DEBUG] OwnerLayout: No business found for owner (404). Defaulting to 'pending' status.`);
+                setRestaurantStatus({ status: 'pending', restrictedFeatures: [], suspensionRemark: '' });
+            } else {
+                // For other errors (like 500), we show a distinct error state.
+                const errorData = await statusRes.json();
+                console.error(`[DEBUG] OwnerLayout: Error fetching status (${statusRes.status}):`, errorData.message);
+                setRestaurantStatus({ status: 'error', restrictedFeatures: [], suspensionRemark: '' });
+            }
+
         } catch (e) {
             console.error("[DEBUG] OwnerLayout: CRITICAL error fetching owner data:", e);
-            // For admins, we don't want to show a global error, just let them in.
-            // Individual components will handle their own data fetching errors.
-            const userDocRef = doc(db, 'users', user.uid);
-            const userDoc = await getDoc(userDocRef);
-            if (!userDoc.data()?.role?.includes('owner')) {
-                setRestaurantStatus({ status: 'approved', restrictedFeatures: [], suspensionRemark: '' });
-            } else {
-                 setRestaurantStatus({ status: 'error', restrictedFeatures: [], suspensionRemark: '' });
-            }
+            setRestaurantStatus({ status: 'error', restrictedFeatures: [], suspensionRemark: '' });
         } finally {
             console.log("[DEBUG] OwnerLayout: fetchRestaurantData finished, setting loading to false.");
             setLoading(false);
         }
     }
-    // --- END FIX ---
+    // --- END THE FIX ---
     
     const unsubscribe = auth.onAuthStateChanged(user => {
         if (user) {
@@ -172,18 +166,15 @@ function OwnerDashboardContent({ children }) {
           return null;
       }
       
-      // NEW LOGIC: Only render status screen if the account is suspended and the specific feature is restricted.
-      // The "pending" and "rejected" statuses are now handled by disabling links in the sidebar, not by blocking pages.
       if (restaurantStatus.status === 'suspended') {
         if (restaurantStatus.restrictedFeatures.includes(featureId)) {
           console.log(`[DEBUG] OwnerLayout: Feature '${featureId}' is restricted due to suspension. Showing lock screen.`);
           return <FeatureLockScreen remark={restaurantStatus.suspensionRemark} featureId={featureId} />;
         }
         console.log(`[DEBUG] OwnerLayout: Status is 'suspended' but feature '${featureId}' is NOT restricted. Allowing access.`);
-        return null; // Not this specific feature, so allow render
+        return null;
       }
       
-      // Retain a generic error screen for unexpected issues.
       if (restaurantStatus.status === 'error') {
          console.log(`[DEBUG] OwnerLayout: Status is '${restaurantStatus.status}'. Showing error screen.`);
          return (
@@ -201,7 +192,7 @@ function OwnerDashboardContent({ children }) {
          );
       }
       
-      const alwaysEnabled = ['menu', 'settings', 'connections', 'payout-settings', 'dine-in', 'bookings'];
+      const alwaysEnabled = ['menu', 'settings', 'connections', 'payout-settings', 'dine-in', 'bookings', 'whatsapp-direct', 'location'];
       const isDisabled = !alwaysEnabled.includes(featureId);
 
       if ((restaurantStatus.status === 'pending' || restaurantStatus.status === 'rejected') && isDisabled) {
@@ -224,8 +215,6 @@ function OwnerDashboardContent({ children }) {
         )
       }
 
-      // If status is 'pending', 'rejected', or anything else, we now allow the page to render
-      // as the access control is handled by the sidebar.
       return null;
   }
 
