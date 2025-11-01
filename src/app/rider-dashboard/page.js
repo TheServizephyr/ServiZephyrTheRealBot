@@ -19,15 +19,21 @@ export default function RiderDashboardPage() {
     const watchIdRef = useRef(null);
 
     useEffect(() => {
-        if (isUserLoading) return;
+        if (isUserLoading) {
+            // Still checking auth status, do nothing yet.
+            return;
+        }
         if (!user) {
+            // No user found, redirect to login.
             router.push('/rider-dashboard/login');
             return;
         }
 
+        // User is authenticated, now we can safely fetch their data.
         const driverDocRef = doc(db, "drivers", user.uid);
 
         const fetchDriverData = async () => {
+            setLoading(true);
             try {
                 const driverDoc = await getDoc(driverDocRef);
                 if (driverDoc.exists()) {
@@ -38,7 +44,7 @@ export default function RiderDashboardPage() {
                     }
                 } else {
                     setError("Your rider profile could not be found. Please contact support or complete your profile.");
-                    // Optionally sign out and redirect
+                    // Optionally sign out and redirect if profile is mandatory
                     await auth.signOut();
                     router.push('/rider-dashboard/login');
                 }
@@ -92,6 +98,8 @@ export default function RiderDashboardPage() {
                 (error) => {
                     console.error("Error watching position:", error);
                     setError("GPS Error: " + error.message + ". Please enable location services.");
+                    // If GPS fails, automatically go offline
+                    handleToggleOnline('offline');
                 },
                 { enableHighAccuracy: true, timeout: 20000, maximumAge: 0, distanceFilter: 10 }
             );
@@ -163,7 +171,7 @@ export default function RiderDashboardPage() {
                     >
                         <p className="text-sm text-muted-foreground">YOUR STATUS</p>
                         <p className={`text-2xl font-bold mt-1 capitalize ${isOnline ? 'text-green-400' : 'text-yellow-400'}`}>
-                            {driverData?.status.replace('-', ' ')}
+                            {driverData?.status?.replace('-', ' ') || 'Offline'}
                         </p>
                     </motion.div>
                 </div>
@@ -193,4 +201,3 @@ export default function RiderDashboardPage() {
         </div>
     );
 }
-
