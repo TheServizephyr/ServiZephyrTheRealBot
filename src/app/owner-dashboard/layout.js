@@ -87,19 +87,7 @@ function OwnerDashboardContent({ children }) {
         setLoading(true);
 
         try {
-            // Step 1: Check user's role from Firestore first.
-            const userDocRef = doc(db, 'users', user.uid);
-            const userDoc = await getDoc(userDocRef);
-
-            if (!userDoc.exists() || !['owner', 'restaurant-owner', 'shop-owner'].includes(userDoc.data()?.role)) {
-                // If the user is NOT an owner, do not proceed with owner-specific API calls.
-                // Just stop loading and let the app handle redirection if needed.
-                console.log(`[DEBUG] OwnerLayout: User ${user.uid} is not an owner. Skipping owner-specific data fetch.`);
-                setLoading(false);
-                return;
-            }
-            
-            // Step 2: Since the user is confirmed as an owner, proceed to fetch owner data.
+            // Fetch owner-specific data. This will fail gracefully for non-owners at the API level.
             const idToken = await user.getIdToken();
             const [statusRes, settingsRes] = await Promise.all([
                 fetch('/api/owner/status', { headers: { 'Authorization': `Bearer ${idToken}` } }),
@@ -115,8 +103,11 @@ function OwnerDashboardContent({ children }) {
                     restrictedFeatures: statusData.restrictedFeatures || [],
                     suspensionRemark: statusData.suspensionRemark || '',
                 });
-            } else if (statusRes.status === 404 && statusData.message.includes("No business associated")) {
-                setRestaurantStatus({ status: 'pending', restrictedFeatures: [], suspensionRemark: '' });
+            } else if (statusRes.status === 403 || statusRes.status === 404) {
+                 // This handles non-owners (like admin) or owners without a business yet.
+                 // We can default to a state that allows dashboard access.
+                 console.log(`[DEBUG] OwnerLayout: User is not an owner or has no business. Setting default status.`);
+                 setRestaurantStatus({ status: 'approved', restrictedFeatures: [], suspensionRemark: '' });
             } else {
                 setRestaurantStatus({ status: 'error', restrictedFeatures: [], suspensionRemark: '' });
             }
@@ -130,7 +121,15 @@ function OwnerDashboardContent({ children }) {
 
         } catch (e) {
             console.error("[DEBUG] OwnerLayout: CRITICAL error fetching owner data:", e);
-            setRestaurantStatus({ status: 'error', restrictedFeatures: [], suspensionRemark: '' });
+            // For admins, we don't want to show a global error, just let them in.
+            // Individual components will handle their own data fetching errors.
+            const userDocRef = doc(db, 'users', user.uid);
+            const userDoc = await getDoc(userDocRef);
+            if (!userDoc.data()?.role?.includes('owner')) {
+                setRestaurantStatus({ status: 'approved', restrictedFeatures: [], suspensionRemark: '' });
+            } else {
+                 setRestaurantStatus({ status: 'error', restrictedFeatures: [], suspensionRemark: '' });
+            }
         } finally {
             console.log("[DEBUG] OwnerLayout: fetchRestaurantData finished, setting loading to false.");
             setLoading(false);
