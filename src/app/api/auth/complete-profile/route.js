@@ -141,6 +141,7 @@ export async function POST(req) {
             const driverRef = firestore.collection('drivers').doc(uid);
             batch.set(driverRef, {
                 uid: uid,
+                role: 'rider', // THE FIX: Add the role field
                 email: finalUserData.email,
                 name: finalUserData.name,
                 phone: finalUserData.phone,
