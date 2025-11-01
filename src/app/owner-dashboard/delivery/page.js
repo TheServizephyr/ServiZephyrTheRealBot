@@ -3,7 +3,7 @@
 
 import { useState, useMemo, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { Phone, Bike, UserPlus, Search, Edit, RefreshCw, Star, Clock, Trophy, ChevronDown, ChevronUp, BarChart as BarChartIcon } from 'lucide-react';
+import { Phone, Bike, UserPlus, Search, Edit, RefreshCw, Star, Clock, Trophy, ChevronDown, ChevronUp, BarChart as BarChartIcon, Settings } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose } from "@/components/ui/dialog";
 import { Label } from '@/components/ui/label';
@@ -13,6 +13,7 @@ import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGri
 import { useSearchParams } from 'next/navigation';
 import { Switch } from '@/components/ui/switch';
 import InfoDialog from '@/components/InfoDialog';
+import Link from 'next/link';
 
 
 const StatusBadge = ({ status }) => {
@@ -400,6 +401,9 @@ export default function DeliveryPage() {
                         <p className="text-muted-foreground mt-1 text-sm md:text-base">Monitor and manage your delivery team in real-time.</p>
                     </div>
                     <div className="flex-shrink-0 flex gap-4">
+                        <Link href="/owner-dashboard/delivery-settings">
+                            <Button variant="outline"><Settings size={16} className="mr-2"/> Delivery Settings</Button>
+                        </Link>
                         <Button onClick={() => fetchData(true)} variant="outline" disabled={loading}>
                             <RefreshCw size={16} className={cn("mr-2", loading && "animate-spin")} /> Refresh
                         </Button>
