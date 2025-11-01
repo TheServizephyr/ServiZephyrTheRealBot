@@ -54,51 +54,43 @@ export async function POST(req) {
         
         const lowercasedEmail = riderEmail.toLowerCase();
 
-        // Find the rider in the 'users' collection by email
+        // --- START FIX: Stricter Invitation Logic ---
+
+        // 1. Find the rider in the 'users' collection by email. They MUST be a rider.
         const usersRef = firestore.collection('users');
         const userQuery = await usersRef.where('email', '==', lowercasedEmail).where('role', '==', 'rider').limit(1).get();
 
-        let riderUid;
+        if (userQuery.empty) {
+            // Rider not found or not registered as a rider. Block the invite.
+            return NextResponse.json({ message: 'No rider found with this email address. Please ask the rider to register on the Rider Portal first.' }, { status: 404 });
+        }
+        
+        const userDoc = userQuery.docs[0];
+        const riderUid = userDoc.id;
 
-        if (!userQuery.empty) {
-             const userDoc = userQuery.docs[0];
-             riderUid = userDoc.id;
-
-             // Check if rider is already employed by this restaurant
-            const existingRiderRef = restaurantRef.collection('deliveryBoys').doc(riderUid);
-            const existingRiderSnap = await existingRiderRef.get();
-            if (existingRiderSnap.exists) {
-                return NextResponse.json({ message: 'This rider is already part of your team.' }, { status: 409 });
-            }
-
-            // Send invite to the registered rider's sub-collection
-            const inviteRef = firestore.collection('drivers').doc(riderUid).collection('invites').doc(restaurantId);
-            await inviteRef.set({
-                restaurantId: restaurantId,
-                restaurantName: restaurantData.name,
-                invitedAt: FieldValue.serverTimestamp(),
-                status: 'pending',
-            });
-        } else {
-            // --- THE FIX: Rider not registered yet. Create a pending invite in a subcollection. ---
-            const pendingInviteRef = firestore.collection('pending_invites').doc(lowercasedEmail).collection('invitations').doc(restaurantId);
-            
-            // Check if an invite already exists for this restaurant
-            const existingPendingInvite = await pendingInviteRef.get();
-            if (existingPendingInvite.exists) {
-                return NextResponse.json({ message: 'An invitation has already been sent to this email for your restaurant.' }, { status: 409 });
-            }
-            
-            await pendingInviteRef.set({
-                restaurantId: restaurantId,
-                restaurantName: restaurantData.name,
-                invitedAt: FieldValue.serverTimestamp(),
-                status: 'pending'
-            });
-            // Also create the parent document to ensure queries work if it's the first invite for this email
-            await firestore.collection('pending_invites').doc(lowercasedEmail).set({ email: lowercasedEmail }, { merge: true });
+        // 2. Check if this rider is already part of the owner's team.
+        const existingRiderRef = restaurantRef.collection('deliveryBoys').doc(riderUid);
+        const existingRiderSnap = await existingRiderRef.get();
+        if (existingRiderSnap.exists) {
+            return NextResponse.json({ message: 'This rider is already part of your team.' }, { status: 409 }); // 409 Conflict
+        }
+        
+        // 3. Check if an invite has already been sent and is pending.
+        const inviteRef = firestore.collection('drivers').doc(riderUid).collection('invites').doc(restaurantId);
+        const existingInviteSnap = await inviteRef.get();
+        if (existingInviteSnap.exists) {
+            return NextResponse.json({ message: 'An invitation has already been sent to this rider.' }, { status: 409 });
         }
 
+        // --- END FIX ---
+        
+        // All checks passed, proceed with sending the invite.
+        await inviteRef.set({
+            restaurantId: restaurantId,
+            restaurantName: restaurantData.name,
+            invitedAt: FieldValue.serverTimestamp(),
+            status: 'pending',
+        });
 
         return NextResponse.json({ message: `Invitation sent successfully to ${riderEmail}!` }, { status: 200 });
 
