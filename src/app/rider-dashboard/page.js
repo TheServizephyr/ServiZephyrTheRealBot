@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
@@ -11,7 +12,6 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import InfoDialog from '@/components/InfoDialog';
 import { cn } from '@/lib/utils';
-import { FirestorePermissionError, errorEmitter } from '@/firebase';
 
 const InvitationCard = ({ invite, onAccept, onDecline }) => {
     return (
@@ -112,12 +112,8 @@ export default function RiderDashboardPage() {
                 setLoading(false);
             },
             (err) => {
-                const contextualError = new FirestorePermissionError({
-                  path: driverDocRef.path,
-                  operation: 'get',
-                });
-                setError(contextualError.message);
-                errorEmitter.emit('permission-error', contextualError);
+                setError("You don't have permission to view this data. Please contact support.");
+                console.error("Firestore permission error on driver doc:", err);
                 setLoading(false);
             }
         );
@@ -128,12 +124,7 @@ export default function RiderDashboardPage() {
                 setInvites(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
             },
             (err) => {
-                 const contextualError = new FirestorePermissionError({
-                  path: `drivers/${user.uid}/invites`,
-                  operation: 'list',
-                });
-                setError(contextualError.message);
-                errorEmitter.emit('permission-error', contextualError);
+                console.error("Firestore permission error on invites subcollection:", err);
             }
         );
         
@@ -143,12 +134,7 @@ export default function RiderDashboardPage() {
                 setAssignedOrders(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
             },
             (err) => {
-                const contextualError = new FirestorePermissionError({
-                  path: 'orders',
-                  operation: 'list',
-                });
-                setError(contextualError.message);
-                errorEmitter.emit('permission-error', contextualError);
+                console.error("Firestore permission error on orders collection:", err);
             }
         );
 
