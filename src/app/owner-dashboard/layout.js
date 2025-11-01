@@ -7,12 +7,13 @@ import styles from "@/components/OwnerDashboard/OwnerDashboard.module.css";
 import { motion, AnimatePresence } from "framer-motion";
 import { ThemeProvider } from "@/components/ThemeProvider";
 import "../globals.css";
-import { auth, db } from '@/lib/firebase'; // Import db
-import { doc, getDoc } from "firebase/firestore"; // Import doc and getDoc
+import { auth, db } from '@/lib/firebase';
+import { doc, getDoc } from "firebase/firestore";
 import { AlertTriangle, HardHat, ShieldOff, Salad, XCircle, Lock, Mail, Phone, MessageSquare, Menu, X } from 'lucide-react';
 import { Button } from "@/components/ui/button";
 import { usePathname, useRouter } from "next/navigation";
 import InfoDialog from "@/components/InfoDialog";
+import { useUser } from "@/firebase";
 
 export const dynamic = 'force-dynamic';
 
@@ -58,7 +59,6 @@ function FeatureLockScreen({ remark, featureId }) {
 function OwnerDashboardContent({ children }) {
   const [isMobile, setIsMobile] = useState(false);
   const [isSidebarOpen, setSidebarOpen] = useState(true);
-  const [loading, setLoading] = useState(true);
   const [restaurantStatus, setRestaurantStatus] = useState({
       status: null,
       restrictedFeatures: [],
@@ -70,8 +70,11 @@ function OwnerDashboardContent({ children }) {
   const pathname = usePathname();
   const [infoDialog, setInfoDialog] = useState({ isOpen: false, title: '', message: '' });
 
+  // Use the central useUser hook
+  const { user, isUserLoading } = useUser();
+  const [initialDataLoading, setInitialDataLoading] = useState(true);
+
   useEffect(() => {
-    console.log("[DEBUG] OwnerLayout: useEffect running.");
     const checkScreenSize = () => {
       const mobile = window.innerWidth < 768;
       setIsMobile(mobile);
@@ -79,12 +82,23 @@ function OwnerDashboardContent({ children }) {
     };
     checkScreenSize();
     window.addEventListener('resize', checkScreenSize);
-    
-    // --- START THE FIX ---
-    const fetchRestaurantData = async (user) => {
-        console.log("[DEBUG] OwnerLayout: fetchRestaurantData called.");
-        setLoading(true);
+    return () => window.removeEventListener('resize', checkScreenSize);
+  }, []);
 
+  useEffect(() => {
+    if (isUserLoading) {
+      return; // Wait until Firebase auth state is resolved
+    }
+
+    if (!user) {
+      console.log("[DEBUG] OwnerLayout: No user found. Redirecting to home.");
+      setInitialDataLoading(false);
+      router.push('/');
+      return;
+    }
+
+    const fetchRestaurantData = async () => {
+        setInitialDataLoading(true);
         try {
             const idToken = await user.getIdToken();
 
@@ -93,31 +107,23 @@ function OwnerDashboardContent({ children }) {
                 fetch('/api/owner/settings', { headers: { 'Authorization': `Bearer ${idToken}` } })
             ]);
 
-            // Handle settings first to get name/logo regardless of status
             if (settingsRes.ok) {
                 const settingsData = await settingsRes.json();
                 setRestaurantName(settingsData.restaurantName || 'My Dashboard');
                 setRestaurantLogo(settingsData.logoUrl || null);
             }
 
-            // Handle status
             if (statusRes.ok) {
                 const statusData = await statusRes.json();
-                console.log(`[DEBUG] OwnerLayout: /api/owner/status responded with status ${statusRes.status} and data:`, statusData);
                 setRestaurantStatus({
                     status: statusData.status,
                     restrictedFeatures: statusData.restrictedFeatures || [],
                     suspensionRemark: statusData.suspensionRemark || '',
                 });
             } else if (statusRes.status === 404) {
-                // This means the user is likely a new owner without a created business.
-                // We default to 'pending' to allow access to essential setup pages.
-                console.log(`[DEBUG] OwnerLayout: No business found for owner (404). Defaulting to 'pending' status.`);
                 setRestaurantStatus({ status: 'pending', restrictedFeatures: [], suspensionRemark: '' });
             } else {
-                // For other errors (like 500), we show a distinct error state.
                 const errorData = await statusRes.json();
-                console.error(`[DEBUG] OwnerLayout: Error fetching status (${statusRes.status}):`, errorData.message);
                 setRestaurantStatus({ status: 'error', restrictedFeatures: [], suspensionRemark: '' });
             }
 
@@ -125,30 +131,15 @@ function OwnerDashboardContent({ children }) {
             console.error("[DEBUG] OwnerLayout: CRITICAL error fetching owner data:", e);
             setRestaurantStatus({ status: 'error', restrictedFeatures: [], suspensionRemark: '' });
         } finally {
-            console.log("[DEBUG] OwnerLayout: fetchRestaurantData finished, setting loading to false.");
-            setLoading(false);
+            setInitialDataLoading(false);
         }
     }
-    // --- END THE FIX ---
     
-    const unsubscribe = auth.onAuthStateChanged(user => {
-        if (user) {
-            console.log("[DEBUG] OwnerLayout: onAuthStateChanged fired, user found. Fetching status.");
-            fetchRestaurantData(user);
-        } else {
-            console.log("[DEBUG] OwnerLayout: onAuthStateChanged fired, NO user found. Redirecting to home.");
-            setLoading(false);
-            router.push('/');
-        }
-    });
+    fetchRestaurantData();
 
-    return () => {
-      window.removeEventListener('resize', checkScreenSize);
-      unsubscribe();
-    };
-  }, [router]);
+  }, [user, isUserLoading, router]);
 
-  if (loading) {
+  if (isUserLoading || initialDataLoading) {
     return (
       <div className="flex h-screen items-center justify-center bg-background">
         <div className="h-16 w-16 animate-spin rounded-full border-b-2 border-primary"></div>

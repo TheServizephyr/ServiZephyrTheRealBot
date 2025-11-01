@@ -11,32 +11,49 @@ import { LayoutDashboard, Wallet, LogOut, User } from 'lucide-react';
 import { useUser } from '@/firebase';
 
 export default function RiderLayout({ children }) {
-    const { user, isUserLoading } = useUser();
+    const { user, isUserLoading } = useUser(); // Use the central hook
     const router = useRouter();
     const [riderName, setRiderName] = useState('Rider');
     const [riderImage, setRiderImage] = useState('');
+    const [isLoading, setIsLoading] = useState(true);
 
     useEffect(() => {
-        if (isUserLoading) return;
-        if (!user) {
-            router.push('/rider-dashboard/login');
-        } else {
-            const fetchRiderInfo = async () => {
-                const docRef = doc(db, 'drivers', user.uid);
-                const docSnap = await getDoc(docRef);
-                if (docSnap.exists()) {
-                    setRiderName(docSnap.data().name || user.displayName || 'Rider');
-                    setRiderImage(docSnap.data().profilePictureUrl || user.photoURL || '');
-                }
-            };
-            fetchRiderInfo();
+        if (isUserLoading) {
+            return; // Wait for the auth state to be resolved
         }
+
+        if (!user) {
+            // If user is null and loading is finished, redirect
+            router.push('/rider-dashboard/login');
+            return;
+        }
+
+        // User is authenticated, now fetch rider-specific data
+        const fetchRiderInfo = async () => {
+            const docRef = doc(db, 'drivers', user.uid);
+            const docSnap = await getDoc(docRef);
+            if (docSnap.exists()) {
+                setRiderName(docSnap.data().name || user.displayName || 'Rider');
+                setRiderImage(docSnap.data().profilePictureUrl || user.photoURL || '');
+            }
+             setIsLoading(false);
+        };
+        fetchRiderInfo();
+
     }, [user, isUserLoading, router]);
 
     const handleLogout = async () => {
         await auth.signOut();
         router.push('/rider-dashboard/login');
     };
+
+    if (isUserLoading || isLoading) {
+         return (
+             <div className="flex h-screen items-center justify-center bg-background">
+                <div className="h-16 w-16 animate-spin rounded-full border-b-2 border-primary"></div>
+             </div>
+         );
+    }
 
     return (
         <div className="min-h-screen bg-background text-foreground flex flex-col">
