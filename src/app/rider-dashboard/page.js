@@ -1,4 +1,3 @@
-
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
@@ -12,6 +11,8 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import InfoDialog from '@/components/InfoDialog';
 import { cn } from '@/lib/utils';
+import { FirestorePermissionError } from '@/firebase/errors';
+import { errorEmitter } from '@/firebase/error-emitter';
 
 
 const InvitationCard = ({ invite, onAccept, onDecline }) => {
@@ -113,6 +114,11 @@ export default function RiderDashboardPage() {
                 setLoading(false);
             },
             (err) => {
+                const contextualError = new FirestorePermissionError({
+                  path: driverDocRef.path,
+                  operation: 'get',
+                });
+                errorEmitter.emit('permission-error', contextualError);
                 setError(`Error fetching driver data: ${err.message}`);
                 setLoading(false);
             }
