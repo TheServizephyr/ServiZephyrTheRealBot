@@ -7,7 +7,7 @@ import { auth, db } from '@/lib/firebase';
 import { doc, getDoc } from 'firebase/firestore';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { LayoutDashboard, Wallet, LogOut } from 'lucide-react';
+import { LayoutDashboard, Wallet, LogOut, User } from 'lucide-react';
 import { useUser } from '@/firebase';
 
 export default function RiderLayout({ children }) {
@@ -66,6 +66,10 @@ export default function RiderLayout({ children }) {
                     <Link href="/rider-dashboard/wallet" className="flex flex-col items-center gap-1 text-muted-foreground hover:text-primary">
                         <Wallet />
                         <span className="text-xs font-medium">Wallet</span>
+                    </Link>
+                    <Link href="/rider-dashboard/profile" className="flex flex-col items-center gap-1 text-muted-foreground hover:text-primary">
+                        <User />
+                        <span className="text-xs font-medium">Profile</span>
                     </Link>
                 </nav>
             </footer>
