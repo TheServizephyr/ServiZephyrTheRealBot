@@ -27,6 +27,7 @@ export async function POST(req) {
 
         const normalizedPhone = finalUserData.phone.slice(-10);
         const batch = firestore.batch();
+        const masterUserRef = firestore.collection('users').doc(uid);
 
         // --- MERGE UNCLAIMED PROFILE LOGIC ---
         const unclaimedProfileRef = firestore.collection('unclaimed_profiles').doc(normalizedPhone);
@@ -91,7 +92,7 @@ export async function POST(req) {
                         batch.set(newCustomerRef, newCustomerPayload, { merge: true });
                         console.log(`[PROFILE COMPLETION] Marked new/updated customer record at ${newCustomerRef.path} for creation.`);
                         
-                        const userRestaurantLinkRef = firestore.collection('users').doc(uid).collection('joined_restaurants').doc(restaurantId);
+                        const userRestaurantLinkRef = masterUserRef.collection('joined_restaurants').doc(restaurantId);
                          batch.set(userRestaurantLinkRef, {
                             restaurantName: restaurantInfo.restaurantName, 
                             joinedAt: FieldValue.serverTimestamp(),
@@ -118,6 +119,10 @@ export async function POST(req) {
             console.log(`[PROFILE COMPLETION] Unclaimed profile for ${normalizedPhone} marked for deletion.`);
         }
         
+        mergedUserData.createdAt = FieldValue.serverTimestamp();
+        batch.set(masterUserRef, mergedUserData, { merge: true });
+        console.log(`[PROFILE COMPLETION] Master user profile for UID ${uid} added to batch in 'users' collection.`);
+        
         if (finalUserData.role === 'rider') {
             const driverRef = firestore.collection('drivers').doc(uid);
             batch.set(driverRef, {
@@ -136,26 +141,18 @@ export async function POST(req) {
             }, { merge: true });
             console.log(`[PROFILE COMPLETION] Rider Action: New rider profile for UID ${uid} added to 'drivers' collection.`);
         } 
-        else {
-            mergedUserData.createdAt = FieldValue.serverTimestamp();
-
-            const masterUserRef = firestore.collection('users').doc(uid);
-            batch.set(masterUserRef, mergedUserData, { merge: true });
-            console.log(`[PROFILE COMPLETION] Step 1: Master user profile for UID ${uid} added to batch.`);
-
-            if (isBusinessOwner && businessData) {
-                 const collectionName = businessType === 'restaurant' ? 'restaurants' : 'shops';
-                 const businessId = businessData.name.replace(/\s+/g, '-').toLowerCase();
-                 const businessRef = firestore.collection(collectionName).doc(businessId);
-                 
-                 const finalBusinessData = {
-                    ...businessData,
-                    createdAt: FieldValue.serverTimestamp(),
-                    razorpayAccountId: '', 
-                 };
-                 batch.set(businessRef, finalBusinessData);
-                 console.log(`[PROFILE COMPLETION] Owner Action: New ${businessType} '${businessId}' added to batch.`);
-            }
+        else if (isBusinessOwner && businessData) {
+             const collectionName = businessType === 'restaurant' ? 'restaurants' : 'shops';
+             const businessId = businessData.name.replace(/\s+/g, '-').toLowerCase();
+             const businessRef = firestore.collection(collectionName).doc(businessId);
+             
+             const finalBusinessData = {
+                ...businessData,
+                createdAt: FieldValue.serverTimestamp(),
+                razorpayAccountId: '', 
+             };
+             batch.set(businessRef, finalBusinessData);
+             console.log(`[PROFILE COMPLETION] Owner Action: New ${businessType} '${businessId}' added to batch.`);
         }
         
         await batch.commit();

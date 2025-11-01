@@ -57,26 +57,7 @@ export async function POST(req) {
         const userQuery = await usersRef.where('email', '==', riderEmail).where('role', '==', 'rider').limit(1).get();
 
         if (userQuery.empty) {
-            // If not in 'users', check the 'drivers' collection directly, as they might have registered but not been hired.
-             const driversRef = firestore.collection('drivers');
-             const driverQuery = await driversRef.where('email', '==', riderEmail).limit(1).get();
-
-             if(driverQuery.empty) {
-                return NextResponse.json({ message: `No rider found with the email "${riderEmail}". Please ensure they have registered on the rider portal.` }, { status: 404 });
-             }
-             
-             const driverDoc = driverQuery.docs[0];
-             const riderUid = driverDoc.id;
-             const inviteRef = firestore.collection('drivers').doc(riderUid).collection('invites').doc(restaurantId);
-             
-             await inviteRef.set({
-                restaurantId: restaurantId,
-                restaurantName: restaurantData.name,
-                invitedAt: FieldValue.serverTimestamp(),
-                status: 'pending',
-             });
-             
-             return NextResponse.json({ message: `Invitation sent successfully to ${driverDoc.data().name}!` }, { status: 200 });
+             return NextResponse.json({ message: `No rider found with the email "${riderEmail}". Please ensure they have registered on the rider portal.` }, { status: 404 });
         }
         
         // If found in 'users' collection (which is the primary place for rider role)
