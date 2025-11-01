@@ -1,5 +1,4 @@
 
-
 import { NextResponse } from 'next/server';
 
 import { getAuth, FieldValue, getFirestore } from '@/lib/firebase-admin';

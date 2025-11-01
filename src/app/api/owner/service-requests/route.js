@@ -1,5 +1,4 @@
 
-
 import { NextResponse } from 'next/server';
 import { getAuth, getFirestore, FieldValue } from '@/lib/firebase-admin';
 
@@ -132,5 +131,3 @@ export async function PATCH(req) {
         return NextResponse.json({ message: `Backend Error: ${error.message}` }, { status: error.status || 500 });
     }
 }
-
-    

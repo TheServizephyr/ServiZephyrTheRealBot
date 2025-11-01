@@ -1,5 +1,4 @@
 
-
 import { NextResponse } from 'next/server';
 import { getFirestore, FieldValue } from '@/lib/firebase-admin';
 
@@ -102,5 +101,3 @@ export async function PATCH(req) {
         return NextResponse.json({ message: error.message || 'Internal Server Error' }, { status: error.status || 500 });
     }
 }
-
-

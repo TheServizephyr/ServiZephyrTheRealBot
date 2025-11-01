@@ -1,6 +1,7 @@
 
 import { NextResponse } from 'next/server';
 import { getAuth, getFirestore } from '@/lib/firebase-admin';
+import admin from 'firebase-admin';
 
 // Helper to verify user and get UID
 async function getUserId(req, auth) {

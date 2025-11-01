@@ -1,5 +1,4 @@
 
-
 import { NextResponse } from 'next/server';
 import { getAuth, getFirestore, FieldValue } from '@/lib/firebase-admin';
 
@@ -144,6 +143,3 @@ export async function DELETE(req) {
         return NextResponse.json({ message: error.message || 'Internal Server Error' }, { status: error.status || 500 });
     }
 }
-
-
-
