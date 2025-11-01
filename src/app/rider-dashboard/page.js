@@ -1,4 +1,3 @@
-
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
@@ -6,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Power, PowerOff, Loader2, Mail, Check, X, ShoppingBag, Bell } from 'lucide-react';
 import { auth, db } from '@/lib/firebase';
-import { doc, onSnapshot, collection, query, where, getDoc, deleteDoc } from 'firebase/firestore';
+import { doc, onSnapshot, collection, query, where, getDoc, updateDoc } from 'firebase/firestore';
 import { useUser } from '@/firebase';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -60,7 +59,7 @@ const NewOrderCard = ({ order, onAccept }) => {
                 <p className="text-xs text-muted-foreground">{order.customerAddress}</p>
             </div>
             <Button onClick={() => onAccept(order.id)} className="w-full mt-4 bg-primary hover:bg-primary/90">
-                Accept Order
+                Accept & Start Delivery
             </Button>
         </motion.div>
     );
@@ -144,42 +143,18 @@ export default function RiderDashboardPage() {
                     setDriverData(data);
                     setError('');
                     
-                    // --- THE FIX: REAL-TIME RESTAURANT/SHOP CHECK ---
                     if (data.currentRestaurantId) {
                         const restaurantDocRef = doc(db, 'restaurants', data.currentRestaurantId);
                         const shopDocRef = doc(db, 'shops', data.currentRestaurantId);
                         
-                        // Listen to both collections
-                        const unsubscribeRestaurant = onSnapshot(restaurantDocRef, (restaurantSnap) => {
-                            if (restaurantSnap.exists()) {
-                                setIsRestaurantActive(true);
-                            } else {
-                                // If restaurant doesn't exist, check shop
-                                getDoc(shopDocRef).then(shopSnap => {
-                                    setIsRestaurantActive(shopSnap.exists());
-                                });
-                            }
-                        });
-
-                        const unsubscribeShop = onSnapshot(shopDocRef, (shopSnap) => {
-                            if (shopSnap.exists()) {
-                                setIsRestaurantActive(true);
-                            } else {
-                                // If shop doesn't exist, check restaurant
-                                getDoc(restaurantDocRef).then(restaurantSnap => {
-                                    setIsRestaurantActive(restaurantSnap.exists());
-                                });
-                            }
-                        });
-
-                        unsubscribes.push(unsubscribeRestaurant);
-                        unsubscribes.push(unsubscribeShop);
+                        const unsubRestaurant = onSnapshot(restaurantDocRef, (snap) => setIsRestaurantActive(snap.exists()));
+                        const unsubShop = onSnapshot(shopDocRef, (snap) => setIsRestaurantActive(prev => prev || snap.exists()));
+                        
+                        unsubscribes.push(unsubRestaurant, unsubShop);
 
                     } else {
                         setIsRestaurantActive(false);
                     }
-                    // --- END THE FIX ---
-
                 } else {
                     setError('Your rider profile could not be found.');
                 }
@@ -200,11 +175,14 @@ export default function RiderDashboardPage() {
         });
         unsubscribes.push(unsubscribeInvites);
         
-        const ordersQuery = query(collection(db, 'orders'), where('assignedDriverId', '==', user.uid), where('status', '==', 'ready_for_delivery'));
+        // --- START FIX: REAL-TIME ORDER LISTENER ---
+        const ordersQuery = query(collection(db, "orders"), where("deliveryBoyId", "==", user.uid), where("status", "==", "dispatched"));
         const unsubscribeOrders = onSnapshot(ordersQuery, (snapshot) => {
-            setAssignedOrders(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+            const newOrders = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            setAssignedOrders(newOrders);
         });
         unsubscribes.push(unsubscribeOrders);
+        // --- END FIX ---
 
         return () => unsubscribes.forEach(unsub => unsub());
 
@@ -235,15 +213,25 @@ export default function RiderDashboardPage() {
 
     const handleDeclineInvite = async (inviteId) => {
         if (!user) return;
+        const inviteDocRef = doc(db, 'drivers', user.uid, 'invites', inviteId);
         try {
-             await deleteDoc(doc(db, 'drivers', user.uid, 'invites', inviteId));
+             await deleteDoc(inviteDocRef);
         } catch(err) {
+            const contextualError = new FirestorePermissionError({ path: inviteDocRef.path, operation: 'delete'});
+            errorEmitter.emit('permission-error', contextualError);
             setInfoDialog({ isOpen: true, title: 'Error', message: "Failed to decline invitation."});
         }
     }
 
-    const handleAcceptOrder = (orderId) => {
-        setInfoDialog({isOpen: true, title: "Order Accepted", message: `Order ${orderId.substring(0,6)} has been accepted. You should now proceed to the restaurant.`});
+    const handleAcceptOrder = async (orderId) => {
+        try {
+            // Future logic to update order status to 'on_the_way' can go here.
+            // For now, just navigate to the tracking page.
+            await updateDoc(doc(db, "orders", orderId), { status: 'on_the_way' });
+            router.push(`/track/${orderId}`);
+        } catch (err) {
+            setInfoDialog({ isOpen: true, title: 'Error', message: `Could not process order acceptance: ${err.message}`});
+        }
     };
 
     if (loading) {
