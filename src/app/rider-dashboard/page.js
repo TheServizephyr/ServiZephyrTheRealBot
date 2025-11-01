@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Power, PowerOff, Loader2, Mail, Check, X, ShoppingBag, Bell } from 'lucide-react';
 import { auth, db } from '@/lib/firebase';
-import { doc, onSnapshot, collection, query, where, getDoc, updateDoc } from 'firebase/firestore';
+import { doc, onSnapshot, collection, query, where, getDoc, updateDoc, deleteDoc } from 'firebase/firestore';
 import { useUser } from '@/firebase';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -175,14 +175,12 @@ export default function RiderDashboardPage() {
         });
         unsubscribes.push(unsubscribeInvites);
         
-        // --- START FIX: REAL-TIME ORDER LISTENER ---
         const ordersQuery = query(collection(db, "orders"), where("deliveryBoyId", "==", user.uid), where("status", "==", "dispatched"));
         const unsubscribeOrders = onSnapshot(ordersQuery, (snapshot) => {
             const newOrders = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
             setAssignedOrders(newOrders);
         });
         unsubscribes.push(unsubscribeOrders);
-        // --- END FIX ---
 
         return () => unsubscribes.forEach(unsub => unsub());
 
@@ -225,9 +223,7 @@ export default function RiderDashboardPage() {
 
     const handleAcceptOrder = async (orderId) => {
         try {
-            // Future logic to update order status to 'on_the_way' can go here.
-            // For now, just navigate to the tracking page.
-            await updateDoc(doc(db, "orders", orderId), { status: 'on_the_way' });
+            await handleApiCall('/api/rider/accept-order', 'POST', { orderId });
             router.push(`/track/${orderId}`);
         } catch (err) {
             setInfoDialog({ isOpen: true, title: 'Error', message: `Could not process order acceptance: ${err.message}`});
