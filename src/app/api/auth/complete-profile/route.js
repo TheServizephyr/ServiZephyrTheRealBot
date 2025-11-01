@@ -135,7 +135,6 @@ export async function POST(req) {
             batch.delete(unclaimedProfileRef);
             console.log(`[PROFILE COMPLETION] Unclaimed profile for ${normalizedPhone} marked for deletion.`);
         }
-        // --- END MERGE LOGIC ---
         
         // --- START: NEW LOGIC FOR RIDER ROLE ---
         if (finalUserData.role === 'rider') {
