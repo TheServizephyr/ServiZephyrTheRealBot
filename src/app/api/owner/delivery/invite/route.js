@@ -66,12 +66,10 @@ export async function POST(req) {
 
         const riderUid = userRecord.uid;
         
-        // --- THE FIX ---
-        // Get the document *snapshot* using .get() before checking .exists()
         const userDocRef = firestore.collection('users').doc(riderUid);
         const userDoc = await userDocRef.get();
         
-        if (!userDoc.exists() || userDoc.data().role !== 'rider') {
+        if (!userDoc.exists || userDoc.data().role !== 'rider') {
             return NextResponse.json({ message: 'This user is not registered as a rider.' }, { status: 400 });
         }
         
