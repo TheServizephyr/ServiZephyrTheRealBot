@@ -1,3 +1,4 @@
+
 "use client";
 
 import React, { useState, useEffect, Suspense } from 'react';
@@ -392,7 +393,6 @@ function PageContent() {
   );
 }
 
-// THE FIX: Wrap the page content in a Suspense boundary
 export default function OwnerDashboardPage() {
     return (
         <Suspense fallback={<div className="flex h-full items-center justify-center"><Loader2 className="animate-spin text-primary h-16 w-16" /></div>}>

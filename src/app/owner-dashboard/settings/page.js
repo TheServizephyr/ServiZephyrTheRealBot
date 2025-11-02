@@ -4,7 +4,7 @@
 import React, { useState, useEffect, Suspense } from 'react';
 import { motion } from 'framer-motion';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { User, Mail, Phone, Shield, Edit, Save, XCircle, Bell, Trash2, KeyRound, Eye, EyeOff, FileText, Bot, Truck, Image as ImageIcon, Upload, X, IndianRupee, MapPin, Wallet, ChevronsUpDown, Check, ShoppingBag, Store, ConciergeBell } from 'lucide-react';
+import { User, Mail, Phone, Shield, Edit, Save, XCircle, Bell, Trash2, KeyRound, Eye, EyeOff, FileText, Bot, Truck, Image as ImageIcon, Upload, X, IndianRupee, MapPin, Wallet, ChevronsUpDown, Check, ShoppingBag, Store, ConciergeBell, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
@@ -15,7 +15,6 @@ import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover
 import { Command, CommandInput, CommandEmpty, CommandGroup, CommandItem } from '@/components/ui/command';
 import { cn } from '@/lib/utils';
 import InfoDialog from '@/components/InfoDialog';
-import { Loader2 } from 'lucide-react';
 
 export const dynamic = 'force-dynamic';
 
@@ -377,10 +376,8 @@ function SettingsPageContent() {
                 dineInEnabled: editedUser.dineInEnabled,
                 deliveryOnlinePaymentEnabled: editedUser.deliveryOnlinePaymentEnabled,
                 deliveryCodEnabled: editedUser.deliveryCodEnabled,
-                pickupOnlinePaymentEnabled: editedUser.pickupOnlinePaymentEnabled,
-                pickupPodEnabled: editedUser.pickupPodEnabled,
-                dineInOnlinePaymentEnabled: editedUser.dineInOnlinePaymentEnabled,
-                dineInPayAtCounterEnabled: editedUser.dineInPayAtCounterEnabled,
+                pickupOnlinePaymentEnabled: editedUser.pickupPodEnabled,
+                dineInOnlinePaymentEnabled: editedUser.dineInPayAtCounterEnabled,
             }
         }
 
@@ -819,5 +816,5 @@ export default function SettingsPage() {
         <Suspense fallback={<div className="flex h-full w-full items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>}>
             <SettingsPageContent />
         </Suspense>
-    );
+    )
 }

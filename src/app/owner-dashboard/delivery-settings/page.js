@@ -17,7 +17,7 @@ import { auth } from '@/lib/firebase';
 
 export const dynamic = 'force-dynamic';
 
-const DeliverySettingsPageContent = () => {
+function DeliverySettingsPageContent() {
     const router = useRouter();
     const [isAccepting, setIsAccepting] = useState(true);
     const [deliveryRadius, setDeliveryRadius] = useState([5]);
