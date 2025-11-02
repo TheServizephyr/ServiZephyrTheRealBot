@@ -223,7 +223,7 @@ export async function POST(req) {
             console.log(`[DEBUG] /api/customer/register: Sending new order notification to owner ${businessData.ownerPhone}.`);
             await sendNewOrderToOwner({
                 ownerPhone: businessData.ownerPhone, botPhoneNumberId: businessData.botPhoneNumberId,
-                customerName: name, totalAmount: grandTotal, orderId: newOrderRef.id
+                customerName: name, totalAmount: grandTotal, orderId: newOrderRef.id, restaurantName: businessData.name
             });
         } else {
              console.warn(`[DEBUG] /api/customer/register: Cannot send notification. Owner phone or Bot ID is missing for business ${restaurantId}.`);

@@ -2,7 +2,7 @@
 
 import { sendWhatsAppMessage } from './whatsapp';
 
-export const sendNewOrderToOwner = async ({ ownerPhone, botPhoneNumberId, customerName, totalAmount, orderId }) => {
+export const sendNewOrderToOwner = async ({ ownerPhone, botPhoneNumberId, customerName, totalAmount, orderId, restaurantName }) => {
     console.log(`[Notification Lib] Preparing 'new_order' notification for owner ${ownerPhone}.`);
 
     if (!ownerPhone || !botPhoneNumberId) {
@@ -22,7 +22,8 @@ export const sendNewOrderToOwner = async ({ ownerPhone, botPhoneNumberId, custom
                 parameters: [
                     { type: "text", text: customerName },
                     { type: "text", text: `₹${totalAmount.toFixed(2)}` },
-                    { type: "text", text: orderId }
+                    { type: "text", text: orderId },
+                    { type: "text", text: restaurantName }
                 ]
             },
             {

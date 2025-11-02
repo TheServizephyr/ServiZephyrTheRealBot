@@ -7,7 +7,7 @@ export async function GET(request, { params }) {
     console.log("[API][Order Status] Request received.");
     try {
         const { orderId } = params;
-        const firestore = getFirestore();
+        const firestore = await getFirestore();
 
         if (!orderId) {
             console.log("[API][Order Status] Error: Order ID is missing.");

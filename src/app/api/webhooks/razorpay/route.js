@@ -68,7 +68,7 @@ export async function POST(req) {
                 return NextResponse.json({ status: 'ok' });
             }
             
-            const firestore = getFirestore();
+            const firestore = await getFirestore();
             
             // Fetch order notes to get our internal payload
             const key_id = process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID;
@@ -250,7 +250,8 @@ export async function POST(req) {
                         botPhoneNumberId: businessData.botPhoneNumberId,
                         customerName: customerDetails.name,
                         totalAmount: billDetails.grandTotal,
-                        orderId: newOrderRef.id
+                        orderId: newOrderRef.id,
+                        restaurantName: businessData.name
                     });
                 }
             }
