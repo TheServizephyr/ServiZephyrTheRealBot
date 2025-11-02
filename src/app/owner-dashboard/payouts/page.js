@@ -17,6 +17,8 @@ import { auth } from '@/lib/firebase';
 import { useSearchParams } from 'next/navigation';
 import InfoDialog from '@/components/InfoDialog';
 
+export const dynamic = 'force-dynamic';
+
 const formatCurrency = (value, currency = 'INR') => {
     if (value === null || value === undefined) return '₹0';
     return new Intl.NumberFormat('en-IN', {

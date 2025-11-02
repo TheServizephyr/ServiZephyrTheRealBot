@@ -14,9 +14,10 @@ import { DragDropContext, Droppable, Draggable } from "@hello-pangea/dnd";
 import { auth } from '@/lib/firebase';
 import { cn } from "@/lib/utils";
 import { Checkbox } from "@/components/ui/checkbox";
-import { useSearchParams } from "next/navigation";
+import { useSearchParams } from 'next/navigation';
 import InfoDialog from "@/components/InfoDialog";
 
+export const dynamic = 'force-dynamic';
 
 const restaurantCategoryConfig = {
   "starters": { title: "Starters", icon: Salad },
@@ -1026,7 +1027,3 @@ export default function MenuPage() {
     </div>
   );
 }
-
-
-
-

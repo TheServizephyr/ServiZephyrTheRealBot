@@ -1,6 +1,9 @@
 
+
 import { NextResponse } from 'next/server';
 import { getFirestore } from '@/lib/firebase-admin';
+
+export const dynamic = 'force-dynamic';
 
 async function fetchCollection(firestore, collectionName) {
     const snapshot = await firestore.collection(collectionName).where('approvalStatus', '==', 'approved').get();
@@ -23,7 +26,7 @@ async function fetchCollection(firestore, collectionName) {
 
 export async function GET(req) {
     try {
-        const firestore = getFirestore();
+        const firestore = await getFirestore();
         
         const [restaurants, shops] = await Promise.all([
             fetchCollection(firestore, 'restaurants'),

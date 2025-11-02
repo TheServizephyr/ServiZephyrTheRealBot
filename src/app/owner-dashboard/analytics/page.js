@@ -19,6 +19,8 @@ import { useSearchParams } from 'next/navigation';
 import { auth } from '@/lib/firebase';
 import InfoDialog from '@/components/InfoDialog';
 
+export const dynamic = 'force-dynamic';
+
 const formatCurrency = (value) => `₹${Number(value || 0).toLocaleString('en-IN', { maximumFractionDigits: 0 })}`;
 const formatDate = (dateStr) => {
     if (!dateStr) return 'N/A';

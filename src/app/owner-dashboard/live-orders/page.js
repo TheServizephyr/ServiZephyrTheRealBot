@@ -1,3 +1,5 @@
+
+
 'use client';
 
 import React, { useState, useEffect, useMemo } from 'react';
@@ -17,6 +19,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import Link from 'next/link';
 import InfoDialog from '@/components/InfoDialog';
 
+export const dynamic = 'force-dynamic';
 
 const statusConfig = {
   'pending': { color: 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30' },

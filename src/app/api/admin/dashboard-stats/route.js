@@ -3,10 +3,11 @@
 import { NextResponse } from 'next/server';
 import { getFirestore } from '@/lib/firebase-admin';
 
+export const dynamic = 'force-dynamic';
 
 export async function GET(req) {
     try {
-        const firestore = getFirestore();
+        const firestore = await getFirestore();
 
         // 1. Pending Approvals from both collections
         const pendingRestaurantsSnap = await firestore.collection('restaurants').where('approvalStatus', '==', 'pending').count().get();

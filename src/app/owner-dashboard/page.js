@@ -13,6 +13,8 @@ import Image from 'next/image';
 import Link from 'next/link';
 import InfoDialog from '@/components/InfoDialog';
 
+export const dynamic = 'force-dynamic';
+
 // Helper function to format currency
 const formatCurrency = (value) => `₹${Number(value).toLocaleString('en-IN')}`;
 

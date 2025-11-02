@@ -16,6 +16,8 @@ import { format, formatDistanceToNow, isPast } from 'date-fns';
 import InfoDialog from '@/components/InfoDialog';
 import { cn } from '@/lib/utils';
 
+export const dynamic = 'force-dynamic';
+
 const formatDateTime = (dateValue) => {
     if (!dateValue) return 'N/A';
     
@@ -318,9 +320,3 @@ export default function BookingsPage() {
         </motion.div>
     );
 }
-
-    
-
-    
-
-    

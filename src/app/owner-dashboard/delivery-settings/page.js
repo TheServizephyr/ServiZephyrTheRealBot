@@ -1,4 +1,5 @@
 
+
 'use client';
 
 import { useState, useEffect } from 'react';
@@ -14,6 +15,8 @@ import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Input } from '@/components/ui/input';
 import InfoDialog from '@/components/InfoDialog';
 import { auth } from '@/lib/firebase';
+
+export const dynamic = 'force-dynamic';
 
 const DeliverySettingsPage = () => {
     const router = useRouter();

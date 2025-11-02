@@ -1,4 +1,5 @@
 
+
 "use client";
 
 import { useState, useMemo, useEffect } from 'react';
@@ -15,6 +16,7 @@ import { Switch } from '@/components/ui/switch';
 import InfoDialog from '@/components/InfoDialog';
 import Link from 'next/link';
 
+export const dynamic = 'force-dynamic';
 
 const StatusBadge = ({ status }) => {
     const statusConfig = {

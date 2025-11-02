@@ -11,12 +11,13 @@ import { Label } from '@/components/ui/label';
 import { cn } from "@/lib/utils";
 import { auth } from '@/lib/firebase';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { Calendar } from '@/components/ui/calendar';
+import { Calendar } from "@/components/ui/calendar";
 import { format } from 'date-fns';
 import { Calendar as CalendarIcon, Wand2, Ticket, Percent, Truck } from 'lucide-react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import InfoDialog from '@/components/InfoDialog';
 
+export const dynamic = 'force-dynamic';
 
 const formatDate = (dateString) => {
     if (!dateString) return 'N/A';

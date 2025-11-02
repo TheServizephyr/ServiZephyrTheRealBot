@@ -11,6 +11,7 @@ import { auth } from '@/lib/firebase';
 import { useSearchParams } from "next/navigation";
 import InfoDialog from "@/components/InfoDialog";
 
+export const dynamic = 'force-dynamic';
 
 const containerVariants = {
   hidden: { opacity: 0 },

@@ -1,4 +1,5 @@
 
+
 'use client';
 
 import React, { useState, useEffect, Suspense, useRef } from 'react';
@@ -15,6 +16,7 @@ import { useAuth } from '@/firebase';
 import { cn } from '@/lib/utils';
 import { Textarea } from '@/components/ui/textarea';
 
+export const dynamic = 'force-dynamic';
 
 const GoogleMap = dynamic(() => import('@/components/GoogleMap'), { 
     ssr: false,

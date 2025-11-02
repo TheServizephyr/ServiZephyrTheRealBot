@@ -1,6 +1,9 @@
 
+
 import { NextResponse } from 'next/server';
 import { getFirestore, verifyAndGetUid } from '@/lib/firebase-admin';
+
+export const dynamic = 'force-dynamic';
 
 export async function GET(req) {
     console.log("[API hub-data] GET request received.");
