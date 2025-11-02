@@ -1,8 +1,6 @@
-
-
 "use client";
 
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, Suspense } from 'react';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, LineChart, Line, PieChart, Pie, Cell, Sector, ScatterChart, Scatter, Legend, ReferenceLine, AreaChart, Area } from 'recharts';
 import { motion, AnimatePresence } from 'framer-motion';
 import { IndianRupee, Hash, Users, Star, TrendingDown, GitCommitHorizontal, AlertTriangle, Lightbulb, ChefHat, ShoppingBasket, DollarSign, ArrowRight, TrendingUp, Filter, Calendar as CalendarIcon, ArrowDown, ArrowUp, UserPlus, FileBarChart, CalendarDays, X, Gift, Crown, Clock, Sparkles, Wand2, Ticket, Percent, Loader2, Ban } from 'lucide-react';
@@ -334,7 +332,7 @@ const CustomerRelationshipHub = ({ data, loading }) => {
 
 
 // --- Main Page Component ---
-export default function AnalyticsPage() {
+function AnalyticsPageContent() {
     const [activeTab, setActiveTab] = useState('sales');
     const [activeDateFilter, setActiveDateFilter] = useState('This Month');
     const [date, setDate] = useState({
@@ -532,4 +530,12 @@ export default function AnalyticsPage() {
             </div>
         </div>
     );
+}
+
+export default function AnalyticsPage() {
+    return (
+        <Suspense fallback={<div className="flex h-full w-full items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>}>
+            <AnalyticsPageContent />
+        </Suspense>
+    )
 }

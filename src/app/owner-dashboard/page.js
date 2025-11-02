@@ -1,10 +1,8 @@
-
-
 "use client";
 
 import React, { useState, useEffect, Suspense } from 'react';
 import { motion } from 'framer-motion';
-import { Plus, Tag, XCircle, ArrowUpRight, IndianRupee, Hash, Users, ListFilter, Bot, Ban } from 'lucide-react';
+import { Plus, Tag, XCircle, ArrowUpRight, IndianRupee, Hash, Users, ListFilter, Bot, Ban, Loader2 } from 'lucide-react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { cn } from '@/lib/utils';
 import { auth } from '@/lib/firebase';
@@ -21,8 +19,7 @@ const formatCurrency = (value) => `₹${Number(value).toLocaleString('en-IN')}`;
 // --- Individual Components Defined in One File ---
 
 // 1. Summary Stat Card Component
-const StatCard = ({ title, value, icon, change, isCurrency = false, isLoading = false, isRejection = false }) => {
-  const Icon = icon;
+const StatCard = ({ title, value, icon: Icon, change, isCurrency = false, isLoading = false, isRejection = false }) => {
   
   if (isLoading) {
     return (
@@ -395,10 +392,11 @@ function PageContent() {
   );
 }
 
+// THE FIX: Wrap the page content in a Suspense boundary
 export default function OwnerDashboardPage() {
     return (
-        <React.Suspense fallback={<div className="flex h-screen items-center justify-center bg-background"><div className="h-16 w-16 animate-spin rounded-full border-b-2 border-primary"></div></div>}>
+        <Suspense fallback={<div className="flex h-full items-center justify-center"><Loader2 className="animate-spin text-primary h-16 w-16" /></div>}>
             <PageContent />
-        </React.Suspense>
+        </Suspense>
     )
 }

@@ -1,8 +1,6 @@
-
-
 'use client';
 
-import { useState, useEffect, useRef, useMemo } from 'react';
+import { useState, useEffect, useRef, useMemo, Suspense } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Search, Archive, MessageSquare, Send, Paperclip, Loader2, ArrowLeft, Image as ImageIcon, X, Tag, Star, AlertTriangle, ThumbsUp, LogOut } from 'lucide-react';
 import Image from 'next/image';
@@ -114,7 +112,7 @@ const ConfirmationModal = ({ isOpen, onClose, onConfirm, title, description }) =
 );
 
 
-export default function WhatsAppDirectPage() {
+function WhatsAppDirectPageContent() {
     const [conversations, setConversations] = useState([]);
     const [messages, setMessages] = useState([]);
     const [activeConversation, setActiveConversation] = useState(null);
@@ -550,4 +548,13 @@ export default function WhatsAppDirectPage() {
             </div>
         </>
     );
+}
+
+
+export default function WhatsAppDirectPage() {
+    return (
+        <Suspense fallback={<div className="flex h-full items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>}>
+            <WhatsAppDirectPageContent />
+        </Suspense>
+    )
 }

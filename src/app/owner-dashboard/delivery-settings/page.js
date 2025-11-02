@@ -1,11 +1,9 @@
-
-
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, Suspense } from 'react';
 import { motion } from 'framer-motion';
 import { useRouter } from 'next/navigation';
-import { ArrowLeft, Save, Truck, Map as MapIcon, IndianRupee, ToggleRight, Settings } from 'lucide-react';
+import { ArrowLeft, Save, Truck, Map as MapIcon, IndianRupee, ToggleRight, Settings, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
@@ -18,7 +16,7 @@ import { auth } from '@/lib/firebase';
 
 export const dynamic = 'force-dynamic';
 
-const DeliverySettingsPage = () => {
+const DeliverySettingsPageContent = () => {
     const router = useRouter();
     const [isAccepting, setIsAccepting] = useState(true);
     const [deliveryRadius, setDeliveryRadius] = useState([5]);
@@ -159,4 +157,10 @@ const DeliverySettingsPage = () => {
     );
 };
 
-export default DeliverySettingsPage;
+export default function DeliverySettingsPage() {
+    return (
+        <Suspense fallback={<div className="flex h-full items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>}>
+            <DeliverySettingsPageContent />
+        </Suspense>
+    )
+}

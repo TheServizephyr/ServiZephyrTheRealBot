@@ -1,10 +1,8 @@
-
-
 'use client';
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, Suspense } from 'react';
 import { motion } from 'framer-motion';
-import { Banknote, IndianRupee, Clock, CheckCircle, RefreshCw, Search, Calendar as CalendarIcon, ChevronDown, Download } from 'lucide-react';
+import { Banknote, IndianRupee, Clock, CheckCircle, RefreshCw, Search, Calendar as CalendarIcon, ChevronDown, Download, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -93,7 +91,7 @@ const PayoutStatusBadge = ({ status }) => {
 };
 
 
-export default function PayoutsPage() {
+function PayoutsPageContent() {
     const [payouts, setPayouts] = useState([]);
     const [summary, setSummary] = useState({ total: 0, lastPayout: 0, pending: 0 });
     const [loading, setLoading] = useState(true);
@@ -291,4 +289,12 @@ export default function PayoutsPage() {
             </Card>
         </div>
     );
+}
+
+export default function PayoutsPage() {
+    return (
+        <Suspense fallback={<div className="flex h-full items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>}>
+            <PayoutsPageContent />
+        </Suspense>
+    )
 }

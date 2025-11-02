@@ -1,8 +1,6 @@
-
-
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, Suspense } from 'react';
 import { motion } from 'framer-motion';
 import { Bot, PlusCircle, CheckCircle, AlertCircle, RefreshCw, Loader2, HelpCircle, MessageSquare, ExternalLink } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -53,7 +51,7 @@ const ConnectionCard = ({ restaurantName, whatsAppNumber, status }) => (
   </motion.div>
 );
 
-export default function ConnectionsPage() {
+function ConnectionsPageContent() {
   const [fbLoading, setFbLoading] = useState(false);
   const [dataLoading, setDataLoading] = useState(true);
   const [error, setError] = useState('');
@@ -280,4 +278,12 @@ export default function ConnectionsPage() {
 
     </motion.div>
   );
+}
+
+export default function ConnectionsPage() {
+    return (
+        <Suspense fallback={<div className="flex h-full items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>}>
+            <ConnectionsPageContent />
+        </Suspense>
+    )
 }

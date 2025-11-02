@@ -1,10 +1,8 @@
-
-
 'use client';
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, Suspense } from 'react';
 import { motion } from 'framer-motion';
-import { CalendarClock, Check, X, Filter, MoreVertical, User, Phone, Users, Clock, Hash, Trash2, Search, RefreshCw, CheckCircle, AlertTriangle, XCircle } from 'lucide-react';
+import { CalendarClock, Check, X, Filter, MoreVertical, User, Phone, Users, Clock, Hash, Trash2, Search, RefreshCw, CheckCircle, AlertTriangle, XCircle, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
@@ -139,7 +137,7 @@ const BookingRow = ({ booking, onUpdateStatus }) => {
 };
 
 
-export default function BookingsPage() {
+function BookingsPageContent() {
     const [bookings, setBookings] = useState([]);
     const [loading, setLoading] = useState(true);
     const [infoDialog, setInfoDialog] = useState({ isOpen: false, title: '', message: '' });
@@ -318,5 +316,13 @@ export default function BookingsPage() {
                 </Card>
             </Tabs>
         </motion.div>
+    );
+}
+
+export default function BookingsPage() {
+    return (
+        <Suspense fallback={<div className="flex h-full items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>}>
+            <BookingsPageContent />
+        </Suspense>
     );
 }
