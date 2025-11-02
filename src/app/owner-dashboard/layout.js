@@ -1,14 +1,14 @@
 
 'use client';
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, Suspense } from "react";
 import Sidebar from "@/components/OwnerDashboard/Sidebar";
 import Navbar from "@/components/OwnerDashboard/Navbar";
 import styles from "@/components/OwnerDashboard/OwnerDashboard.module.css";
 import { motion } from "framer-motion";
 import { ThemeProvider } from "@/components/ThemeProvider";
 import "../globals.css";
-import { AlertTriangle, HardHat, ShieldOff, Salad, Lock, Mail, Phone, MessageSquare } from 'lucide-react';
+import { AlertTriangle, HardHat, ShieldOff, Salad, Lock, Mail, Phone, MessageSquare, Loader2 } from 'lucide-react';
 import { Button } from "@/components/ui/button";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useUser } from "@/firebase";
@@ -84,7 +84,6 @@ function OwnerDashboardContent({ children }) {
   }, []);
 
   useEffect(() => {
-    // ** THE FIX **: Wait for auth to be confirmed before fetching data.
     if (isUserLoading) {
       return; 
     }
@@ -144,7 +143,7 @@ function OwnerDashboardContent({ children }) {
     
     fetchRestaurantData();
 
-  }, [user, isUserLoading, router, impersonatedOwnerId]); // Depend on user and impersonation status
+  }, [user, isUserLoading, router, impersonatedOwnerId]);
 
   if (isUserLoading || initialDataLoading) {
     return (
@@ -266,7 +265,9 @@ export default function OwnerDashboardRootLayout({ children }) {
       enableSystem
       disableTransitionOnChange
     >
-      <OwnerDashboardContent>{children}</OwnerDashboardContent>
+        <Suspense fallback={<div className="flex h-screen items-center justify-center bg-background"><Loader2 className="h-16 w-16 animate-spin text-primary" /></div>}>
+            <OwnerDashboardContent>{children}</OwnerDashboardContent>
+        </Suspense>
     </ThemeProvider>
   );
 }
