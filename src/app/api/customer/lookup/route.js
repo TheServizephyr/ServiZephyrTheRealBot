@@ -5,7 +5,7 @@ import { getFirestore } from '@/lib/firebase-admin';
 
 export async function POST(req) {
     try {
-        const firestore = getFirestore();
+        const firestore = await getFirestore();
         const { phone } = await req.json();
 
         if (!phone) {
