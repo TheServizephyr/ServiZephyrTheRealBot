@@ -7,7 +7,7 @@ import { getFirestore } from '@/lib/firebase-admin';
 export async function GET(request, { params }) {
     console.log("[DEBUG] Menu API: Request received.");
     try {
-        const firestore = getFirestore();
+        const firestore = await getFirestore();
         const { restaurantId } = params;
         const { searchParams } = new URL(request.url);
         const phone = searchParams.get('phone');
