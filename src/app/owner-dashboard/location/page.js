@@ -9,7 +9,7 @@ import { MapPin, Search, LocateFixed, Loader2, ArrowLeft, AlertTriangle, Save, H
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import dynamic from 'next/dynamic';
+import { default as dynamic } from 'next/dynamic';
 import { auth } from '@/lib/firebase';
 import InfoDialog from '@/components/InfoDialog';
 import { useAuth } from '@/firebase';
