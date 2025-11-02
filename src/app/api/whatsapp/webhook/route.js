@@ -1,4 +1,5 @@
 
+
 import { NextResponse } from 'next/server';
 import { getFirestore, FieldValue } from '@/lib/firebase-admin';
 import { getStorage } from 'firebase-admin/storage';
@@ -209,7 +210,7 @@ export async function POST(request) {
             return NextResponse.json({ message: 'Not a WhatsApp event' }, { status: 200 });
         }
 
-        const firestore = getFirestore();
+        const firestore = await getFirestore();
         const change = body.entry?.[0]?.changes?.[0];
         
         if (!change || !change.value) {
@@ -284,6 +285,7 @@ export async function POST(request) {
     
 
     
+
 
 
 

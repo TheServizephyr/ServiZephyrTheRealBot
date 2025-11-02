@@ -10,7 +10,7 @@ import { sendNewOrderToOwner } from '@/lib/notifications';
 export async function POST(req) {
     console.log("[DEBUG] /api/customer/register: Received new order request.");
     try {
-        const firestore = getFirestore();
+        const firestore = await getFirestore();
         const { name, address, phone, restaurantId, items, notes, coupon, loyaltyDiscount, grandTotal, paymentMethod, businessType = 'restaurant', deliveryType = 'delivery', pickupTime = '', tipAmount = 0, subtotal, cgst, sgst, deliveryCharge, tableId = null, pax_count, tab_name, dineInTabId } = await req.json();
 
         // --- VALIDATION ---
