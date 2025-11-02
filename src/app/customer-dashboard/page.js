@@ -1,12 +1,12 @@
-
 'use client';
 
 import { motion } from 'framer-motion';
 import { ArrowRight, RefreshCw, ShoppingBag, Loader2 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, Suspense } from 'react';
 import { useUser } from '@/firebase';
 import Link from 'next/link';
+import { useSearchParams } from 'next/navigation';
 
 const containerVariants = {
   hidden: { opacity: 0 },
@@ -33,10 +33,12 @@ const StatCard = ({ title, value, isLoading }) => (
     </Card>
 );
 
-export default function CustomerHubPage() {
+function CustomerHubContent() {
     const { user, isUserLoading } = useUser();
     const [hubData, setHubData] = useState(null);
     const [loading, setLoading] = useState(true);
+    const searchParams = useSearchParams();
+    const phone = searchParams.get('phone');
 
     useEffect(() => {
         console.log("[MyHub Page] useEffect triggered. isUserLoading:", isUserLoading);
@@ -74,6 +76,14 @@ export default function CustomerHubPage() {
 
     console.log("[MyHub Page] Rendering component. Loading state:", loading, "HubData state:", hubData);
 
+    const buildOrderLink = (restaurantId) => {
+        let url = `/order/${restaurantId}`;
+        if (phone) {
+            url += `?phone=${phone}`;
+        }
+        return url;
+    };
+
     return (
         <motion.div
             variants={containerVariants}
@@ -86,7 +96,6 @@ export default function CustomerHubPage() {
                 <p className="text-muted-foreground mt-1">Your personal stats and shortcuts.</p>
             </header>
 
-            {/* Quick Re-Order Section - THE FIX IS HERE */}
             {(loading || hubData?.quickReorder) && (
                 <motion.div variants={itemVariants}>
                     <Card className="bg-primary/10 border-primary/20">
@@ -104,7 +113,7 @@ export default function CustomerHubPage() {
                         ) : hubData?.quickReorder && (
                             <>
                                 <p className="text-lg">Time for your favorite <span className="font-bold text-foreground">'{hubData.quickReorder.dishName}'</span> from <span className="font-bold text-foreground">{hubData.quickReorder.restaurantName}</span>?</p>
-                                <Link href={`/order/${hubData.quickReorder.restaurantId}`} passHref>
+                                <Link href={buildOrderLink(hubData.quickReorder.restaurantId)} passHref>
                                     <button className="mt-4 inline-flex items-center gap-2 px-4 py-2 rounded-md bg-primary text-primary-foreground font-semibold hover:bg-primary/90">
                                         Re-order Now <ArrowRight size={16}/>
                                     </button>
@@ -116,7 +125,6 @@ export default function CustomerHubPage() {
                 </motion.div>
             )}
 
-            {/* My Restaurants Section - THE FIX IS HERE */}
             {(loading || (hubData?.myRestaurants && hubData.myRestaurants.length > 0)) && (
                 <motion.div variants={itemVariants}>
                     <h2 className="text-xl font-bold mb-4">My Restaurants</h2>
@@ -129,7 +137,7 @@ export default function CustomerHubPage() {
                         ))
                     ) : (
                         hubData.myRestaurants.map(resto => (
-                            <Link href={`/order/${resto.id}`} key={resto.id} passHref>
+                            <Link href={buildOrderLink(resto.id)} key={resto.id} passHref>
                                 <div className="flex-shrink-0 w-24 text-center cursor-pointer group">
                                     <div className="w-24 h-24 bg-muted rounded-full flex items-center justify-center border-2 border-border group-hover:border-primary transition-colors">
                                         <span className="text-xs font-bold text-foreground text-center p-1">{resto.name}</span>
@@ -142,7 +150,6 @@ export default function CustomerHubPage() {
                 </motion.div>
             )}
 
-            {/* My Stats Section */}
             <motion.div variants={itemVariants}>
                 <h2 className="text-xl font-bold mb-4">My Stats</h2>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -176,4 +183,12 @@ export default function CustomerHubPage() {
             )}
         </motion.div>
     );
+}
+
+export default function CustomerHubPage() {
+    return (
+        <Suspense fallback={<div className="flex h-full w-full items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>}>
+            <CustomerHubContent />
+        </Suspense>
+    )
 }
