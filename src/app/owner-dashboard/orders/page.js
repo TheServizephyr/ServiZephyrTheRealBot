@@ -1,8 +1,6 @@
-
-
 "use client";
 
-import { useState, useEffect } from "react";
+import React, { useState, useEffect, Suspense } from 'react';
 import Table from "@/components/OwnerDashboard/Table";
 import { motion } from "framer-motion";
 import { RefreshCw } from "lucide-react";
@@ -23,7 +21,7 @@ const containerVariants = {
   },
 };
 
-export default function OrdersPage() {
+function OrdersPageContent() {
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
   const [infoDialog, setInfoDialog] = useState({ isOpen: false, title: '', message: '' });
@@ -112,4 +110,12 @@ export default function OrdersPage() {
       </div>
     </motion.div>
   );
+}
+
+export default function OrdersPage() {
+    return (
+        <Suspense fallback={<div>Loading...</div>}>
+            <OrdersPageContent />
+        </Suspense>
+    )
 }

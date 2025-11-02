@@ -130,7 +130,7 @@ function PayoutSettingsPageContent() {
         )
     }
 
-    return (
+    return (        
         <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
@@ -187,7 +187,7 @@ function PayoutSettingsPageContent() {
                     </div>
                 </form>
             </div>
-        </motion.div>
+        </motion.div>        
     );
 }
 
