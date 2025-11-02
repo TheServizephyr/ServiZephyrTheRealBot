@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useState, useEffect, useRef, useMemo, Suspense } from 'react';
@@ -431,7 +432,7 @@ function WhatsAppDirectPageContent() {
                                     )}
                                 </DropdownMenuContent>
                             </DropdownMenu>
-                             <Button variant="destructive" size="sm" onClick={()={() => setConfirmEndChatOpen(true)}>
+                             <Button variant="destructive" size="sm" onClick={() => setConfirmEndChatOpen(true)}>
                                 <LogOut size={14} className="mr-2"/> End Chat
                             </Button>
                         </div>
@@ -558,3 +559,5 @@ export default function WhatsAppDirectPage() {
         </Suspense>
     )
 }
+
+    
