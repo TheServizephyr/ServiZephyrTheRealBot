@@ -4,7 +4,7 @@ import { getFirestore, FieldValue } from '@/lib/firebase-admin';
 
 export async function POST(req) {
     try {
-        const firestore = getFirestore();
+        const firestore = await getFirestore(); // THE FIX: Added await
         const { phone, token } = await req.json();
 
         if (!phone || !token) {
