@@ -1,5 +1,4 @@
 
-
 'use client';
 
 import React, { useState, useEffect, Suspense, useRef } from 'react';
@@ -9,7 +8,7 @@ import { MapPin, Search, LocateFixed, Loader2, ArrowLeft, AlertTriangle, Save, H
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { default as dynamic } from 'next/dynamic';
+import NextDynamic from 'next/dynamic';
 import { auth } from '@/lib/firebase';
 import InfoDialog from '@/components/InfoDialog';
 import { useAuth } from '@/firebase';
@@ -18,7 +17,7 @@ import { Textarea } from '@/components/ui/textarea';
 
 export const dynamic = 'force-dynamic';
 
-const GoogleMap = dynamic(() => import('@/components/GoogleMap'), { 
+const GoogleMap = NextDynamic(() => import('@/components/GoogleMap'), { 
     ssr: false,
     loading: () => <div className="w-full h-full bg-muted flex items-center justify-center"><Loader2 className="animate-spin text-primary"/></div>
 });
