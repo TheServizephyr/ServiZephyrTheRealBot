@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useState, useMemo, useEffect, Suspense } from 'react';
@@ -310,7 +311,7 @@ const CustomerRelationshipHub = ({ data, loading }) => {
         <div className="space-y-8">
             <section>
                 <h3 className="text-xl font-bold mb-4">Customer Snapshot</h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                     <CustomerStatCard title="Total Customers" value={data?.customerStats?.totalCustomers || 0} icon={Users} loading={loading} />
                     <CustomerStatCard title="New This Month" value={data?.customerStats?.newThisMonth || 0} icon={UserPlus} loading={loading} />
                     <CustomerStatCard title="Repeat Rate" value={`${data?.customerStats?.repeatRate || 0}%`} icon={GitCommitHorizontal} loading={loading} />
