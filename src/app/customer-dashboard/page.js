@@ -39,6 +39,7 @@ function CustomerHubContent() {
     const [loading, setLoading] = useState(true);
     const searchParams = useSearchParams();
     const phone = searchParams.get('phone');
+    const token = searchParams.get('token'); // THE FIX: Get token from URL
 
     useEffect(() => {
         console.log("[MyHub Page] useEffect triggered. isUserLoading:", isUserLoading);
@@ -76,10 +77,15 @@ function CustomerHubContent() {
 
     console.log("[MyHub Page] Rendering component. Loading state:", loading, "HubData state:", hubData);
 
+    // THE FIX: Update buildOrderLink to include the token
     const buildOrderLink = (restaurantId) => {
         let url = `/order/${restaurantId}`;
-        if (phone) {
-            url += `?phone=${phone}`;
+        const params = new URLSearchParams();
+        if (phone) params.append('phone', phone);
+        if (token) params.append('token', token);
+        
+        if (params.toString()) {
+            url += `?${params.toString()}`;
         }
         return url;
     };
