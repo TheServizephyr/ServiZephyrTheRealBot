@@ -19,30 +19,27 @@ const RouteLine = ({ from, to, isCurved = false }) => {
             return;
         };
   
-        // Shared primary color for consistency
         const primaryColor = 'hsl(var(--primary))';
 
-        // Style for the live, straight line (rider to customer)
         const straightLineOptions = {
             strokeColor: primaryColor,
             strokeOpacity: 0.8,
             strokeWeight: 5,
         };
 
-        // Style for the initial, curved dashed line (restaurant to customer)
         const curvedDashedLineOptions = {
             strokeColor: primaryColor,
-            strokeOpacity: 1, // FIX: Make the line visible
-            strokeWeight: 0, // The main line is a series of icons, not a continuous stroke
+            strokeOpacity: 1,
+            strokeWeight: 0,
             icons: [{
                 icon: {
                     path: 'M 0,-1 0,1',
                     strokeOpacity: 1,
-                    strokeWeight: 2, // Thinner dashes
+                    strokeWeight: 2,
                     scale: 3,
                 },
                 offset: '0',
-                repeat: '12px' // Denser dashes
+                repeat: '12px'
             }],
         };
 

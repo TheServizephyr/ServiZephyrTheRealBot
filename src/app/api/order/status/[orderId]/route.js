@@ -27,20 +27,17 @@ export async function GET(request, { params }) {
         let deliveryBoyData = null;
         console.log(`[API][Order Status] Order data found. Status: ${orderData.status}, Delivery Boy ID: ${orderData.deliveryBoyId}`);
 
-        if (orderData.deliveryBoyId && orderData.restaurantId) {
-            const businessType = orderData.businessType || 'restaurant';
-            const collectionName = businessType === 'shop' ? 'shops' : 'restaurants';
+        if (orderData.deliveryBoyId) {
+            console.log(`[API][Order Status] Fetching delivery boy: ${orderData.deliveryBoyId} from drivers collection.`);
             
-            console.log(`[API][Order Status] Fetching delivery boy: ${orderData.deliveryBoyId} from ${collectionName}/${orderData.restaurantId}/deliveryBoys`);
+            const driverDocRef = firestore.collection('drivers').doc(orderData.deliveryBoyId);
+            const driverDoc = await driverDocRef.get();
 
-            const deliveryBoyRef = firestore.collection(collectionName).doc(orderData.restaurantId).collection('deliveryBoys').doc(orderData.deliveryBoyId);
-            const deliveryBoySnap = await deliveryBoyRef.get();
-
-            if (deliveryBoySnap.exists) {
-                deliveryBoyData = { id: deliveryBoySnap.id, ...deliveryBoySnap.data() };
-                console.log("[API][Order Status] Delivery boy found in subcollection.");
+            if (driverDoc.exists) {
+                deliveryBoyData = { id: driverDoc.id, ...driverDoc.data() };
+                console.log("[API][Order Status] Delivery boy found in 'drivers' collection.");
             } else {
-                 console.warn(`[API][Order Status] Delivery boy with ID ${orderData.deliveryBoyId} not found in subcollection.`);
+                 console.warn(`[API][Order Status] Delivery boy with ID ${orderData.deliveryBoyId} not found in the main 'drivers' collection.`);
             }
         }
         
@@ -65,15 +62,15 @@ export async function GET(request, { params }) {
             },
             restaurant: {
                 name: businessData.name,
-                address: businessData.address // THE FIX: Send the entire address object
+                address: businessData.address
             },
             deliveryBoy: deliveryBoyData ? {
                 id: deliveryBoyData.id,
                 name: deliveryBoyData.name,
-                photoUrl: deliveryBoyData.photoUrl,
-                rating: deliveryBoyData.rating,
+                photoUrl: deliveryBoyData.profilePictureUrl, // Corrected field name
+                rating: deliveryBoyData.avgRating || 4.5, // Use avgRating from driver doc
                 phone: deliveryBoyData.phone,
-                location: deliveryBoyData.location // Pass the GeoPoint directly
+                location: deliveryBoyData.currentLocation // Use currentLocation from driver doc
             } : null
         };
         
@@ -85,4 +82,5 @@ export async function GET(request, { params }) {
         return NextResponse.json({ message: `Backend Error: ${error.message}` }, { status: 500 });
     }
 }
+
 

@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
@@ -175,15 +176,11 @@ export default function RiderDashboardPage() {
         });
         unsubscribes.push(unsubscribeInvites);
         
-        // --- START FIX ---
-        // This query now ONLY looks for 'dispatched' orders assigned to this rider.
         const ordersQuery = query(collection(db, "orders"), where("deliveryBoyId", "==", user.uid), where("status", "==", "dispatched"));
         const unsubscribeOrders = onSnapshot(ordersQuery, (snapshot) => {
             const newOrders = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-            // This component will now only ever contain orders that are ready to be accepted.
             setAssignedOrders(newOrders);
         });
-        // --- END FIX ---
         unsubscribes.push(unsubscribeOrders);
 
         return () => unsubscribes.forEach(unsub => unsub());
@@ -243,6 +240,7 @@ export default function RiderDashboardPage() {
     }
 
     const isOnline = driverData?.status === 'online';
+    const isBusy = driverData?.status === 'on-delivery';
 
     return (
         <div className="p-4 md:p-6 space-y-6">
@@ -253,13 +251,22 @@ export default function RiderDashboardPage() {
                 animate={{ opacity: 1, scale: 1 }}
                 className="bg-card p-6 rounded-lg border border-border text-center shadow-lg"
             >
-                <button onClick={handleToggleOnline} className={cn("mx-auto w-28 h-28 rounded-full flex items-center justify-center transition-all duration-300", isOnline ? "bg-green-500/20 text-green-400" : "bg-red-500/20 text-red-400")}>
-                    {isOnline ? <Power size={48}/> : <PowerOff size={48}/>}
+                <button 
+                    onClick={handleToggleOnline} 
+                    disabled={isBusy}
+                    className={cn(
+                        "mx-auto w-28 h-28 rounded-full flex items-center justify-center transition-all duration-300", 
+                        isOnline ? "bg-green-500/20 text-green-400" : "bg-red-500/20 text-red-400",
+                        isBusy && "bg-blue-500/20 text-blue-400 cursor-not-allowed"
+                    )}
+                >
+                    {isOnline || isBusy ? <Power size={48}/> : <PowerOff size={48}/>}
                 </button>
                 <p className="text-sm text-muted-foreground mt-4">YOUR STATUS</p>
-                <p className={cn("text-2xl font-bold mt-1 capitalize", isOnline ? 'text-green-400' : 'text-red-400')}>
-                    {driverData?.status || 'Offline'}
+                <p className={cn("text-2xl font-bold mt-1 capitalize", isOnline ? 'text-green-400' : isBusy ? 'text-blue-400' : 'text-red-400')}>
+                    {driverData?.status?.replace('-', ' ') || 'Offline'}
                 </p>
+                {isBusy && <p className="text-xs text-blue-400">Complete current delivery to go offline.</p>}
             </motion.div>
 
             <AnimatePresence>

@@ -20,19 +20,21 @@ const statusConfig = {
   paid: { title: 'Order Placed', icon: <Check size={24} />, step: 0 },
   confirmed: { title: 'Order Confirmed', icon: <Check size={24} />, step: 1 },
   preparing: { title: 'Preparing', icon: <CookingPot size={24} />, step: 2 },
-  dispatched: { title: 'Out for Delivery', icon: <Bike size={24} />, step: 3 },
+  dispatched: { title: 'Waiting for Rider', icon: <Bike size={24} />, step: 3 },
+  on_the_way: { title: 'Out for Delivery', icon: <Bike size={24} />, step: 3 },
   delivered: { title: 'Delivered', icon: <Home size={24} />, step: 4 },
   rejected: { title: 'Rejected', icon: <XCircle size={24} />, step: 4, isError: true },
 };
 
 const StatusTimeline = ({ currentStatus }) => {
     const activeStatus = (currentStatus === 'paid') ? 'pending' : currentStatus;
-    const currentStep = statusConfig[activeStatus]?.step || 0;
-    const isError = statusConfig[activeStatus]?.isError || false;
+    const currentStepConfig = statusConfig[activeStatus] || { step: 0, isError: false };
+    const currentStep = currentStepConfig.step;
+    const isError = currentStepConfig.isError;
   
     const uniqueSteps = Object.values(statusConfig)
         .filter((value, index, self) => 
-            !value.isError && self.findIndex(v => v.step === value.step) === index
+            !value.isError && self.findIndex(v => v.step === value.step && (v.title === "Out for Delivery" ? false : true)) === index
         );
 
     return (
@@ -156,7 +158,6 @@ export default function OrderTrackingPage() {
     }, [orderId]);
 
     const { restaurantLocation, customerLocation, riderLocation } = useMemo(() => {
-        // --- THE FIX: Correctly extract lat/lng from different potential object structures ---
         const restaurantLat = orderData?.restaurant?.address?.latitude;
         const restaurantLng = orderData?.restaurant?.address?.longitude;
 
@@ -202,7 +203,9 @@ export default function OrderTrackingPage() {
         )
     }
     
-    const showRiderDetails = orderData.order.status === 'dispatched' || orderData.order.status === 'delivered';
+    const showRiderDetails = orderData.order.status === 'on_the_way' || orderData.order.status === 'delivered';
+    const showMap = restaurantLocation && customerLocation;
+
 
     return (
         <div className="min-h-screen bg-background text-foreground flex flex-col">
@@ -222,11 +225,17 @@ export default function OrderTrackingPage() {
                 </div>
 
                 <div className="w-full h-64 md:h-80 relative">
-                    <LiveTrackingMap 
-                        restaurantLocation={restaurantLocation}
-                        customerLocation={customerLocation}
-                        riderLocation={riderLocation}
-                    />
+                    {showMap ? (
+                        <LiveTrackingMap 
+                            restaurantLocation={restaurantLocation}
+                            customerLocation={customerLocation}
+                            riderLocation={riderLocation}
+                        />
+                    ) : (
+                         <div className="w-full h-full bg-muted flex items-center justify-center text-muted-foreground">
+                            Map will be available once the rider is on the way.
+                        </div>
+                    )}
                 </div>
                 
                 <div className="p-4 space-y-4">
