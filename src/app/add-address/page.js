@@ -1,4 +1,3 @@
-
 'use client';
 
 import React, { useState, useEffect, Suspense, useRef, useCallback } from 'react';
@@ -230,7 +229,7 @@ const AddAddressPageInternal = () => {
 
         try {
              // The phone number that identifies the user session
-            const sessionIdentifierPhone = phone || user?.phoneNumber;
+            const sessionIdentifierPhone = phone || recipientPhone || user?.phoneNumber;
 
             const apiPayload = {
                 address: addressToSave,
