@@ -1,7 +1,7 @@
 
 'use client';
 
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useMemo } from 'react';
 import { APIProvider, Map, AdvancedMarker, useMap } from '@vis.gl/react-google-maps';
 import { Loader2 } from 'lucide-react';
 
@@ -47,45 +47,63 @@ const RouteLine = ({ from, to, isDashed = false }) => {
 const MapComponent = ({ restaurantLocation, customerLocations, riderLocation }) => {
     const map = useMap();
 
+    // --- START THE FIX ---
+    // Convert all incoming GeoPoint-like objects to LatLngLiteral
+    const toLatLngLiteral = (loc) => {
+        if (!loc) return null;
+        const lat = loc.lat ?? loc._latitude;
+        const lng = loc.lng ?? loc._longitude;
+        if (typeof lat === 'number' && typeof lng === 'number') {
+            return { lat, lng };
+        }
+        return null;
+    };
+
+    const restaurantLatLng = useMemo(() => toLatLngLiteral(restaurantLocation), [restaurantLocation]);
+    const riderLatLng = useMemo(() => toLatLngLiteral(riderLocation), [riderLocation]);
+    const customerLatLngs = useMemo(() => customerLocations.map(loc => ({ ...toLatLngLiteral(loc), id: loc.id })).filter(loc => loc.lat && loc.lng), [customerLocations]);
+    // --- END THE FIX ---
+
     useEffect(() => {
         if (map) {
             const bounds = new window.google.maps.LatLngBounds();
-            if (restaurantLocation) bounds.extend(restaurantLocation);
-            if (riderLocation) bounds.extend(riderLocation);
-            customerLocations.forEach(loc => bounds.extend(loc));
+            // Use the converted LatLngLiterals
+            if (restaurantLatLng) bounds.extend(restaurantLatLng);
+            if (riderLatLng) bounds.extend(riderLatLng);
+            customerLatLngs.forEach(loc => bounds.extend(loc));
 
             if (!bounds.isEmpty()) {
                 map.fitBounds(bounds, 80); // 80px padding
             }
         }
-    }, [restaurantLocation, customerLocations, riderLocation, map]);
+    }, [restaurantLatLng, customerLatLngs, riderLatLng, map]);
 
-    const routeStart = riderLocation || restaurantLocation;
+    const routeStart = riderLatLng || restaurantLatLng;
 
     return (
         <>
-            {restaurantLocation && (
-                <AdvancedMarker position={restaurantLocation}>
+            {restaurantLatLng && (
+                <AdvancedMarker position={restaurantLatLng}>
                     <div style={{ fontSize: '2rem' }}>🏢</div>
                 </AdvancedMarker>
             )}
-            {customerLocations.map(loc => (
+            {customerLatLngs.map(loc => (
                 <AdvancedMarker key={loc.id} position={loc}>
                     <div style={{ fontSize: '2rem' }}>🏠</div>
                 </AdvancedMarker>
             ))}
-            {riderLocation && (
-                <AdvancedMarker position={riderLocation}>
+            {riderLatLng && (
+                <AdvancedMarker position={riderLatLng}>
                      <div style={{ fontSize: '2.5rem' }}>🛵</div>
                 </AdvancedMarker>
             )}
             {/* Draw lines from start point to all customer locations */}
-            {routeStart && customerLocations.map(customerLoc => (
+            {routeStart && customerLatLngs.map(customerLoc => (
                 <RouteLine 
                     key={`route-${customerLoc.id}`} 
                     from={routeStart} 
                     to={customerLoc} 
-                    isDashed={!riderLocation} // Dashed if rider hasn't started moving
+                    isDashed={!riderLatLng} // Dashed if rider hasn't started moving
                 />
             ))}
         </>
@@ -97,7 +115,24 @@ const LiveTrackingMap = ({ restaurantLocation, customerLocations = [], riderLoca
         return <div className="w-full h-full bg-muted flex items-center justify-center"><p className="text-destructive">Google Maps API Key not found.</p></div>;
     }
 
-    const center = riderLocation || restaurantLocation || customerLocations[0] || { lat: 28.6139, lng: 77.2090 };
+    const getCenter = () => {
+      const riderLat = riderLocation?.lat ?? riderLocation?._latitude;
+      const riderLng = riderLocation?.lng ?? riderLocation?._longitude;
+      if(riderLat && riderLng) return {lat: riderLat, lng: riderLng};
+      
+      const restoLat = restaurantLocation?.lat ?? restaurantLocation?._latitude;
+      const restoLng = restaurantLocation?.lng ?? restaurantLocation?._longitude;
+      if(restoLat && restoLng) return {lat: restoLat, lng: restoLng};
+      
+      const firstCustomer = customerLocations[0];
+      const custLat = firstCustomer?.lat ?? firstCustomer?._latitude;
+      const custLng = firstCustomer?.lng ?? firstCustomer?._longitude;
+      if(custLat && custLng) return {lat: custLat, lng: custLng};
+
+      return { lat: 28.6139, lng: 77.2090 };
+    }
+
+    const center = getCenter();
 
     return (
         <APIProvider apiKey={GOOGLE_MAPS_API_KEY}>
