@@ -33,8 +33,9 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { useWindowSize } from 'react-use';
-import { useUser } from '@/firebase'; // THE FIX: Import useUser
+import { useUser } from '@/firebase';
 import InfoDialog from '@/components/InfoDialog';
+import { Loader2 } from 'lucide-react';
 
 
 const SidebarLink = ({ href, icon: Icon, children, isCollapsed }) => {
@@ -76,13 +77,10 @@ function AdminLayoutContent({ children }) {
   const router = useRouter();
   const [infoDialog, setInfoDialog] = useState({ isOpen: false, title: '', message: '' });
   
-  // --- START THE FIX ---
   const { user, isUserLoading } = useUser();
 
   useEffect(() => {
-    // Wait until firebase has confirmed the auth state
     if (!isUserLoading) {
-      // If auth check is done and there's no user, redirect to login
       if (!user) {
         router.push('/');
       }
@@ -112,21 +110,17 @@ function AdminLayoutContent({ children }) {
     }
   };
 
-  // If we are still checking the user's auth state, show a loader
   if (isUserLoading) {
       return (
           <div className="flex h-screen items-center justify-center bg-background">
-              <div className="h-16 w-16 animate-spin rounded-full border-b-2 border-primary"></div>
+              <Loader2 className="h-16 w-16 animate-spin text-primary" />
           </div>
       );
   }
 
-  // If auth is checked and no user, the useEffect above will redirect. 
-  // We can return null or a loader here as well to prevent flashing the content.
   if (!user) {
       return null;
   }
-  // --- END THE FIX ---
 
   return (
     <>

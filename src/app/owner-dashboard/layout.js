@@ -73,6 +73,15 @@ function OwnerDashboardContent({ children }) {
   const [initialDataLoading, setInitialDataLoading] = useState(true);
 
   useEffect(() => {
+    // --- START: Auth state check ---
+    if (!isUserLoading) {
+      if (!user) {
+        router.push('/');
+        return;
+      }
+    }
+    // --- END: Auth state check ---
+
     const checkScreenSize = () => {
       const mobile = window.innerWidth < 768;
       setIsMobile(mobile);
@@ -81,16 +90,11 @@ function OwnerDashboardContent({ children }) {
     checkScreenSize();
     window.addEventListener('resize', checkScreenSize);
     return () => window.removeEventListener('resize', checkScreenSize);
-  }, []);
+  }, [user, isUserLoading, router]);
 
   useEffect(() => {
-    if (isUserLoading) {
+    if (isUserLoading || !user) {
       return; 
-    }
-
-    if (!user) {
-      router.push('/');
-      return;
     }
 
     const fetchRestaurantData = async () => {
@@ -143,7 +147,7 @@ function OwnerDashboardContent({ children }) {
     
     fetchRestaurantData();
 
-  }, [user, isUserLoading, router, impersonatedOwnerId]);
+  }, [user, isUserLoading, impersonatedOwnerId]);
 
   if (isUserLoading || initialDataLoading) {
     return (
@@ -152,6 +156,10 @@ function OwnerDashboardContent({ children }) {
         <p className="ml-4 text-lg">Verifying your dashboard...</p>
       </div>
     );
+  }
+
+  if (!user) {
+      return null; // The redirect is handled in the useEffect
   }
   
   const renderStatusScreen = () => {
