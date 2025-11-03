@@ -1,7 +1,7 @@
 
 'use client';
 
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { MapPin, ArrowLeft, RefreshCw, Loader2, Navigation, Phone, CheckCircle, IndianRupee } from 'lucide-react';
 import { Button } from '@/components/ui/button';
