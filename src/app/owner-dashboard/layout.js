@@ -70,18 +70,19 @@ function OwnerDashboardContent({ children }) {
   const impersonatedOwnerId = searchParams.get('impersonate_owner_id');
 
   const { user, isUserLoading } = useUser();
-  const [initialDataLoading, setInitialDataLoading] = useState(true);
 
   useEffect(() => {
-    // --- START: Auth state check ---
-    if (!isUserLoading) {
+    // --- START: CORRECTED AUTHENTICATION AND REDIRECTION LOGIC ---
+    if (!isUserLoading) { // Only run logic once Firebase Auth has initialized
       if (!user) {
+        // If loading is finished and there's no user, then redirect.
         router.push('/');
-        return;
       }
     }
-    // --- END: Auth state check ---
+    // --- END: CORRECTED AUTHENTICATION AND REDIRECTION LOGIC ---
+  }, [user, isUserLoading, router]);
 
+  useEffect(() => {
     const checkScreenSize = () => {
       const mobile = window.innerWidth < 768;
       setIsMobile(mobile);
@@ -90,7 +91,7 @@ function OwnerDashboardContent({ children }) {
     checkScreenSize();
     window.addEventListener('resize', checkScreenSize);
     return () => window.removeEventListener('resize', checkScreenSize);
-  }, [user, isUserLoading, router]);
+  }, []);
 
   useEffect(() => {
     if (isUserLoading || !user) {
@@ -98,7 +99,6 @@ function OwnerDashboardContent({ children }) {
     }
 
     const fetchRestaurantData = async () => {
-        setInitialDataLoading(true);
         try {
             const idToken = await user.getIdToken();
 
@@ -140,8 +140,6 @@ function OwnerDashboardContent({ children }) {
         } catch (e) {
             console.error("[DEBUG] OwnerLayout: CRITICAL error fetching owner data:", e);
             setRestaurantStatus({ status: 'error', restrictedFeatures: [], suspensionRemark: '' });
-        } finally {
-            setInitialDataLoading(false);
         }
     }
     
@@ -149,17 +147,17 @@ function OwnerDashboardContent({ children }) {
 
   }, [user, isUserLoading, impersonatedOwnerId]);
 
-  if (isUserLoading || initialDataLoading) {
+  if (isUserLoading) {
     return (
       <div className="flex h-screen items-center justify-center bg-background">
-        <div className="h-16 w-16 animate-spin rounded-full border-b-2 border-primary"></div>
+        <Loader2 className="h-16 w-16 animate-spin text-primary" />
         <p className="ml-4 text-lg">Verifying your dashboard...</p>
       </div>
     );
   }
 
   if (!user) {
-      return null; // The redirect is handled in the useEffect
+      return null; // Redirect is handled in the useEffect, this prevents rendering anything while redirecting
   }
   
   const renderStatusScreen = () => {
