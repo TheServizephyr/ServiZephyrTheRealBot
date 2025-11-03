@@ -63,12 +63,10 @@ export async function POST(req) {
         
         console.log(`[DEBUG] /api/customer/register: User status: ${isNewUser ? 'New/Unclaimed User' : 'Existing Customer'}. User ID will be: ${userId}`);
 
-        // --- THE FIX: Correctly construct a GeoPoint object ---
         const customerLocation = (address && typeof address.latitude === 'number' && typeof address.longitude === 'number')
             ? new GeoPoint(address.latitude, address.longitude)
             : null;
         console.log(`[DEBUG] /api/customer/register: Customer location extracted:`, customerLocation);
-        // --- END FIX ---
 
 
         if (paymentMethod === 'razorpay') {
@@ -157,7 +155,6 @@ export async function POST(req) {
             console.log(`[DEBUG] /api/customer/register: Updating joined_restaurants for existing user ${userId}.`);
             const userRestaurantLinkRef = usersRef.doc(userId).collection('joined_restaurants').doc(restaurantId);
             
-            // **THE FIX: Use set with merge to create `joinedAt` only once, and update for the rest**
             batch.set(userRestaurantLinkRef, {
                 restaurantName: businessData.name, 
                 joinedAt: FieldValue.serverTimestamp() // This will ONLY be set if the document is new

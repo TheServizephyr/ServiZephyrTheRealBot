@@ -209,7 +209,6 @@ const AddAddressPageInternal = () => {
         
         const finalLabel = (addressLabel === 'Other' && customAddressLabel.trim()) ? customAddressLabel.trim() : addressLabel;
         
-        // --- START FIX: Ensure latitude and longitude are stored as numbers ---
         const addressToSave = {
             id: `addr_${Date.now()}`, 
             label: finalLabel, 
@@ -225,7 +224,6 @@ const AddAddressPageInternal = () => {
             latitude: parseFloat(addressDetails.latitude), 
             longitude: parseFloat(addressDetails.longitude),
         };
-        // --- END FIX ---
         
         localStorage.setItem('customerLocation', JSON.stringify(addressToSave));
 
