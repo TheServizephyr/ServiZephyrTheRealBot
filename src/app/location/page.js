@@ -65,13 +65,13 @@ const SelectLocationInternal = () => {
     
     useEffect(() => {
         const verifyAndFetch = async () => {
-            const phoneToUse = phone && phone !== 'null' ? phone : user?.phoneNumber;
-            const tokenToUse = token && token !== 'null' ? token : null;
+            const phoneToUse = phone && phone.trim() !== '' ? phone : null;
+            const tokenToUse = token && token.trim() !== '' ? token : null;
 
-            if (!tokenToUse && !user) {
-                 setTokenError("No session information found. Please start your journey from WhatsApp or log in.");
-                 setLoading(false);
-                 return;
+            if (!user && !tokenToUse) {
+                setTokenError("No session information found. Please start your journey from WhatsApp or log in.");
+                setLoading(false);
+                return;
             }
             
             if (tokenToUse) {
@@ -101,8 +101,19 @@ const SelectLocationInternal = () => {
             setError('');
             
             try {
-                if (phoneToLookup) {
-                     const res = await fetch('/api/customer/lookup', {
+                // Priority 1: If user is logged in via Firebase Auth, always use their UID to fetch data.
+                if (user) {
+                    console.log("[LocationPage] User logged in, fetching via secure API.");
+                    const idToken = await user.getIdToken();
+                    const res = await fetch('/api/user/addresses', { headers: { 'Authorization': `Bearer ${idToken}` } });
+                    if (!res.ok) throw new Error('Failed to fetch your saved addresses.');
+                    const data = await res.json();
+                    setAddresses(data.addresses || []);
+                } 
+                // Priority 2: If not logged in, but a valid phone number is in the URL, use that.
+                else if (phoneToLookup) {
+                    console.log(`[LocationPage] User not logged in, fetching via customer lookup for phone: ${phoneToLookup}`);
+                    const res = await fetch('/api/customer/lookup', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ phone: phoneToLookup }),
@@ -115,12 +126,10 @@ const SelectLocationInternal = () => {
                         const errorData = await res.json();
                         throw new Error(errorData.message || 'Failed to look up customer data.');
                     }
-                } else if (user) {
-                     const idToken = await user.getIdToken();
-                    const res = await fetch('/api/user/addresses', { headers: { 'Authorization': `Bearer ${idToken}` } });
-                    if (!res.ok) throw new Error('Failed to fetch your saved addresses.');
-                    const data = await res.json();
-                    setAddresses(data.addresses || []);
+                } 
+                // If neither, then we can't fetch anything.
+                else {
+                    setAddresses([]);
                 }
             } catch (err) {
                 setError(err.message);
@@ -132,7 +141,7 @@ const SelectLocationInternal = () => {
         if (!isUserLoading) {
             verifyAndFetch();
         }
-    }, [phone, token, user, isUserLoading]);
+    }, [user, isUserLoading, phone, token]);
 
 
     const handleSelectAddress = (address) => {

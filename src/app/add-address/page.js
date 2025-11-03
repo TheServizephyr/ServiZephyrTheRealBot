@@ -59,8 +59,8 @@ const AddAddressPageInternal = () => {
 
     useEffect(() => {
         const verifyToken = async () => {
-            const phoneToUse = phone && phone !== 'null' ? phone : user?.phoneNumber;
-            const tokenToUse = token && token !== 'null' ? token : null;
+            const phoneToUse = phone && phone.trim() !== '' ? phone : null;
+            const tokenToUse = token && token.trim() !== '' ? token : null;
             
             if (!tokenToUse && !user) {
                 setTokenError("No session token found. Please start your order from WhatsApp or log in.");
@@ -138,18 +138,18 @@ const AddAddressPageInternal = () => {
 
     useEffect(() => {
         const prefillData = async () => {
-            const finalPhone = phone && phone !== 'null' ? phone : user?.phoneNumber;
+            const phoneToUse = phone && phone.trim() !== '' ? phone : null;
             
             // Prioritize logged-in user data
             if (user) {
                 setRecipientName(user.displayName || '');
-                setRecipientPhone(finalPhone || '');
+                setRecipientPhone(user.phoneNumber || phoneToUse || '');
             } 
             // If not logged in but phone is available, try to look up customer data
-            else if (finalPhone) {
-                setRecipientPhone(finalPhone);
+            else if (phoneToUse) {
+                setRecipientPhone(phoneToUse);
                 try {
-                    const res = await fetch('/api/customer/lookup', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ phone: finalPhone }) });
+                    const res = await fetch('/api/customer/lookup', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ phone: phoneToUse }) });
                     if (res.ok) {
                         const customerData = await res.json();
                         setRecipientName(customerData.name || '');
@@ -185,7 +185,7 @@ const AddAddressPageInternal = () => {
         setIsSaving(true);
         
         const finalLabel = (addressLabel === 'Other' && customAddressLabel.trim()) ? customAddressLabel.trim() : addressLabel;
-        const phoneToUse = phone && phone !== 'null' ? phone : user?.phoneNumber;
+        const phoneToUse = (phone && phone.trim() !== '') ? phone : user?.phoneNumber;
 
         const addressToSave = {
             id: `addr_${Date.now()}`, 
@@ -212,6 +212,7 @@ const AddAddressPageInternal = () => {
             };
 
             const headers = { 'Content-Type': 'application/json' };
+            // If the user is logged in via Firebase Auth, send their ID token for verification.
             if (user) {
                 const idToken = await user.getIdToken();
                 headers['Authorization'] = `Bearer ${idToken}`;
