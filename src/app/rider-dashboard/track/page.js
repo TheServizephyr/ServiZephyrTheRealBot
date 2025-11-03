@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
@@ -50,9 +51,12 @@ export default function RiderTrackPage() {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
     const [activeOrders, setActiveOrders] = useState([]);
-    const [riderLocation, setRiderLocation] = useState(null);
+    const [riderData, setRiderData] = useState(null);
     const [markingOrderId, setMarkingOrderId] = useState(null);
     const [infoDialog, setInfoDialog] = useState({ isOpen: false, title: '', message: '' });
+    
+    // START: Ref for manual recentering
+    const mapRef = useRef(null);
 
     const handleApiCall = useCallback(async (endpoint, method = 'GET', body) => {
         if (!user) throw new Error('Authentication Error');
@@ -77,7 +81,7 @@ export default function RiderTrackPage() {
         try {
             const data = await handleApiCall('/api/rider/dashboard', 'GET');
             setActiveOrders(data.activeOrders || []);
-            setRiderLocation(data.driver?.currentLocation || null);
+            setRiderData(data.driver || null);
         } catch (err) {
             setError(err.message);
         } finally {
@@ -114,25 +118,48 @@ export default function RiderTrackPage() {
             setMarkingOrderId(null);
         }
     };
-    
-    // UseMemo to compute locations for the map
-    const mapLocations = useMemo(() => {
-        if (!activeOrders || activeOrders.length === 0) return { restaurant: null, customers: [], rider: riderLocation };
 
-        const restaurant = {
-            lat: activeOrders[0].restaurantLocation?._latitude,
-            lng: activeOrders[0].restaurantLocation?._longitude
+    const mapLocations = useMemo(() => {
+        const toLatLngLiteral = (loc) => {
+            if (!loc) return null;
+            const lat = loc.lat ?? loc._latitude;
+            const lng = loc.lng ?? loc._longitude;
+            return (typeof lat === 'number' && typeof lng === 'number') ? { lat, lng } : null;
         };
 
-        const customers = activeOrders.map(order => ({
-            id: order.id,
-            lat: order.customerLocation?._latitude,
-            lng: order.customerLocation?._longitude,
-            name: order.customerName,
-        }));
-        
-        return { restaurant, customers, rider: riderLocation };
-    }, [activeOrders, riderLocation]);
+        if (!activeOrders || activeOrders.length === 0) {
+            return { restaurant: null, customers: [], rider: toLatLngLiteral(riderData?.currentLocation) };
+        }
+
+        const restaurant = toLatLngLiteral(activeOrders[0].restaurantLocation);
+
+        const customers = activeOrders
+            .map(order => ({
+                id: order.id,
+                name: order.customerName,
+                ...toLatLngLiteral(order.customerLocation)
+            }))
+            .filter(loc => loc.lat && loc.lng);
+
+        const rider = toLatLngLiteral(riderData?.currentLocation);
+
+        return { restaurant, customers, rider };
+    }, [activeOrders, riderData]);
+    
+    // START: Manual recenter function
+    const handleRecenter = () => {
+      if (mapRef.current) {
+        const bounds = new window.google.maps.LatLngBounds();
+        if (mapLocations.restaurant) bounds.extend(mapLocations.restaurant);
+        if (mapLocations.rider) bounds.extend(mapLocations.rider);
+        mapLocations.customers.forEach(loc => bounds.extend(loc));
+
+        if (!bounds.isEmpty()) {
+          mapRef.current.fitBounds(bounds, 80); // 80px padding
+        }
+      }
+    };
+
 
     if (loading && activeOrders.length === 0) {
         return <div className="h-screen w-screen flex items-center justify-center"><Loader2 className="animate-spin text-primary h-16 w-16" /></div>;
@@ -155,12 +182,22 @@ export default function RiderTrackPage() {
                 </header>
 
                 <main className="flex-grow flex flex-col md:flex-row">
-                    <div className="w-full md:w-1/2 lg:w-2/3 h-64 md:h-auto">
+                    <div className="w-full md:w-1/2 lg:w-2/3 h-64 md:h-auto relative">
                         <LiveTrackingMap 
                              restaurantLocation={mapLocations.restaurant}
                              customerLocations={mapLocations.customers}
                              riderLocation={mapLocations.rider}
+                             mapRef={mapRef}
                         />
+                        <Button
+                            onClick={handleRecenter}
+                            variant="secondary"
+                            size="icon"
+                            className="absolute top-4 right-4 z-10 h-12 w-12 rounded-full shadow-lg"
+                            aria-label="Recenter map"
+                        >
+                            <Navigation />
+                        </Button>
                     </div>
                     <div className="w-full md:w-1/2 lg:w-1/3 flex-shrink-0 p-4 space-y-4 overflow-y-auto h-[calc(100vh-200px)] md:h-auto">
                         {activeOrders.length > 0 ? activeOrders.map(order => (

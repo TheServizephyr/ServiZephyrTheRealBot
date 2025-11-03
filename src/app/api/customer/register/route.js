@@ -65,7 +65,7 @@ export async function POST(req) {
 
         // --- THE FIX: Correctly extract customer location from the address object ---
         const customerLocation = (address && typeof address.latitude === 'number' && typeof address.longitude === 'number')
-            ? { latitude: address.latitude, longitude: address.longitude }
+            ? new FieldValue.GeoPoint(address.latitude, address.longitude)
             : null;
         console.log(`[DEBUG] /api/customer/register: Customer location extracted:`, customerLocation);
         // --- END FIX ---

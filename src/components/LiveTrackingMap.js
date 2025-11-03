@@ -44,8 +44,15 @@ const RouteLine = ({ from, to, isDashed = false }) => {
 };
 
 
-const MapComponent = ({ restaurantLocation, customerLocations, riderLocation }) => {
+const MapComponent = ({ restaurantLocation, customerLocations, riderLocation, onMapLoad }) => {
     const map = useMap();
+
+    // Use the onMapLoad prop to pass the map instance up to the parent
+    useEffect(() => {
+        if (map && onMapLoad) {
+            onMapLoad(map);
+        }
+    }, [map, onMapLoad]);
 
     // --- START THE FIX ---
     // Convert all incoming GeoPoint-like objects to LatLngLiteral
@@ -67,7 +74,6 @@ const MapComponent = ({ restaurantLocation, customerLocations, riderLocation }) 
     useEffect(() => {
         if (map) {
             const bounds = new window.google.maps.LatLngBounds();
-            // Use the converted LatLngLiterals
             if (restaurantLatLng) bounds.extend(restaurantLatLng);
             if (riderLatLng) bounds.extend(riderLatLng);
             customerLatLngs.forEach(loc => bounds.extend(loc));
@@ -110,7 +116,7 @@ const MapComponent = ({ restaurantLocation, customerLocations, riderLocation }) 
     );
 }
 
-const LiveTrackingMap = ({ restaurantLocation, customerLocations = [], riderLocation }) => {
+const LiveTrackingMap = ({ restaurantLocation, customerLocations = [], riderLocation, mapRef }) => {
     if (!GOOGLE_MAPS_API_KEY) {
         return <div className="w-full h-full bg-muted flex items-center justify-center"><p className="text-destructive">Google Maps API Key not found.</p></div>;
     }
@@ -133,6 +139,14 @@ const LiveTrackingMap = ({ restaurantLocation, customerLocations = [], riderLoca
     }
 
     const center = getCenter();
+    
+    // Callback to get the map instance from the child component
+    const handleMapLoad = (mapInstance) => {
+        if (mapRef) {
+            mapRef.current = mapInstance;
+        }
+    };
+
 
     return (
         <APIProvider apiKey={GOOGLE_MAPS_API_KEY}>
@@ -148,6 +162,7 @@ const LiveTrackingMap = ({ restaurantLocation, customerLocations = [], riderLoca
                      restaurantLocation={restaurantLocation}
                      customerLocations={customerLocations}
                      riderLocation={riderLocation}
+                     onMapLoad={handleMapLoad}
                 />
             </Map>
         </APIProvider>
