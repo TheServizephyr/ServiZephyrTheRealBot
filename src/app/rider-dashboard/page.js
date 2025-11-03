@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Power, PowerOff, Loader2, Mail, Check, X, ShoppingBag, Bell } from 'lucide-react';
 import { auth, db } from '@/lib/firebase';
-import { doc, onSnapshot, collection, query, where, getDoc, updateDoc, deleteDoc } from 'firebase/firestore';
+import { doc, onSnapshot, collection, query, where, getDoc, deleteDoc } from 'firebase/firestore';
 import { useUser } from '@/firebase';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -36,7 +36,7 @@ const InvitationCard = ({ invite, onAccept, onDecline }) => {
     )
 }
 
-const NewOrderCard = ({ order, onAccept }) => {
+const NewOrderCard = ({ order, onAccept, isAccepting }) => {
     return (
         <motion.div
             layout
@@ -59,7 +59,8 @@ const NewOrderCard = ({ order, onAccept }) => {
                 <p className="text-sm font-semibold">To: {order.customerName}</p>
                 <p className="text-xs text-muted-foreground">{order.customerAddress}</p>
             </div>
-            <Button onClick={() => onAccept(order.id)} className="w-full mt-4 bg-primary hover:bg-primary/90">
+            <Button onClick={() => onAccept(order.id)} className="w-full mt-4 bg-primary hover:bg-primary/90" disabled={isAccepting}>
+                {isAccepting ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : null}
                 Accept & Start Delivery
             </Button>
         </motion.div>
@@ -73,6 +74,7 @@ export default function RiderDashboardPage() {
     const [invites, setInvites] = useState([]);
     const [assignedOrders, setAssignedOrders] = useState([]);
     const [loading, setLoading] = useState(true);
+    const [isAcceptingOrder, setIsAcceptingOrder] = useState(false);
     const [error, setError] = useState('');
     const [infoDialog, setInfoDialog] = useState({ isOpen: false, title: '', message: '' });
     const [isRestaurantActive, setIsRestaurantActive] = useState(false);
@@ -222,12 +224,16 @@ export default function RiderDashboardPage() {
         }
     }
 
-    const handleAcceptOrder = async (orderId) => {
+    const handleAcceptOrder = async () => {
+        setIsAcceptingOrder(true);
         try {
-            await handleApiCall('/api/rider/accept-order', 'POST', { orderId });
-            router.push(`/track/${orderId}`);
+            const orderIds = assignedOrders.map(o => o.id);
+            await handleApiCall('/api/rider/accept-order', 'POST', { orderIds });
+            router.push(`/rider-dashboard/track`);
         } catch (err) {
             setInfoDialog({ isOpen: true, title: 'Error', message: `Could not process order acceptance: ${err.message}`});
+        } finally {
+            setIsAcceptingOrder(false);
         }
     };
 
@@ -270,18 +276,7 @@ export default function RiderDashboardPage() {
             </motion.div>
 
             <AnimatePresence>
-            {driverData && isRestaurantActive && (
-                 <motion.div
-                    layout
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    className="bg-green-500/10 border border-green-500/30 rounded-lg p-4 text-center text-green-400 font-semibold flex items-center justify-center gap-2"
-                >
-                    <Check size={20}/> You are an employee of: {driverData.currentRestaurantName}
-                </motion.div>
-            )}
-            
-            {driverData && !isRestaurantActive && (
+            {driverData && !driverData.currentRestaurantId && (
                 <Card>
                     <CardHeader>
                         <CardTitle>Restaurant Invitation</CardTitle>
@@ -311,8 +306,12 @@ export default function RiderDashboardPage() {
                     {assignedOrders.length > 0 ? (
                          <div className="space-y-4">
                             {assignedOrders.map(order => (
-                                <NewOrderCard key={order.id} order={order} onAccept={handleAcceptOrder} />
+                                <NewOrderCard key={order.id} order={order} onAccept={() => {}} isAccepting={isAcceptingOrder} />
                             ))}
+                            <Button onClick={handleAcceptOrder} className="w-full mt-4 bg-primary hover:bg-primary/90" disabled={isAcceptingOrder}>
+                                {isAcceptingOrder ? <Loader2 className="animate-spin mr-2"/> : null}
+                                Accept All ({assignedOrders.length}) & Start
+                            </Button>
                         </div>
                     ) : (
                          <p className="text-muted-foreground text-center py-8">You have no new orders. Waiting for your restaurant to assign one...</p>

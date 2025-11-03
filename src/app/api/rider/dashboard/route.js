@@ -20,8 +20,18 @@ export async function GET(req) {
         }
 
         const driverData = driverDoc.data();
-        console.log(`[DEBUG] /api/rider/dashboard: Successfully fetched driver data for UID: ${uid}`);
-        return NextResponse.json({ driver: driverData }, { status: 200 });
+        
+        // Also fetch active orders for the dashboard
+        const ordersQuery = firestore.collection('orders')
+            .where('deliveryBoyId', '==', uid)
+            .where('status', 'in', ['on_the_way', 'dispatched']);
+            
+        const ordersSnapshot = await ordersQuery.get();
+        const activeOrders = ordersSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        
+        console.log(`[DEBUG] /api/rider/dashboard: Successfully fetched driver data and ${activeOrders.length} active orders for UID: ${uid}`);
+        
+        return NextResponse.json({ driver: driverData, activeOrders }, { status: 200 });
 
     } catch (error) {
         console.error("[DEBUG] /api/rider/dashboard: CRITICAL ERROR in GET:", error);

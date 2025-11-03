@@ -7,109 +7,60 @@ import { Loader2 } from 'lucide-react';
 
 const GOOGLE_MAPS_API_KEY = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
 
-const RouteLine = ({ from, to, isCurved = false }) => {
+const RouteLine = ({ from, to, isDashed = false }) => {
     const map = useMap();
     const polylineRef = useRef(null);
   
     useEffect(() => {
         if (!map || !from || !to) {
-            if (polylineRef.current) {
-                polylineRef.current.setMap(null);
-            }
+            if (polylineRef.current) polylineRef.current.setMap(null);
             return;
-        };
+        }
   
         const primaryColor = 'hsl(var(--primary))';
-
-        const straightLineOptions = {
+        const lineOptions = {
             strokeColor: primaryColor,
             strokeOpacity: 0.8,
             strokeWeight: 5,
-        };
-
-        const curvedDashedLineOptions = {
-            strokeColor: primaryColor,
-            strokeOpacity: 1,
-            strokeWeight: 0,
-            icons: [{
-                icon: {
-                    path: 'M 0,-1 0,1',
-                    strokeOpacity: 1,
-                    strokeWeight: 2,
-                    scale: 3,
-                },
+            icons: isDashed ? [{
+                icon: { path: 'M 0,-1 0,1', strokeOpacity: 1, scale: 3, strokeWeight: 2 },
                 offset: '0',
                 repeat: '12px'
-            }],
+            }] : []
         };
-
+        
         if (!polylineRef.current) {
             polylineRef.current = new window.google.maps.Polyline();
         }
-
-        let path;
-        if (isCurved) {
-            polylineRef.current.setOptions(curvedDashedLineOptions);
-            
-            const fromLatLng = new window.google.maps.LatLng(from.lat, from.lng);
-            const toLatLng = new window.google.maps.LatLng(to.lat, to.lng);
-            
-            const curvePoints = [];
-            const numPoints = 50; 
-            for (let i = 0; i <= numPoints; i++) {
-                const t = i / numPoints;
-                const lat = (1 - t) * (1 - t) * fromLatLng.lat() + 2 * (1 - t) * t * (fromLatLng.lat() + (toLatLng.lat() - fromLatLng.lat())*0.2) + t * t * toLatLng.lat();
-                const lng = (1 - t) * (1 - t) * fromLatLng.lng() + 2 * (1 - t) * t * (fromLatLng.lng() + (toLatLng.lng() - fromLatLng.lng())*0.8) + t * t * toLatLng.lng();
-                curvePoints.push({ lat, lng });
-            }
-            path = curvePoints;
-
-        } else {
-            polylineRef.current.setOptions(straightLineOptions);
-            path = [
-                { lat: from.lat, lng: from.lng },
-                { lat: to.lat, lng: to.lng },
-            ];
-        }
-  
-        polylineRef.current.setPath(path);
+        
+        polylineRef.current.setOptions(lineOptions);
+        polylineRef.current.setPath([from, to]);
         polylineRef.current.setMap(map);
   
-    }, [map, from, to, isCurved]);
+        return () => { if (polylineRef.current) polylineRef.current.setMap(null); };
+    }, [map, from, to, isDashed]);
   
-     useEffect(() => {
-        return () => {
-            if (polylineRef.current) {
-                polylineRef.current.setMap(null);
-            }
-        };
-    }, []);
-
     return null;
 };
 
 
-const MapComponent = ({ restaurantLocation, customerLocation, riderLocation }) => {
+const MapComponent = ({ restaurantLocation, customerLocations, riderLocation }) => {
     const map = useMap();
 
     useEffect(() => {
         if (map) {
             const bounds = new window.google.maps.LatLngBounds();
             if (restaurantLocation) bounds.extend(restaurantLocation);
-            if (customerLocation) bounds.extend(customerLocation);
             if (riderLocation) bounds.extend(riderLocation);
+            customerLocations.forEach(loc => bounds.extend(loc));
 
             if (!bounds.isEmpty()) {
                 map.fitBounds(bounds, 80); // 80px padding
             }
         }
-    }, [restaurantLocation, customerLocation, riderLocation, map]);
+    }, [restaurantLocation, customerLocations, riderLocation, map]);
 
     const routeStart = riderLocation || restaurantLocation;
-    const routeEnd = customerLocation;
-    
-    const showRoute = routeStart && routeEnd;
-    const isCurved = !riderLocation && !!restaurantLocation;
 
     return (
         <>
@@ -118,27 +69,35 @@ const MapComponent = ({ restaurantLocation, customerLocation, riderLocation }) =
                     <div style={{ fontSize: '2rem' }}>🏢</div>
                 </AdvancedMarker>
             )}
-            {customerLocation && (
-                <AdvancedMarker position={customerLocation}>
+            {customerLocations.map(loc => (
+                <AdvancedMarker key={loc.id} position={loc}>
                     <div style={{ fontSize: '2rem' }}>🏠</div>
                 </AdvancedMarker>
-            )}
+            ))}
             {riderLocation && (
                 <AdvancedMarker position={riderLocation}>
                      <div style={{ fontSize: '2.5rem' }}>🛵</div>
                 </AdvancedMarker>
             )}
-             {showRoute && <RouteLine from={routeStart} to={routeEnd} isCurved={isCurved} />}
+            {/* Draw lines from start point to all customer locations */}
+            {routeStart && customerLocations.map(customerLoc => (
+                <RouteLine 
+                    key={`route-${customerLoc.id}`} 
+                    from={routeStart} 
+                    to={customerLoc} 
+                    isDashed={!riderLocation} // Dashed if rider hasn't started moving
+                />
+            ))}
         </>
     );
 }
 
-const LiveTrackingMap = ({ restaurantLocation, customerLocation, riderLocation }) => {
+const LiveTrackingMap = ({ restaurantLocation, customerLocations = [], riderLocation }) => {
     if (!GOOGLE_MAPS_API_KEY) {
         return <div className="w-full h-full bg-muted flex items-center justify-center"><p className="text-destructive">Google Maps API Key not found.</p></div>;
     }
 
-    const center = customerLocation || restaurantLocation || { lat: 28.6139, lng: 77.2090 };
+    const center = riderLocation || restaurantLocation || customerLocations[0] || { lat: 28.6139, lng: 77.2090 };
 
     return (
         <APIProvider apiKey={GOOGLE_MAPS_API_KEY}>
@@ -152,7 +111,7 @@ const LiveTrackingMap = ({ restaurantLocation, customerLocation, riderLocation }
             >
                 <MapComponent
                      restaurantLocation={restaurantLocation}
-                     customerLocation={customerLocation}
+                     customerLocations={customerLocations}
                      riderLocation={riderLocation}
                 />
             </Map>

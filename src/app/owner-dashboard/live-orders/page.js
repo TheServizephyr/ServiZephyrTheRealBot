@@ -1,5 +1,3 @@
-
-
 'use client';
 
 import React, { useState, useEffect, useMemo } from 'react';
@@ -18,6 +16,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import Link from 'next/link';
 import InfoDialog from '@/components/InfoDialog';
+import { Checkbox } from '@/components/ui/checkbox';
+
 
 export const dynamic = 'force-dynamic';
 
@@ -232,8 +232,9 @@ const BillModal = ({ order, restaurant, onClose, onPrint }) => {
     );
 };
 
-const AssignRiderModal = ({ isOpen, onClose, onAssign, order, riders }) => {
+const AssignRiderModal = ({ isOpen, onClose, onAssign, orders, riders }) => {
     const [selectedRiderId, setSelectedRiderId] = useState(null);
+    const [selectedOrderIds, setSelectedOrderIds] = useState([]);
     const [markAsActive, setMarkAsActive] = useState(false);
     const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -245,17 +246,26 @@ const AssignRiderModal = ({ isOpen, onClose, onAssign, order, riders }) => {
             setSelectedRiderId(null);
             setMarkAsActive(false);
             setIsSubmitting(false);
+            // Pre-select the order(s) the modal was opened for
+            setSelectedOrderIds(orders.map(o => o.id));
         }
-    }, [isOpen]);
+    }, [isOpen, orders]);
+    
+    const handleOrderSelection = (orderId) => {
+        setSelectedOrderIds(prev => 
+            prev.includes(orderId) ? prev.filter(id => id !== orderId) : [...prev, orderId]
+        );
+    }
 
     const handleAssign = async () => {
-        if (selectedRiderId) {
+        if (selectedRiderId && selectedOrderIds.length > 0) {
             setIsSubmitting(true);
             try {
-                await onAssign(order.id, selectedRiderId, markAsActive);
+                await onAssign(selectedOrderIds, selectedRiderId, markAsActive);
                 onClose();
             } catch (error) {
-                // The parent's catch block will show an alert
+                // error is handled by parent
+                throw error;
             } finally {
                 setIsSubmitting(false);
             }
@@ -266,31 +276,55 @@ const AssignRiderModal = ({ isOpen, onClose, onAssign, order, riders }) => {
         <Dialog open={isOpen} onOpenChange={onClose}>
             <DialogContent className="bg-background border-border text-foreground">
                 <DialogHeader>
-                    <DialogTitle>Assign Rider for Order #{order?.id.substring(0, 5)}</DialogTitle>
-                    <DialogDescription>Select a rider to dispatch this order.</DialogDescription>
+                    <DialogTitle>Assign Rider for Order(s)</DialogTitle>
+                    <DialogDescription>Select orders to batch and a rider to dispatch them.</DialogDescription>
                 </DialogHeader>
-                <div className="py-4 space-y-3 max-h-60 overflow-y-auto">
-                    {riders.length > 0 ? riders.map(rider => (
-                        <div
-                            key={rider.id}
-                            onClick={() => setSelectedRiderId(rider.id)}
-                            className={cn(
-                                "p-3 rounded-lg border cursor-pointer transition-all flex justify-between items-center",
-                                selectedRiderId === rider.id 
-                                    ? 'bg-primary/20 border-primary ring-2 ring-primary'
-                                    : 'bg-muted/50 border-border hover:bg-muted'
-                            )}
-                        >
-                            <div>
-                                <p className="font-bold text-foreground">{rider.name}</p>
-                                <p className="text-sm text-muted-foreground">{rider.phone}</p>
-                            </div>
-                             {rider.status === 'Inactive' && <span className="text-xs font-semibold px-2 py-1 bg-red-500/10 text-red-500 rounded-full">Inactive</span>}
+
+                <div className="py-4 space-y-4 max-h-[60vh] overflow-y-auto">
+                    <div>
+                        <Label>Select Orders to Assign:</Label>
+                        <div className="mt-2 space-y-2 p-2 bg-muted/50 rounded-lg">
+                            {orders.map(order => (
+                                <div key={order.id} className="flex items-center gap-3 p-2 bg-background rounded-md">
+                                    <Checkbox id={`order-${order.id}`} checked={selectedOrderIds.includes(order.id)} onCheckedChange={() => handleOrderSelection(order.id)} />
+                                    <Label htmlFor={`order-${order.id}`} className="cursor-pointer w-full">
+                                        <div className="flex justify-between">
+                                            <span className="font-semibold">{order.id.substring(0,8)}...</span>
+                                            <span className="text-xs text-muted-foreground">{order.customer}</span>
+                                        </div>
+                                    </Label>
+                                </div>
+                            ))}
                         </div>
-                    )) : (
-                        <p className="text-center text-muted-foreground py-4">No riders found. Please add riders in the 'Delivery' section.</p>
-                    )}
+                    </div>
+                    <div>
+                        <Label>Select a Rider:</Label>
+                         <div className="mt-2 space-y-2">
+                             {riders.length > 0 ? riders.map(rider => (
+                                <div
+                                    key={rider.id}
+                                    onClick={() => setSelectedRiderId(rider.id)}
+                                    className={cn(
+                                        "p-3 rounded-lg border cursor-pointer transition-all flex justify-between items-center",
+                                        selectedRiderId === rider.id 
+                                            ? 'bg-primary/20 border-primary ring-2 ring-primary'
+                                            : 'bg-muted/50 border-border hover:bg-muted'
+                                    )}
+                                >
+                                    <div>
+                                        <p className="font-bold text-foreground">{rider.name}</p>
+                                        <p className="text-sm text-muted-foreground">{rider.phone}</p>
+                                    </div>
+                                    {rider.status === 'Inactive' && <span className="text-xs font-semibold px-2 py-1 bg-red-500/10 text-red-500 rounded-full">Inactive</span>}
+                                    {rider.status === 'On Delivery' && <span className="text-xs font-semibold px-2 py-1 bg-blue-500/10 text-blue-500 rounded-full">On Delivery</span>}
+                                </div>
+                            )) : (
+                                <p className="text-center text-muted-foreground py-4">No riders found. Please add riders in the 'Delivery' section.</p>
+                            )}
+                        </div>
+                    </div>
                 </div>
+
                  {isSelectedRiderInactive && (
                     <motion.div
                         initial={{ opacity: 0, y: -10 }}
@@ -311,7 +345,7 @@ const AssignRiderModal = ({ isOpen, onClose, onAssign, order, riders }) => {
                 )}
                 <DialogFooter>
                     <DialogClose asChild><Button variant="secondary" disabled={isSubmitting}>Cancel</Button></DialogClose>
-                    <Button onClick={handleAssign} disabled={!selectedRiderId || (isSelectedRiderInactive && !markAsActive) || isSubmitting} className="bg-primary hover:bg-primary/90">
+                    <Button onClick={handleAssign} disabled={!selectedRiderId || selectedOrderIds.length === 0 || (isSelectedRiderInactive && !markAsActive) || isSubmitting} className="bg-primary hover:bg-primary/90">
                         {isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : <Bike size={16} className="mr-2"/>}
                         {isSubmitting ? 'Assigning...' : 'Assign & Dispatch'}
                     </Button>
@@ -467,7 +501,7 @@ const ActionButton = ({ status, onNext, onRevert, order, onRejectClick, isUpdati
         'confirmed': { text: 'Start Preparing', icon: CookingPot, action: () => onNext(nextStatus) },
         'preparing': isPickup
             ? { text: 'Ready for Pickup', icon: PackageCheck, action: () => onNext(nextStatus) }
-            : { text: 'Out for Delivery', icon: Bike, action: onAssignClick },
+            : { text: 'Out for Delivery', icon: Bike, action: () => onAssignClick([order]) },
         'ready_for_pickup': { text: 'Mark as Picked Up', icon: PartyPopper, action: () => onNext(nextStatus) },
         'dispatched': { text: 'Mark Delivered', icon: PartyPopper, action: () => onNext(nextStatus) },
     };
@@ -549,7 +583,7 @@ export default function LiveOrdersPage() {
   const [updatingOrderId, setUpdatingOrderId] = useState(null);
   const [sortConfig, setSortConfig] = useState({ key: 'orderDate', direction: 'desc' });
   const [billData, setBillData] = useState({ order: null, restaurant: null });
-  const [assignModalData, setAssignModalData] = useState({ isOpen: false, order: null });
+  const [assignModalData, setAssignModalData] = useState({ isOpen: false, orders: [] });
   const [rejectionModalData, setRejectionModalData] = useState({ isOpen: false, order: null });
   const [detailModalData, setDetailModalData] = useState({ isOpen: false, data: null });
   const [activeFilter, setActiveFilter] = useState('All');
@@ -669,22 +703,22 @@ export default function LiveOrdersPage() {
     }
   };
   
-  const handleAssignRider = async (orderId, riderId, activateRider) => {
-    console.log(`[LiveOrders] Assigning rider ${riderId} to order ${orderId}. Activate rider: ${activateRider}`);
-    setUpdatingOrderId(orderId);
+  const handleAssignRider = async (orderIds, riderId, activateRider) => {
+    console.log(`[LiveOrders] Assigning rider ${riderId} to orders ${orderIds.join(', ')}. Activate rider: ${activateRider}`);
+    setUpdatingOrderId(orderIds[0]); // Show loader on the first order
     try {
         if (activateRider) {
              console.log(`[LiveOrders] Activating rider ${riderId}...`);
-             handleAPICall('PATCH', { boy: { id: riderId, status: 'Available' } }, '/api/owner/delivery');
+             await handleAPICall('PATCH', { boy: { id: riderId, status: 'Available' } }, '/api/owner/delivery');
         }
         
-        await handleAPICall('PATCH', { orderId, newStatus: 'dispatched', deliveryBoyId: riderId });
+        await handleAPICall('PATCH', { orderId: orderIds[0], newStatus: 'dispatched', deliveryBoyId: riderId });
         await fetchInitialData(true);
-        setAssignModalData({ isOpen: false, order: null });
+        setAssignModalData({ isOpen: false, orders: [] });
         console.log(`[LiveOrders] Rider assigned successfully.`);
     } catch (error) {
         setInfoDialog({ isOpen: true, title: 'Error', message: `Error assigning rider: ${error.message}` });
-        setAssignModalData({ isOpen: false, order: null });
+        setAssignModalData({ isOpen: false, orders: [] });
         throw error;
     } finally {
         setUpdatingOrderId(null);
@@ -821,9 +855,9 @@ export default function LiveOrdersPage() {
         {assignModalData.isOpen && (
             <AssignRiderModal
                 isOpen={assignModalData.isOpen}
-                onClose={() => setAssignModalData({ isOpen: false, order: null })}
+                onClose={() => setAssignModalData({ isOpen: false, orders: [] })}
                 onAssign={handleAssignRider}
-                order={assignModalData.order}
+                orders={assignModalData.orders}
                 riders={riders}
             />
         )}
@@ -977,7 +1011,7 @@ export default function LiveOrdersPage() {
                                             onRevert={(newStatus) => handleUpdateStatus(order.id, newStatus)}
                                             onRejectClick={(order) => setRejectionModalData({ isOpen: true, order: order })}
                                             onPrintClick={() => handlePrintClick(order.id)}
-                                            onAssignClick={() => setAssignModalData({ isOpen: true, order: order })}
+                                            onAssignClick={(orders) => setAssignModalData({ isOpen: true, orders })}
                                         />
                                     </td>
                                 </motion.tr>
