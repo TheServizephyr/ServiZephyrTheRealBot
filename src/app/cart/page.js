@@ -1,4 +1,3 @@
-
 'use client';
 
 import React, { useState, useEffect, useMemo, Suspense } from 'react';
@@ -199,7 +198,7 @@ const CartPageInternal = () => {
             setCart([]);
             setAppliedCoupons([]);
         }
-    }, [restaurantId, phone, token, user]);
+    }, [restaurantId]);
 
     const deliveryType = useMemo(() => {
         if (tableId) return 'dine-in';

@@ -1,4 +1,3 @@
-
 'use client';
 
 import { motion } from 'framer-motion';
@@ -43,30 +42,23 @@ function CustomerHubContent() {
     const token = searchParams.get('token');
 
     useEffect(() => {
-        console.log("[MyHub Page] useEffect triggered. isUserLoading:", isUserLoading);
         const fetchHubData = async () => {
             if (user) {
-                console.log("[MyHub Page] User found:", user.uid, "Fetching hub data...");
                 setLoading(true);
                 try {
                     const idToken = await user.getIdToken();
-                    console.log("[MyHub Page] Got ID token. Calling API.");
                     const res = await fetch('/api/customer/hub-data', {
                         headers: { 'Authorization': `Bearer ${idToken}` }
                     });
-                    console.log("[MyHub Page] API response status:", res.status);
                     if (!res.ok) throw new Error('Failed to fetch hub data');
                     const data = await res.json();
-                    console.log("[MyHub Page] API data received:", JSON.stringify(data, null, 2));
                     setHubData(data);
                 } catch (error) {
-                    console.error("[MyHub Page] Error fetching hub data:", error);
+                    console.error("Error fetching hub data:", error);
                 } finally {
-                    console.log("[MyHub Page] Finished fetching, setting loading to false.");
                     setLoading(false);
                 }
             } else {
-                 console.log("[MyHub Page] No user found. Not fetching data.");
                 setLoading(false);
             }
         };
@@ -75,8 +67,6 @@ function CustomerHubContent() {
             fetchHubData();
         }
     }, [user, isUserLoading]);
-
-    console.log("[MyHub Page] Rendering component. Loading state:", loading, "HubData state:", hubData);
 
     const buildOrderLink = (restaurantId) => {
         let url = `/order/${restaurantId}`;

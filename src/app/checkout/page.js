@@ -1,4 +1,3 @@
-
 'use client';
 
 import React, { useState, useEffect, useMemo, Suspense } from 'react';
@@ -161,11 +160,10 @@ const CheckoutPageInternal = () => {
     
     useEffect(() => {
         const verifyAndFetch = async () => {
-            // Normalize phone from URL, user object, or local storage
-            const phoneToUse = phone && phone !== 'null' ? phone : (user?.phoneNumber || localStorage.getItem('lastKnownPhone'));
+            const phoneToUse = phone && phone !== 'null' ? phone : user?.phoneNumber;
             const tokenToUse = token && token !== 'null' ? token : null;
 
-            if (!phoneToUse && !tokenToUse && !user) {
+            if (!tokenToUse && !user) {
                  setTokenError("No session information found. Please start your journey from WhatsApp or log in.");
                  setLoading(false);
                  return;
@@ -292,11 +290,11 @@ const CheckoutPageInternal = () => {
 
 
     const handleAddNewAddress = () => {
-        const currentUrl = window.location.href;
-        const params = new URLSearchParams();
-        params.append('returnUrl', currentUrl);
-        if (phone) params.append('phone', phone);
-        if (token) params.append('token', token);
+        const params = new URLSearchParams({
+            returnUrl: window.location.href,
+            phone: phone || '',
+            token: token || '',
+        });
         router.push(`/add-address?${params.toString()}`);
     };
 

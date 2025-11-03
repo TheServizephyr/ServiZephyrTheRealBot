@@ -1,5 +1,4 @@
 
-
 'use client';
 
 import React, { useState, useEffect, Suspense, useMemo, useCallback, useRef } from 'react';
@@ -704,7 +703,6 @@ const OrderPageInternal = () => {
     useEffect(() => {
         const verifyAndFetch = async () => {
             if (!phone || !token) {
-                // If user is logged in, they can proceed without a token
                 if (auth.currentUser) {
                     setIsTokenValid(true);
                     fetchInitialData();
@@ -814,8 +812,8 @@ const OrderPageInternal = () => {
         const cartDataToSave = {
             cart, notes, deliveryType, restaurantId,
             restaurantName: restaurantData.name,
-            phone: phone, // Pass from URL
-            token: token, // Pass from URL
+            phone: phone, 
+            token: token,
             coupons: restaurantData.coupons,
             loyaltyPoints,
             deliveryCharge: restaurantData.deliveryCharge,
@@ -836,7 +834,7 @@ const OrderPageInternal = () => {
                 if (parsedData.expiryTimestamp && now > parsedData.expiryTimestamp) {
                     localStorage.removeItem(`cart_${restaurantId}`);
                     setCart([]); setNotes('');
-                } else if(parsedData.phone === phone && parsedData.token === token) { // Security check
+                } else {
                     setCart(parsedData.cart || []);
                     setNotes(parsedData.notes || '');
                     if (parsedData.deliveryType && !tableIdFromUrl) setDeliveryType(parsedData.deliveryType);
@@ -976,6 +974,13 @@ const OrderPageInternal = () => {
     }
 
     const handleCheckout = () => {
+        const params = new URLSearchParams({
+            restaurantId,
+            phone: phone || 'null',
+            token: token || 'null',
+        });
+        if (tableIdFromUrl) params.append('table', tableIdFromUrl);
+
         let currentCartData = JSON.parse(localStorage.getItem(`cart_${restaurantId}`)) || {};
         if (deliveryType === 'dine-in') {
             const setupStr = localStorage.getItem(`dineInSetup_${restaurantId}_${tableIdFromUrl}`);
@@ -987,9 +992,10 @@ const OrderPageInternal = () => {
             }
         }
         localStorage.setItem(`cart_${restaurantId}`, JSON.stringify(currentCartData));
-        let url = `/cart?restaurantId=${restaurantId}&phone=${phone}&token=${token}`;
-        if (tableIdFromUrl) url += `&table=${tableIdFromUrl}`;
-        if (currentCartData.dineInTabId) url += `&tabId=${currentCartData.dineInTabId}`;
+
+        if (currentCartData.dineInTabId) params.append('tabId', currentCartData.dineInTabId);
+        
+        const url = `/cart?${params.toString()}`;
         router.push(url);
     };
     

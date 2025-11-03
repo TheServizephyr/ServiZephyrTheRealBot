@@ -1,4 +1,3 @@
-
 'use client';
 
 import React, { useState, useEffect, Suspense, useRef, useCallback } from 'react';
@@ -251,7 +250,7 @@ const AddAddressPageInternal = () => {
         <div className="h-screen w-screen flex flex-col bg-background text-foreground">
             <InfoDialog isOpen={infoDialog.isOpen} onClose={() => setInfoDialog({ isOpen: false, title: '', message: '' })} title={infoDialog.title} message={infoDialog.message} />
             <header className="p-4 border-b border-border flex items-center gap-4 flex-shrink-0 z-10 bg-background/80 backdrop-blur-sm">
-                 <Button variant="ghost" size="icon" onClick={() => router.back()}><ArrowLeft/></Button>
+                 <Button variant="ghost" size="icon" onClick={() => router.push(returnUrl)}><ArrowLeft/></Button>
                  <h1 className="text-xl font-bold">Add Address Details</h1>
             </header>
 
