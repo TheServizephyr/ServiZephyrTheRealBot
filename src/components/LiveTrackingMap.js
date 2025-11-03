@@ -7,51 +7,85 @@ import { Loader2 } from 'lucide-react';
 
 const GOOGLE_MAPS_API_KEY = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
 
+// --- START: NEW CURVE CALCULATION LOGIC ---
+/**
+ * Calculates intermediate points for a curved line between two coordinates.
+ * @param {google.maps.LatLng} p1 Start point
+ * @param {google.maps.LatLng} p2 End point
+ * @returns {google.maps.LatLng[]} An array of points forming the curve.
+ */
+function getCurvedPath(p1, p2) {
+    if (!window.google || !p1 || !p2) return [];
+
+    const projection = new window.google.maps.MVCObject();
+    projection.set("projection", new window.google.maps.Marker().getProjection());
+
+    // Calculate heading and distance
+    const heading = window.google.maps.geometry.spherical.computeHeading(p1, p2);
+    const distance = window.google.maps.geometry.spherical.computeDistanceBetween(p1, p2);
+
+    // Determine the curvature amount. Higher number = less curve.
+    const curveFactor = 0.2; 
+    
+    const path = [];
+    for (let i = 0; i <= 100; i++) {
+        const step = i / 100;
+        const latLng = window.google.maps.geometry.spherical.computeOffset(p1, step * distance, heading);
+        
+        // Apply a sine wave to create the curve
+        const curve = Math.sin(step * Math.PI) * distance * curveFactor;
+        const curvedLatLng = window.google.maps.geometry.spherical.computeOffset(latLng, curve, heading + 90);
+        
+        path.push(curvedLatLng);
+    }
+    return path;
+}
+// --- END: NEW CURVE CALCULATION LOGIC ---
+
+
 const RouteLine = ({ from, to, isDashed = false }) => {
     const map = useMap();
     const polylineRef = useRef(null);
   
     useEffect(() => {
-        if (!map || !from || !to) {
-            if (polylineRef.current) {
-                polylineRef.current.setMap(null);
-            }
+        if (!map || !from || !to || !window.google) {
+            if (polylineRef.current) polylineRef.current.setMap(null);
             return;
         }
   
-        const blackColor = '#000000'; // Black color for high visibility
+        // --- START: UPDATED LINE LOGIC ---
+        const path = getCurvedPath(new window.google.maps.LatLng(from), new window.google.maps.LatLng(to));
         
         let lineOptions;
+        const blackColor = '#000000';
 
         if (isDashed) {
             // Options for a DOTTED line
             lineOptions = {
-                path: [from, to],
-                geodesic: true,
-                strokeOpacity: 0, // Make the actual line invisible
+                path: path,
+                strokeOpacity: 0,
                 icons: [{
                     icon: {
-                        path: 'M 0,-1 0,1', // A small vertical line
+                        path: 'M 0,-1 0,1',
                         strokeColor: blackColor,
                         strokeOpacity: 1,
-                        strokeWeight: 2, // Thicker dots for better visibility
-                        scale: 3, // Size of the dot
+                        strokeWeight: 2,
+                        scale: 2,
                     },
                     offset: '0',
-                    repeat: '15px' // Space between dots
+                    repeat: '15px'
                 }]
             };
         } else {
             // Options for a SOLID line for when the rider is moving
             lineOptions = {
-                path: [from, to],
-                geodesic: true,
+                path: path,
                 strokeColor: blackColor,
-                strokeOpacity: 0.8, // Slightly transparent solid line
+                strokeOpacity: 0.8,
                 strokeWeight: 5,
-                icons: [] // No icons for solid line
             };
         }
+        // --- END: UPDATED LINE LOGIC ---
         
         if (!polylineRef.current) {
             polylineRef.current = new window.google.maps.Polyline();
@@ -61,9 +95,7 @@ const RouteLine = ({ from, to, isDashed = false }) => {
         polylineRef.current.setMap(map);
   
         return () => { 
-            if (polylineRef.current) {
-                polylineRef.current.setMap(null); 
-            }
+            if (polylineRef.current) polylineRef.current.setMap(null); 
         };
     }, [map, from, to, isDashed]);
   
@@ -101,7 +133,7 @@ const MapComponent = ({ restaurantLocation, customerLocations, riderLocation, on
     );
 
     useEffect(() => {
-        if (map) {
+        if (map && window.google) {
             const bounds = new window.google.maps.LatLngBounds();
             if (restaurantLatLng) bounds.extend(restaurantLatLng);
             if (riderLatLng) bounds.extend(riderLatLng);
@@ -180,7 +212,7 @@ const LiveTrackingMap = (props) => {
 
 
     return (
-        <APIProvider apiKey={GOOGLE_MAPS_API_KEY}>
+        <APIProvider apiKey={GOOGLE_MAPS_API_KEY} libraries={['geometry']}>
             <Map
                 mapId={'live_tracking_map'}
                 style={{ width: '100%', height: '100%' }}
