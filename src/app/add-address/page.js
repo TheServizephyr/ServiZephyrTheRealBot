@@ -176,7 +176,7 @@ const AddAddressPageInternal = () => {
                 reverseGeocode(mapCenter);
             }
         }
-    }, [isTokenValid, user, phone, useCurrent, getCurrentGeolocation, reverseGeocode]);
+    }, [isTokenValid, user, phone, useCurrent, getCurrentGeolocation, reverseGeocode, addressDetails]);
 
 
     const handleConfirmLocation = async () => {
@@ -328,5 +328,3 @@ const AddAddressPage = () => (
 );
 
 export default AddAddressPage;
-
-    
