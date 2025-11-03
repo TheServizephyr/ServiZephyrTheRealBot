@@ -123,9 +123,15 @@ export async function PATCH(req) {
         const auth = await getAuth();
         const firestore = await getFirestore();
         const { businessId, businessSnap } = await verifyOwnerAndGetBusiness(req, auth, firestore);
-        const { orderId, orderIds, newStatus, deliveryBoyId, rejectionReason } = await req.json();
 
-        console.log(`[API][PATCH /orders] Body:`, await req.json());
+        // --- THE FIX ---
+        // Read the body ONCE and store it in a variable.
+        const body = await req.json();
+        console.log(`[API][PATCH /orders] Body:`, body);
+        
+        // Use the 'body' variable from now on, instead of calling req.json() again.
+        const { orderId, orderIds, newStatus, deliveryBoyId, rejectionReason } = body;
+        // --- END FIX ---
 
         const idsToUpdate = orderIds && orderIds.length > 0 ? orderIds : (orderId ? [orderId] : []);
 
