@@ -1,10 +1,11 @@
 
+
 'use client';
 
 import React, { useState, useEffect, Suspense, useMemo, useCallback, useRef } from 'react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Utensils, Plus, Minus, X, Home, User, Edit2, ShoppingCart, Star, CookingPot, BookOpen, Check, SlidersHorizontal, ArrowUpDown, PlusCircle, Ticket, Gift, Sparkles, Flame, Search, Trash2, ChevronDown, Tag as TagIcon, RadioGroup, IndianRupee, HardHat, MapPin, Bike, Store, ConciergeBell, QrCode, CalendarClock, Wallet, Users, Camera, BookMarked, Calendar as CalendarIcon, Bell, CheckCircle, AlertTriangle, ExternalLink, ShoppingBag, Sun, Moon, ChevronUp, Lock } from 'lucide-react';
+import { Utensils, Plus, Minus, X, Home, User, Edit2, ShoppingCart, Star, CookingPot, BookOpen, Check, SlidersHorizontal, ArrowUpDown, PlusCircle, Ticket, Gift, Sparkles, Flame, Search, Trash2, ChevronDown, Tag as TagIcon, RadioGroup, IndianRupee, HardHat, MapPin, Bike, Store, ConciergeBell, QrCode, CalendarClock, Wallet, Users, Camera, BookMarked, Calendar as CalendarIcon, Bell, CheckCircle, AlertTriangle, ExternalLink, ShoppingBag, Sun, Moon, ChevronUp, Lock, Loader2 } from 'lucide-react';
 import Image from 'next/image';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
@@ -622,11 +623,38 @@ const OrderPageInternal = () => {
     const searchParams = useSearchParams();
     const { restaurantId } = params;
     
-    // Auth Token Security
+    // --- START: NEW TOKEN VERIFICATION LOGIC ---
     const [isTokenValid, setIsTokenValid] = useState(false);
     const [tokenError, setTokenError] = useState('');
     const phone = searchParams.get('phone');
     const token = searchParams.get('token');
+
+    useEffect(() => {
+        const verifyToken = async () => {
+            if (!phone || !token) {
+                setTokenError("No session information found. Please start your order from WhatsApp.");
+                return;
+            }
+
+            try {
+                const res = await fetch('/api/auth/verify-token', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ phone, token }),
+                });
+                if (!res.ok) {
+                    const errData = await res.json();
+                    throw new Error(errData.message || "Session validation failed.");
+                }
+                setIsTokenValid(true);
+            } catch (err) {
+                setTokenError(err.message);
+            }
+        };
+
+        verifyToken();
+    }, [phone, token]);
+    // --- END: NEW TOKEN VERIFICATION LOGIC ---
 
     const [customerLocation, setCustomerLocation] = useState(null);
     const [restaurantData, setRestaurantData] = useState({
@@ -701,36 +729,7 @@ const OrderPageInternal = () => {
 
 
     useEffect(() => {
-        const verifyAndFetch = async () => {
-            if (!phone || !token) {
-                if (auth.currentUser) {
-                    setIsTokenValid(true);
-                    fetchInitialData();
-                    return;
-                }
-                setTokenError("No session token found. Please start your order from WhatsApp.");
-                setLoading(false);
-                return;
-            }
-
-            try {
-                const res = await fetch('/api/auth/verify-token', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ phone, token }),
-                });
-                if (!res.ok) {
-                    const errData = await res.json();
-                    throw new Error(errData.message || "Session validation failed.");
-                }
-                setIsTokenValid(true);
-                fetchInitialData();
-            } catch (err) {
-                setTokenError(err.message);
-                setLoading(false);
-            }
-        };
-
+        // This effect now runs only after token verification is successful
         const fetchInitialData = async () => {
             if (!restaurantId || restaurantId === 'undefined') {
                 setError("Restaurant ID is invalid.");
@@ -789,8 +788,14 @@ const OrderPageInternal = () => {
             }
         };
 
-        verifyAndFetch();
-    }, [restaurantId, phone, token, tableIdFromUrl, tabIdFromUrl]);
+        if (isTokenValid) {
+            fetchInitialData();
+        } else if (!tokenError) {
+            setLoading(true); // Show loader while token is being verified
+        } else {
+            setLoading(false); // Stop loading if there's a token error
+        }
+    }, [isTokenValid, tokenError, restaurantId, phone, tableIdFromUrl, tabIdFromUrl]);
     
     const cartPersistenceDependencies = [
         restaurantId,
@@ -976,8 +981,8 @@ const OrderPageInternal = () => {
     const handleCheckout = () => {
         const params = new URLSearchParams({
             restaurantId,
-            phone: phone || 'null',
-            token: token || 'null',
+            phone: phone || '', // Ensure it's not null
+            token: token || '', // Ensure it's not null
         });
         if (tableIdFromUrl) params.append('table', tableIdFromUrl);
 
@@ -1011,13 +1016,21 @@ const OrderPageInternal = () => {
         }
     }, [isQrScannerOpen]);
     
-    if (loading || (!isTokenValid && !tokenError)) {
-        return <div className="min-h-screen bg-background flex items-center justify-center"><div className="animate-spin rounded-full h-16 w-16 border-b-2 border-primary"></div></div>;
+    // --- START: MODIFIED RENDER LOGIC ---
+    if (loading) {
+        return <div className="min-h-screen bg-background flex items-center justify-center"><Loader2 className="animate-spin text-primary h-16 w-16" /></div>;
     }
 
     if (tokenError) {
         return <TokenVerificationLock message={tokenError} />;
     }
+    
+    if (!isTokenValid) {
+        // This state occurs between the component mounting and the token being verified.
+        // It's a good place to show a loader.
+        return <div className="min-h-screen bg-background flex items-center justify-center"><Loader2 className="animate-spin text-primary h-16 w-16" /></div>;
+    }
+    // --- END: MODIFIED RENDER LOGIC ---
     
     if (error || restaurantData.status === 'rejected' || restaurantData.status === 'suspended') {
        return (

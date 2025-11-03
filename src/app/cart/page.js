@@ -1,9 +1,10 @@
+
 'use client';
 
 import React, { useState, useEffect, useMemo, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Utensils, Plus, Minus, X, Home, User, ShoppingCart, CookingPot, Ticket, Gift, ArrowLeft, Sparkles, Check, PlusCircle, Trash2, ChevronDown, Tag as TagIcon, RadioGroup, IndianRupee, HardHat, Bike, Store, Heart, Wallet, Clock, ChevronUp, Edit2 } from 'lucide-react';
+import { Utensils, Plus, Minus, X, Home, User, ShoppingCart, CookingPot, Ticket, Gift, ArrowLeft, Sparkles, Check, PlusCircle, Trash2, ChevronDown, Tag as TagIcon, RadioGroup, IndianRupee, HardHat, Bike, Store, Heart, Wallet, Clock, ChevronUp, Edit2, Lock, Loader2 } from 'lucide-react';
 import Script from 'next/script';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose } from "@/components/ui/dialog";
@@ -148,12 +149,25 @@ const PickupTimeModal = ({ isOpen, onClose, onConfirm, pickupTime, setPickupTime
 };
 
 
+const TokenVerificationLock = ({ message }) => (
+    <div className="min-h-screen bg-background flex flex-col items-center justify-center text-center p-4">
+        <Lock size={48} className="text-destructive mb-4" />
+        <h1 className="text-2xl font-bold text-foreground">Session Invalid</h1>
+        <p className="mt-2 text-muted-foreground max-w-md">{message}</p>
+        <p className="mt-4 text-sm text-muted-foreground">Please initiate a new session by sending a message to the restaurant on WhatsApp.</p>
+    </div>
+);
+
+
 const CartPageInternal = () => {
     const router = useRouter();
     const searchParams = useSearchParams();
     const { user } = useUser(); // Get user from Firebase
     const restaurantId = searchParams.get('restaurantId');
     
+    // --- START: NEW TOKEN VERIFICATION LOGIC ---
+    const [isTokenValid, setIsTokenValid] = useState(false);
+    const [tokenError, setTokenError] = useState('');
     const phone = searchParams.get('phone');
     const token = searchParams.get('token');
     const tableId = searchParams.get('table');
@@ -171,34 +185,66 @@ const CartPageInternal = () => {
     const [isPickupTimeModalOpen, setIsPickupTimeModalOpen] = useState(false);
     const [pickupTime, setPickupTime] = useState('');
     const [isCheckoutFlow, setIsCheckoutFlow] = useState(false);
+    const [loadingPage, setLoadingPage] = useState(true);
+
+    useEffect(() => {
+        const verifyToken = async () => {
+            if (!phone || !token) {
+                setTokenError("No session information found. Please start a new order from WhatsApp.");
+                setLoadingPage(false);
+                return;
+            }
+
+            try {
+                const res = await fetch('/api/auth/verify-token', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ phone, token }),
+                });
+                if (!res.ok) {
+                    const errData = await res.json();
+                    throw new Error(errData.message || "Session validation failed.");
+                }
+                setIsTokenValid(true);
+            } catch (err) {
+                setTokenError(err.message);
+            } finally {
+                setLoadingPage(false);
+            }
+        };
+
+        verifyToken();
+    }, [phone, token]);
+    // --- END: NEW TOKEN VERIFICATION LOGIC ---
     
     useEffect(() => {
-        if (!restaurantId) return;
-
-        const data = localStorage.getItem(`cart_${restaurantId}`);
-        if (data) {
-            const parsedData = JSON.parse(data);
-            const now = new Date().getTime();
-            if (parsedData.expiryTimestamp && now > parsedData.expiryTimestamp) {
-                localStorage.removeItem(`cart_${restaurantId}`);
-                setCartData(null);
-                setCart([]);
-                setNotes('');
-                setAppliedCoupons([]);
-                setTipAmount(0);
+        // This effect runs only after the token has been successfully validated
+        if (isTokenValid && restaurantId) {
+            const data = localStorage.getItem(`cart_${restaurantId}`);
+            if (data) {
+                const parsedData = JSON.parse(data);
+                const now = new Date().getTime();
+                if (parsedData.expiryTimestamp && now > parsedData.expiryTimestamp) {
+                    localStorage.removeItem(`cart_${restaurantId}`);
+                    setCartData(null);
+                    setCart([]);
+                    setNotes('');
+                    setAppliedCoupons([]);
+                    setTipAmount(0);
+                } else {
+                    setCartData(parsedData);
+                    setCart(parsedData.cart || []);
+                    setNotes(parsedData.notes || '');
+                    setAppliedCoupons(parsedData.appliedCoupons || []);
+                    setTipAmount(parsedData.tipAmount || 0);
+                    setPickupTime(parsedData.pickupTime || '');
+                }
             } else {
-                setCartData(parsedData);
-                setCart(parsedData.cart || []);
-                setNotes(parsedData.notes || '');
-                setAppliedCoupons(parsedData.appliedCoupons || []);
-                setTipAmount(parsedData.tipAmount || 0);
-                setPickupTime(parsedData.pickupTime || '');
+                setCart([]);
+                setAppliedCoupons([]);
             }
-        } else {
-            setCart([]);
-            setAppliedCoupons([]);
         }
-    }, [restaurantId]);
+    }, [isTokenValid, restaurantId]);
 
     const deliveryType = useMemo(() => {
         if (tableId) return 'dine-in';
@@ -266,8 +312,8 @@ const CartPageInternal = () => {
 
         const params = new URLSearchParams({
             restaurantId,
-            phone: phone || 'null',
-            token: token || 'null',
+            phone: phone || '',
+            token: token || '',
         });
         if (tableId) params.append('table', tableId);
         if (tabId) params.append('tabId', tabId);
@@ -297,10 +343,10 @@ const CartPageInternal = () => {
         updateCartInStorage({ pickupTime });
         
         if (isCheckoutFlow) {
-            const params = new URLSearchParams({
+             const params = new URLSearchParams({
                 restaurantId,
-                phone: phone || 'null',
-                token: token || 'null',
+                phone: phone || '',
+                token: token || '',
             });
             let checkoutUrl = `/checkout?${params.toString()}`;
             router.push(checkoutUrl);
@@ -409,6 +455,21 @@ const CartPageInternal = () => {
     const allCoupons = cartData?.coupons || [];
     const specialCoupons = allCoupons.filter(c => c.customerId);
     const normalCoupons = allCoupons.filter(c => !c.customerId);
+
+    // --- START: MODIFIED RENDER LOGIC ---
+    if (loadingPage) {
+        return <div className="min-h-screen bg-background flex items-center justify-center"><Loader2 className="animate-spin text-primary h-16 w-16"/></div>;
+    }
+
+    if (tokenError) {
+        return <TokenVerificationLock message={tokenError} />;
+    }
+
+    if (!isTokenValid) {
+        // This should theoretically not be reached if the lock screen works, but as a fallback:
+        return <div className="min-h-screen bg-background flex items-center justify-center"><p className="text-destructive">Session could not be verified.</p></div>;
+    }
+    // --- END: MODIFIED RENDER LOGIC ---
 
     if (!cartData || !restaurantId) {
         return (
