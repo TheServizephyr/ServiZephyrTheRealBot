@@ -123,86 +123,84 @@ export async function PATCH(req) {
         const auth = await getAuth();
         const firestore = await getFirestore();
         const { businessId, businessSnap } = await verifyOwnerAndGetBusiness(req, auth, firestore);
-        const { orderId, newStatus, deliveryBoyId, rejectionReason } = await req.json();
+        const { orderId, orderIds, newStatus, deliveryBoyId, rejectionReason } = await req.json();
 
-        console.log(`[API][PATCH /orders] Body:`, { orderId, newStatus, deliveryBoyId, rejectionReason });
+        console.log(`[API][PATCH /orders] Body:`, await req.json());
 
-        if (!orderId || !newStatus) {
-            return NextResponse.json({ message: 'Order ID and new status are required.' }, { status: 400 });
+        const idsToUpdate = orderIds && orderIds.length > 0 ? orderIds : (orderId ? [orderId] : []);
+
+        if (idsToUpdate.length === 0 || !newStatus) {
+            return NextResponse.json({ message: 'Order ID(s) and new status are required.' }, { status: 400 });
         }
         
         const validStatuses = ["pending", "confirmed", "preparing", "dispatched", "delivered", "rejected", "ready_for_pickup", "picked_up"];
         if(!validStatuses.includes(newStatus)) {
             return NextResponse.json({ message: 'Invalid status provided.' }, { status: 400 });
         }
-
-        const orderRef = firestore.collection('orders').doc(orderId);
         
-        const orderDoc = await orderRef.get();
-        if (!orderDoc.exists || orderDoc.data().restaurantId !== businessId) {
-            return NextResponse.json({ message: 'Access denied to this order.' }, { status: 403 });
-        }
-        
-        const updateData = { 
-            status: newStatus,
-            statusHistory: FieldValue.arrayUnion({
-                status: newStatus,
-                timestamp: new Date()
-            })
-        };
+        const batch = firestore.batch();
         let deliveryBoyData = null;
 
-        if (newStatus === 'rejected' && rejectionReason) {
-            updateData.rejectionReason = rejectionReason;
-        }
-
         if (newStatus === 'dispatched' && deliveryBoyId) {
-            console.log(`[API][PATCH /orders] Dispatch logic started for order ${orderId}, rider ${deliveryBoyId}.`);
+            console.log(`[API][PATCH /orders] Dispatch logic started for riders ${deliveryBoyId}.`);
             const businessCollectionName = businessSnap.data().businessType === 'shop' ? 'shops' : 'restaurants';
             const deliveryBoyRef = firestore.collection(businessCollectionName).doc(businessId).collection('deliveryBoys').doc(deliveryBoyId);
 
-            console.log(`[API][PATCH /orders] Rider ref path: ${deliveryBoyRef.path}`);
-            
             const deliveryBoySnap = await deliveryBoyRef.get();
-            console.log(`[API][PATCH /orders] Rider snap exists: ${deliveryBoySnap.exists}`);
-            
             if (deliveryBoySnap.exists) {
                 deliveryBoyData = deliveryBoySnap.data();
-                updateData.deliveryBoyId = deliveryBoyId;
-                await deliveryBoyRef.update({ status: 'On Delivery' });
-                console.log(`[API][PATCH /orders] Rider data found:`, deliveryBoyData);
+                batch.update(deliveryBoyRef, { status: 'On Delivery' });
             }
         }
-        
-        console.log(`[API][PATCH /orders] Updating order ${orderId} with:`, updateData);
-        await orderRef.update(updateData);
-        console.log(`[API][PATCH /orders] Order ${orderId} successfully updated in Firestore.`);
-        
-        // Always send notification on status change
-        const orderData = orderDoc.data();
-        const businessData = businessSnap.data();
-        
-        const notificationPayload = {
-            customerPhone: orderData.customerPhone,
-            botPhoneNumberId: businessData.botPhoneNumberId,
-            customerName: orderData.customerName,
-            orderId: orderId,
-            restaurantName: businessData.name,
-            status: newStatus,
-            deliveryBoy: deliveryBoyData,
-            businessType: businessData.businessType || 'restaurant', // Pass business type
-        };
-        
-        console.log('[API][PATCH /orders] Preparing to send notification with payload:', notificationPayload);
 
-        try {
-            await sendOrderStatusUpdateToCustomer(notificationPayload);
-        } catch (notificationError) {
-            // Log the error but don't crash the main process. The status is already updated.
-            console.error(`[API LOG] CRITICAL: Failed to send WhatsApp notification for order ${orderId}, but status was updated successfully. Error:`, notificationError.message);
+        for (const id of idsToUpdate) {
+            const orderRef = firestore.collection('orders').doc(id);
+            const orderDoc = await orderRef.get();
+            if (!orderDoc.exists || orderDoc.data().restaurantId !== businessId) {
+                 console.warn(`[API][PATCH /orders] Skipping order ${id}: Not found or access denied.`);
+                continue; // Skip this order
+            }
+
+            const updateData = { 
+                status: newStatus,
+                statusHistory: FieldValue.arrayUnion({
+                    status: newStatus,
+                    timestamp: new Date()
+                })
+            };
+
+            if (newStatus === 'rejected' && rejectionReason) {
+                updateData.rejectionReason = rejectionReason;
+            }
+
+            if (newStatus === 'dispatched' && deliveryBoyId) {
+                updateData.deliveryBoyId = deliveryBoyId;
+            }
+            
+            batch.update(orderRef, updateData);
+
+            // Send notification for each order
+            const orderData = orderDoc.data();
+            const businessData = businessSnap.data();
+            const notificationPayload = {
+                customerPhone: orderData.customerPhone,
+                botPhoneNumberId: businessData.botPhoneNumberId,
+                customerName: orderData.customerName,
+                orderId: id,
+                restaurantName: businessData.name,
+                status: newStatus,
+                deliveryBoy: deliveryBoyData,
+                businessType: businessData.businessType || 'restaurant',
+            };
+
+            sendOrderStatusUpdateToCustomer(notificationPayload).catch(e => 
+                console.error(`[API LOG] CRITICAL: Failed to send WhatsApp notification for order ${id}. Error:`, e.message)
+            );
         }
         
-        console.log(`[API][PATCH /orders] Request for order ${orderId} processed successfully.`);
+        await batch.commit();
+        console.log(`[API][PATCH /orders] Batch update completed successfully for ${idsToUpdate.length} orders.`);
+        
         return NextResponse.json({ message: 'Order status updated successfully.' }, { status: 200 });
 
     } catch (error) {

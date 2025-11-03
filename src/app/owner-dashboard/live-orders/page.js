@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useState, useEffect, useMemo } from 'react';
@@ -399,7 +400,6 @@ const OrderDetailModal = ({ data, isOpen, onClose }) => {
                             <div className="flex justify-between"><span>Subtotal:</span> <span className="font-medium">₹{order.subtotal?.toFixed(2)}</span></div>
                             {order.discount > 0 && <div className="flex justify-between text-green-400"><span>Discount:</span> <span className="font-medium">- ₹{order.discount?.toFixed(2)}</span></div>}
                             {order.deliveryType !== 'pickup' && <div className="flex justify-between"><span>Delivery:</span> <span>₹{order.deliveryCharge?.toFixed(2)}</span></div>}
-                            <div className="flex justify-between"><span>Taxes (CGST+SGST):</span> <span>₹{((order.cgst || 0) + (order.sgst || 0)).toFixed(2)}</span></div>
                             <div className="border-t border-dashed my-2"></div>
                             <div className="flex justify-between text-base font-bold"><span>Grand Total:</span> <span>₹{order.totalAmount?.toFixed(2)}</span></div>
                         </div>
@@ -589,6 +589,7 @@ export default function LiveOrdersPage() {
   const [activeFilter, setActiveFilter] = useState('All');
   const [searchQuery, setSearchQuery] = useState('');
   const [infoDialog, setInfoDialog] = useState({ isOpen: false, title: '', message: '' });
+  const [selectedOrders, setSelectedOrders] = useState([]);
   const searchParams = useSearchParams();
   const impersonatedOwnerId = searchParams.get('impersonate_owner_id');
 
@@ -608,16 +609,10 @@ export default function LiveOrdersPage() {
             ridersUrl.searchParams.append('impersonate_owner_id', impersonatedOwnerId);
         }
         
-        console.log(`[LiveOrders] Fetching orders from: ${ordersUrl}`);
-        console.log(`[LiveOrders] Fetching riders from: ${ridersUrl}`);
-        
         const [ordersRes, ridersRes] = await Promise.all([
             fetch(ordersUrl.toString(), { headers: { 'Authorization': `Bearer ${idToken}` } }),
             fetch(ridersUrl.toString(), { headers: { 'Authorization': `Bearer ${idToken}` } })
         ]);
-
-        console.log(`[LiveOrders] Orders API response status: ${ordersRes.status}`);
-        console.log(`[LiveOrders] Riders API response status: ${ridersRes.status}`);
 
         if (!ordersRes.ok) throw new Error('Failed to fetch orders');
         const ordersData = await ordersRes.json();
@@ -625,37 +620,30 @@ export default function LiveOrdersPage() {
         if (ridersRes.ok) {
             const ridersData = await ridersRes.json();
             setRiders(ridersData.boys || []);
-             console.log(`[LiveOrders] Fetched ${ridersData.boys?.length || 0} riders.`);
         }
 
         setOrders(ordersData.orders || []);
-        console.log(`[LiveOrders] Fetched ${ordersData.orders?.length || 0} orders.`);
     } catch (error) {
         console.error("[LiveOrders] Error fetching initial data:", error);
         setInfoDialog({ isOpen: true, title: 'Error', message: `Could not load data: ${error.message}` });
     } finally {
         if(!isManualRefresh) setLoading(false);
-        console.log("[LiveOrders] Data fetch finished.");
     }
   };
   
   useEffect(() => {
-    console.log("[LiveOrders] Component mounted. Setting up auth listener.");
     const unsubscribe = auth.onAuthStateChanged(user => {
       if (user) {
-        console.log("[LiveOrders] Auth state changed: user found. Fetching initial data.");
         fetchInitialData();
       }
       else {
-        console.log("[LiveOrders] Auth state changed: no user. Setting loading to false.");
         setLoading(false);
       }
     });
 
     const interval = setInterval(() => {
-        console.log("[LiveOrders] Interval: Triggering background refresh.");
         fetchInitialData(true);
-    }, 30000); // Poll every 30 seconds
+    }, 30000);
     return () => {
         unsubscribe();
         clearInterval(interval);
@@ -663,7 +651,6 @@ export default function LiveOrdersPage() {
   }, [impersonatedOwnerId]);
 
   const handleAPICall = async (method, body, endpoint = '/api/owner/orders') => {
-    console.log(`[LiveOrders] Making API call. Endpoint: ${endpoint}, Method: ${method}`);
     const user = auth.currentUser;
     if (!user) throw new Error("Authentication required.");
     const idToken = await user.getIdToken();
@@ -682,16 +669,13 @@ export default function LiveOrdersPage() {
         body: method !== 'GET' ? JSON.stringify(body) : undefined,
     });
     const data = await res.json();
-    console.log(`[LiveOrders] API call response. Status: ${res.status}`);
     if (!res.ok) {
-        console.error(`[LiveOrders] API call failed:`, data.message);
         throw new Error(data.message || 'API call failed');
     }
     return data;
   };
 
   const handleUpdateStatus = async (orderId, newStatus) => {
-    console.log(`[LiveOrders] Updating status for order ${orderId} to ${newStatus}`);
     setUpdatingOrderId(orderId);
     try {
       await handleAPICall('PATCH', { orderId, newStatus });
@@ -704,49 +688,43 @@ export default function LiveOrdersPage() {
   };
   
   const handleAssignRider = async (orderIds, riderId, activateRider) => {
-    console.log(`[LiveOrders] Assigning rider ${riderId} to orders ${orderIds.join(', ')}. Activate rider: ${activateRider}`);
-    setUpdatingOrderId(orderIds[0]); // Show loader on the first order
+    setUpdatingOrderId(orderIds[0]);
     try {
         if (activateRider) {
-             console.log(`[LiveOrders] Activating rider ${riderId}...`);
              await handleAPICall('PATCH', { boy: { id: riderId, status: 'Available' } }, '/api/owner/delivery');
         }
         
-        await handleAPICall('PATCH', { orderId: orderIds[0], newStatus: 'dispatched', deliveryBoyId: riderId });
+        await handleAPICall('PATCH', { orderIds, newStatus: 'dispatched', deliveryBoyId: riderId });
         await fetchInitialData(true);
         setAssignModalData({ isOpen: false, orders: [] });
-        console.log(`[LiveOrders] Rider assigned successfully.`);
     } catch (error) {
         setInfoDialog({ isOpen: true, title: 'Error', message: `Error assigning rider: ${error.message}` });
         setAssignModalData({ isOpen: false, orders: [] });
         throw error;
     } finally {
         setUpdatingOrderId(null);
+        setSelectedOrders([]);
     }
   };
 
 
   const handleRejectOrder = async (orderId, reason) => {
-    console.log(`[LiveOrders] Rejecting order ${orderId}. Reason: ${reason}`);
     setUpdatingOrderId(orderId);
     try {
         await handleAPICall('PATCH', { orderId, newStatus: 'rejected', rejectionReason: reason });
         await fetchInitialData(true);
-         console.log(`[LiveOrders] Order rejected successfully.`);
     } catch (error) {
         setInfoDialog({ isOpen: true, title: 'Error', message: `Error rejecting order: ${error.message}` });
-        throw error; // Re-throw so modal knows it failed
+        throw error;
     } finally {
         setUpdatingOrderId(null);
     }
   }
 
   const handlePrintClick = async (orderId) => {
-      console.log(`[LiveOrders] Preparing to print bill for order ${orderId}.`);
       try {
         setUpdatingOrderId(orderId);
         const data = await handleAPICall('GET', { id: orderId });
-        console.log("[LiveOrders] Fetched bill data:", data);
         setBillData({ order: data.order, restaurant: data.restaurant });
       } catch(e) {
         setInfoDialog({ isOpen: true, title: 'Error', message: `Could not load bill data: ${e.message}` });
@@ -756,10 +734,8 @@ export default function LiveOrdersPage() {
   };
 
   const handleDetailClick = async (orderId, customerId) => {
-     console.log(`[LiveOrders] Fetching details for order ${orderId}, customer ${customerId}.`);
     try {
       const data = await handleAPICall('GET', { id: orderId, customerId });
-       console.log("[LiveOrders] Fetched detail data:", data);
       setDetailModalData({ isOpen: true, data });
     } catch(e) {
       setInfoDialog({ isOpen: true, title: 'Error', message: `Could not load details: ${e.message}` });
@@ -770,7 +746,6 @@ export default function LiveOrdersPage() {
     window.print();
   };
 
-
   const handleSort = (key) => {
     let direction = 'asc';
     if (sortConfig.key === key && sortConfig.direction === 'asc') {
@@ -778,6 +753,17 @@ export default function LiveOrdersPage() {
     }
     setSortConfig({ key, direction });
   };
+  
+  const handleSelectOrder = (orderId) => {
+      setSelectedOrders(prev => 
+        prev.includes(orderId) ? prev.filter(id => id !== orderId) : [...prev, orderId]
+      );
+  };
+  
+  const handleAssignSelected = () => {
+      const ordersToAssign = orders.filter(o => selectedOrders.includes(o.id));
+      setAssignModalData({isOpen: true, orders: ordersToAssign});
+  }
   
   const filteredAndSortedOrders = useMemo(() => {
     let sortableItems = [...orders];
@@ -905,12 +891,26 @@ export default function LiveOrdersPage() {
                 <TabsTrigger value="Rejected">Rejected</TabsTrigger>
             </TabsList>
         </Tabs>
+        
+        {selectedOrders.length > 0 && (
+            <motion.div 
+                initial={{ opacity: 0, y: -20 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="bg-primary/10 border border-primary/30 rounded-lg p-3 flex items-center justify-between mb-4"
+            >
+                <p className="font-semibold text-primary">{selectedOrders.length} order(s) selected for batching.</p>
+                <Button size="sm" onClick={handleAssignSelected}>
+                    <Bike size={16} className="mr-2"/> Assign Selected to Rider
+                </Button>
+            </motion.div>
+        )}
 
         <div className="bg-card border border-border rounded-xl overflow-hidden">
             <div className="overflow-x-auto">
                 <table className="w-full">
                     <thead>
                         <tr className="bg-muted/30">
+                            <th className="p-4 w-12 text-left text-sm font-semibold text-muted-foreground"></th>
                             <SortableHeader column="id" sortConfig={sortConfig} onSort={handleSort}>Order Details</SortableHeader>
                             <th className="p-4 text-left text-sm font-semibold text-muted-foreground hidden md:table-cell">Items</th>
                             <SortableHeader column="orderDate" sortConfig={sortConfig} onSort={handleSort}>Time</SortableHeader>
@@ -923,6 +923,7 @@ export default function LiveOrdersPage() {
                            {loading && filteredAndSortedOrders.length === 0 ? (
                                 Array.from({length: 5}).map((_, i) => (
                                     <tr key={i} className="animate-pulse">
+                                        <td className="p-4 w-12"></td>
                                         <td className="p-4"><div className="h-5 bg-muted rounded w-1/2"></div></td>
                                         <td className="p-4 hidden md:table-cell"><div className="h-5 bg-muted rounded w-full"></div></td>
                                         <td className="p-4"><div className="h-5 bg-muted rounded w-1/4"></div></td>
@@ -940,6 +941,15 @@ export default function LiveOrdersPage() {
                                     transition={{ duration: 0.3 }}
                                     className="hover:bg-muted/50"
                                 >
+                                    <td className="p-4 w-12 align-top">
+                                        {order.status === 'preparing' && order.deliveryType !== 'pickup' && (
+                                            <Checkbox
+                                                checked={selectedOrders.includes(order.id)}
+                                                onCheckedChange={() => handleSelectOrder(order.id)}
+                                                aria-label={`Select order ${order.id}`}
+                                            />
+                                        )}
+                                    </td>
                                     <td className="p-4 align-top">
                                         <div className="font-bold text-foreground text-sm truncate max-w-[100px] sm:max-w-none">{order.id}</div>
                                         <div 
@@ -1019,7 +1029,7 @@ export default function LiveOrdersPage() {
                         </AnimatePresence>
                          { !loading && filteredAndSortedOrders.length === 0 && (
                             <tr>
-                                <td colSpan="5" className="text-center p-16 text-muted-foreground">
+                                <td colSpan="6" className="text-center p-16 text-muted-foreground">
                                     <p className="text-lg font-semibold">No orders found.</p>
                                     <p>Try adjusting your filters or search term.</p>
                                 </td>

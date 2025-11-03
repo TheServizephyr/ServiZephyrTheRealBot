@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
@@ -58,10 +59,7 @@ const NewOrderCard = ({ order, onAccept, isAccepting }) => {
                 <p className="text-sm font-semibold">To: {order.customerName}</p>
                 <p className="text-xs text-muted-foreground">{order.customerAddress}</p>
             </div>
-            <Button onClick={() => onAccept(order.id)} className="w-full mt-4 bg-primary hover:bg-primary/90" disabled={isAccepting}>
-                {isAccepting ? <Loader2 className="mr-2 h-4 w-4 animate-spin"/> : null}
-                Accept & Start Delivery
-            </Button>
+            {/* The individual accept button is removed in favor of a batch accept */}
         </motion.div>
     );
 };
