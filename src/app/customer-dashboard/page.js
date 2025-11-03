@@ -1,3 +1,4 @@
+
 'use client';
 
 import { motion } from 'framer-motion';
@@ -37,7 +38,7 @@ function CustomerHubContent() {
     const { user, isUserLoading } = useUser();
     const [hubData, setHubData] = useState(null);
     const [loading, setLoading] = useState(true);
-    const [isRedirecting, setIsRedirecting] = useState(false);
+    const [isNavigating, setIsNavigating] = useState(false);
     const [infoDialog, setInfoDialog] = useState({ isOpen: false, title: '', message: '' });
     const router = useRouter();
 
@@ -75,7 +76,7 @@ function CustomerHubContent() {
             setInfoDialog({isOpen: true, title: 'Authentication Error', message: 'Please log in again to continue.'});
             return;
         }
-        setIsRedirecting(true);
+        setIsNavigating(true);
         try {
             const idToken = await user.getIdToken();
             const res = await fetch('/api/auth/generate-session-token', {
@@ -90,14 +91,14 @@ function CustomerHubContent() {
 
         } catch (error) {
             setInfoDialog({isOpen: true, title: 'Navigation Error', message: error.message});
-            setIsRedirecting(false);
+            setIsNavigating(false);
         }
     };
 
 
     return (
         <>
-        {isRedirecting && (
+        {isNavigating && (
             <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center">
                 <Loader2 className="animate-spin text-white h-12 w-12" />
             </div>

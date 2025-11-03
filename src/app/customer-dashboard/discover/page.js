@@ -6,6 +6,10 @@ import { motion } from 'framer-motion';
 import { Loader2, MapPin, Store, Soup, Navigation, AlertTriangle } from 'lucide-react';
 import Link from 'next/link';
 import { APIProvider, Map, AdvancedMarker, InfoWindow, useMap } from '@vis.gl/react-google-maps';
+import { useUser } from '@/firebase';
+import { useRouter } from 'next/navigation';
+import InfoDialog from '@/components/InfoDialog';
+import { Button } from '@/components/ui/button';
 
 const GOOGLE_MAPS_API_KEY = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
 
@@ -23,7 +27,25 @@ const LocationMarker = ({ location, onMarkerClick }) => {
     );
 };
 
-const DiscoverMap = ({ locations, initialCenter }) => {
+// FIX: Added navigation handler and state to the InfoWindow content
+const InfoWindowContent = ({ location, onNavigate, isNavigating }) => (
+    <div className="p-2">
+        <h4 className="font-bold text-lg text-foreground">{location.name}</h4>
+        <p className="text-sm text-muted-foreground">{location.address}</p>
+        <Button 
+            onClick={() => onNavigate(location.id)} 
+            disabled={isNavigating}
+            className="mt-2"
+            size="sm"
+        >
+             {isNavigating ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+            View Menu &rarr;
+        </Button>
+    </div>
+);
+
+
+const DiscoverMap = ({ locations, initialCenter, onNavigate, isNavigating }) => {
     const [selectedLocation, setSelectedLocation] = useState(null);
     const map = useMap();
 
@@ -43,13 +65,7 @@ const DiscoverMap = ({ locations, initialCenter }) => {
                     position={{ lat: selectedLocation.lat, lng: selectedLocation.lng }}
                     onCloseClick={() => setSelectedLocation(null)}
                 >
-                    <div className="p-2">
-                        <h4 className="font-bold text-lg text-foreground">{selectedLocation.name}</h4>
-                        <p className="text-sm text-muted-foreground">{selectedLocation.address}</p>
-                        <Link href={`/order/${selectedLocation.id}`} className="text-primary font-bold text-sm mt-2 inline-block">
-                            View Menu &rarr;
-                        </Link>
-                    </div>
+                    <InfoWindowContent location={selectedLocation} onNavigate={onNavigate} isNavigating={isNavigating} />
                 </InfoWindow>
             )}
         </>
@@ -61,6 +77,13 @@ export default function DiscoverPage() {
     const [center, setCenter] = useState({ lat: 28.6139, lng: 77.2090 }); // Default to Delhi
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
+    // --- START: Added state for navigation ---
+    const { user } = useUser();
+    const router = useRouter();
+    const [isNavigating, setIsNavigating] = useState(false);
+    const [infoDialog, setInfoDialog] = useState({ isOpen: false, title: '', message: '' });
+    // --- END: Added state for navigation ---
+
 
     useEffect(() => {
         const fetchLocations = async () => {
@@ -101,8 +124,35 @@ export default function DiscoverPage() {
 
     }, []);
 
+    // --- START: Added navigation handler ---
+    const handleNavigation = async (restaurantId) => {
+        if (!user) {
+            setInfoDialog({isOpen: true, title: 'Authentication Error', message: 'Please log in again to continue.'});
+            return;
+        }
+        setIsNavigating(true);
+        try {
+            const idToken = await user.getIdToken();
+            const res = await fetch('/api/auth/generate-session-token', {
+                method: 'POST',
+                headers: { 'Authorization': `Bearer ${idToken}` }
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.message || 'Failed to create a secure session.');
+            
+            const { phone, token } = data;
+            router.push(`/order/${restaurantId}?phone=${phone}&token=${token}`);
+
+        } catch (error) {
+            setInfoDialog({isOpen: true, title: 'Navigation Error', message: error.message});
+            setIsNavigating(false);
+        }
+    };
+    // --- END: Added navigation handler ---
+
     return (
         <div className="relative h-[calc(100vh-148px)] md:h-[calc(100vh-81px)] w-full flex flex-col">
+             <InfoDialog isOpen={infoDialog.isOpen} onClose={() => setInfoDialog({isOpen: false, title: '', message: ''})} title={infoDialog.title} message={infoDialog.message}/>
             <header className="absolute top-0 left-0 right-0 z-10 p-4">
                 <div className="container mx-auto bg-background/80 backdrop-blur-md p-4 rounded-xl shadow-lg border border-border">
                     <h1 className="text-2xl font-bold tracking-tight">Discover Nearby</h1>
@@ -132,7 +182,7 @@ export default function DiscoverPage() {
                             gestureHandling={'greedy'}
                             disableDefaultUI={true}
                         >
-                           <DiscoverMap locations={locations} initialCenter={center} />
+                           <DiscoverMap locations={locations} initialCenter={center} onNavigate={handleNavigation} isNavigating={isNavigating} />
                         </Map>
                     </APIProvider>
                 )}
