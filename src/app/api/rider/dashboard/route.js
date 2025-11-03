@@ -21,10 +21,11 @@ export async function GET(req) {
 
         const driverData = driverDoc.data();
         
-        // Also fetch active orders for the dashboard
+        // --- START THE FIX: Fetch 'dispatched' AND 'on_the_way' orders ---
         const ordersQuery = firestore.collection('orders')
             .where('deliveryBoyId', '==', uid)
-            .where('status', 'in', ['on_the_way', 'dispatched']);
+            .where('status', 'in', ['dispatched', 'on_the_way']);
+        // --- END THE FIX ---
             
         const ordersSnapshot = await ordersQuery.get();
         const activeOrders = ordersSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));

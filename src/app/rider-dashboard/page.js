@@ -4,7 +4,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Power, PowerOff, Loader2, Mail, Check, X, ShoppingBag, Bell } from 'lucide-react';
+import { Power, PowerOff, Loader2, Mail, Check, X, ShoppingBag, Bell, Bike, CheckCircle } from 'lucide-react';
 import { auth, db } from '@/lib/firebase';
 import { doc, onSnapshot, collection, query, where, getDoc, deleteDoc } from 'firebase/firestore';
 import { useUser } from '@/firebase';
@@ -67,12 +67,43 @@ const NewOrderCard = ({ order, onAccept, isAccepting }) => {
     );
 };
 
+// --- START: NEW COMPONENT FOR ACTIVE DELIVERIES ---
+const ActiveDeliveryCard = ({ order, onMarkDelivered }) => {
+    return (
+        <motion.div
+            layout
+            initial={{ opacity: 0, y: -20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.8 }}
+            className="bg-blue-500/10 border border-blue-500/30 rounded-lg p-4"
+        >
+            <div className="flex justify-between items-start">
+                <div>
+                     <p className="text-xs text-blue-300">Delivering to</p>
+                     <h3 className="font-bold text-lg text-foreground">{order.customerName}</h3>
+                </div>
+                <div className="text-right">
+                    <p className="font-bold text-lg text-primary">₹{order.totalAmount.toFixed(2)}</p>
+                     <p className="text-xs text-muted-foreground">ID: #{order.id.substring(0, 6)}</p>
+                </div>
+            </div>
+            <div className="mt-3 pt-3 border-t border-dashed border-blue-500/30">
+                <p className="text-sm text-muted-foreground">{order.customerAddress}</p>
+            </div>
+            <Button onClick={() => onMarkDelivered(order.id)} className="w-full mt-4 bg-primary hover:bg-primary/90">
+                <CheckCircle className="mr-2 h-4 w-4" /> Mark as Delivered
+            </Button>
+        </motion.div>
+    );
+};
+// --- END: NEW COMPONENT ---
+
 export default function RiderDashboardPage() {
     const { user, isUserLoading } = useUser();
     const router = useRouter();
     const [driverData, setDriverData] = useState(null);
     const [invites, setInvites] = useState([]);
-    const [assignedOrders, setAssignedOrders] = useState([]);
+    const [activeOrders, setActiveOrders] = useState([]); // This will now hold both 'dispatched' and 'on_the_way'
     const [loading, setLoading] = useState(true);
     const [isAcceptingOrder, setIsAcceptingOrder] = useState(false);
     const [error, setError] = useState('');
@@ -102,29 +133,22 @@ export default function RiderDashboardPage() {
     useEffect(() => {
         let locationInterval;
         if (driverData?.status === 'online' || driverData?.status === 'on-delivery') {
-            console.log("GPS: Rider is online, starting location updates.");
             locationInterval = setInterval(() => {
                 navigator.geolocation.getCurrentPosition(
                     (position) => {
                         const { latitude, longitude } = position.coords;
-                        console.log(`GPS: Sending location: ${latitude}, ${longitude}`);
                         handleApiCall('/api/rider/dashboard', 'PATCH', {
                             location: { latitude, longitude }
                         }).catch(err => console.error("GPS: Failed to send location update:", err));
                     },
-                    (err) => {
-                        console.error("GPS: Error getting location:", err);
-                    },
+                    (err) => console.error("GPS: Error getting location:", err),
                     { enableHighAccuracy: true }
                 );
-            }, 20000); // Send location every 20 seconds
+            }, 20000); 
         }
 
         return () => {
-            if (locationInterval) {
-                console.log("GPS: Rider went offline, stopping location updates.");
-                clearInterval(locationInterval);
-            }
+            if (locationInterval) clearInterval(locationInterval);
         };
     }, [driverData?.status, handleApiCall]);
 
@@ -178,10 +202,12 @@ export default function RiderDashboardPage() {
         });
         unsubscribes.push(unsubscribeInvites);
         
-        const ordersQuery = query(collection(db, "orders"), where("deliveryBoyId", "==", user.uid), where("status", "==", "dispatched"));
+        // --- START THE FIX: Listen for both 'dispatched' and 'on_the_way' orders ---
+        const ordersQuery = query(collection(db, "orders"), where("deliveryBoyId", "==", user.uid), where("status", "in", ["dispatched", "on_the_way"]));
+        // --- END THE FIX ---
         const unsubscribeOrders = onSnapshot(ordersQuery, (snapshot) => {
             const newOrders = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-            setAssignedOrders(newOrders);
+            setActiveOrders(newOrders);
         });
         unsubscribes.push(unsubscribeOrders);
 
@@ -227,15 +253,31 @@ export default function RiderDashboardPage() {
     const handleAcceptOrder = async () => {
         setIsAcceptingOrder(true);
         try {
-            const orderIds = assignedOrders.map(o => o.id);
+            const orderIds = activeOrders.filter(o => o.status === 'dispatched').map(o => o.id);
+            if (orderIds.length === 0) return;
             await handleApiCall('/api/rider/accept-order', 'POST', { orderIds });
-            router.push(`/rider-dashboard/track`);
+            // No need to redirect, the page will update automatically
         } catch (err) {
             setInfoDialog({ isOpen: true, title: 'Error', message: `Could not process order acceptance: ${err.message}`});
         } finally {
             setIsAcceptingOrder(false);
         }
     };
+    
+    // --- START: NEW FUNCTION TO MARK ORDER DELIVERED ---
+    const handleMarkDelivered = async (orderId) => {
+        try {
+            await handleApiCall('/api/rider/update-order-status', 'PATCH', { 
+                orderId,
+                newStatus: 'delivered'
+            });
+            // Optimistically remove from UI
+            setActiveOrders(prev => prev.filter(o => o.id !== orderId));
+        } catch(err) {
+            setInfoDialog({ isOpen: true, title: 'Update Failed', message: `Could not mark order as delivered: ${err.message}`});
+        }
+    }
+    // --- END: NEW FUNCTION ---
 
     if (loading) {
         return <div className="min-h-screen flex items-center justify-center bg-background"><Loader2 className="animate-spin text-primary h-16 w-16" /></div>
@@ -247,10 +289,13 @@ export default function RiderDashboardPage() {
 
     const isOnline = driverData?.status === 'online';
     const isBusy = driverData?.status === 'on-delivery';
+    
+    const dispatchedOrders = activeOrders.filter(o => o.status === 'dispatched');
+    const onTheWayOrders = activeOrders.filter(o => o.status === 'on_the_way');
 
     return (
         <div className="p-4 md:p-6 space-y-6">
-            <InfoDialog isOpen={infoDialog.isOpen} onClose={() => setInfoDialog({isOpen: false})} title={infoDialog.title} message={infoDialog.message} />
+            <InfoDialog isOpen={infoDialog.isOpen} onClose={() => setInfoDialog({isOpen:false})} title={infoDialog.title} message={infoDialog.message} />
 
             <motion.div
                 initial={{ opacity: 0, scale: 0.95 }}
@@ -296,21 +341,41 @@ export default function RiderDashboardPage() {
             )}
             </AnimatePresence>
             
+            {/* --- START: NEW ACTIVE DELIVERIES SECTION --- */}
+            {onTheWayOrders.length > 0 && (
+                <Card>
+                    <CardHeader>
+                        <CardTitle className="flex items-center gap-3 text-blue-400">
+                            <Bike className="animate-pulse" /> Active Deliveries ({onTheWayOrders.length})
+                        </CardTitle>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                        {onTheWayOrders.map(order => (
+                            <ActiveDeliveryCard key={order.id} order={order} onMarkDelivered={handleMarkDelivered}/>
+                        ))}
+                         <Button onClick={() => router.push('/rider-dashboard/track')} className="w-full mt-4">
+                            View on Map
+                        </Button>
+                    </CardContent>
+                </Card>
+            )}
+            {/* --- END: NEW ACTIVE DELIVERIES SECTION --- */}
+            
             <Card>
                 <CardHeader>
                     <CardTitle className="flex items-center gap-3">
-                       <Bell className="text-primary"/> New Orders ({assignedOrders.length})
+                       <Bell className="text-primary"/> New Orders ({dispatchedOrders.length})
                     </CardTitle>
                 </CardHeader>
                 <CardContent>
-                    {assignedOrders.length > 0 ? (
+                    {dispatchedOrders.length > 0 ? (
                          <div className="space-y-4">
-                            {assignedOrders.map(order => (
+                            {dispatchedOrders.map(order => (
                                 <NewOrderCard key={order.id} order={order} onAccept={() => {}} isAccepting={isAcceptingOrder} />
                             ))}
                             <Button onClick={handleAcceptOrder} className="w-full mt-4 bg-primary hover:bg-primary/90" disabled={isAcceptingOrder}>
                                 {isAcceptingOrder ? <Loader2 className="animate-spin mr-2"/> : null}
-                                Accept All ({assignedOrders.length}) & Start
+                                Accept All ({dispatchedOrders.length}) & Start
                             </Button>
                         </div>
                     ) : (
@@ -318,7 +383,6 @@ export default function RiderDashboardPage() {
                     )}
                 </CardContent>
             </Card>
-
         </div>
     );
 }
