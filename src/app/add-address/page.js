@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useState, useEffect, Suspense, useRef, useCallback } from 'react';
@@ -62,13 +63,13 @@ const AddAddressPageInternal = () => {
             const phoneToUse = phone && phone.trim() !== '' ? phone : null;
             const tokenToUse = token && token.trim() !== '' ? token : null;
             
-            if (!tokenToUse && !user) {
-                setTokenError("No session token found. Please start your order from WhatsApp or log in.");
-                setLoading(false);
-                return;
-            }
-
-             if (tokenToUse) {
+            // If token is present, it's a WhatsApp session, which takes priority.
+            if (tokenToUse) {
+                if (!phoneToUse) {
+                    setTokenError("A phone number is required with the session token.");
+                    setLoading(false);
+                    return;
+                }
                  try {
                     const res = await fetch('/api/auth/verify-token', {
                         method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -83,13 +84,19 @@ const AddAddressPageInternal = () => {
                     setLoading(false);
                     return;
                 }
+            } 
+            // If no token, check if the user is logged in via Firebase Auth.
+            else if (!user && !isUserLoading) {
+                setTokenError("No session token found. Please start your order from WhatsApp or log in.");
+                setLoading(false);
+                return;
+            }
+             // If we reach here, token is valid or user is logged in and loading is finished
+             if (!isUserLoading) {
+                setIsTokenValid(true);
              }
-             // If we reach here, token is valid or user is logged in
-             setIsTokenValid(true);
         };
-        if (!isUserLoading) {
-            verifyToken();
-        }
+        verifyToken();
     }, [phone, token, user, isUserLoading]);
     
     const reverseGeocode = useCallback(async (coords) => {
@@ -140,15 +147,10 @@ const AddAddressPageInternal = () => {
         const prefillData = async () => {
             const phoneToUse = phone && phone.trim() !== '' ? phone : null;
             
-            // Prioritize logged-in user data
-            if (user) {
-                setRecipientName(user.displayName || '');
-                setRecipientPhone(user.phoneNumber || phoneToUse || '');
-            } 
-            // If not logged in but phone is available, try to look up customer data
-            else if (phoneToUse) {
+            // If phone from URL (WhatsApp session) exists, prioritize it for lookup
+            if (phoneToUse) {
                 setRecipientPhone(phoneToUse);
-                try {
+                 try {
                     const res = await fetch('/api/customer/lookup', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ phone: phoneToUse }) });
                     if (res.ok) {
                         const customerData = await res.json();
@@ -157,6 +159,11 @@ const AddAddressPageInternal = () => {
                 } catch (e) {
                     console.warn("Could not prefill name from customer lookup:", e);
                 }
+            } 
+            // If no phone from URL, but user is logged in via Firebase Auth
+            else if (user) {
+                setRecipientName(user.displayName || '');
+                setRecipientPhone(user.phoneNumber || '');
             }
         };
         
@@ -169,7 +176,7 @@ const AddAddressPageInternal = () => {
                 reverseGeocode(mapCenter);
             }
         }
-    }, [isTokenValid, user, phone, useCurrent, getCurrentGeolocation, reverseGeocode, mapCenter]);
+    }, [isTokenValid, user, phone, useCurrent, getCurrentGeolocation, reverseGeocode]);
 
 
     const handleConfirmLocation = async () => {
@@ -185,8 +192,7 @@ const AddAddressPageInternal = () => {
         setIsSaving(true);
         
         const finalLabel = (addressLabel === 'Other' && customAddressLabel.trim()) ? customAddressLabel.trim() : addressLabel;
-        const phoneToUse = (phone && phone.trim() !== '') ? phone : user?.phoneNumber;
-
+        
         const addressToSave = {
             id: `addr_${Date.now()}`, 
             label: finalLabel, 
@@ -206,13 +212,15 @@ const AddAddressPageInternal = () => {
         localStorage.setItem('customerLocation', JSON.stringify(addressToSave));
 
         try {
+             // The phone number that identifies the user session
+            const sessionIdentifierPhone = phone || user?.phoneNumber;
+
             const apiPayload = {
                 address: addressToSave,
-                phone: phoneToUse, // Pass the session phone number to the backend
+                phone: sessionIdentifierPhone,
             };
 
             const headers = { 'Content-Type': 'application/json' };
-            // If the user is logged in via Firebase Auth, send their ID token for verification.
             if (user) {
                 const idToken = await user.getIdToken();
                 headers['Authorization'] = `Bearer ${idToken}`;
@@ -242,7 +250,7 @@ const AddAddressPageInternal = () => {
         return <TokenVerificationLock message={tokenError} />;
     }
     
-    if (!isTokenValid && !isUserLoading) {
+    if (!isTokenValid) {
         return <div className="min-h-screen bg-background flex items-center justify-center"><Loader2 className="animate-spin text-primary h-16 w-16"/></div>;
     }
 
@@ -320,3 +328,5 @@ const AddAddressPage = () => (
 );
 
 export default AddAddressPage;
+
+    

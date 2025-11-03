@@ -1,13 +1,14 @@
+
 'use client';
 
 import React, { useState, useEffect, Suspense, useCallback } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { motion } from 'framer-motion';
-import { MapPin, LocateFixed, Plus, Home, Building, Trash2, ArrowLeft, Lock } from 'lucide-react';
+import { MapPin, LocateFixed, Plus, Home, Building, Trash2, ArrowLeft, Lock, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { auth } from '@/lib/firebase';
-import InfoDialog from '@/components/InfoDialog';
 import { useUser } from '@/firebase';
+import InfoDialog from '@/components/InfoDialog';
+
 
 const TokenVerificationLock = ({ message }) => (
     <div className="min-h-screen bg-background flex flex-col items-center justify-center text-center p-4">
@@ -68,17 +69,16 @@ const SelectLocationInternal = () => {
             const phoneToUse = phone && phone.trim() !== '' ? phone : null;
             const tokenToUse = token && token.trim() !== '' ? token : null;
 
-            if (!user && !tokenToUse) {
-                setTokenError("No session information found. Please start your journey from WhatsApp or log in.");
-                setLoading(false);
-                return;
-            }
-            
+            // If token is present, it's a WhatsApp session, which takes priority.
             if (tokenToUse) {
-                try {
+                if (!phoneToUse) {
+                    setTokenError("A phone number is required with the session token.");
+                    setLoading(false);
+                    return;
+                }
+                 try {
                     const res = await fetch('/api/auth/verify-token', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
+                        method: 'POST', headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ phone: phoneToUse, token: tokenToUse }),
                     });
                     if (!res.ok) {
@@ -90,10 +90,18 @@ const SelectLocationInternal = () => {
                     setLoading(false);
                     return;
                 }
+            } 
+            // If no token, check if the user is logged in via Firebase Auth.
+            else if (!user && !isUserLoading) {
+                setTokenError("No session token found. Please start your order from WhatsApp or log in.");
+                setLoading(false);
+                return;
             }
-
-            setIsTokenValid(true);
-            fetchAddresses(phoneToUse);
+             // If we reach here, token is valid or user is logged in and loading is finished
+             if (!isUserLoading) {
+                setIsTokenValid(true);
+                fetchAddresses(phoneToUse);
+             }
         };
 
         const fetchAddresses = async (phoneToLookup) => {
@@ -101,18 +109,9 @@ const SelectLocationInternal = () => {
             setError('');
             
             try {
-                // Priority 1: If user is logged in via Firebase Auth, always use their UID to fetch data.
-                if (user) {
-                    console.log("[LocationPage] User logged in, fetching via secure API.");
-                    const idToken = await user.getIdToken();
-                    const res = await fetch('/api/user/addresses', { headers: { 'Authorization': `Bearer ${idToken}` } });
-                    if (!res.ok) throw new Error('Failed to fetch your saved addresses.');
-                    const data = await res.json();
-                    setAddresses(data.addresses || []);
-                } 
-                // Priority 2: If not logged in, but a valid phone number is in the URL, use that.
-                else if (phoneToLookup) {
-                    console.log(`[LocationPage] User not logged in, fetching via customer lookup for phone: ${phoneToLookup}`);
+                // If phone number is in URL (from WhatsApp), use it for lookup.
+                if (phoneToLookup) {
+                    console.log(`[LocationPage] User via WhatsApp, fetching via customer lookup for phone: ${phoneToLookup}`);
                     const res = await fetch('/api/customer/lookup', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
@@ -126,8 +125,17 @@ const SelectLocationInternal = () => {
                         const errorData = await res.json();
                         throw new Error(errorData.message || 'Failed to look up customer data.');
                     }
-                } 
-                // If neither, then we can't fetch anything.
+                }
+                // If no phone from URL, but user is logged in via Firebase Auth
+                else if (user) {
+                    console.log("[LocationPage] User logged in via Auth, fetching via secure API.");
+                    const idToken = await user.getIdToken();
+                    const res = await fetch('/api/user/addresses', { headers: { 'Authorization': `Bearer ${idToken}` } });
+                    if (!res.ok) throw new Error('Failed to fetch your saved addresses.');
+                    const data = await res.json();
+                    setAddresses(data.addresses || []);
+                }
+                 // If neither, then we can't fetch anything.
                 else {
                     setAddresses([]);
                 }
@@ -138,9 +146,7 @@ const SelectLocationInternal = () => {
             }
         };
 
-        if (!isUserLoading) {
-            verifyAndFetch();
-        }
+        verifyAndFetch();
     }, [user, isUserLoading, phone, token]);
 
 
@@ -167,26 +173,28 @@ const SelectLocationInternal = () => {
     };
     
     const handleAddNewAddress = () => {
-        const params = new URLSearchParams({
-            returnUrl,
-            phone: phone || '',
-            token: token || '',
-        });
+        const params = new URLSearchParams(searchParams); // Preserve existing params
+        params.set('returnUrl', returnUrl);
         router.push(`/add-address?${params.toString()}`);
     }
     
     const handleUseCurrentLocation = () => {
-        const params = new URLSearchParams({
-            returnUrl,
-            phone: phone || '',
-            token: token || '',
-            useCurrent: 'true',
-        });
+        const params = new URLSearchParams(searchParams);
+        params.set('returnUrl', returnUrl);
+        params.set('useCurrent', 'true');
         router.push(`/add-address?${params.toString()}`);
     };
     
     if (tokenError) {
         return <TokenVerificationLock message={tokenError} />;
+    }
+    
+    if (!isTokenValid) {
+        return (
+            <div className="min-h-screen bg-background flex items-center justify-center">
+                <Loader2 className="animate-spin text-primary h-16 w-16"/>
+            </div>
+        );
     }
 
     return (
@@ -198,7 +206,7 @@ const SelectLocationInternal = () => {
                 message={infoDialog.message}
             />
             <header className="sticky top-0 z-20 bg-background/80 backdrop-blur-lg border-b border-border p-4 flex items-center gap-4">
-                 <Button variant="ghost" size="icon" onClick={() => router.back()}><ArrowLeft/></Button>
+                 <Button variant="ghost" size="icon" onClick={() => router.push(returnUrl)}><ArrowLeft/></Button>
                  <h1 className="text-xl font-bold">Select a Location</h1>
             </header>
 
@@ -252,8 +260,10 @@ const SelectLocationInternal = () => {
 
 export default function SelectLocationPage() {
     return (
-        <Suspense fallback={<div className="min-h-screen bg-background flex items-center justify-center"><div className="animate-spin rounded-full h-16 w-16 border-b-2 border-primary"></div></div>}>
+        <Suspense fallback={<div className="min-h-screen bg-background flex items-center justify-center"><Loader2 className="animate-spin text-primary h-16 w-16"/></div>}>
             <SelectLocationInternal />
         </Suspense>
     );
 }
+
+    
