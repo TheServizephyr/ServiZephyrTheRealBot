@@ -16,8 +16,7 @@ export default function RiderLayout({ children }) {
     const router = useRouter();
     const [riderName, setRiderName] = useState('Rider');
     const [riderImage, setRiderImage] = useState('');
-    const [isLoading, setIsLoading] = useState(true);
-
+    
     useEffect(() => {
         if (isUserLoading) {
             return;
@@ -36,9 +35,6 @@ export default function RiderLayout({ children }) {
                     setRiderName(docSnap.data().name || user.displayName || 'Rider');
                     setRiderImage(docSnap.data().profilePictureUrl || user.photoURL || '');
                 }
-                 setIsLoading(false);
-            } else {
-                 setIsLoading(false);
             }
         };
         
@@ -52,7 +48,7 @@ export default function RiderLayout({ children }) {
         router.push('/rider-dashboard/login');
     };
 
-    if (isUserLoading || isLoading) {
+    if (isUserLoading) {
          return (
              <div className="flex h-screen items-center justify-center bg-background">
                 <Loader2 className="h-16 w-16 animate-spin text-primary" />
@@ -61,7 +57,7 @@ export default function RiderLayout({ children }) {
     }
     
     if (!user) {
-        return null;
+        return null; // Redirect is handled in useEffect
     }
 
     return (
