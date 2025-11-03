@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, Suspense } from 'react';
+import React, { useState, useEffect, Suspense, useCallback } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { motion } from 'framer-motion';
 import { MapPin, LocateFixed, Plus, Home, Building, Trash2, ArrowLeft, Lock, Loader2 } from 'lucide-react';
@@ -83,14 +83,56 @@ const SelectLocationInternal = () => {
 
     const returnUrl = searchParams.get('returnUrl') || '/';
     
+    const fetchAddresses = useCallback(async () => {
+        setLoading(true);
+        setError('');
+        
+        try {
+            // Priority 1: WhatsApp user with a phone number in URL
+            if (phone) {
+                console.log(`[LocationPage] User via WhatsApp, fetching via customer lookup for phone: ${phone}`);
+                const res = await fetch('/api/customer/lookup', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ phone }),
+                });
+
+                if (res.ok) {
+                    const data = await res.json();
+                    setAddresses(data.addresses || []);
+                } else if (res.status !== 404) {
+                    const errorData = await res.json();
+                    throw new Error(errorData.message || 'Failed to look up customer data.');
+                } else {
+                     setAddresses([]); // 404 means no addresses found, which is not an error
+                }
+            }
+            // Priority 2: Logged-in Firebase user
+            else if (user) {
+                console.log("[LocationPage] User logged in via Auth, fetching via secure API.");
+                const idToken = await user.getIdToken();
+                const res = await fetch('/api/user/addresses', { headers: { 'Authorization': `Bearer ${idToken}` } });
+                if (!res.ok) throw new Error('Failed to fetch your saved addresses.');
+                const data = await res.json();
+                setAddresses(data.addresses || []);
+            }
+            else {
+                // No session identifier, so no addresses can be fetched.
+                setAddresses([]);
+            }
+        } catch (err) {
+            setError(err.message);
+        } finally {
+            setLoading(false);
+        }
+    }, [user, phone]);
+    
     useEffect(() => {
         const verifyAndFetch = async () => {
-            const phoneToUse = phone && phone.trim() !== '' ? phone : null;
             const tokenToUse = token && token.trim() !== '' ? token : null;
 
-            // Session check for both WhatsApp and Logged-in users
             if (tokenToUse) {
-                if (!phoneToUse) {
+                if (!phone) {
                     setTokenError("A phone number is required with the session token.");
                     setLoading(false);
                     return;
@@ -98,7 +140,7 @@ const SelectLocationInternal = () => {
                  try {
                     const res = await fetch('/api/auth/verify-token', {
                         method: 'POST', headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ phone: phoneToUse, token: tokenToUse }),
+                        body: JSON.stringify({ phone: phone, token: tokenToUse }),
                     });
                     if (!res.ok) {
                         const errData = await res.json();
@@ -111,65 +153,19 @@ const SelectLocationInternal = () => {
                 }
             } 
             else if (!user && !isUserLoading) {
-                // If not a token-based session and not a logged-in user (after auth check)
                 setTokenError("No session token found. Please start your order from WhatsApp or log in.");
                 setLoading(false);
                 return;
             }
 
-            // If we reach here, the session is valid (either via token or firebase auth)
-             if (!isUserLoading) {
+            if (!isUserLoading) {
                 setIsTokenValid(true);
-                fetchAddresses(phoneToUse); // Pass phone from URL to decide which API to call
-             }
-        };
-
-        const fetchAddresses = async (phoneToLookup) => {
-            setLoading(true);
-            setError('');
-            
-            try {
-                // **THE FIX: Prioritize phone number from URL if it exists (WhatsApp user)**
-                if (phoneToLookup) {
-                    console.log(`[LocationPage] User via WhatsApp, fetching via customer lookup for phone: ${phoneToLookup}`);
-                    const res = await fetch('/api/customer/lookup', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ phone: phoneToLookup }),
-                    });
-
-                    if (res.ok) {
-                        const data = await res.json();
-                        setAddresses(data.addresses || []);
-                    } else if (res.status !== 404) {
-                        const errorData = await res.json();
-                        throw new Error(errorData.message || 'Failed to look up customer data.');
-                    } else {
-                         setAddresses([]); // 404 means no addresses found, which is not an error
-                    }
-                }
-                // **THE FIX: Only if phone from URL is absent, use the logged-in user**
-                else if (user) {
-                    console.log("[LocationPage] User logged in via Auth, fetching via secure API.");
-                    const idToken = await user.getIdToken();
-                    const res = await fetch('/api/user/addresses', { headers: { 'Authorization': `Bearer ${idToken}` } });
-                    if (!res.ok) throw new Error('Failed to fetch your saved addresses.');
-                    const data = await res.json();
-                    setAddresses(data.addresses || []);
-                }
-                else {
-                    // This case should ideally not be hit due to verifyAndFetch logic, but as a safeguard:
-                    setAddresses([]);
-                }
-            } catch (err) {
-                setError(err.message);
-            } finally {
-                setLoading(false);
+                fetchAddresses();
             }
         };
 
         verifyAndFetch();
-    }, [user, isUserLoading, phone, token]);
+    }, [user, isUserLoading, phone, token, fetchAddresses]);
 
 
     const handleSelectAddress = (address) => {
@@ -186,17 +182,22 @@ const SelectLocationInternal = () => {
         if (!addressToDelete) return;
         setIsConfirmOpen(false);
 
-        if (!user) {
-            setInfoDialog({ isOpen: true, title: 'Error', message: 'You must be logged in to delete an address.' });
-            return;
-        }
-
         try {
-            const idToken = await user.getIdToken();
+            let idToken = null;
+            // Determine if we're a logged-in user or a WhatsApp user
+            if (user && !phone) { // Clearly a logged-in user
+                idToken = await user.getIdToken();
+            }
+
             const res = await fetch('/api/user/addresses', {
                 method: 'DELETE',
-                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${idToken}` },
-                body: JSON.stringify({ addressId: addressToDelete })
+                headers: { 
+                    'Content-Type': 'application/json',
+                    // Only send auth token if it's a logged-in user session
+                    ...(idToken && { 'Authorization': `Bearer ${idToken}` })
+                },
+                // Send phone number if it exists (for WhatsApp users)
+                body: JSON.stringify({ addressId: addressToDelete, phone: phone || null })
             });
 
             if (!res.ok) {
@@ -204,7 +205,7 @@ const SelectLocationInternal = () => {
                 throw new Error(data.message || 'Failed to delete address.');
             }
             setInfoDialog({ isOpen: true, title: 'Success', message: 'Address deleted successfully.' });
-            setAddresses(prev => prev.filter(addr => addr.id !== addressToDelete));
+            fetchAddresses(); // Refresh list
         } catch (err) {
             setInfoDialog({ isOpen: true, title: 'Error', message: err.message });
         } finally {
@@ -289,7 +290,7 @@ const SelectLocationInternal = () => {
                                     address={address} 
                                     onSelect={handleSelectAddress}
                                     onDelete={promptDeleteAddress}
-                                    isAuth={!!user}
+                                    isAuth={!!user || !!phone}
                                 />
                             ))}
                         </div>

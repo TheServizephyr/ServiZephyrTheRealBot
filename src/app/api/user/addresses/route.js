@@ -92,44 +92,63 @@ export async function POST(req) {
 export async function DELETE(req) {
     console.log("[API][user/addresses] DELETE request received.");
     try {
-        const uid = await getUserIdFromToken(req);
-        if (!uid) {
-            return NextResponse.json({ message: 'User not authenticated.' }, { status: 401 });
-        }
-        
-        const { addressId } = await req.json();
+        const firestore = await getFirestore();
+        const { addressId, phone } = await req.json();
 
         if (!addressId) {
-             console.error("[API][user/addresses] DELETE validation failed: Address ID is required.");
+            console.error("[API][user/addresses] DELETE validation failed: Address ID is required.");
             return NextResponse.json({ message: 'Address ID is required.' }, { status: 400 });
         }
-        
-        const firestore = await getFirestore();
-        const userRef = firestore.collection('users').doc(uid);
-        const userDoc = await userRef.get();
 
-        if (!userDoc.exists) {
-             console.warn(`[API][user/addresses] DELETE failed: User document not found for UID: ${uid}.`);
-            return NextResponse.json({ message: 'User not found.' }, { status: 404 });
+        let targetRef;
+        
+        // Scenario 1: Request is from a WhatsApp user, identified by phone number
+        if (phone) {
+            const normalizedPhone = phone.slice(-10);
+            console.log(`[API][user/addresses] DELETE request for phone number: ${normalizedPhone}`);
+            const userQuery = await firestore.collection('users').where('phone', '==', normalizedPhone).limit(1).get();
+
+            if (!userQuery.empty) {
+                targetRef = userQuery.docs[0].ref;
+                console.log(`[API][user/addresses] Found verified user by phone: ${targetRef.id}`);
+            } else {
+                targetRef = firestore.collection('unclaimed_profiles').doc(normalizedPhone);
+                console.log(`[API][user/addresses] No verified user, checking unclaimed profile for phone: ${normalizedPhone}`);
+            }
+        } 
+        // Scenario 2: Request is from a logged-in user, identified by ID token
+        else {
+            const uid = await getUserIdFromToken(req);
+            if (!uid) {
+                return NextResponse.json({ message: 'User not authenticated.' }, { status: 401 });
+            }
+            console.log(`[API][user/addresses] DELETE request for UID: ${uid}`);
+            targetRef = firestore.collection('users').doc(uid);
+        }
+
+        const docSnap = await targetRef.get();
+        if (!docSnap.exists) {
+             console.warn(`[API][user/addresses] DELETE failed: User document not found at path: ${targetRef.path}.`);
+            return NextResponse.json({ message: 'User profile not found.' }, { status: 404 });
         }
         
-        const userData = userDoc.data();
+        const userData = docSnap.data();
         const currentAddresses = userData.addresses || [];
         
         const addressExists = currentAddresses.some(addr => addr.id === addressId);
         if (!addressExists) {
-             console.warn(`[API][user/addresses] DELETE failed: Address ID ${addressId} not found in user profile for UID ${uid}.`);
+             console.warn(`[API][user/addresses] DELETE failed: Address ID ${addressId} not found in profile for document: ${targetRef.path}.`);
             return NextResponse.json({ message: 'Address not found in user profile.' }, { status: 404 });
         }
 
         const updatedAddresses = currentAddresses.filter(addr => addr.id !== addressId);
         
-        console.log(`[API][user/addresses] Attempting to remove address ID ${addressId} for user ${uid}.`);
-        await userRef.update({
+        console.log(`[API][user/addresses] Attempting to remove address ID ${addressId} for document ${targetRef.path}.`);
+        await targetRef.update({
             addresses: updatedAddresses
         });
 
-        console.log(`[API][user/addresses] Address ID ${addressId} removed successfully for user ${uid}.`);
+        console.log(`[API][user/addresses] Address ID ${addressId} removed successfully for document ${targetRef.path}.`);
         return NextResponse.json({ message: 'Address removed successfully!' }, { status: 200 });
 
     } catch (error) {
