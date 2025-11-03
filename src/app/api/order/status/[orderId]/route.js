@@ -54,12 +54,19 @@ export async function GET(request, { params }) {
         const businessData = businessDoc.data();
         console.log("[API][Order Status] Business found.");
 
+        // --- START THE FIX ---
+        // Create the location object in the correct {lat, lng} format
+        const restaurantLocationForMap = (businessData.address && typeof businessData.address.latitude === 'number' && typeof businessData.address.longitude === 'number')
+            ? { lat: businessData.address.latitude, lng: businessData.address.longitude }
+            : null;
+        // --- END THE FIX ---
+
         const responsePayload = {
             order: {
                 id: orderSnap.id,
                 status: orderData.status,
                 customerLocation: orderData.customerLocation,
-                restaurantLocation: businessData.address,
+                restaurantLocation: restaurantLocationForMap, // Use the correctly formatted object
                 customerName: orderData.customerName,
                 customerAddress: orderData.customerAddress,
                 customerPhone: orderData.customerPhone,
@@ -68,7 +75,7 @@ export async function GET(request, { params }) {
             },
             restaurant: {
                 name: businessData.name,
-                address: businessData.address
+                address: businessData.address // Keep the full address for display
             },
             deliveryBoy: deliveryBoyData ? {
                 id: deliveryBoyData.id,
@@ -88,5 +95,3 @@ export async function GET(request, { params }) {
         return NextResponse.json({ message: `Backend Error: ${error.message}` }, { status: 500 });
     }
 }
-
-

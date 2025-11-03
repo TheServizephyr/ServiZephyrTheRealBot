@@ -158,20 +158,18 @@ export default function OrderTrackingPage() {
     }, [orderId]);
 
     const { restaurantLocation, customerLocation, riderLocation } = useMemo(() => {
-        const restaurantLat = orderData?.order?.restaurantLocation?.latitude;
-        const restaurantLng = orderData?.order?.restaurantLocation?.longitude;
-
-        const customerLat = orderData?.order?.customerLocation?._latitude || orderData?.order?.customerLocation?.latitude;
-        const customerLng = orderData?.order?.customerLocation?._longitude || orderData?.order?.customerLocation?.longitude;
-
-        const riderLat = orderData?.deliveryBoy?.location?._latitude || orderData?.deliveryBoy?.location?.latitude;
-        const riderLng = orderData?.deliveryBoy?.location?._longitude || orderData?.deliveryBoy?.location?.longitude;
+        // --- START THE FIX ---
+        // Safely access location data from orderData.order, which is now guaranteed by the API
+        const restaurantLoc = orderData?.order?.restaurantLocation;
+        const customerLoc = orderData?.order?.customerLocation;
+        const riderLoc = orderData?.deliveryBoy?.location;
 
         return {
-            restaurantLocation: (restaurantLat && restaurantLng) ? { lat: restaurantLat, lng: restaurantLng } : null,
-            customerLocation: (customerLat && customerLng) ? { lat: customerLat, lng: customerLng } : null,
-            riderLocation: (riderLat && riderLng) ? { lat: riderLat, lng: riderLng } : null,
+            restaurantLocation: (restaurantLoc?.lat && restaurantLoc?.lng) ? { lat: restaurantLoc.lat, lng: restaurantLoc.lng } : null,
+            customerLocation: (customerLoc?._latitude && customerLoc?._longitude) ? { lat: customerLoc._latitude, lng: customerLoc._longitude } : null,
+            riderLocation: (riderLoc?._latitude && riderLoc?._longitude) ? { lat: riderLoc._latitude, lng: riderLoc._longitude } : null,
         };
+        // --- END THE FIX ---
     }, [orderData]);
 
 
