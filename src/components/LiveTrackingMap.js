@@ -7,7 +7,6 @@ import { Loader2 } from 'lucide-react';
 
 const GOOGLE_MAPS_API_KEY = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
 
-// --- START: NEW CURVE CALCULATION LOGIC ---
 /**
  * Calculates intermediate points for a curved line between two coordinates.
  * @param {google.maps.LatLng} p1 Start point
@@ -15,12 +14,9 @@ const GOOGLE_MAPS_API_KEY = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
  * @returns {google.maps.LatLng[]} An array of points forming the curve.
  */
 function getCurvedPath(p1, p2) {
-    if (!window.google || !p1 || !p2) return [];
+    if (!window.google || !window.google.maps.geometry || !p1 || !p2) return [];
 
-    const projection = new window.google.maps.MVCObject();
-    projection.set("projection", new window.google.maps.Marker().getProjection());
-
-    // Calculate heading and distance
+    // Calculate heading and distance using the spherical geometry library
     const heading = window.google.maps.geometry.spherical.computeHeading(p1, p2);
     const distance = window.google.maps.geometry.spherical.computeDistanceBetween(p1, p2);
 
@@ -30,9 +26,10 @@ function getCurvedPath(p1, p2) {
     const path = [];
     for (let i = 0; i <= 100; i++) {
         const step = i / 100;
+        // Get a point along the straight line
         const latLng = window.google.maps.geometry.spherical.computeOffset(p1, step * distance, heading);
         
-        // Apply a sine wave to create the curve
+        // Apply a sine wave to create the curve, pushing it outwards
         const curve = Math.sin(step * Math.PI) * distance * curveFactor;
         const curvedLatLng = window.google.maps.geometry.spherical.computeOffset(latLng, curve, heading + 90);
         
@@ -40,7 +37,6 @@ function getCurvedPath(p1, p2) {
     }
     return path;
 }
-// --- END: NEW CURVE CALCULATION LOGIC ---
 
 
 const RouteLine = ({ from, to, isDashed = false }) => {
@@ -53,7 +49,6 @@ const RouteLine = ({ from, to, isDashed = false }) => {
             return;
         }
   
-        // --- START: UPDATED LINE LOGIC ---
         const path = getCurvedPath(new window.google.maps.LatLng(from), new window.google.maps.LatLng(to));
         
         let lineOptions;
@@ -85,7 +80,6 @@ const RouteLine = ({ from, to, isDashed = false }) => {
                 strokeWeight: 5,
             };
         }
-        // --- END: UPDATED LINE LOGIC ---
         
         if (!polylineRef.current) {
             polylineRef.current = new window.google.maps.Polyline();
