@@ -13,42 +13,51 @@ const RouteLine = ({ from, to, isDashed = false }) => {
   
     useEffect(() => {
         if (!map || !from || !to) {
-            if (polylineRef.current) polylineRef.current.setMap(null);
+            if (polylineRef.current) {
+                polylineRef.current.setMap(null);
+            }
             return;
         }
   
-        const primaryColor = '#FDBA12'; // Use direct hex value for safety with Google Maps API
+        const primaryColor = '#FDBA12'; // Direct HEX value for reliability
         
-        const lineOptions = {
-            path: [from, to],
-            geodesic: true, // This makes the line follow the curvature of the Earth
-            strokeColor: primaryColor,
-            strokeOpacity: 0, // Set to 0 for solid line, icons will control visibility for dashed
-            strokeWeight: 4,
-            icons: isDashed ? [{
-                icon: {
-                    path: 'M 0,-1 0,1',
-                    strokeOpacity: 1, // Control opacity here
-                    scale: 3,
-                    strokeColor: primaryColor,
-                },
-                offset: '0',
-                repeat: '15px'
-            }] : []
-        };
+        let lineOptions;
 
-        // For a solid line, we rely on strokeOpacity being 1 and no icons.
-        const solidLineOptions = {
-            ...lineOptions,
-            strokeOpacity: 1,
-            icons: []
-        };
+        if (isDashed) {
+            // Options for a DOTTED line
+            lineOptions = {
+                path: [from, to],
+                geodesic: true,
+                strokeOpacity: 0, // Make the actual line invisible
+                icons: [{
+                    icon: {
+                        path: 'M 0,-1 0,1', // A small vertical line
+                        strokeColor: primaryColor,
+                        strokeOpacity: 1,
+                        strokeWeight: 2, // Thinner dots
+                        scale: 3, // Size of the dot
+                    },
+                    offset: '0',
+                    repeat: '15px' // Space between dots
+                }]
+            };
+        } else {
+            // Options for a SOLID line
+            lineOptions = {
+                path: [from, to],
+                geodesic: true,
+                strokeColor: primaryColor,
+                strokeOpacity: 0.8, // Slightly transparent solid line
+                strokeWeight: 5,
+                icons: [] // No icons for solid line
+            };
+        }
         
         if (!polylineRef.current) {
             polylineRef.current = new window.google.maps.Polyline();
         }
         
-        polylineRef.current.setOptions(isDashed ? lineOptions : solidLineOptions);
+        polylineRef.current.setOptions(lineOptions);
         polylineRef.current.setMap(map);
   
         return () => { 
@@ -73,6 +82,7 @@ const MapComponent = ({ restaurantLocation, customerLocations, riderLocation, on
 
     const toLatLngLiteral = (loc) => {
         if (!loc) return null;
+        // Check for both GeoPoint format and standard {lat, lng}
         const lat = loc.lat ?? loc._latitude;
         const lng = loc.lng ?? loc._longitude;
         if (typeof lat === 'number' && typeof lng === 'number') {
@@ -127,7 +137,7 @@ const MapComponent = ({ restaurantLocation, customerLocations, riderLocation, on
                     key={`route-${customerLoc.id}`} 
                     from={routeStart} 
                     to={customerLoc} 
-                    isDashed={!riderLatLng} // Dashed if rider is not on the way
+                    isDashed={!riderLatLng} // Dashed if rider location is not available
                 />
             ))}
         </>
