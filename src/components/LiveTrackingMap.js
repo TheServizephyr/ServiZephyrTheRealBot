@@ -19,7 +19,7 @@ const RouteLine = ({ from, to, isDashed = false }) => {
             return;
         }
   
-        const primaryColor = '#FDBA12'; // Direct HEX value for reliability
+        const blackColor = '#000000'; // Black color for high visibility
         
         let lineOptions;
 
@@ -32,9 +32,9 @@ const RouteLine = ({ from, to, isDashed = false }) => {
                 icons: [{
                     icon: {
                         path: 'M 0,-1 0,1', // A small vertical line
-                        strokeColor: primaryColor,
+                        strokeColor: blackColor,
                         strokeOpacity: 1,
-                        strokeWeight: 2, // Thinner dots
+                        strokeWeight: 2, // Thicker dots for better visibility
                         scale: 3, // Size of the dot
                     },
                     offset: '0',
@@ -42,11 +42,11 @@ const RouteLine = ({ from, to, isDashed = false }) => {
                 }]
             };
         } else {
-            // Options for a SOLID line
+            // Options for a SOLID line for when the rider is moving
             lineOptions = {
                 path: [from, to],
                 geodesic: true,
-                strokeColor: primaryColor,
+                strokeColor: blackColor,
                 strokeOpacity: 0.8, // Slightly transparent solid line
                 strokeWeight: 5,
                 icons: [] // No icons for solid line
