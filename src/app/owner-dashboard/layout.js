@@ -1,4 +1,3 @@
-
 'use client';
 
 import { useState, useEffect, Suspense } from "react";
@@ -72,17 +71,6 @@ function OwnerDashboardContent({ children }) {
   const { user, isUserLoading } = useUser();
 
   useEffect(() => {
-    // --- START: CORRECTED AUTHENTICATION AND REDIRECTION LOGIC ---
-    if (!isUserLoading) { // Only run logic once Firebase Auth has initialized
-      if (!user) {
-        // If loading is finished and there's no user, then redirect.
-        router.push('/');
-      }
-    }
-    // --- END: CORRECTED AUTHENTICATION AND REDIRECTION LOGIC ---
-  }, [user, isUserLoading, router]);
-
-  useEffect(() => {
     const checkScreenSize = () => {
       const mobile = window.innerWidth < 768;
       setIsMobile(mobile);
@@ -94,10 +82,18 @@ function OwnerDashboardContent({ children }) {
   }, []);
 
   useEffect(() => {
-    if (isUserLoading || !user) {
+    if (isUserLoading) {
+      // Still loading, do nothing. The loader will be shown.
       return; 
     }
 
+    if (!user) {
+        // Now that loading is false, if there's no user, redirect.
+        router.push('/');
+        return;
+    }
+
+    // User is authenticated, proceed to fetch data.
     const fetchRestaurantData = async () => {
         try {
             const idToken = await user.getIdToken();
@@ -129,7 +125,6 @@ function OwnerDashboardContent({ children }) {
                     suspensionRemark: statusData.suspensionRemark || '',
                 });
             } else if (statusRes.status === 404) {
-                 // If no business is associated yet, treat as pending
                 setRestaurantStatus({ status: 'pending', restrictedFeatures: [], suspensionRemark: '' });
             } else {
                 const errorData = await statusRes.json();
@@ -145,7 +140,7 @@ function OwnerDashboardContent({ children }) {
     
     fetchRestaurantData();
 
-  }, [user, isUserLoading, impersonatedOwnerId]);
+  }, [user, isUserLoading, impersonatedOwnerId, router]);
 
   if (isUserLoading) {
     return (
