@@ -24,7 +24,8 @@ export async function GET(req) {
             return NextResponse.json({ message: 'User not authenticated.' }, { status: 401 });
         }
 
-        const userRef = getFirestore().collection('users').doc(uid);
+        const firestore = await getFirestore(); // THE FIX: Added await
+        const userRef = firestore.collection('users').doc(uid);
         const docSnap = await userRef.get();
         
         if (!docSnap.exists) {
@@ -61,7 +62,7 @@ export async function POST(req) {
              return NextResponse.json({ message: 'A phone number is required to save an address for a session.' }, { status: 401 });
         }
 
-        const firestore = getFirestore();
+        const firestore = await getFirestore(); // THE FIX: Added await
         let targetRef;
         const normalizedPhone = phone.slice(-10);
 
@@ -105,7 +106,8 @@ export async function DELETE(req) {
             return NextResponse.json({ message: 'Address ID is required.' }, { status: 400 });
         }
         
-        const userRef = getFirestore().collection('users').doc(uid);
+        const firestore = await getFirestore(); // THE FIX: Added await
+        const userRef = firestore.collection('users').doc(uid);
         const userDoc = await userRef.get();
 
         if (!userDoc.exists) {
