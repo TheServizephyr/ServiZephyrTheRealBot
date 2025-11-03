@@ -1,7 +1,6 @@
 
 import { NextResponse } from 'next/server';
 import { getFirestore, FieldValue, verifyAndGetUid } from '@/lib/firebase-admin';
-import { getAuth } from 'firebase-admin/auth'; // Import for direct use inside helper
 
 // Helper to get authenticated user UID or null if not logged in
 async function getUserIdFromToken(req) {
@@ -52,7 +51,6 @@ export async function POST(req) {
     try {
         const { address, phone } = await req.json(); // Expect phone number from the client
 
-        // --- VALIDATION ---
         if (!address || !address.id || !address.full || typeof address.latitude !== 'number' || typeof address.longitude !== 'number') {
             console.error("[API][user/addresses] POST validation failed: Invalid address data provided.", address);
             return NextResponse.json({ message: 'Invalid address data. A full address and location coordinates are required.' }, { status: 400 });
@@ -118,20 +116,18 @@ export async function DELETE(req) {
         const userData = userDoc.data();
         const currentAddresses = userData.addresses || [];
         
-        // --- START FIX: Find the specific address object to remove ---
-        const addressToRemove = currentAddresses.find(addr => addr.id === addressId);
-
-        if (!addressToRemove) {
+        const addressExists = currentAddresses.some(addr => addr.id === addressId);
+        if (!addressExists) {
              console.warn(`[API][user/addresses] DELETE failed: Address ID ${addressId} not found in user profile for UID ${uid}.`);
             return NextResponse.json({ message: 'Address not found in user profile.' }, { status: 404 });
         }
+
+        const updatedAddresses = currentAddresses.filter(addr => addr.id !== addressId);
         
         console.log(`[API][user/addresses] Attempting to remove address ID ${addressId} for user ${uid}.`);
         await userRef.update({
-            // Use arrayRemove with the exact object found
-            addresses: FieldValue.arrayRemove(addressToRemove)
+            addresses: updatedAddresses
         });
-        // --- END FIX ---
 
         console.log(`[API][user/addresses] Address ID ${addressId} removed successfully for user ${uid}.`);
         return NextResponse.json({ message: 'Address removed successfully!' }, { status: 200 });

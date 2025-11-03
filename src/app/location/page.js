@@ -1,14 +1,14 @@
 
 'use client';
 
-import React, { useState, useEffect, Suspense, useCallback } from 'react';
+import React, { useState, useEffect, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { motion } from 'framer-motion';
 import { MapPin, LocateFixed, Plus, Home, Building, Trash2, ArrowLeft, Lock, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useUser } from '@/firebase';
 import InfoDialog from '@/components/InfoDialog';
-
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 
 const TokenVerificationLock = ({ message }) => (
     <div className="min-h-screen bg-background flex flex-col items-center justify-center text-center p-4">
@@ -46,12 +46,29 @@ const SavedAddressCard = ({ address, onSelect, onDelete, isAuth }) => {
     );
 }
 
+const ConfirmationDialog = ({ isOpen, onClose, onConfirm, title, message }) => {
+    return (
+        <Dialog open={isOpen} onOpenChange={onClose}>
+            <DialogContent className="bg-background border-border text-foreground">
+                <DialogHeader>
+                    <DialogTitle>{title}</DialogTitle>
+                    <DialogDescription>{message}</DialogDescription>
+                </DialogHeader>
+                <DialogFooter>
+                    <Button variant="secondary" onClick={onClose}>Cancel</Button>
+                    <Button variant="destructive" onClick={onConfirm}>Delete</Button>
+                </DialogFooter>
+            </DialogContent>
+        </Dialog>
+    );
+};
+
+
 const SelectLocationInternal = () => {
     const router = useRouter();
     const searchParams = useSearchParams();
     const { user, isUserLoading } = useUser();
 
-    // Security State
     const [isTokenValid, setIsTokenValid] = useState(false);
     const [tokenError, setTokenError] = useState('');
     const phone = searchParams.get('phone');
@@ -61,6 +78,9 @@ const SelectLocationInternal = () => {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
     const [infoDialog, setInfoDialog] = useState({ isOpen: false, title: '', message: '' });
+    
+    const [addressToDelete, setAddressToDelete] = useState(null);
+    const [isConfirmOpen, setIsConfirmOpen] = useState(false);
 
     const returnUrl = searchParams.get('returnUrl') || '/';
     
@@ -69,7 +89,6 @@ const SelectLocationInternal = () => {
             const phoneToUse = phone && phone.trim() !== '' ? phone : null;
             const tokenToUse = token && token.trim() !== '' ? token : null;
 
-            // If token is present, it's a WhatsApp session, which takes priority.
             if (tokenToUse) {
                 if (!phoneToUse) {
                     setTokenError("A phone number is required with the session token.");
@@ -91,13 +110,11 @@ const SelectLocationInternal = () => {
                     return;
                 }
             } 
-            // If no token, check if the user is logged in via Firebase Auth.
             else if (!user && !isUserLoading) {
                 setTokenError("No session token found. Please start your order from WhatsApp or log in.");
                 setLoading(false);
                 return;
             }
-             // If we reach here, token is valid or user is logged in and loading is finished
              if (!isUserLoading) {
                 setIsTokenValid(true);
                 fetchAddresses(phoneToUse);
@@ -109,8 +126,15 @@ const SelectLocationInternal = () => {
             setError('');
             
             try {
-                // If phone number is in URL (from WhatsApp), use it for lookup.
-                if (phoneToLookup) {
+                if (user) {
+                    console.log("[LocationPage] User logged in via Auth, fetching via secure API.");
+                    const idToken = await user.getIdToken();
+                    const res = await fetch('/api/user/addresses', { headers: { 'Authorization': `Bearer ${idToken}` } });
+                    if (!res.ok) throw new Error('Failed to fetch your saved addresses.');
+                    const data = await res.json();
+                    setAddresses(data.addresses || []);
+                }
+                else if (phoneToLookup) {
                     console.log(`[LocationPage] User via WhatsApp, fetching via customer lookup for phone: ${phoneToLookup}`);
                     const res = await fetch('/api/customer/lookup', {
                         method: 'POST',
@@ -126,16 +150,6 @@ const SelectLocationInternal = () => {
                         throw new Error(errorData.message || 'Failed to look up customer data.');
                     }
                 }
-                // If no phone from URL, but user is logged in via Firebase Auth
-                else if (user) {
-                    console.log("[LocationPage] User logged in via Auth, fetching via secure API.");
-                    const idToken = await user.getIdToken();
-                    const res = await fetch('/api/user/addresses', { headers: { 'Authorization': `Bearer ${idToken}` } });
-                    if (!res.ok) throw new Error('Failed to fetch your saved addresses.');
-                    const data = await res.json();
-                    setAddresses(data.addresses || []);
-                }
-                 // If neither, then we can't fetch anything.
                 else {
                     setAddresses([]);
                 }
@@ -155,25 +169,43 @@ const SelectLocationInternal = () => {
         router.push(returnUrl);
     };
 
-    const handleDeleteAddress = async (addressId) => {
-        if (!window.confirm("Are you sure you want to delete this address?")) return;
+    const promptDeleteAddress = (addressId) => {
+        setAddressToDelete(addressId);
+        setIsConfirmOpen(true);
+    };
+
+    const confirmDeleteAddress = async () => {
+        if (!addressToDelete) return;
+        setIsConfirmOpen(false);
+
         if (!user) {
-             setInfoDialog({isOpen: true, title: 'Error', message: 'You must be logged in to delete an address.'});
-             return;
+            setInfoDialog({ isOpen: true, title: 'Error', message: 'You must be logged in to delete an address.' });
+            return;
         }
+
         try {
             const idToken = await user.getIdToken();
-            const res = await fetch('/api/user/addresses', { method: 'DELETE', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${idToken}` }, body: JSON.stringify({ addressId }) });
-            if (!res.ok) throw new Error((await res.json()).message || 'Failed to delete address.');
-            setInfoDialog({isOpen: true, title: 'Success', message: 'Address deleted successfully.'});
-            setAddresses(prev => prev.filter(addr => addr.id !== addressId));
+            const res = await fetch('/api/user/addresses', {
+                method: 'DELETE',
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${idToken}` },
+                body: JSON.stringify({ addressId: addressToDelete })
+            });
+
+            if (!res.ok) {
+                const data = await res.json();
+                throw new Error(data.message || 'Failed to delete address.');
+            }
+            setInfoDialog({ isOpen: true, title: 'Success', message: 'Address deleted successfully.' });
+            setAddresses(prev => prev.filter(addr => addr.id !== addressToDelete));
         } catch (err) {
-            setInfoDialog({isOpen: true, title: 'Error', message: err.message});
+            setInfoDialog({ isOpen: true, title: 'Error', message: err.message });
+        } finally {
+            setAddressToDelete(null);
         }
     };
     
     const handleAddNewAddress = () => {
-        const params = new URLSearchParams(searchParams); // Preserve existing params
+        const params = new URLSearchParams(searchParams);
         params.set('returnUrl', returnUrl);
         router.push(`/add-address?${params.toString()}`);
     }
@@ -204,6 +236,13 @@ const SelectLocationInternal = () => {
                 onClose={() => setInfoDialog({ isOpen: false, title: '', message: '' })}
                 title={infoDialog.title}
                 message={infoDialog.message}
+            />
+            <ConfirmationDialog
+                isOpen={isConfirmOpen}
+                onClose={() => setIsConfirmOpen(false)}
+                onConfirm={confirmDeleteAddress}
+                title="Confirm Deletion"
+                message="Are you sure you want to permanently delete this address?"
             />
             <header className="sticky top-0 z-20 bg-background/80 backdrop-blur-lg border-b border-border p-4 flex items-center gap-4">
                  <Button variant="ghost" size="icon" onClick={() => router.push(returnUrl)}><ArrowLeft/></Button>
@@ -241,7 +280,7 @@ const SelectLocationInternal = () => {
                                     key={address.id} 
                                     address={address} 
                                     onSelect={handleSelectAddress}
-                                    onDelete={handleDeleteAddress}
+                                    onDelete={promptDeleteAddress}
                                     isAuth={!!user}
                                 />
                             ))}
@@ -265,5 +304,3 @@ export default function SelectLocationPage() {
         </Suspense>
     );
 }
-
-    
