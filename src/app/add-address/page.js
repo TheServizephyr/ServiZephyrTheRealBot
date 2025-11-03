@@ -163,7 +163,7 @@ const AddAddressPageInternal = () => {
             // If no phone from URL, but user is logged in via Firebase Auth
             else if (user) {
                 setRecipientName(user.displayName || '');
-                setRecipientPhone(user.phoneNumber || '');
+                setRecipientPhone(user.phoneNumber || ''); // THE FIX: Pre-fill phone number from user object
             }
         };
         
