@@ -67,15 +67,12 @@ const MapComponent = ({ restaurantLocation, customerLocations, riderLocation, on
 
     const restaurantLatLng = useMemo(() => toLatLngLiteral(restaurantLocation), [restaurantLocation]);
     const riderLatLng = useMemo(() => toLatLngLiteral(riderLocation), [riderLocation]);
-    
-    // --- START THE FIX ---
-    const customerLatLngs = useMemo(() =>
-        (customerLocations || []) // Ensure it's an array to prevent crash
+    const customerLatLngs = useMemo(() => 
+        (customerLocations || [])
             .map(loc => ({ ...toLatLngLiteral(loc), id: loc.id }))
-            .filter(loc => loc.lat && loc.lng),
+            .filter(loc => loc.lat && loc.lng), 
         [customerLocations]
     );
-    // --- END THE FIX ---
 
     useEffect(() => {
         if (map) {
@@ -122,7 +119,11 @@ const MapComponent = ({ restaurantLocation, customerLocations, riderLocation, on
     );
 }
 
-const LiveTrackingMap = ({ restaurantLocation, customerLocations = [], riderLocation, mapRef }) => {
+const LiveTrackingMap = (props) => {
+    console.log("DEBUG: Props received by LiveTrackingMap:", props);
+    const { restaurantLocation, riderLocation, customerLocation, mapRef } = props;
+    console.log("DEBUG: Customer Location Prop:", customerLocation);
+
     if (!GOOGLE_MAPS_API_KEY) {
         return <div className="w-full h-full bg-muted flex items-center justify-center"><p className="text-destructive">Google Maps API Key not found.</p></div>;
     }
@@ -136,7 +137,7 @@ const LiveTrackingMap = ({ restaurantLocation, customerLocations = [], riderLoca
       const restoLng = restaurantLocation?.lng ?? restaurantLocation?._longitude;
       if(restoLat && restoLng) return {lat: restoLat, lng: restoLng};
       
-      const firstCustomer = customerLocations[0];
+      const firstCustomer = Array.isArray(props.customerLocations) && props.customerLocations[0] ? props.customerLocations[0] : customerLocation;
       const custLat = firstCustomer?.lat ?? firstCustomer?._latitude;
       const custLng = firstCustomer?.lng ?? firstCustomer?._longitude;
       if(custLat && custLng) return {lat: custLat, lng: custLng};
@@ -166,7 +167,7 @@ const LiveTrackingMap = ({ restaurantLocation, customerLocations = [], riderLoca
             >
                 <MapComponent
                      restaurantLocation={restaurantLocation}
-                     customerLocations={customerLocations}
+                     customerLocations={Array.isArray(props.customerLocations) ? props.customerLocations : (customerLocation ? [customerLocation] : [])}
                      riderLocation={riderLocation}
                      onMapLoad={handleMapLoad}
                 />

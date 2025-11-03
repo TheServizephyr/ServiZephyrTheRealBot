@@ -137,8 +137,9 @@ export default function OrderTrackingPage() {
                 throw new Error(errData.message || 'Failed to fetch order status.');
             }
             const data = await res.json();
-            console.log("[TrackPage] Fetched data:", data);
             setOrderData(data);
+            console.log("DEBUG: Order Data Fetched:", data);
+            console.log("DEBUG: Customer Location from Order:", data.order.customerLocation);
         } catch (err) {
             console.error("[TrackPage] Fetch error:", err);
             setError(err.message);
@@ -160,27 +161,9 @@ export default function OrderTrackingPage() {
     const { restaurantLocation, customerLocation, riderLocation } = useMemo(() => {
         const toLatLngLiteral = (loc) => {
             if (!loc) return null;
-            
-            // Case 1: Incorrect string array format
-            if (Array.isArray(loc) && loc.length === 2 && typeof loc[0] === 'string') {
-                try {
-                    const lat = parseFloat(loc[0].match(/[\d.-]+/)[0]);
-                    const lng = parseFloat(loc[1].match(/[\d.-]+/)[0]);
-                    return { lat, lng };
-                } catch (e) {
-                    console.error("Failed to parse location string array:", loc, e);
-                    return null;
-                }
-            }
-
-            // Case 2: Standard {lat, lng} object
             const lat = loc.lat ?? loc._latitude;
             const lng = loc.lng ?? loc._longitude;
-            if (typeof lat === 'number' && typeof lng === 'number') {
-                return { lat, lng };
-            }
-            
-            return null;
+            return (typeof lat === 'number' && typeof lng === 'number') ? { lat, lng } : null;
         };
 
         const restaurantLoc = orderData?.order?.restaurantLocation;
