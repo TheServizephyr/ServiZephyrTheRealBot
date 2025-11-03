@@ -38,10 +38,8 @@ const CustomerDashboardContent = ({ children }) => {
   const { user, isUserLoading } = useUser();
 
   useEffect(() => {
-    if (!isUserLoading) {
-      if (!user) {
-        router.push('/');
-      }
+    if (!isUserLoading && !user) {
+      router.push('/');
     }
   }, [user, isUserLoading, router]);
 

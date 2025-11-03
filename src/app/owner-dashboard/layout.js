@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useState, useEffect, Suspense } from "react";
@@ -83,17 +84,14 @@ function OwnerDashboardContent({ children }) {
 
   useEffect(() => {
     if (isUserLoading) {
-      // Still loading, do nothing. The loader will be shown.
       return; 
     }
 
-    if (!user) {
-        // Now that loading is false, if there's no user, redirect.
+    if (!isUserLoading && !user) {
         router.push('/');
         return;
     }
 
-    // User is authenticated, proceed to fetch data.
     const fetchRestaurantData = async () => {
         try {
             const idToken = await user.getIdToken();
@@ -138,7 +136,9 @@ function OwnerDashboardContent({ children }) {
         }
     }
     
-    fetchRestaurantData();
+    if(user) {
+      fetchRestaurantData();
+    }
 
   }, [user, isUserLoading, impersonatedOwnerId, router]);
 
@@ -152,7 +152,7 @@ function OwnerDashboardContent({ children }) {
   }
 
   if (!user) {
-      return null; // Redirect is handled in the useEffect, this prevents rendering anything while redirecting
+      return null;
   }
   
   const renderStatusScreen = () => {

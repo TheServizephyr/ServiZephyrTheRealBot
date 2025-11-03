@@ -22,7 +22,7 @@ export default function RiderLayout({ children }) {
             return;
         }
 
-        if (!user) {
+        if (!isUserLoading && !user) {
             router.push('/rider-dashboard/login');
             return;
         }
@@ -38,7 +38,9 @@ export default function RiderLayout({ children }) {
             }
         };
         
-        fetchRiderInfo();
+        if (user) {
+          fetchRiderInfo();
+        }
 
     }, [user, isUserLoading, router]);
 
