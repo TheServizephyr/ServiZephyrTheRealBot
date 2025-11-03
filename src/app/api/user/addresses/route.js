@@ -24,7 +24,7 @@ export async function GET(req) {
             return NextResponse.json({ message: 'User not authenticated.' }, { status: 401 });
         }
 
-        const firestore = await getFirestore(); // THE FIX: Added await
+        const firestore = await getFirestore();
         const userRef = firestore.collection('users').doc(uid);
         const docSnap = await userRef.get();
         
@@ -62,7 +62,7 @@ export async function POST(req) {
              return NextResponse.json({ message: 'A phone number is required to save an address for a session.' }, { status: 401 });
         }
 
-        const firestore = await getFirestore(); // THE FIX: Added await
+        const firestore = await getFirestore();
         let targetRef;
         const normalizedPhone = phone.slice(-10);
 
@@ -106,7 +106,7 @@ export async function DELETE(req) {
             return NextResponse.json({ message: 'Address ID is required.' }, { status: 400 });
         }
         
-        const firestore = await getFirestore(); // THE FIX: Added await
+        const firestore = await getFirestore();
         const userRef = firestore.collection('users').doc(uid);
         const userDoc = await userRef.get();
 
@@ -118,6 +118,7 @@ export async function DELETE(req) {
         const userData = userDoc.data();
         const currentAddresses = userData.addresses || [];
         
+        // --- START FIX: Find the specific address object to remove ---
         const addressToRemove = currentAddresses.find(addr => addr.id === addressId);
 
         if (!addressToRemove) {
@@ -127,8 +128,10 @@ export async function DELETE(req) {
         
         console.log(`[API][user/addresses] Attempting to remove address ID ${addressId} for user ${uid}.`);
         await userRef.update({
+            // Use arrayRemove with the exact object found
             addresses: FieldValue.arrayRemove(addressToRemove)
         });
+        // --- END FIX ---
 
         console.log(`[API][user/addresses] Address ID ${addressId} removed successfully for user ${uid}.`);
         return NextResponse.json({ message: 'Address removed successfully!' }, { status: 200 });

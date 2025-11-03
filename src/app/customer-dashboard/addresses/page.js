@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button';
 import { auth } from '@/lib/firebase';
 import InfoDialog from '@/components/InfoDialog';
 import { useUser } from '@/firebase';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 
 const SavedAddressCard = ({ address, onSelect, onDelete, isAuth }) => {
     const Icon = address.label === 'Home' ? Home : address.label === 'Work' ? Building : MapPin;
@@ -37,6 +38,26 @@ const SavedAddressCard = ({ address, onSelect, onDelete, isAuth }) => {
     );
 }
 
+// --- START FIX: Confirmation Dialog Component ---
+const ConfirmationDialog = ({ isOpen, onClose, onConfirm, title, message }) => {
+    return (
+        <Dialog open={isOpen} onOpenChange={onClose}>
+            <DialogContent className="bg-background border-border text-foreground">
+                <DialogHeader>
+                    <DialogTitle>{title}</DialogTitle>
+                    <DialogDescription>{message}</DialogDescription>
+                </DialogHeader>
+                <DialogFooter>
+                    <Button variant="secondary" onClick={onClose}>Cancel</Button>
+                    <Button variant="destructive" onClick={onConfirm}>Delete</Button>
+                </DialogFooter>
+            </DialogContent>
+        </Dialog>
+    );
+};
+// --- END FIX ---
+
+
 const AddressesPageInternal = () => {
     const router = useRouter();
     const searchParams = useSearchParams();
@@ -46,6 +67,11 @@ const AddressesPageInternal = () => {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
     const [infoDialog, setInfoDialog] = useState({ isOpen: false, title: '', message: '' });
+    
+    // --- START FIX: State for confirmation dialog ---
+    const [addressToDelete, setAddressToDelete] = useState(null);
+    const [isConfirmOpen, setIsConfirmOpen] = useState(false);
+    // --- END FIX ---
 
     const returnUrl = searchParams.get('returnUrl') || '/customer-dashboard/profile';
     const phone = searchParams.get('phone') || user?.phoneNumber;
@@ -84,12 +110,19 @@ const AddressesPageInternal = () => {
         fetchAddresses();
     }, [fetchAddresses]);
     
-    const handleDeleteAddress = async (addressId) => {
-        if (!window.confirm("Are you sure you want to delete this address?")) return;
+    // --- START FIX: Updated deletion flow ---
+    const promptDeleteAddress = (addressId) => {
+        setAddressToDelete(addressId);
+        setIsConfirmOpen(true);
+    };
+    
+    const confirmDeleteAddress = async () => {
+        if (!addressToDelete) return;
+        setIsConfirmOpen(false);
 
         if (!user) {
-             setInfoDialog({isOpen: true, title: 'Error', message: 'You must be logged in to delete an address.'});
-             return;
+            setInfoDialog({ isOpen: true, title: 'Error', message: 'You must be logged in to delete an address.' });
+            return;
         }
 
         try {
@@ -97,18 +130,22 @@ const AddressesPageInternal = () => {
             const res = await fetch('/api/user/addresses', {
                 method: 'DELETE',
                 headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${idToken}` },
-                body: JSON.stringify({ addressId })
+                body: JSON.stringify({ addressId: addressToDelete })
             });
+
             if (!res.ok) {
-                 const data = await res.json();
-                 throw new Error(data.message || 'Failed to delete address.');
+                const data = await res.json();
+                throw new Error(data.message || 'Failed to delete address.');
             }
-            setInfoDialog({isOpen: true, title: 'Success', message: 'Address deleted successfully.'});
+            setInfoDialog({ isOpen: true, title: 'Success', message: 'Address deleted successfully.' });
             fetchAddresses(); // Refresh list
         } catch (err) {
-            setInfoDialog({isOpen: true, title: 'Error', message: err.message});
+            setInfoDialog({ isOpen: true, title: 'Error', message: err.message });
+        } finally {
+            setAddressToDelete(null);
         }
     };
+    // --- END FIX ---
     
     const handleAddNewAddress = () => {
         const currentUrl = window.location.href;
@@ -128,6 +165,15 @@ const AddressesPageInternal = () => {
                 title={infoDialog.title}
                 message={infoDialog.message}
             />
+            {/* --- START FIX: Added confirmation dialog --- */}
+            <ConfirmationDialog
+                isOpen={isConfirmOpen}
+                onClose={() => setIsConfirmOpen(false)}
+                onConfirm={confirmDeleteAddress}
+                title="Confirm Deletion"
+                message="Are you sure you want to permanently delete this address?"
+            />
+            {/* --- END FIX --- */}
             <header className="sticky top-0 z-20 bg-background/80 backdrop-blur-lg border-b border-border p-4 flex items-center gap-4">
                  <Button variant="ghost" size="icon" onClick={() => router.push('/customer-dashboard/profile')}><ArrowLeft/></Button>
                  <h1 className="text-xl font-bold">My Addresses</h1>
@@ -168,7 +214,7 @@ const AddressesPageInternal = () => {
                                     key={address.id} 
                                     address={address} 
                                     onSelect={() => {}} // Not selectable on this page
-                                    onDelete={handleDeleteAddress}
+                                    onDelete={promptDeleteAddress} // --- FIX: Use prompt instead of direct delete
                                     isAuth={!!user}
                                 />
                             ))}
