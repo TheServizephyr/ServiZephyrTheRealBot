@@ -58,16 +58,13 @@ export async function GET(request, { params }) {
             order: {
                 id: orderSnap.id,
                 status: orderData.status,
-                customerLocation: orderData.customerLocation, // Pass the GeoPoint directly
-                // --- START FIX ---
-                // Add restaurant location to the order details for the map
+                customerLocation: orderData.customerLocation,
                 restaurantLocation: businessData.address,
                 customerName: orderData.customerName,
                 customerAddress: orderData.customerAddress,
                 customerPhone: orderData.customerPhone,
                 totalAmount: orderData.totalAmount,
                 paymentDetails: orderData.paymentDetails,
-                // --- END FIX ---
             },
             restaurant: {
                 name: businessData.name,
@@ -76,10 +73,10 @@ export async function GET(request, { params }) {
             deliveryBoy: deliveryBoyData ? {
                 id: deliveryBoyData.id,
                 name: deliveryBoyData.name,
-                photoUrl: deliveryBoyData.profilePictureUrl, // Corrected field name
-                rating: deliveryBoyData.avgRating || 4.5, // Use avgRating from driver doc
+                photoUrl: deliveryBoyData.profilePictureUrl,
+                rating: deliveryBoyData.avgRating || 4.5,
                 phone: deliveryBoyData.phone,
-                location: deliveryBoyData.currentLocation // Use currentLocation from driver doc
+                location: deliveryBoyData.currentLocation
             } : null
         };
         
