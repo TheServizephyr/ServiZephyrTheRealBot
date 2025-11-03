@@ -160,10 +160,27 @@ const AddAddressPageInternal = () => {
                     console.warn("Could not prefill name from customer lookup:", e);
                 }
             } 
-            // If no phone from URL, but user is logged in via Firebase Auth
+            // If no phone from URL, but user is logged in via Firebase Auth, fetch from database
             else if (user) {
-                setRecipientName(user.displayName || '');
-                setRecipientPhone(user.phoneNumber || ''); // THE FIX: Pre-fill phone number from user object
+                try {
+                    const idToken = await user.getIdToken();
+                    const res = await fetch('/api/owner/settings', {
+                        headers: { 'Authorization': `Bearer ${idToken}` }
+                    });
+                    if (res.ok) {
+                        const userData = await res.json();
+                        setRecipientName(userData.name || user.displayName || '');
+                        setRecipientPhone(userData.phone || user.phoneNumber || '');
+                    } else {
+                        // Fallback if API fails
+                        setRecipientName(user.displayName || '');
+                        setRecipientPhone(user.phoneNumber || '');
+                    }
+                } catch (e) {
+                     console.warn("Could not prefill data from settings API:", e);
+                     setRecipientName(user.displayName || '');
+                     setRecipientPhone(user.phoneNumber || '');
+                }
             }
         };
         
