@@ -1,4 +1,3 @@
-
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
@@ -12,7 +11,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import InfoDialog from '@/components/InfoDialog';
 import { cn } from '@/lib/utils';
-import { FirestorePermissionError, errorEmitter } from '@/firebase';
+import { FirestorePermissionError, errorEmitter } from '@/firebase/errors';
 
 const InvitationCard = ({ invite, onAccept, onDecline }) => {
     return (
@@ -67,7 +66,6 @@ const NewOrderCard = ({ order, onAccept, isAccepting }) => {
     );
 };
 
-// --- START: NEW COMPONENT FOR ACTIVE DELIVERIES ---
 const ActiveDeliveryCard = ({ order, onMarkDelivered }) => {
     return (
         <motion.div
@@ -96,14 +94,14 @@ const ActiveDeliveryCard = ({ order, onMarkDelivered }) => {
         </motion.div>
     );
 };
-// --- END: NEW COMPONENT ---
+
 
 export default function RiderDashboardPage() {
     const { user, isUserLoading } = useUser();
     const router = useRouter();
     const [driverData, setDriverData] = useState(null);
     const [invites, setInvites] = useState([]);
-    const [activeOrders, setActiveOrders] = useState([]); // This will now hold both 'dispatched' and 'on_the_way'
+    const [activeOrders, setActiveOrders] = useState([]);
     const [loading, setLoading] = useState(true);
     const [isAcceptingOrder, setIsAcceptingOrder] = useState(false);
     const [error, setError] = useState('');
@@ -160,6 +158,7 @@ export default function RiderDashboardPage() {
             return;
         }
 
+        setLoading(true);
         let unsubscribes = [];
 
         const driverDocRef = doc(db, 'drivers', user.uid);
@@ -185,7 +184,7 @@ export default function RiderDashboardPage() {
                 } else {
                     setError('Your rider profile could not be found.');
                 }
-                setLoading(false);
+                setLoading(false); // Only stop loading after profile check
             },
             (err) => {
                  const contextualError = new FirestorePermissionError({ path: driverDocRef.path, operation: 'get' });
@@ -202,9 +201,7 @@ export default function RiderDashboardPage() {
         });
         unsubscribes.push(unsubscribeInvites);
         
-        // --- START THE FIX: Listen for both 'dispatched' and 'on_the_way' orders ---
         const ordersQuery = query(collection(db, "orders"), where("deliveryBoyId", "==", user.uid), where("status", "in", ["dispatched", "on_the_way"]));
-        // --- END THE FIX ---
         const unsubscribeOrders = onSnapshot(ordersQuery, (snapshot) => {
             const newOrders = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
             setActiveOrders(newOrders);
@@ -256,7 +253,7 @@ export default function RiderDashboardPage() {
             const orderIds = activeOrders.filter(o => o.status === 'dispatched').map(o => o.id);
             if (orderIds.length === 0) return;
             await handleApiCall('/api/rider/accept-order', 'POST', { orderIds });
-            // No need to redirect, the page will update automatically
+            router.push('/rider-dashboard/track');
         } catch (err) {
             setInfoDialog({ isOpen: true, title: 'Error', message: `Could not process order acceptance: ${err.message}`});
         } finally {
@@ -264,20 +261,17 @@ export default function RiderDashboardPage() {
         }
     };
     
-    // --- START: NEW FUNCTION TO MARK ORDER DELIVERED ---
     const handleMarkDelivered = async (orderId) => {
         try {
             await handleApiCall('/api/rider/update-order-status', 'PATCH', { 
                 orderId,
                 newStatus: 'delivered'
             });
-            // Optimistically remove from UI
             setActiveOrders(prev => prev.filter(o => o.id !== orderId));
         } catch(err) {
             setInfoDialog({ isOpen: true, title: 'Update Failed', message: `Could not mark order as delivered: ${err.message}`});
         }
     }
-    // --- END: NEW FUNCTION ---
 
     if (loading) {
         return <div className="min-h-screen flex items-center justify-center bg-background"><Loader2 className="animate-spin text-primary h-16 w-16" /></div>
@@ -341,7 +335,6 @@ export default function RiderDashboardPage() {
             )}
             </AnimatePresence>
             
-            {/* --- START: NEW ACTIVE DELIVERIES SECTION --- */}
             {onTheWayOrders.length > 0 && (
                 <Card>
                     <CardHeader>
@@ -359,7 +352,6 @@ export default function RiderDashboardPage() {
                     </CardContent>
                 </Card>
             )}
-            {/* --- END: NEW ACTIVE DELIVERIES SECTION --- */}
             
             <Card>
                 <CardHeader>
