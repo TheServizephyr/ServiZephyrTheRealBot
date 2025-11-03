@@ -17,33 +17,45 @@ const RouteLine = ({ from, to, isDashed = false }) => {
             return;
         }
   
-        const primaryColor = 'hsl(var(--primary))';
+        const primaryColor = '#FDBA12'; // Use direct hex value for safety with Google Maps API
+        
         const lineOptions = {
             path: [from, to],
-            geodesic: true, // This will make the line slightly curved over long distances
+            geodesic: true, // This makes the line follow the curvature of the Earth
             strokeColor: primaryColor,
-            strokeOpacity: 1.0,
+            strokeOpacity: 0, // Set to 0 for solid line, icons will control visibility for dashed
             strokeWeight: 4,
             icons: isDashed ? [{
                 icon: {
                     path: 'M 0,-1 0,1',
-                    strokeOpacity: 1,
+                    strokeOpacity: 1, // Control opacity here
                     scale: 3,
-                    strokeWeight: 3
+                    strokeColor: primaryColor,
                 },
                 offset: '0',
                 repeat: '15px'
             }] : []
+        };
+
+        // For a solid line, we rely on strokeOpacity being 1 and no icons.
+        const solidLineOptions = {
+            ...lineOptions,
+            strokeOpacity: 1,
+            icons: []
         };
         
         if (!polylineRef.current) {
             polylineRef.current = new window.google.maps.Polyline();
         }
         
-        polylineRef.current.setOptions(lineOptions);
+        polylineRef.current.setOptions(isDashed ? lineOptions : solidLineOptions);
         polylineRef.current.setMap(map);
   
-        return () => { if (polylineRef.current) polylineRef.current.setMap(null); };
+        return () => { 
+            if (polylineRef.current) {
+                polylineRef.current.setMap(null); 
+            }
+        };
     }, [map, from, to, isDashed]);
   
     return null;
@@ -53,14 +65,12 @@ const RouteLine = ({ from, to, isDashed = false }) => {
 const MapComponent = ({ restaurantLocation, customerLocations, riderLocation, onMapLoad }) => {
     const map = useMap();
 
-    // Use the onMapLoad prop to pass the map instance up to the parent
     useEffect(() => {
         if (map && onMapLoad) {
             onMapLoad(map);
         }
     }, [map, onMapLoad]);
 
-    // Universal GeoPoint/LatLng to LatLngLiteral converter
     const toLatLngLiteral = (loc) => {
         if (!loc) return null;
         const lat = loc.lat ?? loc._latitude;
@@ -112,13 +122,12 @@ const MapComponent = ({ restaurantLocation, customerLocations, riderLocation, on
                      <div style={{ fontSize: '2.5rem' }}>🛵</div>
                 </AdvancedMarker>
             )}
-            {/* Draw lines from start point to all customer locations */}
             {routeStart && customerLatLngs.map(customerLoc => (
                 <RouteLine 
                     key={`route-${customerLoc.id}`} 
                     from={routeStart} 
                     to={customerLoc} 
-                    isDashed={!riderLatLng} // Dashed if rider hasn't started moving
+                    isDashed={!riderLatLng} // Dashed if rider is not on the way
                 />
             ))}
         </>
@@ -153,7 +162,6 @@ const LiveTrackingMap = (props) => {
 
     const center = getCenter();
     
-    // Callback to get the map instance from the child component
     const handleMapLoad = (mapInstance) => {
         if (mapRef) {
             mapRef.current = mapInstance;
