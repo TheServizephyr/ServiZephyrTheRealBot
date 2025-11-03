@@ -1,4 +1,5 @@
 
+
 'use client';
 
 import React, { useState, useEffect, useMemo } from 'react';
@@ -158,11 +159,14 @@ export default function OrderTrackingPage() {
     }, [orderId]);
 
     const { restaurantLocation, customerLocation, riderLocation } = useMemo(() => {
-        const restaurantLat = orderData?.restaurant?.address?.latitude;
-        const restaurantLng = orderData?.restaurant?.address?.longitude;
+        // --- START FIX ---
+        // Accessing restaurant location from the `order` object now
+        const restaurantLat = orderData?.order?.restaurantLocation?.latitude;
+        const restaurantLng = orderData?.order?.restaurantLocation?.longitude;
 
         const customerLat = orderData?.order?.customerLocation?._latitude || orderData?.order?.customerLocation?.latitude;
         const customerLng = orderData?.order?.customerLocation?._longitude || orderData?.order?.customerLocation?.longitude;
+        // --- END FIX ---
 
         const riderLat = orderData?.deliveryBoy?.location?._latitude || orderData?.deliveryBoy?.location?.latitude;
         const riderLng = orderData?.deliveryBoy?.location?._longitude || orderData?.deliveryBoy?.location?.longitude;

@@ -58,7 +58,16 @@ export async function GET(request, { params }) {
             order: {
                 id: orderSnap.id,
                 status: orderData.status,
-                customerLocation: orderData.customerLocation // Pass the GeoPoint directly
+                customerLocation: orderData.customerLocation, // Pass the GeoPoint directly
+                // --- START FIX ---
+                // Add restaurant location to the order details for the map
+                restaurantLocation: businessData.address,
+                customerName: orderData.customerName,
+                customerAddress: orderData.customerAddress,
+                customerPhone: orderData.customerPhone,
+                totalAmount: orderData.totalAmount,
+                paymentDetails: orderData.paymentDetails,
+                // --- END FIX ---
             },
             restaurant: {
                 name: businessData.name,
