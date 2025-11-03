@@ -1,6 +1,6 @@
 
 
-import { getFirestore, FieldValue } from '@/lib/firebase-admin';
+import { getFirestore, FieldValue, GeoPoint } from '@/lib/firebase-admin';
 import { NextResponse } from 'next/server';
 import Razorpay from 'razorpay';
 import { nanoid } from 'nanoid';
@@ -63,9 +63,9 @@ export async function POST(req) {
         
         console.log(`[DEBUG] /api/customer/register: User status: ${isNewUser ? 'New/Unclaimed User' : 'Existing Customer'}. User ID will be: ${userId}`);
 
-        // --- THE FIX: Correctly extract customer location from the address object ---
+        // --- THE FIX: Correctly construct a GeoPoint object ---
         const customerLocation = (address && typeof address.latitude === 'number' && typeof address.longitude === 'number')
-            ? new FieldValue.GeoPoint(address.latitude, address.longitude)
+            ? new GeoPoint(address.latitude, address.longitude)
             : null;
         console.log(`[DEBUG] /api/customer/register: Customer location extracted:`, customerLocation);
         // --- END FIX ---
@@ -204,7 +204,7 @@ export async function POST(req) {
         const newOrderRef = firestore.collection('orders').doc();
         batch.set(newOrderRef, {
             customerName: name, customerId: userId, customerAddress: address?.full || address, customerPhone: normalizedPhone,
-            customerLocation: customerLocation, // --- THE FIX: Save the extracted location object ---
+            customerLocation: customerLocation,
             restaurantId: restaurantId, restaurantName: businessData.name,
             businessType, deliveryType, pickupTime, tipAmount, tableId, dineInTabId: finalDineInTabId,
             items: items,

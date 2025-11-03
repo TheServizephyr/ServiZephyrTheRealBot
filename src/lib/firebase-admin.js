@@ -82,6 +82,7 @@ const getFirestore = async () => {
 };
 
 const FieldValue = admin.firestore.FieldValue;
+const GeoPoint = admin.firestore.GeoPoint;
 
 
 // --- NEW CENTRALIZED HELPER FUNCTION ---
@@ -107,4 +108,4 @@ const verifyAndGetUid = async (req) => {
 }
 
 
-export { getAuth, getFirestore, FieldValue, verifyAndGetUid };
+export { getAuth, getFirestore, FieldValue, GeoPoint, verifyAndGetUid };
