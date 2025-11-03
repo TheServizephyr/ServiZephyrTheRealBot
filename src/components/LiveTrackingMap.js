@@ -54,8 +54,7 @@ const MapComponent = ({ restaurantLocation, customerLocations, riderLocation, on
         }
     }, [map, onMapLoad]);
 
-    // --- START THE FIX ---
-    // Universal GeoPoint to LatLngLiteral converter
+    // Universal GeoPoint/LatLng to LatLngLiteral converter
     const toLatLngLiteral = (loc) => {
         if (!loc) return null;
         const lat = loc.lat ?? loc._latitude;
@@ -68,10 +67,12 @@ const MapComponent = ({ restaurantLocation, customerLocations, riderLocation, on
 
     const restaurantLatLng = useMemo(() => toLatLngLiteral(restaurantLocation), [restaurantLocation]);
     const riderLatLng = useMemo(() => toLatLngLiteral(riderLocation), [riderLocation]);
-    const customerLatLngs = useMemo(() => 
-        (customerLocations || [])
+    
+    // --- START THE FIX ---
+    const customerLatLngs = useMemo(() =>
+        (customerLocations || []) // Ensure it's an array to prevent crash
             .map(loc => ({ ...toLatLngLiteral(loc), id: loc.id }))
-            .filter(loc => loc.lat && loc.lng), 
+            .filter(loc => loc.lat && loc.lng),
         [customerLocations]
     );
     // --- END THE FIX ---
