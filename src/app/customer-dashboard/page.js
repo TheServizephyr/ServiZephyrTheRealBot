@@ -5,8 +5,8 @@ import { ArrowRight, RefreshCw, ShoppingBag, Loader2 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { useState, useEffect, Suspense } from 'react';
 import { useUser } from '@/firebase';
-import Link from 'next/link';
-import { useSearchParams } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
+import InfoDialog from '@/components/InfoDialog';
 
 const containerVariants = {
   hidden: { opacity: 0 },
@@ -37,9 +37,10 @@ function CustomerHubContent() {
     const { user, isUserLoading } = useUser();
     const [hubData, setHubData] = useState(null);
     const [loading, setLoading] = useState(true);
-    const searchParams = useSearchParams();
-    const phone = searchParams.get('phone');
-    const token = searchParams.get('token');
+    const [isRedirecting, setIsRedirecting] = useState(false);
+    const [infoDialog, setInfoDialog] = useState({ isOpen: false, title: '', message: '' });
+    const router = useRouter();
+
 
     useEffect(() => {
         const fetchHubData = async () => {
@@ -55,6 +56,7 @@ function CustomerHubContent() {
                     setHubData(data);
                 } catch (error) {
                     console.error("Error fetching hub data:", error);
+                    setInfoDialog({isOpen: true, title: 'Error', message: 'Could not load your hub data.'});
                 } finally {
                     setLoading(false);
                 }
@@ -68,20 +70,39 @@ function CustomerHubContent() {
         }
     }, [user, isUserLoading]);
 
-    const buildOrderLink = (restaurantId) => {
-        let url = `/order/${restaurantId}`;
-        const params = new URLSearchParams();
-        if (phone) params.append('phone', phone);
-        if (token) params.append('token', token);
-        
-        const paramsString = params.toString();
-        if (paramsString) {
-            url += `?${paramsString}`;
+    const handleNavigation = async (restaurantId) => {
+        if (!user) {
+            setInfoDialog({isOpen: true, title: 'Authentication Error', message: 'Please log in again to continue.'});
+            return;
         }
-        return url;
+        setIsRedirecting(true);
+        try {
+            const idToken = await user.getIdToken();
+            const res = await fetch('/api/auth/generate-session-token', {
+                method: 'POST',
+                headers: { 'Authorization': `Bearer ${idToken}` }
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.message || 'Failed to create a secure session.');
+            
+            const { phone, token } = data;
+            router.push(`/order/${restaurantId}?phone=${phone}&token=${token}`);
+
+        } catch (error) {
+            setInfoDialog({isOpen: true, title: 'Navigation Error', message: error.message});
+            setIsRedirecting(false);
+        }
     };
 
+
     return (
+        <>
+        {isRedirecting && (
+            <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center">
+                <Loader2 className="animate-spin text-white h-12 w-12" />
+            </div>
+        )}
+        <InfoDialog isOpen={infoDialog.isOpen} onClose={() => setInfoDialog({isOpen: false, title: '', message: ''})} title={infoDialog.title} message={infoDialog.message}/>
         <motion.div
             variants={containerVariants}
             initial="hidden"
@@ -110,11 +131,9 @@ function CustomerHubContent() {
                         ) : hubData?.quickReorder && (
                             <>
                                 <p className="text-lg">Time for your favorite <span className="font-bold text-foreground">'{hubData.quickReorder.dishName}'</span> from <span className="font-bold text-foreground">{hubData.quickReorder.restaurantName}</span>?</p>
-                                <Link href={buildOrderLink(hubData.quickReorder.restaurantId)} passHref>
-                                    <button className="mt-4 inline-flex items-center gap-2 px-4 py-2 rounded-md bg-primary text-primary-foreground font-semibold hover:bg-primary/90">
-                                        Re-order Now <ArrowRight size={16}/>
-                                    </button>
-                                </Link>
+                                <button onClick={() => handleNavigation(hubData.quickReorder.restaurantId)} className="mt-4 inline-flex items-center gap-2 px-4 py-2 rounded-md bg-primary text-primary-foreground font-semibold hover:bg-primary/90">
+                                    Re-order Now <ArrowRight size={16}/>
+                                </button>
                             </>
                         )}
                     </CardContent>
@@ -134,13 +153,11 @@ function CustomerHubContent() {
                         ))
                     ) : (
                         hubData.myRestaurants.map(resto => (
-                            <Link href={buildOrderLink(resto.id)} key={resto.id} passHref>
-                                <div className="flex-shrink-0 w-24 text-center cursor-pointer group">
-                                    <div className="w-24 h-24 bg-muted rounded-full flex items-center justify-center border-2 border-border group-hover:border-primary transition-colors">
-                                        <span className="text-xs font-bold text-foreground text-center p-1">{resto.name}</span>
-                                    </div>
+                            <button onClick={() => handleNavigation(resto.id)} key={resto.id} className="flex-shrink-0 w-24 text-center cursor-pointer group">
+                                <div className="w-24 h-24 bg-muted rounded-full flex items-center justify-center border-2 border-border group-hover:border-primary transition-colors">
+                                    <span className="text-xs font-bold text-foreground text-center p-1">{resto.name}</span>
                                 </div>
-                            </Link>
+                            </button>
                         ))
                     )}
                     </div>
@@ -179,6 +196,7 @@ function CustomerHubContent() {
                 </motion.div>
             )}
         </motion.div>
+        </>
     );
 }
 
