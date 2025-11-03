@@ -158,18 +158,40 @@ export default function OrderTrackingPage() {
     }, [orderId]);
 
     const { restaurantLocation, customerLocation, riderLocation } = useMemo(() => {
-        // --- START THE FIX ---
-        // Safely access location data from orderData.order, which is now guaranteed by the API
+        const toLatLngLiteral = (loc) => {
+            if (!loc) return null;
+            
+            // Case 1: Incorrect string array format
+            if (Array.isArray(loc) && loc.length === 2 && typeof loc[0] === 'string') {
+                try {
+                    const lat = parseFloat(loc[0].match(/[\d.-]+/)[0]);
+                    const lng = parseFloat(loc[1].match(/[\d.-]+/)[0]);
+                    return { lat, lng };
+                } catch (e) {
+                    console.error("Failed to parse location string array:", loc, e);
+                    return null;
+                }
+            }
+
+            // Case 2: Standard {lat, lng} object
+            const lat = loc.lat ?? loc._latitude;
+            const lng = loc.lng ?? loc._longitude;
+            if (typeof lat === 'number' && typeof lng === 'number') {
+                return { lat, lng };
+            }
+            
+            return null;
+        };
+
         const restaurantLoc = orderData?.order?.restaurantLocation;
         const customerLoc = orderData?.order?.customerLocation;
         const riderLoc = orderData?.deliveryBoy?.location;
 
         return {
-            restaurantLocation: (restaurantLoc?.lat && restaurantLoc?.lng) ? { lat: restaurantLoc.lat, lng: restaurantLoc.lng } : null,
-            customerLocation: (customerLoc?._latitude && customerLoc?._longitude) ? { lat: customerLoc._latitude, lng: customerLoc._longitude } : null,
-            riderLocation: (riderLoc?._latitude && riderLoc?._longitude) ? { lat: riderLoc._latitude, lng: riderLoc._longitude } : null,
+            restaurantLocation: toLatLngLiteral(restaurantLoc),
+            customerLocation: toLatLngLiteral(customerLoc),
+            riderLocation: toLatLngLiteral(riderLoc),
         };
-        // --- END THE FIX ---
     }, [orderData]);
 
 
