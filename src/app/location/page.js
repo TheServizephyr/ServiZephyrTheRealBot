@@ -1,4 +1,3 @@
-
 'use client';
 
 import React, { useState, useEffect, Suspense } from 'react';
@@ -89,6 +88,7 @@ const SelectLocationInternal = () => {
             const phoneToUse = phone && phone.trim() !== '' ? phone : null;
             const tokenToUse = token && token.trim() !== '' ? token : null;
 
+            // Session check for both WhatsApp and Logged-in users
             if (tokenToUse) {
                 if (!phoneToUse) {
                     setTokenError("A phone number is required with the session token.");
@@ -111,13 +111,16 @@ const SelectLocationInternal = () => {
                 }
             } 
             else if (!user && !isUserLoading) {
+                // If not a token-based session and not a logged-in user (after auth check)
                 setTokenError("No session token found. Please start your order from WhatsApp or log in.");
                 setLoading(false);
                 return;
             }
+
+            // If we reach here, the session is valid (either via token or firebase auth)
              if (!isUserLoading) {
                 setIsTokenValid(true);
-                fetchAddresses(phoneToUse);
+                fetchAddresses(phoneToUse); // Pass phone from URL to decide which API to call
              }
         };
 
@@ -126,15 +129,8 @@ const SelectLocationInternal = () => {
             setError('');
             
             try {
-                if (user) {
-                    console.log("[LocationPage] User logged in via Auth, fetching via secure API.");
-                    const idToken = await user.getIdToken();
-                    const res = await fetch('/api/user/addresses', { headers: { 'Authorization': `Bearer ${idToken}` } });
-                    if (!res.ok) throw new Error('Failed to fetch your saved addresses.');
-                    const data = await res.json();
-                    setAddresses(data.addresses || []);
-                }
-                else if (phoneToLookup) {
+                // **THE FIX: Prioritize phone number from URL if it exists (WhatsApp user)**
+                if (phoneToLookup) {
                     console.log(`[LocationPage] User via WhatsApp, fetching via customer lookup for phone: ${phoneToLookup}`);
                     const res = await fetch('/api/customer/lookup', {
                         method: 'POST',
@@ -148,9 +144,21 @@ const SelectLocationInternal = () => {
                     } else if (res.status !== 404) {
                         const errorData = await res.json();
                         throw new Error(errorData.message || 'Failed to look up customer data.');
+                    } else {
+                         setAddresses([]); // 404 means no addresses found, which is not an error
                     }
                 }
+                // **THE FIX: Only if phone from URL is absent, use the logged-in user**
+                else if (user) {
+                    console.log("[LocationPage] User logged in via Auth, fetching via secure API.");
+                    const idToken = await user.getIdToken();
+                    const res = await fetch('/api/user/addresses', { headers: { 'Authorization': `Bearer ${idToken}` } });
+                    if (!res.ok) throw new Error('Failed to fetch your saved addresses.');
+                    const data = await res.json();
+                    setAddresses(data.addresses || []);
+                }
                 else {
+                    // This case should ideally not be hit due to verifyAndFetch logic, but as a safeguard:
                     setAddresses([]);
                 }
             } catch (err) {
