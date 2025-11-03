@@ -66,39 +66,34 @@ const SelectLocationInternal = () => {
     
     useEffect(() => {
         const verifyAndFetch = async () => {
-            const phoneToUse = phone || user?.phoneNumber;
+            const phoneToUse = phone && phone !== 'null' ? phone : user?.phoneNumber;
+            const tokenToUse = token && token !== 'null' ? token : null;
 
-            if (!phoneToUse && !token) {
+            if (!tokenToUse && !user) {
                  setTokenError("No session information found. Please start your journey from WhatsApp or log in.");
                  setLoading(false);
                  return;
             }
             
-            if (token) {
+            if (tokenToUse) {
                 try {
                     const res = await fetch('/api/auth/verify-token', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ phone, token }),
+                        body: JSON.stringify({ phone: phoneToUse, token: tokenToUse }),
                     });
                     if (!res.ok) {
                         const errData = await res.json();
                         throw new Error(errData.message || "Session validation failed.");
                     }
-                    setIsTokenValid(true);
                 } catch (err) {
                     setTokenError(err.message);
                     setLoading(false);
                     return;
                 }
-            } else if (user) {
-                setIsTokenValid(true);
-            } else {
-                 setTokenError("No session token found. Please start your order from WhatsApp.");
-                 setLoading(false);
-                 return;
             }
-            
+
+            setIsTokenValid(true);
             fetchAddresses(phoneToUse);
         };
 
@@ -106,9 +101,9 @@ const SelectLocationInternal = () => {
             setLoading(true);
             setError('');
             
-            if (phoneToLookup) {
-                 try {
-                    const res = await fetch('/api/customer/lookup', {
+            try {
+                if (phoneToLookup) {
+                     const res = await fetch('/api/customer/lookup', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ phone: phoneToLookup }),
@@ -117,34 +112,21 @@ const SelectLocationInternal = () => {
                     if (res.ok) {
                         const data = await res.json();
                         setAddresses(data.addresses || []);
-                    } else if (res.status === 404) {
-                        setAddresses([]);
-                    } else {
+                    } else if (res.status !== 404) {
                         const errorData = await res.json();
                         throw new Error(errorData.message || 'Failed to look up customer data.');
                     }
-                } catch (err) {
-                    setError(err.message);
-                    setAddresses([]);
-                } finally {
-                    setLoading(false);
-                }
-            } else if (user) {
-                 // Fallback for logged-in user if no phone in URL
-                 try {
-                    const idToken = await user.getIdToken();
+                } else if (user) {
+                     const idToken = await user.getIdToken();
                     const res = await fetch('/api/user/addresses', { headers: { 'Authorization': `Bearer ${idToken}` } });
                     if (!res.ok) throw new Error('Failed to fetch your saved addresses.');
                     const data = await res.json();
                     setAddresses(data.addresses || []);
-                } catch (err) {
-                    setError(err.message);
-                } finally {
-                    setLoading(false);
                 }
-            } else {
+            } catch (err) {
+                setError(err.message);
+            } finally {
                 setLoading(false);
-                setAddresses([]);
             }
         };
 
@@ -177,11 +159,22 @@ const SelectLocationInternal = () => {
     };
     
     const handleAddNewAddress = () => {
-        router.push(`/add-address?returnUrl=${encodeURIComponent(returnUrl)}&phone=${phone || ''}&token=${token || ''}`);
+        const params = new URLSearchParams({
+            returnUrl,
+            phone: phone || '',
+            token: token || '',
+        });
+        router.push(`/add-address?${params.toString()}`);
     }
     
     const handleUseCurrentLocation = () => {
-        router.push(`/add-address?useCurrent=true&returnUrl=${encodeURIComponent(returnUrl)}&phone=${phone || ''}&token=${token || ''}`);
+        const params = new URLSearchParams({
+            returnUrl,
+            phone: phone || '',
+            token: token || '',
+            useCurrent: 'true',
+        });
+        router.push(`/add-address?${params.toString()}`);
     };
     
     if (tokenError) {

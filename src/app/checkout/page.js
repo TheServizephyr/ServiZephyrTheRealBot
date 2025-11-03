@@ -161,20 +161,22 @@ const CheckoutPageInternal = () => {
     
     useEffect(() => {
         const verifyAndFetch = async () => {
-            const phoneToUse = phone || user?.phoneNumber;
+            // Normalize phone from URL, user object, or local storage
+            const phoneToUse = phone && phone !== 'null' ? phone : (user?.phoneNumber || localStorage.getItem('lastKnownPhone'));
+            const tokenToUse = token && token !== 'null' ? token : null;
 
-            if (!phoneToUse && !token) {
+            if (!phoneToUse && !tokenToUse && !user) {
                  setTokenError("No session information found. Please start your journey from WhatsApp or log in.");
                  setLoading(false);
                  return;
             }
             
-            if (token) {
+            if (tokenToUse) {
                 try {
                     const res = await fetch('/api/auth/verify-token', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ phone, token }),
+                        body: JSON.stringify({ phone: phoneToUse, token: tokenToUse }),
                     });
                     if (!res.ok) {
                         const errData = await res.json();
@@ -189,15 +191,15 @@ const CheckoutPageInternal = () => {
             } else if (user) {
                 setIsTokenValid(true);
             } else {
-                 setTokenError("No session token found. Please start your order from WhatsApp.");
+                 setTokenError("No valid session found. Please start a new order.");
                  setLoading(false);
                  return;
             }
             
-            fetchInitialData(phoneToUse);
+            fetchInitialData(phoneToUse, tokenToUse);
         };
 
-        const fetchInitialData = async (phoneToUse) => {
+        const fetchInitialData = async (phoneToUse, tokenToUse) => {
             if (!restaurantId) {
                 router.push('/');
                 return;
@@ -213,15 +215,19 @@ const CheckoutPageInternal = () => {
             if (savedCartData) {
                 parsedData = JSON.parse(savedCartData);
                 const deliveryType = tableId ? 'dine-in' : (parsedData.deliveryType || 'delivery');
-                const updatedData = { ...parsedData, phone: phoneToUse, token, tableId, dineInTabId: tabId, deliveryType };
+                const updatedData = { ...parsedData, phone: phoneToUse, token: tokenToUse, tableId, dineInTabId: tabId, deliveryType };
                 setCart(updatedData.cart || []);
                 setAppliedCoupons(updatedData.appliedCoupons || []);
                 setCartData(updatedData);
             } else if (tabId) {
-                parsedData = { dineInTabId: tabId, deliveryType: 'dine-in', phone: phoneToUse, token };
+                parsedData = { dineInTabId: tabId, deliveryType: 'dine-in', phone: phoneToUse, token: tokenToUse };
                 setCartData(parsedData);
             } else {
-                router.push(`/order/${restaurantId}?phone=${phoneToUse}&token=${token}${tableId ? `&table=${tableId}`: ''}`);
+                const params = new URLSearchParams();
+                if (phoneToUse) params.append('phone', phoneToUse);
+                if (tokenToUse) params.append('token', tokenToUse);
+                if (tableId) params.append('table', tableId);
+                router.push(`/order/${restaurantId}?${params.toString()}`);
                 return;
             }
             
@@ -231,12 +237,11 @@ const CheckoutPageInternal = () => {
                     const savedAddress = JSON.parse(customerAddressStr);
                     setSelectedAddress(savedAddress);
                     setOrderName(savedAddress.name || '');
-                    setOrderPhone(savedAddress.phone || phoneToUse);
+                    setOrderPhone(savedAddress.phone || phoneToUse || '');
                 } else {
-                     setOrderPhone(phoneToUse);
+                     setOrderPhone(phoneToUse || '');
                 }
                 
-                // --- START FIX: Logic to fetch addresses based on context ---
                 if (phoneToUse) {
                     const lookupRes = await fetch('/api/customer/lookup', {
                         method: 'POST',
@@ -263,7 +268,6 @@ const CheckoutPageInternal = () => {
                     }
                      if(!orderName) setOrderName(user.displayName || '');
                 }
-                // --- END FIX ---
 
                 const paymentSettingsRes = await fetch(`/api/owner/settings?restaurantId=${restaurantId}`);
                  if (paymentSettingsRes.ok) {
@@ -289,7 +293,11 @@ const CheckoutPageInternal = () => {
 
     const handleAddNewAddress = () => {
         const currentUrl = window.location.href;
-        router.push(`/add-address?returnUrl=${encodeURIComponent(currentUrl)}&phone=${phone || ''}&token=${token || ''}`);
+        const params = new URLSearchParams();
+        params.append('returnUrl', currentUrl);
+        if (phone) params.append('phone', phone);
+        if (token) params.append('token', token);
+        router.push(`/add-address?${params.toString()}`);
     };
 
     const subtotal = useMemo(() => cart.reduce((sum, item) => sum + item.totalPrice * item.quantity, 0), [cart]);

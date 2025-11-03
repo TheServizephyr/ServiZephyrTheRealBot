@@ -60,29 +60,33 @@ const AddAddressPageInternal = () => {
 
     useEffect(() => {
         const verifyToken = async () => {
-            if (!phone || !token) {
-                 if (user) {
-                    setIsTokenValid(true);
-                    return;
-                }
-                setTokenError("No session token found. Please start your order from WhatsApp.");
+            const phoneToUse = phone && phone !== 'null' ? phone : user?.phoneNumber;
+            const tokenToUse = token && token !== 'null' ? token : null;
+            
+            if (!tokenToUse && !user) {
+                setTokenError("No session token found. Please start your order from WhatsApp or log in.");
                 setLoading(false);
                 return;
             }
-             try {
-                const res = await fetch('/api/auth/verify-token', {
-                    method: 'POST', headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ phone, token }),
-                });
-                if (!res.ok) {
-                    const errData = await res.json();
-                    throw new Error(errData.message || "Session validation failed.");
+
+             if (tokenToUse) {
+                 try {
+                    const res = await fetch('/api/auth/verify-token', {
+                        method: 'POST', headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ phone: phoneToUse, token: tokenToUse }),
+                    });
+                    if (!res.ok) {
+                        const errData = await res.json();
+                        throw new Error(errData.message || "Session validation failed.");
+                    }
+                } catch (err) {
+                    setTokenError(err.message);
+                    setLoading(false);
+                    return;
                 }
-                setIsTokenValid(true);
-            } catch (err) {
-                setTokenError(err.message);
-                setLoading(false);
-            }
+             }
+             // If we reach here, token is valid or user is logged in
+             setIsTokenValid(true);
         };
         if (!isUserLoading) {
             verifyToken();
@@ -135,12 +139,12 @@ const AddAddressPageInternal = () => {
 
     useEffect(() => {
         const prefillData = async () => {
-            const finalPhone = phone || user?.phoneNumber;
+            const finalPhone = phone && phone !== 'null' ? phone : user?.phoneNumber;
             
             // Prioritize logged-in user data
             if (user) {
                 setRecipientName(user.displayName || '');
-                setRecipientPhone(user.phoneNumber || finalPhone || '');
+                setRecipientPhone(finalPhone || '');
             } 
             // If not logged in but phone is available, try to look up customer data
             else if (finalPhone) {
@@ -182,6 +186,7 @@ const AddAddressPageInternal = () => {
         setIsSaving(true);
         
         const finalLabel = (addressLabel === 'Other' && customAddressLabel.trim()) ? customAddressLabel.trim() : addressLabel;
+        const phoneToUse = phone && phone !== 'null' ? phone : user?.phoneNumber;
 
         const addressToSave = {
             id: `addr_${Date.now()}`, 
@@ -204,7 +209,7 @@ const AddAddressPageInternal = () => {
         try {
             const apiPayload = {
                 address: addressToSave,
-                phone: phone // Pass the session phone number to the backend
+                phone: phoneToUse, // Pass the session phone number to the backend
             };
 
             const headers = { 'Content-Type': 'application/json' };
@@ -237,7 +242,7 @@ const AddAddressPageInternal = () => {
         return <TokenVerificationLock message={tokenError} />;
     }
     
-    if (!isTokenValid) {
+    if (!isTokenValid && !isUserLoading) {
         return <div className="min-h-screen bg-background flex items-center justify-center"><Loader2 className="animate-spin text-primary h-16 w-16"/></div>;
     }
 

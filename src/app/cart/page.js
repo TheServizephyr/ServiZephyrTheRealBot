@@ -155,7 +155,8 @@ const CartPageInternal = () => {
     const { user } = useUser(); // Get user from Firebase
     const restaurantId = searchParams.get('restaurantId');
     
-    const phoneFromUrl = searchParams.get('phone');
+    const phone = searchParams.get('phone');
+    const token = searchParams.get('token');
     const tableId = searchParams.get('table');
     const tabId = searchParams.get('tabId');
     
@@ -164,7 +165,6 @@ const CartPageInternal = () => {
     const [notes, setNotes] = useState('');
     const [appliedCoupons, setAppliedCoupons] = useState([]);
     const [isClearCartDialogOpen, setIsClearCartDialogOpen] = useState(false);
-    const [phone, setPhone] = useState('');
     const [isBillExpanded, setIsBillExpanded] = useState(false);
     const [tipAmount, setTipAmount] = useState(0);
     const [isCouponPopoverOpen, setCouponPopoverOpen] = useState(false);
@@ -174,15 +174,6 @@ const CartPageInternal = () => {
     const [isCheckoutFlow, setIsCheckoutFlow] = useState(false);
     
     useEffect(() => {
-        // This effect now sets the phone state based on a clear priority
-        const phoneToUse = phoneFromUrl || user?.phoneNumber || localStorage.getItem('lastKnownPhone');
-        if(phoneToUse) {
-            setPhone(phoneToUse);
-            if (typeof window !== 'undefined') {
-                localStorage.setItem('lastKnownPhone', phoneToUse);
-            }
-        }
-
         if (!restaurantId) return;
 
         const data = localStorage.getItem(`cart_${restaurantId}`);
@@ -208,7 +199,7 @@ const CartPageInternal = () => {
             setCart([]);
             setAppliedCoupons([]);
         }
-    }, [restaurantId, phoneFromUrl, user]);
+    }, [restaurantId, phone, token, user]);
 
     const deliveryType = useMemo(() => {
         if (tableId) return 'dine-in';
@@ -273,9 +264,17 @@ const CartPageInternal = () => {
             setIsPickupTimeModalOpen(true);
             return;
         }
-        // Ensure phone state is passed to checkout
-        let checkoutUrl = `/checkout?restaurantId=${restaurantId}&phone=${phone}`;
+
+        const params = new URLSearchParams({
+            restaurantId,
+            phone: phone || 'null',
+            token: token || 'null',
+        });
+        if (tableId) params.append('table', tableId);
+        if (tabId) params.append('tabId', tabId);
         
+        let checkoutUrl = `/checkout?${params.toString()}`;
+
         if (deliveryType === 'dine-in' && !tabId) {
             const dineInSetupStr = localStorage.getItem(`dineInSetup_${restaurantId}_${tableId}`);
             if (dineInSetupStr) {
@@ -286,9 +285,6 @@ const CartPageInternal = () => {
                 });
             }
         }
-
-        if (tableId) checkoutUrl += `&table=${tableId}`;
-        if (tabId) checkoutUrl += `&tabId=${tabId}`;
         router.push(checkoutUrl);
     };
 
@@ -302,7 +298,12 @@ const CartPageInternal = () => {
         updateCartInStorage({ pickupTime });
         
         if (isCheckoutFlow) {
-            let checkoutUrl = `/checkout?restaurantId=${restaurantId}&phone=${phone}`;
+            const params = new URLSearchParams({
+                restaurantId,
+                phone: phone || 'null',
+                token: token || 'null',
+            });
+            let checkoutUrl = `/checkout?${params.toString()}`;
             router.push(checkoutUrl);
         }
         setIsCheckoutFlow(false);
@@ -314,12 +315,16 @@ const CartPageInternal = () => {
     }
 
     const handleGoBack = () => {
-        let backUrl = `/order/${restaurantId}?phone=${phone}`;
-        if (tableId) {
-            backUrl += `&table=${tableId}`;
-        }
-         if (tabId) {
-            backUrl += `&tabId=${tabId}`;
+        const params = new URLSearchParams();
+        if (phone) params.append('phone', phone);
+        if (token) params.append('token', token);
+        if (tableId) params.append('table', tableId);
+        if (tabId) params.append('tabId', tabId);
+
+        let backUrl = `/order/${restaurantId}`;
+        const paramsString = params.toString();
+        if (paramsString) {
+            backUrl += `?${paramsString}`;
         }
         router.push(backUrl);
     };
@@ -693,7 +698,7 @@ const CartPageInternal = () => {
                             {deliveryType === 'dine-in' ? 'Add to Tab' : 'Proceed to Checkout'}
                         </Button>
                     ) : deliveryType === 'dine-in' ? (
-                         <Button onClick={() => router.push(`/checkout?restaurantId=${restaurantId}&phone=${phone}&table=${tableId}&tabId=${tabId}`)} className="flex-grow bg-green-600 hover:bg-green-700 text-white h-12 text-lg font-bold">
+                         <Button onClick={() => router.push(`/checkout?restaurantId=${restaurantId}&phone=${phone || ''}&token=${token || ''}&table=${tableId}&tabId=${tabId}`)} className="flex-grow bg-green-600 hover:bg-green-700 text-white h-12 text-lg font-bold">
                             <Wallet className="mr-2"/> View Bill & Pay
                         </Button>
                     ) : null }

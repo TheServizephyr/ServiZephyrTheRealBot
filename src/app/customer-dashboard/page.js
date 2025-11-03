@@ -1,3 +1,4 @@
+
 'use client';
 
 import { motion } from 'framer-motion';
@@ -39,7 +40,7 @@ function CustomerHubContent() {
     const [loading, setLoading] = useState(true);
     const searchParams = useSearchParams();
     const phone = searchParams.get('phone');
-    const token = searchParams.get('token'); // THE FIX: Get token from URL
+    const token = searchParams.get('token');
 
     useEffect(() => {
         console.log("[MyHub Page] useEffect triggered. isUserLoading:", isUserLoading);
@@ -77,15 +78,15 @@ function CustomerHubContent() {
 
     console.log("[MyHub Page] Rendering component. Loading state:", loading, "HubData state:", hubData);
 
-    // THE FIX: Update buildOrderLink to include the token
     const buildOrderLink = (restaurantId) => {
         let url = `/order/${restaurantId}`;
         const params = new URLSearchParams();
         if (phone) params.append('phone', phone);
         if (token) params.append('token', token);
         
-        if (params.toString()) {
-            url += `?${params.toString()}`;
+        const paramsString = params.toString();
+        if (paramsString) {
+            url += `?${paramsString}`;
         }
         return url;
     };
