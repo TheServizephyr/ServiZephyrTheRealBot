@@ -19,13 +19,20 @@ const RouteLine = ({ from, to, isDashed = false }) => {
   
         const primaryColor = 'hsl(var(--primary))';
         const lineOptions = {
+            path: [from, to],
+            geodesic: true, // This will make the line slightly curved over long distances
             strokeColor: primaryColor,
-            strokeOpacity: 0.8,
-            strokeWeight: 5,
+            strokeOpacity: 1.0,
+            strokeWeight: 4,
             icons: isDashed ? [{
-                icon: { path: 'M 0,-1 0,1', strokeOpacity: 1, scale: 3, strokeWeight: 2 },
+                icon: {
+                    path: 'M 0,-1 0,1',
+                    strokeOpacity: 1,
+                    scale: 3,
+                    strokeWeight: 3
+                },
                 offset: '0',
-                repeat: '12px'
+                repeat: '15px'
             }] : []
         };
         
@@ -34,7 +41,6 @@ const RouteLine = ({ from, to, isDashed = false }) => {
         }
         
         polylineRef.current.setOptions(lineOptions);
-        polylineRef.current.setPath([from, to]);
         polylineRef.current.setMap(map);
   
         return () => { if (polylineRef.current) polylineRef.current.setMap(null); };
