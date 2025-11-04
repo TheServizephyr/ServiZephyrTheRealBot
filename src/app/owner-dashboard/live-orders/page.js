@@ -1,4 +1,3 @@
-
 'use client';
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
@@ -18,6 +17,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import Link from 'next/link';
 import InfoDialog from '@/components/InfoDialog';
 import { Checkbox } from '@/components/ui/checkbox';
+import { useReactToPrint } from 'react-to-print';
 
 
 export const dynamic = 'force-dynamic';
@@ -137,7 +137,7 @@ const RejectOrderModal = ({ order, isOpen, onClose, onConfirm }) => {
 };
 
 // --- Bill Modal Component ---
-const BillModal = ({ order, restaurant, onClose, onPrint }) => {
+const BillModal = ({ order, restaurant, onClose, onPrint, printRef }) => {
     if (!order || !restaurant) return null;
 
     const subtotal = order.subtotal || order.items.reduce((acc, item) => acc + item.quantity * item.price, 0);
@@ -153,7 +153,7 @@ const BillModal = ({ order, restaurant, onClose, onPrint }) => {
     return (
         <Dialog open={true} onOpenChange={onClose}>
             <DialogContent className="bg-background border-border text-foreground max-w-md p-0">
-                 <div id="bill-content" className="font-mono text-black bg-white p-6 max-h-[70vh] overflow-y-auto">
+                 <div id="bill-content" ref={printRef} className="font-mono text-black bg-white p-6 max-h-[70vh] overflow-y-auto">
                     <div className="text-center mb-6 border-b-2 border-dashed border-black pb-4">
                         <h1 className="text-2xl font-bold uppercase">{restaurant.name}</h1>
                         <p className="text-xs">{restaurant.address.street}, {restaurant.address.city}, {restaurant.address.state} - {restaurant.address.postalCode}</p>
@@ -593,6 +593,11 @@ export default function LiveOrdersPage() {
   const searchParams = useSearchParams();
   const impersonatedOwnerId = searchParams.get('impersonate_owner_id');
 
+  const billPrintRef = useRef();
+  const handlePrint = useReactToPrint({
+      content: () => billPrintRef.current,
+  });
+
   const fetchInitialData = async (isManualRefresh = false) => {
     if (!isManualRefresh) setLoading(true);
     
@@ -741,10 +746,6 @@ export default function LiveOrdersPage() {
     }
   };
 
-  const handlePrint = () => {
-    window.print();
-  };
-
   const handleSort = (key) => {
     let direction = 'asc';
     if (sortConfig.key === key && sortConfig.direction === 'asc') {
@@ -828,6 +829,7 @@ export default function LiveOrdersPage() {
                 restaurant={billData.restaurant}
                 onClose={() => setBillData({ order: null, restaurant: null })}
                 onPrint={handlePrint}
+                printRef={billPrintRef}
             />
         )}
         
