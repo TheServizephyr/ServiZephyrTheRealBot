@@ -12,12 +12,11 @@ const MapComponent = ({ restaurantLocation, customerLocations, riderLocation, on
     const [directionsService, setDirectionsService] = useState(null);
     const [directionsRenderer, setDirectionsRenderer] = useState(null);
     
-    // 1. Initialize services once the map is available
     useEffect(() => {
         if (!map || !window.google) return;
         setDirectionsService(new window.google.maps.DirectionsService());
         setDirectionsRenderer(new window.google.maps.DirectionsRenderer({
-            suppressMarkers: true, // We use our own AdvancedMarkers
+            suppressMarkers: true,
             polylineOptions: {
                 strokeColor: '#000000',
                 strokeOpacity: 0.9,
@@ -26,15 +25,12 @@ const MapComponent = ({ restaurantLocation, customerLocations, riderLocation, on
         }));
     }, [map]);
 
-    // 2. Attach the renderer to the map
     useEffect(() => {
         if (directionsRenderer) {
             directionsRenderer.setMap(map);
         }
     }, [directionsRenderer, map]);
 
-    // --- THIS IS THE FIX ---
-    // Corrected toLatLngLiteral function to handle all location object formats
     const toLatLngLiteral = (loc) => {
         if (!loc) return null;
         // FIX: Added checks for .latitude and .longitude
@@ -60,10 +56,9 @@ const MapComponent = ({ restaurantLocation, customerLocations, riderLocation, on
     const routeDestination = customerLatLngs.length > 0 ? customerLatLngs[customerLatLngs.length - 1] : null;
     const routeWaypoints = customerLatLngs.length > 1 ? customerLatLngs.slice(0, -1) : [];
 
-    // --- Step 3: Calculate and draw the route ---
     useEffect(() => {
         if (!directionsService || !directionsRenderer || !routeOrigin || !routeDestination) {
-            if (directionsRenderer) directionsRenderer.setDirections({ routes: [] }); // Clear previous route if no destination
+            if (directionsRenderer) directionsRenderer.setDirections({ routes: [] });
             return;
         }
 
@@ -82,9 +77,9 @@ const MapComponent = ({ restaurantLocation, customerLocations, riderLocation, on
                 console.error(`[Directions Error] Failed to fetch directions, status: ${status}`);
             }
         });
-    }, [directionsService, directionsRenderer, routeOrigin, routeDestination, JSON.stringify(routeWaypoints)]); // FIX: Correct dependency array
+    // FIX: Correct dependency array
+    }, [directionsService, directionsRenderer, routeOrigin, routeDestination, JSON.stringify(routeWaypoints)]); 
     
-    // 4. Adjust map bounds to fit all markers
     useEffect(() => {
         if (map && window.google) {
             const bounds = new window.google.maps.LatLngBounds();
@@ -94,7 +89,7 @@ const MapComponent = ({ restaurantLocation, customerLocations, riderLocation, on
             customerLatLngs.forEach(loc => { bounds.extend(loc); extendCount++; });
 
             if (extendCount > 1) {
-                map.fitBounds(bounds, 80); // 80px padding
+                map.fitBounds(bounds, 80);
             } else if (extendCount === 1) {
                 map.setCenter(bounds.getCenter());
                 map.setZoom(15);
@@ -102,7 +97,6 @@ const MapComponent = ({ restaurantLocation, customerLocations, riderLocation, on
         }
     }, [restaurantLatLng, customerLatLngs, riderLatLng, map]);
     
-    // Forward map instance to parent if needed
     useEffect(() => {
         if (map && onMapLoad) {
             onMapLoad(map);
