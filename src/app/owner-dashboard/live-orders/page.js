@@ -262,36 +262,22 @@ const AssignRiderModal = ({ isOpen, onClose, onAssign, orders, riders }) => {
 
 const BillModal = ({ order, restaurant, onClose }) => {
     const billPrintRef = useRef();
-
     const handlePrint = useReactToPrint({
         content: () => billPrintRef.current,
         documentTitle: `Bill-${order?.id}`,
-        onAfterPrint: onClose
     });
-
-    useEffect(() => {
-        // Automatically trigger print when modal opens and data is ready
-        if (order && restaurant) {
-            const timer = setTimeout(() => {
-                handlePrint();
-            }, 500); // A short delay ensures the content is rendered
-            return () => clearTimeout(timer);
-        }
-    }, [order, restaurant]);
 
     if (!order || !restaurant) return null;
 
     return (
         <Dialog open={true} onOpenChange={onClose}>
             <DialogContent className="bg-background border-border text-foreground max-w-md p-0">
-                <div className="font-mono text-black bg-white">
-                    <div ref={billPrintRef} className="p-4">
-                        <BillToPrint order={order} restaurant={restaurant} />
-                    </div>
+                <div id="bill-content" ref={billPrintRef} className="font-mono text-black bg-white">
+                    <BillToPrint order={order} restaurant={restaurant} />
                 </div>
                  <div className="p-4 bg-muted border-t border-border flex justify-end no-print">
                     <Button onClick={handlePrint} className="bg-primary hover:bg-primary/90">
-                        <Printer className="mr-2 h-4 w-4" /> Print Again
+                        <Printer className="mr-2 h-4 w-4" /> Print Bill
                     </Button>
                 </div>
             </DialogContent>
