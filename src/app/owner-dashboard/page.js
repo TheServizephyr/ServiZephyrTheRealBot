@@ -100,7 +100,7 @@ const LiveOrderFeed = ({ orders, isLoading }) => {
               <div>
                 <p className="font-semibold text-foreground text-sm truncate max-w-[120px] sm:max-w-none">{order.customer}</p>
                 <div className="text-xs text-muted-foreground">
-                    {(order.items || []).map(item => `${item.qty}x ${item.name}`).join(', ')}
+                    {(order.items || []).map(item => `${item.quantity}x ${item.name}`).join(', ')}
                 </div>
               </div>
               <div className="text-right">
@@ -397,7 +397,7 @@ function PageContent() {
 
 export default function OwnerDashboardPage() {
     return (
-        <Suspense fallback={<div className="flex h-full items-center justify-center"><Loader2 className="animate-spin text-primary h-16 w-16" /></div>}>
+        <Suspense fallback={<div className="flex h-full items-center justify-center"><Loader2 className="h-16 w-16 animate-spin text-primary" /></div>}>
             <PageContent />
         </Suspense>
     )
