@@ -1,5 +1,4 @@
 
-
 'use client';
 
 import React, { useState, useEffect, useMemo } from 'react';
@@ -913,7 +912,6 @@ export default function LiveOrdersPage() {
                         <tr className="bg-muted/30">
                             <th className="p-4 w-12 text-left text-sm font-semibold text-muted-foreground"></th>
                             <SortableHeader column="id" sortConfig={sortConfig} onSort={handleSort}>Order Details</SortableHeader>
-                            <th className="p-4 text-left text-sm font-semibold text-muted-foreground hidden md:table-cell">Items</th>
                             <SortableHeader column="orderDate" sortConfig={sortConfig} onSort={handleSort}>Time</SortableHeader>
                             <SortableHeader column="status" sortConfig={sortConfig} onSort={handleSort}>Status</SortableHeader>
                             <th className="p-4 text-left text-sm font-semibold text-muted-foreground">Actions</th>
@@ -926,7 +924,6 @@ export default function LiveOrdersPage() {
                                     <tr key={i} className="animate-pulse">
                                         <td className="p-4 w-12"></td>
                                         <td className="p-4"><div className="h-5 bg-muted rounded w-1/2"></div></td>
-                                        <td className="p-4 hidden md:table-cell"><div className="h-5 bg-muted rounded w-full"></div></td>
                                         <td className="p-4"><div className="h-5 bg-muted rounded w-1/4"></div></td>
                                         <td className="p-4"><div className="h-5 bg-muted rounded w-1/3"></div></td>
                                         <td className="p-4"><div className="h-8 bg-muted rounded w-full"></div></td>
@@ -973,13 +970,6 @@ export default function LiveOrdersPage() {
                                                 : <div className="flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full bg-green-500/20 text-green-400 border border-green-500/30 w-fit"><Wallet size={12}/> PAID</div>
                                             }
                                         </div>
-                                    </td>
-                                    <td className="p-4 text-sm text-muted-foreground hidden md:table-cell align-top">
-                                        <ul className="space-y-1">
-                                            {(order.items || []).map((item, index) => (
-                                                <li key={index} className="whitespace-nowrap">{item.quantity}x {item.name}</li>
-                                            ))}
-                                        </ul>
                                     </td>
                                     <td className="p-4 text-sm text-muted-foreground align-top">
                                         {format(new Date(order.orderDate?.seconds ? order.orderDate.seconds * 1000 : order.orderDate), 'dd/MM/yyyy, hh:mm a')}
