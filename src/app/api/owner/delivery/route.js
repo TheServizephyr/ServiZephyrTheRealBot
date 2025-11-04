@@ -60,7 +60,6 @@ export async function GET(req) {
         const riderPromises = boysSnap.docs.map(async (doc) => {
             const subCollectionData = { id: doc.id, ...doc.data() };
             
-            // ** THE FIX: Merge subcollection data with main driver data **
             const driverDocRef = firestore.collection('drivers').doc(subCollectionData.id);
             const driverDoc = await driverDocRef.get();
             let finalBoyData = { ...subCollectionData };
@@ -68,7 +67,7 @@ export async function GET(req) {
             if (driverDoc.exists) {
                 const mainDriverData = driverDoc.data();
                 // Merge main data, but prioritize subcollection data if it exists (e.g., historical stats)
-                finalBoyData = { ...mainDriverData, ...subCollectionData, ...mainDriverData };
+                finalBoyData = { ...mainDriverData, ...subCollectionData };
                 
                 // Map Firestore statuses ('online', 'offline', 'on-delivery') to UI statuses ('Available', 'Inactive', 'On Delivery')
                 switch (mainDriverData.status) {
@@ -119,9 +118,9 @@ export async function GET(req) {
         const performance = {
             totalDeliveries: boys.reduce((sum, boy) => sum + (boy.deliveriesToday || 0), 0),
             avgDeliveryTime: boys.length > 0 ? Math.round(boys.reduce((sum, boy) => sum + (boy.avgDeliveryTime || 0), 0) / boys.length) : 0,
-            topPerformer: boys.length > 0 ? boys.reduce((top, boy) => ((boy.totalDeliveries || 0) > (top.totalDeliveries || 0)) ? boy : top, boys[0]) : {},
+            topPerformer: boys.length > 0 ? boys.reduce((top, boy) => ((boy.deliveriesToday || 0) > (top.deliveriesToday || 0)) ? boy : top, boys[0]) : {},
         };
-
+        
         const weeklyPerformance = Array.from({length: 7}, (_, i) => {
             const date = new Date();
             date.setDate(date.getDate() - (6-i));
@@ -187,11 +186,10 @@ export async function PATCH(req) {
         }
 
         const boyRef = firestore.collection(collectionName).doc(businessId).collection('deliveryBoys').doc(boy.id);
-        const driverRef = firestore.collection('drivers').doc(boy.id); // ** THE FIX: Also get a reference to the main driver doc
+        const driverRef = firestore.collection('drivers').doc(boy.id);
         
         const { id, ...updateData } = boy;
 
-        // ** THE FIX: Map UI statuses to main driver statuses
         let mainDriverStatus;
         switch (updateData.status) {
             case 'Available':

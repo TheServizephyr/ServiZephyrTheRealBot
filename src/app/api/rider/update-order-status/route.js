@@ -47,6 +47,30 @@ export async function PATCH(req) {
                 timestamp: new Date()
             })
         });
+        
+        const driverRef = firestore.collection('drivers').doc(uid);
+        const businessRiderRef = firestore.collection(collectionName).doc(restaurantId).collection('deliveryBoys').doc(uid);
+
+        // --- START: NEW STATS UPDATE LOGIC ---
+        if (newStatus === 'delivered') {
+            const tipAmount = orderData.tipAmount || 0;
+            const deliveryFee = orderData.deliveryCharge || 0; // Assuming owner passes this to rider
+            const earningsFromOrder = tipAmount; // Can be tip + part of delivery fee
+
+            // Increment stats in the main driver profile
+            batch.update(driverRef, {
+                totalDeliveries: FieldValue.increment(1),
+                totalEarnings: FieldValue.increment(earningsFromOrder),
+                walletBalance: FieldValue.increment(earningsFromOrder),
+            });
+
+            // Increment stats in the business's subcollection for that rider
+            batch.update(businessRiderRef, {
+                totalDeliveries: FieldValue.increment(1),
+            });
+        }
+        // --- END: NEW STATS UPDATE LOGIC ---
+
 
         // 2. Check if the rider has any other 'on_the_way' orders
         const otherOrdersQuery = firestore.collection('orders')
@@ -63,12 +87,10 @@ export async function PATCH(req) {
             console.log(`[API update-order-status] This was the last delivery for rider ${uid}. Updating status to 'online'.`);
             
             // Update in the main 'drivers' collection
-            const driverRef = firestore.collection('drivers').doc(uid);
             batch.update(driverRef, { status: 'online' });
 
             // Update in the restaurant's 'deliveryBoys' subcollection
             if (restaurantId) {
-                const businessRiderRef = firestore.collection(collectionName).doc(restaurantId).collection('deliveryBoys').doc(uid);
                 batch.update(businessRiderRef, { status: 'Available' });
                  console.log(`[API update-order-status] Updated status in ${collectionName}/${restaurantId}/deliveryBoys`);
             }
