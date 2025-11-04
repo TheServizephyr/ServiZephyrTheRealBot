@@ -9,6 +9,7 @@ import { useSearchParams } from 'next/navigation';
 import InfoDialog from '@/components/InfoDialog';
 import BillToPrint from '@/components/BillToPrint';
 import { useReactToPrint } from 'react-to-print';
+import { Dialog, DialogContent } from "@/components/ui/dialog";
 
 export const dynamic = 'force-dynamic';
 
@@ -23,7 +24,7 @@ function CustomBillPage() {
     const [infoDialog, setInfoDialog] = useState({ isOpen: false, title: '', message: '' });
     const searchParams = useSearchParams();
     const impersonatedOwnerId = searchParams.get('impersonate_owner_id');
-    const componentRef = useRef();
+    const billPrintRef = useRef();
 
     const [customerDetails, setCustomerDetails] = useState({
         name: '',
@@ -31,11 +32,15 @@ function CustomBillPage() {
         address: ''
     });
     
+    // State to control modal visibility
+    const [isBillModalOpen, setIsBillModalOpen] = useState(false);
+
+    // useReactToPrint hook setup
     const handlePrint = useReactToPrint({
-      content: () => componentRef.current,
-      documentTitle: 'custom-bill'
+        content: () => billPrintRef.current,
+        onAfterPrint: () => setIsBillModalOpen(false), // Close modal after printing
     });
-    
+
     useEffect(() => {
         const fetchMenuAndSettings = async () => {
             setLoading(true);
@@ -83,9 +88,9 @@ function CustomBillPage() {
         const cartItemId = `${item.id}-${portion.name}`;
         const existingItem = cart.find(i => i.cartItemId === cartItemId);
         if (existingItem) {
-            setCart(cart.map(i => i.cartItemId === cartItemId ? { ...i, quantity: i.quantity + 1 } : i));
+            setCart(cart.map(i => i.cartItemId === cartItemId ? { ...i, quantity: i.quantity + 1, totalPrice: (i.totalPrice / i.quantity) * (i.quantity + 1) } : i));
         } else {
-            setCart([...cart, { ...item, portion, quantity: 1, cartItemId, totalPrice: portion.price, price: portion.price }]);
+            setCart([...cart, { ...item, portion, quantity: 1, cartItemId, price: portion.price, totalPrice: portion.price }]);
         }
     };
 
@@ -97,10 +102,11 @@ function CustomBillPage() {
             const newCart = [...currentCart];
             const item = newCart[itemIndex];
             
-            if (item.quantity + change <= 0) {
+            const newQuantity = item.quantity + change;
+            if (newQuantity <= 0) {
                 return newCart.filter(i => i.cartItemId !== cartItemId);
             } else {
-                newCart[itemIndex] = { ...item, quantity: item.quantity + change, totalPrice: item.price * (item.quantity + change) };
+                newCart[itemIndex] = { ...item, quantity: newQuantity, totalPrice: item.price * newQuantity };
                 return newCart;
             }
         });
@@ -122,6 +128,26 @@ function CustomBillPage() {
                 title={infoDialog.title}
                 message={infoDialog.message}
             />
+
+            <Dialog open={isBillModalOpen} onOpenChange={setIsBillModalOpen}>
+                <DialogContent className="bg-card border-border text-foreground max-w-md p-0">
+                    <div ref={billPrintRef}>
+                         <BillToPrint
+                            order={{}}
+                            restaurant={restaurant}
+                            billDetails={{ subtotal, cgst, sgst, grandTotal, discount: 0, deliveryCharge: 0 }}
+                            items={cart}
+                            customerDetails={customerDetails}
+                        />
+                    </div>
+                    <div className="p-4 bg-muted border-t border-border flex justify-end no-print">
+                        <Button onClick={handlePrint} className="bg-primary hover:bg-primary/90">
+                            <Printer className="mr-2 h-4 w-4" /> Print Bill
+                        </Button>
+                    </div>
+                </DialogContent>
+            </Dialog>
+
             <h1 className="text-3xl font-bold tracking-tight">Manual Bill Generator</h1>
             <p className="text-muted-foreground mt-1">Create a bill for orders taken over the phone or in-person.</p>
             
@@ -180,9 +206,9 @@ function CustomBillPage() {
 
                     <div className="bg-card border border-border rounded-xl flex-grow flex flex-col">
                          <div className="font-mono text-black bg-white p-4 rounded-t-lg flex-grow flex flex-col">
-                           <div ref={componentRef}>
+                           <div className="preview-bill">
                                <BillToPrint
-                                    order={{}} // Pass empty order as items are passed separately
+                                    order={{}}
                                     restaurant={restaurant}
                                     billDetails={{ subtotal, cgst, sgst, grandTotal, discount: 0, deliveryCharge: 0 }}
                                     items={cart}
@@ -191,8 +217,8 @@ function CustomBillPage() {
                            </div>
                         </div>
                         <div className="p-4 bg-muted/50 rounded-b-lg border-t border-border flex justify-end no-print">
-                            <Button onClick={handlePrint} className="bg-primary hover:bg-primary/90 text-primary-foreground">
-                                <Printer className="mr-2 h-4 w-4" /> Print Bill
+                            <Button onClick={() => setIsBillModalOpen(true)} className="bg-primary hover:bg-primary/90 text-primary-foreground">
+                                <Printer className="mr-2 h-4 w-4" /> Finalize & Print Bill
                             </Button>
                         </div>
                     </div>

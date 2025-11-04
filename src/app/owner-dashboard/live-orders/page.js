@@ -261,137 +261,6 @@ const AssignRiderModal = ({ isOpen, onClose, onAssign, orders, riders }) => {
     );
 };
 
-const BillModal = ({ order, restaurant, onClose }) => {
-    const componentRef = useRef();
-
-    const handlePrint = useReactToPrint({
-        content: () => componentRef.current,
-        documentTitle: `bill-${order?.id}`,
-        // This is a new function that will run after printing
-        onAfterPrint: () => {
-             // You can optionally add a success message here
-        }
-    });
-
-    useEffect(() => {
-        if (order) {
-            // Use a timeout to ensure the content has rendered before printing
-            const timer = setTimeout(() => {
-                handlePrint();
-            }, 500);
-            return () => clearTimeout(timer);
-        }
-    }, [order, handlePrint]);
-
-    if (!order) return null;
-
-    return (
-        <Dialog open={!!order} onOpenChange={onClose}>
-            <DialogContent className="bg-card border-border text-foreground max-w-md p-0">
-                <div ref={componentRef} className="print-container">
-                    <BillToPrint order={order} restaurant={restaurant} />
-                </div>
-                <div className="p-4 bg-muted border-t border-border flex justify-end no-print">
-                    <Button onClick={handlePrint} className="bg-primary hover:bg-primary/90">
-                        <Printer className="mr-2 h-4 w-4" /> Print Again
-                    </Button>
-                </div>
-            </DialogContent>
-        </Dialog>
-    );
-};
-
-
-const OrderDetailModal = ({ data, isOpen, onClose }) => {
-    if (!isOpen || !data || !data.order || !data.order.id) {
-        return null;
-    }
-
-    const { order, customer } = data;
-    const orderDate = new Date(order.orderDate?.seconds ? order.orderDate.seconds * 1000 : order.orderDate);
-
-    return (
-        <Dialog open={isOpen} onOpenChange={onClose}>
-            <DialogContent className="max-w-2xl bg-card border-border text-foreground">
-                <DialogHeader>
-                    <DialogTitle>Details for Order #{order.id.substring(0, 8)}</DialogTitle>
-                </DialogHeader>
-                <Tabs defaultValue="order" className="w-full">
-                    <TabsList className="grid w-full grid-cols-2">
-                        <TabsTrigger value="order">Order Details</TabsTrigger>
-                        <TabsTrigger value="customer">Customer Details</TabsTrigger>
-                    </TabsList>
-                    <TabsContent value="order" className="mt-4 space-y-4 max-h-[60vh] overflow-y-auto p-1 pr-4">
-                        <div className="text-sm space-y-1">
-                            <p><strong>Order ID:</strong> <span className="font-mono">{order.id}</span></p>
-                            <p><strong>Time:</strong> {format(orderDate, 'dd/MM/yyyy, hh:mm a')}</p>
-                            <p><strong>Payment:</strong> <span className={cn("font-semibold", order.paymentDetails.method === 'cod' ? 'text-yellow-500' : 'text-green-400')}>{order.paymentDetails.method.toUpperCase()}</span></p>
-                            <p><strong>Type:</strong> <span className="font-semibold capitalize">{order.deliveryType || 'delivery'}</span></p>
-                        </div>
-                         <div className="space-y-2 border-t border-border pt-4">
-                            <h4 className="font-semibold">Items</h4>
-                             <ul className="list-disc pl-5 text-muted-foreground text-sm">
-                                {(order.items || []).map((item, index) => (
-                                    <li key={index}>{item.quantity}x {item.name} - ₹{((item.totalPrice || item.price) / item.quantity).toFixed(2)}</li>
-                                ))}
-                            </ul>
-                        </div>
-                        {order.notes && (
-                             <div className="space-y-2 border-t border-border pt-4">
-                                <h4 className="font-semibold">Notes from Customer</h4>
-                                <p className="text-sm text-muted-foreground italic">"{order.notes}"</p>
-                            </div>
-                        )}
-                        <div className="space-y-1 border-t border-border pt-4 text-sm">
-                            <div className="flex justify-between"><span>Subtotal:</span> <span className="font-medium">₹{order.subtotal?.toFixed(2)}</span></div>
-                            {order.discount > 0 && <div className="flex justify-between text-green-400"><span>Discount:</span> <span className="font-medium">- ₹{order.discount?.toFixed(2)}</span></div>}
-                            {order.deliveryType !== 'pickup' && <div className="flex justify-between"><span>Delivery:</span> <span>₹{order.deliveryCharge?.toFixed(2)}</span></div>}
-                            <div className="border-t border-dashed my-2"></div>
-                            <div className="flex justify-between text-base font-bold"><span>Grand Total:</span> <span>₹{order.totalAmount?.toFixed(2)}</span></div>
-                        </div>
-                    </TabsContent>
-                    <TabsContent value="customer" className="mt-4 space-y-4 max-h-[60vh] overflow-y-auto p-1">
-                        {customer ? (
-                            <>
-                                <div className="space-y-2">
-                                     <div className="flex items-center gap-3">
-                                        <User size={16} className="text-muted-foreground"/>
-                                        <span className="font-semibold">{customer.name}</span>
-                                     </div>
-                                     <div className="flex items-center gap-3">
-                                        <Phone size={16} className="text-muted-foreground"/>
-                                        <span>{customer.phone}</span>
-                                     </div>
-                                     <div className="flex items-start gap-3">
-                                        <MapPin size={16} className="text-muted-foreground mt-1"/>
-                                        <span className="flex-1">{order.customerAddress}</span>
-                                     </div>
-                                </div>
-                                <div className="grid grid-cols-2 gap-4 border-t border-border pt-4">
-                                   <div className="bg-muted p-3 rounded-lg text-center">
-                                        <p className="text-xs text-muted-foreground">Total Spend</p>
-                                        <p className="text-lg font-bold">₹{customer.totalSpend?.toLocaleString() || 0}</p>
-                                   </div>
-                                   <div className="bg-muted p-3 rounded-lg text-center">
-                                        <p className="text-xs text-muted-foreground">Total Orders</p>
-                                        <p className="text-lg font-bold">{customer.totalOrders || 0}</p>
-                                   </div>
-                                </div>
-                                <Link href={`/owner-dashboard/customers?customerId=${order.customerId}`}>
-                                    <Button variant="outline" className="w-full">View Full Customer Profile</Button>
-                                </Link>
-                            </>
-                        ) : (
-                            <p className="text-muted-foreground text-center py-8">Customer details could not be loaded.</p>
-                        )}
-                    </TabsContent>
-                </Tabs>
-            </DialogContent>
-        </Dialog>
-    );
-};
-
-
 const ActionButton = ({ status, onNext, onRevert, order, onRejectClick, isUpdating, onPrintClick, onAssignClick }) => {
     const isPickup = order.deliveryType === 'pickup';
     const isDineIn = order.deliveryType === 'dine-in';
@@ -537,9 +406,21 @@ export default function LiveOrdersPage() {
   const [selectedOrders, setSelectedOrders] = useState([]);
   const searchParams = useSearchParams();
   const impersonatedOwnerId = searchParams.get('impersonate_owner_id');
-
   const [printData, setPrintData] = useState(null);
   const [restaurantData, setRestaurantData] = useState(null);
+  const billPrintRef = useRef();
+
+  const handlePrint = useReactToPrint({
+      content: () => billPrintRef.current,
+      documentTitle: `bill-${printData?.id}`,
+      onAfterPrint: () => setPrintData(null),
+  });
+
+  useEffect(() => {
+    if (printData) {
+        handlePrint();
+    }
+  }, [printData, handlePrint]);
 
   const fetchInitialData = async (isManualRefresh = false) => {
     if (!isManualRefresh) setLoading(true);
@@ -771,6 +652,21 @@ export default function LiveOrdersPage() {
             message={infoDialog.message}
         />
         
+        {printData && (
+             <Dialog open={!!printData} onOpenChange={() => setPrintData(null)}>
+                <DialogContent className="bg-card border-border text-foreground max-w-md p-0">
+                    <div ref={billPrintRef}>
+                       <BillToPrint order={printData} restaurant={restaurantData} />
+                    </div>
+                    <div className="p-4 bg-muted border-t border-border flex justify-end no-print">
+                       <Button onClick={handlePrint} className="bg-primary hover:bg-primary/90">
+                           <Printer className="mr-2 h-4 w-4" /> Print Again
+                       </Button>
+                   </div>
+                </DialogContent>
+             </Dialog>
+        )}
+        
         <OrderDetailModal
             isOpen={detailModalData.isOpen}
             onClose={() => setDetailModalData({ isOpen: false, data: null })}
@@ -793,14 +689,6 @@ export default function LiveOrdersPage() {
                 onClose={() => setRejectionModalData({ isOpen: false, order: null })}
                 onConfirm={handleRejectOrder}
                 order={rejectionModalData.order}
-            />
-        )}
-
-        {printData && (
-             <BillModal
-                order={printData}
-                restaurant={restaurantData}
-                onClose={() => setPrintData(null)}
             />
         )}
         

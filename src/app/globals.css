@@ -105,3 +105,43 @@
     100% { transform: translateX(-50%); }
   }
 }
+
+@page {
+  size: 80mm auto;
+  margin: 0;
+}
+
+@media print {
+  html, body {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  /* Hide everything on the page by default */
+  body * {
+    visibility: hidden !important;
+  }
+
+  /* Make only the bill content and its children visible */
+  #bill-print-root, #bill-print-root * {
+    visibility: visible !important;
+  }
+
+  /* Position the bill content at the top-left of the page */
+  #bill-print-root {
+    position: absolute !important;
+    left: 0 !important;
+    top: 0 !important;
+    width: 80mm !important;
+    max-width: 80mm !important;
+    margin: 0 !important;
+    padding: 10px !important;
+    background: #fff !important;
+    color: #000 !important;
+  }
+
+  /* Hide elements that shouldn't be printed, like buttons */
+  .no-print {
+    display: none !important;
+  }
+}
