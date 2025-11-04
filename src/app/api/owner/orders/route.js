@@ -98,9 +98,19 @@ export async function GET(req) {
                 ...h,
                 timestamp: h.timestamp && typeof h.timestamp.toDate === 'function' ? h.timestamp.toDate().toISOString() : h.timestamp,
             }));
+            // --- START THE FIX ---
+            const itemsWithQty = (data.items || []).map(item => ({
+                name: item.name,
+                price: item.price,
+                qty: item.qty, // Ensure qty is included
+                // Add any other item fields you need on the frontend
+            }));
+            // --- END THE FIX ---
+
             return { 
                 id: doc.id, 
                 ...data,
+                items: itemsWithQty, // Use the sanitized items array
                 orderDate: data.orderDate?.toDate ? data.orderDate.toDate().toISOString() : data.orderDate,
                 customer: data.customerName,
                 amount: data.totalAmount,
