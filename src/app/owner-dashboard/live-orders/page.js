@@ -1,7 +1,7 @@
 
 'use client';
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { RefreshCw, ChevronUp, ChevronDown, Check, CookingPot, Bike, PartyPopper, Undo, Bell, PackageCheck, Printer, X, Loader2, IndianRupee, Wallet, History, ClockIcon, User, Phone, MapPin, Search, ShoppingBag, ConciergeBell } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -153,7 +153,7 @@ const BillModal = ({ order, restaurant, onClose, onPrint }) => {
     return (
         <Dialog open={true} onOpenChange={onClose}>
             <DialogContent className="bg-background border-border text-foreground max-w-md p-0">
-                 <div id="bill-content" className="font-mono text-black bg-white p-6">
+                 <div id="bill-content" className="font-mono text-black bg-white p-6 max-h-[70vh] overflow-y-auto">
                     <div className="text-center mb-6 border-b-2 border-dashed border-black pb-4">
                         <h1 className="text-2xl font-bold uppercase">{restaurant.name}</h1>
                         <p className="text-xs">{restaurant.address.street}, {restaurant.address.city}, {restaurant.address.state} - {restaurant.address.postalCode}</p>
@@ -551,7 +551,7 @@ const ActionButton = ({ status, onNext, onRevert, order, onRejectClick, isUpdati
                         className="h-9 w-9 text-muted-foreground hover:bg-muted hover:text-foreground"
                         title={`Revert to ${prevStatus}`}
                      >
-                        <Undo size={16} />
+                        <Undo2 size={16} />
                     </Button>
                 )}
             </div>
