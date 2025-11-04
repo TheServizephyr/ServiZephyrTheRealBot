@@ -29,12 +29,12 @@ export default function RootLayout({ children }) {
   return (
     <html lang="en" className={`${alegreya.variable} ${playfairDisplay.variable}`} suppressHydrationWarning>
        <head>
-         <Script
+       </head>
+       <body>
+        <Script
             src={`https://maps.googleapis.com/maps/api/js?key=${GOOGLE_MAPS_API_KEY}&libraries=places,marker,routes`}
             strategy="beforeInteractive"
          />
-       </head>
-       <body>
         <FirebaseClientProvider>
           <LayoutWrapper>
             {children}
