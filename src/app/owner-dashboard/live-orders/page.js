@@ -476,17 +476,17 @@ export default function LiveOrdersPage() {
   const [restaurantData, setRestaurantData] = useState(null);
   const billPrintRef = useRef();
 
-  const handlePrint = useReactToPrint({
-      content: () => billPrintRef.current,
-      documentTitle: `bill-${printData?.id}`,
-      onAfterPrint: () => setPrintData(null),
-  });
-
-  useEffect(() => {
+   useEffect(() => {
     if (printData) {
-        handlePrint();
+      handlePrint();
     }
-  }, [printData, handlePrint]);
+  }, [printData]);
+
+  const handlePrint = useReactToPrint({
+    content: () => billPrintRef.current,
+    documentTitle: `bill-${printData?.id}`,
+    onAfterPrint: () => setPrintData(null),
+  });
 
   const fetchInitialData = async (isManualRefresh = false) => {
     if (!isManualRefresh) setLoading(true);
@@ -939,3 +939,5 @@ export default function LiveOrdersPage() {
     </div>
   );
 }
+
+    
