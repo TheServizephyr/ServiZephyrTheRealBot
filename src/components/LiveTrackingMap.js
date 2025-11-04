@@ -7,31 +7,40 @@ import { Loader2 } from 'lucide-react';
 
 const GOOGLE_MAPS_API_KEY = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
 
-// --- NEW DIRECTIONS COMPONENT ---
+// --- DIRECTIONS COMPONENT ---
 const Directions = ({ from, to, waypoints = [] }) => {
     const map = useMap();
     const [directionsService, setDirectionsService] = useState(null);
     const [directionsRenderer, setDirectionsRenderer] = useState(null);
 
-    // Initialize DirectionsService and DirectionsRenderer
+    // Initialize DirectionsService and DirectionsRenderer once the map is available
     useEffect(() => {
         if (!map || !window.google || !window.google.maps.DirectionsService) {
             console.warn("Google Maps API or Directions Service not loaded yet.");
             return;
         }
         setDirectionsService(new window.google.maps.DirectionsService());
-        setDirectionsRenderer(new window.google.maps.DirectionsRenderer({
-            map,
+        // ** THE FIX IS HERE **
+        // Initialize the renderer and immediately associate it with the map.
+        const renderer = new window.google.maps.DirectionsRenderer({
+            map: map, // <-- THIS LINE ATTACHES THE RENDERER TO THE MAP
             suppressMarkers: true, // We use our own AdvancedMarkers
             polylineOptions: {
                 strokeColor: '#000000', // Black route line
                 strokeOpacity: 0.8,
                 strokeWeight: 6,
             },
-        }));
+        });
+        setDirectionsRenderer(renderer);
+        
+        // Cleanup function to remove the route from the map when the component unmounts
+        return () => {
+            renderer.setMap(null);
+        };
+
     }, [map]);
 
-    // Fetch and render directions when props change
+    // Fetch and render directions when props or services change
     useEffect(() => {
         if (!directionsService || !directionsRenderer || !from || !to) return;
 
@@ -40,7 +49,7 @@ const Directions = ({ from, to, waypoints = [] }) => {
             destination: to,
             waypoints: waypoints.map(wp => ({ location: wp, stopover: true })),
             travelMode: window.google.maps.TravelMode.DRIVING,
-            optimizeWaypoints: true, // Find the most efficient route
+            optimizeWaypoints: true,
         };
 
         directionsService.route(request, (result, status) => {
@@ -50,13 +59,6 @@ const Directions = ({ from, to, waypoints = [] }) => {
                 console.error(`Directions request failed due to ${status}`);
             }
         });
-
-        // Cleanup renderer on component unmount or when props change
-        return () => {
-            if (directionsRenderer) {
-                directionsRenderer.setDirections(null);
-            }
-        };
 
     }, [directionsService, directionsRenderer, from, to, waypoints]);
 
