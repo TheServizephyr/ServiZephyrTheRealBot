@@ -1,4 +1,5 @@
 
+
 import { NextResponse } from 'next/server';
 import { getAuth, getFirestore, verifyAndGetUid, FieldValue } from '@/lib/firebase-admin';
 
@@ -186,33 +187,13 @@ export async function PATCH(req) {
         }
 
         const boyRef = firestore.collection(collectionName).doc(businessId).collection('deliveryBoys').doc(boy.id);
-        const driverRef = firestore.collection('drivers').doc(boy.id);
-        
         const { id, ...updateData } = boy;
 
-        let mainDriverStatus;
-        switch (updateData.status) {
-            case 'Available':
-                mainDriverStatus = 'online';
-                break;
-            case 'On Delivery':
-                mainDriverStatus = 'on-delivery';
-                break;
-            default:
-                mainDriverStatus = 'offline';
-                updateData.location = null; // Clear location when inactive
-                break;
-        }
-
-        const batch = firestore.batch();
+        // Note: The main driver's status is handled separately by the rider's device.
+        // This PATCH should only affect the status WITHIN the restaurant's context if needed.
+        // For simplicity, we are removing direct manipulation of the main 'drivers' collection status here.
         
-        // Update the restaurant's subcollection
-        batch.update(boyRef, updateData);
-        // Update the main driver's collection as well
-        batch.update(driverRef, { status: mainDriverStatus });
-        
-        await batch.commit();
-
+        await boyRef.update(updateData);
 
         return NextResponse.json({ message: 'Delivery Boy updated successfully!' }, { status: 200 });
 
