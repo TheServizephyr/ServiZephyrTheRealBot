@@ -141,7 +141,7 @@ const RejectOrderModal = ({ order, isOpen, onClose, onConfirm }) => {
 const BillModal = ({ order, restaurant, onClose, onPrint }) => {
     if (!order || !restaurant) return null;
 
-    const subtotal = order.subtotal || order.items.reduce((acc, item) => acc + item.qty * item.price, 0);
+    const subtotal = order.subtotal || order.items.reduce((acc, item) => acc + item.quantity * item.price, 0);
     const couponDiscount = order.coupon?.discount || 0;
     const loyaltyDiscount = order.loyaltyDiscount || 0;
     const totalDiscount = couponDiscount + loyaltyDiscount;
@@ -387,7 +387,7 @@ const OrderDetailModal = ({ data, isOpen, onClose }) => {
                             <h4 className="font-semibold">Items</h4>
                              <ul className="list-disc pl-5 text-muted-foreground text-sm">
                                 {(order.items || []).map((item, index) => (
-                                    <li key={index} className="mb-1">{item.quantity}x {item.name} - ₹{((item.totalPrice || item.price) / item.quantity).toFixed(2)}</li>
+                                    <li key={index}>{item.quantity}x {item.name} - ₹{((item.totalPrice || item.price) / item.quantity).toFixed(2)}</li>
                                 ))}
                             </ul>
                         </div>
