@@ -1,4 +1,3 @@
-
 'use client';
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
@@ -83,7 +82,7 @@ const CustomBillPage = () => {
                 newCart[existingItemIndex].quantity = quantity;
                 return newCart;
             } else {
-                return [...currentCart, { ...item, portion, quantity, cartItemId }];
+                return [...currentCart, { ...item, portion, quantity, cartItemId, totalPrice: portion.price }];
             }
         });
     };
@@ -180,7 +179,7 @@ const CustomBillPage = () => {
                 {/* Right Panel: Bill */}
                 <div className="w-full md:w-1/3 bg-card border-l border-border p-4 flex flex-col">
                     <h2 className="text-2xl font-bold mb-4">Live Bill Preview</h2>
-                    <div ref={billPrintRef} className="font-mono text-black bg-white p-4 rounded-lg flex-grow flex flex-col">
+                    <div id="bill-content" ref={billPrintRef} className="font-mono text-black bg-white p-4 rounded-lg flex-grow flex flex-col">
                         {restaurant && (
                             <div className="text-center mb-4 border-b-2 border-dashed border-black pb-2">
                                 <h3 className="text-xl font-bold uppercase">{restaurant.name}</h3>
