@@ -23,7 +23,7 @@ const BillToPrint = ({ order, restaurant, billDetails, items, customerDetails })
     };
 
     return (
-        <>
+        <div id="bill-print-root">
             <div className="text-center mb-4 border-b-2 border-dashed border-black pb-2">
                 <h1 className="text-xl font-bold uppercase">{restaurant.name}</h1>
                 <p className="text-xs">{restaurant.address?.street}, {restaurant.address?.city}</p>
@@ -95,7 +95,7 @@ const BillToPrint = ({ order, restaurant, billDetails, items, customerDetails })
                 <p className="text-xs font-bold mt-1">Powered by ServiZephyr</p>
                  <p className="text-xs italic mt-1">For exclusive offers and faster ordering, visit the ServiZephyr Customer Hub!</p>
             </div>
-        </>
+        </div>
     );
 };
 
