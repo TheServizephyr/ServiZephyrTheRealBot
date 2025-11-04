@@ -125,7 +125,7 @@ export async function GET(req) {
                 amount: orderData.totalAmount,
                 items: (orderData.items || []).map(item => ({
                     name: item.name,
-                    qty: item.quantity // Ensure quantity is included
+                    qty: item.quantity // Use 'quantity' as it exists in the database
                 }))
             };
         });
