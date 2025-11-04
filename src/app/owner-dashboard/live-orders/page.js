@@ -17,7 +17,6 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import Link from 'next/link';
 import InfoDialog from '@/components/InfoDialog';
 import { Checkbox } from '@/components/ui/checkbox';
-import { useReactToPrint } from 'react-to-print';
 import BillToPrint from '@/components/BillToPrint';
 
 export const dynamic = 'force-dynamic';
@@ -260,24 +259,16 @@ const AssignRiderModal = ({ isOpen, onClose, onAssign, orders, riders }) => {
     );
 };
 
-const BillModal = ({ order, restaurant, onClose }) => {
-    const billPrintRef = useRef();
-    const handlePrint = useReactToPrint({
-        content: () => billPrintRef.current,
-        documentTitle: `Bill-${order?.id}`,
-    });
-
-    if (!order || !restaurant) return null;
-
+const BillModal = ({ order, restaurant, onClose, onPrint }) => {
     return (
         <Dialog open={true} onOpenChange={onClose}>
             <DialogContent className="bg-background border-border text-foreground max-w-md p-0">
-                <div id="bill-content" ref={billPrintRef} className="font-mono text-black bg-white">
+                <div id="bill-print-content">
                     <BillToPrint order={order} restaurant={restaurant} />
                 </div>
-                 <div className="p-4 bg-muted border-t border-border flex justify-end no-print">
-                    <Button onClick={handlePrint} className="bg-primary hover:bg-primary/90">
-                        <Printer className="mr-2 h-4 w-4" /> Print Bill
+                <div className="p-4 bg-muted border-t border-border flex justify-end no-print">
+                    <Button onClick={onPrint} className="bg-primary hover:bg-primary/90">
+                        <Printer className="mr-2 h-4 w-4" /> Print Again
                     </Button>
                 </div>
             </DialogContent>
@@ -650,13 +641,43 @@ export default function LiveOrdersPage() {
     }
   }
 
-  const handlePrintClick = async (order) => {
-    try {
-      const data = await handleAPICall('GET', { id: order.id, customerId: order.customerId });
-      setPrintData(data); // Open the modal with data
-    } catch(e) {
-      setInfoDialog({ isOpen: true, title: 'Error', message: `Could not load bill details: ${e.message}` });
+   const handlePrintClick = (order) => {
+    const printWindow = window.open('', '_blank');
+    if (!printWindow) {
+      setInfoDialog({ isOpen: true, title: 'Popup Blocked', message: 'Please allow popups for this site to print the bill.' });
+      return;
     }
+
+    const node = document.getElementById(`bill-content-for-${order.id}`);
+    if (!node) {
+      setInfoDialog({ isOpen: true, title: 'Error', message: 'Could not find bill content to print.' });
+      return;
+    }
+
+    const css = `
+        @page { size: 80mm auto; margin: 0; }
+        @media print {
+            html, body { 
+                width: 80mm !important; 
+                margin: 0 !important; 
+                padding: 0 !important; 
+                -webkit-print-color-adjust: exact; 
+                print-color-adjust: exact; 
+            }
+            * { box-sizing: border-box; }
+        }
+        body { 
+            font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; 
+        }
+    `;
+
+    printWindow.document.write(`<html><head><title>Bill - ${order.id}</title><style>${css}</style></head><body>${node.innerHTML}</body></html>`);
+    printWindow.document.close();
+    printWindow.focus();
+    setTimeout(() => { // Timeout helps ensure content is loaded
+      printWindow.print();
+      printWindow.close();
+    }, 250);
   };
   
   const handleDetailClick = async (orderId, customerId) => {
@@ -744,14 +765,6 @@ export default function LiveOrdersPage() {
             title={infoDialog.title}
             message={infoDialog.message}
         />
-
-        {printData && (
-             <BillModal
-                order={printData.order}
-                restaurant={printData.restaurant}
-                onClose={() => setPrintData(null)}
-            />
-        )}
         
         <OrderDetailModal
             isOpen={detailModalData.isOpen}
@@ -949,6 +962,11 @@ export default function LiveOrdersPage() {
                                             onPrintClick={() => handlePrintClick(order)}
                                             onAssignClick={(orders) => setAssignModalData({ isOpen: true, orders })}
                                         />
+                                    </td>
+                                    <td className="hidden">
+                                        <div id={`bill-content-for-${order.id}`}>
+                                            <BillToPrint order={order} restaurant={detailModalData.data?.restaurant}/>
+                                        </div>
                                     </td>
                                 </motion.tr>
                             ))}

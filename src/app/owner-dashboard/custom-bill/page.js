@@ -7,7 +7,6 @@ import { Button } from '@/components/ui/button';
 import { auth } from '@/lib/firebase';
 import { useSearchParams } from 'next/navigation';
 import InfoDialog from '@/components/InfoDialog';
-import { useReactToPrint } from 'react-to-print';
 import BillToPrint from '@/components/BillToPrint';
 
 export const dynamic = 'force-dynamic';
@@ -31,10 +30,46 @@ function CustomBillPage() {
         address: ''
     });
 
-    const handlePrint = useReactToPrint({
-        content: () => billPrintRef.current,
-        documentTitle: `Bill-${customerDetails.name || 'Customer'}`
-    });
+    const handlePrint = () => {
+        const node = billPrintRef.current;
+        if (!node) return;
+
+        const css = `
+            @page { size: 80mm auto; margin: 0; }
+            @media print {
+            html, body {
+                width: 80mm !important;
+                min-width: 80mm !important;
+                max-width: 80mm !important;
+                margin: 0 !important;
+                padding: 0 !important;
+                -webkit-print-color-adjust: exact; 
+                print-color-adjust: exact;
+            }
+            #bill-print-root {
+                position: static !important;
+                width: 80mm !important;
+                max-width: 80mm !important;
+                margin: 0 !important;
+                padding: 10px !important;
+                page-break-inside: avoid !important;
+                background: white !important;
+                color: black !important;
+             }
+             .no-print { display: none !important; }
+            * { box-sizing: border-box; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; }
+            }
+        `;
+
+        const win = window.open('', 'PRINT', 'height=700,width=500');
+        win.document.write(`<html><head><title>Bill</title><style>${css}</style></head><body>${node.outerHTML}</body></html>`);
+        win.document.close();
+        win.focus();
+        setTimeout(() => {
+            win.print();
+            win.close();
+        }, 250);
+    };
     
     useEffect(() => {
         const fetchMenuAndSettings = async () => {
@@ -179,14 +214,16 @@ function CustomBillPage() {
                     </div>
 
                     <div className="bg-card border border-border rounded-xl flex-grow flex flex-col">
-                        <div id="bill-content" ref={billPrintRef} className="font-mono text-black bg-white p-4 rounded-t-lg flex-grow flex flex-col">
-                           <BillToPrint
-                                order={{ items: cart, ...customerDetails, totalAmount: grandTotal, subtotal, cgst, sgst, discount: 0, deliveryCharge: 0 }}
-                                restaurant={restaurant}
-                                billDetails={{ subtotal, cgst, sgst, grandTotal, discount: 0, deliveryCharge: 0 }}
-                                items={cart}
-                                customerDetails={customerDetails}
-                            />
+                        <div className="font-mono text-black bg-white p-4 rounded-t-lg flex-grow flex flex-col">
+                           <div ref={billPrintRef}>
+                               <BillToPrint
+                                    order={{}} // Pass empty order as items are passed separately
+                                    restaurant={restaurant}
+                                    billDetails={{ subtotal, cgst, sgst, grandTotal, discount: 0, deliveryCharge: 0 }}
+                                    items={cart}
+                                    customerDetails={customerDetails}
+                                />
+                           </div>
                         </div>
                         <div className="p-4 bg-muted/50 rounded-b-lg border-t border-border flex justify-end no-print">
                             <Button onClick={handlePrint} className="bg-primary hover:bg-primary/90 text-primary-foreground">
