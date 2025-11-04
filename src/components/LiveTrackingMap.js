@@ -1,48 +1,54 @@
-
 'use client';
 
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef } from 'react';
 import { APIProvider, Map, AdvancedMarker, useMap } from '@vis.gl/react-google-maps';
 import { Loader2 } from 'lucide-react';
 
 const GOOGLE_MAPS_API_KEY = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
 
-// --- DIRECTIONS COMPONENT ---
+// --- DIRECTIONS COMPONENT (REFACTORED FOR STABILITY) ---
 const Directions = ({ from, to, waypoints = [] }) => {
     const map = useMap();
-    const [directionsService, setDirectionsService] = useState(null);
-    const [directionsRenderer, setDirectionsRenderer] = useState(null);
+    // Use useRef to hold the renderer instance. This prevents it from being recreated on every render,
+    // which was the root cause of the previous infinite loop issue.
+    const directionsRendererRef = useRef(null);
 
-    // Initialize DirectionsService and DirectionsRenderer once the map is available
+    // Effect to initialize or clear the directions renderer
     useEffect(() => {
-        if (!map || !window.google || !window.google.maps.DirectionsService) {
-            console.warn("Google Maps API or Directions Service not loaded yet.");
-            return;
-        }
-        setDirectionsService(new window.google.maps.DirectionsService());
-        // ** THE FIX IS HERE **
-        // Initialize the renderer and immediately associate it with the map.
-        const renderer = new window.google.maps.DirectionsRenderer({
-            map: map, // <-- THIS LINE ATTACHES THE RENDERER TO THE MAP
-            suppressMarkers: true, // We use our own AdvancedMarkers
-            polylineOptions: {
-                strokeColor: '#000000', // Black route line
-                strokeOpacity: 0.8,
-                strokeWeight: 6,
-            },
-        });
-        setDirectionsRenderer(renderer);
-        
-        // Cleanup function to remove the route from the map when the component unmounts
-        return () => {
-            renderer.setMap(null);
-        };
+        if (!map || !window.google) return;
 
+        // Create the renderer only once and store it in the ref
+        if (!directionsRendererRef.current) {
+            directionsRendererRef.current = new window.google.maps.DirectionsRenderer({
+                suppressMarkers: true,
+                polylineOptions: {
+                    strokeColor: '#000000',
+                    strokeOpacity: 0.8,
+                    strokeWeight: 6,
+                },
+            });
+        }
+        
+        // Associate the renderer with the current map instance
+        directionsRendererRef.current.setMap(map);
+
+        // Cleanup function: when the component unmounts, remove the route from the map.
+        return () => {
+            if (directionsRendererRef.current) {
+                directionsRendererRef.current.setMap(null);
+            }
+        };
     }, [map]);
 
-    // Fetch and render directions when props or services change
+    // Effect to calculate and render the route.
+    // This now ONLY depends on the actual route data (from, to, waypoints).
+    // It will not run infinitely anymore.
     useEffect(() => {
-        if (!directionsService || !directionsRenderer || !from || !to) return;
+        if (!map || !directionsRendererRef.current || !from || !to) {
+            return;
+        }
+
+        const directionsService = new window.google.maps.DirectionsService();
 
         const request = {
             origin: from,
@@ -54,15 +60,18 @@ const Directions = ({ from, to, waypoints = [] }) => {
 
         directionsService.route(request, (result, status) => {
             if (status === window.google.maps.DirectionsStatus.OK) {
-                directionsRenderer.setDirections(result);
+                // If the route is found, set it on our persistent renderer instance.
+                if (directionsRendererRef.current) {
+                    directionsRendererRef.current.setDirections(result);
+                }
             } else {
-                console.error(`Directions request failed due to ${status}`);
+                console.error(`Directions request failed due to ${status}. This can happen if the locations are too far apart, not on a road, or if the API key has restrictions.`);
             }
         });
 
-    }, [directionsService, directionsRenderer, from, to, waypoints]);
+    }, [from, to, waypoints, map]); // Correct dependencies
 
-    return null; // This component only renders on the map
+    return null; // This component only renders on the map via the renderer
 };
 
 
