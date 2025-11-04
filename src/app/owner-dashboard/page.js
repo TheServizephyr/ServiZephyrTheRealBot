@@ -63,7 +63,7 @@ const StatCard = ({ title, value, icon: Icon, change, isCurrency = false, isLoad
 };
 
 
-// 2. Live Order Feed Component
+// 2. Live Order Feed Component (REBUILT)
 const LiveOrderFeed = ({ orders, isLoading }) => {
   const router = useRouter();
 
@@ -94,21 +94,28 @@ const LiveOrderFeed = ({ orders, isLoading }) => {
               exit={{ opacity: 0, x: -50 }}
               transition={{ duration: 0.5, ease: 'easeInOut' }}
               className={cn(
-                "flex items-center justify-between p-3 rounded-lg mb-2",
+                "p-3 rounded-lg mb-2",
                 index === 0 ? "bg-primary/10 border-l-4 border-primary" : "bg-muted/50"
               )}
             >
-              <div>
-                <p className="font-semibold text-foreground text-sm truncate max-w-[120px] sm:max-w-none">{order.customer}</p>
-                <div className="text-xs text-muted-foreground">
-                    {(order.items || []).map(item => `${item.quantity}x ${item.name}`).join(', ')}
-                </div>
+              <div className="flex justify-between items-start">
+                  <div>
+                    <p className="font-semibold text-foreground text-sm">{order.customer}</p>
+                    <p className="text-xs text-muted-foreground">ID: #{order.id.substring(0, 6)}</p>
+                  </div>
+                  <div className="text-right">
+                    <p className="font-bold text-foreground">{formatCurrency(order.amount)}</p>
+                  </div>
               </div>
-              <div className="text-right">
-                <p className="font-bold text-foreground">{formatCurrency(order.amount)}</p>
-                <button 
+              <ul className="mt-2 text-xs text-muted-foreground list-disc pl-5">
+                  {(order.items || []).map((item, i) => (
+                      <li key={i}>{item.quantity}x {item.name}</li>
+                  ))}
+              </ul>
+              <div className="text-right mt-2">
+                 <button 
                   onClick={() => router.push('/owner-dashboard/live-orders')}
-                  className="text-xs text-primary hover:text-primary/80 font-semibold mt-1">
+                  className="text-xs text-primary hover:text-primary/80 font-semibold">
                   View Details
                 </button>
               </div>
