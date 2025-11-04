@@ -56,7 +56,35 @@ export async function GET(req) {
             ordersRef.where('status', '==', 'preparing').get()
         ]);
         
-        let boys = boysSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        let boys = [];
+        const riderPromises = boysSnap.docs.map(async (doc) => {
+            const boyData = { id: doc.id, ...doc.data() };
+            
+            // ** THE FIX: Always fetch the REAL-TIME status from the main 'drivers' collection **
+            const driverDocRef = firestore.collection('drivers').doc(boyData.id);
+            const driverDoc = await driverDocRef.get();
+            if (driverDoc.exists()) {
+                const mainDriverData = driverDoc.data();
+                // Override the status from the subcollection with the one from the main driver document
+                // Map Firestore statuses ('online', 'offline', 'on-delivery') to UI statuses ('Available', 'Inactive', 'On Delivery')
+                switch (mainDriverData.status) {
+                    case 'online':
+                        boyData.status = 'Available';
+                        break;
+                    case 'on-delivery':
+                        boyData.status = 'On Delivery';
+                        break;
+                    case 'offline':
+                    default:
+                        boyData.status = 'Inactive';
+                        break;
+                }
+            }
+            return boyData;
+        });
+
+        boys = await Promise.all(riderPromises);
+
         const readyOrders = readyOrdersSnap.docs.map(doc => ({
             id: doc.id,
             customer: doc.data().customerName,
@@ -155,14 +183,34 @@ export async function PATCH(req) {
         }
 
         const boyRef = firestore.collection(collectionName).doc(businessId).collection('deliveryBoys').doc(boy.id);
+        const driverRef = firestore.collection('drivers').doc(boy.id); // ** THE FIX: Also get a reference to the main driver doc
         
         const { id, ...updateData } = boy;
 
-        if (updateData.status === 'Inactive') {
-            updateData.location = null;
+        // ** THE FIX: Map UI statuses to main driver statuses
+        let mainDriverStatus;
+        switch (updateData.status) {
+            case 'Available':
+                mainDriverStatus = 'online';
+                break;
+            case 'On Delivery':
+                mainDriverStatus = 'on-delivery';
+                break;
+            default:
+                mainDriverStatus = 'offline';
+                updateData.location = null; // Clear location when inactive
+                break;
         }
 
-        await boyRef.update(updateData);
+        const batch = firestore.batch();
+        
+        // Update the restaurant's subcollection
+        batch.update(boyRef, updateData);
+        // Update the main driver's collection as well
+        batch.update(driverRef, { status: mainDriverStatus });
+        
+        await batch.commit();
+
 
         return NextResponse.json({ message: 'Delivery Boy updated successfully!' }, { status: 200 });
 
