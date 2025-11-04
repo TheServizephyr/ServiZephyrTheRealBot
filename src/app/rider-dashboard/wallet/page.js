@@ -32,7 +32,6 @@ export default function WalletPage() {
         balance: 0,
         totalEarnings: 0,
         totalDeliveries: 0,
-        totalDistance: 0,
     });
     const [loading, setLoading] = useState(true);
     const [timeFilter, setTimeFilter] = useState('all');
@@ -42,12 +41,26 @@ export default function WalletPage() {
         setLoading(true);
         
         try {
-            // Fetch current balance from driver doc
+            // Always fetch the main stats from the driver document
             const driverDocRef = doc(db, 'drivers', user.uid);
             const driverDoc = await getDoc(driverDocRef);
+            
             const currentBalance = driverDoc.exists() ? driverDoc.data().walletBalance || 0 : 0;
+            const totalEarningsAllTime = driverDoc.exists() ? driverDoc.data().totalEarnings || 0 : 0;
+            const totalDeliveriesAllTime = driverDoc.exists() ? driverDoc.data().totalDeliveries || 0 : 0;
 
-            // Fetch historical data from orders collection
+            // If the filter is 'all', we already have everything we need.
+            if (filter === 'all') {
+                setStats({
+                    balance: currentBalance,
+                    totalEarnings: totalEarningsAllTime,
+                    totalDeliveries: totalDeliveriesAllTime,
+                });
+                setLoading(false);
+                return;
+            }
+
+            // For other filters, we calculate historical data based on orders
             const ordersRef = collection(db, 'orders');
             let q = query(ordersRef, where('deliveryBoyId', '==', user.uid), where('status', '==', 'delivered'));
 
@@ -56,8 +69,9 @@ export default function WalletPage() {
             if (filter === 'day') {
                 startDate = new Date(now.setHours(0, 0, 0, 0));
             } else if (filter === 'week') {
-                startDate = new Date(now.setDate(now.getDate() - now.getDay()));
-                startDate.setHours(0, 0, 0, 0);
+                const firstDayOfWeek = new Date(now.setDate(now.getDate() - now.getDay()));
+                firstDayOfWeek.setHours(0, 0, 0, 0);
+                startDate = firstDayOfWeek;
             } else if (filter === 'month') {
                 startDate = new Date(now.getFullYear(), now.getMonth(), 1);
             }
@@ -68,22 +82,19 @@ export default function WalletPage() {
 
             const querySnapshot = await getDocs(q);
             
-            let totalEarnings = 0;
-            let totalDeliveries = 0;
-            let totalDistance = 0; // Placeholder for now
+            let filteredEarnings = 0;
+            let filteredDeliveries = 0;
 
             querySnapshot.forEach(doc => {
                 const orderData = doc.data();
-                totalDeliveries += 1;
-                totalEarnings += orderData.tipAmount || 0; // Assuming rider earns the tip
-                // Distance calculation would need more logic, e.g., storing it on the order
+                filteredDeliveries += 1;
+                filteredEarnings += orderData.tipAmount || 0; 
             });
 
             setStats({
-                balance: currentBalance,
-                totalEarnings,
-                totalDeliveries,
-                totalDistance,
+                balance: currentBalance, // Balance is always the current total
+                totalEarnings: filteredEarnings,
+                totalDeliveries: filteredDeliveries,
             });
 
         } catch (error) {
@@ -139,10 +150,9 @@ export default function WalletPage() {
                         ))}
                     </div>
                 </div>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <StatCard title="Total Earnings" value={`₹${stats.totalEarnings.toFixed(2)}`} icon={IndianRupee} isLoading={loading} />
                     <StatCard title="Total Deliveries" value={stats.totalDeliveries} icon={Bike} isLoading={loading} />
-                    <StatCard title="Total Distance" value={`${stats.totalDistance.toFixed(1)} km`} icon={Route} isLoading={loading} />
                 </div>
             </div>
 
