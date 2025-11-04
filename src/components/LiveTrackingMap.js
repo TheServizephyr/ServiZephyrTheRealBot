@@ -79,7 +79,7 @@ const MapComponent = ({ restaurantLocation, customerLocations, riderLocation, on
             }
         });
     // --- FIX: Change the dependency array --- 
-    }, [directionsService, directionsRenderer, routeOrigin, routeDestination, JSON.stringify(routeWaypoints)]); 
+    }, [routeOrigin, routeDestination, JSON.stringify(routeWaypoints)]); 
     
     useEffect(() => {
         if (map && window.google) {
