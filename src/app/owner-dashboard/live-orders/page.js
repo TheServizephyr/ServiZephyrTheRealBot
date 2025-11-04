@@ -18,6 +18,7 @@ import Link from 'next/link';
 import InfoDialog from '@/components/InfoDialog';
 import { Checkbox } from '@/components/ui/checkbox';
 import { useReactToPrint } from 'react-to-print';
+import BillToPrint from '@/components/BillToPrint';
 
 export const dynamic = 'force-dynamic';
 
@@ -259,6 +260,38 @@ const AssignRiderModal = ({ isOpen, onClose, onAssign, orders, riders }) => {
     );
 };
 
+const BillModal = ({ order, restaurant, onClose, onPrint }) => {
+    const billPrintRef = useRef();
+
+    useEffect(() => {
+        // Automatically trigger print when modal opens and data is ready
+        if (order && restaurant && onPrint) {
+            // A short delay might be needed for the DOM to be fully ready
+            const timer = setTimeout(() => {
+                 onPrint();
+            }, 100); 
+            return () => clearTimeout(timer);
+        }
+    }, [order, restaurant, onPrint]);
+
+    if (!order || !restaurant) return null;
+
+    return (
+        <Dialog open={true} onOpenChange={onClose}>
+            <DialogContent className="bg-background border-border text-foreground max-w-md p-0">
+                <div id="bill-content" ref={billPrintRef} className="font-mono text-black bg-white p-4">
+                     <BillToPrint order={order} restaurant={restaurant} />
+                </div>
+                 <div className="p-4 bg-muted border-t border-border flex justify-end no-print">
+                    <Button onClick={onPrint} className="bg-primary hover:bg-primary/90">
+                        <Printer className="mr-2 h-4 w-4" /> Print Bill
+                    </Button>
+                </div>
+            </DialogContent>
+        </Dialog>
+    );
+};
+
 const OrderDetailModal = ({ data, isOpen, onClose }) => {
     if (!isOpen || !data || !data.order || !data.order.id) {
         return null;
@@ -495,6 +528,13 @@ export default function LiveOrdersPage() {
   const searchParams = useSearchParams();
   const impersonatedOwnerId = searchParams.get('impersonate_owner_id');
 
+  const [printData, setPrintData] = useState(null);
+  const billPrintRef = useRef();
+  const handlePrint = useReactToPrint({
+      content: () => billPrintRef.current,
+      onAfterPrint: () => setPrintData(null) // Close modal after print dialog
+  });
+
   const fetchInitialData = async (isManualRefresh = false) => {
     if (!isManualRefresh) setLoading(true);
     
@@ -622,8 +662,13 @@ export default function LiveOrdersPage() {
     }
   }
 
-  const handlePrintClick = (order) => {
-    setDetailModalData({ isOpen: true, data: { order, restaurant: {}, customer: null } });
+  const handlePrintClick = async (order) => {
+    try {
+      const data = await handleAPICall('GET', { id: order.id, customerId: order.customerId });
+      setPrintData(data); // Open the modal with data
+    } catch(e) {
+      setInfoDialog({ isOpen: true, title: 'Error', message: `Could not load bill details: ${e.message}` });
+    }
   };
   
   const handleDetailClick = async (orderId, customerId) => {
@@ -711,6 +756,15 @@ export default function LiveOrdersPage() {
             title={infoDialog.title}
             message={infoDialog.message}
         />
+
+        {printData && (
+             <BillModal
+                order={printData.order}
+                restaurant={printData.restaurant}
+                onClose={() => setPrintData(null)}
+                onPrint={handlePrint}
+            />
+        )}
         
         <OrderDetailModal
             isOpen={detailModalData.isOpen}
