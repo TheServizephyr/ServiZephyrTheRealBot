@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { RefreshCw, ChevronUp, ChevronDown, Check, CookingPot, Bike, PartyPopper, Undo, Bell, PackageCheck, Printer, X, Loader2, IndianRupee, Wallet, History, ClockIcon, User, Phone, MapPin, Search, ShoppingBag, ConciergeBell, Undo2 } from 'lucide-react';
+import { RefreshCw, ChevronUp, ChevronDown, Check, CookingPot, Bike, PartyPopper, Undo, Bell, PackageCheck, Printer, X, Loader2, IndianRupee, Wallet, History, ClockIcon, User, Phone, MapPin, Search, ShoppingBag, ConciergeBell, Undo2, FilePlus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { auth } from '@/lib/firebase';
 import { cn } from "@/lib/utils";
@@ -153,7 +153,7 @@ const BillModal = ({ order, restaurant, onClose, onPrint, printRef }) => {
     return (
         <Dialog open={true} onOpenChange={onClose}>
             <DialogContent className="bg-background border-border text-foreground max-w-md p-0">
-                 <div id="bill-content" ref={printRef} className="font-mono text-black bg-white p-6 max-h-[70vh] overflow-y-auto">
+                 <div ref={printRef} className="font-mono text-black bg-white p-6 max-h-[70vh] overflow-y-auto">
                     <div className="text-center mb-6 border-b-2 border-dashed border-black pb-4">
                         <h1 className="text-2xl font-bold uppercase">{restaurant.name}</h1>
                         <p className="text-xs">{restaurant.address.street}, {restaurant.address.city}, {restaurant.address.state} - {restaurant.address.postalCode}</p>
@@ -874,6 +874,12 @@ export default function LiveOrdersPage() {
                         className="w-full md:w-64 pl-10 pr-4 py-2 h-10 rounded-md bg-input border border-border"
                     />
                 </div>
+                 <Link href="/owner-dashboard/custom-bill" passHref>
+                    <Button variant="outline" className="flex-shrink-0">
+                        <FilePlus size={16} />
+                        <span className="ml-2 hidden sm:inline">Custom Bill</span>
+                    </Button>
+                </Link>
                 <Button onClick={() => fetchInitialData(true)} variant="outline" className="flex-shrink-0">
                     <RefreshCw size={16} className={cn(loading && "animate-spin")} />
                     <span className="ml-2 hidden sm:inline">{loading ? 'Loading...' : 'Refresh'}</span>
@@ -976,7 +982,7 @@ export default function LiveOrdersPage() {
                                     </td>
                                     <td className="p-4 align-top hidden md:table-cell">
                                         {(order.items || []).slice(0, 2).map((item, index) => (
-                                            <div key={index} className="text-xs text-muted-foreground">{item.quantity}x {item.name}</div>
+                                            <div key={item.id || index} className="text-xs text-muted-foreground">{item.quantity}x {item.name}</div>
                                         ))}
                                         {(order.items || []).length > 2 && <div className="text-xs text-primary font-semibold mt-1">...and { (order.items || []).length - 2} more</div>}
                                     </td>
