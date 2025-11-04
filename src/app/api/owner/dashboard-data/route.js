@@ -125,7 +125,7 @@ export async function GET(req) {
                 amount: orderData.totalAmount,
                 items: (orderData.items || []).map(item => ({
                     name: item.name,
-                    qty: item.qty
+                    qty: item.quantity // Ensure quantity is included
                 }))
             };
         });
@@ -152,7 +152,7 @@ export async function GET(req) {
         const itemCounts = {};
         topItemsSnap.docs.forEach(doc => {
             (doc.data().items || []).forEach(item => {
-                itemCounts[item.name] = (itemCounts[item.name] || 0) + item.qty;
+                itemCounts[item.name] = (itemCounts[item.name] || 0) + item.quantity;
             });
         });
 
