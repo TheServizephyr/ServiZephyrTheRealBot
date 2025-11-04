@@ -1,15 +1,15 @@
 'use client';
 
-import React, { useMemo } from 'react';
+import React from 'react';
 import { FirebaseProvider } from '@/firebase/provider';
 import { initializeFirebase } from '@/firebase';
 
-export function FirebaseClientProvider({ children }) {
-  const firebaseServices = useMemo(() => {
-    // Initialize Firebase on the client side, once per component mount.
-    return initializeFirebase();
-  }, []); // Empty dependency array ensures this runs only once on mount
+// Initialize Firebase services once at the module level.
+// This is the critical fix to prevent re-initialization on re-renders.
+const firebaseServices = initializeFirebase();
 
+export function FirebaseClientProvider({ children }) {
+  // Now, we provide the stable, pre-initialized services to the provider.
   return (
     <FirebaseProvider
       firebaseApp={firebaseServices.firebaseApp}
