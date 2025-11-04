@@ -1,4 +1,5 @@
 
+
 import { NextResponse } from 'next/server';
 import { getAuth, getFirestore, verifyAndGetUid } from '@/lib/firebase-admin';
 
@@ -125,7 +126,7 @@ export async function GET(req) {
                 amount: orderData.totalAmount,
                 items: (orderData.items || []).map(item => ({
                     name: item.name,
-                    quantity: item.quantity // Use 'quantity' as it exists in the database
+                    quantity: item.quantity
                 }))
             };
         });
