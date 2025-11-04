@@ -1,62 +1,42 @@
 
 'use client';
 
-import React, { useEffect, useMemo, useRef } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { APIProvider, Map, AdvancedMarker, useMap } from '@vis.gl/react-google-maps';
 import { Loader2 } from 'lucide-react';
 
 const GOOGLE_MAPS_API_KEY = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
 
-// --- DIRECTIONS COMPONENT (WITH LOGGING) ---
+// --- NEW, STABLE DIRECTIONS COMPONENT ---
 const Directions = ({ from, to, waypoints = [] }) => {
     const map = useMap();
-    const directionsServiceRef = useRef(null);
-    const directionsRendererRef = useRef(null);
+    const [directionsService, setDirectionsService] = useState(null);
+    const [directionsRenderer, setDirectionsRenderer] = useState(null);
 
-    // Effect to initialize the renderer and service
+    // Initialize services and renderer
     useEffect(() => {
         if (!map || !window.google) return;
-        console.log('[Directions Log] Initializing Directions Service and Renderer.');
-
-        if (!directionsServiceRef.current) {
-            directionsServiceRef.current = new window.google.maps.DirectionsService();
-        }
-
-        if (!directionsRendererRef.current) {
-            directionsRendererRef.current = new window.google.maps.DirectionsRenderer({
-                suppressMarkers: true,
-                polylineOptions: {
-                    strokeColor: '#000000', // Black color for the route
-                    strokeOpacity: 0.8,
-                    strokeWeight: 6,
-                },
-            });
-            console.log('[Directions Log] Renderer attached to map.');
-            directionsRendererRef.current.setMap(map);
-        }
-
-        // Cleanup function
-        return () => {
-            if (directionsRendererRef.current) {
-                console.log('[Directions Log] Cleaning up: Removing route from map.');
-                directionsRendererRef.current.setMap(null);
-            }
-        };
+        setDirectionsService(new window.google.maps.DirectionsService());
+        setDirectionsRenderer(new window.google.maps.DirectionsRenderer({
+            suppressMarkers: true, // We use our own AdvancedMarkers
+            polylineOptions: {
+                strokeColor: '#000000', // Black color for the route
+                strokeOpacity: 0.9,
+                strokeWeight: 6,
+            },
+        }));
     }, [map]);
 
-    // Effect to calculate and render the route
+    // Attach renderer to map
     useEffect(() => {
-        if (!map || !directionsRendererRef.current || !directionsServiceRef.current || !from || !to) {
-            console.log('[Directions Log] Skipping route calculation: Missing map, renderer, service, from, or to.');
-            if(!from) console.log('[Directions Log] Reason: "from" location is missing.');
-            if(!to) console.log('[Directions Log] Reason: "to" location is missing.');
-            return;
+        if (directionsRenderer) {
+            directionsRenderer.setMap(map);
         }
+    }, [directionsRenderer, map]);
 
-        console.log('[Directions Log] Route calculation effect triggered.');
-        console.log('[Directions Log] FROM:', JSON.stringify(from));
-        console.log('[Directions Log] TO:', JSON.stringify(to));
-        console.log('[Directions Log] WAYPOINTS:', JSON.stringify(waypoints));
+    // Calculate and render route
+    useEffect(() => {
+        if (!directionsService || !directionsRenderer || !from || !to) return;
 
         const request = {
             origin: from,
@@ -66,22 +46,15 @@ const Directions = ({ from, to, waypoints = [] }) => {
             optimizeWaypoints: true,
         };
 
-        console.log('[Directions Log] Sending request to Google Directions API.');
-        directionsServiceRef.current.route(request, (result, status) => {
-            // MOST IMPORTANT LOG: WHAT IS GOOGLE'S RESPONSE?
-            console.log(`[Directions Log] Google Directions API responded with status: ${status}`);
-
+        directionsService.route(request, (result, status) => {
             if (status === window.google.maps.DirectionsStatus.OK) {
-                console.log('[Directions Log] SUCCESS: Route found. Setting directions on renderer.');
-                if (directionsRendererRef.current) {
-                    directionsRendererRef.current.setDirections(result);
-                }
+                directionsRenderer.setDirections(result);
             } else {
                 console.error(`[Directions Log] ERROR: Directions request failed due to ${status}.`);
             }
         });
 
-    }, [from, to, waypoints, map]); // Re-run only when route data changes
+    }, [directionsService, directionsRenderer, from, to, waypoints]);
 
     return null; 
 };
@@ -201,7 +174,7 @@ const LiveTrackingMap = (props) => {
 
 
     return (
-        <APIProvider apiKey={GOOGLE_MAPS_API_KEY} libraries={['routes']}>
+        <APIProvider apiKey={GOOGLE_MAPS_API_KEY} libraries={['routes', 'marker']}>
             <Map
                 mapId={'live_tracking_map'}
                 style={{ width: '100%', height: '100%' }}
