@@ -179,12 +179,12 @@ const BillModal = ({ order, restaurant, onClose, onPrint }) => {
                         </thead>
                         <tbody>
                             {order.items.map((item, index) => {
-                                const rate = (item.totalPrice ? (item.totalPrice / item.qty) : (item.price || 0));
-                                const amount = rate * item.qty;
+                                const rate = (item.totalPrice ? (item.totalPrice / item.quantity) : (item.price || 0));
+                                const amount = rate * item.quantity;
                                 return (
                                 <tr key={index} className="border-b border-dotted border-black">
                                     <td className="py-2">{item.name}</td>
-                                    <td className="text-center py-2">{item.qty}</td>
+                                    <td className="text-center py-2">{item.quantity}</td>
                                     <td className="text-right py-2">{rate.toFixed(2)}</td>
                                     <td className="text-right py-2">{amount.toFixed(2)}</td>
                                 </tr>
@@ -387,7 +387,7 @@ const OrderDetailModal = ({ data, isOpen, onClose }) => {
                             <h4 className="font-semibold">Items</h4>
                              <ul className="list-disc pl-5 text-muted-foreground text-sm">
                                 {(order.items || []).map((item, index) => (
-                                    <li key={index} className="mb-1">{item.qty}x {item.name} - ₹{((item.totalPrice || item.price) / item.qty).toFixed(2)}</li>
+                                    <li key={index} className="mb-1">{item.quantity}x {item.name} - ₹{((item.totalPrice || item.price) / item.quantity).toFixed(2)}</li>
                                 ))}
                             </ul>
                         </div>
@@ -977,7 +977,7 @@ export default function LiveOrdersPage() {
                                     <td className="p-4 text-sm text-muted-foreground hidden md:table-cell align-top">
                                         <ul className="space-y-1">
                                             {(order.items || []).map((item, index) => (
-                                                <li key={index} className="whitespace-nowrap">{item.qty}x {item.name}</li>
+                                                <li key={index} className="whitespace-nowrap">{item.quantity}x {item.name}</li>
                                             ))}
                                         </ul>
                                     </td>
