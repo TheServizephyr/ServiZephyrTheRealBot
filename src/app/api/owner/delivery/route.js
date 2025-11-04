@@ -65,7 +65,7 @@ export async function GET(req) {
             const driverDoc = await driverDocRef.get();
             let finalBoyData = { ...subCollectionData };
 
-            if (driverDoc.exists()) {
+            if (driverDoc.exists) {
                 const mainDriverData = driverDoc.data();
                 // Merge main data, but prioritize subcollection data if it exists (e.g., historical stats)
                 finalBoyData = { ...mainDriverData, ...subCollectionData, ...mainDriverData };
