@@ -58,29 +58,33 @@ export async function GET(req) {
         
         let boys = [];
         const riderPromises = boysSnap.docs.map(async (doc) => {
-            const boyData = { id: doc.id, ...doc.data() };
+            const subCollectionData = { id: doc.id, ...doc.data() };
             
-            // ** THE FIX: Always fetch the REAL-TIME status from the main 'drivers' collection **
-            const driverDocRef = firestore.collection('drivers').doc(boyData.id);
+            // ** THE FIX: Merge subcollection data with main driver data **
+            const driverDocRef = firestore.collection('drivers').doc(subCollectionData.id);
             const driverDoc = await driverDocRef.get();
+            let finalBoyData = { ...subCollectionData };
+
             if (driverDoc.exists()) {
                 const mainDriverData = driverDoc.data();
-                // Override the status from the subcollection with the one from the main driver document
+                // Merge main data, but prioritize subcollection data if it exists (e.g., historical stats)
+                finalBoyData = { ...mainDriverData, ...subCollectionData, ...mainDriverData };
+                
                 // Map Firestore statuses ('online', 'offline', 'on-delivery') to UI statuses ('Available', 'Inactive', 'On Delivery')
                 switch (mainDriverData.status) {
                     case 'online':
-                        boyData.status = 'Available';
+                        finalBoyData.status = 'Available';
                         break;
                     case 'on-delivery':
-                        boyData.status = 'On Delivery';
+                        finalBoyData.status = 'On Delivery';
                         break;
                     case 'offline':
                     default:
-                        boyData.status = 'Inactive';
+                        finalBoyData.status = 'Inactive';
                         break;
                 }
             }
-            return boyData;
+            return finalBoyData;
         });
 
         boys = await Promise.all(riderPromises);
