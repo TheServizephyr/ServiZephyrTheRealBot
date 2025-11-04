@@ -1,5 +1,4 @@
-
-'use client';
+"use client";
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -18,7 +17,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import Link from 'next/link';
 import InfoDialog from '@/components/InfoDialog';
 import { Checkbox } from '@/components/ui/checkbox';
-
+import { useReactToPrint } from 'react-to-print';
 
 export const dynamic = 'force-dynamic';
 
@@ -623,11 +622,10 @@ export default function LiveOrdersPage() {
     }
   }
 
-  const handlePrintClick = (orderId) => {
-      // Open the new bill page in a new tab
-      window.open(`/bill/${orderId}`, '_blank');
+  const handlePrintClick = (order) => {
+    setDetailModalData({ isOpen: true, data: { order, restaurant: {}, customer: null } });
   };
-
+  
   const handleDetailClick = async (orderId, customerId) => {
     try {
       const data = await handleAPICall('GET', { id: orderId, customerId });
@@ -907,7 +905,7 @@ export default function LiveOrdersPage() {
                                             onNext={(newStatus) => handleUpdateStatus(order.id, newStatus)}
                                             onRevert={(newStatus) => handleUpdateStatus(order.id, newStatus)}
                                             onRejectClick={(order) => setRejectionModalData({ isOpen: true, order: order })}
-                                            onPrintClick={() => handlePrintClick(order.id)}
+                                            onPrintClick={() => handlePrintClick(order)}
                                             onAssignClick={(orders) => setAssignModalData({ isOpen: true, orders })}
                                         />
                                     </td>
