@@ -66,16 +66,17 @@ export async function POST(req) {
 
         const riderUid = userRecord.uid;
         
-        // --- THE FIX: Check for rider existence in the 'drivers' collection ---
         const driverDocRef = firestore.collection('drivers').doc(riderUid);
         const driverDoc = await driverDocRef.get();
         
         if (!driverDoc.exists) {
             return NextResponse.json({ message: 'This user is not registered as a rider.' }, { status: 400 });
         }
-        // --- END FIX ---
         
+        // --- START THE FIX: Use the correct collection name 'deliveryBoys' ---
         const existingRiderRef = restaurantRef.collection('deliveryBoys').doc(riderUid);
+        // --- END THE FIX ---
+        
         const existingRiderSnap = await existingRiderRef.get();
         if (existingRiderSnap.exists) {
             return NextResponse.json({ message: 'This rider is already part of your team.' }, { status: 409 });
