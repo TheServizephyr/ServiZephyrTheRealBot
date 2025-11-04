@@ -106,26 +106,50 @@
   }
 }
 
+/* --- Add this NEW code to globals.css --- */
+
 @media print {
-  body {
-    -webkit-print-color-adjust: exact;
-    print-color-adjust: exact;
+  
+  /* 1. Sabse pehle, main layout ke non-print hisson ko chhipao */
+  /* Yeh aapke OwnerDashboard/layout.js ke <header> aur <motion.aside> ko target karega */
+  header[class*="border-b"], 
+  aside[class*="border-r"] {
+    display: none !important;
   }
-  body * {
-    visibility: hidden;
+
+  /* 2. Main content area ko chhipao, lekin Dialog ko nahi */
+  /* Yeh <main> tag ko chhipayega */
+  main[class*="overflow-y-auto"] {
+    display: none !important;
   }
-  #bill-content, #bill-content * {
-    visibility: visible;
+
+  /* 3. Ab, Bill Modal ko poori screen par faila do */
+  /* Yeh 'DialogContent' ko target kar raha hai */
+  div[data-radix-dialog-content] {
+    position: absolute !important;
+    left: 0 !important;
+    top: 0 !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    box-shadow: none !important;
+    border: none !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    border-radius: 0 !important;
   }
+
+  /* 4. Ab bill ke asli content (jisko print karna hai) ko set karo */
   #bill-content {
-    position: absolute;
-    left: 0;
-    top: 0;
-    width: 80mm;
-    margin: 0;
-    padding: 1rem;
-    box-sizing: border-box;
+    /* Yahi hai asli jaadoo: Bill ki chaudai (width) set karo */
+    width: 80mm !important; 
+    margin: 0 auto; /* Usko page ke center mein rakho */
+    padding: 10px !important;
+    background: white !important; /* Print ke liye background white force karo */
+    color: black !important; /* Print ke liye text black force karo */
   }
+
+  /* 5. Bill ke andar "Print Bill" button ko chhipao */
+  /* Aapke code mein 'no-print' class pehle se hi hai */
   .no-print {
     display: none !important;
   }
