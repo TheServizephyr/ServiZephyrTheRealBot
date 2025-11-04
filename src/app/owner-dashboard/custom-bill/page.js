@@ -33,6 +33,7 @@ function CustomBillPage() {
 
     const handlePrint = useReactToPrint({
         content: () => billPrintRef.current,
+        documentTitle: `Bill-${customerDetails.name || 'Customer'}`
     });
     
     useEffect(() => {
@@ -178,14 +179,16 @@ function CustomBillPage() {
                     </div>
 
                     <div className="bg-card border border-border rounded-xl flex-grow flex flex-col">
-                        <div id="bill-content" ref={billPrintRef} className="font-mono text-black bg-white p-4 rounded-t-lg flex-grow flex flex-col">
-                           <BillToPrint
+                        <div className="font-mono text-black bg-white p-4 rounded-t-lg flex-grow flex flex-col">
+                           <div ref={billPrintRef} className="p-2">
+                             <BillToPrint
                                 order={{ items: cart, ...customerDetails, totalAmount: grandTotal, subtotal, cgst, sgst, discount: 0, deliveryCharge: 0 }}
                                 restaurant={restaurant}
                                 billDetails={{ subtotal, cgst, sgst, grandTotal, discount: 0, deliveryCharge: 0 }}
                                 items={cart}
                                 customerDetails={customerDetails}
                             />
+                           </div>
                         </div>
                         <div className="p-4 bg-muted/50 rounded-b-lg border-t border-border flex justify-end no-print">
                             <Button onClick={handlePrint} className="bg-primary hover:bg-primary/90 text-primary-foreground">

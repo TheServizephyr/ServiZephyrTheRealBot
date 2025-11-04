@@ -260,31 +260,38 @@ const AssignRiderModal = ({ isOpen, onClose, onAssign, orders, riders }) => {
     );
 };
 
-const BillModal = ({ order, restaurant, onClose, onPrint }) => {
+const BillModal = ({ order, restaurant, onClose }) => {
     const billPrintRef = useRef();
+
+    const handlePrint = useReactToPrint({
+        content: () => billPrintRef.current,
+        documentTitle: `Bill-${order?.id}`,
+        onAfterPrint: onClose
+    });
 
     useEffect(() => {
         // Automatically trigger print when modal opens and data is ready
-        if (order && restaurant && onPrint) {
-            // A short delay might be needed for the DOM to be fully ready
+        if (order && restaurant) {
             const timer = setTimeout(() => {
-                 onPrint();
-            }, 100); 
+                handlePrint();
+            }, 500); // A short delay ensures the content is rendered
             return () => clearTimeout(timer);
         }
-    }, [order, restaurant, onPrint]);
+    }, [order, restaurant]);
 
     if (!order || !restaurant) return null;
 
     return (
         <Dialog open={true} onOpenChange={onClose}>
             <DialogContent className="bg-background border-border text-foreground max-w-md p-0">
-                <div id="bill-content" ref={billPrintRef} className="font-mono text-black bg-white p-4">
-                     <BillToPrint order={order} restaurant={restaurant} />
+                <div className="font-mono text-black bg-white">
+                    <div ref={billPrintRef} className="p-4">
+                        <BillToPrint order={order} restaurant={restaurant} />
+                    </div>
                 </div>
                  <div className="p-4 bg-muted border-t border-border flex justify-end no-print">
-                    <Button onClick={onPrint} className="bg-primary hover:bg-primary/90">
-                        <Printer className="mr-2 h-4 w-4" /> Print Bill
+                    <Button onClick={handlePrint} className="bg-primary hover:bg-primary/90">
+                        <Printer className="mr-2 h-4 w-4" /> Print Again
                     </Button>
                 </div>
             </DialogContent>
@@ -529,11 +536,6 @@ export default function LiveOrdersPage() {
   const impersonatedOwnerId = searchParams.get('impersonate_owner_id');
 
   const [printData, setPrintData] = useState(null);
-  const billPrintRef = useRef();
-  const handlePrint = useReactToPrint({
-      content: () => billPrintRef.current,
-      onAfterPrint: () => setPrintData(null) // Close modal after print dialog
-  });
 
   const fetchInitialData = async (isManualRefresh = false) => {
     if (!isManualRefresh) setLoading(true);
@@ -762,7 +764,6 @@ export default function LiveOrdersPage() {
                 order={printData.order}
                 restaurant={printData.restaurant}
                 onClose={() => setPrintData(null)}
-                onPrint={handlePrint}
             />
         )}
         
@@ -915,7 +916,7 @@ export default function LiveOrdersPage() {
                                     </td>
                                     <td className="p-4 align-top hidden md:table-cell">
                                         {(order.items || []).slice(0, 2).map((item, index) => (
-                                            <div key={`${item.id}-${index}`} className="text-xs text-muted-foreground">{item.quantity}x {item.name}</div>
+                                            <div key={index} className="text-xs text-muted-foreground">{item.quantity}x {item.name}</div>
                                         ))}
                                         {(order.items || []).length > 2 && <div className="text-xs text-primary font-semibold mt-1">...and { (order.items || []).length - 2} more</div>}
                                     </td>
