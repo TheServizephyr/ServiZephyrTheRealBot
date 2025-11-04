@@ -912,6 +912,7 @@ export default function LiveOrdersPage() {
                         <tr className="bg-muted/30">
                             <th className="p-4 w-12 text-left text-sm font-semibold text-muted-foreground"></th>
                             <SortableHeader column="id" sortConfig={sortConfig} onSort={handleSort}>Order Details</SortableHeader>
+                            <th className="p-4 text-left text-sm font-semibold text-muted-foreground hidden md:table-cell">Items</th>
                             <SortableHeader column="orderDate" sortConfig={sortConfig} onSort={handleSort}>Time</SortableHeader>
                             <SortableHeader column="status" sortConfig={sortConfig} onSort={handleSort}>Status</SortableHeader>
                             <th className="p-4 text-left text-sm font-semibold text-muted-foreground">Actions</th>
@@ -924,6 +925,7 @@ export default function LiveOrdersPage() {
                                     <tr key={i} className="animate-pulse">
                                         <td className="p-4 w-12"></td>
                                         <td className="p-4"><div className="h-5 bg-muted rounded w-1/2"></div></td>
+                                        <td className="p-4 hidden md:table-cell"><div className="h-5 bg-muted rounded w-3/4"></div></td>
                                         <td className="p-4"><div className="h-5 bg-muted rounded w-1/4"></div></td>
                                         <td className="p-4"><div className="h-5 bg-muted rounded w-1/3"></div></td>
                                         <td className="p-4"><div className="h-8 bg-muted rounded w-full"></div></td>
@@ -970,6 +972,12 @@ export default function LiveOrdersPage() {
                                                 : <div className="flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full bg-green-500/20 text-green-400 border border-green-500/30 w-fit"><Wallet size={12}/> PAID</div>
                                             }
                                         </div>
+                                    </td>
+                                    <td className="p-4 align-top hidden md:table-cell">
+                                        {(order.items || []).slice(0, 2).map(item => (
+                                            <div key={item.id || item.name} className="text-xs text-muted-foreground">{item.quantity}x {item.name}</div>
+                                        ))}
+                                        {(order.items || []).length > 2 && <div className="text-xs text-primary font-semibold mt-1">...and { (order.items || []).length - 2} more</div>}
                                     </td>
                                     <td className="p-4 text-sm text-muted-foreground align-top">
                                         {format(new Date(order.orderDate?.seconds ? order.orderDate.seconds * 1000 : order.orderDate), 'dd/MM/yyyy, hh:mm a')}
@@ -1020,7 +1028,7 @@ export default function LiveOrdersPage() {
                         </AnimatePresence>
                          { !loading && filteredAndSortedOrders.length === 0 && (
                             <tr>
-                                <td colSpan="6" className="text-center p-16 text-muted-foreground">
+                                <td colSpan="7" className="text-center p-16 text-muted-foreground">
                                     <p className="text-lg font-semibold">No orders found.</p>
                                     <p>Try adjusting your filters or search term.</p>
                                 </td>
@@ -1033,3 +1041,5 @@ export default function LiveOrdersPage() {
     </div>
   );
 }
+
+    
