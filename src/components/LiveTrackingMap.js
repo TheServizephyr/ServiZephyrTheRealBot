@@ -43,6 +43,7 @@ const MapComponent = ({ restaurantLocation, customerLocations, riderLocation, on
         return null;
     };
 
+
     const restaurantLatLng = useMemo(() => toLatLngLiteral(restaurantLocation), [restaurantLocation]);
     const riderLatLng = useMemo(() => toLatLngLiteral(riderLocation), [riderLocation]);
     const customerLatLngs = useMemo(() =>
@@ -77,7 +78,7 @@ const MapComponent = ({ restaurantLocation, customerLocations, riderLocation, on
                 console.error(`[Directions Error] Failed to fetch directions, status: ${status}`);
             }
         });
-    // FIX: Correct dependency array
+    // --- FIX: Change the dependency array --- 
     }, [directionsService, directionsRenderer, routeOrigin, routeDestination, JSON.stringify(routeWaypoints)]); 
     
     useEffect(() => {
