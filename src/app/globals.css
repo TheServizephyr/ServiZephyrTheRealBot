@@ -123,9 +123,8 @@
     display: none !important;
   }
 
-  /* Step 3: Sirf hamare bill ke modal (Dialog) ko
-     aur uske andar ki har cheez ko dikhao.
-  */
+  /* Step 3: Sirf hamare bill ke modal (Dialog) ko dikhao */
+  div[data-radix-dialog-portal],
   div[data-radix-dialog-content],
   div[data-radix-dialog-content] * {
     display: block !important;
