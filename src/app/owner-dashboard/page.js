@@ -98,8 +98,10 @@ const LiveOrderFeed = ({ orders, isLoading }) => {
               )}
             >
               <div>
-                <p className="font-semibold text-foreground text-sm truncate max-w-[120px] sm:max-w-none">{order.id}</p>
-                <p className="text-sm text-muted-foreground">{order.customer}</p>
+                <p className="font-semibold text-foreground text-sm truncate max-w-[120px] sm:max-w-none">{order.customer}</p>
+                <div className="text-xs text-muted-foreground">
+                    {(order.items || []).map(item => `${item.qty}x ${item.name}`).join(', ')}
+                </div>
               </div>
               <div className="text-right">
                 <p className="font-bold text-foreground">{formatCurrency(order.amount)}</p>

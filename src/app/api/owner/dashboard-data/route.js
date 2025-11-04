@@ -116,7 +116,20 @@ export async function GET(req) {
         };
 
         const liveOrdersSnap = await ordersRef.where('status', 'in', ['pending', 'confirmed']).orderBy('orderDate', 'desc').limit(3).get();
-        const liveOrders = liveOrdersSnap.docs.map(doc => ({ id: doc.id, customer: doc.data().customerName, amount: doc.data().totalAmount }));
+        // --- START THE FIX ---
+        const liveOrders = liveOrdersSnap.docs.map(doc => {
+            const orderData = doc.data();
+            return { 
+                id: doc.id, 
+                customer: orderData.customerName, 
+                amount: orderData.totalAmount,
+                items: (orderData.items || []).map(item => ({
+                    name: item.name,
+                    qty: item.qty
+                }))
+            };
+        });
+        // --- END THE FIX ---
 
         const salesChartData = [];
         const sevenDaysAgo = new Date(new Date().setDate(new Date().getDate() - 7));
