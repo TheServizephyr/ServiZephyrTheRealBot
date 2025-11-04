@@ -1,8 +1,9 @@
+
 'use client';
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { RefreshCw, ChevronUp, ChevronDown, Check, CookingPot, Bike, PartyPopper, Undo, Bell, PackageCheck, Printer, X, Loader2, IndianRupee, Wallet, History, ClockIcon, User, Phone, MapPin, Search, ShoppingBag, ConciergeBell, Undo2, FilePlus } from 'lucide-react';
+import { RefreshCw, ChevronUp, ChevronDown, Check, CookingPot, Bike, PartyPopper, Undo2, Bell, PackageCheck, Printer, X, Loader2, IndianRupee, Wallet, History, ClockIcon, User, Phone, MapPin, Search, ShoppingBag, ConciergeBell, FilePlus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { auth } from '@/lib/firebase';
 import { cn } from "@/lib/utils";
@@ -17,7 +18,6 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import Link from 'next/link';
 import InfoDialog from '@/components/InfoDialog';
 import { Checkbox } from '@/components/ui/checkbox';
-import { useReactToPrint } from 'react-to-print';
 
 
 export const dynamic = 'force-dynamic';
@@ -136,102 +136,6 @@ const RejectOrderModal = ({ order, isOpen, onClose, onConfirm }) => {
     );
 };
 
-// --- Bill Modal Component ---
-const BillModal = ({ order, restaurant, onClose, onPrint, printRef }) => {
-    if (!order || !restaurant) return null;
-
-    const subtotal = order.subtotal || order.items.reduce((acc, item) => acc + item.quantity * item.price, 0);
-    const couponDiscount = order.coupon?.discount || 0;
-    const loyaltyDiscount = order.loyaltyDiscount || 0;
-    const totalDiscount = couponDiscount + loyaltyDiscount;
-    const cgst = order.cgst || 0;
-    const sgst = order.sgst || 0;
-    const deliveryCharge = order.deliveryCharge || 0;
-    const grandTotal = order.totalAmount;
-    const orderDate = new Date(order.orderDate.seconds ? order.orderDate.seconds * 1000 : order.orderDate);
-
-    return (
-        <Dialog open={true} onOpenChange={onClose}>
-            <DialogContent className="bg-background border-border text-foreground max-w-md p-0">
-                 <div ref={printRef} className="font-mono text-black bg-white p-6 max-h-[70vh] overflow-y-auto">
-                    <div className="text-center mb-6 border-b-2 border-dashed border-black pb-4">
-                        <h1 className="text-2xl font-bold uppercase">{restaurant.name}</h1>
-                        <p className="text-xs">{restaurant.address.street}, {restaurant.address.city}, {restaurant.address.state} - {restaurant.address.postalCode}</p>
-                        {restaurant.gstin && <p className="text-xs mt-1">GSTIN: {restaurant.gstin}</p>}
-                        {restaurant.fssai && <p className="text-xs">FSSAI: {restaurant.fssai}</p>}
-                    </div>
-
-                    <div className="mb-4 text-xs">
-                        <p><strong>Bill To:</strong> {order.customerName}</p>
-                        <p><strong>Add:</strong> {order.customerAddress}</p>
-                        <p><strong>Mobile:</strong> {order.customerPhone}</p>
-                    </div>
-
-                    <table className="w-full text-xs mb-4">
-                        <thead className="border-y-2 border-dashed border-black">
-                            <tr>
-                                <th className="text-left font-bold py-2">ITEM</th>
-                                <th className="text-center font-bold py-2">QTY</th>
-                                <th className="text-right font-bold py-2">RATE</th>
-                                <th className="text-right font-bold py-2">AMOUNT</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {order.items.map((item, index) => {
-                                const rate = (item.totalPrice ? (item.totalPrice / item.quantity) : (item.price || 0));
-                                const amount = rate * item.quantity;
-                                return (
-                                <tr key={index} className="border-b border-dotted border-black">
-                                    <td className="py-2">{item.name}</td>
-                                    <td className="text-center py-2">{item.quantity}</td>
-                                    <td className="text-right py-2">{rate.toFixed(2)}</td>
-                                    <td className="text-right py-2">{amount.toFixed(2)}</td>
-                                </tr>
-                                )
-                            })}
-                        </tbody>
-                    </table>
-
-                    <div className="space-y-1 text-xs">
-                         <div className="flex justify-between"><span className="font-semibold">SUB TOTAL</span><span>{subtotal.toFixed(2)}</span></div>
-                         {totalDiscount > 0 && <div className="flex justify-between"><span className="font-semibold">DISCOUNT</span><span>- {totalDiscount.toFixed(2)}</span></div>}
-                         <div className="flex justify-between"><span className="font-semibold">CGST (5%)</span><span>{cgst.toFixed(2)}</span></div>
-                         <div className="flex justify-between"><span className="font-semibold">SGST (5%)</span><span>{sgst.toFixed(2)}</span></div>
-                         {order.deliveryType !== 'pickup' && <div className="flex justify-between"><span className="font-semibold">Delivery Charge</span><span>{deliveryCharge.toFixed(2)}</span></div>}
-                    </div>
-                    
-                    <div className="flex justify-between font-bold text-lg pt-2 mt-2 border-t-2 border-dashed border-black">
-                        <span>GRAND TOTAL</span>
-                        <span>₹{grandTotal.toFixed(2)}</span>
-                    </div>
-
-                     <div className="mt-4 pt-4 border-t-2 border-dashed border-black text-center">
-                        {order.paymentDetails?.method === 'cod' ? (
-                            <div className="text-base font-bold text-red-600">CASH ON DELIVERY</div>
-                        ) : (
-                            <div className="text-base font-bold text-green-600">PAID ONLINE</div>
-                        )}
-                    </div>
-                    
-                    <div className="mt-4 pt-4 border-t border-dashed border-black text-xs">
-                        <p><strong>Transaction ID:</strong> {order.id}</p>
-                        <p><strong>Date:</strong> {orderDate.toLocaleDateString('en-IN')} | <strong>Time:</strong> {orderDate.toLocaleTimeString('en-IN')}</p>
-                    </div>
-
-                    <div className="text-center mt-6 pt-4 border-t border-dashed border-black">
-                        <p className="text-xs italic">Thank you for your order!</p>
-                        <p className="text-xs font-bold mt-1">Powered by ServiZephyr</p>
-                    </div>
-                </div>
-                 <div className="p-4 bg-muted border-t border-border flex justify-end no-print">
-                    <Button onClick={onPrint} className="bg-primary hover:bg-primary/90">
-                        <Printer className="mr-2 h-4 w-4" /> Print Bill
-                    </Button>
-                </div>
-            </DialogContent>
-        </Dialog>
-    );
-};
 
 const AssignRiderModal = ({ isOpen, onClose, onAssign, orders, riders }) => {
     const [selectedRiderId, setSelectedRiderId] = useState(null);
@@ -582,7 +486,6 @@ export default function LiveOrdersPage() {
   const [loading, setLoading] = useState(true);
   const [updatingOrderId, setUpdatingOrderId] = useState(null);
   const [sortConfig, setSortConfig] = useState({ key: 'orderDate', direction: 'desc' });
-  const [billData, setBillData] = useState({ order: null, restaurant: null });
   const [assignModalData, setAssignModalData] = useState({ isOpen: false, orders: [] });
   const [rejectionModalData, setRejectionModalData] = useState({ isOpen: false, order: null });
   const [detailModalData, setDetailModalData] = useState({ isOpen: false, data: null });
@@ -592,11 +495,6 @@ export default function LiveOrdersPage() {
   const [selectedOrders, setSelectedOrders] = useState([]);
   const searchParams = useSearchParams();
   const impersonatedOwnerId = searchParams.get('impersonate_owner_id');
-
-  const billPrintRef = useRef();
-  const handlePrint = useReactToPrint({
-      content: () => billPrintRef.current,
-  });
 
   const fetchInitialData = async (isManualRefresh = false) => {
     if (!isManualRefresh) setLoading(true);
@@ -725,16 +623,9 @@ export default function LiveOrdersPage() {
     }
   }
 
-  const handlePrintClick = async (orderId) => {
-      try {
-        setUpdatingOrderId(orderId);
-        const data = await handleAPICall('GET', { id: orderId });
-        setBillData({ order: data.order, restaurant: data.restaurant });
-      } catch(e) {
-        setInfoDialog({ isOpen: true, title: 'Error', message: `Could not load bill data: ${e.message}` });
-      } finally {
-        setUpdatingOrderId(null);
-      }
+  const handlePrintClick = (orderId) => {
+      // Open the new bill page in a new tab
+      window.open(`/bill/${orderId}`, '_blank');
   };
 
   const handleDetailClick = async (orderId, customerId) => {
@@ -822,16 +713,6 @@ export default function LiveOrdersPage() {
             title={infoDialog.title}
             message={infoDialog.message}
         />
-        
-         {billData.order && (
-            <BillModal 
-                order={billData.order}
-                restaurant={billData.restaurant}
-                onClose={() => setBillData({ order: null, restaurant: null })}
-                onPrint={handlePrint}
-                printRef={billPrintRef}
-            />
-        )}
         
         <OrderDetailModal
             isOpen={detailModalData.isOpen}
@@ -982,7 +863,7 @@ export default function LiveOrdersPage() {
                                     </td>
                                     <td className="p-4 align-top hidden md:table-cell">
                                         {(order.items || []).slice(0, 2).map((item, index) => (
-                                            <div key={item.id || index} className="text-xs text-muted-foreground">{item.quantity}x {item.name}</div>
+                                            <div key={`${item.id}-${index}`} className="text-xs text-muted-foreground">{item.quantity}x {item.name}</div>
                                         ))}
                                         {(order.items || []).length > 2 && <div className="text-xs text-primary font-semibold mt-1">...and { (order.items || []).length - 2} more</div>}
                                     </td>

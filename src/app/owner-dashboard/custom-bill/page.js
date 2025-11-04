@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
@@ -8,11 +9,12 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Textarea } from '@/components/ui/textarea';
-import { useReactToPrint } from 'react-to-print';
 import { auth } from '@/lib/firebase';
 import { useRouter } from 'next/navigation';
 import InfoDialog from '@/components/InfoDialog';
 import { cn } from '@/lib/utils';
+import { nanoid } from 'nanoid';
+
 
 const formatCurrency = (value) => `₹${Number(value || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
@@ -25,7 +27,6 @@ const CustomBillPage = () => {
     const [searchQuery, setSearchQuery] = useState('');
     const [infoDialog, setInfoDialog] = useState({ isOpen: false, title: '', message: '' });
     const router = useRouter();
-    const billPrintRef = useRef();
 
     useEffect(() => {
         const fetchMenuAndRestaurant = async () => {
@@ -49,6 +50,7 @@ const CustomBillPage = () => {
 
                 setMenu(menuData.menu || {});
                 setRestaurant({
+                    id: settingsData.businessId,
                     name: settingsData.restaurantName,
                     address: settingsData.address,
                     gstin: settingsData.gstin,
@@ -87,10 +89,27 @@ const CustomBillPage = () => {
         });
     };
     
-    const handlePrint = useReactToPrint({
-        content: () => billPrintRef.current,
-        documentTitle: `Bill-${customerDetails.name || 'Custom'}`,
-    });
+    const handlePrint = () => {
+        if (!restaurant || cart.length === 0) {
+            setInfoDialog({ isOpen: true, title: 'Cannot Print', message: 'Please add items to the bill before printing.' });
+            return;
+        }
+
+        const billDetails = {
+            restaurant,
+            customerDetails,
+            cart,
+            subtotal,
+            tax,
+            grandTotal,
+        };
+        
+        // Use a unique ID for the bill to avoid collisions
+        const billId = `custom-bill-${nanoid()}`;
+        localStorage.setItem(billId, JSON.stringify(billDetails));
+        
+        window.open(`/bill/${billId}`, '_blank');
+    };
     
     const subtotal = useMemo(() => cart.reduce((sum, item) => sum + item.portion.price * item.quantity, 0), [cart]);
     const tax = subtotal * 0.1; // Example 10% tax
@@ -179,7 +198,7 @@ const CustomBillPage = () => {
                 {/* Right Panel: Bill */}
                 <div className="w-full md:w-1/3 bg-card border-l border-border p-4 flex flex-col">
                     <h2 className="text-2xl font-bold mb-4">Live Bill Preview</h2>
-                    <div id="bill-content" ref={billPrintRef} className="font-mono text-black bg-white p-4 rounded-lg flex-grow flex flex-col">
+                    <div id="bill-content-preview" className="font-mono text-black bg-white p-4 rounded-lg flex-grow flex flex-col overflow-y-auto">
                         {restaurant && (
                             <div className="text-center mb-4 border-b-2 border-dashed border-black pb-2">
                                 <h3 className="text-xl font-bold uppercase">{restaurant.name}</h3>
