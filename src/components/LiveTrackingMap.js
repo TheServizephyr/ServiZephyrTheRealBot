@@ -33,11 +33,14 @@ const MapComponent = ({ restaurantLocation, customerLocations, riderLocation, on
         }
     }, [directionsRenderer, map]);
 
-    // --- FIX 1: Corrected toLatLngLiteral function ---
+    // --- THIS IS THE FIX ---
+    // Corrected toLatLngLiteral function to handle all location object formats
     const toLatLngLiteral = (loc) => {
         if (!loc) return null;
+        // FIX: Added checks for .latitude and .longitude
         const lat = loc.lat ?? loc.latitude ?? loc._latitude;
         const lng = loc.lng ?? loc.longitude ?? loc._longitude;
+        
         if (typeof lat === 'number' && typeof lng === 'number') {
             return { lat, lng };
         }
@@ -57,7 +60,7 @@ const MapComponent = ({ restaurantLocation, customerLocations, riderLocation, on
     const routeDestination = customerLatLngs.length > 0 ? customerLatLngs[customerLatLngs.length - 1] : null;
     const routeWaypoints = customerLatLngs.length > 1 ? customerLatLngs.slice(0, -1) : [];
 
-    // --- FIX 2: Corrected useEffect dependency array ---
+    // --- Step 3: Calculate and draw the route ---
     useEffect(() => {
         if (!directionsService || !directionsRenderer || !routeOrigin || !routeDestination) {
             if (directionsRenderer) directionsRenderer.setDirections({ routes: [] }); // Clear previous route if no destination
@@ -79,7 +82,7 @@ const MapComponent = ({ restaurantLocation, customerLocations, riderLocation, on
                 console.error(`[Directions Error] Failed to fetch directions, status: ${status}`);
             }
         });
-    }, [directionsService, directionsRenderer, routeOrigin, routeDestination, JSON.stringify(routeWaypoints)]);
+    }, [directionsService, directionsRenderer, routeOrigin, routeDestination, JSON.stringify(routeWaypoints)]); // FIX: Correct dependency array
     
     // 4. Adjust map bounds to fit all markers
     useEffect(() => {
