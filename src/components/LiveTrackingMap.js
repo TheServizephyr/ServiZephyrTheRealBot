@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useEffect, useMemo, useRef } from 'react';
@@ -6,49 +7,57 @@ import { Loader2 } from 'lucide-react';
 
 const GOOGLE_MAPS_API_KEY = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
 
-// --- DIRECTIONS COMPONENT (REFACTORED FOR STABILITY) ---
+// --- DIRECTIONS COMPONENT (WITH LOGGING) ---
 const Directions = ({ from, to, waypoints = [] }) => {
     const map = useMap();
-    // Use useRef to hold the renderer instance. This prevents it from being recreated on every render,
-    // which was the root cause of the previous infinite loop issue.
     const directionsRendererRef = useRef(null);
+    const directionsServiceRef = useRef(null);
 
-    // Effect to initialize or clear the directions renderer
+    // Effect to initialize the renderer and service
     useEffect(() => {
         if (!map || !window.google) return;
+        console.log('[Directions Log] Initializing Directions Service and Renderer.');
 
-        // Create the renderer only once and store it in the ref
+        if (!directionsServiceRef.current) {
+            directionsServiceRef.current = new window.google.maps.DirectionsService();
+        }
+
         if (!directionsRendererRef.current) {
             directionsRendererRef.current = new window.google.maps.DirectionsRenderer({
                 suppressMarkers: true,
                 polylineOptions: {
-                    strokeColor: '#000000',
+                    strokeColor: '#000000', // Black color for the route
                     strokeOpacity: 0.8,
                     strokeWeight: 6,
                 },
             });
         }
         
-        // Associate the renderer with the current map instance
         directionsRendererRef.current.setMap(map);
+        console.log('[Directions Log] Renderer attached to map.');
 
-        // Cleanup function: when the component unmounts, remove the route from the map.
+        // Cleanup function
         return () => {
             if (directionsRendererRef.current) {
+                console.log('[Directions Log] Cleaning up: Removing route from map.');
                 directionsRendererRef.current.setMap(null);
             }
         };
     }, [map]);
 
-    // Effect to calculate and render the route.
-    // This now ONLY depends on the actual route data (from, to, waypoints).
-    // It will not run infinitely anymore.
+    // Effect to calculate and render the route
     useEffect(() => {
-        if (!map || !directionsRendererRef.current || !from || !to) {
+        if (!map || !directionsRendererRef.current || !directionsServiceRef.current || !from || !to) {
+            console.log('[Directions Log] Skipping route calculation: Missing map, renderer, service, from, or to.');
+            if(!from) console.log('[Directions Log] Reason: "from" location is missing.');
+            if(!to) console.log('[Directions Log] Reason: "to" location is missing.');
             return;
         }
 
-        const directionsService = new window.google.maps.DirectionsService();
+        console.log('[Directions Log] Route calculation effect triggered.');
+        console.log('[Directions Log] FROM:', JSON.stringify(from));
+        console.log('[Directions Log] TO:', JSON.stringify(to));
+        console.log('[Directions Log] WAYPOINTS:', JSON.stringify(waypoints));
 
         const request = {
             origin: from,
@@ -58,20 +67,24 @@ const Directions = ({ from, to, waypoints = [] }) => {
             optimizeWaypoints: true,
         };
 
-        directionsService.route(request, (result, status) => {
+        console.log('[Directions Log] Sending request to Google Directions API.');
+        directionsServiceRef.current.route(request, (result, status) => {
+            // MOST IMPORTANT LOG: WHAT IS GOOGLE'S RESPONSE?
+            console.log(`[Directions Log] Google Directions API responded with status: ${status}`);
+
             if (status === window.google.maps.DirectionsStatus.OK) {
-                // If the route is found, set it on our persistent renderer instance.
+                console.log('[Directions Log] SUCCESS: Route found. Setting directions on renderer.');
                 if (directionsRendererRef.current) {
                     directionsRendererRef.current.setDirections(result);
                 }
             } else {
-                console.error(`Directions request failed due to ${status}. This can happen if the locations are too far apart, not on a road, or if the API key has restrictions.`);
+                console.error(`[Directions Log] ERROR: Directions request failed due to ${status}.`);
             }
         });
 
-    }, [from, to, waypoints, map]); // Correct dependencies
+    }, [from, to, waypoints, map]); // Re-run only when route data changes
 
-    return null; // This component only renders on the map via the renderer
+    return null; 
 };
 
 
@@ -106,12 +119,16 @@ const MapComponent = ({ restaurantLocation, customerLocations, riderLocation, on
     useEffect(() => {
         if (map && window.google) {
             const bounds = new window.google.maps.LatLngBounds();
-            if (restaurantLatLng) bounds.extend(restaurantLatLng);
-            if (riderLatLng) bounds.extend(riderLatLng);
-            customerLatLngs.forEach(loc => bounds.extend(loc));
+            let extendCount = 0;
+            if (restaurantLatLng) { bounds.extend(restaurantLatLng); extendCount++; }
+            if (riderLatLng) { bounds.extend(riderLatLng); extendCount++; }
+            customerLatLngs.forEach(loc => { bounds.extend(loc); extendCount++; });
 
-            if (!bounds.isEmpty()) {
+            if (extendCount > 1) {
                 map.fitBounds(bounds, 80);
+            } else if (extendCount === 1) {
+                map.setCenter(bounds.getCenter());
+                map.setZoom(15);
             }
         }
     }, [restaurantLatLng, customerLatLngs, riderLatLng, map]);
