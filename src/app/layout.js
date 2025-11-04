@@ -30,7 +30,7 @@ export default function RootLayout({ children }) {
     <html lang="en" className={`${alegreya.variable} ${playfairDisplay.variable}`} suppressHydrationWarning>
        <head>
          <Script
-            src={`https://maps.googleapis.com/maps/api/js?key=${GOOGLE_MAPS_API_KEY}&libraries=places,marker`}
+            src={`https://maps.googleapis.com/maps/api/js?key=${GOOGLE_MAPS_API_KEY}&libraries=places,marker,routes`}
             strategy="beforeInteractive"
          />
        </head>

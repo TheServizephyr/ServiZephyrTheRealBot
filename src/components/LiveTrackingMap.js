@@ -15,7 +15,10 @@ const Directions = ({ from, to, waypoints = [] }) => {
 
     // Initialize DirectionsService and DirectionsRenderer
     useEffect(() => {
-        if (!map || !window.google) return;
+        if (!map || !window.google || !window.google.maps.DirectionsService) {
+            console.warn("Google Maps API or Directions Service not loaded yet.");
+            return;
+        }
         setDirectionsService(new window.google.maps.DirectionsService());
         setDirectionsRenderer(new window.google.maps.DirectionsRenderer({
             map,
@@ -50,7 +53,9 @@ const Directions = ({ from, to, waypoints = [] }) => {
 
         // Cleanup renderer on component unmount or when props change
         return () => {
-            directionsRenderer.setDirections(null);
+            if (directionsRenderer) {
+                directionsRenderer.setDirections(null);
+            }
         };
 
     }, [directionsService, directionsRenderer, from, to, waypoints]);
