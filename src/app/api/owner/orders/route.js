@@ -98,19 +98,18 @@ export async function GET(req) {
                 ...h,
                 timestamp: h.timestamp && typeof h.timestamp.toDate === 'function' ? h.timestamp.toDate().toISOString() : h.timestamp,
             }));
-            // --- START THE FIX ---
+            
             const itemsWithQty = (data.items || []).map(item => ({
                 name: item.name,
                 price: item.price,
-                qty: item.qty, // Ensure qty is included
-                // Add any other item fields you need on the frontend
+                quantity: item.quantity, 
             }));
-            // --- END THE FIX ---
+            
 
             return { 
                 id: doc.id, 
                 ...data,
-                items: itemsWithQty, // Use the sanitized items array
+                items: itemsWithQty, 
                 orderDate: data.orderDate?.toDate ? data.orderDate.toDate().toISOString() : data.orderDate,
                 customer: data.customerName,
                 amount: data.totalAmount,
@@ -118,6 +117,7 @@ export async function GET(req) {
             };
         });
 
+        console.log("[DEBUG] Backend /api/owner/orders: Sending orders data:", JSON.stringify(orders, null, 2));
         return NextResponse.json({ orders }, { status: 200 });
 
     } catch (error) {
@@ -134,14 +134,13 @@ export async function PATCH(req) {
         const firestore = await getFirestore();
         const { businessId, businessSnap } = await verifyOwnerAndGetBusiness(req, auth, firestore);
 
-        // --- THE FIX ---
-        // Read the body ONCE and store it in a variable.
+        
         const body = await req.json();
         console.log(`[API][PATCH /orders] Body:`, body);
         
-        // Use the 'body' variable from now on, instead of calling req.json() again.
+        
         const { orderId, orderIds, newStatus, deliveryBoyId, rejectionReason } = body;
-        // --- END FIX ---
+        
 
         const idsToUpdate = orderIds && orderIds.length > 0 ? orderIds : (orderId ? [orderId] : []);
 

@@ -616,6 +616,7 @@ export default function LiveOrdersPage() {
 
         if (!ordersRes.ok) throw new Error('Failed to fetch orders');
         const ordersData = await ordersRes.json();
+        console.log("[DEBUG] Frontend live-orders-page: Received orders data:", ordersData.orders);
         
         if (ridersRes.ok) {
             const ridersData = await ridersRes.json();
@@ -974,8 +975,8 @@ export default function LiveOrdersPage() {
                                         </div>
                                     </td>
                                     <td className="p-4 align-top hidden md:table-cell">
-                                        {(order.items || []).slice(0, 2).map(item => (
-                                            <div key={item.id || item.name} className="text-xs text-muted-foreground">{item.quantity}x {item.name}</div>
+                                        {(order.items || []).slice(0, 2).map((item, index) => (
+                                            <div key={index} className="text-xs text-muted-foreground">{item.quantity}x {item.name}</div>
                                         ))}
                                         {(order.items || []).length > 2 && <div className="text-xs text-primary font-semibold mt-1">...and { (order.items || []).length - 2} more</div>}
                                     </td>
@@ -1041,5 +1042,3 @@ export default function LiveOrdersPage() {
     </div>
   );
 }
-
-    
