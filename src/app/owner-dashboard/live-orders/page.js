@@ -389,6 +389,72 @@ const SortableHeader = ({ children, column, sortConfig, onSort }) => {
   );
 };
 
+const OrderDetailModal = ({ isOpen, onClose, data }) => {
+    const { order, restaurant, customer } = data || {};
+
+    if (!isOpen || !order) {
+        return null;
+    }
+
+    return (
+        <Dialog open={isOpen} onOpenChange={onClose}>
+            <DialogContent className="max-w-2xl bg-card border-border text-card-foreground">
+                <DialogHeader>
+                    <DialogTitle>Order Details #{order.id.substring(0, 8)}</DialogTitle>
+                    <DialogDescription>
+                        Full details for the order placed on {format(new Date(order.orderDate?.seconds ? order.orderDate.seconds * 1000 : order.orderDate), 'PPpp')}
+                    </DialogDescription>
+                </DialogHeader>
+                <div className="grid md:grid-cols-2 gap-6 py-4 max-h-[70vh] overflow-y-auto">
+                    <div className="space-y-4">
+                        <h4 className="font-semibold flex items-center gap-2"><User size={16}/> Customer Details</h4>
+                        <div className="p-4 bg-muted rounded-lg">
+                            <p><strong>Name:</strong> {order.customerName}</p>
+                            <p><strong>Phone:</strong> {order.customerPhone}</p>
+                            <p><strong>Address:</strong> {order.customerAddress}</p>
+                        </div>
+                         {customer && (
+                            <div className="p-4 bg-blue-500/10 rounded-lg">
+                                <h5 className="font-semibold text-blue-400">Customer Insights</h5>
+                                <p><strong>Total Orders:</strong> {customer.totalOrders || 0}</p>
+                                <p><strong>Total Spend:</strong> ₹{customer.totalSpend?.toFixed(2) || '0.00'}</p>
+                                <p><strong>Loyalty Points:</strong> {customer.loyaltyPoints || 0}</p>
+                            </div>
+                         )}
+                    </div>
+                     <div className="space-y-4">
+                        <h4 className="font-semibold flex items-center gap-2"><IndianRupee size={16}/> Payment Details</h4>
+                        <div className="p-4 bg-muted rounded-lg">
+                            <p><strong>Payment Method:</strong> <span className="font-mono p-1 rounded bg-background text-sm">{order.paymentDetails?.method || 'N/A'}</span></p>
+                            <p><strong>Subtotal:</strong> ₹{order.subtotal?.toFixed(2)}</p>
+                             {order.discount > 0 && <p className="text-green-500"><strong>Discount:</strong> - ₹{order.discount?.toFixed(2)}</p>}
+                            <p><strong>GST:</strong> ₹{(order.cgst + order.sgst).toFixed(2)}</p>
+                            <p><strong>Delivery Charge:</strong> ₹{order.deliveryCharge?.toFixed(2)}</p>
+                            <p className="font-bold text-lg border-t border-dashed mt-2 pt-2"><strong>Grand Total:</strong> ₹{order.totalAmount?.toFixed(2)}</p>
+                        </div>
+                    </div>
+                    <div className="md:col-span-2">
+                        <h4 className="font-semibold flex items-center gap-2 mb-2"><ShoppingBag size={16}/> Items Ordered</h4>
+                        <div className="p-4 bg-muted rounded-lg space-y-2">
+                            {order.items.map((item, index) => (
+                                <div key={index} className="flex justify-between border-b border-border/50 pb-1">
+                                    <span>{item.quantity} x {item.name}</span>
+                                    <span>₹{item.price * item.quantity}</span>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                </div>
+                 <DialogFooter>
+                    <DialogClose asChild>
+                        <Button type="button" variant="secondary">Close</Button>
+                    </DialogClose>
+                </DialogFooter>
+            </DialogContent>
+        </Dialog>
+    );
+};
+
 
 // Main Board Component
 export default function LiveOrdersPage() {
@@ -653,18 +719,9 @@ export default function LiveOrdersPage() {
         />
         
         {printData && (
-             <Dialog open={!!printData} onOpenChange={() => setPrintData(null)}>
-                <DialogContent className="bg-card border-border text-foreground max-w-md p-0">
-                    <div ref={billPrintRef}>
-                       <BillToPrint order={printData} restaurant={restaurantData} />
-                    </div>
-                    <div className="p-4 bg-muted border-t border-border flex justify-end no-print">
-                       <Button onClick={handlePrint} className="bg-primary hover:bg-primary/90">
-                           <Printer className="mr-2 h-4 w-4" /> Print Again
-                       </Button>
-                   </div>
-                </DialogContent>
-             </Dialog>
+             <div style={{ display: 'none' }}>
+                <BillToPrint ref={billPrintRef} order={printData} restaurant={restaurantData} />
+             </div>
         )}
         
         <OrderDetailModal
