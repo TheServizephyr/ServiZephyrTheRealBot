@@ -10,8 +10,8 @@ const GOOGLE_MAPS_API_KEY = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
 // --- DIRECTIONS COMPONENT (WITH LOGGING) ---
 const Directions = ({ from, to, waypoints = [] }) => {
     const map = useMap();
-    const directionsRendererRef = useRef(null);
     const directionsServiceRef = useRef(null);
+    const directionsRendererRef = useRef(null);
 
     // Effect to initialize the renderer and service
     useEffect(() => {
@@ -31,10 +31,9 @@ const Directions = ({ from, to, waypoints = [] }) => {
                     strokeWeight: 6,
                 },
             });
+            console.log('[Directions Log] Renderer attached to map.');
+            directionsRendererRef.current.setMap(map);
         }
-        
-        directionsRendererRef.current.setMap(map);
-        console.log('[Directions Log] Renderer attached to map.');
 
         // Cleanup function
         return () => {
@@ -202,7 +201,7 @@ const LiveTrackingMap = (props) => {
 
 
     return (
-        <APIProvider apiKey={GOOGLE_MAPS_API_KEY} libraries={['geometry', 'routes']}>
+        <APIProvider apiKey={GOOGLE_MAPS_API_KEY} libraries={['routes']}>
             <Map
                 mapId={'live_tracking_map'}
                 style={{ width: '100%', height: '100%' }}
