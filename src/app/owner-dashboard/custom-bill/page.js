@@ -8,6 +8,7 @@ import { auth } from '@/lib/firebase';
 import { useSearchParams } from 'next/navigation';
 import InfoDialog from '@/components/InfoDialog';
 import BillToPrint from '@/components/BillToPrint';
+import { useReactToPrint } from 'react-to-print';
 
 export const dynamic = 'force-dynamic';
 
@@ -22,54 +23,18 @@ function CustomBillPage() {
     const [infoDialog, setInfoDialog] = useState({ isOpen: false, title: '', message: '' });
     const searchParams = useSearchParams();
     const impersonatedOwnerId = searchParams.get('impersonate_owner_id');
-    const billPrintRef = useRef();
+    const componentRef = useRef();
 
     const [customerDetails, setCustomerDetails] = useState({
         name: '',
         phone: '',
         address: ''
     });
-
-    const handlePrint = () => {
-        const node = billPrintRef.current;
-        if (!node) return;
-
-        const css = `
-            @page { size: 80mm auto; margin: 0; }
-            @media print {
-            html, body {
-                width: 80mm !important;
-                min-width: 80mm !important;
-                max-width: 80mm !important;
-                margin: 0 !important;
-                padding: 0 !important;
-                -webkit-print-color-adjust: exact; 
-                print-color-adjust: exact;
-            }
-            #bill-print-root {
-                position: static !important;
-                width: 80mm !important;
-                max-width: 80mm !important;
-                margin: 0 !important;
-                padding: 10px !important;
-                page-break-inside: avoid !important;
-                background: white !important;
-                color: black !important;
-             }
-             .no-print { display: none !important; }
-            * { box-sizing: border-box; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; }
-            }
-        `;
-
-        const win = window.open('', 'PRINT', 'height=700,width=500');
-        win.document.write(`<html><head><title>Bill</title><style>${css}</style></head><body>${node.outerHTML}</body></html>`);
-        win.document.close();
-        win.focus();
-        setTimeout(() => {
-            win.print();
-            win.close();
-        }, 250);
-    };
+    
+    const handlePrint = useReactToPrint({
+      content: () => componentRef.current,
+      documentTitle: 'custom-bill'
+    });
     
     useEffect(() => {
         const fetchMenuAndSettings = async () => {
@@ -120,7 +85,7 @@ function CustomBillPage() {
         if (existingItem) {
             setCart(cart.map(i => i.cartItemId === cartItemId ? { ...i, quantity: i.quantity + 1 } : i));
         } else {
-            setCart([...cart, { ...item, portion, quantity: 1, cartItemId, totalPrice: portion.price }]);
+            setCart([...cart, { ...item, portion, quantity: 1, cartItemId, totalPrice: portion.price, price: portion.price }]);
         }
     };
 
@@ -135,14 +100,14 @@ function CustomBillPage() {
             if (item.quantity + change <= 0) {
                 return newCart.filter(i => i.cartItemId !== cartItemId);
             } else {
-                newCart[itemIndex] = { ...item, quantity: item.quantity + change };
+                newCart[itemIndex] = { ...item, quantity: item.quantity + change, totalPrice: item.price * (item.quantity + change) };
                 return newCart;
             }
         });
     };
     
     const { subtotal, cgst, sgst, grandTotal } = useMemo(() => {
-        const sub = cart.reduce((sum, item) => sum + item.totalPrice * item.quantity, 0);
+        const sub = cart.reduce((sum, item) => sum + item.totalPrice, 0);
         const tax = sub * 0.025; // 2.5% CGST and 2.5% SGST
         const total = sub + (tax * 2);
         return { subtotal: sub, cgst: tax, sgst: tax, grandTotal: total };
@@ -214,8 +179,8 @@ function CustomBillPage() {
                     </div>
 
                     <div className="bg-card border border-border rounded-xl flex-grow flex flex-col">
-                        <div className="font-mono text-black bg-white p-4 rounded-t-lg flex-grow flex flex-col">
-                           <div ref={billPrintRef}>
+                         <div className="font-mono text-black bg-white p-4 rounded-t-lg flex-grow flex flex-col">
+                           <div ref={componentRef}>
                                <BillToPrint
                                     order={{}} // Pass empty order as items are passed separately
                                     restaurant={restaurant}

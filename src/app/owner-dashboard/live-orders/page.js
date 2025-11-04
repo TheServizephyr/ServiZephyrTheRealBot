@@ -18,6 +18,8 @@ import Link from 'next/link';
 import InfoDialog from '@/components/InfoDialog';
 import { Checkbox } from '@/components/ui/checkbox';
 import BillToPrint from '@/components/BillToPrint';
+import { useReactToPrint } from 'react-to-print';
+
 
 export const dynamic = 'force-dynamic';
 
@@ -259,15 +261,38 @@ const AssignRiderModal = ({ isOpen, onClose, onAssign, orders, riders }) => {
     );
 };
 
-const BillModal = ({ order, restaurant, onClose, onPrint }) => {
+const BillModal = ({ order, restaurant, onClose }) => {
+    const componentRef = useRef();
+
+    const handlePrint = useReactToPrint({
+        content: () => componentRef.current,
+        documentTitle: `bill-${order?.id}`,
+        // This is a new function that will run after printing
+        onAfterPrint: () => {
+             // You can optionally add a success message here
+        }
+    });
+
+    useEffect(() => {
+        if (order) {
+            // Use a timeout to ensure the content has rendered before printing
+            const timer = setTimeout(() => {
+                handlePrint();
+            }, 500);
+            return () => clearTimeout(timer);
+        }
+    }, [order, handlePrint]);
+
+    if (!order) return null;
+
     return (
-        <Dialog open={true} onOpenChange={onClose}>
-            <DialogContent className="bg-background border-border text-foreground max-w-md p-0">
-                <div id="bill-print-content">
+        <Dialog open={!!order} onOpenChange={onClose}>
+            <DialogContent className="bg-card border-border text-foreground max-w-md p-0">
+                <div ref={componentRef} className="print-container">
                     <BillToPrint order={order} restaurant={restaurant} />
                 </div>
                 <div className="p-4 bg-muted border-t border-border flex justify-end no-print">
-                    <Button onClick={onPrint} className="bg-primary hover:bg-primary/90">
+                    <Button onClick={handlePrint} className="bg-primary hover:bg-primary/90">
                         <Printer className="mr-2 h-4 w-4" /> Print Again
                     </Button>
                 </div>
@@ -275,6 +300,7 @@ const BillModal = ({ order, restaurant, onClose, onPrint }) => {
         </Dialog>
     );
 };
+
 
 const OrderDetailModal = ({ data, isOpen, onClose }) => {
     if (!isOpen || !data || !data.order || !data.order.id) {
@@ -513,6 +539,7 @@ export default function LiveOrdersPage() {
   const impersonatedOwnerId = searchParams.get('impersonate_owner_id');
 
   const [printData, setPrintData] = useState(null);
+  const [restaurantData, setRestaurantData] = useState(null);
 
   const fetchInitialData = async (isManualRefresh = false) => {
     if (!isManualRefresh) setLoading(true);
@@ -524,25 +551,38 @@ export default function LiveOrdersPage() {
 
         let ordersUrl = new URL('/api/owner/orders', window.location.origin);
         let ridersUrl = new URL('/api/owner/delivery', window.location.origin);
+        let settingsUrl = new URL('/api/owner/settings', window.location.origin);
+        
         if (impersonatedOwnerId) {
             ordersUrl.searchParams.append('impersonate_owner_id', impersonatedOwnerId);
             ridersUrl.searchParams.append('impersonate_owner_id', impersonatedOwnerId);
+            settingsUrl.searchParams.append('impersonate_owner_id', impersonatedOwnerId);
         }
         
-        const [ordersRes, ridersRes] = await Promise.all([
+        const [ordersRes, ridersRes, settingsRes] = await Promise.all([
             fetch(ordersUrl.toString(), { headers: { 'Authorization': `Bearer ${idToken}` } }),
-            fetch(ridersUrl.toString(), { headers: { 'Authorization': `Bearer ${idToken}` } })
+            fetch(ridersUrl.toString(), { headers: { 'Authorization': `Bearer ${idToken}` } }),
+            fetch(settingsUrl.toString(), { headers: { 'Authorization': `Bearer ${idToken}` } })
         ]);
 
         if (!ordersRes.ok) throw new Error('Failed to fetch orders');
         const ordersData = await ordersRes.json();
+        setOrders(ordersData.orders || []);
         
         if (ridersRes.ok) {
             const ridersData = await ridersRes.json();
             setRiders(ridersData.boys || []);
         }
+        
+        if (settingsRes.ok) {
+            const settingsData = await settingsRes.json();
+            setRestaurantData({
+                name: settingsData.restaurantName,
+                address: settingsData.address,
+                gstin: settingsData.gstin,
+            });
+        }
 
-        setOrders(ordersData.orders || []);
     } catch (error) {
         console.error("[LiveOrders] Error fetching initial data:", error);
         setInfoDialog({ isOpen: true, title: 'Error', message: `Could not load data: ${error.message}` });
@@ -641,43 +681,8 @@ export default function LiveOrdersPage() {
     }
   }
 
-   const handlePrintClick = (order) => {
-    const printWindow = window.open('', '_blank');
-    if (!printWindow) {
-      setInfoDialog({ isOpen: true, title: 'Popup Blocked', message: 'Please allow popups for this site to print the bill.' });
-      return;
-    }
-
-    const node = document.getElementById(`bill-content-for-${order.id}`);
-    if (!node) {
-      setInfoDialog({ isOpen: true, title: 'Error', message: 'Could not find bill content to print.' });
-      return;
-    }
-
-    const css = `
-        @page { size: 80mm auto; margin: 0; }
-        @media print {
-            html, body { 
-                width: 80mm !important; 
-                margin: 0 !important; 
-                padding: 0 !important; 
-                -webkit-print-color-adjust: exact; 
-                print-color-adjust: exact; 
-            }
-            * { box-sizing: border-box; }
-        }
-        body { 
-            font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; 
-        }
-    `;
-
-    printWindow.document.write(`<html><head><title>Bill - ${order.id}</title><style>${css}</style></head><body>${node.innerHTML}</body></html>`);
-    printWindow.document.close();
-    printWindow.focus();
-    setTimeout(() => { // Timeout helps ensure content is loaded
-      printWindow.print();
-      printWindow.close();
-    }, 250);
+  const handlePrintClick = (order) => {
+    setPrintData(order);
   };
   
   const handleDetailClick = async (orderId, customerId) => {
@@ -788,6 +793,14 @@ export default function LiveOrdersPage() {
                 onClose={() => setRejectionModalData({ isOpen: false, order: null })}
                 onConfirm={handleRejectOrder}
                 order={rejectionModalData.order}
+            />
+        )}
+
+        {printData && (
+             <BillModal
+                order={printData}
+                restaurant={restaurantData}
+                onClose={() => setPrintData(null)}
             />
         )}
         
@@ -962,11 +975,6 @@ export default function LiveOrdersPage() {
                                             onPrintClick={() => handlePrintClick(order)}
                                             onAssignClick={(orders) => setAssignModalData({ isOpen: true, orders })}
                                         />
-                                    </td>
-                                    <td className="hidden">
-                                        <div id={`bill-content-for-${order.id}`}>
-                                            <BillToPrint order={order} restaurant={detailModalData.data?.restaurant}/>
-                                        </div>
                                     </td>
                                 </motion.tr>
                             ))}
