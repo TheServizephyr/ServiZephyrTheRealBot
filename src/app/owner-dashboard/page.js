@@ -1,5 +1,4 @@
 
-
 "use client";
 
 import React, { useState, useEffect, Suspense } from 'react';
@@ -107,11 +106,6 @@ const LiveOrderFeed = ({ orders, isLoading }) => {
                     <p className="font-bold text-foreground">{formatCurrency(order.amount)}</p>
                   </div>
               </div>
-              <ul className="mt-2 text-xs text-muted-foreground list-disc pl-5">
-                  {(order.items || []).map((item, i) => (
-                      <li key={i}>{item.quantity}x {item.name}</li>
-                  ))}
-              </ul>
               <div className="text-right mt-2">
                  <button 
                   onClick={() => router.push('/owner-dashboard/live-orders')}
