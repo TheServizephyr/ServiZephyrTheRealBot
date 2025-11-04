@@ -594,7 +594,6 @@ export default function LiveOrdersPage() {
   const impersonatedOwnerId = searchParams.get('impersonate_owner_id');
 
   const fetchInitialData = async (isManualRefresh = false) => {
-    console.log(`[LiveOrders] Fetching data... Manual refresh: ${isManualRefresh}`);
     if (!isManualRefresh) setLoading(true);
     
     try {
@@ -616,7 +615,6 @@ export default function LiveOrdersPage() {
 
         if (!ordersRes.ok) throw new Error('Failed to fetch orders');
         const ordersData = await ordersRes.json();
-        console.log("[DEBUG] Frontend live-orders-page: Received orders data:", ordersData.orders);
         
         if (ridersRes.ok) {
             const ridersData = await ridersRes.json();

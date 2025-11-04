@@ -117,7 +117,6 @@ export async function GET(req) {
             };
         });
 
-        console.log("[DEBUG] Backend /api/owner/orders: Sending orders data:", JSON.stringify(orders, null, 2));
         return NextResponse.json({ orders }, { status: 200 });
 
     } catch (error) {
