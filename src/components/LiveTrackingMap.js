@@ -33,10 +33,11 @@ const MapComponent = ({ restaurantLocation, customerLocations, riderLocation, on
         }
     }, [directionsRenderer, map]);
 
+    // --- FIX 1: Corrected toLatLngLiteral function ---
     const toLatLngLiteral = (loc) => {
         if (!loc) return null;
-        const lat = loc.lat ?? loc._latitude;
-        const lng = loc.lng ?? loc._longitude;
+        const lat = loc.lat ?? loc.latitude ?? loc._latitude;
+        const lng = loc.lng ?? loc.longitude ?? loc._longitude;
         if (typeof lat === 'number' && typeof lng === 'number') {
             return { lat, lng };
         }
@@ -56,7 +57,7 @@ const MapComponent = ({ restaurantLocation, customerLocations, riderLocation, on
     const routeDestination = customerLatLngs.length > 0 ? customerLatLngs[customerLatLngs.length - 1] : null;
     const routeWaypoints = customerLatLngs.length > 1 ? customerLatLngs.slice(0, -1) : [];
 
-    // 3. Calculate and render the route when dependencies change
+    // --- FIX 2: Corrected useEffect dependency array ---
     useEffect(() => {
         if (!directionsService || !directionsRenderer || !routeOrigin || !routeDestination) {
             if (directionsRenderer) directionsRenderer.setDirections({ routes: [] }); // Clear previous route if no destination
@@ -78,7 +79,7 @@ const MapComponent = ({ restaurantLocation, customerLocations, riderLocation, on
                 console.error(`[Directions Error] Failed to fetch directions, status: ${status}`);
             }
         });
-    }, [directionsService, directionsRenderer, routeOrigin, routeDestination, routeWaypoints]);
+    }, [directionsService, directionsRenderer, routeOrigin, routeDestination, JSON.stringify(routeWaypoints)]);
     
     // 4. Adjust map bounds to fit all markers
     useEffect(() => {
@@ -135,17 +136,17 @@ const LiveTrackingMap = (props) => {
     }
 
     const getCenter = () => {
-      const riderLat = riderLocation?.lat ?? riderLocation?._latitude;
-      const riderLng = riderLocation?.lng ?? riderLocation?._longitude;
+      const riderLat = riderLocation?.lat ?? riderLocation?.latitude ?? riderLocation?._latitude;
+      const riderLng = riderLocation?.lng ?? riderLocation?.longitude ?? riderLocation?._longitude;
       if(riderLat && riderLng) return {lat: riderLat, lng: riderLng};
       
-      const restoLat = restaurantLocation?.lat ?? restaurantLocation?._latitude;
-      const restoLng = restaurantLocation?.lng ?? restaurantLocation?._longitude;
+      const restoLat = restaurantLocation?.lat ?? restaurantLocation?.latitude ?? restaurantLocation?._latitude;
+      const restoLng = restaurantLocation?.lng ?? restaurantLocation?.longitude ?? restaurantLocation?._longitude;
       if(restoLat && restoLng) return {lat: restoLat, lng: restoLng};
       
       const firstCustomer = Array.isArray(props.customerLocations) && props.customerLocations[0] ? props.customerLocations[0] : customerLocation;
-      const custLat = firstCustomer?.lat ?? firstCustomer?._latitude;
-      const custLng = firstCustomer?.lng ?? firstCustomer?._longitude;
+      const custLat = firstCustomer?.lat ?? firstCustomer?.latitude ?? firstCustomer?._latitude;
+      const custLng = firstCustomer?.lng ?? firstCustomer?.longitude ?? firstCustomer?._longitude;
       if(custLat && custLng) return {lat: custLat, lng: custLng};
 
       return { lat: 28.6139, lng: 77.2090 };
