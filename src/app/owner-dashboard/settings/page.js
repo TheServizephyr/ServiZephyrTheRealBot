@@ -669,12 +669,6 @@ function SettingsPageContent() {
                                 </div>
                             </div>
                         </div>
-
-                         <div className="border-t border-border pt-6">
-                            <Label htmlFor="deliveryCharge" className="font-semibold text-lg flex items-center gap-2"><Truck size={14}/> Base Delivery Charge</Label>
-                            <p className="text-sm text-muted-foreground mb-2">Set a default delivery fee. You can create 'Free Delivery' coupons to override this.</p>
-                            <input id="deliveryCharge" type="number" value={editedUser.deliveryCharge} onChange={e => setEditedUser({...editedUser, deliveryCharge: e.target.value})} disabled={!isEditingPayment} className="mt-1 w-full max-w-xs p-2 border rounded-md bg-input border-border disabled:opacity-70 disabled:cursor-not-allowed" placeholder="e.g., 30"/>
-                        </div>
                     </div>
                 </SectionCard>
                 <SectionCard
@@ -822,5 +816,3 @@ export default function SettingsPage() {
         </Suspense>
     )
 }
-
-    
