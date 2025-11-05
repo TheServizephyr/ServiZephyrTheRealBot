@@ -1,4 +1,5 @@
 
+
 'use client';
 
 import React, { useState, useEffect, useMemo, Suspense } from 'react';
@@ -386,12 +387,19 @@ const CartPageInternal = () => {
 
     const subtotal = useMemo(() => cart.reduce((sum, item) => sum + item.totalPrice * item.quantity, 0), [cart]);
 
-    const { totalDiscount, couponDiscount, specialCouponDiscount } = useMemo(() => {
+    const { totalDiscount, couponDiscount, specialCouponDiscount, isDeliveryFree } = useMemo(() => {
         let couponDiscount = 0;
         let specialCouponDiscount = 0;
+        
+        const isFreeDeliveryApplied = appliedCoupons.some(c => c.type === 'free_delivery' && subtotal >= c.minOrder);
+        const isFreeDeliveryThresholdMet = cartData?.deliveryFreeThreshold && subtotal >= cartData.deliveryFreeThreshold;
+        
+        const isDeliveryFree = isFreeDeliveryApplied || isFreeDeliveryThresholdMet;
+
 
         appliedCoupons.forEach(coupon => {
             if (subtotal < coupon.minOrder) return;
+            if (coupon.type === 'free_delivery') return; // Handled separately
             
             let currentDiscount = 0;
             if (coupon.type === 'flat') {
@@ -411,14 +419,15 @@ const CartPageInternal = () => {
             totalDiscount: couponDiscount + specialCouponDiscount,
             couponDiscount,
             specialCouponDiscount,
+            isDeliveryFree,
         };
-    }, [appliedCoupons, subtotal]);
+    }, [appliedCoupons, subtotal, cartData?.deliveryFreeThreshold]);
 
     const finalDeliveryCharge = useMemo(() => {
         if (deliveryType === 'pickup' || deliveryType === 'dine-in' || !cartData) return 0;
-        const hasFreeDelivery = appliedCoupons.some(c => c.type === 'free_delivery' && subtotal >= c.minOrder);
-        return hasFreeDelivery ? 0 : cartData.deliveryCharge;
-    }, [appliedCoupons, cartData, subtotal, deliveryType]);
+        return isDeliveryFree ? 0 : cartData.deliveryCharge;
+    }, [isDeliveryFree, cartData, deliveryType]);
+
 
     const { cgst, sgst, grandTotal } = useMemo(() => {
         const taxableAmount = subtotal - totalDiscount;
@@ -719,7 +728,10 @@ const CartPageInternal = () => {
                                             {couponDiscount > 0 && <div className="flex justify-between text-green-400"><span>Coupon Discount:</span> <span className="font-medium">- ₹{couponDiscount.toFixed(2)}</span></div>}
                                             {specialCouponDiscount > 0 && <div className="flex justify-between text-primary"><span>Special Discount:</span> <span className="font-medium">- ₹{specialCouponDiscount.toFixed(2)}</span></div>}
                                             {deliveryType === 'delivery' && (
-                                                <div className="flex justify-between"><span>Delivery Fee:</span> {finalDeliveryCharge > 0 ? <span>₹{finalDeliveryCharge.toFixed(2)}</span> : <span className="text-primary font-bold">FREE</span>}</div>
+                                                <div className="flex justify-between">
+                                                    <span>Delivery Fee:</span> 
+                                                    {isDeliveryFree ? <span className="text-primary font-bold">FREE</span> : <span>₹{finalDeliveryCharge.toFixed(2)}</span>}
+                                                </div>
                                             )}
                                             {tipAmount > 0 && <div className="flex justify-between text-green-400"><span>Rider Tip:</span> <span className="font-medium">+ ₹{tipAmount.toFixed(2)}</span></div>}
                                             <div className="flex justify-between"><span>CGST ({5}%):</span> <span className="font-medium">₹{cgst.toFixed(2)}</span></div>
@@ -776,3 +788,5 @@ const CartPage = () => (
 );
 
 export default CartPage;
+
+    
