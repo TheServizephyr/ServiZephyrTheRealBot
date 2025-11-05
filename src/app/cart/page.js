@@ -727,18 +727,14 @@ const CartPageInternal = () => {
                                             </div>
                                             {couponDiscount > 0 && <div className="flex justify-between text-green-400"><span>Coupon Discount:</span> <span className="font-medium">- ₹{couponDiscount.toFixed(2)}</span></div>}
                                             {specialCouponDiscount > 0 && <div className="flex justify-between text-primary"><span>Special Discount:</span> <span className="font-medium">- ₹{specialCouponDiscount.toFixed(2)}</span></div>}
-                                            {deliveryType === 'delivery' && finalDeliveryCharge > 0 && (
-                                                <div className="flex justify-between">
+                                            
+                                            {deliveryType === 'delivery' && (
+                                                 <div className={cn("flex justify-between", isDeliveryFree && "text-primary")}>
                                                     <span>Delivery Fee:</span> 
-                                                    <span>₹{finalDeliveryCharge.toFixed(2)}</span>
-                                                </div>
-                                            )}
-                                            {deliveryType === 'delivery' && isDeliveryFree && (
-                                                 <div className="flex justify-between text-primary">
-                                                    <span>Delivery Fee:</span> 
-                                                    <span className="font-bold">FREE</span>
+                                                    <span className={cn(isDeliveryFree && "font-bold")}>{isDeliveryFree ? 'FREE' : `₹${finalDeliveryCharge.toFixed(2)}`}</span>
                                                  </div>
                                             )}
+
                                             {tipAmount > 0 && <div className="flex justify-between text-green-400"><span>Rider Tip:</span> <span className="font-medium">+ ₹{tipAmount.toFixed(2)}</span></div>}
                                             <div className="flex justify-between"><span>CGST ({5}%):</span> <span className="font-medium">₹{cgst.toFixed(2)}</span></div>
                                             <div className="flex justify-between"><span>SGST ({5}%):</span> <span className="font-medium">₹{sgst.toFixed(2)}</span></div>
