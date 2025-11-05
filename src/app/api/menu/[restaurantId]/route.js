@@ -165,15 +165,17 @@ export async function GET(request, { params }) {
         // --- START DELIVERY CHARGE FIX ---
         let deliveryCharge = 0;
         const feeType = restaurantData.deliveryFeeType || 'fixed';
+        // Always calculate a base charge, distance calculation will happen on the client if needed later.
         if (feeType === 'fixed') {
             deliveryCharge = restaurantData.deliveryFixedFee !== undefined ? restaurantData.deliveryFixedFee : 30;
         } else if (feeType === 'per-km') {
-            // For now, we are not calculating distance, so we'll fall back to a default or 0
-            // In a real scenario, you'd calculate distance here.
-            // Let's use a base fee for per-km as a placeholder for now.
+            // For now, since we cannot calculate distance, we'll use the per-km fee as a base fee.
+            // This ensures a charge is always present if per-km is selected.
             deliveryCharge = restaurantData.deliveryPerKmFee || 10;
+        } else if (feeType === 'free-over') {
+            // This is primarily handled on the client, but we can set a default charge here which the client will override if threshold is met
+             deliveryCharge = restaurantData.deliveryFixedFee !== undefined ? restaurantData.deliveryFixedFee : 30;
         }
-        // Free delivery threshold is handled on the client-side cart calculation
         // --- END DELIVERY CHARGE FIX ---
 
         // Return all public data together
