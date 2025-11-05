@@ -1,5 +1,4 @@
 
-
 'use client';
 
 import React, { useState, useEffect, Suspense, useMemo, useCallback, useRef } from 'react';
@@ -799,11 +798,7 @@ const OrderPageInternal = () => {
     
     const cartPersistenceDependencies = [
         restaurantId,
-        restaurantData.name,
-        restaurantData.coupons,
-        restaurantData.deliveryCharge,
-        restaurantData.deliveryEnabled,
-        restaurantData.pickupEnabled,
+        restaurantData, // <-- THE FIX: Depend on the whole object
         loyaltyPoints,
         phone,
         token
@@ -819,12 +814,9 @@ const OrderPageInternal = () => {
             restaurantName: restaurantData.name,
             phone: phone, 
             token: token,
-            coupons: restaurantData.coupons,
+            // Pass the entire restaurant data object
+            ...restaurantData, 
             loyaltyPoints,
-            deliveryCharge: restaurantData.deliveryCharge,
-            deliveryEnabled: restaurantData.deliveryEnabled,
-            pickupEnabled: restaurantData.pickupEnabled,
-            businessType: restaurantData.businessType,
             expiryTimestamp,
         };
         localStorage.setItem(`cart_${restaurantId}`, JSON.stringify(cartDataToSave));
