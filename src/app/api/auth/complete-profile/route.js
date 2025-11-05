@@ -1,4 +1,5 @@
 
+
 import { NextResponse } from 'next/server';
 import { getFirestore, verifyAndGetUid } from '@/lib/firebase-admin';
 import { FieldValue } from 'firebase-admin/firestore';
@@ -149,10 +150,21 @@ export async function POST(req) {
              const finalBusinessData = {
                 ...businessData,
                 createdAt: FieldValue.serverTimestamp(),
-                razorpayAccountId: '', 
+                razorpayAccountId: '',
+                // Set default true values for all settings
+                isOpen: true,
+                deliveryEnabled: true,
+                pickupEnabled: true,
+                dineInEnabled: true,
+                deliveryOnlinePaymentEnabled: true,
+                deliveryCodEnabled: true,
+                pickupOnlinePaymentEnabled: true,
+                pickupPodEnabled: true,
+                dineInOnlinePaymentEnabled: true,
+                dineInPayAtCounterEnabled: true,
              };
              batch.set(businessRef, finalBusinessData);
-             console.log(`[PROFILE COMPLETION] Owner Action: New ${businessType} '${businessId}' added to batch.`);
+             console.log(`[PROFILE COMPLETION] Owner Action: New ${businessType} '${businessId}' added to batch with default settings.`);
         }
         
         await batch.commit();
