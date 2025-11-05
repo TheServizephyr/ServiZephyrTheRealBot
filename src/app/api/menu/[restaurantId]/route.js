@@ -162,11 +162,20 @@ export async function GET(request, { params }) {
             full: `${restaurantData.address.street}, ${restaurantData.address.city}, ${restaurantData.address.state} ${restaurantData.address.postalCode}`.trim()
         } : null;
 
+        // --- START DELIVERY CHARGE FIX ---
+        let deliveryCharge = 0;
+        const feeType = restaurantData.deliveryFeeType || 'fixed';
+        if (feeType === 'fixed') {
+            deliveryCharge = restaurantData.deliveryFixedFee !== undefined ? restaurantData.deliveryFixedFee : 30;
+        }
+        // In a future step, you could add logic for per-km charges here
+        // For now, this correctly reflects the fixed fee setting.
+        // --- END DELIVERY CHARGE FIX ---
 
         // Return all public data together
         return NextResponse.json({ 
             restaurantName: restaurantData.name,
-            deliveryCharge: restaurantData.deliveryCharge,
+            deliveryCharge: deliveryCharge, // Use the dynamically determined charge
             logoUrl: restaurantData.logoUrl,
             bannerUrls: restaurantData.bannerUrls,
             menu: menuData,
