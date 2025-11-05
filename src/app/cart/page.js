@@ -79,9 +79,9 @@ const PickupTimeModal = ({ isOpen, onClose, onConfirm, pickupTime, setPickupTime
                 </div>
                  <span className="text-4xl font-bold">:</span>
                 <div className="flex flex-col items-center">
-                    <Button variant="ghost" size="icon" onClick={() => setCustomMinute(prev => (prev + 45) % 60)}><ChevronUp/></Button>
+                    <Button variant="ghost" size="icon" onClick={() => setMinute(prev => (prev + 45) % 60)}><ChevronUp/></Button>
                     <span className="text-4xl font-bold w-20 text-center">{customMinute !== null ? String(customMinute).padStart(2, '0') : '--'}</span>
-                    <Button variant="ghost" size="icon" onClick={() => setCustomMinute(prev => (prev + 15) % 60)}><ChevronDown/></Button>
+                    <Button variant="ghost" size="icon" onClick={() => setMinute(prev => (prev + 15) % 60)}><ChevronDown/></Button>
                 </div>
                  <div className="flex flex-col items-center justify-center text-2xl font-semibold">
                     <span>{customHour !== null && customHour >= 12 ? 'PM' : 'AM'}</span>
@@ -425,7 +425,7 @@ const CartPageInternal = () => {
 
     const finalDeliveryCharge = useMemo(() => {
         if (deliveryType === 'pickup' || deliveryType === 'dine-in' || !cartData) return 0;
-        return isDeliveryFree ? 0 : cartData.deliveryCharge;
+        return isDeliveryFree ? 0 : (cartData.deliveryCharge || 0);
     }, [isDeliveryFree, cartData, deliveryType]);
 
 
@@ -729,10 +729,12 @@ const CartPageInternal = () => {
                                             {specialCouponDiscount > 0 && <div className="flex justify-between text-primary"><span>Special Discount:</span> <span className="font-medium">- ₹{specialCouponDiscount.toFixed(2)}</span></div>}
                                             
                                             {deliveryType === 'delivery' && (
-                                                 <div className={cn("flex justify-between", isDeliveryFree && "text-primary")}>
-                                                    <span>Delivery Fee:</span> 
-                                                    <span className={cn(isDeliveryFree && "font-bold")}>{isDeliveryFree ? 'FREE' : `₹${finalDeliveryCharge.toFixed(2)}`}</span>
-                                                 </div>
+                                                <div className="flex justify-between">
+                                                    <span>Delivery Fee:</span>
+                                                    <span className={cn(isDeliveryFree && "font-bold text-green-400")}>
+                                                        {isDeliveryFree ? 'FREE' : `₹${finalDeliveryCharge.toFixed(2)}`}
+                                                    </span>
+                                                </div>
                                             )}
 
                                             {tipAmount > 0 && <div className="flex justify-between text-green-400"><span>Rider Tip:</span> <span className="font-medium">+ ₹{tipAmount.toFixed(2)}</span></div>}
