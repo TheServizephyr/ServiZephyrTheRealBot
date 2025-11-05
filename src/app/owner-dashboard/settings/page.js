@@ -376,8 +376,10 @@ function SettingsPageContent() {
                 dineInEnabled: editedUser.dineInEnabled,
                 deliveryOnlinePaymentEnabled: editedUser.deliveryOnlinePaymentEnabled,
                 deliveryCodEnabled: editedUser.deliveryCodEnabled,
-                pickupOnlinePaymentEnabled: editedUser.pickupPodEnabled,
-                dineInOnlinePaymentEnabled: editedUser.dineInPayAtCounterEnabled,
+                pickupOnlinePaymentEnabled: editedUser.pickupOnlinePaymentEnabled,
+                pickupPodEnabled: editedUser.pickupPodEnabled,
+                dineInOnlinePaymentEnabled: editedUser.dineInOnlinePaymentEnabled,
+                dineInPayAtCounterEnabled: editedUser.dineInPayAtCounterEnabled,
             }
         }
 
@@ -463,6 +465,8 @@ function SettingsPageContent() {
         );
     }
 
+    const isBusinessOwner = user.role === 'owner' || user.role === 'restaurant-owner' || user.role === 'shop-owner';
+
     return (
         <div className="p-4 md:p-6 text-foreground min-h-screen bg-background space-y-8">
             <InfoDialog
@@ -516,10 +520,10 @@ function SettingsPageContent() {
                             <Label htmlFor="ownerName" className="flex items-center gap-2"><User size={14}/> Owner Name</Label>
                             <input id="ownerName" value={editedUser.name} onChange={e => setEditedUser({...editedUser, name: e.target.value})} disabled={!isEditingProfile} className="mt-1 w-full p-2 border rounded-md bg-input border-border disabled:opacity-70 disabled:cursor-not-allowed" />
                         </div>
-                         <div>
+                         {isBusinessOwner && (<div>
                             <Label htmlFor="restaurantName" className="flex items-center gap-2"><Store size={14}/> Restaurant Name</Label>
                             <input id="restaurantName" value={editedUser.restaurantName} onChange={e => setEditedUser({...editedUser, restaurantName: e.target.value})} disabled={!isEditingProfile} className="mt-1 w-full p-2 border rounded-md bg-input border-border disabled:opacity-70 disabled:cursor-not-allowed" />
-                        </div>
+                        </div>)}
                         <div>
                             <Label htmlFor="email" className="flex items-center gap-2"><Mail size={14}/> Email Address</Label>
                             <input id="email" value={user.email} disabled className="mt-1 w-full p-2 border rounded-md bg-input border-border disabled:opacity-50 disabled:cursor-not-allowed" />
@@ -529,7 +533,7 @@ function SettingsPageContent() {
                             <input id="phone" value={editedUser.phone} onChange={e => setEditedUser({...editedUser, phone: e.target.value})} disabled={!isEditingProfile} className="mt-1 w-full p-2 border rounded-md bg-input border-border disabled:opacity-70 disabled:cursor-not-allowed" />
                         </div>
                     </div>
-                    {user.role === 'owner' && (
+                    {isBusinessOwner && (
                         <>
                            <div className="space-y-4 md:col-span-2 p-4 border border-dashed border-border rounded-lg">
                                 <h4 className="font-semibold flex items-center gap-2"><MapPin size={16}/> Restaurant Address</h4>
@@ -579,7 +583,7 @@ function SettingsPageContent() {
                 </div>
             </SectionCard>
 
-            {user.role === 'owner' && (
+            {isBusinessOwner && (
             <>
                  <SectionCard
                     title="Order & Delivery Settings"
@@ -818,3 +822,5 @@ export default function SettingsPage() {
         </Suspense>
     )
 }
+
+    
