@@ -84,12 +84,18 @@ export async function GET(req) {
             fssai: businessData?.fssai || '',
             botPhoneNumberId: businessData?.botPhoneNumberId || '',
             razorpayAccountId: businessData?.razorpayAccountId || '', 
-            deliveryCharge: businessData?.deliveryCharge === undefined ? 30 : businessData.deliveryCharge,
             logoUrl: businessData?.logoUrl || '',
             bannerUrls: businessData?.bannerUrls || [],
+            // Delivery Settings
             deliveryEnabled: businessData?.deliveryEnabled === undefined ? true : businessData.deliveryEnabled,
+            deliveryRadius: businessData?.deliveryRadius === undefined ? 5 : businessData.deliveryRadius,
+            deliveryFeeType: businessData?.deliveryFeeType || 'fixed',
+            deliveryFixedFee: businessData?.deliveryFixedFee === undefined ? 30 : businessData.deliveryFixedFee,
+            deliveryPerKmFee: businessData?.deliveryPerKmFee === undefined ? 5 : businessData.deliveryPerKmFee,
+            deliveryFreeThreshold: businessData?.deliveryFreeThreshold === undefined ? 500 : businessData.deliveryFreeThreshold,
+            // Other Settings
             pickupEnabled: businessData?.pickupEnabled === undefined ? false : businessData.pickupEnabled,
-            dineInEnabled: businessData?.dineInEnabled === undefined ? false : businessData.dineInEnabled,
+            dineInEnabled: businessData?.dineInEnabled === undefined ? true : businessData.dineInEnabled,
             deliveryOnlinePaymentEnabled: businessData?.deliveryOnlinePaymentEnabled === undefined ? true : businessData.deliveryOnlinePaymentEnabled,
             deliveryCodEnabled: businessData?.deliveryCodEnabled === undefined ? true : businessData.deliveryCodEnabled,
             pickupOnlinePaymentEnabled: businessData?.pickupOnlinePaymentEnabled === undefined ? true : businessData.pickupOnlinePaymentEnabled,
@@ -129,11 +135,11 @@ export async function PATCH(req) {
             if (updates.gstin !== undefined) businessUpdateData.gstin = updates.gstin;
             if (updates.fssai !== undefined) businessUpdateData.fssai = updates.fssai;
             if (updates.botPhoneNumberId !== undefined) businessUpdateData.botPhoneNumberId = updates.botPhoneNumberId;
-            if (updates.deliveryCharge !== undefined) businessUpdateData.deliveryCharge = Number(updates.deliveryCharge);
             if (updates.logoUrl !== undefined) businessUpdateData.logoUrl = updates.logoUrl;
             if (updates.bannerUrls !== undefined) businessUpdateData.bannerUrls = updates.bannerUrls;
             if (updates.address !== undefined) businessUpdateData.address = updates.address; 
             
+            // Order and Payment Settings
             if (updates.deliveryEnabled !== undefined) businessUpdateData.deliveryEnabled = updates.deliveryEnabled;
             if (updates.pickupEnabled !== undefined) businessUpdateData.pickupEnabled = updates.pickupEnabled;
             if (updates.dineInEnabled !== undefined) businessUpdateData.dineInEnabled = updates.dineInEnabled;
@@ -143,6 +149,14 @@ export async function PATCH(req) {
             if (updates.pickupPodEnabled !== undefined) businessUpdateData.pickupPodEnabled = updates.pickupPodEnabled;
             if (updates.dineInOnlinePaymentEnabled !== undefined) businessUpdateData.dineInOnlinePaymentEnabled = updates.dineInOnlinePaymentEnabled;
             if (updates.dineInPayAtCounterEnabled !== undefined) businessUpdateData.dineInPayAtCounterEnabled = updates.dineInPayAtCounterEnabled;
+
+            // Delivery Settings
+            if (updates.deliveryRadius !== undefined) businessUpdateData.deliveryRadius = updates.deliveryRadius;
+            if (updates.deliveryFeeType !== undefined) businessUpdateData.deliveryFeeType = updates.deliveryFeeType;
+            if (updates.deliveryFixedFee !== undefined) businessUpdateData.deliveryFixedFee = updates.deliveryFixedFee;
+            if (updates.deliveryPerKmFee !== undefined) businessUpdateData.deliveryPerKmFee = updates.deliveryPerKmFee;
+            if (updates.deliveryFreeThreshold !== undefined) businessUpdateData.deliveryFreeThreshold = updates.deliveryFreeThreshold;
+
 
             if (updates.isOpen !== undefined && updates.isOpen !== businessData?.isOpen) {
                 businessUpdateData.isOpen = updates.isOpen;
@@ -164,26 +178,24 @@ export async function PATCH(req) {
             }
         }
         
-        // Re-fetch data to return the latest state
         const { userData: finalUserData, businessData: finalBusinessData, businessId: finalBusinessId } = await verifyUserAndGetData(req);
+        
         const responseData = {
-            name: finalUserData.name,
-            email: finalUserData.email,
-            phone: finalUserData.phone,
-            role: finalUserData.role,
-            restaurantName: finalBusinessData?.name || '',
-            profilePicture: finalUserData.profilePictureUrl,
-            notifications: finalUserData.notifications,
-            gstin: finalBusinessData?.gstin || '',
-            fssai: finalBusinessData?.fssai || '',
+            name: finalUserData.name, email: finalUserData.email, phone: finalUserData.phone,
+            role: finalUserData.role, restaurantName: finalBusinessData?.name || '',
+            profilePicture: finalUserData.profilePictureUrl, notifications: finalUserData.notifications,
+            gstin: finalBusinessData?.gstin || '', fssai: finalBusinessData?.fssai || '',
             botPhoneNumberId: finalBusinessData?.botPhoneNumberId || '',
             razorpayAccountId: finalBusinessData?.razorpayAccountId || '',
-            deliveryCharge: finalBusinessData?.deliveryCharge === undefined ? 30 : finalBusinessData.deliveryCharge,
-            logoUrl: finalBusinessData?.logoUrl || '',
-            bannerUrls: finalBusinessData?.bannerUrls || [],
+            logoUrl: finalBusinessData?.logoUrl || '', bannerUrls: finalBusinessData?.bannerUrls || [],
             deliveryEnabled: finalBusinessData?.deliveryEnabled === undefined ? true : finalBusinessData.deliveryEnabled,
+            deliveryRadius: finalBusinessData?.deliveryRadius === undefined ? 5 : finalBusinessData.deliveryRadius,
+            deliveryFeeType: finalBusinessData?.deliveryFeeType || 'fixed',
+            deliveryFixedFee: finalBusinessData?.deliveryFixedFee === undefined ? 30 : finalBusinessData.deliveryFixedFee,
+            deliveryPerKmFee: finalBusinessData?.deliveryPerKmFee === undefined ? 5 : finalBusinessData.deliveryPerKmFee,
+            deliveryFreeThreshold: finalBusinessData?.deliveryFreeThreshold === undefined ? 500 : finalBusinessData.deliveryFreeThreshold,
             pickupEnabled: finalBusinessData?.pickupEnabled === undefined ? false : finalBusinessData.pickupEnabled,
-            dineInEnabled: finalBusinessData?.dineInEnabled === undefined ? false : finalBusinessData.dineInEnabled,
+            dineInEnabled: finalBusinessData?.dineInEnabled === undefined ? true : finalBusinessData.dineInEnabled,
             deliveryOnlinePaymentEnabled: finalBusinessData?.deliveryOnlinePaymentEnabled === undefined ? true : finalBusinessData.deliveryOnlinePaymentEnabled,
             deliveryCodEnabled: finalBusinessData?.deliveryCodEnabled === undefined ? true : finalBusinessData.deliveryCodEnabled,
             pickupOnlinePaymentEnabled: finalBusinessData?.pickupOnlinePaymentEnabled === undefined ? true : finalBusinessData.pickupOnlinePaymentEnabled,

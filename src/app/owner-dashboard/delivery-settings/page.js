@@ -19,34 +19,106 @@ export const dynamic = 'force-dynamic';
 
 function DeliverySettingsPageContent() {
     const router = useRouter();
-    const [isAccepting, setIsAccepting] = useState(true);
-    const [deliveryRadius, setDeliveryRadius] = useState([5]);
-    const [feeType, setFeeType] = useState('fixed');
-    const [fixedFee, setFixedFee] = useState(30);
-    const [perKmFee, setPerKmFee] = useState(5);
-    const [freeDeliveryThreshold, setFreeDeliveryThreshold] = useState(500);
+    const [settings, setSettings] = useState({
+        deliveryEnabled: true,
+        deliveryRadius: [5],
+        deliveryFeeType: 'fixed',
+        deliveryFixedFee: 30,
+        deliveryPerKmFee: 5,
+        deliveryFreeThreshold: 500,
+    });
+    const [loading, setLoading] = useState(true);
     const [isSaving, setIsSaving] = useState(false);
     const [infoDialog, setInfoDialog] = useState({ isOpen: false, title: '', message: '' });
 
-    // In a real app, you would fetch these settings from your backend
-    // useEffect(() => { ... fetch settings ... }, []);
+    useEffect(() => {
+        const fetchSettings = async () => {
+            setLoading(true);
+            try {
+                const user = auth.currentUser;
+                if (!user) {
+                    router.push('/');
+                    return;
+                }
+                const idToken = await user.getIdToken();
+                const res = await fetch('/api/owner/settings', {
+                    headers: { 'Authorization': `Bearer ${idToken}` }
+                });
+                if (!res.ok) throw new Error("Failed to load settings.");
+                const data = await res.json();
+                setSettings({
+                    deliveryEnabled: data.deliveryEnabled,
+                    deliveryRadius: [data.deliveryRadius],
+                    deliveryFeeType: data.deliveryFeeType,
+                    deliveryFixedFee: data.deliveryFixedFee,
+                    deliveryPerKmFee: data.deliveryPerKmFee,
+                    deliveryFreeThreshold: data.deliveryFreeThreshold,
+                });
+            } catch (error) {
+                setInfoDialog({ isOpen: true, title: 'Error', message: `Could not load settings: ${error.message}` });
+            } finally {
+                setLoading(false);
+            }
+        };
+
+        const unsubscribe = auth.onAuthStateChanged(user => {
+            if (user) fetchSettings();
+            else setLoading(false);
+        });
+
+        return () => unsubscribe();
+    }, [router]);
 
     const handleSave = async () => {
         setIsSaving(true);
-        // Here you would make an API call to save the settings
-        console.log({
-            isAccepting,
-            deliveryRadius: deliveryRadius[0],
-            feeType,
-            fixedFee,
-            perKmFee,
-            freeDeliveryThreshold,
-        });
-        await new Promise(res => setTimeout(res, 1000)); // Simulate API call
-        setIsSaving(false);
-        setInfoDialog({ isOpen: true, title: 'Success', message: 'Delivery settings saved successfully!' });
+        try {
+            const user = auth.currentUser;
+            if (!user) throw new Error("Not authenticated.");
+            const idToken = await user.getIdToken();
+
+            const payload = {
+                deliveryEnabled: settings.deliveryEnabled,
+                deliveryRadius: settings.deliveryRadius[0],
+                deliveryFeeType: settings.deliveryFeeType,
+                deliveryFixedFee: Number(settings.deliveryFixedFee),
+                deliveryPerKmFee: Number(settings.deliveryPerKmFee),
+                deliveryFreeThreshold: Number(settings.deliveryFreeThreshold),
+            };
+
+            const response = await fetch('/api/owner/settings', {
+                method: 'PATCH',
+                headers: { 
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${idToken}`
+                },
+                body: JSON.stringify(payload)
+            });
+
+            if (!response.ok) {
+                const errorData = await response.json();
+                throw new Error(errorData.message || 'Failed to save settings');
+            }
+            
+            setInfoDialog({ isOpen: true, title: 'Success', message: 'Delivery settings saved successfully!' });
+        } catch (error) {
+            setInfoDialog({ isOpen: true, title: 'Error', message: `Could not save settings: ${error.message}` });
+        } finally {
+            setIsSaving(false);
+        }
     };
     
+    const handleSettingChange = (key, value) => {
+        setSettings(prev => ({...prev, [key]: value}));
+    }
+
+    if (loading) {
+        return (
+            <div className="flex h-screen w-full items-center justify-center">
+                <Loader2 className="h-12 w-12 animate-spin text-primary" />
+            </div>
+        )
+    }
+
     return (
         <div className="p-4 md:p-6 space-y-6">
             <InfoDialog isOpen={infoDialog.isOpen} onClose={() => setInfoDialog({isOpen: false, title: '', message: ''})} title={infoDialog.title} message={infoDialog.message} />
@@ -69,7 +141,7 @@ function DeliverySettingsPageContent() {
                                 <span className="font-bold text-lg">Accepting Delivery Orders</span>
                                 <span className="text-sm text-muted-foreground">Turn this off to temporarily stop all new delivery orders.</span>
                             </Label>
-                            <Switch id="accepting-orders" checked={isAccepting} onCheckedChange={setIsAccepting} className="data-[state=checked]:bg-green-500"/>
+                            <Switch id="accepting-orders" checked={settings.deliveryEnabled} onCheckedChange={(val) => handleSettingChange('deliveryEnabled', val)} className="data-[state=checked]:bg-green-500"/>
                         </div>
                     </CardContent>
                 </Card>
@@ -82,11 +154,11 @@ function DeliverySettingsPageContent() {
                         <CardDescription>Set the maximum distance you are willing to deliver to.</CardDescription>
                     </CardHeader>
                     <CardContent className="p-6">
-                        <Label htmlFor="delivery-radius">Delivery Radius: <span className="font-bold text-primary text-lg">{deliveryRadius[0]} km</span></Label>
+                        <Label htmlFor="delivery-radius">Delivery Radius: <span className="font-bold text-primary text-lg">{settings.deliveryRadius[0]} km</span></Label>
                         <Slider
                             id="delivery-radius"
-                            value={deliveryRadius}
-                            onValueChange={setDeliveryRadius}
+                            value={settings.deliveryRadius}
+                            onValueChange={(val) => handleSettingChange('deliveryRadius', val)}
                             max={20}
                             step={1}
                             className="mt-4"
@@ -102,7 +174,7 @@ function DeliverySettingsPageContent() {
                         <CardDescription>Choose your delivery fee structure.</CardDescription>
                     </CardHeader>
                     <CardContent>
-                        <RadioGroup value={feeType} onValueChange={setFeeType} className="space-y-4">
+                        <RadioGroup value={settings.deliveryFeeType} onValueChange={(val) => handleSettingChange('deliveryFeeType', val)} className="space-y-4">
                             <div className="p-4 rounded-lg border has-[:checked]:border-primary has-[:checked]:bg-primary/5">
                                 <div className="flex items-center justify-between">
                                     <Label htmlFor="fixed" className="font-semibold flex items-center gap-3 cursor-pointer">
@@ -111,7 +183,7 @@ function DeliverySettingsPageContent() {
                                     </Label>
                                     <div className="flex items-center gap-2 w-32">
                                         <span>₹</span>
-                                        <Input type="number" value={fixedFee} onChange={e => setFixedFee(Number(e.target.value))} disabled={feeType !== 'fixed'}/>
+                                        <Input type="number" value={settings.deliveryFixedFee} onChange={e => handleSettingChange('deliveryFixedFee', e.target.value)} disabled={settings.deliveryFeeType !== 'fixed'}/>
                                     </div>
                                 </div>
                                 <p className="text-xs text-muted-foreground mt-2 pl-8">Charge a single, flat rate for all deliveries.</p>
@@ -125,7 +197,7 @@ function DeliverySettingsPageContent() {
                                     </Label>
                                     <div className="flex items-center gap-2 w-32">
                                         <span>₹</span>
-                                        <Input type="number" value={perKmFee} onChange={e => setPerKmFee(Number(e.target.value))} disabled={feeType !== 'per-km'}/>
+                                        <Input type="number" value={settings.deliveryPerKmFee} onChange={e => handleSettingChange('deliveryPerKmFee', e.target.value)} disabled={settings.deliveryFeeType !== 'per-km'}/>
                                         <span className="text-muted-foreground text-sm">/km</span>
                                     </div>
                                 </div>
@@ -140,7 +212,7 @@ function DeliverySettingsPageContent() {
                                     </Label>
                                     <div className="flex items-center gap-2 w-32">
                                         <span>₹</span>
-                                        <Input type="number" value={freeDeliveryThreshold} onChange={e => setFreeDeliveryThreshold(Number(e.target.value))} disabled={feeType !== 'free-over'}/>
+                                        <Input type="number" value={settings.deliveryFreeThreshold} onChange={e => handleSettingChange('deliveryFreeThreshold', e.target.value)} disabled={settings.deliveryFeeType !== 'free-over'}/>
                                     </div>
                                 </div>
                                 <p className="text-xs text-muted-foreground mt-2 pl-8">Offer free delivery for orders above a certain value.</p>
