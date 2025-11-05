@@ -727,11 +727,17 @@ const CartPageInternal = () => {
                                             </div>
                                             {couponDiscount > 0 && <div className="flex justify-between text-green-400"><span>Coupon Discount:</span> <span className="font-medium">- ₹{couponDiscount.toFixed(2)}</span></div>}
                                             {specialCouponDiscount > 0 && <div className="flex justify-between text-primary"><span>Special Discount:</span> <span className="font-medium">- ₹{specialCouponDiscount.toFixed(2)}</span></div>}
-                                            {deliveryType === 'delivery' && (
+                                            {deliveryType === 'delivery' && finalDeliveryCharge > 0 && (
                                                 <div className="flex justify-between">
                                                     <span>Delivery Fee:</span> 
-                                                    {isDeliveryFree ? <span className="text-primary font-bold">FREE</span> : <span>₹{finalDeliveryCharge.toFixed(2)}</span>}
+                                                    <span>₹{finalDeliveryCharge.toFixed(2)}</span>
                                                 </div>
+                                            )}
+                                            {deliveryType === 'delivery' && isDeliveryFree && (
+                                                 <div className="flex justify-between text-primary">
+                                                    <span>Delivery Fee:</span> 
+                                                    <span className="font-bold">FREE</span>
+                                                 </div>
                                             )}
                                             {tipAmount > 0 && <div className="flex justify-between text-green-400"><span>Rider Tip:</span> <span className="font-medium">+ ₹{tipAmount.toFixed(2)}</span></div>}
                                             <div className="flex justify-between"><span>CGST ({5}%):</span> <span className="font-medium">₹{cgst.toFixed(2)}</span></div>

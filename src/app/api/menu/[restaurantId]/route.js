@@ -167,15 +167,20 @@ export async function GET(request, { params }) {
         const feeType = restaurantData.deliveryFeeType || 'fixed';
         if (feeType === 'fixed') {
             deliveryCharge = restaurantData.deliveryFixedFee !== undefined ? restaurantData.deliveryFixedFee : 30;
+        } else if (feeType === 'per-km') {
+            // For now, we are not calculating distance, so we'll fall back to a default or 0
+            // In a real scenario, you'd calculate distance here.
+            // Let's use a base fee for per-km as a placeholder for now.
+            deliveryCharge = restaurantData.deliveryPerKmFee || 10;
         }
-        // In a future step, you could add logic for per-km charges here
-        // For now, this correctly reflects the fixed fee setting.
+        // Free delivery threshold is handled on the client-side cart calculation
         // --- END DELIVERY CHARGE FIX ---
 
         // Return all public data together
         return NextResponse.json({ 
             restaurantName: restaurantData.name,
             deliveryCharge: deliveryCharge, // Use the dynamically determined charge
+            deliveryFreeThreshold: restaurantData.deliveryFreeThreshold,
             logoUrl: restaurantData.logoUrl,
             bannerUrls: restaurantData.bannerUrls,
             menu: menuData,
