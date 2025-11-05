@@ -8,7 +8,7 @@ import { FieldValue } from 'firebase-admin/firestore';
 export async function POST(req) {
     try {
         const uid = await verifyAndGetUid(req); // Use the new helper
-        const firestore = getFirestore();
+        const firestore = await getFirestore();
 
         const { finalUserData, businessData, businessType } = await req.json();
 
