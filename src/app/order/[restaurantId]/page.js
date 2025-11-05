@@ -1,4 +1,3 @@
-
 'use client';
 
 import React, { useState, useEffect, Suspense, useMemo, useCallback, useRef } from 'react';
@@ -798,7 +797,9 @@ const OrderPageInternal = () => {
     
     const cartPersistenceDependencies = [
         restaurantId,
-        restaurantData, // <-- THE FIX: Depend on the whole object
+        restaurantData.name,
+        restaurantData.deliveryCharge,
+        restaurantData.businessType,
         loyaltyPoints,
         phone,
         token
@@ -814,7 +815,8 @@ const OrderPageInternal = () => {
             restaurantName: restaurantData.name,
             phone: phone, 
             token: token,
-            // Pass the entire restaurant data object
+            deliveryCharge: restaurantData.deliveryCharge, // Explicitly save delivery charge
+            // Pass the rest of the restaurant data object
             ...restaurantData, 
             loyaltyPoints,
             expiryTimestamp,
