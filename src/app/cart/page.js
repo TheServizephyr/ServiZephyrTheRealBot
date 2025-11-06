@@ -1,5 +1,4 @@
 
-
 'use client';
 
 import React, { useState, useEffect, useMemo, Suspense } from 'react';
@@ -166,7 +165,7 @@ const CartPageInternal = () => {
     const { user } = useUser(); // Get user from Firebase
     const restaurantId = searchParams.get('restaurantId');
     
-    // --- START: NEW TOKEN VERIFICATION LOGIC ---
+    // --- START: MODIFIED TOKEN VERIFICATION LOGIC ---
     const [isTokenValid, setIsTokenValid] = useState(false);
     const [tokenError, setTokenError] = useState('');
     const phone = searchParams.get('phone');
@@ -190,6 +189,14 @@ const CartPageInternal = () => {
 
     useEffect(() => {
         const verifyToken = async () => {
+            // If tableId is present, it's a dine-in session. No token needed.
+            if (tableId) {
+                setIsTokenValid(true);
+                setLoadingPage(false);
+                return;
+            }
+
+            // Otherwise, it's a WhatsApp session, so phone and token are required.
             if (!phone || !token) {
                 setTokenError("No session information found. Please start a new order from WhatsApp.");
                 setLoadingPage(false);
@@ -215,8 +222,8 @@ const CartPageInternal = () => {
         };
 
         verifyToken();
-    }, [phone, token]);
-    // --- END: NEW TOKEN VERIFICATION LOGIC ---
+    }, [phone, token, tableId]);
+    // --- END: MODIFIED TOKEN VERIFICATION LOGIC ---
     
     useEffect(() => {
         // This effect runs only after the token has been successfully validated
@@ -349,6 +356,7 @@ const CartPageInternal = () => {
                 phone: phone || '',
                 token: token || '',
             });
+            if (tableId) params.append('table', tableId);
             let checkoutUrl = `/checkout?${params.toString()}`;
             router.push(checkoutUrl);
         }

@@ -1,9 +1,10 @@
+
 'use client';
 
 import React, { useState, useEffect, useMemo, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { motion } from 'framer-motion';
-import { ArrowLeft, Wallet, IndianRupee, CreditCard, Landmark, Split, Users as UsersIcon, QrCode, PlusCircle, Trash2, Home, Building, MapPin, Lock } from 'lucide-react';
+import { ArrowLeft, Wallet, IndianRupee, CreditCard, Landmark, Split, Users as UsersIcon, QrCode, PlusCircle, Trash2, Home, Building, MapPin, Lock, Loader2 } from 'lucide-react';
 import Script from 'next/script';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose } from "@/components/ui/dialog";
@@ -138,7 +139,7 @@ const CheckoutPageInternal = () => {
     const tableId = searchParams.get('table');
     const tabId = searchParams.get('tabId');
     
-    // Security State
+    // --- START: MODIFIED TOKEN VERIFICATION LOGIC ---
     const [isTokenValid, setIsTokenValid] = useState(false);
     const [tokenError, setTokenError] = useState('');
 
@@ -160,6 +161,13 @@ const CheckoutPageInternal = () => {
     
     useEffect(() => {
         const verifyAndFetch = async () => {
+             // If tableId is present, it's a dine-in session. No token needed.
+             if (tableId) {
+                setIsTokenValid(true);
+                fetchInitialData(phone || '', token || '');
+                return;
+            }
+
             const phoneToUse = phone && phone !== 'null' ? phone : user?.phoneNumber;
             const tokenToUse = token && token !== 'null' ? token : null;
 
@@ -287,6 +295,7 @@ const CheckoutPageInternal = () => {
             verifyAndFetch();
         }
     }, [restaurantId, router, phone, token, tableId, tabId, user, isUserLoading]);
+    // --- END: MODIFIED TOKEN VERIFICATION LOGIC ---
 
 
     const handleAddNewAddress = () => {
@@ -295,6 +304,7 @@ const CheckoutPageInternal = () => {
             phone: phone || '',
             token: token || '',
         });
+        if (tableId) params.append('table', tableId);
         router.push(`/add-address?${params.toString()}`);
     };
 
