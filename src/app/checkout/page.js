@@ -163,7 +163,7 @@ const CheckoutPageInternal = () => {
              // If tableId is present, it's a dine-in session. No token needed.
              if (tableId) {
                 setIsTokenValid(true);
-                fetchInitialData(phone || '', token || '');
+                fetchInitialData();
                 return;
             }
 
@@ -201,10 +201,10 @@ const CheckoutPageInternal = () => {
                  return;
             }
             
-            fetchInitialData(phoneToUse, tokenToUse);
+            fetchInitialData();
         };
 
-        const fetchInitialData = async (phoneToUse, tokenToUse) => {
+        const fetchInitialData = async () => {
             if (!restaurantId) {
                 router.push('/');
                 return;
@@ -220,46 +220,54 @@ const CheckoutPageInternal = () => {
             if (savedCartData) {
                 parsedData = JSON.parse(savedCartData);
                 const deliveryType = tableId ? 'dine-in' : (parsedData.deliveryType || 'delivery');
-                const updatedData = { ...parsedData, phone: phoneToUse, token: tokenToUse, tableId, dineInTabId: tabId, deliveryType };
+                const updatedData = { ...parsedData, phone, token, tableId, dineInTabId: tabId, deliveryType };
                 setCart(updatedData.cart || []);
                 setAppliedCoupons(updatedData.appliedCoupons || []);
                 setCartData(updatedData);
             } else if (tabId) {
-                parsedData = { dineInTabId: tabId, deliveryType: 'dine-in', phone: phoneToUse, token: tokenToUse };
+                parsedData = { dineInTabId: tabId, deliveryType: 'dine-in', phone, token };
                 setCartData(parsedData);
             } else {
                 const params = new URLSearchParams();
-                if (phoneToUse) params.append('phone', phoneToUse);
-                if (tokenToUse) params.append('token', tokenToUse);
+                if (phone) params.append('phone', phone);
+                if (token) params.append('token', token);
                 if (tableId) params.append('table', tableId);
                 router.push(`/order/${restaurantId}?${params.toString()}`);
                 return;
             }
 
-            // *** START THE FIX ***
             const isDelivery = parsedData.deliveryType === 'delivery';
 
-            setOrderPhone(phoneToUse || user?.phoneNumber || '');
-            if(!orderName) setOrderName(user?.displayName || '');
-            
             try {
+                 let customerAddressStr = null;
+                 if (isDelivery) {
+                    customerAddressStr = localStorage.getItem('customerLocation');
+                 }
+
+                // *** START THE FIX: Smartly get phone number ***
+                let foundPhone = phone || user?.phoneNumber || '';
+                if (!foundPhone && customerAddressStr) {
+                    const savedAddr = JSON.parse(customerAddressStr);
+                    foundPhone = savedAddr.phone || '';
+                }
+                setOrderPhone(foundPhone);
+                // *** END THE FIX ***
+
+                setOrderName(prev => prev || user?.displayName || '');
+                
                 if (isDelivery) {
-                    const customerAddressStr = localStorage.getItem('customerLocation');
                     if (customerAddressStr) {
                         const savedAddress = JSON.parse(customerAddressStr);
                         setSelectedAddress(savedAddress);
                         if (!orderName) setOrderName(savedAddress.name || '');
-                        if (!orderPhone) setOrderPhone(savedAddress.phone || phoneToUse || '');
                     }
-                }
-                
-                // Fetch addresses only if it's a delivery order
-                if (isDelivery) {
-                    if (phoneToUse) {
+                    
+                    const phoneToLookup = phone || user?.phoneNumber;
+                    if (phoneToLookup) {
                         const lookupRes = await fetch('/api/customer/lookup', {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ phone: phoneToUse }),
+                            body: JSON.stringify({ phone: phoneToLookup }),
                         });
                         if (lookupRes.ok) {
                             const data = await lookupRes.json();
@@ -295,7 +303,6 @@ const CheckoutPageInternal = () => {
             } finally {
                 setLoading(false);
             }
-             // *** END THE FIX ***
         };
 
         if (!isUserLoading) {
