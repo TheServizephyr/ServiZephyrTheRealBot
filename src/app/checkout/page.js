@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useState, useEffect, useMemo, Suspense } from 'react';
@@ -167,7 +168,6 @@ const CheckoutPageInternal = () => {
                 return;
             }
 
-            const phoneToUse = phone && phone !== 'null' ? phone : user?.phoneNumber;
             const tokenToUse = token && token !== 'null' ? token : null;
 
             if (!tokenToUse && !user) {
@@ -181,7 +181,7 @@ const CheckoutPageInternal = () => {
                     const res = await fetch('/api/auth/verify-token', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ phone: phoneToUse, token: tokenToUse }),
+                        body: JSON.stringify({ phone, token: tokenToUse }),
                     });
                     if (!res.ok) {
                         const errData = await res.json();
@@ -239,30 +239,22 @@ const CheckoutPageInternal = () => {
             const isDelivery = parsedData.deliveryType === 'delivery';
 
             try {
-                 let customerAddressStr = null;
-                 if (isDelivery) {
-                    customerAddressStr = localStorage.getItem('customerLocation');
-                 }
-
-                // *** START THE FIX: Smartly get phone number ***
-                let foundPhone = phone || user?.phoneNumber || '';
-                if (!foundPhone && customerAddressStr) {
-                    const savedAddr = JSON.parse(customerAddressStr);
-                    foundPhone = savedAddr.phone || '';
-                }
-                setOrderPhone(foundPhone);
-                // *** END THE FIX ***
-
+                const phoneToLookup = phone || user?.phoneNumber;
+                setOrderPhone(phoneToLookup || '');
                 setOrderName(prev => prev || user?.displayName || '');
                 
                 if (isDelivery) {
-                    if (customerAddressStr) {
+                    let customerAddressStr = localStorage.getItem('customerLocation');
+                     if (customerAddressStr) {
                         const savedAddress = JSON.parse(customerAddressStr);
                         setSelectedAddress(savedAddress);
-                        if (!orderName) setOrderName(savedAddress.name || '');
+                        setOrderName(savedAddress.name || '');
+                        // If phone is missing from URL/Auth but present in address, use it.
+                        if (!phoneToLookup && savedAddress.phone) {
+                            setOrderPhone(savedAddress.phone);
+                        }
                     }
                     
-                    const phoneToLookup = phone || user?.phoneNumber;
                     if (phoneToLookup) {
                         const lookupRes = await fetch('/api/customer/lookup', {
                             method: 'POST',
@@ -550,3 +542,4 @@ const CheckoutPage = () => (
 );
 
 export default CheckoutPage;
+
