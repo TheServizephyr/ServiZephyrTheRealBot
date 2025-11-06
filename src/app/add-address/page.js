@@ -173,17 +173,17 @@ const AddAddressPageInternal = () => {
                     });
                     if (res.ok) {
                         const userData = await res.json();
-                        setRecipientName(userData.name || user.displayName || '');
-                        setRecipientPhone(userData.phone || user.phoneNumber || '');
+                        if (!recipientName) setRecipientName(userData.name || user.displayName || '');
+                        if (!recipientPhone) setRecipientPhone(userData.phone || user.phoneNumber || '');
                     } else {
                         // Fallback if API fails
-                        setRecipientName(user.displayName || '');
-                        setRecipientPhone(user.phoneNumber || '');
+                        if (!recipientName) setRecipientName(user.displayName || '');
+                        if (!recipientPhone) setRecipientPhone(user.phoneNumber || '');
                     }
                 } catch (e) {
                      console.warn("Could not prefill data from settings API:", e);
-                     setRecipientName(user.displayName || '');
-                     setRecipientPhone(user.phoneNumber || '');
+                     if (!recipientName) setRecipientName(user.displayName || '');
+                     if (!recipientPhone) setRecipientPhone(user.phoneNumber || '');
                 }
             }
         };

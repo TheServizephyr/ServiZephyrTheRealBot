@@ -53,12 +53,8 @@ export async function POST(req) {
 
         if (!existingUserQuery.empty) {
             const userDoc = existingUserQuery.docs[0];
-            const userData = userDoc.data();
-            // **THE FIX: Only use the UID if the user is a customer, not an admin or owner**
-            if (userData.role === 'customer') {
-                isNewUser = false;
-                userId = userDoc.id;
-            }
+            isNewUser = false;
+            userId = userDoc.id;
         }
         
         console.log(`[DEBUG] /api/customer/register: User status: ${isNewUser ? 'New/Unclaimed User' : 'Existing Customer'}. User ID will be: ${userId}`);
@@ -200,7 +196,7 @@ export async function POST(req) {
         console.log("[DEBUG] /api/customer/register: Creating main order document.");
         const newOrderRef = firestore.collection('orders').doc();
         batch.set(newOrderRef, {
-            customerName: name, customerId: userId, customerAddress: address?.full || address, customerPhone: normalizedPhone,
+            customerName: name, customerId: userId, customerAddress: address?.full || null, customerPhone: normalizedPhone,
             customerLocation: customerLocation,
             restaurantId: restaurantId, restaurantName: businessData.name,
             businessType, deliveryType, pickupTime, tipAmount, tableId, dineInTabId: finalDineInTabId,

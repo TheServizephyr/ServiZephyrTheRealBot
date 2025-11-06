@@ -1,4 +1,3 @@
-
 'use client';
 
 import React, { useState, useEffect, useMemo, Suspense } from 'react';
@@ -236,55 +235,59 @@ const CheckoutPageInternal = () => {
                 router.push(`/order/${restaurantId}?${params.toString()}`);
                 return;
             }
+
+            // *** START THE FIX ***
+            const isDelivery = parsedData.deliveryType === 'delivery';
+
+            setOrderPhone(phoneToUse || user?.phoneNumber || '');
+            if(!orderName) setOrderName(user?.displayName || '');
             
             try {
-                const customerAddressStr = localStorage.getItem('customerLocation');
-                if (customerAddressStr) {
-                    const savedAddress = JSON.parse(customerAddressStr);
-                    setSelectedAddress(savedAddress);
-                    setOrderName(savedAddress.name || '');
-                    setOrderPhone(savedAddress.phone || phoneToUse || '');
-                } else {
-                     setOrderPhone(phoneToUse || '');
+                if (isDelivery) {
+                    const customerAddressStr = localStorage.getItem('customerLocation');
+                    if (customerAddressStr) {
+                        const savedAddress = JSON.parse(customerAddressStr);
+                        setSelectedAddress(savedAddress);
+                        if (!orderName) setOrderName(savedAddress.name || '');
+                        if (!orderPhone) setOrderPhone(savedAddress.phone || phoneToUse || '');
+                    }
                 }
                 
-                if (phoneToUse) {
-                    const lookupRes = await fetch('/api/customer/lookup', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ phone: phoneToUse }),
-                    });
-                    if (lookupRes.ok) {
-                        const data = await lookupRes.json();
-                        setUserAddresses(data.addresses || []);
-                        setOrderName(prev => prev || data.name || '');
-                        if (!customerAddressStr && data.addresses?.length > 0) {
-                            setSelectedAddress(data.addresses[0]);
+                // Fetch addresses only if it's a delivery order
+                if (isDelivery) {
+                    if (phoneToUse) {
+                        const lookupRes = await fetch('/api/customer/lookup', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ phone: phoneToUse }),
+                        });
+                        if (lookupRes.ok) {
+                            const data = await lookupRes.json();
+                            setUserAddresses(data.addresses || []);
+                            if (!orderName) setOrderName(prev => prev || data.name || '');
+                            if (!selectedAddress && data.addresses?.length > 0) {
+                                setSelectedAddress(data.addresses[0]);
+                            }
+                        }
+                    } else if (user) {
+                        const idToken = await user.getIdToken();
+                        const locationsRes = await fetch('/api/user/addresses', { headers: { 'Authorization': `Bearer ${idToken}` } });
+                        if (locationsRes.ok) {
+                            const { addresses } = await locationsRes.json();
+                            setUserAddresses(addresses || []);
+                            if (!selectedAddress && addresses?.length > 0) {
+                                 setSelectedAddress(addresses[0]);
+                            }
                         }
                     }
-                } else if (user) {
-                    const idToken = await user.getIdToken();
-                    const locationsRes = await fetch('/api/user/addresses', { headers: { 'Authorization': `Bearer ${idToken}` } });
-                    if (locationsRes.ok) {
-                        const { addresses } = await locationsRes.json();
-                        setUserAddresses(addresses || []);
-                        if (!customerAddressStr && addresses?.length > 0) {
-                             setSelectedAddress(addresses[0]);
-                        }
-                    }
-                     if(!orderName) setOrderName(user.displayName || '');
-                     // ** START THE FIX **
-                     if(!orderPhone) setOrderPhone(user.phoneNumber || '');
-                     // ** END THE FIX **
                 }
 
                 const paymentSettingsRes = await fetch(`/api/owner/settings?restaurantId=${restaurantId}`);
                  if (paymentSettingsRes.ok) {
                     const paymentData = await paymentSettingsRes.json();
-                    const deliveryType = tableId ? 'dine-in' : (parsedData.deliveryType || 'delivery');
-                    if (deliveryType === 'delivery') setCodEnabled(paymentData.deliveryCodEnabled);
-                    else if (deliveryType === 'pickup') setCodEnabled(paymentData.pickupPodEnabled);
-                    else if (deliveryType === 'dine-in') setCodEnabled(paymentData.dineInPayAtCounterEnabled);
+                    if (isDelivery) setCodEnabled(paymentData.deliveryCodEnabled);
+                    else if (parsedData.deliveryType === 'pickup') setCodEnabled(paymentData.pickupPodEnabled);
+                    else if (parsedData.deliveryType === 'dine-in') setCodEnabled(paymentData.dineInPayAtCounterEnabled);
                     else setCodEnabled(false);
                  }
             } catch (err) {
@@ -292,13 +295,14 @@ const CheckoutPageInternal = () => {
             } finally {
                 setLoading(false);
             }
+             // *** END THE FIX ***
         };
 
         if (!isUserLoading) {
             verifyAndFetch();
         }
     }, [restaurantId, router, phone, token, tableId, tabId, user, isUserLoading]);
-    // --- END: MODIFIED TOKEN VERIFICATION LOGIC ---
+    
 
 
     const handleAddNewAddress = () => {
