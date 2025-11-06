@@ -273,6 +273,9 @@ const CheckoutPageInternal = () => {
                         }
                     }
                      if(!orderName) setOrderName(user.displayName || '');
+                     // ** START THE FIX **
+                     if(!orderPhone) setOrderPhone(user.phoneNumber || '');
+                     // ** END THE FIX **
                 }
 
                 const paymentSettingsRes = await fetch(`/api/owner/settings?restaurantId=${restaurantId}`);

@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useState, useEffect, Suspense, useRef, useCallback } from 'react';
@@ -161,6 +162,10 @@ const AddAddressPageInternal = () => {
             } 
             // If no phone from URL, but user is logged in via Firebase Auth, fetch from database
             else if (user) {
+                // ** START THE FIX **
+                if (!recipientName) setRecipientName(user.displayName || '');
+                if (!recipientPhone) setRecipientPhone(user.phoneNumber || '');
+                // ** END THE FIX **
                 try {
                     const idToken = await user.getIdToken();
                     const res = await fetch('/api/owner/settings', {
