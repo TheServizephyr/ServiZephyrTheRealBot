@@ -1,4 +1,3 @@
-
 'use client';
 
 import React, { useState, useEffect, useMemo, Suspense } from 'react';
@@ -162,128 +161,78 @@ const CheckoutPageInternal = () => {
         const verifyAndFetch = async () => {
             setLoading(true);
             
-            // If tableId is present (Dine-In), no token is needed.
-            if (tableId) {
-                setIsTokenValid(true);
-                // The primary phone number is from the URL for QR scans
-                setOrderPhone(phoneFromUrl || '');
-                fetchInitialData(phoneFromUrl);
+            // This is the primary phone number to be used for API lookups.
+            // For dine-in (tableId exists) or WhatsApp flow, it MUST come from the URL.
+            // For logged-in users doing delivery, it can come from their profile.
+            const phoneToLookup = phoneFromUrl || user?.phoneNumber || '';
+
+            // Session Verification Logic
+            const tokenToUse = token && token.trim() !== '' ? token : null;
+            if (!tableId && !user && !tokenToUse) {
+                setTokenError("No session information found. Please start a new order.");
+                setLoading(false);
                 return;
             }
 
-            // For other flows (Delivery/Pickup), a token or a logged-in user is required.
-            const tokenToUse = token && token !== 'null' ? token : null;
-
-            if (!tokenToUse && !user) {
-                 setTokenError("No session information found. Please start your journey from WhatsApp or log in.");
-                 setLoading(false);
-                 return;
-            }
-            
-            if (tokenToUse) {
-                try {
+            if (tokenToUse && !tableId && !user) {
+                 try {
                     const res = await fetch('/api/auth/verify-token', {
                         method: 'POST', headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ phone: phoneFromUrl, token: tokenToUse }),
+                        body: JSON.stringify({ phone: phoneToLookup, token: tokenToUse }),
                     });
-                    if (!res.ok) {
-                        const errData = await res.json();
-                        throw new Error(errData.message || "Session validation failed.");
-                    }
-                    setIsTokenValid(true);
-                    setOrderPhone(phoneFromUrl);
-                    fetchInitialData(phoneFromUrl);
+                    if (!res.ok) throw new Error((await res.json()).message || "Session validation failed.");
                 } catch (err) {
                     setTokenError(err.message);
                     setLoading(false);
                     return;
                 }
-            } else if (user) {
-                setIsTokenValid(true);
-                // For logged-in users, phone number comes from their auth profile
-                const primaryPhone = user.phoneNumber || '';
-                setOrderPhone(primaryPhone);
-                fetchInitialData(primaryPhone);
-            } else {
-                 setTokenError("No valid session found. Please start a new order.");
-                 setLoading(false);
-                 return;
             }
-        };
-
-        const fetchInitialData = async (phoneToUse) => {
+            
+            setIsTokenValid(true);
+            
+            // Set component state with the verified phone number
+            setOrderPhone(phoneToLookup);
+            
+            // Fetch initial data for the page
             if (!restaurantId) { router.push('/'); return; }
-
             setError('');
-            setUserAddresses([]);
-            setSelectedAddress(null);
 
-            let parsedData;
             const savedCartData = localStorage.getItem(`cart_${restaurantId}`);
-            if (savedCartData) {
-                parsedData = JSON.parse(savedCartData);
-                const deliveryType = tableId ? 'dine-in' : (parsedData.deliveryType || 'delivery');
-                const updatedData = { ...parsedData, phone: phoneToUse, token, tableId, dineInTabId: tabId, deliveryType };
-                setCart(updatedData.cart || []);
-                setAppliedCoupons(updatedData.appliedCoupons || []);
-                setCartData(updatedData);
-            } else if (tabId) { // Case for paying bill without items in cart
-                parsedData = { dineInTabId: tabId, deliveryType: 'dine-in', phone: phoneToUse, token };
-                setCartData(parsedData);
-            } else {
-                const params = new URLSearchParams();
-                if (phoneToUse) params.append('phone', phoneToUse);
-                if (token) params.append('token', token);
-                if (tableId) params.append('table', tableId);
-                router.push(`/order/${restaurantId}?${params.toString()}`);
-                return;
-            }
-
-            const isDelivery = parsedData.deliveryType === 'delivery';
+            const parsedData = savedCartData ? JSON.parse(savedCartData) : {};
+            
+            const deliveryType = tableId ? 'dine-in' : (parsedData.deliveryType || 'delivery');
+            const updatedData = { ...parsedData, phone: phoneToLookup, token, tableId, dineInTabId: tabId, deliveryType };
+            
+            setCart(updatedData.cart || []);
+            setAppliedCoupons(updatedData.appliedCoupons || []);
+            setCartData(updatedData);
 
             try {
-                // Set name from user profile first if available
-                if (user) {
-                  setOrderName(prev => prev || user.displayName || '');
-                }
-
-                // If a phone number is available, look up customer data for name and addresses
-                if (phoneToUse) {
+                // Prefill user data if available
+                setOrderName(user?.displayName || '');
+                if (phoneToLookup) {
                     const lookupRes = await fetch('/api/customer/lookup', {
                         method: 'POST', headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ phone: phoneToUse }),
+                        body: JSON.stringify({ phone: phoneToLookup }),
                     });
                     if (lookupRes.ok) {
                         const data = await lookupRes.json();
-                        setOrderName(prev => prev || data.name || ''); // Don't overwrite if user.displayName was set
-                        if (isDelivery) {
+                        setOrderName(prev => prev || data.name || '');
+                        if (deliveryType === 'delivery') {
                             setUserAddresses(data.addresses || []);
-                            if (!selectedAddress && data.addresses?.length > 0) {
-                                setSelectedAddress(data.addresses[0]);
-                            }
-                        }
-                    }
-                } else if (user && isDelivery) { // Fallback for logged-in user without phone in URL
-                    const idToken = await user.getIdToken();
-                    const locationsRes = await fetch('/api/user/addresses', { headers: { 'Authorization': `Bearer ${idToken}` } });
-                    if (locationsRes.ok) {
-                        const { addresses } = await locationsRes.json();
-                        setUserAddresses(addresses || []);
-                        if (!selectedAddress && addresses?.length > 0) {
-                            setSelectedAddress(addresses[0]);
+                            setSelectedAddress(prev => prev || data.addresses?.[0] || null);
                         }
                     }
                 }
 
-                // Fetch payment settings regardless of user state
+                // Fetch payment settings
                 const paymentSettingsRes = await fetch(`/api/owner/settings?restaurantId=${restaurantId}`);
-                 if (paymentSettingsRes.ok) {
+                if (paymentSettingsRes.ok) {
                     const paymentData = await paymentSettingsRes.json();
-                    if (isDelivery) setCodEnabled(paymentData.deliveryCodEnabled);
-                    else if (parsedData.deliveryType === 'pickup') setCodEnabled(paymentData.pickupPodEnabled);
-                    else if (parsedData.deliveryType === 'dine-in') setCodEnabled(paymentData.dineInPayAtCounterEnabled);
-                    else setCodEnabled(false);
-                 }
+                    if (deliveryType === 'delivery') setCodEnabled(paymentData.deliveryCodEnabled);
+                    else if (deliveryType === 'pickup') setCodEnabled(paymentData.pickupPodEnabled);
+                    else if (deliveryType === 'dine-in') setCodEnabled(paymentData.dineInPayAtCounterEnabled);
+                }
             } catch (err) {
                 setError('Failed to load checkout details. Please try again.');
             } finally {
@@ -294,7 +243,7 @@ const CheckoutPageInternal = () => {
         if (!isUserLoading) {
             verifyAndFetch();
         }
-    }, [restaurantId, router, phoneFromUrl, token, tableId, tabId, user, isUserLoading]);
+    }, [restaurantId, phoneFromUrl, token, tableId, tabId, user, isUserLoading, router]);
     
 
 
@@ -407,6 +356,10 @@ const CheckoutPageInternal = () => {
     
     if (tokenError) {
         return <TokenVerificationLock message={tokenError} />;
+    }
+
+    if (!isTokenValid) {
+        return <div className="min-h-screen bg-background flex items-center justify-center"><Loader2 className="animate-spin text-primary h-16 w-16"/></div>;
     }
 
     const deliveryType = tableId ? 'dine-in' : (cartData?.deliveryType || 'delivery');

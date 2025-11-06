@@ -1,4 +1,3 @@
-
 'use client';
 
 import React, { useState, useEffect, useMemo, Suspense } from 'react';
@@ -162,10 +161,9 @@ const TokenVerificationLock = ({ message }) => (
 const CartPageInternal = () => {
     const router = useRouter();
     const searchParams = useSearchParams();
-    const { user } = useUser(); // Get user from Firebase
+    const { user, isUserLoading } = useUser(); // Get user from Firebase
     const restaurantId = searchParams.get('restaurantId');
     
-    // --- START: MODIFIED TOKEN VERIFICATION LOGIC ---
     const [isTokenValid, setIsTokenValid] = useState(false);
     const [tokenError, setTokenError] = useState('');
     const phone = searchParams.get('phone');
@@ -189,44 +187,54 @@ const CartPageInternal = () => {
 
     useEffect(() => {
         const verifyToken = async () => {
-            // If tableId is present, it's a dine-in session. No token needed.
-            if (tableId) {
+            // Dine-in or logged-in users don't need token verification on this page
+            if (tableId || user) {
                 setIsTokenValid(true);
                 setLoadingPage(false);
                 return;
             }
 
-            // Otherwise, it's a WhatsApp session, so phone and token are required.
-            if (!phone || !token) {
-                setTokenError("No session information found. Please start a new order from WhatsApp.");
-                setLoadingPage(false);
-                return;
-            }
+            const tokenToUse = token && token.trim() !== '' ? token : null;
 
-            try {
-                const res = await fetch('/api/auth/verify-token', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ phone, token }),
-                });
-                if (!res.ok) {
-                    const errData = await res.json();
-                    throw new Error(errData.message || "Session validation failed.");
+            if (tokenToUse) {
+                 if (!phone) {
+                    setTokenError("A phone number is required with the session token.");
+                    setLoadingPage(false);
+                    return;
                 }
-                setIsTokenValid(true);
-            } catch (err) {
-                setTokenError(err.message);
-            } finally {
+                try {
+                    const res = await fetch('/api/auth/verify-token', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ phone, token: tokenToUse }),
+                    });
+                    if (!res.ok) {
+                        const errData = await res.json();
+                        throw new Error(errData.message || "Session validation failed.");
+                    }
+                } catch (err) {
+                    setTokenError(err.message);
+                    setLoadingPage(false);
+                    return;
+                }
+            } else if (!isUserLoading) {
+                setTokenError("No session token found. Please start your order from WhatsApp or log in.");
                 setLoadingPage(false);
+                return;
             }
+            
+            if (!isUserLoading) {
+                setIsTokenValid(true);
+            }
+            setLoadingPage(false);
         };
 
-        verifyToken();
-    }, [phone, token, tableId]);
-    // --- END: MODIFIED TOKEN VERIFICATION LOGIC ---
+        if (!isUserLoading) {
+            verifyToken();
+        }
+    }, [phone, token, tableId, user, isUserLoading]);
     
     useEffect(() => {
-        // This effect runs only after the token has been successfully validated
         if (isTokenValid && restaurantId) {
             const data = localStorage.getItem(`cart_${restaurantId}`);
             if (data) {
@@ -407,7 +415,7 @@ const CartPageInternal = () => {
 
         appliedCoupons.forEach(coupon => {
             if (subtotal < coupon.minOrder) return;
-            if (coupon.type === 'free_delivery') return; // Handled separately
+            if (coupon.type === 'free_delivery') return;
             
             let currentDiscount = 0;
             if (coupon.type === 'flat') {
@@ -473,7 +481,6 @@ const CartPageInternal = () => {
     const specialCoupons = allCoupons.filter(c => c.customerId);
     const normalCoupons = allCoupons.filter(c => !c.customerId);
 
-    // --- START: MODIFIED RENDER LOGIC ---
     if (loadingPage) {
         return <div className="min-h-screen bg-background flex items-center justify-center"><Loader2 className="animate-spin text-primary h-16 w-16"/></div>;
     }
@@ -483,10 +490,8 @@ const CartPageInternal = () => {
     }
 
     if (!isTokenValid) {
-        // This should theoretically not be reached if the lock screen works, but as a fallback:
         return <div className="min-h-screen bg-background flex items-center justify-center"><p className="text-destructive">Session could not be verified.</p></div>;
     }
-    // --- END: MODIFIED RENDER LOGIC ---
 
     if (!cartData || !restaurantId) {
         return (
@@ -800,5 +805,3 @@ const CartPage = () => (
 );
 
 export default CartPage;
-
-    

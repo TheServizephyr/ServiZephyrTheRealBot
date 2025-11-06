@@ -1,4 +1,3 @@
-
 'use client';
 
 import React, { useState, useEffect, Suspense, useRef, useCallback } from 'react';
@@ -40,6 +39,7 @@ const AddAddressPageInternal = () => {
     const [tokenError, setTokenError] = useState('');
     const phone = searchParams.get('phone');
     const token = searchParams.get('token');
+    const tableId = searchParams.get('table');
 
     const [mapCenter, setMapCenter] = useState({ lat: 28.6139, lng: 77.2090 });
     const [addressDetails, setAddressDetails] = useState(null);
@@ -60,12 +60,16 @@ const AddAddressPageInternal = () => {
 
     useEffect(() => {
         const verifyToken = async () => {
-            const phoneToUse = phone && phone.trim() !== '' ? phone : null;
+            // Dine-in or logged-in users don't need token verification for this page
+            if (tableId || user) {
+                setIsTokenValid(true);
+                return;
+            }
+
             const tokenToUse = token && token.trim() !== '' ? token : null;
             
-            // If token is present, it's a WhatsApp session, which takes priority.
             if (tokenToUse) {
-                if (!phoneToUse) {
+                if (!phone) {
                     setTokenError("A phone number is required with the session token.");
                     setLoading(false);
                     return;
@@ -73,7 +77,7 @@ const AddAddressPageInternal = () => {
                  try {
                     const res = await fetch('/api/auth/verify-token', {
                         method: 'POST', headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ phone: phoneToUse, token: tokenToUse }),
+                        body: JSON.stringify({ phone: phone, token: tokenToUse }),
                     });
                     if (!res.ok) {
                         const errData = await res.json();
@@ -85,19 +89,21 @@ const AddAddressPageInternal = () => {
                     return;
                 }
             } 
-            // If no token, check if the user is logged in via Firebase Auth.
-            else if (!user && !isUserLoading) {
+            else if (!isUserLoading) { // Only show error if we're sure user is not logged in
                 setTokenError("No session token found. Please start your order from WhatsApp or log in.");
                 setLoading(false);
                 return;
             }
-             // If we reach here, token is valid or user is logged in and loading is finished
-             if (!isUserLoading) {
+             
+            if (!isUserLoading) {
                 setIsTokenValid(true);
-             }
+            }
         };
-        verifyToken();
-    }, [phone, token, user, isUserLoading]);
+        
+        if (!isUserLoading) {
+           verifyToken();
+        }
+    }, [tableId, phone, token, user, isUserLoading]);
     
     const reverseGeocode = useCallback(async (coords) => {
         if (geocodeTimeoutRef.current) clearTimeout(geocodeTimeoutRef.current);
