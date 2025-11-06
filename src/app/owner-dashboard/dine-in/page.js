@@ -866,7 +866,9 @@ function DineInPage() {
             if (!user) return;
             const idToken = await user.getIdToken();
             
-            const settingsUrl = `/api/owner/settings?impersonate_owner_id=${impersonatedOwnerId || ''}`;
+            const finalImpersonatedId = impersonatedOwnerId || searchParams.get('impersonate_owner_id');
+            const settingsUrl = `/api/owner/settings${finalImpersonatedId ? `?impersonate_owner_id=${finalImpersonatedId}` : ''}`;
+            
             const [ordersData, tablesData, settingsData, requestsData] = await Promise.all([
                  handleApiCall('GET', null, '/api/owner/orders'),
                  handleApiCall('GET', null, '/api/owner/dine-in-tables'),
@@ -1234,3 +1236,5 @@ function DineInPage() {
 }
 
 export default DineInPage;
+
+    
