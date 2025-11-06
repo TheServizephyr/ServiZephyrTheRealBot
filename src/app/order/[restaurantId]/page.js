@@ -621,14 +621,22 @@ const OrderPageInternal = () => {
     const searchParams = useSearchParams();
     const { restaurantId } = params;
     
-    // --- START: NEW TOKEN VERIFICATION LOGIC ---
+    // --- START: MODIFIED TOKEN VERIFICATION LOGIC ---
     const [isTokenValid, setIsTokenValid] = useState(false);
     const [tokenError, setTokenError] = useState('');
     const phone = searchParams.get('phone');
     const token = searchParams.get('token');
+    const tableIdFromUrl = searchParams.get('table');
 
     useEffect(() => {
         const verifyToken = async () => {
+            // If tableId is present, this is a QR code scan. Bypass token check.
+            if (tableIdFromUrl) {
+                setIsTokenValid(true);
+                return;
+            }
+
+            // Otherwise, proceed with the original phone/token check for WhatsApp users.
             if (!phone || !token) {
                 setTokenError("No session information found. Please start your order from WhatsApp.");
                 return;
@@ -651,8 +659,8 @@ const OrderPageInternal = () => {
         };
 
         verifyToken();
-    }, [phone, token]);
-    // --- END: NEW TOKEN VERIFICATION LOGIC ---
+    }, [phone, token, tableIdFromUrl]);
+    // --- END: MODIFIED TOKEN VERIFICATION LOGIC ---
 
     const [customerLocation, setCustomerLocation] = useState(null);
     const [restaurantData, setRestaurantData] = useState({
@@ -693,7 +701,6 @@ const OrderPageInternal = () => {
     const [dineInState, setDineInState] = useState('loading');
     const [activeTabInfo, setActiveTabInfo] = useState({ id: null, name: '', total: 0 });
 
-    const tableIdFromUrl = searchParams.get('table');
     const tabIdFromUrl = searchParams.get('tabId');
 
 
@@ -815,8 +822,7 @@ const OrderPageInternal = () => {
             restaurantName: restaurantData.name,
             phone: phone, 
             token: token,
-            deliveryCharge: restaurantData.deliveryCharge, // Explicitly save delivery charge
-            // Pass the rest of the restaurant data object
+            deliveryCharge: restaurantData.deliveryCharge,
             ...restaurantData, 
             loyaltyPoints,
             expiryTimestamp,
