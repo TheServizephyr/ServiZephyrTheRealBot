@@ -5,11 +5,48 @@ import { nanoid } from 'nanoid';
 
 export async function POST(req) {
     console.log("[API][generate-session-token] POST request received.");
-    try {
-        const uid = await verifyAndGetUid(req);
-        const firestore = await getFirestore();
+    const firestore = await getFirestore();
 
-        // 1. Fetch user's phone number from 'users' collection
+    try {
+        const { tableId, restaurantId } = await req.json();
+
+        // --- DINE-IN TOKEN GENERATION ---
+        if (tableId && restaurantId) {
+            console.log(`[API][generate-session-token] Dine-in token request for table: ${tableId}`);
+            
+            // Check if there's already an active token for this table
+            const tokensRef = firestore.collection('auth_tokens');
+            const activeTokenQuery = await tokensRef
+                .where('tableId', '==', tableId)
+                .where('restaurantId', '==', restaurantId)
+                .where('expiresAt', '>', new Date())
+                .limit(1)
+                .get();
+
+            if (!activeTokenQuery.empty) {
+                const existingToken = activeTokenQuery.docs[0];
+                console.error(`[API][generate-session-token] Active session already exists for table ${tableId}. Blocking new session.`);
+                return NextResponse.json({ message: `This table is currently occupied. Please use the original device or see the host for assistance.` }, { status: 409 }); // 409 Conflict
+            }
+
+            const token = nanoid(32); // Longer token for security
+            const expiresAt = new Date(Date.now() + 6 * 60 * 60 * 1000); // 6-hour validity for dine-in
+
+            const authTokenRef = firestore.collection('auth_tokens').doc(token);
+            await authTokenRef.set({
+                tableId: tableId,
+                restaurantId: restaurantId,
+                expiresAt: expiresAt,
+                type: 'dine-in'
+            });
+            
+            console.log(`[API][generate-session-token] Generated new DINE-IN token for table: ${tableId}`);
+            return NextResponse.json({ token, expiresAt }, { status: 200 });
+        }
+
+
+        // --- WHATSAPP TOKEN GENERATION (existing logic) ---
+        const uid = await verifyAndGetUid(req); // This will throw if not authenticated
         const userRef = firestore.collection('users').doc(uid);
         const userDoc = await userRef.get();
 
@@ -26,27 +63,29 @@ export async function POST(req) {
             return NextResponse.json({ message: 'Phone number not found in your profile. Please update it.' }, { status: 400 });
         }
 
-        // 2. Generate a secure, unique token
         const token = nanoid(24);
         const expiresAt = new Date(Date.now() + 2 * 60 * 60 * 1000); // 2-hour validity
 
-        // 3. Save token to Firestore
         const authTokenRef = firestore.collection('auth_tokens').doc(token);
         await authTokenRef.set({
             phone: phone,
             expiresAt: expiresAt,
-            uid: uid // Optional: link token to user for auditing
+            uid: uid,
+            type: 'whatsapp'
         });
         
-        console.log(`[API][generate-session-token] Generated new token for phone: ${phone}`);
-
-        // 4. Return the phone number and token
-        return NextResponse.json({ phone, token }, { status: 200 });
+        console.log(`[API][generate-session-token] Generated new WHATSAPP token for phone: ${phone}`);
+        return NextResponse.json({ phone, token, expiresAt }, { status: 200 });
 
     } catch (error) {
         console.error('GENERATE SESSION TOKEN API ERROR:', error);
+        // If verifyAndGetUid fails, it will have a status property
         if (error.status) {
             return NextResponse.json({ message: error.message }, { status: error.status });
+        }
+        // Handle cases where body parsing might fail or other errors
+        if (error instanceof SyntaxError) {
+             return NextResponse.json({ message: 'Invalid request body.' }, { status: 400 });
         }
         return NextResponse.json({ message: `Backend Error: ${error.message}` }, { status: 500 });
     }

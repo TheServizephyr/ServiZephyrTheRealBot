@@ -31,9 +31,9 @@ const QrScanner = dynamic(() => import('@/components/QrScanner'), {
 const TokenVerificationLock = ({ message }) => (
     <div className="min-h-screen bg-background flex flex-col items-center justify-center text-center p-4">
         <Lock size={48} className="text-destructive mb-4" />
-        <h1 className="text-2xl font-bold text-foreground">Session Invalid</h1>
+        <h1 className="text-2xl font-bold text-foreground">Session Invalid or Table Occupied</h1>
         <p className="mt-2 text-muted-foreground max-w-md">{message}</p>
-        <p className="mt-4 text-sm text-muted-foreground">Please initiate a new session by sending a message to the restaurant on WhatsApp.</p>
+        <p className="mt-4 text-sm text-muted-foreground">If you have an ongoing order, please use the original device. Otherwise, please see the host for assistance.</p>
     </div>
 );
 
@@ -621,46 +621,75 @@ const OrderPageInternal = () => {
     const searchParams = useSearchParams();
     const { restaurantId } = params;
     
-    // --- START: MODIFIED TOKEN VERIFICATION LOGIC ---
+    // --- START: UNIFIED TOKEN/SESSION LOGIC ---
     const [isTokenValid, setIsTokenValid] = useState(false);
     const [tokenError, setTokenError] = useState('');
     const phone = searchParams.get('phone');
     const token = searchParams.get('token');
     const tableIdFromUrl = searchParams.get('table');
+    // The session token is now the primary identifier for dine-in
+    const sessionToken = searchParams.get('session_token');
 
     useEffect(() => {
-        const verifyToken = async () => {
-            // If tableId is present, this is a QR code scan. Bypass token check.
-            if (tableIdFromUrl) {
-                setIsTokenValid(true);
-                return;
-            }
-
-            // Otherwise, proceed with the original phone/token check for WhatsApp users.
-            if (!phone || !token) {
-                setTokenError("No session information found. Please start your order from WhatsApp.");
-                return;
-            }
-
-            try {
-                const res = await fetch('/api/auth/verify-token', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ phone, token }),
-                });
-                if (!res.ok) {
-                    const errData = await res.json();
-                    throw new Error(errData.message || "Session validation failed.");
+        const verifySession = async () => {
+            // Dine-in with a session token is a valid session
+            if (tableIdFromUrl && sessionToken) {
+                // Verify this session token is valid for this table
+                 try {
+                    const res = await fetch('/api/auth/verify-token', {
+                        method: 'POST', headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ tableId: tableIdFromUrl, token: sessionToken }),
+                    });
+                    if (!res.ok) throw new Error((await res.json()).message || "Session token is invalid for this table.");
+                    setIsTokenValid(true);
+                } catch (err) {
+                    setTokenError(err.message);
                 }
-                setIsTokenValid(true);
-            } catch (err) {
-                setTokenError(err.message);
+                return;
             }
+
+            // Dine-in on first scan (no session token yet) - needs to generate one
+            if (tableIdFromUrl && !sessionToken) {
+                try {
+                    console.log("[Dine-in] First scan detected. Generating session token for table:", tableIdFromUrl);
+                    const res = await fetch('/api/auth/generate-session-token', {
+                         method: 'POST', headers: { 'Content-Type': 'application/json' },
+                         body: JSON.stringify({ tableId: tableIdFromUrl, restaurantId: restaurantId }),
+                    });
+                    const data = await res.json();
+                    if (!res.ok) throw new Error(data.message || 'Could not start a new table session.');
+                    
+                    // Redirect to the new URL with the session token
+                    router.replace(`/order/${restaurantId}?table=${tableIdFromUrl}&session_token=${data.token}`);
+                    // The page will re-render with the new URL, and the logic above will handle verification.
+                } catch (err) {
+                    setTokenError(err.message);
+                }
+                return;
+            }
+            
+            // WhatsApp flow - requires phone and token
+            if (phone && token) {
+                try {
+                    const res = await fetch('/api/auth/verify-token', {
+                        method: 'POST', headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ phone, token }),
+                    });
+                    if (!res.ok) throw new Error((await res.json()).message || "Session validation failed.");
+                    setIsTokenValid(true);
+                } catch (err) {
+                    setTokenError(err.message);
+                }
+                return;
+            }
+
+            // If none of the above conditions are met, the session is invalid
+            setTokenError("No valid session information found. Please scan the QR code again or start a new order from WhatsApp.");
         };
 
-        verifyToken();
-    }, [phone, token, tableIdFromUrl]);
-    // --- END: MODIFIED TOKEN VERIFICATION LOGIC ---
+        verifySession();
+    }, [restaurantId, tableIdFromUrl, sessionToken, phone, token, router]);
+    // --- END: UNIFIED TOKEN/SESSION LOGIC ---
 
     const [customerLocation, setCustomerLocation] = useState(null);
     const [restaurantData, setRestaurantData] = useState({
@@ -734,7 +763,6 @@ const OrderPageInternal = () => {
 
 
     useEffect(() => {
-        // This effect now runs only after token verification is successful
         const fetchInitialData = async () => {
             if (!restaurantId || restaurantId === 'undefined') {
                 setError("Restaurant ID is invalid.");
@@ -796,11 +824,11 @@ const OrderPageInternal = () => {
         if (isTokenValid) {
             fetchInitialData();
         } else if (!tokenError) {
-            setLoading(true); // Show loader while token is being verified
+            setLoading(true);
         } else {
-            setLoading(false); // Stop loading if there's a token error
+            setLoading(false);
         }
-    }, [isTokenValid, tokenError, restaurantId, phone, tableIdFromUrl, tabIdFromUrl]);
+    }, [isTokenValid, tokenError, restaurantId, phone, tableIdFromUrl, tabIdFromUrl, sessionToken]);
     
     const cartPersistenceDependencies = [
         restaurantId,
@@ -821,14 +849,15 @@ const OrderPageInternal = () => {
             cart, notes, deliveryType, restaurantId,
             restaurantName: restaurantData.name,
             phone: phone, 
-            token: token,
+            token: token || sessionToken, // Store the session token for dine-in
+            tableId: tableIdFromUrl,
             deliveryCharge: restaurantData.deliveryCharge,
             ...restaurantData, 
             loyaltyPoints,
             expiryTimestamp,
         };
         localStorage.setItem(`cart_${restaurantId}`, JSON.stringify(cartDataToSave));
-    }, [cart, notes, deliveryType, ...cartPersistenceDependencies, loading, isTokenValid]);
+    }, [cart, notes, deliveryType, ...cartPersistenceDependencies, loading, isTokenValid, sessionToken, tableIdFromUrl]);
 
     useEffect(() => {
         if (restaurantId && isTokenValid) {
@@ -846,7 +875,7 @@ const OrderPageInternal = () => {
                 }
             }
         }
-    }, [restaurantId, tableIdFromUrl, isTokenValid, phone, token]);
+    }, [restaurantId, tableIdFromUrl, isTokenValid, phone, token, sessionToken]);
 
     const searchPlaceholder = useMemo(() => {
         return restaurantData.businessType === 'shop' ? 'Search for a product...' : 'Search for a dish...';
@@ -981,10 +1010,13 @@ const OrderPageInternal = () => {
     const handleCheckout = () => {
         const params = new URLSearchParams({
             restaurantId,
-            phone: phone || '', // Ensure it's not null
-            token: token || '', // Ensure it's not null
+            phone: phone || '',
+            token: token || '',
         });
-        if (tableIdFromUrl) params.append('table', tableIdFromUrl);
+        if (tableIdFromUrl) {
+             params.append('table', tableIdFromUrl);
+             params.append('session_token', sessionToken);
+        }
 
         let currentCartData = JSON.parse(localStorage.getItem(`cart_${restaurantId}`)) || {};
         if (deliveryType === 'dine-in') {
@@ -1016,7 +1048,6 @@ const OrderPageInternal = () => {
         }
     }, [isQrScannerOpen]);
     
-    // --- START: MODIFIED RENDER LOGIC ---
     if (loading) {
         return <div className="min-h-screen bg-background flex items-center justify-center"><Loader2 className="animate-spin text-primary h-16 w-16" /></div>;
     }
@@ -1026,11 +1057,8 @@ const OrderPageInternal = () => {
     }
     
     if (!isTokenValid) {
-        // This state occurs between the component mounting and the token being verified.
-        // It's a good place to show a loader.
         return <div className="min-h-screen bg-background flex items-center justify-center"><Loader2 className="animate-spin text-primary h-16 w-16" /></div>;
     }
-    // --- END: MODIFIED RENDER LOGIC ---
     
     if (error || restaurantData.status === 'rejected' || restaurantData.status === 'suspended') {
        return (
