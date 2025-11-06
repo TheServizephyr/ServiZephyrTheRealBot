@@ -59,7 +59,7 @@ export async function POST(req) {
         
         console.log(`[DEBUG] /api/customer/register: User status: ${isNewUser ? 'New/Unclaimed User' : 'Existing Customer'}. User ID will be: ${userId}`);
 
-        const customerLocation = (address && typeof address.latitude === 'number' && typeof address.longitude === 'number')
+        const customerLocation = (deliveryType === 'delivery' && address && typeof address.latitude === 'number' && typeof address.longitude === 'number')
             ? new GeoPoint(address.latitude, address.longitude)
             : null;
         console.log(`[DEBUG] /api/customer/register: Customer location extracted:`, customerLocation);
@@ -122,7 +122,7 @@ export async function POST(req) {
             console.log(`[DEBUG] /api/customer/register: Creating unclaimed profile for new user ${normalizedPhone}.`);
             const unclaimedUserRef = firestore.collection('unclaimed_profiles').doc(normalizedPhone);
             const newOrderedFrom = { restaurantId, restaurantName: businessData.name, businessType };
-            const addressesToSave = address ? [{ ...address, full: address.full }] : []; 
+            const addressesToSave = (deliveryType === 'delivery' && address) ? [{ ...address, full: address.full }] : []; 
             batch.set(unclaimedUserRef, {
                 name: name, phone: normalizedPhone, addresses: addressesToSave,
                 createdAt: FieldValue.serverTimestamp(),

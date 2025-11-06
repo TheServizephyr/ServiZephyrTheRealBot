@@ -145,9 +145,8 @@ const AddAddressPageInternal = () => {
 
     useEffect(() => {
         const prefillData = async () => {
-            const phoneToUse = phone && phone.trim() !== '' ? phone : null;
+            const phoneToUse = phone || user?.phoneNumber;
             
-            // If phone from URL (WhatsApp session) exists, prioritize it for lookup
             if (phoneToUse) {
                 setRecipientPhone(phoneToUse);
                  try {
@@ -160,31 +159,8 @@ const AddAddressPageInternal = () => {
                     console.warn("Could not prefill name from customer lookup:", e);
                 }
             } 
-            // If no phone from URL, but user is logged in via Firebase Auth, fetch from database
-            else if (user) {
-                // ** START THE FIX **
-                if (!recipientName) setRecipientName(user.displayName || '');
-                if (!recipientPhone) setRecipientPhone(user.phoneNumber || '');
-                // ** END THE FIX **
-                try {
-                    const idToken = await user.getIdToken();
-                    const res = await fetch('/api/owner/settings', {
-                        headers: { 'Authorization': `Bearer ${idToken}` }
-                    });
-                    if (res.ok) {
-                        const userData = await res.json();
-                        if (!recipientName) setRecipientName(userData.name || user.displayName || '');
-                        if (!recipientPhone) setRecipientPhone(userData.phone || user.phoneNumber || '');
-                    } else {
-                        // Fallback if API fails
-                        if (!recipientName) setRecipientName(user.displayName || '');
-                        if (!recipientPhone) setRecipientPhone(user.phoneNumber || '');
-                    }
-                } catch (e) {
-                     console.warn("Could not prefill data from settings API:", e);
-                     if (!recipientName) setRecipientName(user.displayName || '');
-                     if (!recipientPhone) setRecipientPhone(user.phoneNumber || '');
-                }
+            if (user && !recipientName) {
+                setRecipientName(user.displayName || '');
             }
         };
         
@@ -193,11 +169,10 @@ const AddAddressPageInternal = () => {
             if (useCurrent && !addressDetails) {
                 getCurrentGeolocation();
             } else if (!addressDetails) {
-                // Trigger initial geocode for the default map center
                 reverseGeocode(mapCenter);
             }
         }
-    }, [isTokenValid, user, phone, useCurrent, getCurrentGeolocation, reverseGeocode, addressDetails]);
+    }, [isTokenValid, user, phone, useCurrent, getCurrentGeolocation, reverseGeocode, addressDetails, recipientName]);
 
 
     const handleConfirmLocation = async () => {
@@ -233,8 +208,7 @@ const AddAddressPageInternal = () => {
         localStorage.setItem('customerLocation', JSON.stringify(addressToSave));
 
         try {
-             // The phone number that identifies the user session
-            const sessionIdentifierPhone = phone || recipientPhone || user?.phoneNumber;
+            const sessionIdentifierPhone = phone || user?.phoneNumber || recipientPhone;
 
             const apiPayload = {
                 address: addressToSave,

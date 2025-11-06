@@ -134,12 +134,11 @@ const CheckoutPageInternal = () => {
     const searchParams = useSearchParams();
     const { user, isUserLoading } = useUser();
     const restaurantId = searchParams.get('restaurantId');
-    const phone = searchParams.get('phone');
+    const phoneFromUrl = searchParams.get('phone');
     const token = searchParams.get('token');
     const tableId = searchParams.get('table');
     const tabId = searchParams.get('tabId');
     
-    // --- START: MODIFIED TOKEN VERIFICATION LOGIC ---
     const [isTokenValid, setIsTokenValid] = useState(false);
     const [tokenError, setTokenError] = useState('');
 
@@ -161,13 +160,18 @@ const CheckoutPageInternal = () => {
     
     useEffect(() => {
         const verifyAndFetch = async () => {
-             // If tableId is present, it's a dine-in session. No token needed.
-             if (tableId) {
+            setLoading(true);
+            
+            // If tableId is present (Dine-In), no token is needed.
+            if (tableId) {
                 setIsTokenValid(true);
-                fetchInitialData();
+                // The primary phone number is from the URL for QR scans
+                setOrderPhone(phoneFromUrl || '');
+                fetchInitialData(phoneFromUrl);
                 return;
             }
 
+            // For other flows (Delivery/Pickup), a token or a logged-in user is required.
             const tokenToUse = token && token !== 'null' ? token : null;
 
             if (!tokenToUse && !user) {
@@ -179,15 +183,16 @@ const CheckoutPageInternal = () => {
             if (tokenToUse) {
                 try {
                     const res = await fetch('/api/auth/verify-token', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ phone, token: tokenToUse }),
+                        method: 'POST', headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ phone: phoneFromUrl, token: tokenToUse }),
                     });
                     if (!res.ok) {
                         const errData = await res.json();
                         throw new Error(errData.message || "Session validation failed.");
                     }
                     setIsTokenValid(true);
+                    setOrderPhone(phoneFromUrl);
+                    fetchInitialData(phoneFromUrl);
                 } catch (err) {
                     setTokenError(err.message);
                     setLoading(false);
@@ -195,22 +200,20 @@ const CheckoutPageInternal = () => {
                 }
             } else if (user) {
                 setIsTokenValid(true);
+                // For logged-in users, phone number comes from their auth profile
+                const primaryPhone = user.phoneNumber || '';
+                setOrderPhone(primaryPhone);
+                fetchInitialData(primaryPhone);
             } else {
                  setTokenError("No valid session found. Please start a new order.");
                  setLoading(false);
                  return;
             }
-            
-            fetchInitialData();
         };
 
-        const fetchInitialData = async () => {
-            if (!restaurantId) {
-                router.push('/');
-                return;
-            }
+        const fetchInitialData = async (phoneToUse) => {
+            if (!restaurantId) { router.push('/'); return; }
 
-            setLoading(true);
             setError('');
             setUserAddresses([]);
             setSelectedAddress(null);
@@ -220,16 +223,16 @@ const CheckoutPageInternal = () => {
             if (savedCartData) {
                 parsedData = JSON.parse(savedCartData);
                 const deliveryType = tableId ? 'dine-in' : (parsedData.deliveryType || 'delivery');
-                const updatedData = { ...parsedData, phone, token, tableId, dineInTabId: tabId, deliveryType };
+                const updatedData = { ...parsedData, phone: phoneToUse, token, tableId, dineInTabId: tabId, deliveryType };
                 setCart(updatedData.cart || []);
                 setAppliedCoupons(updatedData.appliedCoupons || []);
                 setCartData(updatedData);
-            } else if (tabId) {
-                parsedData = { dineInTabId: tabId, deliveryType: 'dine-in', phone, token };
+            } else if (tabId) { // Case for paying bill without items in cart
+                parsedData = { dineInTabId: tabId, deliveryType: 'dine-in', phone: phoneToUse, token };
                 setCartData(parsedData);
             } else {
                 const params = new URLSearchParams();
-                if (phone) params.append('phone', phone);
+                if (phoneToUse) params.append('phone', phoneToUse);
                 if (token) params.append('token', token);
                 if (tableId) params.append('table', tableId);
                 router.push(`/order/${restaurantId}?${params.toString()}`);
@@ -239,49 +242,40 @@ const CheckoutPageInternal = () => {
             const isDelivery = parsedData.deliveryType === 'delivery';
 
             try {
-                const phoneToLookup = phone || user?.phoneNumber;
-                setOrderPhone(phoneToLookup || '');
-                setOrderName(prev => prev || user?.displayName || '');
-                
-                if (isDelivery) {
-                    let customerAddressStr = localStorage.getItem('customerLocation');
-                     if (customerAddressStr) {
-                        const savedAddress = JSON.parse(customerAddressStr);
-                        setSelectedAddress(savedAddress);
-                        setOrderName(savedAddress.name || '');
-                        // If phone is missing from URL/Auth but present in address, use it.
-                        if (!phoneToLookup && savedAddress.phone) {
-                            setOrderPhone(savedAddress.phone);
-                        }
-                    }
-                    
-                    if (phoneToLookup) {
-                        const lookupRes = await fetch('/api/customer/lookup', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ phone: phoneToLookup }),
-                        });
-                        if (lookupRes.ok) {
-                            const data = await lookupRes.json();
+                // Set name from user profile first if available
+                if (user) {
+                  setOrderName(prev => prev || user.displayName || '');
+                }
+
+                // If a phone number is available, look up customer data for name and addresses
+                if (phoneToUse) {
+                    const lookupRes = await fetch('/api/customer/lookup', {
+                        method: 'POST', headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ phone: phoneToUse }),
+                    });
+                    if (lookupRes.ok) {
+                        const data = await lookupRes.json();
+                        setOrderName(prev => prev || data.name || ''); // Don't overwrite if user.displayName was set
+                        if (isDelivery) {
                             setUserAddresses(data.addresses || []);
-                            if (!orderName) setOrderName(prev => prev || data.name || '');
                             if (!selectedAddress && data.addresses?.length > 0) {
                                 setSelectedAddress(data.addresses[0]);
                             }
                         }
-                    } else if (user) {
-                        const idToken = await user.getIdToken();
-                        const locationsRes = await fetch('/api/user/addresses', { headers: { 'Authorization': `Bearer ${idToken}` } });
-                        if (locationsRes.ok) {
-                            const { addresses } = await locationsRes.json();
-                            setUserAddresses(addresses || []);
-                            if (!selectedAddress && addresses?.length > 0) {
-                                 setSelectedAddress(addresses[0]);
-                            }
+                    }
+                } else if (user && isDelivery) { // Fallback for logged-in user without phone in URL
+                    const idToken = await user.getIdToken();
+                    const locationsRes = await fetch('/api/user/addresses', { headers: { 'Authorization': `Bearer ${idToken}` } });
+                    if (locationsRes.ok) {
+                        const { addresses } = await locationsRes.json();
+                        setUserAddresses(addresses || []);
+                        if (!selectedAddress && addresses?.length > 0) {
+                            setSelectedAddress(addresses[0]);
                         }
                     }
                 }
 
+                // Fetch payment settings regardless of user state
                 const paymentSettingsRes = await fetch(`/api/owner/settings?restaurantId=${restaurantId}`);
                  if (paymentSettingsRes.ok) {
                     const paymentData = await paymentSettingsRes.json();
@@ -300,14 +294,14 @@ const CheckoutPageInternal = () => {
         if (!isUserLoading) {
             verifyAndFetch();
         }
-    }, [restaurantId, router, phone, token, tableId, tabId, user, isUserLoading]);
+    }, [restaurantId, router, phoneFromUrl, token, tableId, tabId, user, isUserLoading]);
     
 
 
     const handleAddNewAddress = () => {
         const params = new URLSearchParams({
             returnUrl: window.location.href,
-            phone: phone || '',
+            phone: phoneFromUrl || '',
             token: token || '',
         });
         if (tableId) params.append('table', tableId);
@@ -350,7 +344,7 @@ const CheckoutPageInternal = () => {
     };
     
     const handleAddMoreToTab = () => {
-        router.push(`/order/${restaurantId}?table=${tableId}&phone=${phone}&token=${token}&tabId=${cartData.dineInTabId}`);
+        router.push(`/order/${restaurantId}?table=${tableId}&phone=${phoneFromUrl}&token=${token}&tabId=${cartData.dineInTabId}`);
     };
 
     const handleViewBill = () => {
@@ -363,6 +357,7 @@ const CheckoutPageInternal = () => {
         const deliveryType = cartData.tableId ? 'dine-in' : (cartData.deliveryType || 'delivery');
 
         if (!orderName || orderName.trim().length === 0) { setError("Please provide a name for the order."); return; }
+        if (!orderPhone || orderPhone.trim().length === 0) { setError("A valid phone number is required to place an order."); return; }
         
         if (deliveryType === 'delivery' && !selectedAddress) { setError("Please select or add a delivery address."); return; }
 
@@ -387,7 +382,7 @@ const CheckoutPageInternal = () => {
                     description: `Order from ${cartData.restaurantName}`, order_id: data.razorpay_order_id,
                     handler: function (response) {
                         localStorage.removeItem(`cart_${restaurantId}`);
-                        if (orderData.deliveryType === 'dine-in') router.push(`/order/${restaurantId}?table=${tableId}&tabId=${data.dine_in_tab_id || tabId}&phone=${phone}&token=${token}`);
+                        if (orderData.deliveryType === 'dine-in') router.push(`/order/${restaurantId}?table=${tableId}&tabId=${data.dine_in_tab_id || tabId}&phone=${phoneFromUrl}&token=${token}`);
                         else router.push(`/order/placed?orderId=${data.firestore_order_id}`);
                     },
                     prefill: { name: orderName, email: user?.email || "customer@servizephyr.com", contact: orderPhone },
@@ -396,7 +391,7 @@ const CheckoutPageInternal = () => {
                 rzp.open();
             } else {
                 localStorage.removeItem(`cart_${restaurantId}`);
-                if (orderData.deliveryType === 'dine-in') router.push(`/order/${restaurantId}?table=${tableId}&tabId=${data.dine_in_tab_id || tabId}&phone=${phone}&token=${token}`);
+                if (orderData.deliveryType === 'dine-in') router.push(`/order/${restaurantId}?table=${tableId}&tabId=${data.dine_in_tab_id || tabId}&phone=${phoneFromUrl}&token=${token}`);
                 else router.push(`/order/placed?orderId=${data.firestore_order_id}`);
             }
         } catch (err) {
@@ -450,6 +445,10 @@ const CheckoutPageInternal = () => {
                                 <Input id="name" value={orderName} onChange={(e) => setOrderName(e.target.value)} disabled={loading} />
                             </div>
                         )}
+                         <div>
+                            <Label htmlFor="phone">Phone Number</Label>
+                            <Input id="phone" value={orderPhone} onChange={(e) => setOrderPhone(e.target.value)} disabled={loading} />
+                        </div>
                     </div>
                     <DialogFooter>
                         <DialogClose asChild><Button variant="secondary" disabled={loading}>Cancel</Button></DialogClose>
@@ -542,4 +541,3 @@ const CheckoutPage = () => (
 );
 
 export default CheckoutPage;
-
