@@ -4,7 +4,7 @@ import { NextResponse } from 'next/server';
 import { getFirestore, FieldValue } from '@/lib/firebase-admin';
 import { getStorage } from 'firebase-admin/storage';
 import { sendWhatsAppMessage } from '@/lib/whatsapp';
-import { sendOrderStatusUpdateToCustomer } from '@/lib/notifications';
+import { sendOrderStatusUpdateToCustomer, sendNewOrderToOwner } from '@/lib/notifications';
 import axios from 'axios';
 import { nanoid } from 'nanoid';
 
@@ -107,6 +107,76 @@ const sendWelcomeMessageWithOptions = async (customerPhoneWithCode, business, bo
     
     await sendWhatsAppMessage(customerPhoneWithCode, payload, botPhoneNumberId);
 }
+
+// --- START: Dine-in Post-Paid Confirmation Logic ---
+const handleDineInConfirmation = async (firestore, text, fromNumber, business, botPhoneNumberId) => {
+    const orderIdMatch = text.match(/\(order_([a-zA-Z0-9]+)\)/);
+    if (!orderIdMatch || !orderIdMatch[1]) {
+        console.log(`[Webhook DineIn] No orderId found in message: "${text}"`);
+        return false; // Not a confirmation message
+    }
+    const orderId = orderIdMatch[1];
+    console.log(`[Webhook DineIn] Found confirmation request for orderId: ${orderId}`);
+
+    const orderRef = firestore.collection('orders').doc(orderId);
+    const orderSnap = await orderRef.get();
+
+    if (!orderSnap.exists || orderSnap.data().status !== 'pending_confirmation') {
+        await sendWhatsAppMessage(fromNumber, "Sorry, this order is invalid or has already been confirmed.", botPhoneNumberId);
+        return true;
+    }
+    
+    const orderData = orderSnap.data();
+    const customerPhone = fromNumber.startsWith('91') ? fromNumber.substring(2) : fromNumber;
+
+    // The "Checkmate" logic
+    const activeSessionQuery = firestore.collection('restaurants').doc(orderData.restaurantId)
+                                     .collection('tables').doc(orderData.tableId)
+                                     .collection('activeSessions')
+                                     .where('customerPhone', '==', customerPhone)
+                                     .where('status', '==', 'unpaid');
+    
+    const activeSessionSnap = await activeSessionQuery.get();
+    if (!activeSessionSnap.empty) {
+        await orderRef.delete(); // Delete the pending order
+        await sendWhatsAppMessage(fromNumber, "Sorry, you already have an unpaid bill at this table. Please clear the existing bill before starting a new order.", botPhoneNumberId);
+        return true;
+    }
+    
+    // If all good, confirm the order
+    const sessionRef = firestore.collection('restaurants').doc(orderData.restaurantId)
+                               .collection('tables').doc(orderData.tableId)
+                               .collection('activeSessions').doc(customerPhone);
+    
+    const batch = firestore.batch();
+    batch.update(orderRef, { status: 'confirmed', customerId: customerPhone });
+    batch.set(sessionRef, {
+        customerPhone: customerPhone,
+        customerName: orderData.customerName,
+        orderId: orderId,
+        status: 'unpaid',
+        createdAt: FieldValue.serverTimestamp()
+    });
+
+    await batch.commit();
+
+    await sendWhatsAppMessage(fromNumber, `Thanks, ${orderData.customerName}! Your order #${orderId.substring(0, 6)} is confirmed and has been sent to the kitchen.`, botPhoneNumberId);
+    
+    // Notify owner
+    if (business.data.ownerPhone && business.data.botPhoneNumberId) {
+        await sendNewOrderToOwner({
+            ownerPhone: business.data.ownerPhone,
+            botPhoneNumberId: business.data.botPhoneNumberId,
+            customerName: orderData.customerName,
+            totalAmount: orderData.grandTotal,
+            orderId: orderId,
+            restaurantName: business.data.name
+        });
+    }
+    
+    return true; // Indicates the message was handled
+};
+// --- END: Dine-in Post-Paid Confirmation Logic ---
 
 
 const handleButtonActions = async (firestore, buttonId, fromNumber, business, botPhoneNumberId) => {
@@ -229,6 +299,16 @@ export async function POST(request) {
             const message = change.value.messages[0];
             const fromNumber = message.from;
             const fromPhoneNumber = fromNumber.startsWith('91') ? fromNumber.substring(2) : fromNumber;
+
+            // --- START: Dine-in Check ---
+            if (message.type === 'text') {
+                const handled = await handleDineInConfirmation(firestore, message.text.body, fromNumber, business, botPhoneNumberId);
+                if (handled) {
+                    console.log(`[Webhook] Message handled by Dine-in flow. Skipping further processing.`);
+                    return NextResponse.json({ message: 'Dine-in confirmation processed.' }, { status: 200 });
+                }
+            }
+            // --- END: Dine-in Check ---
 
             const conversationRef = business.ref.collection('conversations').doc(fromPhoneNumber);
             const conversationSnap = await conversationRef.get();

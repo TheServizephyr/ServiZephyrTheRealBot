@@ -1,4 +1,3 @@
-
 'use client';
 
 import React, { useState, useEffect, Suspense } from 'react';
@@ -244,7 +243,8 @@ function SettingsPageContent() {
                 const userData = {
                     ...data,
                     bannerUrls: data.bannerUrls || [],
-                    address: data.address && typeof data.address === 'object' ? data.address : defaultAddress
+                    address: data.address && typeof data.address === 'object' ? data.address : defaultAddress,
+                    dineInModel: data.dineInModel || 'post-paid' // Default to Post-Paid
                 };
                 setUser(userData);
                 setEditedUser(userData);
@@ -374,6 +374,7 @@ function SettingsPageContent() {
                 deliveryEnabled: editedUser.deliveryEnabled,
                 pickupEnabled: editedUser.pickupEnabled,
                 dineInEnabled: editedUser.dineInEnabled,
+                dineInModel: editedUser.dineInModel, // The new Master Switch
                 deliveryOnlinePaymentEnabled: editedUser.deliveryOnlinePaymentEnabled,
                 deliveryCodEnabled: editedUser.deliveryCodEnabled,
                 pickupOnlinePaymentEnabled: editedUser.pickupOnlinePaymentEnabled,
@@ -402,7 +403,8 @@ function SettingsPageContent() {
             const updatedUser = await response.json();
              const finalUser = {
                 ...updatedUser,
-                address: updatedUser.address && typeof updatedUser.address === 'object' ? updatedUser.address : defaultAddress
+                address: updatedUser.address && typeof updatedUser.address === 'object' ? updatedUser.address : defaultAddress,
+                dineInModel: updatedUser.dineInModel || 'post-paid'
             };
             setUser(finalUser);
             setEditedUser(finalUser);
@@ -586,7 +588,7 @@ function SettingsPageContent() {
             {isBusinessOwner && (
             <>
                  <SectionCard
-                    title="Order & Delivery Settings"
+                    title="Order & Payment Settings"
                     description="Configure how you accept orders from customers."
                     footer={
                         <div className="flex justify-end gap-3">
@@ -602,6 +604,34 @@ function SettingsPageContent() {
                     }
                 >
                     <div className="space-y-6">
+                         {/* --- START: DINE-IN MASTER SWITCH --- */}
+                        {editedUser.dineInEnabled && (
+                        <div className="border-t border-border pt-6">
+                            <Label className="font-semibold text-lg">Dine-In Model (Master Switch)</Label>
+                            <p className="text-sm text-muted-foreground mb-4">Choose the primary billing flow for your dine-in customers.</p>
+                            <div className="grid md:grid-cols-2 gap-4">
+                                <button
+                                    type="button"
+                                    onClick={() => isEditingPayment && setEditedUser(prev => ({...prev, dineInModel: 'post-paid'}))}
+                                    className={cn("p-4 border-2 rounded-lg text-left transition-all", editedUser.dineInModel === 'post-paid' ? 'border-primary bg-primary/10' : 'border-border', isEditingPayment ? 'cursor-pointer hover:border-primary' : 'cursor-not-allowed opacity-70')}
+                                    disabled={!isEditingPayment}
+                                >
+                                    <h4 className="font-bold">Bill at the End (Post-Paid)</h4>
+                                    <p className="text-xs text-muted-foreground mt-1">Customers order freely and pay their total bill at the end. Ideal for fine dining, cafes.</p>
+                                </button>
+                                 <button
+                                    type="button"
+                                    onClick={() => isEditingPayment && setEditedUser(prev => ({...prev, dineInModel: 'pre-paid'}))}
+                                    className={cn("p-4 border-2 rounded-lg text-left transition-all", editedUser.dineInModel === 'pre-paid' ? 'border-primary bg-primary/10' : 'border-border', isEditingPayment ? 'cursor-pointer hover:border-primary' : 'cursor-not-allowed opacity-70')}
+                                    disabled={!isEditingPayment}
+                                >
+                                    <h4 className="font-bold">Pay First (Pre-Paid)</h4>
+                                    <p className="text-xs text-muted-foreground mt-1">Customers pay for their items before the order is sent to the kitchen. Ideal for QSRs, food courts.</p>
+                                </button>
+                            </div>
+                        </div>
+                        )}
+                        {/* --- END: DINE-IN MASTER SWITCH --- */}
                         <div>
                              <Label className="font-semibold text-lg">Order Types</Label>
                              <p className="text-sm text-muted-foreground mb-4">Choose which types of orders your business will accept.</p>

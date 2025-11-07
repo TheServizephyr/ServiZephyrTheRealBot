@@ -40,9 +40,31 @@ export async function POST(req) {
             return NextResponse.json({ message: 'This business does not exist.' }, { status: 404 });
         }
         console.log("[DEBUG] /api/customer/register: Business found.");
+        const businessData = businessDoc.data();
+
+        // --- START: WhatsApp Checkmate Dine-In Logic ---
+        if (deliveryType === 'dine-in' && businessData.dineInModel === 'post-paid' && !dineInTabId) {
+            console.log("[DEBUG] Post-paid dine-in flow initiated. Creating pending order.");
+            const newOrderRef = firestore.collection('orders').doc();
+            await newOrderRef.set({
+                // Add all necessary order details here
+                customerName: name, customerPhone: normalizedPhone, restaurantId,
+                items: items, notes: notes || null,
+                subtotal, cgst, sgst, grandTotal,
+                deliveryType, tableId,
+                status: 'pending_confirmation', // Special status
+                orderDate: FieldValue.serverTimestamp(),
+            });
+            console.log(`[DEBUG] Pending order created with ID: ${newOrderRef.id}`);
+            return NextResponse.json({ 
+                message: 'Order created pending WhatsApp confirmation.',
+                requires_confirmation: true,
+                order_id: newOrderRef.id,
+            }, { status: 200 });
+        }
+        // --- END: WhatsApp Checkmate Dine-In Logic ---
         
         let razorpayOrderId = null;
-        const businessData = businessDoc.data();
         
         console.log("[DEBUG] /api/customer/register: Checking for existing user with phone:", normalizedPhone);
         const usersRef = firestore.collection('users');
