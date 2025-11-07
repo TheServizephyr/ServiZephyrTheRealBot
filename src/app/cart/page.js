@@ -319,11 +319,64 @@ const CartPageInternal = () => {
         updateCartInStorage({ cart: [], appliedCoupons: [], tipAmount: 0 });
     };
 
-    const handleConfirmOrder = () => {
-        if (cartData?.dineInModel === 'post-paid' && deliveryType === 'dine-in') {
-            handlePostPaidCheckout();
-            return;
+    const handlePostPaidCheckout = async () => {
+        setInfoDialog({ isOpen: true, title: "Processing...", message: "Placing your order. Please wait." });
+    
+        const orderData = {
+            restaurantId,
+            items: cart,
+            notes: cartData?.notes || '',
+            subtotal: subtotal,
+            cgst: cgst,
+            sgst: sgst,
+            grandTotal: grandTotal,
+            deliveryType: 'dine-in',
+            tableId: tableId,
+            businessType: cartData?.businessType || 'restaurant',
+            // No name/phone needed, will be captured via WhatsApp
+        };
+    
+        try {
+            const res = await fetch('/api/customer/register', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(orderData)
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.message || "Failed to place order.");
+    
+            if (data.requires_confirmation) {
+                // Clear the cart *before* redirecting to WhatsApp
+                localStorage.removeItem(`cart_${restaurantId}`);
+                
+                const whatsappMessage = `Hello! Please confirm my order (order_${data.order_id}) at Table ${tableId}.`;
+                
+                // Fetch restaurant's bot phone number from settings
+                const settingsRes = await fetch(`/api/owner/settings?businessId=${restaurantId}`);
+                const settingsData = await settingsRes.json();
+                
+                const botPhoneNumber = settingsData?.botPhoneNumberId;
+                if (!botPhoneNumber) {
+                    throw new Error("Could not find the restaurant's WhatsApp number to start the chat.");
+                }
+
+                const whatsappUrl = `https://wa.me/91${botPhoneNumber}?text=${encodeURIComponent(whatsappMessage)}`;
+                
+                // Redirect user to WhatsApp
+                window.location.href = whatsappUrl;
+            }
+        } catch (err) {
+            setInfoDialog({ isOpen: true, title: "Error", message: err.message });
         }
+    };
+
+    const handleConfirmOrder = () => {
+        // --- START FIX: The main logic change is here ---
+        if (cartData?.dineInModel === 'post-paid' && deliveryType === 'dine-in') {
+            handlePostPaidCheckout(); // Directly trigger post-paid flow
+            return; // Stop further execution
+        }
+        // --- END FIX ---
 
         if (deliveryType === 'pickup' && !pickupTime) {
             setIsCheckoutFlow(true);
@@ -352,36 +405,6 @@ const CartPageInternal = () => {
             }
         }
         router.push(checkoutUrl);
-    };
-
-    const handlePostPaidCheckout = async () => {
-        setInfoDialog({ isOpen: true, title: "Processing...", message: "Placing your order. Please wait." });
-    
-        const orderData = {
-            // No name/phone needed here, will be captured by WhatsApp
-            restaurantId, items: cart, notes: cartData?.notes || '',
-            subtotal, cgst, sgst, grandTotal,
-            deliveryType: 'dine-in', tableId: tableId,
-            businessType: cartData?.businessType || 'restaurant',
-        };
-    
-        try {
-            const res = await fetch('/api/customer/register', {
-                method: 'POST', headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(orderData)
-            });
-            const data = await res.json();
-            if (!res.ok) throw new Error(data.message || "Failed to place order.");
-    
-            if (data.requires_confirmation) {
-                localStorage.removeItem(`cart_${restaurantId}`);
-                const whatsappMessage = `Hello ServiZephyr! Main Table ${tableId} par hun. Please mera order (order_${data.order_id}) confirm karein.`;
-                const whatsappUrl = `https://wa.me/?text=${encodeURIComponent(whatsappMessage)}`;
-                window.location.href = whatsappUrl;
-            }
-        } catch (err) {
-            setInfoDialog({ isOpen: true, title: "Error", message: err.message });
-        }
     };
     
 
