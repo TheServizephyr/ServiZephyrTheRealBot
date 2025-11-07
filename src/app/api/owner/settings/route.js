@@ -103,6 +103,7 @@ export async function GET(req) {
             dineInOnlinePaymentEnabled: businessData?.dineInOnlinePaymentEnabled === undefined ? true : businessData.dineInOnlinePaymentEnabled,
             dineInPayAtCounterEnabled: businessData?.dineInPayAtCounterEnabled === undefined ? true : businessData.dineInPayAtCounterEnabled,
             isOpen: businessData?.isOpen === undefined ? true : businessData.isOpen,
+            dineInModel: businessData?.dineInModel || 'post-paid', // <-- THE FIX: Fetch dineInModel, default to post-paid
             businessId: businessId
         };
 
@@ -149,6 +150,10 @@ export async function PATCH(req) {
             if (updates.pickupPodEnabled !== undefined) businessUpdateData.pickupPodEnabled = updates.pickupPodEnabled;
             if (updates.dineInOnlinePaymentEnabled !== undefined) businessUpdateData.dineInOnlinePaymentEnabled = updates.dineInOnlinePaymentEnabled;
             if (updates.dineInPayAtCounterEnabled !== undefined) businessUpdateData.dineInPayAtCounterEnabled = updates.dineInPayAtCounterEnabled;
+            
+            // --- THE FIX: Save the dineInModel to the database ---
+            if (updates.dineInModel !== undefined) businessUpdateData.dineInModel = updates.dineInModel;
+
 
             // Delivery Settings
             if (updates.deliveryRadius !== undefined) businessUpdateData.deliveryRadius = updates.deliveryRadius;
@@ -203,6 +208,7 @@ export async function PATCH(req) {
             dineInOnlinePaymentEnabled: finalBusinessData?.dineInOnlinePaymentEnabled === undefined ? true : finalBusinessData.dineInOnlinePaymentEnabled,
             dineInPayAtCounterEnabled: finalBusinessData?.dineInPayAtCounterEnabled === undefined ? true : finalBusinessData.dineInPayAtCounterEnabled,
             isOpen: finalBusinessData?.isOpen === undefined ? true : finalBusinessData.isOpen,
+            dineInModel: finalBusinessData?.dineInModel || 'post-paid', // <-- THE FIX: Return the updated dineInModel
             address: finalBusinessData?.address || { street: '', city: '', state: '', postalCode: '', country: 'IN' },
             businessId: finalBusinessId,
         };
@@ -214,3 +220,5 @@ export async function PATCH(req) {
         return NextResponse.json({ message: `Backend Error: ${error.message}` }, { status: error.status || 500 });
     }
 }
+
+    
