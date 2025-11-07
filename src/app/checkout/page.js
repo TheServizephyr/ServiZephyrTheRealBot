@@ -168,13 +168,14 @@ const CheckoutPageInternal = () => {
 
             // Session Verification Logic
             const tokenToUse = token && token.trim() !== '' ? token : null;
-            if (!tableId && !user && !tokenToUse) {
+            if (cartData?.dineInModel === 'post-paid' || (tableId && !phoneFromUrl && !tokenToUse && !user)) {
+                // Skip token verification for post-paid, as it's handled by WhatsApp checkmate
+                // Also skip if it's a direct table scan without prior session info
+            } else if (!tableId && !user && !tokenToUse) {
                 setTokenError("No session information found. Please start a new order.");
                 setLoading(false);
                 return;
-            }
-
-            if (tokenToUse && !tableId && !user) {
+            } else if (tokenToUse && !tableId && !user) {
                  try {
                     const res = await fetch('/api/auth/verify-token', {
                         method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -461,7 +462,7 @@ const CheckoutPageInternal = () => {
                                 {loading ? (
                                     <div className="w-full p-6 bg-card border-2 border-border rounded-lg animate-pulse h-[116px]"><div className="h-6 bg-muted rounded w-3/4"></div></div>
                                 ) : codEnabled ? (
-                                    <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} onClick={() => handlePaymentMethodSelect('cod')} className="w-full text-left p-6 bg-card border-2 border-border rounded-lg flex items-center gap-6 hover:border-primary transition-all">
+                                    <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} onClick={() => handleConfirmOrder('cod')} className="w-full text-left p-6 bg-card border-2 border-border rounded-lg flex items-center gap-6 hover:border-primary transition-all">
                                         <IndianRupee size={40} className="text-primary flex-shrink-0"/>
                                         <div>
                                             <h3 className="text-xl font-bold">{deliveryType === 'pickup' ? 'Pay at Store' : (deliveryType === 'dine-in' ? 'Pay at Counter' : 'Pay on Delivery')}</h3>

@@ -320,6 +320,11 @@ const CartPageInternal = () => {
     };
 
     const handleConfirmOrder = () => {
+        if (cartData?.dineInModel === 'post-paid' && deliveryType === 'dine-in') {
+            handlePostPaidCheckout();
+            return;
+        }
+
         if (deliveryType === 'pickup' && !pickupTime) {
             setIsCheckoutFlow(true);
             setIsPickupTimeModalOpen(true);
@@ -348,6 +353,37 @@ const CartPageInternal = () => {
         }
         router.push(checkoutUrl);
     };
+
+    const handlePostPaidCheckout = async () => {
+        setInfoDialog({ isOpen: true, title: "Processing...", message: "Placing your order. Please wait." });
+    
+        const orderData = {
+            // No name/phone needed here, will be captured by WhatsApp
+            restaurantId, items: cart, notes: cartData?.notes || '',
+            subtotal, cgst, sgst, grandTotal,
+            deliveryType: 'dine-in', tableId: tableId,
+            businessType: cartData?.businessType || 'restaurant',
+        };
+    
+        try {
+            const res = await fetch('/api/customer/register', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(orderData)
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.message || "Failed to place order.");
+    
+            if (data.requires_confirmation) {
+                localStorage.removeItem(`cart_${restaurantId}`);
+                const whatsappMessage = `Hello ServiZephyr! Main Table ${tableId} par hun. Please mera order (order_${data.order_id}) confirm karein.`;
+                const whatsappUrl = `https://wa.me/?text=${encodeURIComponent(whatsappMessage)}`;
+                window.location.href = whatsappUrl;
+            }
+        } catch (err) {
+            setInfoDialog({ isOpen: true, title: "Error", message: err.message });
+        }
+    };
+    
 
     const handleConfirmPickupTime = () => {
         setIsPickupTimeModalOpen(false);
@@ -784,7 +820,7 @@ const CartPageInternal = () => {
                 <div className="container mx-auto p-4 flex items-center justify-center gap-4">
                      {cart.length > 0 ? (
                         <Button onClick={handleConfirmOrder} className="flex-grow bg-primary hover:bg-primary/90 text-primary-foreground h-12 text-lg font-bold" disabled={cart.length === 0}>
-                            {deliveryType === 'dine-in' ? 'Add to Tab' : 'Proceed to Checkout'}
+                            {deliveryType === 'dine-in' ? (cartData?.dineInModel === 'post-paid' ? 'Place Order' : 'Add to Tab') : 'Proceed to Checkout'}
                         </Button>
                     ) : deliveryType === 'dine-in' ? (
                          <Button onClick={() => router.push(`/checkout?restaurantId=${restaurantId}&phone=${phone || ''}&token=${token || ''}&table=${tableId}&tabId=${tabId}`)} className="flex-grow bg-green-600 hover:bg-green-700 text-white h-12 text-lg font-bold">
