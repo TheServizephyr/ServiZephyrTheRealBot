@@ -164,8 +164,9 @@ const CartPageInternal = () => {
     const searchParams = useSearchParams();
     const { user, isUserLoading } = useUser(); // Get user from Firebase
     
-    // --- THE FIX: Get restaurantId directly from searchParams ---
+    // --- START: FIX ---
     const restaurantId = searchParams.get('restaurantId');
+    // --- END: FIX ---
     
     const [isTokenValid, setIsTokenValid] = useState(false);
     const [tokenError, setTokenError] = useState('');
@@ -235,10 +236,18 @@ const CartPageInternal = () => {
             }
         };
 
+        // --- START: FIX ---
+        // Redirect if restaurantId is missing
+        if (!restaurantId) {
+            router.push('/');
+            return;
+        }
+        // --- END: FIX ---
+
         if (!isUserLoading) {
             verifyToken();
         }
-    }, [phone, token, tableId, sessionToken, user, isUserLoading]);
+    }, [phone, token, tableId, sessionToken, user, isUserLoading, restaurantId, router]);
     
     useEffect(() => {
         // --- THE FIX: Ensure restaurantId exists before loading cart ---
@@ -434,6 +443,7 @@ const CartPageInternal = () => {
 
     const handleGoBack = () => {
         const params = new URLSearchParams();
+        if (restaurantId) params.append('restaurantId', restaurantId);
         if (phone) params.append('phone', phone);
         if (token) params.append('token', token);
         if (tableId) params.append('table', tableId);
@@ -557,7 +567,7 @@ const CartPageInternal = () => {
                 <ShoppingCart size={48} className="mb-4" />
                 <h1 className="text-2xl font-bold">Your Cart is Empty</h1>
                 <p className="mt-2">Looks like you haven't added anything to your cart yet.</p>
-                <Button onClick={() => router.back()} className="mt-6">
+                <Button onClick={handleGoBack} className="mt-6">
                     <ArrowLeft className="mr-2 h-4 w-4" /> Go Back
                 </Button>
             </div>

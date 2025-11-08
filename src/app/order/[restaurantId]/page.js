@@ -980,6 +980,9 @@ const OrderPageInternal = () => {
 
     const handleCheckout = () => {
         const params = new URLSearchParams();
+        // --- START FIX ---
+        if (restaurantId) params.append('restaurantId', restaurantId);
+        // --- END FIX ---
         if (phone) params.append('phone', phone);
         if (token) params.append('token', token);
         if (tableIdFromUrl) params.append('table', tableIdFromUrl);
