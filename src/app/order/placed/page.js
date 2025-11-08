@@ -3,26 +3,27 @@
 
 import React, { Suspense } from 'react';
 import { motion } from 'framer-motion';
-import { CheckCircle, ArrowLeft, Navigation } from 'lucide-react';
+import { CheckCircle, ArrowLeft, Navigation, MessageSquare } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useRouter, useSearchParams } from 'next/navigation';
 
 const OrderPlacedContent = () => {
     const router = useRouter();
     const searchParams = useSearchParams();
-    const orderId = searchParams.get('orderId'); // Assuming orderId is passed
+    const orderId = searchParams.get('orderId');
+    const whatsappNumber = searchParams.get('whatsappNumber');
 
-    const handleBackToMenu = () => {
-        // Fallback if restaurantId is not available
+    const handleBackToHome = () => {
         router.push('/');
     };
 
-    const handleTrackOrder = () => {
-        if (orderId) {
-            router.push(`/track/${orderId}`);
+    const handleConfirmOnWhatsApp = () => {
+        if (orderId && whatsappNumber) {
+            const message = `Hi! I've placed a dine-in order. Please confirm my order ID: ${orderId}`;
+            const whatsappUrl = `https://wa.me/91${whatsappNumber}?text=${encodeURIComponent(message)}`;
+            window.location.href = whatsappUrl;
         } else {
-            // Fallback or show an error
-            alert("Could not find order ID to track.");
+            alert("Could not create WhatsApp confirmation link. Order ID or number is missing.");
         }
     };
 
@@ -41,7 +42,7 @@ const OrderPlacedContent = () => {
                 animate={{ y: 0, opacity: 1 }}
                 transition={{ delay: 0.4 }}
             >
-                Order Placed Successfully!
+                One Last Step!
             </motion.h1>
             <motion.p 
                 className="mt-4 text-lg text-muted-foreground max-w-md"
@@ -49,7 +50,7 @@ const OrderPlacedContent = () => {
                 animate={{ y: 0, opacity: 1 }}
                 transition={{ delay: 0.5 }}
             >
-                Thank you for your order. We have received it and will start preparing it right away. You can track its live status now.
+                To confirm your order and receive a token for live tracking, please send the pre-filled message on WhatsApp.
             </motion.p>
             <motion.div
                 className="flex flex-col sm:flex-row gap-4 mt-8"
@@ -58,13 +59,13 @@ const OrderPlacedContent = () => {
                 transition={{ delay: 0.6 }}
             >
                 <Button 
-                    onClick={handleTrackOrder}
+                    onClick={handleConfirmOnWhatsApp}
                     className="flex items-center gap-2 px-6 py-3 rounded-md bg-primary hover:bg-primary/90 text-primary-foreground text-lg font-medium"
                 >
-                    <Navigation className="w-5 h-5" /> Track Your Order
+                    <MessageSquare className="w-5 h-5" /> Confirm on WhatsApp
                 </Button>
                 <Button 
-                    onClick={handleBackToMenu}
+                    onClick={handleBackToHome}
                     variant="outline"
                     className="flex items-center gap-2 px-6 py-3 rounded-md text-lg font-medium"
                 >

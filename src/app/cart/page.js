@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useState, useEffect, useMemo, Suspense } from 'react';
@@ -355,18 +356,7 @@ const CartPageInternal = () => {
     
             if (data.requires_confirmation) {
                 localStorage.removeItem(`cart_${restaurantId}`);
-                
-                const whatsappMessage = `Please confirm my order (${data.order_id}). I am at table ${tableId}.`;
-                
-                const businessInfoRes = await fetch(`/api/owner/settings?businessId=${restaurantId}`);
-                if (!businessInfoRes.ok) throw new Error('Could not fetch restaurant contact details.');
-                const businessInfo = await businessInfoRes.json();
-                
-                const botPhoneNumberId = businessInfo.botPhoneNumberId;
-                if (!botPhoneNumberId) throw new Error("This restaurant's WhatsApp bot is not configured.");
-                
-                const whatsappUrl = `https://wa.me/91${botPhoneNumberId}?text=${encodeURIComponent(whatsappMessage)}`;
-                window.location.href = whatsappUrl;
+                router.push(`/order/placed?orderId=${data.order_id}&whatsappNumber=${data.ownerPhone}`);
             }
         } catch (err) {
             setInfoDialog({ isOpen: true, title: "Error", message: err.message });

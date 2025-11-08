@@ -28,7 +28,7 @@ export async function POST(req) {
             console.error("[DEBUG] /api/customer/register: Validation failed: A full, structured address is required for delivery orders.");
             return NextResponse.json({ message: 'A full, structured address is required for delivery orders.' }, { status: 400 });
         }
-
+        
         const normalizedPhone = phone ? (phone.length > 10 ? phone.slice(-10) : phone) : null;
         if (normalizedPhone && !/^\d{10}$/.test(normalizedPhone)) {
             console.error("[DEBUG] /api/customer/register: Validation failed: Invalid phone number format.");
@@ -64,6 +64,7 @@ export async function POST(req) {
                 message: 'Order created pending WhatsApp confirmation.',
                 requires_confirmation: true,
                 order_id: newOrderRef.id,
+                ownerPhone: businessData.ownerPhone || null, // Return owner's phone for WhatsApp link
             }, { status: 200 });
         }
         // --- END: WhatsApp Checkmate Dine-In Logic ---
