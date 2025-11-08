@@ -109,71 +109,58 @@ const sendWelcomeMessageWithOptions = async (customerPhoneWithCode, business, bo
 }
 
 const handleDineInConfirmation = async (firestore, text, fromNumber, business, botPhoneNumberId) => {
-    const orderIdMatch = text.match(/\(order_([a-zA-Z0-9]+)\)/);
+    const orderIdMatch = text.match(/order ID: ([a-zA-Z0-9]+)/i);
     if (!orderIdMatch || !orderIdMatch[1]) {
         console.log(`[Webhook DineIn] No orderId found in message: "${text}"`);
-        return false; // Not a confirmation message
+        return false;
     }
+    
     const orderId = orderIdMatch[1];
     console.log(`[Webhook DineIn] Found confirmation request for orderId: ${orderId}`);
 
     const orderRef = firestore.collection('orders').doc(orderId);
     const orderSnap = await orderRef.get();
 
-    if (!orderSnap.exists || orderSnap.data().status !== 'pending_confirmation') {
-        await sendWhatsAppMessage(fromNumber, "Sorry, this order is invalid or has already been confirmed.", botPhoneNumberId);
-        return true;
+    if (!orderSnap.exists) {
+        await sendWhatsAppMessage(fromNumber, "Sorry, this order ID is invalid. Please try placing your order again.", botPhoneNumberId);
+        return true; // Handled, even if it's an error for the user
     }
-    
-    const orderData = orderSnap.data();
-    const customerPhone = fromNumber.startsWith('91') ? fromNumber.substring(2) : fromNumber;
 
-    // The "Checkmate" logic
-    const activeSessionQuery = firestore.collection(business.collectionName).doc(orderData.restaurantId)
-                                     .collection('tables').doc(orderData.tableId)
-                                     .collection('activeSessions')
-                                     .where('customerPhone', '==', customerPhone)
-                                     .where('status', '==', 'unpaid');
-    
-    const activeSessionSnap = await activeSessionQuery.get();
-    if (!activeSessionSnap.empty) {
-        await orderRef.delete(); // Delete the pending order
-        await sendWhatsAppMessage(fromNumber, "Sorry, you already have an unpaid bill at this table. Please clear the existing bill before starting a new order.", botPhoneNumberId);
-        return true;
+    const orderData = orderSnap.data();
+    if (orderData.status !== 'pending') {
+        // If it's already confirmed, just send the tracking link again
+        if(orderData.customerPhone && orderData.trackingToken) {
+            const trackingLink = `https://servizephyr.com/track/${orderId}?phone=${orderData.customerPhone}&token=${orderData.trackingToken}`;
+            await sendWhatsAppMessage(fromNumber, `This order is already active. You can track it here:\n\n${trackingLink}`, botPhoneNumberId);
+            return true;
+        }
     }
     
-    // If all good, confirm the order
-    const sessionRef = firestore.collection(business.collectionName).doc(orderData.restaurantId)
-                               .collection('tables').doc(orderData.tableId)
-                               .collection('activeSessions').doc(customerPhone);
-    
-    const batch = firestore.batch();
-    batch.update(orderRef, { status: 'confirmed', customerId: customerPhone, customerPhone: customerPhone });
-    batch.set(sessionRef, {
+    const customerPhone = fromNumber.startsWith('91') ? fromNumber.substring(2) : fromNumber;
+    const trackingToken = await generateSecureToken(firestore, customerPhone);
+    const trackingLink = `https://servizephyr.com/track/${orderId}?phone=${customerPhone}&token=${trackingToken}`;
+
+    await orderRef.update({
+        status: 'confirmed',
         customerPhone: customerPhone,
-        customerName: orderData.customerName || 'Guest',
-        orderId: orderId,
-        status: 'unpaid',
-        createdAt: FieldValue.serverTimestamp()
+        trackingToken: trackingToken
     });
 
-    await batch.commit();
-
-    await sendWhatsAppMessage(fromNumber, `Thanks, your order #${orderId.substring(0, 6)} is confirmed and has been sent to the kitchen.`, botPhoneNumberId);
+    await sendWhatsAppMessage(fromNumber, `Thanks, your order is confirmed! Track its live status here:\n\n${trackingLink}`, botPhoneNumberId);
     
     // Notify owner
     if (business.data.ownerPhone && business.data.botPhoneNumberId) {
         await sendNewOrderToOwner({
             ownerPhone: business.data.ownerPhone,
             botPhoneNumberId: business.data.botPhoneNumberId,
-            customerName: orderData.customerName || 'A Guest',
-            totalAmount: orderData.grandTotal,
+            customerName: orderData.customerName || 'Dine-In Customer',
+            totalAmount: orderData.totalAmount,
             orderId: orderId,
             restaurantName: business.data.name
         });
     }
     
-    return true; // Indicates the message was handled
+    return true; // Indicates the message was handled as a dine-in confirmation
 };
 
 
@@ -295,8 +282,8 @@ export async function POST(request) {
             const fromPhoneNumber = fromNumber.startsWith('91') ? fromNumber.substring(2) : fromNumber;
 
             if (message.type === 'text') {
-                const handled = await handleDineInConfirmation(firestore, message.text.body, fromNumber, business, botPhoneNumberId);
-                if (handled) {
+                const isDineInHandled = await handleDineInConfirmation(firestore, message.text.body, fromNumber, business, botPhoneNumberId);
+                if (isDineInHandled) {
                     console.log(`[Webhook] Message handled by Dine-in flow. Skipping further processing.`);
                     return NextResponse.json({ message: 'Dine-in confirmation processed.' }, { status: 200 });
                 }

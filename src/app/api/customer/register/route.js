@@ -19,10 +19,12 @@ export async function POST(req) {
              console.error(`[DEBUG] /api/customer/register: Validation failed: Name and phone are required for non-dine-in orders.`);
             return NextResponse.json({ message: 'Name and phone are required.' }, { status: 400 });
         }
-        if (!restaurantId || (!items && !dineInTabId) || grandTotal === undefined || subtotal === undefined) {
-            const missingFields = `Missing fields: restaurantId=${!!restaurantId}, items/tabId=${!!items || !!dineInTabId}, grandTotal=${grandTotal !== undefined}, subtotal=${subtotal !== undefined}`;
-            console.error(`[DEBUG] /api/customer/register: Validation failed: Missing required fields for order creation. Details: ${missingFields}`);
-            return NextResponse.json({ message: 'Missing required fields for order creation.' }, { status: 400 });
+        if (!restaurantId || !items || grandTotal === undefined || subtotal === undefined) {
+            // Dine-in orders might not have items initially, but will have other details.
+            // For now, we only check the core fields.
+             const missingFields = `Missing fields: restaurantId=${!!restaurantId}, items=${!!items}, grandTotal=${grandTotal !== undefined}, subtotal=${subtotal !== undefined}`;
+             console.error(`[DEBUG] /api/customer/register: Validation failed: Missing required fields for order creation. Details: ${missingFields}`);
+             return NextResponse.json({ message: 'Missing required fields for order creation.' }, { status: 400 });
         }
         if (deliveryType === 'delivery' && (!address || !address.full)) {
             console.error("[DEBUG] /api/customer/register: Validation failed: A full, structured address is required for delivery orders.");
@@ -50,21 +52,24 @@ export async function POST(req) {
         if (deliveryType === 'dine-in' && businessData.dineInModel === 'post-paid') {
             console.log("[DEBUG] Post-paid dine-in flow initiated. Creating pending order.");
             const newOrderRef = firestore.collection('orders').doc();
+            
+            // For post-paid, we don't need customer details yet, only the order itself.
             await newOrderRef.set({
                 restaurantId, businessType, tableId,
                 items: items, notes: notes || null,
-                subtotal, cgst, sgst, grandTotal,
+                subtotal, cgst, sgst, totalAmount: grandTotal,
                 deliveryType,
                 pax_count: pax_count, tab_name: tab_name,
-                status: 'pending_confirmation', // Special status
+                status: 'pending', // Use 'pending', not 'pending_confirmation'
                 orderDate: FieldValue.serverTimestamp(),
             });
+            
             console.log(`[DEBUG] Pending order created with ID: ${newOrderRef.id}`);
             return NextResponse.json({ 
                 message: 'Order created pending WhatsApp confirmation.',
-                requires_confirmation: true,
                 order_id: newOrderRef.id,
-                botDisplayNumber: businessData.botDisplayNumber || null, // Return bot's display number
+                ownerPhone: businessData.ownerPhone, // Return owner's phone for wa.me link
+                botDisplayNumber: businessData.botDisplayNumber || null,
             }, { status: 200 });
         }
         // --- END: WhatsApp Checkmate Dine-In Logic ---
