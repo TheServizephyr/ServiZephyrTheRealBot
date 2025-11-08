@@ -557,7 +557,7 @@ const CartPageInternal = () => {
                 <ShoppingCart size={48} className="mb-4" />
                 <h1 className="text-2xl font-bold">Your Cart is Empty</h1>
                 <p className="mt-2">Looks like you haven't added anything to your cart yet.</p>
-                <Button onClick={()={() => router.back()} className="mt-6">
+                <Button onClick={() => router.back()} className="mt-6">
                     <ArrowLeft className="mr-2 h-4 w-4" /> Go Back
                 </Button>
             </div>
@@ -864,5 +864,3 @@ const CartPage = () => (
 );
 
 export default CartPage;
-
-    
