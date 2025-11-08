@@ -1,5 +1,3 @@
-
-
 'use client';
 
 import React, { useState, useEffect, useMemo, Suspense } from 'react';
@@ -75,7 +73,7 @@ const SplitBillInterface = ({ totalAmount, onBack, orderDetails }) => {
                 <h3 className="text-xl font-bold">How do you want to split the bill?</h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <Button onClick={() => setMode('equally')} className="w-full h-24 text-lg" variant="outline"><UsersIcon className="mr-2"/> Split Equally</Button>
-                    <Button onClick={() => setMode('items')} className="w-full h-24 text-lg" variant="outline"><CreditCard className="mr-2"/> Split by Item</Button>
+                    <Button onClick={() => setMode('items')} className="w-full h-24 text-lg" variant="outline" disabled><CreditCard className="mr-2"/> Split by Item (Coming Soon)</Button>
                 </div>
                  <Button onClick={onBack} variant="link">Or, go back to pay full</Button>
             </div>
@@ -85,6 +83,7 @@ const SplitBillInterface = ({ totalAmount, onBack, orderDetails }) => {
     if (mode === 'equally') {
         return (
             <div className="space-y-4">
+                 <Button onClick={() => setMode(null)} variant="ghost" size="sm" className="mb-4"><ArrowLeft className="mr-2 h-4 w-4"/> Back</Button>
                 <h3 className="text-lg font-bold">Split Equally</h3>
                 <div className="flex items-center gap-4">
                     <Label htmlFor="split-count">Split between how many people?</Label>
@@ -115,6 +114,7 @@ const SplitBillInterface = ({ totalAmount, onBack, orderDetails }) => {
     if (mode === 'items') {
         return (
              <div className="space-y-4">
+                 <Button onClick={() => setMode(null)} variant="ghost" size="sm" className="mb-4"><ArrowLeft className="mr-2 h-4 w-4"/> Back</Button>
                  <h3 className="text-lg font-bold">Split by Item</h3>
                  <p className="text-sm text-muted-foreground">Select the items you want to pay for.</p>
                  <div className="max-h-60 overflow-y-auto space-y-2 p-2 bg-muted rounded-lg">
@@ -140,6 +140,7 @@ const CheckoutPageInternal = () => {
     const tableId = searchParams.get('table');
     const tabId = searchParams.get('tabId');
     const sessionToken = searchParams.get('session_token');
+    const isPaymentConfirmed = searchParams.get('payment_confirmed');
     
     const [isTokenValid, setIsTokenValid] = useState(false);
     const [tokenError, setTokenError] = useState('');
@@ -160,6 +161,16 @@ const CheckoutPageInternal = () => {
     const [isDineInModalOpen, setDineInModalOpen] = useState(false);
     const [isSplitBillActive, setIsSplitBillActive] = useState(false);
     
+    const [infoDialog, setInfoDialog] = useState({ isOpen: false, title: '', message: '' });
+
+    useEffect(() => {
+        if (isPaymentConfirmed) {
+            setInfoDialog({ isOpen: true, title: 'Payment Confirmed', message: 'Your payment was successful and the tab is now closed. Thank you for dining with us!' });
+            router.replace(`/checkout?restaurantId=${restaurantId}&table=${tableId}&tabId=${tabId}&session_token=${sessionToken}`);
+        }
+    }, [isPaymentConfirmed, restaurantId, tableId, tabId, sessionToken, router]);
+    
+
     useEffect(() => {
         const verifyAndFetch = async () => {
             setLoading(true);
@@ -322,22 +333,31 @@ const CheckoutPageInternal = () => {
             if (!res.ok) throw new Error(data.message || "Failed to place order.");
 
             if (data.razorpay_order_id) {
+                 const redirectUrl = `${window.location.origin}/checkout?restaurantId=${restaurantId}&table=${tableId}&tabId=${data.dine_in_tab_id || tabId}&session_token=${sessionToken}&payment_confirmed=true`;
                 const options = {
                     key: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID, amount: data.amount, currency: "INR", name: cartData.restaurantName,
                     description: `Order from ${cartData.restaurantName}`, order_id: data.razorpay_order_id,
                     handler: function (response) {
                         localStorage.removeItem(`cart_${restaurantId}`);
-                        if (orderData.deliveryType === 'dine-in') router.push(`/order/${restaurantId}?table=${tableId}&tabId=${data.dine_in_tab_id || tabId}&session_token=${sessionToken}`);
+                        if (orderData.deliveryType === 'dine-in') router.push(redirectUrl);
                         else router.push(`/order/placed?orderId=${data.firestore_order_id}`);
                     },
                     prefill: { name: orderName, email: user?.email || "customer@servizephyr.com", contact: orderPhone },
+                    redirect: true,
                 };
                 const rzp = new window.Razorpay(options);
+                 rzp.on('payment.failed', function (response){
+                    setInfoDialog({ isOpen: true, title: 'Payment Failed', message: response.error.description });
+                 });
                 rzp.open();
             } else {
                 localStorage.removeItem(`cart_${restaurantId}`);
-                if (orderData.deliveryType === 'dine-in') router.push(`/order/${restaurantId}?table=${tableId}&tabId=${data.dine_in_tab_id || tabId}&session_token=${sessionToken}`);
-                else router.push(`/order/placed?orderId=${data.firestore_order_id}`);
+                if (orderData.deliveryType === 'dine-in') {
+                    setInfoDialog({ isOpen: true, title: 'Success', message: 'Tab settled at counter. Thank you!' });
+                    setTimeout(() => router.push(`/order/${restaurantId}?table=${tableId}&tabId=${data.dine_in_tab_id || tabId}&session_token=${sessionToken}`), 2000);
+                } else {
+                    router.push(`/order/placed?orderId=${data.firestore_order_id}`);
+                }
             }
         } catch (err) {
             setError(err.message);
@@ -359,7 +379,7 @@ const CheckoutPageInternal = () => {
     }
 
     const deliveryType = tableId ? 'dine-in' : (cartData?.deliveryType || 'delivery');
-    const cameToPay = !cart || cart.length === 0 && tabId;
+    const cameToPay = (!cart || cart.length === 0) && tabId;
     
     if (deliveryType === 'dine-in' && cartData?.dineInModel === 'post-paid' && cart.length > 0) {
         return (
@@ -377,6 +397,12 @@ const CheckoutPageInternal = () => {
 
     return (
         <>
+            <InfoDialog
+                isOpen={infoDialog.isOpen}
+                onClose={() => setInfoDialog({ isOpen: false, title: '', message: '' })}
+                title={infoDialog.title}
+                message={infoDialog.message}
+            />
             <Script src="https://checkout.razorpay.com/v1/checkout.js" />
             <Dialog open={!!selectedPaymentMethod} onOpenChange={(isOpen) => !isOpen && setSelectedPaymentMethod(null)}>
                  <DialogContent className="bg-background border-border text-foreground">

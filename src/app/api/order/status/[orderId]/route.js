@@ -71,8 +71,11 @@ export async function GET(request, { params }) {
                 paymentDetails: orderData.paymentDetails,
                 deliveryType: orderData.deliveryType,
                 dineInToken: orderData.dineInToken,
+                tableId: orderData.tableId,
+                dineInTabId: orderData.dineInTabId,
             },
             restaurant: {
+                id: businessDoc.id,
                 name: businessData.name,
                 address: businessData.address 
             },

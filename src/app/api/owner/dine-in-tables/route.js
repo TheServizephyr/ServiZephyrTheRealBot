@@ -85,7 +85,7 @@ export async function POST(req) {
 export async function PATCH(req) {
      try {
         const businessRef = await verifyOwnerAndGetBusiness(req);
-        const { tableId, action, tabIdToClose, newTableId, newCapacity } = await req.json();
+        const { tableId, action, tabIdToClose, newTableId, newCapacity, paymentMethod } = await req.json();
         
         if (action) {
             if (!tableId) {
@@ -115,7 +115,10 @@ export async function PATCH(req) {
                     const ordersQuery = firestore.collection('orders').where('dineInTabId', '==', tabIdToClose);
                     const ordersSnap = await transaction.get(ordersQuery);
                     ordersSnap.forEach(orderDoc => {
-                        transaction.update(orderDoc.ref, { status: 'delivered' });
+                        transaction.update(orderDoc.ref, { 
+                            status: 'delivered', 
+                            paymentDetails: { ...orderDoc.data().paymentDetails, method: paymentMethod || 'cod' }
+                        });
                     });
 
                     transaction.update(tabRef, { status: 'closed' });

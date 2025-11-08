@@ -1,33 +1,23 @@
-
-
 'use client';
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, Suspense } from 'react';
 import { motion } from 'framer-motion';
 import { Check, CookingPot, Bike, Home, Star, Phone, Navigation, RefreshCw, Loader2, ArrowLeft, XCircle, Wallet, Split, ConciergeBell, ShoppingBag } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent } from '@/components/ui/card';
-import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { useParams, useRouter, useSearchParams } from 'next/navigation';
-import dynamic from 'next/dynamic';
-
-const LiveTrackingMap = dynamic(() => import('@/components/LiveTrackingMap'), { 
-    ssr: false,
-    loading: () => <div className="w-full h-full bg-muted flex items-center justify-center"><Loader2 className="animate-spin text-primary"/></div>
-});
+import { useRouter, useParams, useSearchParams } from 'next/navigation';
 
 const statusConfig = {
-  pending: { title: 'Order Placed', icon: <Check size={24} />, step: 0 },
-  paid: { title: 'Order Placed', icon: <Check size={24} />, step: 0 },
-  confirmed: { title: 'Order Confirmed', icon: <Check size={24} />, step: 1 },
-  preparing: { title: 'Preparing', icon: <CookingPot size={24} />, step: 2 },
-  dispatched: { title: 'Waiting for Rider', icon: <Bike size={24} />, step: 3 },
-  on_the_way: { title: 'Out for Delivery', icon: <Bike size={24} />, step: 3 },
-  ready_for_pickup: { title: 'Ready for Pickup', icon: <ShoppingBag size={24} />, step: 3 },
-  delivered: { title: 'Delivered', icon: <Home size={24} />, step: 4 },
-  picked_up: { title: 'Picked Up', icon: <Home size={24} />, step: 4 },
-  rejected: { title: 'Rejected', icon: <XCircle size={24} />, step: 4, isError: true },
+  pending: { title: 'Order Placed', icon: <Check size={24} />, step: 0, description: "Your order has been sent to the restaurant." },
+  paid: { title: 'Order Placed', icon: <Check size={24} />, step: 0, description: "Your order has been sent to the restaurant." },
+  confirmed: { title: 'Order Confirmed', icon: <Check size={24} />, step: 1, description: "The restaurant has confirmed your order and will start preparing it soon." },
+  preparing: { title: 'Preparing Your Order', icon: <CookingPot size={24} />, step: 2, description: "The kitchen is currently preparing your delicious food." },
+  ready_for_pickup: { title: 'Ready for Pickup', icon: <ShoppingBag size={24} />, step: 3, description: "Your order is packed and ready for you to pick up." },
+  dispatched: { title: 'Out for Delivery', icon: <Bike size={24} />, step: 3, description: "Our delivery hero is on their way to you." },
+  delivered: { title: 'Delivered', icon: <Home size={24} />, step: 4, description: "Enjoy your meal!" },
+  picked_up: { title: 'Picked Up', icon: <Home size={24} />, step: 4, description: "Enjoy your meal!" },
+  rejected: { title: 'Order Rejected', icon: <XCircle size={24} />, step: 4, isError: true, description: "We're sorry, the restaurant could not accept your order." },
 };
+
 
 const StatusTimeline = ({ currentStatus }) => {
     const activeStatus = (currentStatus === 'paid') ? 'pending' : currentStatus;
@@ -37,17 +27,17 @@ const StatusTimeline = ({ currentStatus }) => {
   
     const uniqueSteps = Object.values(statusConfig)
         .filter((value, index, self) => 
-            !value.isError && self.findIndex(v => v.step === value.step && (v.title.includes("Rider") ? false : true)) === index
+            !value.isError && self.findIndex(v => v.step === value.step && !v.title.includes("Rider")) === index
         );
 
     return (
-      <div className="flex justify-between items-center w-full px-2 sm:px-4 pt-4">
+      <div className="flex justify-between items-start w-full px-2 sm:px-4 pt-4">
         {uniqueSteps.map(({ title, icon, step }) => {
           const isCompleted = step <= currentStep;
           const isCurrent = step === currentStep;
           return (
             <React.Fragment key={step}>
-              <div className="flex flex-col items-center text-center w-16">
+              <div className="flex flex-col items-center text-center w-20">
                 <motion.div
                   className={`w-12 h-12 rounded-full flex items-center justify-center border-2 transition-all duration-500 ${
                     isError ? 'bg-destructive border-destructive text-destructive-foreground' :
@@ -66,7 +56,7 @@ const StatusTimeline = ({ currentStatus }) => {
                 </p>
               </div>
               {step < uniqueSteps.length -1 && (
-                <div className="flex-1 h-1 mx-1 sm:mx-2 rounded-full bg-border">
+                <div className="flex-1 h-1 mt-6 mx-1 sm:mx-2 rounded-full bg-border">
                   <motion.div
                     className={`h-full rounded-full ${isError ? 'bg-destructive' : 'bg-primary'}`}
                     initial={{ width: '0%' }}
@@ -82,41 +72,8 @@ const StatusTimeline = ({ currentStatus }) => {
     );
 };
 
-const RiderDetails = ({ rider }) => {
-    if (!rider) return null;
-    const riderLat = rider.location?._latitude || rider.location?.latitude;
-    const riderLng = rider.location?._longitude || rider.location?.longitude;
 
-    return (
-        <Card className="shadow-lg">
-            <CardContent className="p-4 flex items-center justify-between">
-                <div className="flex items-center gap-4">
-                    <Avatar className="h-14 w-14 border-2 border-primary">
-                        <AvatarImage src={rider.photoUrl || `https://picsum.photos/seed/${rider.id}/100`} />
-                        <AvatarFallback>{rider.name?.charAt(0) || 'R'}</AvatarFallback>
-                    </Avatar>
-                    <div>
-                        <p className="font-bold text-lg text-foreground">{rider.name}</p>
-                        <div className="flex items-center gap-1 text-sm text-yellow-400">
-                            <Star size={16} className="fill-current"/> <span>{rider.rating?.toFixed(1) || '4.5'}</span>
-                        </div>
-                    </div>
-                </div>
-                <div className="flex gap-2">
-                    <Button asChild variant="outline" size="icon" className="h-11 w-11">
-                        <a href={`tel:${rider.phone}`}><Phone /></a>
-                    </Button>
-                     <Button asChild size="icon" className="h-11 w-11 bg-primary text-primary-foreground" disabled={!riderLat || !riderLng}>
-                        <a href={`https://www.google.com/maps/dir/?api=1&destination=${riderLat},${riderLng}`} target="_blank" rel="noopener noreferrer"><Navigation /></a>
-                    </Button>
-                </div>
-            </CardContent>
-        </Card>
-    );
-};
-
-
-export default function OrderTrackingPage() {
+function OrderTrackingContent() {
     const { orderId } = useParams();
     const router = useRouter();
     const searchParams = useSearchParams();
@@ -126,62 +83,48 @@ export default function OrderTrackingPage() {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
 
-    const fetchData = async () => {
-        if (!orderId) {
-            setError("No order ID provided.");
-            setLoading(false);
-            return;
-        }
-         // Token Validation
-        if (!sessionToken) {
-            setError("Unauthorized access. A valid tracking token is required.");
-            setLoading(false);
-            return;
-        }
-        if (!loading) setLoading(true); // Show loader on manual refresh
-        try {
-            console.log(`[TrackPage] Fetching data for order: ${orderId}`);
-            // In a real app, you'd pass the sessionToken for verification
-            const res = await fetch(`/api/order/status/${orderId}`);
-            if (!res.ok) {
-                const errData = await res.json();
-                throw new Error(errData.message || 'Failed to fetch order status.');
-            }
-            const data = await res.json();
-            setOrderData(data);
-        } catch (err) {
-            console.error("[TrackPage] Fetch error:", err);
-            setError(err.message);
-        } finally {
-            setLoading(false);
-        }
-    };
-    
     useEffect(() => {
-        fetchData(); // Initial fetch
-        const interval = setInterval(fetchData, 30000); // Poll every 30 seconds
+        const fetchData = async () => {
+            if (!orderId) {
+                setError("No order ID provided.");
+                setLoading(false);
+                return;
+            }
+            if (!sessionToken) {
+                setError("Unauthorized access. A valid tracking token is required.");
+                setLoading(false);
+                return;
+            }
+            if (!loading) setLoading(true);
+
+            try {
+                const res = await fetch(`/api/order/status/${orderId}`);
+                if (!res.ok) {
+                    const errData = await res.json();
+                    throw new Error(errData.message || 'Failed to fetch order status.');
+                }
+                const data = await res.json();
+                setOrderData(data);
+            } catch (err) {
+                setError(err.message);
+            } finally {
+                setLoading(false);
+            }
+        };
+
+        fetchData();
+        const interval = setInterval(fetchData, 30000);
         return () => clearInterval(interval);
-    }, [orderId]);
+    }, [orderId, sessionToken]);
 
-    const { restaurantLocation, customerLocation, riderLocation } = useMemo(() => {
-        const toLatLngLiteral = (loc) => {
-            if (!loc) return null;
-            const lat = loc.lat ?? loc._latitude;
-            const lng = loc.lng ?? loc._longitude;
-            return (typeof lat === 'number' && typeof lng === 'number') ? { lat, lng } : null;
-        };
-
-        const restaurantLoc = orderData?.order?.restaurantLocation;
-        const customerLoc = orderData?.order?.customerLocation;
-        const riderLoc = orderData?.deliveryBoy?.location;
-
-        return {
-            restaurantLocation: toLatLngLiteral(restaurantLoc),
-            customerLocation: toLatLngLiteral(customerLoc),
-            riderLocation: toLatLngLiteral(riderLoc),
-        };
-    }, [orderData]);
-
+    const handleConfirmPayment = () => {
+        const params = new URLSearchParams();
+        params.set('restaurantId', orderData.restaurant.id);
+        params.set('table', orderData.order.tableId);
+        params.set('tabId', orderData.order.dineInTabId);
+        params.set('session_token', sessionToken);
+        router.push(`/checkout?${params.toString()}`);
+    }
 
     if (loading && !orderData) {
         return (
@@ -191,7 +134,7 @@ export default function OrderTrackingPage() {
             </div>
         );
     }
-
+    
     if (error) {
         return (
              <div className="min-h-screen bg-background flex flex-col items-center justify-center text-center p-4">
@@ -212,59 +155,68 @@ export default function OrderTrackingPage() {
     }
     
     const isDineIn = orderData.order.deliveryType === 'dine-in';
-    const showRiderDetails = orderData.order.status === 'on_the_way' || orderData.order.status === 'delivered';
-    const showMap = !isDineIn && restaurantLocation && customerLocation;
+    const currentStatusKey = (orderData.order.status === 'paid') ? 'pending' : orderData.order.status;
+    const currentStatusInfo = statusConfig[currentStatusKey] || statusConfig.pending;
 
     return (
         <div className="min-h-screen bg-background text-foreground flex flex-col">
             <header className="p-4 border-b border-border flex justify-between items-center">
                 <div>
                     <p className="text-xs text-muted-foreground">Tracking Order</p>
-                    <h1 className="font-bold text-lg">{orderId}</h1>
+                    <h1 className="font-bold text-lg">{orderData.restaurant?.name || 'Your Order'}</h1>
                 </div>
                 <Button onClick={fetchData} variant="outline" size="icon" disabled={loading}>
                     <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
                 </Button>
             </header>
+            
+            <main className="flex-grow flex flex-col items-center p-4 md:p-8">
+                <div className="w-full max-w-2xl mx-auto">
+                    <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
+                        <div className="p-4 bg-card border-b border-border text-center">
+                            <h2 className="text-lg font-semibold text-muted-foreground">Order ID</h2>
+                            <p className="text-2xl font-mono tracking-widest text-foreground">{orderId}</p>
+                        </div>
+                        <div className="p-6 bg-card">
+                            <StatusTimeline currentStatus={orderData.order.status} />
+                        </div>
+                    </motion.div>
 
-            <main className="flex-grow flex flex-col">
-                 <div className="p-4 bg-card border-b border-border">
-                    <StatusTimeline currentStatus={orderData.order.status} />
+                    <motion.div
+                        key={orderData.order.status}
+                        initial={{ opacity: 0, scale: 0.9 }}
+                        animate={{ opacity: 1, scale: 1 }}
+                        transition={{ delay: 0.3 }}
+                        className="mt-8 text-center bg-card p-6 rounded-lg border border-border"
+                    >
+                         <h3 className="text-2xl font-bold">{currentStatusInfo.title}</h3>
+                         <p className="mt-2 text-muted-foreground">{currentStatusInfo.description}</p>
+                    </motion.div>
                 </div>
-                
-                {isDineIn ? (
-                    <div className="flex-grow p-4 space-y-4 flex flex-col items-center justify-center text-center">
-                        <ConciergeBell size={48} className="text-primary"/>
-                        <h2 className="text-2xl font-bold">Your order is <span className="capitalize">{orderData.order.status}</span>!</h2>
-                        {orderData.order.dineInToken && <p className="text-lg">Your Token Number is: <span className="font-bold text-primary text-2xl">{orderData.order.dineInToken}</span></p>}
-                        <p className="text-muted-foreground max-w-md">Keep an eye on the status. We'll let you know when it's ready. You can close this page and reopen it later using the link from WhatsApp.</p>
-                        <div className="grid grid-cols-2 gap-4 mt-6">
-                            <Button className="w-full"><Wallet className="mr-2 h-4 w-4"/> Pay Full Bill</Button>
-                            <Button variant="outline" className="w-full"><Split className="mr-2 h-4 w-4"/> Split Bill</Button>
-                        </div>
-                    </div>
-                ) : (
-                    <>
-                        <div className="w-full h-64 md:h-80 relative">
-                            {showMap ? (
-                                <LiveTrackingMap 
-                                    restaurantLocation={restaurantLocation}
-                                    customerLocation={customerLocation}
-                                    riderLocation={riderLocation}
-                                />
-                            ) : (
-                                <div className="w-full h-full bg-muted flex items-center justify-center text-muted-foreground">
-                                    Map will be available once the rider is on the way.
-                                </div>
-                            )}
-                        </div>
-                        
-                        <div className="p-4 space-y-4">
-                           {showRiderDetails && <RiderDetails rider={orderData.deliveryBoy} />}
-                        </div>
-                    </>
-                )}
+
+                <div className="w-full max-w-2xl mx-auto mt-8 flex-grow">
+                     <div className="bg-card border border-border rounded-lg p-6 text-center">
+                        <h3 className="font-bold text-lg">Fun Fact while you wait</h3>
+                        <p className="text-muted-foreground mt-2 italic">"The world's most expensive pizza costs $12,000 and takes 72 hours to make."</p>
+                     </div>
+                </div>
             </main>
+            
+            <footer className="sticky bottom-0 left-0 w-full bg-background/80 backdrop-blur-lg border-t border-border z-10">
+                <div className="container mx-auto p-4 flex justify-center">
+                     <Button onClick={handleConfirmPayment} className="w-full max-w-md h-14 text-lg bg-primary hover:bg-primary/90 text-primary-foreground">
+                        <Wallet className="mr-3 h-6 w-6"/> Confirm Payment
+                    </Button>
+                </div>
+            </footer>
         </div>
     );
+}
+
+export default function OrderTrackingPage() {
+    return (
+        <Suspense fallback={<div className="min-h-screen bg-background flex items-center justify-center"><Loader2 className="w-16 h-16 animate-spin text-primary"/></div>}>
+            <OrderTrackingContent />
+        </Suspense>
+    )
 }
