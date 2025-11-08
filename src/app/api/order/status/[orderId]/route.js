@@ -54,28 +54,27 @@ export async function GET(request, { params }) {
         const businessData = businessDoc.data();
         console.log("[API][Order Status] Business found.");
 
-        // --- START THE FIX ---
-        // Create the location object in the correct {lat, lng} format
         const restaurantLocationForMap = (businessData.address && typeof businessData.address.latitude === 'number' && typeof businessData.address.longitude === 'number')
             ? { lat: businessData.address.latitude, lng: businessData.address.longitude }
             : null;
-        // --- END THE FIX ---
 
         const responsePayload = {
             order: {
                 id: orderSnap.id,
                 status: orderData.status,
                 customerLocation: orderData.customerLocation,
-                restaurantLocation: restaurantLocationForMap, // Use the correctly formatted object
+                restaurantLocation: restaurantLocationForMap, 
                 customerName: orderData.customerName,
                 customerAddress: orderData.customerAddress,
                 customerPhone: orderData.customerPhone,
                 totalAmount: orderData.totalAmount,
                 paymentDetails: orderData.paymentDetails,
+                deliveryType: orderData.deliveryType,
+                dineInToken: orderData.dineInToken,
             },
             restaurant: {
                 name: businessData.name,
-                address: businessData.address // Keep the full address for display
+                address: businessData.address 
             },
             deliveryBoy: deliveryBoyData ? {
                 id: deliveryBoyData.id,

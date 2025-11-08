@@ -32,12 +32,15 @@ const OrderPlacedContent = () => {
     const handleTrackOrder = () => {
         if (orderId && token) {
             router.push(`/track/${orderId}?token=${token}`);
-        } else {
+        } else if (orderId) {
+            // Fallback for dine-in if token is not immediately available
+            router.push(`/track/${orderId}`);
+        }
+        else {
             alert("Tracking information is not yet available for this order.");
         }
     }
     
-    // If whatsappNumber is present, it's a dine-in order needing confirmation.
     if (whatsappNumber) {
         return (
             <div className="min-h-screen bg-background text-foreground flex flex-col items-center justify-center text-center p-4 green-theme">
@@ -88,7 +91,6 @@ const OrderPlacedContent = () => {
         );
     }
 
-    // Default "Order Placed" screen for non-dine-in or if params are missing.
     return (
          <div className="min-h-screen bg-background text-foreground flex flex-col items-center justify-center text-center p-4">
             <CheckCircle className="w-24 h-24 text-primary mx-auto" />

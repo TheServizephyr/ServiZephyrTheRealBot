@@ -4,7 +4,7 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { motion } from 'framer-motion';
-import { Check, CookingPot, Bike, Home, Star, Phone, Navigation, RefreshCw, Loader2, ArrowLeft, XCircle, Wallet, Split, ConciergeBell } from 'lucide-react';
+import { Check, CookingPot, Bike, Home, Star, Phone, Navigation, RefreshCw, Loader2, ArrowLeft, XCircle, Wallet, Split, ConciergeBell, ShoppingBag } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -23,7 +23,7 @@ const statusConfig = {
   preparing: { title: 'Preparing', icon: <CookingPot size={24} />, step: 2 },
   dispatched: { title: 'Waiting for Rider', icon: <Bike size={24} />, step: 3 },
   on_the_way: { title: 'Out for Delivery', icon: <Bike size={24} />, step: 3 },
-  ready_for_pickup: { title: 'Ready for Pickup', icon: <ShoppingBag size={24} />, step: 3 }, // Changed icon for clarity
+  ready_for_pickup: { title: 'Ready for Pickup', icon: <ShoppingBag size={24} />, step: 3 },
   delivered: { title: 'Delivered', icon: <Home size={24} />, step: 4 },
   picked_up: { title: 'Picked Up', icon: <Home size={24} />, step: 4 },
   rejected: { title: 'Rejected', icon: <XCircle size={24} />, step: 4, isError: true },

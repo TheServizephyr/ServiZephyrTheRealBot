@@ -859,8 +859,9 @@ export default function LiveOrdersPage() {
                                             {order.customer}
                                         </div>
                                         {order.deliveryType === 'dine-in' && (
-                                            <div className="mt-1 font-mono text-xs text-primary bg-primary/10 border border-primary/20 rounded px-2 py-1 inline-block">
-                                                Table: {order.tableId} | Token: {order.dineInToken}
+                                            <div className="mt-1 font-mono text-xs text-primary bg-primary/10 border border-primary/20 rounded px-2 py-1 inline-flex flex-col">
+                                                <span>Table: {order.tableId}</span>
+                                                <span>Token: {order.dineInToken}</span>
                                             </div>
                                         )}
                                         <div className="mt-1 flex items-center gap-2">
@@ -872,7 +873,7 @@ export default function LiveOrdersPage() {
                                                 <div title="Delivery Order" className="flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full bg-blue-500/20 text-blue-400 border border-blue-500/30 w-fit"><Bike size={12}/> Delivery</div>
                                             )}
                                             {order.paymentDetails?.method === 'cod' 
-                                                ? <div title="Cash on Delivery" className="flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full bg-yellow-500/20 text-yellow-400 border border-yellow-500/30 w-fit"><IndianRupee size={12}/> COD</div>
+                                                ? <div title="Cash on Delivery" className="flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full bg-yellow-500/20 text-yellow-400 border border-yellow-500/30 w-fit"><IndianRupee size={12}/> POD</div>
                                                 : <div title="Prepaid Order" className="flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full bg-green-500/20 text-green-400 border border-green-500/30 w-fit"><Wallet size={12}/> PAID</div>
                                             }
                                         </div>

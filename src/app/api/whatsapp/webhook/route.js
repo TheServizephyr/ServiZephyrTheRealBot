@@ -108,7 +108,7 @@ const sendWelcomeMessageWithOptions = async (customerPhoneWithCode, business, bo
     await sendWhatsAppMessage(customerPhoneWithCode, payload, botPhoneNumberId);
 }
 
-// --- START: MODIFIED DINE-IN CONFIRMATION LOGIC ---
+
 const handleDineInConfirmation = async (firestore, text, fromNumber, business, botPhoneNumberId) => {
     const orderIdMatch = text.match(/order ID: ([a-zA-Z0-9]+)/i);
     if (!orderIdMatch || !orderIdMatch[1]) {
@@ -121,53 +121,47 @@ const handleDineInConfirmation = async (firestore, text, fromNumber, business, b
     const orderRef = firestore.collection('orders').doc(orderId);
     const businessRef = business.ref;
     let dineInToken;
+    let trackingTokenForLink;
 
     try {
-        // Use a transaction to safely increment the token number
         await firestore.runTransaction(async (transaction) => {
             const businessDoc = await transaction.get(businessRef);
-            if (!businessDoc.exists) {
-                throw new Error("Business document not found.");
-            }
+            if (!businessDoc.exists) throw new Error("Business document not found.");
 
             const orderDoc = await transaction.get(orderRef);
-            if (!orderDoc.exists) {
-                throw new Error("Order document not found.");
-            }
-
-            const businessData = businessDoc.data();
+            if (!orderDoc.exists) throw new Error("Order document not found.");
+            
             const orderData = orderDoc.data();
+            const businessData = businessDoc.data();
 
-            if (orderData.status !== 'pending' && orderData.dineInToken) {
-                // If order is already confirmed, just resend the link and token
+            if (orderData.dineInToken && orderData.trackingToken) {
                 dineInToken = orderData.dineInToken;
-                return; // Exit transaction early
+                trackingTokenForLink = orderData.trackingToken;
+                return;
             }
 
-            // Generate new human-readable token
             const lastToken = businessData.lastDineInToken || 0;
             const newTokenNumber = lastToken + 1;
-            const randomChar = String.fromCharCode(65 + Math.floor(Math.random() * 26)); // A-Z
+            const randomChar = String.fromCharCode(65 + Math.floor(Math.random() * 26));
             dineInToken = `#${String(newTokenNumber).padStart(2, '0')}-${randomChar}`;
             
             const customerPhone = fromNumber.startsWith('91') ? fromNumber.substring(2) : fromNumber;
-
-            // Update business and order docs within the transaction
+            trackingTokenForLink = await generateSecureToken(firestore, customerPhone);
+            
             transaction.update(businessRef, { lastDineInToken: newTokenNumber });
+            // THE FIX: DO NOT change the status to 'confirmed'. Let the owner do it.
             transaction.update(orderRef, {
-                status: 'confirmed',
                 customerPhone: customerPhone,
-                dineInToken: dineInToken // Save the human-readable token
+                dineInToken: dineInToken,
+                trackingToken: trackingTokenForLink 
             });
         });
 
-        // After transaction succeeds, send the notification
-        const trackingUrl = `https://servizephyr.com/track/${orderId}?token=${await generateSecureToken(firestore, fromNumber.substring(2))}`;
+        const trackingUrl = `https://servizephyr.com/track/${orderId}?token=${trackingTokenForLink}`;
 
-        await sendWhatsAppMessage(fromNumber, `Thanks, your order is confirmed!\n\n*Your Token Number is: ${dineInToken}*\n\nPlease show this token at the counter to collect your order.\n\nTrack its live status here:\n${trackingUrl}`, botPhoneNumberId);
+        await sendWhatsAppMessage(fromNumber, `Thanks, your order request has been received!\n\n*Your Token is: ${dineInToken}*\n\nPlease show this token at the counter.\n\nTrack its live status here:\n${trackingUrl}`, botPhoneNumberId);
         
-        // Notify owner
-         if (business.data.ownerPhone && business.data.botPhoneNumberId) {
+        if (business.data.ownerPhone && business.data.botPhoneNumberId) {
             await sendNewOrderToOwner({
                 ownerPhone: business.data.ownerPhone,
                 botPhoneNumberId: business.data.botPhoneNumberId,
@@ -178,19 +172,19 @@ const handleDineInConfirmation = async (firestore, text, fromNumber, business, b
             });
         }
         
-        return true; // Indicate that the message was handled
+        return true;
 
     } catch (error) {
         console.error(`[Webhook DineIn] CRITICAL error processing confirmation for ${orderId}:`, error);
         if (error.message.includes("Order document not found")) {
             await sendWhatsAppMessage(fromNumber, "Sorry, this order ID is invalid. Please try placing your order again.", botPhoneNumberId);
         } else {
-            await sendWhatsAppMessage(fromNumber, "Sorry, we couldn't confirm your order at the moment. Please try again or contact staff.", botPhoneNumberId);
+            await sendWhatsAppMessage(fromNumber, "Sorry, we couldn't process your request at the moment. Please try again or contact staff.", botPhoneNumberId);
         }
-        return true; // Still handled, even if it's an error state
+        return true;
     }
 };
-// --- END: MODIFIED DINE-IN CONFIRMATION LOGIC ---
+
 
 const handleButtonActions = async (firestore, buttonId, fromNumber, business, botPhoneNumberId) => {
     const [action, type, ...payloadParts] = buttonId.split('_');
@@ -304,7 +298,6 @@ export async function POST(request) {
             const fromNumber = message.from;
             const fromPhoneNumber = fromNumber.startsWith('91') ? fromNumber.substring(2) : fromNumber;
 
-            // --- START: MODIFIED LOGIC FLOW ---
             if (message.type === 'text') {
                 const isDineInHandled = await handleDineInConfirmation(firestore, message.text.body, fromNumber, business, botPhoneNumberId);
                 if (isDineInHandled) {
@@ -312,7 +305,6 @@ export async function POST(request) {
                     return NextResponse.json({ message: 'Dine-in confirmation processed.' }, { status: 200 });
                 }
             }
-            // --- END: MODIFIED LOGIC FLOW ---
 
             const conversationRef = business.ref.collection('conversations').doc(fromPhoneNumber);
             const conversationSnap = await conversationRef.get();
