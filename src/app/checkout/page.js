@@ -1,9 +1,10 @@
+
 'use client';
 
 import React, { useState, useEffect, useMemo, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { motion } from 'framer-motion';
-import { ArrowLeft, Wallet, IndianRupee, CreditCard, Landmark, Split, Users as UsersIcon, QrCode, PlusCircle, Trash2, Home, Building, MapPin, Lock, Loader2 } from 'lucide-react';
+import { ArrowLeft, Wallet, IndianRupee, CreditCard, Landmark, Split, Users as UsersIcon, QrCode, PlusCircle, Trash2, Home, Building, MapPin, Lock, Loader2, CheckCircle } from 'lucide-react';
 import Script from 'next/script';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose } from "@/components/ui/dialog";
@@ -165,8 +166,9 @@ const CheckoutPageInternal = () => {
 
     useEffect(() => {
         if (isPaymentConfirmed) {
-            setInfoDialog({ isOpen: true, title: 'Payment Confirmed', message: 'Your payment was successful and the tab is now closed. Thank you for dining with us!' });
-            router.replace(`/checkout?restaurantId=${restaurantId}&table=${tableId}&tabId=${tabId}&session_token=${sessionToken}`);
+            setInfoDialog({ isOpen: true, title: 'Payment Confirmed', message: 'Your payment was successful. Thank you for dining with us!' });
+            const cleanUrl = `/order/${restaurantId}?table=${tableId}&tabId=${tabId}&session_token=${sessionToken}`;
+            router.replace(cleanUrl); // Use replace to avoid back-button issues
         }
     }, [isPaymentConfirmed, restaurantId, tableId, tabId, sessionToken, router]);
     
@@ -242,10 +244,12 @@ const CheckoutPageInternal = () => {
             }
         };
 
-        if (!isUserLoading) {
+        if (!isUserLoading && !isPaymentConfirmed) {
             verifyAndFetch();
+        } else if (isPaymentConfirmed) {
+            setLoading(false);
         }
-    }, [restaurantId, phoneFromUrl, token, tableId, tabId, sessionToken, user, isUserLoading, router]);
+    }, [restaurantId, phoneFromUrl, token, tableId, tabId, sessionToken, user, isUserLoading, router, isPaymentConfirmed]);
     
 
 
@@ -335,7 +339,7 @@ const CheckoutPageInternal = () => {
             if (data.razorpay_order_id) {
                  const redirectUrl = `${window.location.origin}/checkout?restaurantId=${restaurantId}&table=${tableId}&tabId=${data.dine_in_tab_id || tabId}&session_token=${sessionToken}&payment_confirmed=true`;
                 const options = {
-                    key: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID, amount: data.amount, currency: "INR", name: cartData.restaurantName,
+                    key: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID, amount: grandTotal * 100, currency: "INR", name: cartData.restaurantName,
                     description: `Order from ${cartData.restaurantName}`, order_id: data.razorpay_order_id,
                     handler: function (response) {
                         localStorage.removeItem(`cart_${restaurantId}`);
@@ -343,7 +347,7 @@ const CheckoutPageInternal = () => {
                         else router.push(`/order/placed?orderId=${data.firestore_order_id}`);
                     },
                     prefill: { name: orderName, email: user?.email || "customer@servizephyr.com", contact: orderPhone },
-                    redirect: true,
+                    redirect: orderData.deliveryType === 'dine-in' ? true : false,
                 };
                 const rzp = new window.Razorpay(options);
                  rzp.on('payment.failed', function (response){
@@ -392,6 +396,19 @@ const CheckoutPageInternal = () => {
                 </Button>
             </div>
         );
+    }
+    
+    if (isPaymentConfirmed) {
+        return (
+             <div className="min-h-screen bg-background flex flex-col items-center justify-center text-center p-4">
+                <CheckCircle className="w-24 h-24 text-green-500 mx-auto" />
+                <h1 className="text-4xl font-bold text-foreground mt-6">Payment Successful!</h1>
+                <p className="mt-4 text-lg text-muted-foreground max-w-md">Thank you for dining with us. Your bill has been settled.</p>
+                <Button onClick={() => router.push(`/order/${restaurantId}?table=${tableId}`)} className="mt-8">
+                    Back to Menu
+                </Button>
+            </div>
+        )
     }
 
 
@@ -530,3 +547,5 @@ const CheckoutPage = () => (
 );
 
 export default CheckoutPage;
+
+    

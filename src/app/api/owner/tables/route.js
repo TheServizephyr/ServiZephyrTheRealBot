@@ -1,3 +1,4 @@
+
 import { NextResponse } from 'next/server';
 import { getFirestore, verifyAndGetUid } from '@/lib/firebase-admin';
 
@@ -56,10 +57,11 @@ export async function GET(req) {
         const current_pax = activeTabs.reduce((sum, tab) => sum + (tab.pax_count || 0), 0);
 
         return NextResponse.json({ 
+            tableId: tableId, // Return the ID
             max_capacity: tableData.max_capacity,
             current_pax,
             activeTabs,
-            state: tableData.state || 'available' // Pass the stored state
+            state: tableData.state || 'available'
         }, { status: 200 });
 
     } catch (error) {
@@ -67,3 +69,5 @@ export async function GET(req) {
         return NextResponse.json({ message: 'Internal Server Error' }, { status: 500 });
     }
 }
+
+    
