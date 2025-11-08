@@ -354,10 +354,8 @@ const CartPageInternal = () => {
             const data = await res.json();
             if (!res.ok) throw new Error(data.message || "Failed to place order.");
     
-            if (data.requires_confirmation) {
-                localStorage.removeItem(`cart_${restaurantId}`);
-                router.push(`/order/placed?orderId=${data.order_id}&botDisplayNumber=${data.botDisplayNumber}`);
-            }
+            localStorage.removeItem(`cart_${restaurantId}`);
+            router.push(`/order/placed?orderId=${data.order_id}&whatsappNumber=${data.ownerPhone || data.botDisplayNumber}`);
         } catch (err) {
             setInfoDialog({ isOpen: true, title: "Error", message: err.message });
             setIsCheckoutFlow(false);
