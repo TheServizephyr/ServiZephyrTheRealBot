@@ -1,4 +1,5 @@
 
+
 import { NextResponse } from 'next/server';
 import { getAuth, getFirestore, verifyAndGetUid } from '@/lib/firebase-admin';
 import { initializeApp, getApps } from 'firebase-admin/app';
@@ -62,11 +63,14 @@ export async function GET(req) {
                 return NextResponse.json({ message: "Business not found." }, { status: 404 });
             }
             const businessData = businessDoc.data();
+            // --- THE FIX ---
             return NextResponse.json({ 
                 deliveryCodEnabled: businessData.deliveryCodEnabled === undefined ? true : businessData.deliveryCodEnabled,
                 pickupPodEnabled: businessData.pickupPodEnabled === undefined ? true : businessData.pickupPodEnabled,
                 dineInPayAtCounterEnabled: businessData.dineInPayAtCounterEnabled === undefined ? true : businessData.dineInPayAtCounterEnabled,
+                botPhoneNumberId: businessData.botPhoneNumberId || null, // Return the bot ID
             }, { status: 200 });
+            // --- END THE FIX ---
         }
         
         const { uid, userData, businessData, businessId } = await verifyUserAndGetData(req);
@@ -103,7 +107,7 @@ export async function GET(req) {
             dineInOnlinePaymentEnabled: businessData?.dineInOnlinePaymentEnabled === undefined ? true : businessData.dineInOnlinePaymentEnabled,
             dineInPayAtCounterEnabled: businessData?.dineInPayAtCounterEnabled === undefined ? true : businessData.dineInPayAtCounterEnabled,
             isOpen: businessData?.isOpen === undefined ? true : businessData.isOpen,
-            dineInModel: businessData?.dineInModel || 'post-paid', // <-- THE FIX: Fetch dineInModel, default to post-paid
+            dineInModel: businessData?.dineInModel || 'post-paid',
             businessId: businessId
         };
 
@@ -151,7 +155,6 @@ export async function PATCH(req) {
             if (updates.dineInOnlinePaymentEnabled !== undefined) businessUpdateData.dineInOnlinePaymentEnabled = updates.dineInOnlinePaymentEnabled;
             if (updates.dineInPayAtCounterEnabled !== undefined) businessUpdateData.dineInPayAtCounterEnabled = updates.dineInPayAtCounterEnabled;
             
-            // --- THE FIX: Save the dineInModel to the database ---
             if (updates.dineInModel !== undefined) businessUpdateData.dineInModel = updates.dineInModel;
 
 
@@ -208,7 +211,7 @@ export async function PATCH(req) {
             dineInOnlinePaymentEnabled: finalBusinessData?.dineInOnlinePaymentEnabled === undefined ? true : finalBusinessData.dineInOnlinePaymentEnabled,
             dineInPayAtCounterEnabled: finalBusinessData?.dineInPayAtCounterEnabled === undefined ? true : finalBusinessData.dineInPayAtCounterEnabled,
             isOpen: finalBusinessData?.isOpen === undefined ? true : finalBusinessData.isOpen,
-            dineInModel: finalBusinessData?.dineInModel || 'post-paid', // <-- THE FIX: Return the updated dineInModel
+            dineInModel: finalBusinessData?.dineInModel || 'post-paid',
             address: finalBusinessData?.address || { street: '', city: '', state: '', postalCode: '', country: 'IN' },
             businessId: finalBusinessId,
         };
