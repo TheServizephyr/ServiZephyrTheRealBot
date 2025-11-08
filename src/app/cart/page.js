@@ -163,6 +163,8 @@ const CartPageInternal = () => {
     const router = useRouter();
     const searchParams = useSearchParams();
     const { user, isUserLoading } = useUser(); // Get user from Firebase
+    
+    // --- THE FIX: Get restaurantId directly from searchParams ---
     const restaurantId = searchParams.get('restaurantId');
     
     const [isTokenValid, setIsTokenValid] = useState(false);
@@ -239,6 +241,7 @@ const CartPageInternal = () => {
     }, [phone, token, tableId, sessionToken, user, isUserLoading]);
     
     useEffect(() => {
+        // --- THE FIX: Ensure restaurantId exists before loading cart ---
         if (isTokenValid && restaurantId) {
             const data = localStorage.getItem(`cart_${restaurantId}`);
             if (data) {
@@ -257,7 +260,9 @@ const CartPageInternal = () => {
                     setPickupTime(parsedData.pickupTime || '');
                 }
             } else {
-                setCart([]); setAppliedCoupons([]);
+                // If no data, explicitly set cart to empty
+                setCart([]);
+                setCartData(null);
             }
         }
     }, [isTokenValid, restaurantId]);
@@ -545,7 +550,8 @@ const CartPageInternal = () => {
         return <div className="min-h-screen bg-background flex items-center justify-center"><p className="text-destructive">Session could not be verified.</p></div>;
     }
 
-    if (!cartData || !restaurantId) {
+    // --- THE FIX: Check cart and cartData separately to show empty message correctly ---
+    if (!cartData || cart.length === 0) {
         return (
             <div className="min-h-screen bg-background flex flex-col items-center justify-center text-muted-foreground p-4">
                 <ShoppingCart size={48} className="mb-4" />
@@ -771,7 +777,7 @@ const CartPageInternal = () => {
                         <div className="mt-6 p-4 border-t-2 border-primary bg-card rounded-lg shadow-lg">
                              <div className="flex justify-between items-center">
                                 <h3 className="text-xl font-bold">Bill Summary</h3>
-                                <Button variant="ghost" size="sm" onClick={() => setIsBillExpanded(!isBillExpanded)} className="text-primary">
+                                <Button variant="ghost" size="sm" onClick={()={() => setIsBillExpanded(!isBillExpanded)} className="text-primary">
                                     {isBillExpanded ? 'Hide Details' : 'View Detailed Bill'}
                                     <ChevronDown className={cn("ml-1 h-4 w-4 transition-transform", isBillExpanded && "rotate-180")} />
                                 </Button>
@@ -858,3 +864,5 @@ const CartPage = () => (
 );
 
 export default CartPage;
+
+    
