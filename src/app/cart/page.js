@@ -347,7 +347,7 @@ const CartPageInternal = () => {
                 tab_name: cartData?.tab_name || 'Guest',
             };
     
-            // This API now returns orderId and botDisplayNumber
+            // This API now returns orderId, botDisplayNumber, and a tracking token
             const res = await fetch('/api/customer/register', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -356,26 +356,9 @@ const CartPageInternal = () => {
             const data = await res.json();
             if (!res.ok) throw new Error(data.message || "Failed to place order.");
             
-            // Generate a secure token for tracking on the client-side
-            let sessionData = {};
-            if (sessionToken) {
-                 sessionData = {
-                     tableId: tableId,
-                     token: sessionToken,
-                 };
-            } else {
-                 const tokenRes = await fetch('/api/auth/generate-session-token', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ tableId: tableId, restaurantId: restaurantId }),
-                });
-                sessionData = await tokenRes.json();
-                if (!tokenRes.ok) throw new Error(sessionData.message || 'Failed to create tracking session.');
-            }
-
             localStorage.removeItem(`cart_${restaurantId}`);
             // Redirect to the new confirmation page with all necessary info
-            router.push(`/order/placed?orderId=${data.order_id}&whatsappNumber=${data.botDisplayNumber || data.ownerPhone}&token=${sessionData.token}`);
+            router.push(`/order/placed?orderId=${data.order_id}&whatsappNumber=${data.whatsappNumber}&token=${data.token}`);
         } catch (err) {
             setInfoDialog({ isOpen: true, title: "Error", message: err.message });
             setIsCheckoutFlow(false);

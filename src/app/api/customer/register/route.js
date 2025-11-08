@@ -7,6 +7,18 @@ import { nanoid } from 'nanoid';
 import { sendNewOrderToOwner } from '@/lib/notifications';
 
 
+const generateSecureToken = async (firestore, customerPhone) => {
+    const token = nanoid(24);
+    const expiry = new Date(Date.now() + 2 * 60 * 60 * 1000); // 2-hour validity
+    const authTokenRef = firestore.collection('auth_tokens').doc(token);
+    await authTokenRef.set({
+        phone: customerPhone,
+        expiresAt: expiry
+    });
+    return token;
+};
+
+
 export async function POST(req) {
     console.log("[DEBUG] /api/customer/register: Received new order request.");
     try {
@@ -62,10 +74,15 @@ export async function POST(req) {
             });
             
             console.log(`[DEBUG] Pending order created with ID: ${newOrderRef.id}`);
+
+            // --- THE FIX: Generate token on backend and send all info at once ---
+            const trackingToken = await generateSecureToken(firestore, `dine-in-${newOrderRef.id}`);
+
             return NextResponse.json({ 
                 message: "Order placed. Awaiting WhatsApp confirmation.",
                 order_id: newOrderRef.id,
                 whatsappNumber: businessData.botDisplayNumber || businessData.ownerPhone,
+                token: trackingToken // Send the token for the tracking link
             }, { status: 200 });
         }
         // --- END: MODIFIED WhatsApp Checkmate Dine-In Logic ---

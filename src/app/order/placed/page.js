@@ -13,7 +13,7 @@ const OrderPlacedContent = () => {
     const searchParams = useSearchParams();
     const orderId = searchParams.get('orderId');
     const whatsappNumber = searchParams.get('whatsappNumber');
-    const token = searchParams.get('token'); // THE FIX: Read the token from URL
+    const token = searchParams.get('token'); 
 
     const handleBackToHome = () => {
         router.push('/');
@@ -30,7 +30,6 @@ const OrderPlacedContent = () => {
     };
     
     const handleTrackOrder = () => {
-        // THE FIX: Check for orderId AND token before redirecting
         if (orderId && token) {
             router.push(`/track/${orderId}?token=${token}`);
         } else {
