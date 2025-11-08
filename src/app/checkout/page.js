@@ -360,6 +360,20 @@ const CheckoutPageInternal = () => {
 
     const deliveryType = tableId ? 'dine-in' : (cartData?.deliveryType || 'delivery');
     const cameToPay = !cart || cart.length === 0 && tabId;
+    
+    if (deliveryType === 'dine-in' && cartData?.dineInModel === 'post-paid' && cart.length > 0) {
+        return (
+            <div className="min-h-screen bg-background flex flex-col items-center justify-center text-center p-4">
+                 <Lock size={48} className="text-destructive mb-4" />
+                <h1 className="text-2xl font-bold text-foreground">Payment Not Required</h1>
+                <p className="mt-2 text-muted-foreground max-w-md">This is a post-paid order. Please place your order from the cart to get a WhatsApp confirmation.</p>
+                <Button onClick={() => router.push(`/cart?restaurantId=${restaurantId}&${searchParams.toString()}`)} className="mt-6">
+                    <ArrowLeft className="mr-2 h-4 w-4" /> Go Back to Cart
+                </Button>
+            </div>
+        );
+    }
+
 
     return (
         <>

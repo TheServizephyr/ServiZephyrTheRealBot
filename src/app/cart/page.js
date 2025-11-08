@@ -1,4 +1,5 @@
 
+
 'use client';
 
 import React, { useState, useEffect, useMemo, Suspense } from 'react';
@@ -164,9 +165,7 @@ const CartPageInternal = () => {
     const searchParams = useSearchParams();
     const { user, isUserLoading } = useUser(); // Get user from Firebase
     
-    // --- START: FIX ---
     const restaurantId = searchParams.get('restaurantId');
-    // --- END: FIX ---
     
     const [isTokenValid, setIsTokenValid] = useState(false);
     const [tokenError, setTokenError] = useState('');
@@ -236,13 +235,10 @@ const CartPageInternal = () => {
             }
         };
 
-        // --- START: FIX ---
-        // Redirect if restaurantId is missing
         if (!restaurantId) {
             router.push('/');
             return;
         }
-        // --- END: FIX ---
 
         if (!isUserLoading) {
             verifyToken();
@@ -250,7 +246,6 @@ const CartPageInternal = () => {
     }, [phone, token, tableId, sessionToken, user, isUserLoading, restaurantId, router]);
     
     useEffect(() => {
-        // --- THE FIX: Ensure restaurantId exists before loading cart ---
         if (isTokenValid && restaurantId) {
             const data = localStorage.getItem(`cart_${restaurantId}`);
             if (data) {
@@ -269,7 +264,6 @@ const CartPageInternal = () => {
                     setPickupTime(parsedData.pickupTime || '');
                 }
             } else {
-                // If no data, explicitly set cart to empty
                 setCart([]);
                 setCartData(null);
             }
@@ -560,7 +554,6 @@ const CartPageInternal = () => {
         return <div className="min-h-screen bg-background flex items-center justify-center"><p className="text-destructive">Session could not be verified.</p></div>;
     }
 
-    // --- THE FIX: Check cart and cartData separately to show empty message correctly ---
     if (!cartData || cart.length === 0) {
         return (
             <div className="min-h-screen bg-background flex flex-col items-center justify-center text-muted-foreground p-4">

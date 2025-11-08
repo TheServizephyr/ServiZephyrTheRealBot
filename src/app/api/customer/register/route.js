@@ -15,8 +15,12 @@ export async function POST(req) {
 
         // --- VALIDATION ---
         console.log("[DEBUG] /api/customer/register: Validating request data...");
-        if (!name || !phone || !restaurantId || (!items && !dineInTabId) || grandTotal === undefined || subtotal === undefined) {
-            const missingFields = `Missing fields: name=${!!name}, phone=${!!phone}, restaurantId=${!!restaurantId}, items/tabId=${!!items || !!dineInTabId}, grandTotal=${grandTotal !== undefined}, subtotal=${subtotal !== undefined}`;
+        if ((!name || !phone) && deliveryType !== 'dine-in') {
+             console.error(`[DEBUG] /api/customer/register: Validation failed: Name and phone are required for non-dine-in orders.`);
+            return NextResponse.json({ message: 'Name and phone are required.' }, { status: 400 });
+        }
+        if (!restaurantId || (!items && !dineInTabId) || grandTotal === undefined || subtotal === undefined) {
+            const missingFields = `Missing fields: restaurantId=${!!restaurantId}, items/tabId=${!!items || !!dineInTabId}, grandTotal=${grandTotal !== undefined}, subtotal=${subtotal !== undefined}`;
             console.error(`[DEBUG] /api/customer/register: Validation failed: Missing required fields for order creation. Details: ${missingFields}`);
             return NextResponse.json({ message: 'Missing required fields for order creation.' }, { status: 400 });
         }
@@ -25,8 +29,8 @@ export async function POST(req) {
             return NextResponse.json({ message: 'A full, structured address is required for delivery orders.' }, { status: 400 });
         }
 
-        const normalizedPhone = phone.length > 10 ? phone.slice(-10) : phone;
-        if (!/^\d{10}$/.test(normalizedPhone)) {
+        const normalizedPhone = phone ? (phone.length > 10 ? phone.slice(-10) : phone) : null;
+        if (normalizedPhone && !/^\d{10}$/.test(normalizedPhone)) {
             console.error("[DEBUG] /api/customer/register: Validation failed: Invalid phone number format.");
             return NextResponse.json({ message: 'Invalid phone number format. Must be 10 digits.' }, { status: 400 });
         }
@@ -43,15 +47,15 @@ export async function POST(req) {
         const businessData = businessDoc.data();
 
         // --- START: WhatsApp Checkmate Dine-In Logic ---
-        if (deliveryType === 'dine-in' && businessData.dineInModel === 'post-paid' && !dineInTabId) {
+        if (deliveryType === 'dine-in' && businessData.dineInModel === 'post-paid') {
             console.log("[DEBUG] Post-paid dine-in flow initiated. Creating pending order.");
             const newOrderRef = firestore.collection('orders').doc();
             await newOrderRef.set({
-                // Add all necessary order details here
-                customerName: name, customerPhone: normalizedPhone, restaurantId,
+                restaurantId, businessType, tableId,
                 items: items, notes: notes || null,
                 subtotal, cgst, sgst, grandTotal,
-                deliveryType, tableId,
+                deliveryType,
+                pax_count: pax_count, tab_name: tab_name,
                 status: 'pending_confirmation', // Special status
                 orderDate: FieldValue.serverTimestamp(),
             });
