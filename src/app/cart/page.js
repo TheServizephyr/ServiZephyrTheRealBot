@@ -1,4 +1,5 @@
 
+
 'use client';
 
 import React, { useState, useEffect, useMemo, Suspense } from 'react';
@@ -329,23 +330,24 @@ const CartPageInternal = () => {
     const handlePostPaidCheckout = async () => {
         setIsCheckoutFlow(true);
         setInfoDialog({ isOpen: true, title: "Processing...", message: "Placing your order. Please wait." });
-    
-        const orderData = {
-            restaurantId,
-            items: cart,
-            notes: cartData?.notes || '',
-            subtotal: subtotal,
-            cgst: cgst,
-            sgst: sgst,
-            grandTotal: grandTotal,
-            deliveryType: 'dine-in',
-            tableId: tableId,
-            businessType: cartData?.businessType || 'restaurant',
-            pax_count: cartData?.pax_count || 1,
-            tab_name: cartData?.tab_name || 'Guest',
-        };
-    
+
         try {
+            const orderData = {
+                restaurantId,
+                items: cart,
+                notes: cartData?.notes || '',
+                subtotal: subtotal,
+                cgst: cgst,
+                sgst: sgst,
+                grandTotal: grandTotal,
+                deliveryType: 'dine-in',
+                tableId: tableId,
+                businessType: cartData?.businessType || 'restaurant',
+                pax_count: cartData?.pax_count || 1,
+                tab_name: cartData?.tab_name || 'Guest',
+            };
+    
+            // This API now returns orderId and botDisplayNumber
             const res = await fetch('/api/customer/register', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -353,9 +355,27 @@ const CartPageInternal = () => {
             });
             const data = await res.json();
             if (!res.ok) throw new Error(data.message || "Failed to place order.");
-    
+            
+            // Generate a secure token for tracking on the client-side
+            let sessionData = {};
+            if (sessionToken) {
+                 sessionData = {
+                     tableId: tableId,
+                     token: sessionToken,
+                 };
+            } else {
+                 const tokenRes = await fetch('/api/auth/generate-session-token', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ tableId: tableId, restaurantId: restaurantId }),
+                });
+                sessionData = await tokenRes.json();
+                if (!tokenRes.ok) throw new Error(sessionData.message || 'Failed to create tracking session.');
+            }
+
             localStorage.removeItem(`cart_${restaurantId}`);
-            router.push(`/order/placed?orderId=${data.order_id}&whatsappNumber=${data.ownerPhone || data.botDisplayNumber}`);
+            // Redirect to the new confirmation page with all necessary info
+            router.push(`/order/placed?orderId=${data.order_id}&whatsappNumber=${data.botDisplayNumber || data.ownerPhone}&token=${sessionData.token}`);
         } catch (err) {
             setInfoDialog({ isOpen: true, title: "Error", message: err.message });
             setIsCheckoutFlow(false);
@@ -853,3 +873,4 @@ const CartPage = () => (
 );
 
 export default CartPage;
+

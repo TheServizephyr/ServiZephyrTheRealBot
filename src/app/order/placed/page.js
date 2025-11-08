@@ -1,4 +1,5 @@
 
+
 'use client';
 
 import React, { Suspense } from 'react';
@@ -11,7 +12,8 @@ const OrderPlacedContent = () => {
     const router = useRouter();
     const searchParams = useSearchParams();
     const orderId = searchParams.get('orderId');
-    const whatsappNumber = searchParams.get('whatsappNumber'); // Corrected variable name
+    const whatsappNumber = searchParams.get('whatsappNumber');
+    const token = searchParams.get('token'); // THE FIX: Read the token from URL
 
     const handleBackToHome = () => {
         router.push('/');
@@ -28,7 +30,7 @@ const OrderPlacedContent = () => {
     };
     
     const handleTrackOrder = () => {
-        const token = searchParams.get('token');
+        // THE FIX: Check for orderId AND token before redirecting
         if (orderId && token) {
             router.push(`/track/${orderId}?token=${token}`);
         } else {
