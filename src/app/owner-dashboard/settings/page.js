@@ -579,12 +579,24 @@ function SettingsPageContent() {
                             <div className="space-y-6">
                                 <div>
                                     <Label htmlFor="botPhoneNumberId" className="flex items-center gap-2"><Bot size={14}/> WhatsApp Bot Phone Number ID</Label>
-                                    <input id="botPhoneNumberId" value={editedUser.botPhoneNumberId} onChange={e => setEditedUser({...editedUser, botPhoneNumberId: e.target.value})} disabled={!isEditingProfile} className="mt-1 w-full p-2 border rounded-md bg-input border-border disabled:opacity-70 disabled:cursor-not-allowed" placeholder="e.g., 15550921234"/>
+                                    <input id="botPhoneNumberId" value={editedUser.botPhoneNumberId} onChange={e => setEditedUser({...editedUser, botPhoneNumberId: e.target.value})} disabled={!isEditingProfile || !!user.botPhoneNumberId} className="mt-1 w-full p-2 border rounded-md bg-input border-border disabled:opacity-70 disabled:cursor-not-allowed" placeholder="Auto-filled on connection"/>
                                 </div>
+                                {/* --- START FIX: Smart input for bot display number --- */}
                                 <div>
                                     <Label htmlFor="botDisplayNumber" className="flex items-center gap-2"><Phone size={14}/> WhatsApp Bot Display Number</Label>
-                                    <input id="botDisplayNumber" value={editedUser.botDisplayNumber} onChange={e => setEditedUser({...editedUser, botDisplayNumber: e.target.value})} disabled={!isEditingProfile} className="mt-1 w-full p-2 border rounded-md bg-input border-border disabled:opacity-70 disabled:cursor-not-allowed" placeholder="e.g., 91xxxxxxxxxx"/>
+                                    <input
+                                        id="botDisplayNumber"
+                                        value={editedUser.botDisplayNumber || ''}
+                                        onChange={e => setEditedUser({...editedUser, botDisplayNumber: e.target.value})}
+                                        disabled={!isEditingProfile || !!user.botDisplayNumber}
+                                        className="mt-1 w-full p-2 border rounded-md bg-input border-border disabled:opacity-70 disabled:cursor-not-allowed"
+                                        placeholder={user.botDisplayNumber ? 'Auto-filled on connection' : 'e.g., 919876543210'}
+                                    />
+                                    {!user.botDisplayNumber && (
+                                        <p className="text-xs text-muted-foreground mt-1">If this field is empty, please enter your bot's display number (e.g., 919876543210) once and save.</p>
+                                    )}
                                 </div>
+                                {/* --- END FIX --- */}
                             </div>
                         </>
                     )}
