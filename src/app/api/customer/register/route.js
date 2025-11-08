@@ -9,11 +9,12 @@ import { sendNewOrderToOwner } from '@/lib/notifications';
 
 const generateSecureToken = async (firestore, customerPhone) => {
     const token = nanoid(24);
-    const expiry = new Date(Date.now() + 2 * 60 * 60 * 1000); // 2-hour validity
+    const expiry = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24-hour validity for tracking link
     const authTokenRef = firestore.collection('auth_tokens').doc(token);
     await authTokenRef.set({
         phone: customerPhone,
-        expiresAt: expiry
+        expiresAt: expiry,
+        type: 'tracking'
     });
     return token;
 };
@@ -155,6 +156,7 @@ export async function POST(req) {
                 message: 'Razorpay order created. Awaiting payment confirmation.',
                 razorpay_order_id: razorpayOrderId,
                 firestore_order_id: firestoreOrderId,
+                dine_in_tab_id: dineInTabId
             }, { status: 200 });
         }
 
