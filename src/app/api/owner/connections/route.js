@@ -1,4 +1,5 @@
 
+
 import { NextResponse } from 'next/server';
 import { getAuth, getFirestore, verifyAndGetUid } from '@/lib/firebase-admin';
 
@@ -33,12 +34,12 @@ export async function GET(req) {
 
         const restaurantsQuery = await firestore.collection('restaurants')
             .where('ownerId', '==', ownerId)
-            .where('botStatus', '==', 'Connected')
+            .where('botPhoneNumberId', '!=', null)
             .get();
             
         const shopsQuery = await firestore.collection('shops')
             .where('ownerId', '==', ownerId)
-            .where('botStatus', '==', 'Connected')
+            .where('botPhoneNumberId', '!=', null)
             .get();
 
         if (restaurantsQuery.empty && shopsQuery.empty) {
@@ -51,7 +52,7 @@ export async function GET(req) {
                 id: doc.id,
                 restaurantName: data.name,
                 whatsAppNumber: data.botPhoneNumberId,
-                status: data.botStatus
+                status: data.botStatus || 'Connected'
             };
         });
         
@@ -61,7 +62,7 @@ export async function GET(req) {
                 id: doc.id,
                 restaurantName: data.name,
                 whatsAppNumber: data.botPhoneNumberId,
-                status: data.botStatus
+                status: data.botStatus || 'Connected'
             };
         });
 
@@ -74,3 +75,4 @@ export async function GET(req) {
         return NextResponse.json({ message: error.message || 'Internal Server Error' }, { status: error.status || 500 });
     }
 }
+
