@@ -149,8 +149,7 @@ const handleDineInConfirmation = async (firestore, text, fromNumber, business, b
             const newTokenNumber = lastToken + 1;
             const randomChar = String.fromCharCode(65 + Math.floor(Math.random() * 26)); // A-Z
             dineInToken = `#${String(newTokenNumber).padStart(2, '0')}-${randomChar}`;
-
-            const trackingToken = nanoid(16); // Secure token for URL
+            
             const customerPhone = fromNumber.startsWith('91') ? fromNumber.substring(2) : fromNumber;
 
             // Update business and order docs within the transaction
@@ -158,13 +157,12 @@ const handleDineInConfirmation = async (firestore, text, fromNumber, business, b
             transaction.update(orderRef, {
                 status: 'confirmed',
                 customerPhone: customerPhone,
-                trackingToken: trackingToken,
                 dineInToken: dineInToken // Save the human-readable token
             });
         });
 
         // After transaction succeeds, send the notification
-        const trackingUrl = `${process.env.NEXT_PUBLIC_BASE_URL}/track/${orderId}?token=${await generateSecureToken(firestore, fromNumber.substring(2))}`;
+        const trackingUrl = `https://servizephyr.com/track/${orderId}?token=${await generateSecureToken(firestore, fromNumber.substring(2))}`;
 
         await sendWhatsAppMessage(fromNumber, `Thanks, your order is confirmed!\n\n*Your Token Number is: ${dineInToken}*\n\nPlease show this token at the counter to collect your order.\n\nTrack its live status here:\n${trackingUrl}`, botPhoneNumberId);
         
@@ -209,7 +207,7 @@ const handleButtonActions = async (firestore, buttonId, fromNumber, business, bo
             case 'order': {
                 const businessId = payloadParts.join('_');
                 const token = await generateSecureToken(firestore, customerPhone);
-                const link = `${process.env.NEXT_PUBLIC_BASE_URL}/order/${businessId}?phone=${customerPhone}&token=${token}`;
+                const link = `https://servizephyr.com/order/${businessId}?phone=${customerPhone}&token=${token}`;
                 await sendWhatsAppMessage(fromNumber, `Here is your personal link to place an order:\n\n${link}\n\nThis link is valid for 2 hours.`, botPhoneNumberId);
                 break;
             }
@@ -240,7 +238,7 @@ const handleButtonActions = async (firestore, buttonId, fromNumber, business, bo
                     const orderId = latestOrder.id;
 
                     const token = await generateSecureToken(firestore, customerPhone);
-                    const link = `${process.env.NEXT_PUBLIC_BASE_URL}/track/${orderId}?phone=${customerPhone}&token=${token}`;
+                    const link = `https://servizephyr.com/track/${orderId}?phone=${customerPhone}&token=${token}`;
                     await sendWhatsAppMessage(fromNumber, `Here is the tracking link for your latest order (#${orderId.substring(0, 6)}):\n\n${link}`, botPhoneNumberId);
                 }
                 break;

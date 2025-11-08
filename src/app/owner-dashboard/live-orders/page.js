@@ -1,3 +1,4 @@
+
 "use client";
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
@@ -859,16 +860,17 @@ export default function LiveOrdersPage() {
                                         </div>
                                         <div className="mt-1 flex items-center gap-2">
                                             {order.deliveryType === 'pickup' ? (
-                                                <div className="flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full bg-purple-500/20 text-purple-400 border border-purple-500/30 w-fit"><ShoppingBag size={12}/> Pickup at: {order.pickupTime}</div>
+                                                <div title="Pickup Order" className="flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full bg-purple-500/20 text-purple-400 border border-purple-500/30 w-fit"><ShoppingBag size={12}/> Pickup</div>
                                             ) : order.deliveryType === 'dine-in' ? (
-                                                <div className="flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full bg-cyan-500/20 text-cyan-400 border border-cyan-500/30 w-fit"><ConciergeBell size={12}/> Dine-In</div>
+                                                <div title="Dine-In Order" className="flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full bg-cyan-500/20 text-cyan-400 border border-cyan-500/30 w-fit"><ConciergeBell size={12}/> Dine-In</div>
                                             ) : (
-                                                <div className="flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full bg-blue-500/20 text-blue-400 border border-blue-500/30 w-fit"><Bike size={12}/> Delivery</div>
+                                                <div title="Delivery Order" className="flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full bg-blue-500/20 text-blue-400 border border-blue-500/30 w-fit"><Bike size={12}/> Delivery</div>
                                             )}
                                             {order.paymentDetails?.method === 'cod' 
-                                                ? <div className="flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full bg-yellow-500/20 text-yellow-400 border border-yellow-500/30 w-fit"><IndianRupee size={12}/> COD</div>
-                                                : <div className="flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full bg-green-500/20 text-green-400 border border-green-500/30 w-fit"><Wallet size={12}/> PAID</div>
+                                                ? <div title="Cash on Delivery" className="flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full bg-yellow-500/20 text-yellow-400 border border-yellow-500/30 w-fit"><IndianRupee size={12}/> COD</div>
+                                                : <div title="Prepaid Order" className="flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full bg-green-500/20 text-green-400 border border-green-500/30 w-fit"><Wallet size={12}/> PAID</div>
                                             }
+                                            {order.dineInToken && <div title="Dine-In Token" className="font-mono text-xs font-semibold px-2 py-0.5 rounded-full bg-gray-500/20 text-gray-300 border border-gray-500/30 w-fit">{order.dineInToken}</div>}
                                         </div>
                                     </td>
                                     <td className="p-4 align-top hidden md:table-cell">
@@ -939,5 +941,3 @@ export default function LiveOrdersPage() {
     </div>
   );
 }
-
-    
