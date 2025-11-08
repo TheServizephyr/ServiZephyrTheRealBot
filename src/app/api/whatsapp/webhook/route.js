@@ -108,7 +108,6 @@ const sendWelcomeMessageWithOptions = async (customerPhoneWithCode, business, bo
     await sendWhatsAppMessage(customerPhoneWithCode, payload, botPhoneNumberId);
 }
 
-// --- START: Dine-in Post-Paid Confirmation Logic ---
 const handleDineInConfirmation = async (firestore, text, fromNumber, business, botPhoneNumberId) => {
     const orderIdMatch = text.match(/\(order_([a-zA-Z0-9]+)\)/);
     if (!orderIdMatch || !orderIdMatch[1]) {
@@ -130,7 +129,7 @@ const handleDineInConfirmation = async (firestore, text, fromNumber, business, b
     const customerPhone = fromNumber.startsWith('91') ? fromNumber.substring(2) : fromNumber;
 
     // The "Checkmate" logic
-    const activeSessionQuery = firestore.collection('restaurants').doc(orderData.restaurantId)
+    const activeSessionQuery = firestore.collection(business.collectionName).doc(orderData.restaurantId)
                                      .collection('tables').doc(orderData.tableId)
                                      .collection('activeSessions')
                                      .where('customerPhone', '==', customerPhone)
@@ -144,15 +143,15 @@ const handleDineInConfirmation = async (firestore, text, fromNumber, business, b
     }
     
     // If all good, confirm the order
-    const sessionRef = firestore.collection('restaurants').doc(orderData.restaurantId)
+    const sessionRef = firestore.collection(business.collectionName).doc(orderData.restaurantId)
                                .collection('tables').doc(orderData.tableId)
                                .collection('activeSessions').doc(customerPhone);
     
     const batch = firestore.batch();
-    batch.update(orderRef, { status: 'confirmed', customerId: customerPhone });
+    batch.update(orderRef, { status: 'confirmed', customerId: customerPhone, customerPhone: customerPhone });
     batch.set(sessionRef, {
         customerPhone: customerPhone,
-        customerName: orderData.customerName,
+        customerName: orderData.customerName || 'Guest',
         orderId: orderId,
         status: 'unpaid',
         createdAt: FieldValue.serverTimestamp()
@@ -160,14 +159,14 @@ const handleDineInConfirmation = async (firestore, text, fromNumber, business, b
 
     await batch.commit();
 
-    await sendWhatsAppMessage(fromNumber, `Thanks, ${orderData.customerName}! Your order #${orderId.substring(0, 6)} is confirmed and has been sent to the kitchen.`, botPhoneNumberId);
+    await sendWhatsAppMessage(fromNumber, `Thanks, your order #${orderId.substring(0, 6)} is confirmed and has been sent to the kitchen.`, botPhoneNumberId);
     
     // Notify owner
     if (business.data.ownerPhone && business.data.botPhoneNumberId) {
         await sendNewOrderToOwner({
             ownerPhone: business.data.ownerPhone,
             botPhoneNumberId: business.data.botPhoneNumberId,
-            customerName: orderData.customerName,
+            customerName: orderData.customerName || 'A Guest',
             totalAmount: orderData.grandTotal,
             orderId: orderId,
             restaurantName: business.data.name
@@ -176,7 +175,6 @@ const handleDineInConfirmation = async (firestore, text, fromNumber, business, b
     
     return true; // Indicates the message was handled
 };
-// --- END: Dine-in Post-Paid Confirmation Logic ---
 
 
 const handleButtonActions = async (firestore, buttonId, fromNumber, business, botPhoneNumberId) => {
@@ -240,24 +238,20 @@ const handleButtonActions = async (firestore, buttonId, fromNumber, business, bo
                 await sendWhatsAppMessage(fromNumber, `You are now connected directly with a representative from ${business.data.name}. You can ask your questions here.\n\nWhen your query is resolved, the restaurant will end the chat.`, botPhoneNumberId);
                 break;
             }
-            // --- START FIX: Handle new buttons ---
-            case 'end': { // Corresponds to 'action_end_chat'
+            case 'end': {
                 if (payloadParts[0] === 'chat') {
                     await conversationRef.set({ state: 'menu' }, { merge: true });
                     await sendWelcomeMessageWithOptions(fromNumber, business, botPhoneNumberId);
                 }
                 break;
             }
-            case 'report': { // Corresponds to 'action_report_admin'
+            case 'report': {
                 if (payloadParts[0] === 'admin') {
-                    // In a real app, you'd collect more info or forward the chat.
-                    // For now, just acknowledge.
                     console.log(`[Webhook] Admin Report triggered by ${customerPhone} for business ${business.id}`);
                     await sendWhatsAppMessage(fromNumber, `Thank you. Your request to speak with an admin has been noted. We will review the conversation and get back to you shortly.`, botPhoneNumberId);
                 }
                 break;
             }
-            // --- END FIX ---
             default:
                  console.warn(`[Webhook] Unhandled action type: ${type}`);
         }
@@ -300,7 +294,6 @@ export async function POST(request) {
             const fromNumber = message.from;
             const fromPhoneNumber = fromNumber.startsWith('91') ? fromNumber.substring(2) : fromNumber;
 
-            // --- START: Dine-in Check ---
             if (message.type === 'text') {
                 const handled = await handleDineInConfirmation(firestore, message.text.body, fromNumber, business, botPhoneNumberId);
                 if (handled) {
@@ -308,13 +301,11 @@ export async function POST(request) {
                     return NextResponse.json({ message: 'Dine-in confirmation processed.' }, { status: 200 });
                 }
             }
-            // --- END: Dine-in Check ---
 
             const conversationRef = business.ref.collection('conversations').doc(fromPhoneNumber);
             const conversationSnap = await conversationRef.get();
             const conversationData = conversationSnap.exists ? conversationSnap.data() : { state: 'menu' };
             
-            // If in direct chat mode, forward message to owner
             if (conversationData.state === 'direct_chat' && message.type === 'text') {
                 const messageRef = conversationRef.collection('messages').doc(message.id);
                 
@@ -340,7 +331,6 @@ export async function POST(request) {
                 return NextResponse.json({ message: 'Forwarded to owner' }, { status: 200 });
             }
 
-            // Handle button clicks
             if (message.type === 'interactive' && message.interactive.type === 'button_reply') {
                 const buttonReply = message.interactive.button_reply;
                 const buttonId = buttonReply.id;
@@ -349,7 +339,6 @@ export async function POST(request) {
                 
                 await handleButtonActions(firestore, buttonId, fromNumber, business, botPhoneNumberId);
             } 
-            // Handle initial text messages when not in direct chat
             else if (message.type === 'text' && conversationData.state !== 'direct_chat') {
                 await sendWelcomeMessageWithOptions(fromNumber, business, botPhoneNumberId);
             }
