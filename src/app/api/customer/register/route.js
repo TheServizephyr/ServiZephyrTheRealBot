@@ -20,8 +20,6 @@ export async function POST(req) {
             return NextResponse.json({ message: 'Name and phone are required.' }, { status: 400 });
         }
         if (!restaurantId || !items || grandTotal === undefined || subtotal === undefined) {
-            // Dine-in orders might not have items initially, but will have other details.
-            // For now, we only check the core fields.
              const missingFields = `Missing fields: restaurantId=${!!restaurantId}, items=${!!items}, grandTotal=${grandTotal !== undefined}, subtotal=${subtotal !== undefined}`;
              console.error(`[DEBUG] /api/customer/register: Validation failed: Missing required fields for order creation. Details: ${missingFields}`);
              return NextResponse.json({ message: 'Missing required fields for order creation.' }, { status: 400 });
@@ -53,22 +51,20 @@ export async function POST(req) {
             console.log("[DEBUG] Post-paid dine-in flow initiated. Creating pending order.");
             const newOrderRef = firestore.collection('orders').doc();
             
-            // For post-paid, we don't need customer details yet, only the order itself.
             await newOrderRef.set({
                 restaurantId, businessType, tableId,
                 items: items, notes: notes || null,
                 subtotal, cgst, sgst, totalAmount: grandTotal,
                 deliveryType,
                 pax_count: pax_count, tab_name: tab_name,
-                status: 'pending', // Use 'pending', not 'pending_confirmation'
+                status: 'pending', 
                 orderDate: FieldValue.serverTimestamp(),
             });
             
             console.log(`[DEBUG] Pending order created with ID: ${newOrderRef.id}`);
             return NextResponse.json({ 
-                message: 'Order created pending WhatsApp confirmation.',
+                requires_confirmation: true, // New flag for the frontend
                 order_id: newOrderRef.id,
-                ownerPhone: businessData.ownerPhone, // Return owner's phone for wa.me link
                 botDisplayNumber: businessData.botDisplayNumber || null,
             }, { status: 200 });
         }
@@ -81,7 +77,7 @@ export async function POST(req) {
         const existingUserQuery = await usersRef.where('phone', '==', normalizedPhone).limit(1).get();
         
         let isNewUser = true;
-        let userId = normalizedPhone; // Default to phone number for unclaimed profiles
+        let userId = normalizedPhone; 
 
         if (!existingUserQuery.empty) {
             const userDoc = existingUserQuery.docs[0];
@@ -124,7 +120,7 @@ export async function POST(req) {
             };
 
             const razorpayOrderOptions = {
-                amount: Math.round(grandTotal * 100), // Amount in paisa
+                amount: Math.round(grandTotal * 100), 
                 currency: 'INR',
                 receipt: firestoreOrderId,
                 payment_capture: 1,
@@ -146,7 +142,6 @@ export async function POST(req) {
         }
 
 
-        // --- FIRESTORE BATCH WRITE FOR COD / POD / DINE-IN ---
         console.log(`[DEBUG] /api/customer/register: Payment method is ${paymentMethod}. Starting Firestore batch write.`);
         const batch = firestore.batch();
         
@@ -185,7 +180,7 @@ export async function POST(req) {
             
             batch.set(userRestaurantLinkRef, {
                 restaurantName: businessData.name, 
-                joinedAt: FieldValue.serverTimestamp() // This will ONLY be set if the document is new
+                joinedAt: FieldValue.serverTimestamp() 
             }, { merge: true });
 
             batch.update(userRestaurantLinkRef, {

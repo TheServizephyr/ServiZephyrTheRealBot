@@ -123,12 +123,11 @@ const handleDineInConfirmation = async (firestore, text, fromNumber, business, b
 
     if (!orderSnap.exists) {
         await sendWhatsAppMessage(fromNumber, "Sorry, this order ID is invalid. Please try placing your order again.", botPhoneNumberId);
-        return true; // Handled, even if it's an error for the user
+        return true; 
     }
 
     const orderData = orderSnap.data();
     if (orderData.status !== 'pending') {
-        // If it's already confirmed, just send the tracking link again
         if(orderData.customerPhone && orderData.trackingToken) {
             const trackingLink = `https://servizephyr.com/track/${orderId}?phone=${orderData.customerPhone}&token=${orderData.trackingToken}`;
             await sendWhatsAppMessage(fromNumber, `This order is already active. You can track it here:\n\n${trackingLink}`, botPhoneNumberId);
@@ -148,19 +147,18 @@ const handleDineInConfirmation = async (firestore, text, fromNumber, business, b
 
     await sendWhatsAppMessage(fromNumber, `Thanks, your order is confirmed! Track its live status here:\n\n${trackingLink}`, botPhoneNumberId);
     
-    // Notify owner
     if (business.data.ownerPhone && business.data.botPhoneNumberId) {
         await sendNewOrderToOwner({
             ownerPhone: business.data.ownerPhone,
             botPhoneNumberId: business.data.botPhoneNumberId,
-            customerName: orderData.customerName || 'Dine-In Customer',
+            customerName: 'Dine-In Customer',
             totalAmount: orderData.totalAmount,
             orderId: orderId,
             restaurantName: business.data.name
         });
     }
     
-    return true; // Indicates the message was handled as a dine-in confirmation
+    return true; 
 };
 
 
@@ -181,11 +179,6 @@ const handleButtonActions = async (firestore, buttonId, fromNumber, business, bo
                 const token = await generateSecureToken(firestore, customerPhone);
                 const link = `https://servizephyr.com/order/${businessId}?phone=${customerPhone}&token=${token}`;
                 await sendWhatsAppMessage(fromNumber, `Here is your personal link to place an order:\n\n${link}\n\nThis link is valid for 2 hours.`, botPhoneNumberId);
-                break;
-            }
-            case 'dashboard': {
-                const link = `https://servizephyr.com/`;
-                await sendWhatsAppMessage(fromNumber, `To view your dashboard, please visit our website and log in with your Google account:\n\n${link}`, botPhoneNumberId);
                 break;
             }
             case 'track': {
