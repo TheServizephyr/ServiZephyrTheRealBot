@@ -858,6 +858,11 @@ export default function LiveOrdersPage() {
                                         >
                                             {order.customer}
                                         </div>
+                                        {order.deliveryType === 'dine-in' && (
+                                            <div className="mt-1 font-mono text-xs text-primary bg-primary/10 border border-primary/20 rounded px-2 py-1 inline-block">
+                                                Table: {order.tableId} | Token: {order.dineInToken}
+                                            </div>
+                                        )}
                                         <div className="mt-1 flex items-center gap-2">
                                             {order.deliveryType === 'pickup' ? (
                                                 <div title="Pickup Order" className="flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full bg-purple-500/20 text-purple-400 border border-purple-500/30 w-fit"><ShoppingBag size={12}/> Pickup</div>
@@ -870,7 +875,6 @@ export default function LiveOrdersPage() {
                                                 ? <div title="Cash on Delivery" className="flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full bg-yellow-500/20 text-yellow-400 border border-yellow-500/30 w-fit"><IndianRupee size={12}/> COD</div>
                                                 : <div title="Prepaid Order" className="flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full bg-green-500/20 text-green-400 border border-green-500/30 w-fit"><Wallet size={12}/> PAID</div>
                                             }
-                                            {order.dineInToken && <div title="Dine-In Token" className="font-mono text-xs font-semibold px-2 py-0.5 rounded-full bg-gray-500/20 text-gray-300 border border-gray-500/30 w-fit">{order.dineInToken}</div>}
                                         </div>
                                     </td>
                                     <td className="p-4 align-top hidden md:table-cell">
