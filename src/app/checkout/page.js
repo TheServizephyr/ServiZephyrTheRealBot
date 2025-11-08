@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useState, useEffect, useMemo, Suspense } from 'react';
@@ -137,6 +138,7 @@ const CheckoutPageInternal = () => {
     const token = searchParams.get('token');
     const tableId = searchParams.get('table');
     const tabId = searchParams.get('tabId');
+    const sessionToken = searchParams.get('session_token');
     
     const [isTokenValid, setIsTokenValid] = useState(false);
     const [tokenError, setTokenError] = useState('');
@@ -160,41 +162,33 @@ const CheckoutPageInternal = () => {
     useEffect(() => {
         const verifyAndFetch = async () => {
             setLoading(true);
-            
-            // This is the primary phone number to be used for API lookups.
-            // For dine-in (tableId exists) or WhatsApp flow, it MUST come from the URL.
-            // For logged-in users doing delivery, it can come from their profile.
-            const phoneToLookup = phoneFromUrl || user?.phoneNumber || '';
 
-            // Session Verification Logic
-            const tokenToUse = token && token.trim() !== '' ? token : null;
-            if (cartData?.dineInModel === 'post-paid' || (tableId && !phoneFromUrl && !tokenToUse && !user)) {
-                // Skip token verification for post-paid, as it's handled by WhatsApp checkmate
-                // Also skip if it's a direct table scan without prior session info
-            } else if (!tableId && !user && !tokenToUse) {
-                setTokenError("No session information found. Please start a new order.");
-                setLoading(false);
-                return;
-            } else if (tokenToUse && !tableId && !user) {
+            // Determine the phone number for API lookups
+            const phoneToLookup = phoneFromUrl || user?.phoneNumber || '';
+            
+            // Session Verification
+            if (tableId && sessionToken) {
                  try {
-                    const res = await fetch('/api/auth/verify-token', {
-                        method: 'POST', headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ phone: phoneToLookup, token: tokenToUse }),
-                    });
+                    const res = await fetch('/api/auth/verify-token', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ tableId, token: sessionToken }) });
+                    if (!res.ok) throw new Error((await res.json()).message || "Dine-in session validation failed.");
+                } catch (err) {
+                    setTokenError(err.message); setLoading(false); return;
+                }
+            } else if (!user && phoneFromUrl && token) {
+                try {
+                    const res = await fetch('/api/auth/verify-token', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ phone: phoneToLookup, token }) });
                     if (!res.ok) throw new Error((await res.json()).message || "Session validation failed.");
                 } catch (err) {
-                    setTokenError(err.message);
-                    setLoading(false);
-                    return;
+                    setTokenError(err.message); setLoading(false); return;
                 }
+            } else if (!user && !phoneFromUrl && !tableId) {
+                setTokenError("No session information found."); setLoading(false); return;
             }
-            
+
             setIsTokenValid(true);
-            
-            // Set component state with the verified phone number
             setOrderPhone(phoneToLookup);
             
-            // Fetch initial data for the page
+            // Fetch initial data
             if (!restaurantId) { router.push('/'); return; }
             setError('');
 
@@ -202,20 +196,16 @@ const CheckoutPageInternal = () => {
             const parsedData = savedCartData ? JSON.parse(savedCartData) : {};
             
             const deliveryType = tableId ? 'dine-in' : (parsedData.deliveryType || 'delivery');
-            const updatedData = { ...parsedData, phone: phoneToLookup, token, tableId, dineInTabId: tabId, deliveryType };
+            const updatedData = { ...parsedData, phone: phoneToLookup, token, tableId, dineInTabId: tabId, deliveryType, sessionToken };
             
             setCart(updatedData.cart || []);
             setAppliedCoupons(updatedData.appliedCoupons || []);
             setCartData(updatedData);
 
             try {
-                // Prefill user data if available
                 setOrderName(user?.displayName || '');
                 if (phoneToLookup) {
-                    const lookupRes = await fetch('/api/customer/lookup', {
-                        method: 'POST', headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ phone: phoneToLookup }),
-                    });
+                    const lookupRes = await fetch('/api/customer/lookup', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ phone: phoneToLookup }) });
                     if (lookupRes.ok) {
                         const data = await lookupRes.json();
                         setOrderName(prev => prev || data.name || '');
@@ -226,7 +216,6 @@ const CheckoutPageInternal = () => {
                     }
                 }
 
-                // Fetch payment settings
                 const paymentSettingsRes = await fetch(`/api/owner/settings?restaurantId=${restaurantId}`);
                 if (paymentSettingsRes.ok) {
                     const paymentData = await paymentSettingsRes.json();
@@ -244,7 +233,7 @@ const CheckoutPageInternal = () => {
         if (!isUserLoading) {
             verifyAndFetch();
         }
-    }, [restaurantId, phoneFromUrl, token, tableId, tabId, user, isUserLoading, router]);
+    }, [restaurantId, phoneFromUrl, token, tableId, tabId, sessionToken, user, isUserLoading, router]);
     
 
 
@@ -255,6 +244,7 @@ const CheckoutPageInternal = () => {
             token: token || '',
         });
         if (tableId) params.append('table', tableId);
+        if (sessionToken) params.append('session_token', sessionToken);
         router.push(`/add-address?${params.toString()}`);
     };
 
@@ -294,7 +284,11 @@ const CheckoutPageInternal = () => {
     };
     
     const handleAddMoreToTab = () => {
-        router.push(`/order/${restaurantId}?table=${tableId}&phone=${phoneFromUrl}&token=${token}&tabId=${cartData.dineInTabId}`);
+        const params = new URLSearchParams({
+            restaurantId, phone: phoneFromUrl || '', token: token || '',
+            table: tableId, tabId: cartData.dineInTabId, session_token: sessionToken || ''
+        });
+        router.push(`/order/${restaurantId}?${params.toString()}`);
     };
 
     const handleViewBill = () => {
@@ -332,7 +326,7 @@ const CheckoutPageInternal = () => {
                     description: `Order from ${cartData.restaurantName}`, order_id: data.razorpay_order_id,
                     handler: function (response) {
                         localStorage.removeItem(`cart_${restaurantId}`);
-                        if (orderData.deliveryType === 'dine-in') router.push(`/order/${restaurantId}?table=${tableId}&tabId=${data.dine_in_tab_id || tabId}&phone=${phoneFromUrl}&token=${token}`);
+                        if (orderData.deliveryType === 'dine-in') router.push(`/order/${restaurantId}?table=${tableId}&tabId=${data.dine_in_tab_id || tabId}&session_token=${sessionToken}`);
                         else router.push(`/order/placed?orderId=${data.firestore_order_id}`);
                     },
                     prefill: { name: orderName, email: user?.email || "customer@servizephyr.com", contact: orderPhone },
@@ -341,7 +335,7 @@ const CheckoutPageInternal = () => {
                 rzp.open();
             } else {
                 localStorage.removeItem(`cart_${restaurantId}`);
-                if (orderData.deliveryType === 'dine-in') router.push(`/order/${restaurantId}?table=${tableId}&tabId=${data.dine_in_tab_id || tabId}&phone=${phoneFromUrl}&token=${token}`);
+                if (orderData.deliveryType === 'dine-in') router.push(`/order/${restaurantId}?table=${tableId}&tabId=${data.dine_in_tab_id || tabId}&session_token=${sessionToken}`);
                 else router.push(`/order/placed?orderId=${data.firestore_order_id}`);
             }
         } catch (err) {

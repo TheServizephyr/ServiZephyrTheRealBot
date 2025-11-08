@@ -171,6 +171,7 @@ const CartPageInternal = () => {
     const token = searchParams.get('token');
     const tableId = searchParams.get('table');
     const tabId = searchParams.get('tabId');
+    const sessionToken = searchParams.get('session_token');
     
     const [cartData, setCartData] = useState(null);
     const [cart, setCart] = useState([]);
@@ -188,52 +189,54 @@ const CartPageInternal = () => {
 
     useEffect(() => {
         const verifyToken = async () => {
-            // Dine-in or logged-in users don't need token verification on this page
-            if (tableId || user) {
-                setIsTokenValid(true);
-                setLoadingPage(false);
-                return;
-            }
-
-            const tokenToUse = token && token.trim() !== '' ? token : null;
-
-            if (tokenToUse) {
-                 if (!phone) {
-                    setTokenError("A phone number is required with the session token.");
-                    setLoadingPage(false);
-                    return;
-                }
+            if (tableId && sessionToken) {
                 try {
                     const res = await fetch('/api/auth/verify-token', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ phone, token: tokenToUse }),
+                        method: 'POST', headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ tableId: tableId, token: sessionToken }),
                     });
-                    if (!res.ok) {
-                        const errData = await res.json();
-                        throw new Error(errData.message || "Session validation failed.");
-                    }
+                    if (!res.ok) throw new Error((await res.json()).message || "Session token is invalid for this table.");
+                    setIsTokenValid(true);
                 } catch (err) {
                     setTokenError(err.message);
+                } finally {
                     setLoadingPage(false);
-                    return;
                 }
-            } else if (!isUserLoading) {
-                setTokenError("No session token found. Please start your order from WhatsApp or log in.");
+                return;
+            }
+
+            if (user) {
+                setIsTokenValid(true);
                 setLoadingPage(false);
                 return;
             }
-            
-            if (!isUserLoading) {
-                setIsTokenValid(true);
+
+            if (phone && token) {
+                try {
+                    const res = await fetch('/api/auth/verify-token', {
+                        method: 'POST', headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ phone, token }),
+                    });
+                    if (!res.ok) throw new Error((await res.json()).message || "Session validation failed.");
+                    setIsTokenValid(true);
+                } catch (err) {
+                    setTokenError(err.message);
+                } finally {
+                    setLoadingPage(false);
+                }
+                return;
             }
-            setLoadingPage(false);
+
+            if (!isUserLoading) {
+                 setTokenError("No session token found. Please start your order from WhatsApp or log in.");
+                 setLoadingPage(false);
+            }
         };
 
         if (!isUserLoading) {
             verifyToken();
         }
-    }, [phone, token, tableId, user, isUserLoading]);
+    }, [phone, token, tableId, sessionToken, user, isUserLoading]);
     
     useEffect(() => {
         if (isTokenValid && restaurantId) {
@@ -243,11 +246,8 @@ const CartPageInternal = () => {
                 const now = new Date().getTime();
                 if (parsedData.expiryTimestamp && now > parsedData.expiryTimestamp) {
                     localStorage.removeItem(`cart_${restaurantId}`);
-                    setCartData(null);
-                    setCart([]);
-                    setNotes('');
-                    setAppliedCoupons([]);
-                    setTipAmount(0);
+                    setCartData(null); setCart([]); setNotes('');
+                    setAppliedCoupons([]); setTipAmount(0);
                 } else {
                     setCartData(parsedData);
                     setCart(parsedData.cart || []);
@@ -257,8 +257,7 @@ const CartPageInternal = () => {
                     setPickupTime(parsedData.pickupTime || '');
                 }
             } else {
-                setCart([]);
-                setAppliedCoupons([]);
+                setCart([]); setAppliedCoupons([]);
             }
         }
     }, [isTokenValid, restaurantId]);
@@ -321,7 +320,7 @@ const CartPageInternal = () => {
     };
 
     const handlePostPaidCheckout = async () => {
-        setIsCheckoutFlow(true); // To show loading state
+        setIsCheckoutFlow(true);
         setInfoDialog({ isOpen: true, title: "Processing...", message: "Placing your order. Please wait." });
     
         const orderData = {
@@ -335,7 +334,8 @@ const CartPageInternal = () => {
             deliveryType: 'dine-in',
             tableId: tableId,
             businessType: cartData?.businessType || 'restaurant',
-            // No name/phone needed, will be captured via WhatsApp
+            pax_count: cartData?.pax_count || 1,
+            tab_name: cartData?.tab_name || 'Guest',
         };
     
         try {
@@ -348,38 +348,31 @@ const CartPageInternal = () => {
             if (!res.ok) throw new Error(data.message || "Failed to place order.");
     
             if (data.requires_confirmation) {
-                // Clear the cart *before* redirecting to WhatsApp
                 localStorage.removeItem(`cart_${restaurantId}`);
                 
-                const whatsappMessage = `Hello! Please confirm my order (order_${data.order_id}) at Table ${tableId}.`;
+                const whatsappMessage = `Please confirm my order (${data.order_id}). I am at table ${tableId}.`;
                 
-                // Fetch restaurant's bot phone number from settings
-                const settingsRes = await fetch(`/api/owner/settings?businessId=${restaurantId}`);
-                const settingsData = await settingsRes.json();
+                const businessInfoRes = await fetch(`/api/owner/settings?businessId=${restaurantId}`);
+                if (!businessInfoRes.ok) throw new Error('Could not fetch restaurant contact details.');
+                const businessInfo = await businessInfoRes.json();
                 
-                const botPhoneNumber = settingsData?.botPhoneNumberId;
-                if (!botPhoneNumber) {
-                    throw new Error("Could not find the restaurant's WhatsApp number to start the chat.");
-                }
-
+                const botPhoneNumber = businessInfo.botPhoneNumberId;
+                if (!botPhoneNumber) throw new Error("Could not find the restaurant's WhatsApp number.");
+                
                 const whatsappUrl = `https://wa.me/91${botPhoneNumber}?text=${encodeURIComponent(whatsappMessage)}`;
-                
-                // Redirect user to WhatsApp
                 window.location.href = whatsappUrl;
             }
         } catch (err) {
             setInfoDialog({ isOpen: true, title: "Error", message: err.message });
-            setIsCheckoutFlow(false); // Stop loading on error
+            setIsCheckoutFlow(false);
         }
     };
 
     const handleConfirmOrder = () => {
-        // --- START FIX: The main logic change is here ---
-        if (cartData?.dineInModel === 'post-paid' && deliveryType === 'dine-in') {
-            handlePostPaidCheckout(); // Directly trigger post-paid flow
-            return; // Stop further execution
+        if (deliveryType === 'dine-in' && cartData?.dineInModel === 'post-paid') {
+            handlePostPaidCheckout();
+            return;
         }
-        // --- END FIX ---
 
         if (deliveryType === 'pickup' && !pickupTime) {
             setIsCheckoutFlow(true);
@@ -387,13 +380,13 @@ const CartPageInternal = () => {
             return;
         }
 
-        const params = new URLSearchParams({
-            restaurantId,
-            phone: phone || '',
-            token: token || '',
-        });
+        const params = new URLSearchParams();
+        if(restaurantId) params.append('restaurantId', restaurantId);
+        if (phone) params.append('phone', phone);
+        if (token) params.append('token', token);
         if (tableId) params.append('table', tableId);
         if (tabId) params.append('tabId', tabId);
+        if (sessionToken) params.append('session_token', sessionToken);
         
         let checkoutUrl = `/checkout?${params.toString()}`;
 
@@ -401,10 +394,7 @@ const CartPageInternal = () => {
             const dineInSetupStr = localStorage.getItem(`dineInSetup_${restaurantId}_${tableId}`);
             if (dineInSetupStr) {
                 const dineInSetup = JSON.parse(dineInSetupStr);
-                updateCartInStorage({
-                    pax_count: dineInSetup.pax_count,
-                    tab_name: dineInSetup.tab_name,
-                });
+                updateCartInStorage({ pax_count: dineInSetup.pax_count, tab_name: dineInSetup.tab_name });
             }
         }
         router.push(checkoutUrl);
@@ -422,11 +412,10 @@ const CartPageInternal = () => {
         
         if (isCheckoutFlow) {
              const params = new URLSearchParams({
-                restaurantId,
-                phone: phone || '',
-                token: token || '',
+                restaurantId, phone: phone || '', token: token || '',
             });
             if (tableId) params.append('table', tableId);
+             if (sessionToken) params.append('session_token', sessionToken);
             let checkoutUrl = `/checkout?${params.toString()}`;
             router.push(checkoutUrl);
         }
@@ -444,6 +433,7 @@ const CartPageInternal = () => {
         if (token) params.append('token', token);
         if (tableId) params.append('table', tableId);
         if (tabId) params.append('tabId', tabId);
+        if (sessionToken) params.append('session_token', sessionToken);
 
         let backUrl = `/order/${restaurantId}`;
         const paramsString = params.toString();
