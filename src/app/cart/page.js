@@ -557,7 +557,7 @@ const CartPageInternal = () => {
                 <ShoppingCart size={48} className="mb-4" />
                 <h1 className="text-2xl font-bold">Your Cart is Empty</h1>
                 <p className="mt-2">Looks like you haven't added anything to your cart yet.</p>
-                <Button onClick={() => router.back()} className="mt-6">
+                <Button onClick={()={() => router.back()} className="mt-6">
                     <ArrowLeft className="mr-2 h-4 w-4" /> Go Back
                 </Button>
             </div>
@@ -777,7 +777,7 @@ const CartPageInternal = () => {
                         <div className="mt-6 p-4 border-t-2 border-primary bg-card rounded-lg shadow-lg">
                              <div className="flex justify-between items-center">
                                 <h3 className="text-xl font-bold">Bill Summary</h3>
-                                <Button variant="ghost" size="sm" onClick={()={() => setIsBillExpanded(!isBillExpanded)} className="text-primary">
+                                <Button variant="ghost" size="sm" onClick={() => setIsBillExpanded(!isBillExpanded)} className="text-primary">
                                     {isBillExpanded ? 'Hide Details' : 'View Detailed Bill'}
                                     <ChevronDown className={cn("ml-1 h-4 w-4 transition-transform", isBillExpanded && "rotate-180")} />
                                 </Button>
