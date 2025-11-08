@@ -1,4 +1,5 @@
 
+
 import { NextResponse } from 'next/server';
 import { getAuth, getFirestore, verifyAndGetUid } from '@/lib/firebase-admin';
 import axios from 'axios';
@@ -82,10 +83,13 @@ export async function POST(req) {
             throw new Error(`No phone numbers found for WABA ID: ${waba_id}`);
         }
 
-        const phone_number_id = phoneNumbersResponse.data.data[0].id;
-        
+        const phoneNumberInfo = phoneNumbersResponse.data.data[0];
+        const phone_number_id = phoneNumberInfo.id;
+        const display_phone_number = phoneNumberInfo.display_phone_number.replace(/\s+/g, ''); // Clean up spaces
+
         const updateData = {
             botPhoneNumberId: phone_number_id,
+            botDisplayNumber: display_phone_number,
             wabaId: waba_id,
             botStatus: 'Connected',
         };
