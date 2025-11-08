@@ -11,7 +11,7 @@ const OrderPlacedContent = () => {
     const router = useRouter();
     const searchParams = useSearchParams();
     const orderId = searchParams.get('orderId');
-    const whatsappNumber = searchParams.get('botDisplayNumber'); // Using the correct variable now
+    const whatsappNumber = searchParams.get('whatsappNumber'); // Corrected variable name
 
     const handleBackToHome = () => {
         router.push('/');
@@ -27,68 +27,78 @@ const OrderPlacedContent = () => {
         }
     };
     
-    // Fallback for direct navigation or missing params
-    if (!orderId) {
+    const handleTrackOrder = () => {
+        const token = searchParams.get('token');
+        if (orderId && token) {
+            router.push(`/track/${orderId}?token=${token}`);
+        } else {
+            alert("Tracking information is not yet available for this order.");
+        }
+    }
+    
+    // If whatsappNumber is present, it's a dine-in order needing confirmation.
+    if (whatsappNumber) {
         return (
-             <div className="min-h-screen bg-background text-foreground flex flex-col items-center justify-center text-center p-4">
-                <CheckCircle className="w-24 h-24 text-primary mx-auto" />
-                <h1 className="text-4xl font-bold text-foreground mt-6">Order Placed!</h1>
-                <p className="mt-4 text-lg text-muted-foreground max-w-md">Your order has been sent to the restaurant.</p>
-                <div className="flex flex-col sm:flex-row gap-4 mt-8">
-                     <Button 
-                        onClick={() => router.push(`/track/${orderId}`)} 
+            <div className="min-h-screen bg-background text-foreground flex flex-col items-center justify-center text-center p-4 green-theme">
+                <motion.div
+                    initial={{ scale: 0.5, opacity: 0 }}
+                    animate={{ scale: 1, opacity: 1 }}
+                    transition={{ type: 'spring', stiffness: 260, damping: 20, delay: 0.2 }}
+                >
+                    <CheckCircle className="w-24 h-24 text-primary mx-auto" />
+                </motion.div>
+                <motion.h1 
+                    className="text-4xl font-bold text-foreground mt-6"
+                    initial={{ y: 20, opacity: 0 }}
+                    animate={{ y: 0, opacity: 1 }}
+                    transition={{ delay: 0.4 }}
+                >
+                    One Last Step!
+                </motion.h1>
+                <motion.p 
+                    className="mt-4 text-lg text-muted-foreground max-w-md"
+                    initial={{ y: 20, opacity: 0 }}
+                    animate={{ y: 0, opacity: 1 }}
+                    transition={{ delay: 0.5 }}
+                >
+                    To confirm your order and get your unique token number, please send the pre-filled message on WhatsApp.
+                </motion.p>
+                <motion.div
+                    className="flex flex-col sm:flex-row gap-4 mt-8"
+                    initial={{ y: 20, opacity: 0 }}
+                    animate={{ y: 0, opacity: 1 }}
+                    transition={{ delay: 0.6 }}
+                >
+                    <Button 
+                        onClick={handleConfirmOnWhatsApp}
                         className="flex items-center gap-2 px-6 py-3 rounded-md bg-primary hover:bg-primary/90 text-primary-foreground text-lg font-medium"
                     >
-                        <Navigation className="w-5 h-5" /> Track Your Order
+                        <MessageSquare className="w-5 h-5" /> Confirm on WhatsApp
                     </Button>
                     <Button 
-                        onClick={handleBackToHome}
+                        onClick={handleTrackOrder}
                         variant="outline"
                         className="flex items-center gap-2 px-6 py-3 rounded-md text-lg font-medium"
                     >
-                        <ArrowLeft className="w-5 h-5" /> Back to Home
+                        <Navigation className="w-5 h-5" /> Track Your Order
                     </Button>
-                </div>
+                </motion.div>
             </div>
-        )
+        );
     }
 
+    // Default "Order Placed" screen for non-dine-in or if params are missing.
     return (
-        <div className="min-h-screen bg-background text-foreground flex flex-col items-center justify-center text-center p-4 green-theme">
-            <motion.div
-                initial={{ scale: 0.5, opacity: 0 }}
-                animate={{ scale: 1, opacity: 1 }}
-                transition={{ type: 'spring', stiffness: 260, damping: 20, delay: 0.2 }}
-            >
-                <CheckCircle className="w-24 h-24 text-primary mx-auto" />
-            </motion.div>
-            <motion.h1 
-                className="text-4xl font-bold text-foreground mt-6"
-                initial={{ y: 20, opacity: 0 }}
-                animate={{ y: 0, opacity: 1 }}
-                transition={{ delay: 0.4 }}
-            >
-                One Last Step!
-            </motion.h1>
-            <motion.p 
-                className="mt-4 text-lg text-muted-foreground max-w-md"
-                initial={{ y: 20, opacity: 0 }}
-                animate={{ y: 0, opacity: 1 }}
-                transition={{ delay: 0.5 }}
-            >
-                To confirm your order and get a live tracking token, please send the pre-filled message on WhatsApp.
-            </motion.p>
-            <motion.div
-                className="flex flex-col sm:flex-row gap-4 mt-8"
-                initial={{ y: 20, opacity: 0 }}
-                animate={{ y: 0, opacity: 1 }}
-                transition={{ delay: 0.6 }}
-            >
-                <Button 
-                    onClick={handleConfirmOnWhatsApp}
+         <div className="min-h-screen bg-background text-foreground flex flex-col items-center justify-center text-center p-4">
+            <CheckCircle className="w-24 h-24 text-primary mx-auto" />
+            <h1 className="text-4xl font-bold text-foreground mt-6">Order Placed!</h1>
+            <p className="mt-4 text-lg text-muted-foreground max-w-md">Your order has been sent to the restaurant.</p>
+            <div className="flex flex-col sm:flex-row gap-4 mt-8">
+                 <Button 
+                    onClick={() => router.push(`/track/${orderId}`)} 
                     className="flex items-center gap-2 px-6 py-3 rounded-md bg-primary hover:bg-primary/90 text-primary-foreground text-lg font-medium"
                 >
-                    <MessageSquare className="w-5 h-5" /> Confirm on WhatsApp
+                    <Navigation className="w-5 h-5" /> Track Your Order
                 </Button>
                 <Button 
                     onClick={handleBackToHome}
@@ -97,9 +107,9 @@ const OrderPlacedContent = () => {
                 >
                     <ArrowLeft className="w-5 h-5" /> Back to Home
                 </Button>
-            </motion.div>
+            </div>
         </div>
-    );
+    )
 };
 
 

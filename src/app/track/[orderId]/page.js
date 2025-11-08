@@ -1,13 +1,14 @@
 
+
 'use client';
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { motion } from 'framer-motion';
-import { Check, CookingPot, Bike, Home, Star, Phone, Navigation, RefreshCw, Loader2, ArrowLeft, XCircle } from 'lucide-react';
+import { Check, CookingPot, Bike, Home, Star, Phone, Navigation, RefreshCw, Loader2, ArrowLeft, XCircle, Wallet, Split, ConciergeBell } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { useParams, useRouter } from 'next/navigation';
+import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import dynamic from 'next/dynamic';
 
 const LiveTrackingMap = dynamic(() => import('@/components/LiveTrackingMap'), { 
@@ -22,7 +23,9 @@ const statusConfig = {
   preparing: { title: 'Preparing', icon: <CookingPot size={24} />, step: 2 },
   dispatched: { title: 'Waiting for Rider', icon: <Bike size={24} />, step: 3 },
   on_the_way: { title: 'Out for Delivery', icon: <Bike size={24} />, step: 3 },
+  ready_for_pickup: { title: 'Ready for Pickup', icon: <ShoppingBag size={24} />, step: 3 }, // Changed icon for clarity
   delivered: { title: 'Delivered', icon: <Home size={24} />, step: 4 },
+  picked_up: { title: 'Picked Up', icon: <Home size={24} />, step: 4 },
   rejected: { title: 'Rejected', icon: <XCircle size={24} />, step: 4, isError: true },
 };
 
@@ -34,7 +37,7 @@ const StatusTimeline = ({ currentStatus }) => {
   
     const uniqueSteps = Object.values(statusConfig)
         .filter((value, index, self) => 
-            !value.isError && self.findIndex(v => v.step === value.step && (v.title === "Out for Delivery" ? false : true)) === index
+            !value.isError && self.findIndex(v => v.step === value.step && (v.title.includes("Rider") ? false : true)) === index
         );
 
     return (
@@ -62,7 +65,7 @@ const StatusTimeline = ({ currentStatus }) => {
                   {isError ? statusConfig[currentStatus].title : title}
                 </p>
               </div>
-              {step < 4 && (
+              {step < uniqueSteps.length -1 && (
                 <div className="flex-1 h-1 mx-1 sm:mx-2 rounded-full bg-border">
                   <motion.div
                     className={`h-full rounded-full ${isError ? 'bg-destructive' : 'bg-primary'}`}
@@ -116,6 +119,8 @@ const RiderDetails = ({ rider }) => {
 export default function OrderTrackingPage() {
     const { orderId } = useParams();
     const router = useRouter();
+    const searchParams = useSearchParams();
+    const sessionToken = searchParams.get('token');
 
     const [orderData, setOrderData] = useState(null);
     const [loading, setLoading] = useState(true);
@@ -127,19 +132,23 @@ export default function OrderTrackingPage() {
             setLoading(false);
             return;
         }
+         // Token Validation
+        if (!sessionToken) {
+            setError("Unauthorized access. A valid tracking token is required.");
+            setLoading(false);
+            return;
+        }
         if (!loading) setLoading(true); // Show loader on manual refresh
         try {
             console.log(`[TrackPage] Fetching data for order: ${orderId}`);
+            // In a real app, you'd pass the sessionToken for verification
             const res = await fetch(`/api/order/status/${orderId}`);
-             console.log(`[TrackPage] API response status: ${res.status}`);
             if (!res.ok) {
                 const errData = await res.json();
                 throw new Error(errData.message || 'Failed to fetch order status.');
             }
             const data = await res.json();
             setOrderData(data);
-            console.log("DEBUG: Order Data Fetched:", data);
-            console.log("DEBUG: Customer Location from Order:", data.order.customerLocation);
         } catch (err) {
             console.error("[TrackPage] Fetch error:", err);
             setError(err.message);
@@ -149,12 +158,8 @@ export default function OrderTrackingPage() {
     };
     
     useEffect(() => {
-        console.log("[TrackPage] Initial fetch.");
         fetchData(); // Initial fetch
-        const interval = setInterval(() => {
-            console.log("[TrackPage] Interval fetch.");
-            fetchData()
-        }, 30000); // Poll every 30 seconds
+        const interval = setInterval(fetchData, 30000); // Poll every 30 seconds
         return () => clearInterval(interval);
     }, [orderId]);
 
@@ -206,9 +211,9 @@ export default function OrderTrackingPage() {
         )
     }
     
+    const isDineIn = orderData.order.deliveryType === 'dine-in';
     const showRiderDetails = orderData.order.status === 'on_the_way' || orderData.order.status === 'delivered';
-    const showMap = restaurantLocation && customerLocation;
-
+    const showMap = !isDineIn && restaurantLocation && customerLocation;
 
     return (
         <div className="min-h-screen bg-background text-foreground flex flex-col">
@@ -226,24 +231,39 @@ export default function OrderTrackingPage() {
                  <div className="p-4 bg-card border-b border-border">
                     <StatusTimeline currentStatus={orderData.order.status} />
                 </div>
-
-                <div className="w-full h-64 md:h-80 relative">
-                    {showMap ? (
-                        <LiveTrackingMap 
-                            restaurantLocation={restaurantLocation}
-                            customerLocation={customerLocation}
-                            riderLocation={riderLocation}
-                        />
-                    ) : (
-                         <div className="w-full h-full bg-muted flex items-center justify-center text-muted-foreground">
-                            Map will be available once the rider is on the way.
-                        </div>
-                    )}
-                </div>
                 
-                <div className="p-4 space-y-4">
-                   {showRiderDetails && <RiderDetails rider={orderData.deliveryBoy} />}
-                </div>
+                {isDineIn ? (
+                    <div className="flex-grow p-4 space-y-4 flex flex-col items-center justify-center text-center">
+                        <ConciergeBell size={48} className="text-primary"/>
+                        <h2 className="text-2xl font-bold">Your order is <span className="capitalize">{orderData.order.status}</span>!</h2>
+                        {orderData.order.dineInToken && <p className="text-lg">Your Token Number is: <span className="font-bold text-primary text-2xl">{orderData.order.dineInToken}</span></p>}
+                        <p className="text-muted-foreground max-w-md">Keep an eye on the status. We'll let you know when it's ready. You can close this page and reopen it later using the link from WhatsApp.</p>
+                        <div className="grid grid-cols-2 gap-4 mt-6">
+                            <Button className="w-full"><Wallet className="mr-2 h-4 w-4"/> Pay Full Bill</Button>
+                            <Button variant="outline" className="w-full"><Split className="mr-2 h-4 w-4"/> Split Bill</Button>
+                        </div>
+                    </div>
+                ) : (
+                    <>
+                        <div className="w-full h-64 md:h-80 relative">
+                            {showMap ? (
+                                <LiveTrackingMap 
+                                    restaurantLocation={restaurantLocation}
+                                    customerLocation={customerLocation}
+                                    riderLocation={riderLocation}
+                                />
+                            ) : (
+                                <div className="w-full h-full bg-muted flex items-center justify-center text-muted-foreground">
+                                    Map will be available once the rider is on the way.
+                                </div>
+                            )}
+                        </div>
+                        
+                        <div className="p-4 space-y-4">
+                           {showRiderDetails && <RiderDetails rider={orderData.deliveryBoy} />}
+                        </div>
+                    </>
+                )}
             </main>
         </div>
     );

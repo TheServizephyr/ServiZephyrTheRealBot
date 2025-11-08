@@ -46,7 +46,7 @@ export async function POST(req) {
         console.log("[DEBUG] /api/customer/register: Business found.");
         const businessData = businessDoc.data();
 
-        // --- START: WhatsApp Checkmate Dine-In Logic ---
+        // --- START: MODIFIED WhatsApp Checkmate Dine-In Logic ---
         if (deliveryType === 'dine-in' && businessData.dineInModel === 'post-paid') {
             console.log("[DEBUG] Post-paid dine-in flow initiated. Creating pending order.");
             const newOrderRef = firestore.collection('orders').doc();
@@ -63,12 +63,12 @@ export async function POST(req) {
             
             console.log(`[DEBUG] Pending order created with ID: ${newOrderRef.id}`);
             return NextResponse.json({ 
-                requires_confirmation: true, // New flag for the frontend
+                message: "Order placed. Awaiting WhatsApp confirmation.",
                 order_id: newOrderRef.id,
-                botDisplayNumber: businessData.botDisplayNumber || null,
+                whatsappNumber: businessData.botDisplayNumber || businessData.ownerPhone,
             }, { status: 200 });
         }
-        // --- END: WhatsApp Checkmate Dine-In Logic ---
+        // --- END: MODIFIED WhatsApp Checkmate Dine-In Logic ---
         
         let razorpayOrderId = null;
         
