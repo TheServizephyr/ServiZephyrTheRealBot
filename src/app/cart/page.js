@@ -362,10 +362,10 @@ const CartPageInternal = () => {
                 if (!businessInfoRes.ok) throw new Error('Could not fetch restaurant contact details.');
                 const businessInfo = await businessInfoRes.json();
                 
-                const botPhoneNumber = businessInfo.botPhoneNumberId;
-                if (!botPhoneNumber) throw new Error("Could not find the restaurant's WhatsApp number.");
+                const botPhoneNumberId = businessInfo.botPhoneNumberId;
+                if (!botPhoneNumberId) throw new Error("This restaurant's WhatsApp bot is not configured.");
                 
-                const whatsappUrl = `https://wa.me/91${botPhoneNumber}?text=${encodeURIComponent(whatsappMessage)}`;
+                const whatsappUrl = `https://wa.me/91${botPhoneNumberId}?text=${encodeURIComponent(whatsappMessage)}`;
                 window.location.href = whatsappUrl;
             }
         } catch (err) {
