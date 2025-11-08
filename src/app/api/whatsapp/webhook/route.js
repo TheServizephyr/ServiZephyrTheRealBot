@@ -57,11 +57,12 @@ async function getBusiness(firestore, botPhoneNumberId) {
 
 const generateSecureToken = async (firestore, customerPhone) => {
     const token = nanoid(24);
-    const expiry = new Date(Date.now() + 2 * 60 * 60 * 1000); // 2-hour validity
+    const expiry = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24-hour validity for tracking link
     const authTokenRef = firestore.collection('auth_tokens').doc(token);
     await authTokenRef.set({
         phone: customerPhone,
-        expiresAt: expiry
+        expiresAt: expiry,
+        type: 'tracking'
     });
     return token;
 };
@@ -149,15 +150,15 @@ const handleDineInConfirmation = async (firestore, text, fromNumber, business, b
             trackingTokenForLink = await generateSecureToken(firestore, customerPhone);
             
             transaction.update(businessRef, { lastDineInToken: newTokenNumber });
-            // THE FIX: DO NOT change the status to 'confirmed'. Let the owner do it.
+            
             transaction.update(orderRef, {
                 customerPhone: customerPhone,
                 dineInToken: dineInToken,
                 trackingToken: trackingTokenForLink 
             });
         });
-
-        const trackingUrl = `https://servizephyr.com/track/${orderId}?token=${trackingTokenForLink}`;
+        
+        const trackingUrl = `https://servizephyr.com/track/dine-in/${orderId}?token=${trackingTokenForLink}`;
 
         await sendWhatsAppMessage(fromNumber, `Thanks, your order request has been received!\n\n*Your Token is: ${dineInToken}*\n\nPlease show this token at the counter.\n\nTrack its live status here:\n${trackingUrl}`, botPhoneNumberId);
         
@@ -232,7 +233,10 @@ const handleButtonActions = async (firestore, buttonId, fromNumber, business, bo
                     const orderId = latestOrder.id;
 
                     const token = await generateSecureToken(firestore, customerPhone);
-                    const link = `https://servizephyr.com/track/${orderId}?phone=${customerPhone}&token=${token}`;
+                    const link = latestOrder.deliveryType === 'dine-in'
+                        ? `https://servizephyr.com/track/dine-in/${orderId}?token=${token}`
+                        : `https://servizephyr.com/track/${orderId}?token=${token}`;
+
                     await sendWhatsAppMessage(fromNumber, `Here is the tracking link for your latest order (#${orderId.substring(0, 6)}):\n\n${link}`, botPhoneNumberId);
                 }
                 break;

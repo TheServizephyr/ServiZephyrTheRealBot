@@ -14,6 +14,8 @@ const OrderPlacedContent = () => {
     const orderId = searchParams.get('orderId');
     const whatsappNumber = searchParams.get('whatsappNumber');
     const token = searchParams.get('token'); 
+    const isDineIn = !!whatsappNumber;
+
 
     const handleBackToHome = () => {
         router.push('/');
@@ -30,18 +32,19 @@ const OrderPlacedContent = () => {
     };
     
     const handleTrackOrder = () => {
+        const trackingPath = isDineIn ? 'dine-in/' : '';
         if (orderId && token) {
-            router.push(`/track/${orderId}?token=${token}`);
+            router.push(`/track/${trackingPath}${orderId}?token=${token}`);
         } else if (orderId) {
-            // Fallback for dine-in if token is not immediately available
-            router.push(`/track/${orderId}`);
+            // Fallback for cases where token might be missing but we still want to try.
+            router.push(`/track/${trackingPath}${orderId}`);
         }
         else {
             alert("Tracking information is not yet available for this order.");
         }
     }
     
-    if (whatsappNumber) {
+    if (isDineIn) {
         return (
             <div className="min-h-screen bg-background text-foreground flex flex-col items-center justify-center text-center p-4 green-theme">
                 <motion.div
@@ -91,6 +94,7 @@ const OrderPlacedContent = () => {
         );
     }
 
+    // Default view for Delivery/Pickup orders
     return (
          <div className="min-h-screen bg-background text-foreground flex flex-col items-center justify-center text-center p-4">
             <CheckCircle className="w-24 h-24 text-primary mx-auto" />
@@ -98,7 +102,7 @@ const OrderPlacedContent = () => {
             <p className="mt-4 text-lg text-muted-foreground max-w-md">Your order has been sent to the restaurant.</p>
             <div className="flex flex-col sm:flex-row gap-4 mt-8">
                  <Button 
-                    onClick={() => router.push(`/track/${orderId}`)} 
+                    onClick={handleTrackOrder}
                     className="flex items-center gap-2 px-6 py-3 rounded-md bg-primary hover:bg-primary/90 text-primary-foreground text-lg font-medium"
                 >
                     <Navigation className="w-5 h-5" /> Track Your Order

@@ -1,21 +1,26 @@
 'use client';
 
-import React, { useState, useEffect, useMemo, Suspense } from 'react';
+import React, { useState, useEffect, useMemo, Suspense, useCallback, useRef } from 'react';
 import { motion } from 'framer-motion';
-import { Check, CookingPot, Bike, Home, Star, Phone, Navigation, RefreshCw, Loader2, ArrowLeft, XCircle, Wallet, Split, ConciergeBell, ShoppingBag } from 'lucide-react';
+import { Check, CookingPot, Bike, Home, Star, Phone, Navigation, RefreshCw, Loader2, ArrowLeft, XCircle, Wallet, Split, ConciergeBell, ShoppingBag, MapPin } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useRouter, useParams, useSearchParams } from 'next/navigation';
+import dynamic from 'next/dynamic';
+
+const LiveTrackingMap = dynamic(() => import('@/components/LiveTrackingMap'), { 
+    ssr: false,
+    loading: () => <div className="w-full h-full bg-muted flex items-center justify-center"><Loader2 className="animate-spin text-primary"/></div>
+});
+
 
 const statusConfig = {
   pending: { title: 'Order Placed', icon: <Check size={24} />, step: 0, description: "Your order has been sent to the restaurant." },
   paid: { title: 'Order Placed', icon: <Check size={24} />, step: 0, description: "Your order has been sent to the restaurant." },
-  confirmed: { title: 'Order Confirmed', icon: <Check size={24} />, step: 1, description: "The restaurant has confirmed your order and will start preparing it soon." },
-  preparing: { title: 'Preparing Your Order', icon: <CookingPot size={24} />, step: 2, description: "The kitchen is currently preparing your delicious food." },
-  ready_for_pickup: { title: 'Ready for Pickup', icon: <ShoppingBag size={24} />, step: 3, description: "Your order is packed and ready for you to pick up." },
-  dispatched: { title: 'Out for Delivery', icon: <Bike size={24} />, step: 3, description: "Our delivery hero is on their way to you." },
+  confirmed: { title: 'Order Confirmed', icon: <Check size={24} />, step: 1, description: "The restaurant has confirmed your order." },
+  preparing: { title: 'Preparing Your Order', icon: <CookingPot size={24} />, step: 2, description: "Your meal is being prepared." },
+  dispatched: { title: 'Out for Delivery', icon: <Bike size={24} />, step: 3, description: "Our delivery hero is on their way." },
   delivered: { title: 'Delivered', icon: <Home size={24} />, step: 4, description: "Enjoy your meal!" },
-  picked_up: { title: 'Picked Up', icon: <Home size={24} />, step: 4, description: "Enjoy your meal!" },
-  rejected: { title: 'Order Rejected', icon: <XCircle size={24} />, step: 4, isError: true, description: "We're sorry, the restaurant could not accept your order." },
+  rejected: { title: 'Order Rejected', icon: <XCircle size={24} />, step: 4, isError: true, description: "The restaurant could not accept your order." },
 };
 
 
@@ -27,7 +32,7 @@ const StatusTimeline = ({ currentStatus }) => {
   
     const uniqueSteps = Object.values(statusConfig)
         .filter((value, index, self) => 
-            !value.isError && self.findIndex(v => v.step === value.step && !v.title.includes("Rider")) === index
+            !value.isError && self.findIndex(v => v.step === value.step) === index
         );
 
     return (
@@ -55,7 +60,7 @@ const StatusTimeline = ({ currentStatus }) => {
                   {isError ? statusConfig[currentStatus].title : title}
                 </p>
               </div>
-              {step < uniqueSteps.length -1 && (
+              {step < uniqueSteps.length - 1 && (
                 <div className="flex-1 h-1 mt-6 mx-1 sm:mx-2 rounded-full bg-border">
                   <motion.div
                     className={`h-full rounded-full ${isError ? 'bg-destructive' : 'bg-primary'}`}
@@ -82,49 +87,47 @@ function OrderTrackingContent() {
     const [orderData, setOrderData] = useState(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
+    const mapRef = useRef(null);
 
-    useEffect(() => {
-        const fetchData = async () => {
-            if (!orderId) {
-                setError("No order ID provided.");
-                setLoading(false);
-                return;
-            }
-            if (!sessionToken) {
-                setError("Unauthorized access. A valid tracking token is required.");
-                setLoading(false);
-                return;
-            }
-            if (!loading) setLoading(true);
+    const fetchData = useCallback(async () => {
+        if (!orderId || !sessionToken) {
+            setError("Order ID or tracking token is missing.");
+            setLoading(false);
+            return;
+        }
 
-            try {
-                const res = await fetch(`/api/order/status/${orderId}`);
-                if (!res.ok) {
-                    const errData = await res.json();
-                    throw new Error(errData.message || 'Failed to fetch order status.');
-                }
-                const data = await res.json();
-                setOrderData(data);
-            } catch (err) {
-                setError(err.message);
-            } finally {
-                setLoading(false);
+        try {
+            const res = await fetch(`/api/order/status/${orderId}`);
+            if (!res.ok) {
+                const errData = await res.json();
+                throw new Error(errData.message || 'Failed to fetch order status.');
             }
-        };
-
-        fetchData();
-        const interval = setInterval(fetchData, 30000);
-        return () => clearInterval(interval);
+            const data = await res.json();
+            setOrderData(data);
+        } catch (err) {
+            setError(err.message);
+        } finally {
+            setLoading(false);
+        }
     }, [orderId, sessionToken]);
 
-    const handleConfirmPayment = () => {
-        const params = new URLSearchParams();
-        params.set('restaurantId', orderData.restaurant.id);
-        params.set('table', orderData.order.tableId);
-        params.set('tabId', orderData.order.dineInTabId);
-        params.set('session_token', sessionToken);
-        router.push(`/checkout?${params.toString()}`);
-    }
+    useEffect(() => {
+        fetchData();
+        const interval = setInterval(fetchData, 30000); // Poll every 30 seconds
+        return () => clearInterval(interval);
+    }, [fetchData]);
+
+    const handleRecenter = () => {
+        if (!mapRef.current) return;
+        const bounds = new window.google.maps.LatLngBounds();
+        if (orderData.restaurant?.restaurantLocation) bounds.extend(orderData.restaurant.restaurantLocation);
+        if (orderData.deliveryBoy?.location) bounds.extend(orderData.deliveryBoy.location);
+        if (orderData.order?.customerLocation) bounds.extend(orderData.order.customerLocation);
+        
+        if (!bounds.isEmpty()) {
+            mapRef.current.fitBounds(bounds, 80);
+        }
+    };
 
     if (loading && !orderData) {
         return (
@@ -154,61 +157,69 @@ function OrderTrackingContent() {
         )
     }
     
-    const isDineIn = orderData.order.deliveryType === 'dine-in';
     const currentStatusKey = (orderData.order.status === 'paid') ? 'pending' : orderData.order.status;
     const currentStatusInfo = statusConfig[currentStatusKey] || statusConfig.pending;
+    
+    const mapLocations = {
+        restaurantLocation: orderData.restaurant.restaurantLocation,
+        customerLocation: orderData.order.customerLocation,
+        riderLocation: orderData.deliveryBoy?.location,
+    };
 
     return (
-        <div className="min-h-screen bg-background text-foreground flex flex-col">
-            <header className="p-4 border-b border-border flex justify-between items-center">
-                <div>
-                    <p className="text-xs text-muted-foreground">Tracking Order</p>
-                    <h1 className="font-bold text-lg">{orderData.restaurant?.name || 'Your Order'}</h1>
-                </div>
-                <Button onClick={fetchData} variant="outline" size="icon" disabled={loading}>
-                    <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
-                </Button>
-            </header>
-            
-            <main className="flex-grow flex flex-col items-center p-4 md:p-8">
-                <div className="w-full max-w-2xl mx-auto">
-                    <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
-                        <div className="p-4 bg-card border-b border-border text-center">
-                            <h2 className="text-lg font-semibold text-muted-foreground">Order ID</h2>
-                            <p className="text-2xl font-mono tracking-widest text-foreground">{orderId}</p>
-                        </div>
-                        <div className="p-6 bg-card">
-                            <StatusTimeline currentStatus={orderData.order.status} />
-                        </div>
-                    </motion.div>
-
-                    <motion.div
-                        key={orderData.order.status}
-                        initial={{ opacity: 0, scale: 0.9 }}
-                        animate={{ opacity: 1, scale: 1 }}
-                        transition={{ delay: 0.3 }}
-                        className="mt-8 text-center bg-card p-6 rounded-lg border border-border"
-                    >
-                         <h3 className="text-2xl font-bold">{currentStatusInfo.title}</h3>
-                         <p className="mt-2 text-muted-foreground">{currentStatusInfo.description}</p>
-                    </motion.div>
-                </div>
-
-                <div className="w-full max-w-2xl mx-auto mt-8 flex-grow">
-                     <div className="bg-card border border-border rounded-lg p-6 text-center">
-                        <h3 className="font-bold text-lg">Fun Fact while you wait</h3>
-                        <p className="text-muted-foreground mt-2 italic">"The world's most expensive pizza costs $12,000 and takes 72 hours to make."</p>
-                     </div>
-                </div>
-            </main>
-            
-            <footer className="sticky bottom-0 left-0 w-full bg-background/80 backdrop-blur-lg border-t border-border z-10">
-                <div className="container mx-auto p-4 flex justify-center">
-                     <Button onClick={handleConfirmPayment} className="w-full max-w-md h-14 text-lg bg-primary hover:bg-primary/90 text-primary-foreground">
-                        <Wallet className="mr-3 h-6 w-6"/> Confirm Payment
+        <div className="min-h-screen bg-background text-foreground flex flex-col md:flex-row">
+            <div className="w-full md:w-1/2 lg:w-2/3 h-64 md:h-screen relative">
+                <LiveTrackingMap {...mapLocations} mapRef={mapRef}/>
+                <Button onClick={handleRecenter} variant="secondary" size="icon" className="absolute top-4 right-4 z-10 h-12 w-12 rounded-full shadow-lg" aria-label="Recenter map"><Navigation /></Button>
+            </div>
+            <div className="w-full md:w-1/2 lg:w-1/3 flex-shrink-0 p-4 md:p-8 space-y-6 overflow-y-auto">
+                <div className="flex justify-between items-center">
+                    <div>
+                        <p className="text-xs text-muted-foreground">Order from</p>
+                        <h1 className="font-bold text-2xl">{orderData.restaurant.name}</h1>
+                    </div>
+                    <Button onClick={fetchData} variant="outline" size="icon" disabled={loading}>
+                        <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
                     </Button>
                 </div>
-            </footer>
+                
+                <div className="p-4 bg-card border-b border-border text-center">
+                    <h2 className="text-lg font-semibold text-muted-foreground">Order ID</h2>
+                    <p className="text-xl font-mono tracking-widest text-foreground">{orderId}</p>
+                </div>
+
+                <div className="p-6 bg-card rounded-lg border">
+                    <StatusTimeline currentStatus={orderData.order.status} />
+                </div>
+                 <motion.div
+                    key={orderData.order.status}
+                    initial={{ opacity: 0, scale: 0.9 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    transition={{ delay: 0.3 }}
+                    className="text-center bg-card p-6 rounded-lg border border-border"
+                >
+                     <h3 className="text-xl font-bold">{currentStatusInfo.title}</h3>
+                     <p className="mt-2 text-muted-foreground text-sm">{currentStatusInfo.description}</p>
+                </motion.div>
+
+                {orderData.deliveryBoy && (
+                    <div className="bg-card p-4 rounded-lg border border-border">
+                        <h4 className="font-semibold mb-2">Your Delivery Hero</h4>
+                        <div className="flex justify-between items-center">
+                            <div className="flex items-center gap-3">
+                                <img src={orderData.deliveryBoy.photoUrl || 'https://picsum.photos/seed/rider/100'} alt="Delivery Boy" className="w-12 h-12 rounded-full object-cover"/>
+                                <div>
+                                    <p className="font-bold text-foreground">{orderData.deliveryBoy.name}</p>
+                                    <div className="flex items-center gap-1 text-xs text-yellow-400"><Star size={12} className="fill-current"/> {orderData.deliveryBoy.rating}</div>
+                                </div>
+                            </div>
+                            <Button asChild variant="outline">
+                                <a href={`tel:${orderData.deliveryBoy.phone}`}><Phone className="mr-2 h-4 w-4"/> Call</a>
+                            </Button>
+                        </div>
+                    </div>
+                )}
+            </div>
         </div>
     );
 }

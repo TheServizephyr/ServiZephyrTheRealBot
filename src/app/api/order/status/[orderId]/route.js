@@ -63,7 +63,9 @@ export async function GET(request, { params }) {
                 id: orderSnap.id,
                 status: orderData.status,
                 customerLocation: orderData.customerLocation,
+                // --- THE FIX ---
                 restaurantLocation: restaurantLocationForMap, 
+                // --- END FIX ---
                 customerName: orderData.customerName,
                 customerAddress: orderData.customerAddress,
                 customerPhone: orderData.customerPhone,
