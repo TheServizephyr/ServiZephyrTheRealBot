@@ -356,7 +356,7 @@ const CartPageInternal = () => {
     
             if (data.requires_confirmation) {
                 localStorage.removeItem(`cart_${restaurantId}`);
-                router.push(`/order/placed?orderId=${data.order_id}&whatsappNumber=${data.ownerPhone}`);
+                router.push(`/order/placed?orderId=${data.order_id}&botDisplayNumber=${data.botDisplayNumber}`);
             }
         } catch (err) {
             setInfoDialog({ isOpen: true, title: "Error", message: err.message });

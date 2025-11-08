@@ -64,7 +64,7 @@ export async function POST(req) {
                 message: 'Order created pending WhatsApp confirmation.',
                 requires_confirmation: true,
                 order_id: newOrderRef.id,
-                ownerPhone: businessData.ownerPhone || null, // Return owner's phone for WhatsApp link
+                botDisplayNumber: businessData.botDisplayNumber || null, // Return bot's display number
             }, { status: 200 });
         }
         // --- END: WhatsApp Checkmate Dine-In Logic ---

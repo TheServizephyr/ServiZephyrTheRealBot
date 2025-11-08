@@ -11,7 +11,7 @@ const OrderPlacedContent = () => {
     const router = useRouter();
     const searchParams = useSearchParams();
     const orderId = searchParams.get('orderId');
-    const whatsappNumber = searchParams.get('whatsappNumber');
+    const whatsappNumber = searchParams.get('botDisplayNumber'); // Using the correct variable now
 
     const handleBackToHome = () => {
         router.push('/');
@@ -20,12 +20,38 @@ const OrderPlacedContent = () => {
     const handleConfirmOnWhatsApp = () => {
         if (orderId && whatsappNumber) {
             const message = `Hi! I've placed a dine-in order. Please confirm my order ID: ${orderId}`;
-            const whatsappUrl = `https://wa.me/91${whatsappNumber}?text=${encodeURIComponent(message)}`;
+            const whatsappUrl = `https://wa.me/${whatsappNumber}?text=${encodeURIComponent(message)}`;
             window.location.href = whatsappUrl;
         } else {
-            alert("Could not create WhatsApp confirmation link. Order ID or number is missing.");
+            alert("Could not create WhatsApp confirmation link. Order ID or bot number is missing.");
         }
     };
+    
+    // Fallback for direct navigation or missing params
+    if (!orderId) {
+        return (
+             <div className="min-h-screen bg-background text-foreground flex flex-col items-center justify-center text-center p-4">
+                <CheckCircle className="w-24 h-24 text-primary mx-auto" />
+                <h1 className="text-4xl font-bold text-foreground mt-6">Order Placed!</h1>
+                <p className="mt-4 text-lg text-muted-foreground max-w-md">Your order has been sent to the restaurant.</p>
+                <div className="flex flex-col sm:flex-row gap-4 mt-8">
+                     <Button 
+                        onClick={() => router.push(`/track/${orderId}`)} 
+                        className="flex items-center gap-2 px-6 py-3 rounded-md bg-primary hover:bg-primary/90 text-primary-foreground text-lg font-medium"
+                    >
+                        <Navigation className="w-5 h-5" /> Track Your Order
+                    </Button>
+                    <Button 
+                        onClick={handleBackToHome}
+                        variant="outline"
+                        className="flex items-center gap-2 px-6 py-3 rounded-md text-lg font-medium"
+                    >
+                        <ArrowLeft className="w-5 h-5" /> Back to Home
+                    </Button>
+                </div>
+            </div>
+        )
+    }
 
     return (
         <div className="min-h-screen bg-background text-foreground flex flex-col items-center justify-center text-center p-4 green-theme">
@@ -50,7 +76,7 @@ const OrderPlacedContent = () => {
                 animate={{ y: 0, opacity: 1 }}
                 transition={{ delay: 0.5 }}
             >
-                To confirm your order and receive a token for live tracking, please send the pre-filled message on WhatsApp.
+                To confirm your order and get a live tracking token, please send the pre-filled message on WhatsApp.
             </motion.p>
             <motion.div
                 className="flex flex-col sm:flex-row gap-4 mt-8"

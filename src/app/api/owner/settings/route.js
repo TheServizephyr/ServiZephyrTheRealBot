@@ -9,7 +9,7 @@ export const dynamic = 'force-dynamic';
 
 async function verifyUserAndGetData(req) {
     const firestore = await getFirestore();
-    const uid = await verifyAndGetUid(req); // Use the central helper
+    const uid = await verifyAndGetUid(req); // Use central helper
     
     // Admin impersonation logic
     const url = new URL(req.url, `http://${req.headers.host}`);
@@ -68,7 +68,8 @@ export async function GET(req) {
                 deliveryCodEnabled: businessData.deliveryCodEnabled === undefined ? true : businessData.deliveryCodEnabled,
                 pickupPodEnabled: businessData.pickupPodEnabled === undefined ? true : businessData.pickupPodEnabled,
                 dineInPayAtCounterEnabled: businessData.dineInPayAtCounterEnabled === undefined ? true : businessData.dineInPayAtCounterEnabled,
-                botPhoneNumberId: businessData.botPhoneNumberId || null, // Return the bot ID
+                botPhoneNumberId: businessData.botPhoneNumberId || null,
+                botDisplayNumber: businessData.botDisplayNumber || null, // Return the new field
             }, { status: 200 });
             // --- END THE FIX ---
         }
@@ -87,6 +88,7 @@ export async function GET(req) {
             gstin: businessData?.gstin || '',
             fssai: businessData?.fssai || '',
             botPhoneNumberId: businessData?.botPhoneNumberId || '',
+            botDisplayNumber: businessData?.botDisplayNumber || '', // Return the new field
             razorpayAccountId: businessData?.razorpayAccountId || '', 
             logoUrl: businessData?.logoUrl || '',
             bannerUrls: businessData?.bannerUrls || [],
@@ -140,6 +142,7 @@ export async function PATCH(req) {
             if (updates.gstin !== undefined) businessUpdateData.gstin = updates.gstin;
             if (updates.fssai !== undefined) businessUpdateData.fssai = updates.fssai;
             if (updates.botPhoneNumberId !== undefined) businessUpdateData.botPhoneNumberId = updates.botPhoneNumberId;
+            if (updates.botDisplayNumber !== undefined) businessUpdateData.botDisplayNumber = updates.botDisplayNumber; // Save the new field
             if (updates.logoUrl !== undefined) businessUpdateData.logoUrl = updates.logoUrl;
             if (updates.bannerUrls !== undefined) businessUpdateData.bannerUrls = updates.bannerUrls;
             if (updates.address !== undefined) businessUpdateData.address = updates.address; 
@@ -194,6 +197,7 @@ export async function PATCH(req) {
             profilePicture: finalUserData.profilePictureUrl, notifications: finalUserData.notifications,
             gstin: finalBusinessData?.gstin || '', fssai: finalBusinessData?.fssai || '',
             botPhoneNumberId: finalBusinessData?.botPhoneNumberId || '',
+            botDisplayNumber: finalBusinessData?.botDisplayNumber || '', // Return the new field
             razorpayAccountId: finalBusinessData?.razorpayAccountId || '',
             logoUrl: finalBusinessData?.logoUrl || '', bannerUrls: finalBusinessData?.bannerUrls || [],
             deliveryEnabled: finalBusinessData?.deliveryEnabled === undefined ? true : finalBusinessData.deliveryEnabled,
@@ -223,5 +227,3 @@ export async function PATCH(req) {
         return NextResponse.json({ message: `Backend Error: ${error.message}` }, { status: error.status || 500 });
     }
 }
-
-    

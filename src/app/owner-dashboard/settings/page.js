@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useState, useEffect, Suspense } from 'react';
@@ -360,6 +361,7 @@ function SettingsPageContent() {
                 gstin: editedUser.gstin,
                 fssai: editedUser.fssai,
                 botPhoneNumberId: editedUser.botPhoneNumberId,
+                botDisplayNumber: editedUser.botDisplayNumber, // The new field
                 address: editedUser.address, // Pass the structured address
             };
         } else if (section === 'media') {
@@ -578,6 +580,10 @@ function SettingsPageContent() {
                                 <div>
                                     <Label htmlFor="botPhoneNumberId" className="flex items-center gap-2"><Bot size={14}/> WhatsApp Bot Phone Number ID</Label>
                                     <input id="botPhoneNumberId" value={editedUser.botPhoneNumberId} onChange={e => setEditedUser({...editedUser, botPhoneNumberId: e.target.value})} disabled={!isEditingProfile} className="mt-1 w-full p-2 border rounded-md bg-input border-border disabled:opacity-70 disabled:cursor-not-allowed" placeholder="e.g., 15550921234"/>
+                                </div>
+                                <div>
+                                    <Label htmlFor="botDisplayNumber" className="flex items-center gap-2"><Phone size={14}/> WhatsApp Bot Display Number</Label>
+                                    <input id="botDisplayNumber" value={editedUser.botDisplayNumber} onChange={e => setEditedUser({...editedUser, botDisplayNumber: e.target.value})} disabled={!isEditingProfile} className="mt-1 w-full p-2 border rounded-md bg-input border-border disabled:opacity-70 disabled:cursor-not-allowed" placeholder="e.g., 91xxxxxxxxxx"/>
                                 </div>
                             </div>
                         </>
