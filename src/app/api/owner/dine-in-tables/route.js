@@ -126,7 +126,7 @@ export async function PATCH(req) {
             }
             
             if (action === 'mark_cleaned') {
-                 await tableRef.update({ state: 'available' });
+                 await tableRef.update({ state: 'available', current_pax: 0 });
                  return NextResponse.json({ message: `Table ${tableId} cleaning acknowledged.` }, { status: 200 });
             }
         }
