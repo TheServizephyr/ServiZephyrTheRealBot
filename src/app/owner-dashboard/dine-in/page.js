@@ -563,6 +563,83 @@ const QrGeneratorModal = ({ isOpen, onClose, onSaveTable, restaurantId, initialT
     );
 };
 
+const LiveServiceRequests = ({ impersonatedOwnerId }) => {
+    const [requests, setRequests] = useState([]);
+    const [isExpanded, setIsExpanded] = useState(true);
+
+    const handleAcknowledge = async (requestId) => {
+        try {
+            const user = auth.currentUser;
+            if (!user) throw new Error("Authentication required.");
+            const idToken = await user.getIdToken();
+            let url = '/api/owner/service-requests';
+            if(impersonatedOwnerId) url += `?impersonate_owner_id=${impersonatedOwnerId}`;
+            
+            await fetch(url, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${idToken}` },
+                body: JSON.stringify({ requestId: requestId, status: 'acknowledged' }),
+            });
+        } catch (error) {
+            console.error("Failed to acknowledge request", error);
+        }
+    };
+    
+    useEffect(() => {
+        const user = auth.currentUser;
+        if (!user) return;
+        
+        const fetchRequests = async () => {
+            const idToken = await user.getIdToken();
+            let url = new URL('/api/owner/service-requests', window.location.origin);
+            if (impersonatedOwnerId) {
+                url.searchParams.append('impersonate_owner_id', impersonatedOwnerId);
+            }
+            const res = await fetch(url.toString(), { headers: { 'Authorization': `Bearer ${idToken}` } });
+            if(res.ok) {
+                const data = await res.json();
+                setRequests(data.requests || []);
+            }
+        };
+
+        fetchRequests();
+        const interval = setInterval(fetchRequests, 15000);
+        return () => clearInterval(interval);
+    }, [impersonatedOwnerId]);
+
+
+    if (requests.length === 0 && !isExpanded) return null;
+
+    return (
+        <AnimatePresence>
+            {isExpanded && (
+                <motion.div
+                    initial={{ opacity: 0, y: -20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -20 }}
+                    className="border border-yellow-500/30 bg-yellow-500/10 p-4 rounded-lg mb-6"
+                >
+                    <h3 className="font-bold text-yellow-300 flex items-center gap-2"><Bell size={16}/> Live Service Requests</h3>
+                    {requests.length > 0 ? (
+                        <div className="flex flex-wrap gap-2 mt-2">
+                            {requests.map(req => (
+                                <div key={req.id} className="bg-yellow-500/20 text-yellow-200 px-3 py-1 rounded-full text-sm font-semibold flex items-center gap-2">
+                                    Table {req.tableId} needs assistance!
+                                    <Button size="icon" variant="ghost" className="h-5 w-5 text-yellow-300 hover:bg-yellow-400/20" onClick={() => handleAcknowledge(req.id)}>
+                                        <CheckCircle size={14}/>
+                                    </Button>
+                                </div>
+                            ))}
+                        </div>
+                    ) : (
+                        <p className="text-sm text-yellow-300/80 mt-1">No active service requests.</p>
+                    )}
+                </motion.div>
+            )}
+        </AnimatePresence>
+    );
+};
+
 const DineInPageContent = () => {
     const [allTables, setAllTables] = useState([]);
     const [allServiceRequests, setAllServiceRequests] = useState([]);
@@ -764,15 +841,13 @@ const DineInPageContent = () => {
              setLoading(false);
          }
     };
-    
+
     const { activeTableData, closedTabsData } = useMemo(() => {
         const tableMap = allTables.reduce((acc, table) => {
             acc[table.id] = { ...table, tabs: table.tabs || [] };
             return acc;
         }, {});
         
-        // This assumes your API now correctly populates closedTabs if you need it.
-        // For now, we'll just filter them from the main allTables array if they exist.
         const closedTabs = allTables.filter(t => t.status === 'closed');
         
         return { activeTableData: tableMap, closedTabsData: closedTabs };
@@ -943,20 +1018,7 @@ const DineInPageContent = () => {
             </div>
 
 
-            <div className="border border-yellow-500/30 bg-yellow-500/10 p-4 rounded-lg mb-6">
-                <h3 className="font-bold text-yellow-300 flex items-center gap-2"><Bell size={16}/> Service Requests</h3>
-                {allServiceRequests.length > 0 ? (
-                    <div className="flex flex-wrap gap-2 mt-2">
-                        {allServiceRequests.map(req => (
-                            <div key={req.id} className="bg-yellow-500/20 text-yellow-200 px-3 py-1 rounded-full text-sm font-semibold">
-                                Table {req.tableId} needs assistance!
-                            </div>
-                        ))}
-                    </div>
-                ) : (
-                    <p className="text-sm text-yellow-300/80 mt-1">No active service requests.</p>
-                )}
-            </div>
+            <LiveServiceRequests impersonatedOwnerId={impersonatedOwnerId} />
             
              <h2 className="text-xl font-bold mb-4">Live Tables</h2>
             {loading ? (
@@ -987,3 +1049,5 @@ const DineInPage = () => (
 );
 
 export default DineInPage;
+
+    
