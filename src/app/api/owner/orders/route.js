@@ -196,6 +196,13 @@ export async function PATCH(req) {
             // Send notification for each order
             const orderData = orderDoc.data();
             const businessData = businessSnap.data();
+            
+            // Do not send notification for 'pending' -> 'confirmed' for dine-in post-paid
+            if (orderData.deliveryType === 'dine-in' && newStatus === 'confirmed') {
+                console.log(`[API][PATCH /orders] Skipping notification for dine-in confirmation of order ${id}.`);
+                continue;
+            }
+            
             const notificationPayload = {
                 customerPhone: orderData.customerPhone,
                 botPhoneNumberId: businessData.botPhoneNumberId,

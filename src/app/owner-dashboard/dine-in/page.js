@@ -1,4 +1,3 @@
-
 'use client';
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
@@ -6,7 +5,8 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { RefreshCw, Printer, CheckCircle, IndianRupee, Users, Clock, ShoppingBag, Bell, MoreVertical, Trash2, QrCode, Download, Save, Wind, Edit, Table as TableIcon, History, Search, Salad, UtensilsCrossed, Droplet, PlusCircle, AlertTriangle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
-import { auth } from '@/lib/firebase';
+import { auth, db } from '@/lib/firebase';
+import { onSnapshot, collection, doc, writeBatch } from 'firebase/firestore';
 import { cn } from "@/lib/utils";
 import { format, formatDistanceToNow, isAfter, subDays } from 'date-fns';
 import { useSearchParams } from 'next/navigation';
@@ -272,7 +272,7 @@ const ConfirmationModal = ({ isOpen, onClose, onConfirm, title, description, con
 };
 
 
-const TableCard = ({ tableId, tableData, onMarkAsPaid, onPrintBill, onMarkAsCleaned, onShowHistory, acknowledgedItems, onToggleAcknowledge, isTab = false }) => {
+const TableCard = ({ tableId, tableData, onMarkAsPaid, onPrintBill, onMarkAsCleaned, onShowHistory, acknowledgedItems, onToggleAcknowledge, onConfirmOrders, isTab = false }) => {
     const state = tableData.state;
     
     const paxCount = isTab ? tableData.pax_count : tableData.tabs?.reduce((sum, tab) => sum + (tab.pax_count || 0), 0) || 0;
@@ -302,6 +302,7 @@ const TableCard = ({ tableId, tableData, onMarkAsPaid, onPrintBill, onMarkAsClea
     const currentConfig = stateConfig[state] || { title: state, bg: "bg-muted", border: "border-border", icon: null };
 
     const tab = isTab ? tableData : null;
+    const hasPendingOrders = tab?.orders.some(o => o.status === 'pending');
 
     return (
          <motion.div
@@ -336,20 +337,27 @@ const TableCard = ({ tableId, tableData, onMarkAsPaid, onPrintBill, onMarkAsClea
                                 <div className="text-xs text-muted-foreground my-2 flex items-center gap-2">
                                     <Clock size={14}/> Last activity: {tab.latestOrderTime ? format(tab.latestOrderTime, 'p') : 'N/A'}
                                 </div>
+                                {hasPendingOrders && (
+                                    <Button size="sm" className="w-full mb-2 bg-yellow-500 hover:bg-yellow-600" onClick={() => onConfirmOrders(tab.orders.filter(o => o.status === 'pending').map(o => o.id))}>
+                                        Confirm Tab's New Orders
+                                    </Button>
+                                )}
                                 <div className="space-y-2 max-h-48 overflow-y-auto pr-2">
                                     {tab.allItems.map((item) => {
                                         const uniqueItemId = `${tab.id}-${item.name}`;
                                         const isAcknowledged = acknowledgedItems.has(uniqueItemId);
+                                        const isPending = tab.orders.some(o => o.items.some(i => i.name === item.name) && o.status === 'pending');
+
                                         return (
                                             <div 
                                                 key={uniqueItemId} 
                                                 className={cn(
                                                     "flex justify-between items-center text-sm p-2 rounded-md transition-colors",
-                                                    isAcknowledged ? "bg-muted/50" : "bg-yellow-400/20"
+                                                    isAcknowledged ? "bg-muted/50" : (isPending ? "bg-yellow-400/20" : "bg-green-500/10")
                                                 )}
                                             >
                                                 <div className="flex items-center gap-2">
-                                                        <Checkbox 
+                                                    <Checkbox 
                                                         checked={isAcknowledged}
                                                         onCheckedChange={() => onToggleAcknowledge(uniqueItemId)}
                                                         id={uniqueItemId}
@@ -773,468 +781,3 @@ const DineInMenuModal = ({ isOpen, onClose, showInfoDialog }) => {
         </>
     )
 }
-
-
-function DineInPage() {
-    const [allOrders, setAllOrders] = useState([]);
-    const [allTables, setAllTables] = useState([]);
-    const [allServiceRequests, setAllServiceRequests] = useState([]);
-    const [loading, setLoading] = useState(true);
-    const searchParams = useSearchParams();
-    const impersonatedOwnerId = searchParams.get('impersonate_owner_id');
-    const [isQrModalOpen, setIsQrModalOpen] = useState(false);
-    const [isManageTablesModalOpen, setIsManageTablesModalOpen] = useState(false);
-    const [isQrDisplayModalOpen, setIsQrDisplayModalOpen] = useState(false);
-    const [isHistoryModalOpen, setIsHistoryModalOpen] = useState(false);
-    const [isDineInMenuModalOpen, setIsDineInMenuModalOpen] = useState(false);
-    const [editingTable, setEditingTable] = useState(null);
-    const [displayTable, setDisplayTable] = useState(null);
-    const [restaurant, setRestaurant] = useState(null);
-    const [restaurantId, setRestaurantId] = useState('');
-    const [billData, setBillData] = useState(null);
-    const [historyModalData, setHistoryModalData] = useState(null);
-    const [infoDialog, setInfoDialog] = useState({ isOpen: false, title: '', message: '' });
-    const [confirmationState, setConfirmationState] = useState({ isOpen: false, onConfirm: () => {}, title: '', description: '', confirmText: '' });
-    
-    const [acknowledgedItems, setAcknowledgedItems] = useState(() => {
-        if (typeof window === 'undefined') {
-            return new Set();
-        }
-        try {
-            const item = window.localStorage.getItem('acknowledgedDineInItems');
-            return item ? new Set(JSON.parse(item)) : new Set();
-        } catch (error) {
-            console.error("Error reading from localStorage", error);
-            return new Set();
-        }
-    });
-
-    const billPrintRef = useRef();
-
-    useEffect(() => {
-        if (typeof window !== 'undefined') {
-            try {
-                window.localStorage.setItem('acknowledgedDineInItems', JSON.stringify(Array.from(acknowledgedItems)));
-            } catch (error) {
-                console.error("Error writing to localStorage", error);
-            }
-        }
-    }, [acknowledgedItems]);
-
-    const handlePrint = useReactToPrint({
-        content: () => billPrintRef.current,
-    });
-    
-    const handleApiCall = async (method, body, endpoint) => {
-        const user = auth.currentUser;
-        if (!user) throw new Error("Authentication required.");
-        const idToken = await user.getIdToken();
-        
-        let url = new URL(endpoint, window.location.origin);
-        const finalImpersonatedId = impersonatedOwnerId || searchParams.get('impersonate_owner_id');
-        if (finalImpersonatedId) {
-            url.searchParams.append('impersonate_owner_id', finalImpersonatedId);
-        }
-        
-        const fetchOptions = {
-            method,
-            headers: { 'Authorization': `Bearer ${idToken}`},
-        };
-        
-        if (method !== 'GET') {
-            fetchOptions.headers['Content-Type'] = 'application/json';
-            fetchOptions.body = JSON.stringify(body);
-        } else if (body) {
-            Object.keys(body).forEach(key => url.searchParams.append(key, body[key]));
-        }
-
-        const res = await fetch(url.toString(), fetchOptions);
-        
-        if (res.status === 204) {
-            return null;
-        }
-
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.message || 'API call failed');
-        return data;
-    };
-
-    const fetchData = async (isManualRefresh = false) => {
-        if (!isManualRefresh) setLoading(true);
-        try {
-            const user = auth.currentUser;
-            if (!user) return;
-            const idToken = await user.getIdToken();
-            
-            const finalImpersonatedId = impersonatedOwnerId || searchParams.get('impersonate_owner_id');
-            const settingsUrl = `/api/owner/settings${finalImpersonatedId ? `?impersonate_owner_id=${finalImpersonatedId}` : ''}`;
-            
-            const [ordersData, tablesData, settingsData, requestsData] = await Promise.all([
-                 handleApiCall('GET', null, '/api/owner/orders'),
-                 handleApiCall('GET', null, '/api/owner/dine-in-tables'),
-                 fetch(settingsUrl, { headers: { 'Authorization': `Bearer ${idToken}` } }).then(res => res.json()),
-                 handleApiCall('GET', null, '/api/owner/service-requests')
-            ]);
-            
-            setAllOrders(ordersData.orders || []);
-            setAllTables(tablesData.tables || []);
-            setAllServiceRequests(requestsData.requests || []);
-            
-            const fetchedRestaurant = {
-                name: settingsData.restaurantName,
-                address: settingsData.address,
-                gstin: settingsData.gstin
-             };
-            setRestaurant(fetchedRestaurant);
-            
-            const fetchedRestaurantId = settingsData.businessId;
-            setRestaurantId(fetchedRestaurantId);
-
-        } catch (error) {
-            setInfoDialog({ isOpen: true, title: "Error", message: `Could not load dine-in data: ${error.message}` });
-        } finally {
-            if (!isManualRefresh) setLoading(false);
-        }
-    };
-    
-    const handleSaveTable = async (tableName, maxCapacity) => {
-        try {
-            await handleApiCall('POST', { tableId: tableName, max_capacity: maxCapacity }, '/api/owner/dine-in-tables');
-            setInfoDialog({ isOpen: true, title: "Success", message: `Table "${tableName}" saved with a capacity of ${maxCapacity}.` });
-            await fetchData(true);
-        } catch (error) {
-            setInfoDialog({ isOpen: true, title: "Error", message: `Could not save table: ${error.message}` });
-            throw error;
-        }
-    };
-    
-    const handleEditTable = async (originalId, newId, newCapacity) => {
-        try {
-            await handleApiCall('PATCH', { tableId: originalId, newTableId: newId, newCapacity }, '/api/owner/dine-in-tables');
-            setInfoDialog({ isOpen: true, title: "Success", message: `Table updated successfully.` });
-            await fetchData(true);
-        } catch(error) {
-            setInfoDialog({ isOpen: true, title: "Error", message: `Could not edit table: ${error.message}` });
-            throw error;
-        }
-    };
-
-    const handleDeleteTable = async (tableId) => {
-        if (window.confirm(`Are you sure you want to delete table "${tableId}"? This cannot be undone.`)) {
-            try {
-                await handleApiCall('DELETE', { tableId }, '/api/owner/dine-in-tables');
-                setInfoDialog({ isOpen: true, title: "Success", message: `Table "${tableId}" has been deleted.` });
-                await fetchData(true);
-            } catch (error) {
-                setInfoDialog({ isOpen: true, title: "Error", message: `Could not delete table: ${error.message}` });
-            }
-        }
-    };
-
-    useEffect(() => {
-        const unsubscribe = auth.onAuthStateChanged(user => {
-          if (user) fetchData();
-          else setLoading(false);
-        });
-    
-        const interval = setInterval(() => fetchData(true), 30000);
-        return () => {
-            unsubscribe();
-            clearInterval(interval);
-        };
-      }, [impersonatedOwnerId]);
-
-      const confirmMarkAsPaid = (tableId, tabId) => {
-        setConfirmationState({
-            isOpen: true,
-            title: "Confirm Payment",
-            description: `Are you sure you want to mark all orders for this tab on Table ${tableId} as paid? This will close the tab and mark the table as needing cleaning.`,
-            confirmText: "Yes, Mark as Paid",
-            onConfirm: () => {
-                handleMarkAsPaid(tableId, tabId);
-                setConfirmationState({ isOpen: false });
-            },
-        });
-    };
-
-    const handleMarkAsPaid = async (tableId, tabId) => {
-        setLoading(true);
-        try {
-            await handleApiCall('PATCH', { tableId, action: 'mark_paid', tabIdToClose: tabId }, '/api/owner/dine-in-tables');
-            setInfoDialog({ isOpen: true, title: "Success", message: "Table has been marked for cleaning." });
-            await fetchData(true);
-        } catch (error) {
-            setInfoDialog({ isOpen: true, title: "Error", message: `Could not clear table: ${error.message}` });
-        } finally {
-            setLoading(false);
-        }
-    };
-    
-    const handleMarkAsCleaned = async (tableId) => {
-         setLoading(true);
-         try {
-             await handleApiCall('PATCH', { tableId, action: 'mark_cleaned' }, '/api/owner/dine-in-tables');
-             setInfoDialog({ isOpen: true, title: "Success", message: `Table ${tableId} is now available.` });
-             await fetchData(true);
-         } catch(error) {
-             setInfoDialog({ isOpen: true, title: "Error", message: `Could not update table status: ${error.message}` });
-         } finally {
-             setLoading(false);
-         }
-    };
-
-    const { activeTableData, closedTabsData } = useMemo(() => {
-        const dineInStatuses = ['pending', 'confirmed', 'preparing', 'active_tab', 'ready_for_pickup'];
-        const thirtyDaysAgo = subDays(new Date(), 30);
-
-        const uniqueTabIds = [...new Set(allOrders.filter(o => o.deliveryType === 'dine-in' && o.dineInTabId).map(o => o.dineInTabId))];
-
-        const tabsData = uniqueTabIds.map(tabId => {
-            const tabOrders = allOrders.filter(o => o.dineInTabId === tabId);
-            if (tabOrders.length === 0) return null;
-            
-            const mainOrder = tabOrders.find(o => o.tab_name) || tabOrders[0];
-            const latestOrder = tabOrders.reduce((latest, current) => {
-                const latestDate = new Date(latest.orderDate?.seconds ? latest.orderDate.seconds * 1000 : latest.orderDate);
-                const currentDate = new Date(current.orderDate?.seconds ? current.orderDate.seconds * 1000 : current.orderDate);
-                return currentDate > latestDate ? current : latest;
-            });
-            
-            const isActive = tabOrders.some(o => dineInStatuses.includes(o.status));
-            const totalBill = tabOrders.reduce((sum, o) => sum + (o.totalAmount || 0), 0);
-            
-            const allItemsMap = new Map();
-            tabOrders.forEach(order => {
-                (order.items || []).forEach(item => {
-                    const uniqueItemId = `${order.id}-${item.name}`; // Ensure unique ID per order
-                    const existing = allItemsMap.get(item.name);
-                    if (existing) {
-                        allItemsMap.set(item.name, { ...existing, qty: existing.qty + item.qty, orderItemIds: [...existing.orderItemIds, uniqueItemId] });
-                    } else {
-                        allItemsMap.set(item.name, { ...item, orderItemIds: [uniqueItemId] });
-                    }
-                });
-            });
-
-            if (!mainOrder) return null;
-
-            return {
-                id: tabId,
-                tableId: mainOrder.tableId,
-                tab_name: mainOrder.tab_name || "Guest",
-                pax_count: mainOrder.pax_count || 1,
-                orders: tabOrders,
-                isActive,
-                totalBill,
-                allItems: Array.from(allItemsMap.values()),
-                latestOrderTime: new Date(latestOrder.orderDate?.seconds ? latestOrder.orderDate.seconds * 1000 : latestOrder.orderDate),
-                closedAt: !isActive ? new Date(latestOrder.orderDate?.seconds ? latestOrder.orderDate.seconds * 1000 : latestOrder.orderDate) : null,
-                paymentMethod: latestOrder.paymentDetails?.method || 'Pay at Counter',
-            };
-        }).filter(Boolean);
-
-        const closedTabs = tabsData.filter(tab => !tab.isActive && tab.closedAt && isAfter(tab.closedAt, thirtyDaysAgo));
-        closedTabs.sort((a,b) => b.closedAt - a.closedAt);
-
-        const tableMap = allTables.reduce((acc, table) => {
-            acc[table.id] = { ...table, tabs: [], pax_count: 0 };
-            return acc;
-        }, {});
-
-        tabsData.forEach(tab => {
-            if (tab.isActive && tableMap[tab.tableId]) {
-                tableMap[tab.tableId].tabs.push(tab);
-            }
-        });
-        
-        Object.values(tableMap).forEach(table => {
-            if (table.tabs.length > 0) {
-                 table.state = 'occupied';
-            } else if (table.state !== 'needs_cleaning') {
-                table.state = 'available';
-            }
-        });
-
-        return { activeTableData: tableMap, closedTabsData: closedTabs };
-    }, [allOrders, allTables]);
-    
-    const handleShowHistory = (tableId, tabId) => {
-        const tableData = activeTableData[tableId];
-        if (!tableData) return;
-
-        const tab = tableData.tabs.find(t => t.id === tabId);
-        if (!tab) return;
-    
-        const orderEvents = (tab.orders || []).map(o => ({
-            type: 'order',
-            timestamp: o.orderDate.seconds ? o.orderDate.seconds * 1000 : new Date(o.orderDate).getTime(),
-            customerName: o.customerName,
-            items: o.items,
-            totalAmount: o.totalAmount
-        }));
-    
-        const requestEvents = (allServiceRequests || []).filter(r => r.dineInTabId === tabId).map(r => ({
-            type: 'request',
-            timestamp: r.createdAt.seconds ? r.createdAt.seconds * 1000 : new Date(r.createdAt).getTime(),
-        }));
-        
-        const allEvents = [...orderEvents, ...requestEvents].sort((a, b) => b.timestamp - a.timestamp);
-        
-        setHistoryModalData({ tableId, events: allEvents });
-    };
-
-    const handleOpenEditModal = (table = null) => {
-        if (!restaurantId) {
-            setInfoDialog({isOpen: true, title: "Error", message: "Restaurant data is not loaded yet. Cannot manage tables."});
-            return;
-        }
-        setEditingTable(table);
-        setIsQrModalOpen(true);
-    };
-
-     const handleOpenQrDisplayModal = (table) => {
-        if (!restaurantId) {
-            setInfoDialog({isOpen: true, title: "Error", message: "Restaurant data is not loaded yet. Cannot show QR code."});
-            return;
-        }
-        setDisplayTable(table);
-        setIsManageTablesModalOpen(false); // Close manage modal if open
-        setIsQrDisplayModalOpen(true);
-    };
-    
-    const handleToggleAcknowledge = (uniqueItemId) => {
-        setAcknowledgedItems(prev => {
-            const newSet = new Set(prev);
-            if (newSet.has(uniqueItemId)) {
-                newSet.delete(uniqueItemId);
-            } else {
-                newSet.add(uniqueItemId);
-            }
-            return newSet;
-        });
-    };
-
-    const renderTableCards = () => {
-        const cards = [];
-        const sortedTableKeys = Object.keys(activeTableData).sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
-
-        for (const tableId of sortedTableKeys) {
-            const table = activeTableData[tableId];
-
-            if (table.state === 'occupied' && table.tabs.length > 0) {
-                // One card per tab
-                table.tabs.forEach(tab => {
-                    cards.push(
-                        <TableCard
-                            key={tab.id}
-                            tableId={tableId}
-                            tableData={{ ...tab, state: 'occupied', pax_count: tab.pax_count }}
-                            isTab={true}
-                            onMarkAsPaid={confirmMarkAsPaid}
-                            onPrintBill={setBillData}
-                            onShowHistory={handleShowHistory}
-                            acknowledgedItems={acknowledgedItems}
-                            onToggleAcknowledge={handleToggleAcknowledge}
-                        />
-                    );
-                });
-            } else {
-                // One card for the empty/cleaning table
-                cards.push(
-                    <TableCard
-                        key={tableId}
-                        tableId={tableId}
-                        tableData={table}
-                        isTab={false}
-                        onMarkAsCleaned={handleMarkAsCleaned}
-                    />
-                );
-            }
-        }
-        return cards;
-    };
-
-
-    return (
-        <div className="p-4 md:p-6 text-foreground min-h-screen bg-background">
-            <DineInHistoryModal isOpen={isHistoryModalOpen} onClose={() => setIsHistoryModalOpen(false)} closedTabs={closedTabsData} />
-            <ManageTablesModal isOpen={isManageTablesModalOpen} onClose={() => setIsManageTablesModalOpen(false)} allTables={allTables} onEdit={handleOpenEditModal} onDelete={handleDeleteTable} loading={loading} onCreateNew={() => handleOpenEditModal(null)} onShowQr={handleOpenQrDisplayModal} />
-            <DineInMenuModal isOpen={isDineInMenuModalOpen} onClose={() => setIsDineInMenuModalOpen(false)} showInfoDialog={setInfoDialog} />
-            {historyModalData && <HistoryModal tableHistory={historyModalData} onClose={() => setHistoryModalData(null)} />}
-            {billData && (
-                <BillModal 
-                    order={billData}
-                    restaurant={restaurant}
-                    onClose={() => setBillData(null)}
-                    onPrint={handlePrint}
-                    printRef={billPrintRef}
-                />
-            )}
-            <InfoDialog
-                isOpen={infoDialog.isOpen}
-                onClose={() => setInfoDialog({ isOpen: false, title: '', message: '' })}
-                title={infoDialog.title}
-                message={infoDialog.message}
-            />
-            {restaurantId && <QrGeneratorModal isOpen={isQrModalOpen} onClose={() => setIsQrModalOpen(false)} restaurantId={restaurantId} onSaveTable={handleSaveTable} onEditTable={handleEditTable} onDeleteTable={handleDeleteTable} initialTable={editingTable} showInfoDialog={setInfoDialog} />}
-            {restaurantId && <QrCodeDisplayModal isOpen={isQrDisplayModalOpen} onClose={() => setIsQrDisplayModalOpen(false)} restaurantId={restaurantId} table={displayTable} />}
-            <ConfirmationModal 
-                isOpen={confirmationState.isOpen}
-                onClose={() => setConfirmationState({ isOpen: false })}
-                onConfirm={confirmationState.onConfirm}
-                title={confirmationState.title}
-                description={confirmationState.description}
-                confirmText={confirmationState.confirmText}
-            />
-
-
-            <div className="flex flex-col md:flex-row justify-between md:items-center mb-6 gap-4">
-                <div>
-                    <h1 className="text-2xl md:text-3xl font-bold tracking-tight">Dine-In Command Center</h1>
-                    <p className="text-muted-foreground mt-1 text-sm md:text-base">A live overview of your active tables and table management.</p>
-                </div>
-            </div>
-            
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
-                <Button onClick={() => setIsHistoryModalOpen(true)} variant="outline" className="h-20 flex-col gap-1" disabled={loading}>
-                    <History size={20}/> Dine-In History
-                </Button>
-                 <Button onClick={() => setIsDineInMenuModalOpen(true)} variant="outline" className="h-20 flex-col gap-1" disabled={loading}>
-                    <Salad size={20}/> Dine-In Menu
-                </Button>
-                 <Button onClick={() => setIsManageTablesModalOpen(true)} variant="outline" className="h-20 flex-col gap-1" disabled={loading}>
-                    <TableIcon size={20}/> Manage Tables
-                </Button>
-                <Button onClick={() => fetchData(true)} variant="outline" className="h-20 flex-col gap-1" disabled={loading}>
-                    <RefreshCw size={20} className={cn(loading && "animate-spin")} /> Refresh View
-                </Button>
-            </div>
-
-
-            <LiveServiceRequests impersonatedOwnerId={impersonatedOwnerId} />
-            
-             <h2 className="text-xl font-bold mb-4">Live Tables</h2>
-            {loading ? (
-                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 animate-pulse">
-                    {[...Array(4)].map((_, i) => (
-                        <div key={i} className="bg-card border border-border rounded-xl h-96"></div>
-                    ))}
-                </div>
-            ) : Object.keys(activeTableData).length > 0 || allTables.some(t => t.state !== 'occupied') ? (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-                    {renderTableCards()}
-                </div>
-            ) : (
-                <div className="text-center py-16 text-muted-foreground border-2 border-dashed border-border rounded-xl">
-                    <ShoppingBag size={48} className="mx-auto" />
-                    <p className="mt-4 text-lg font-semibold">No Active Tables</p>
-                    <p>When a customer scans a QR code and orders, their table will appear here live.</p>
-                </div>
-            )}
-        </div>
-    );
-}
-
-export default DineInPage;
-
-    

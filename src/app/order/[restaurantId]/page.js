@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useState, useEffect, Suspense, useMemo, useCallback, useRef } from 'react';
@@ -627,39 +628,16 @@ const OrderPageInternal = () => {
     const phone = searchParams.get('phone');
     const token = searchParams.get('token');
     const tableIdFromUrl = searchParams.get('table');
-    const sessionToken = searchParams.get('session_token');
 
     useEffect(() => {
         const verifySession = async () => {
-            if (tableIdFromUrl && sessionToken) {
-                 try {
-                    const res = await fetch('/api/auth/verify-token', {
-                        method: 'POST', headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ tableId: tableIdFromUrl, token: sessionToken }),
-                    });
-                    if (!res.ok) throw new Error((await res.json()).message || "Session token is invalid for this table.");
-                    setIsTokenValid(true);
-                } catch (err) {
-                    setTokenError(err.message);
-                }
-                return;
-            }
-
-            if (tableIdFromUrl && !sessionToken) {
-                try {
-                    const res = await fetch('/api/auth/generate-session-token', {
-                         method: 'POST', headers: { 'Content-Type': 'application/json' },
-                         body: JSON.stringify({ tableId: tableIdFromUrl, restaurantId: restaurantId }),
-                    });
-                    const data = await res.json();
-                    if (!res.ok) throw new Error(data.message || 'Could not start a new table session.');
-                    router.replace(`/order/${restaurantId}?table=${tableIdFromUrl}&session_token=${data.token}`);
-                } catch (err) {
-                    setTokenError(err.message);
-                }
+            // Dine-in doesn't need token verification anymore. If tableId is present, it's valid.
+            if (tableIdFromUrl) {
+                setIsTokenValid(true);
                 return;
             }
             
+            // WhatsApp/Logged-in flow still uses tokens.
             if (phone && token) {
                 try {
                     const res = await fetch('/api/auth/verify-token', {
@@ -673,6 +651,8 @@ const OrderPageInternal = () => {
                 }
                 return;
             }
+
+            // If neither condition is met, show an error.
             if (!tableIdFromUrl && !phone && !token) {
                  setTokenError("No valid session information found. Please scan the QR code again or start a new order from WhatsApp.");
             }
@@ -681,7 +661,7 @@ const OrderPageInternal = () => {
         if (restaurantId) {
             verifySession();
         }
-    }, [restaurantId, tableIdFromUrl, sessionToken, phone, token, router]);
+    }, [restaurantId, tableIdFromUrl, phone, token, router]);
     // --- END: UNIFIED TOKEN/SESSION LOGIC ---
 
     const [customerLocation, setCustomerLocation] = useState(null);
@@ -810,7 +790,7 @@ const OrderPageInternal = () => {
         } else {
             setLoading(false);
         }
-    }, [isTokenValid, tokenError, restaurantId, phone, tableIdFromUrl, tabIdFromUrl, sessionToken]);
+    }, [isTokenValid, tokenError, restaurantId, phone, tableIdFromUrl, tabIdFromUrl]);
     
     useEffect(() => {
         if (!restaurantId || loading || !isTokenValid) return;
@@ -820,7 +800,7 @@ const OrderPageInternal = () => {
         const cartDataToSave = {
             cart, notes, deliveryType, restaurantId,
             restaurantName: restaurantData.name,
-            phone: phone, token: token || sessionToken,
+            phone: phone, token: token,
             tableId: tableIdFromUrl,
             deliveryCharge: restaurantData.deliveryCharge,
             businessType: restaurantData.businessType,
@@ -828,7 +808,7 @@ const OrderPageInternal = () => {
             loyaltyPoints, expiryTimestamp,
         };
         localStorage.setItem(`cart_${restaurantId}`, JSON.stringify(cartDataToSave));
-    }, [cart, notes, deliveryType, restaurantData, loyaltyPoints, loading, isTokenValid, restaurantId, phone, token, sessionToken, tableIdFromUrl]);
+    }, [cart, notes, deliveryType, restaurantData, loyaltyPoints, loading, isTokenValid, restaurantId, phone, token, tableIdFromUrl]);
 
     useEffect(() => {
         if (restaurantId && isTokenValid) {
@@ -980,13 +960,10 @@ const OrderPageInternal = () => {
 
     const handleCheckout = () => {
         const params = new URLSearchParams();
-        // --- START FIX ---
         if (restaurantId) params.append('restaurantId', restaurantId);
-        // --- END FIX ---
         if (phone) params.append('phone', phone);
         if (token) params.append('token', token);
         if (tableIdFromUrl) params.append('table', tableIdFromUrl);
-        if (sessionToken) params.append('session_token', sessionToken);
         
         let currentCartData = JSON.parse(localStorage.getItem(`cart_${restaurantId}`)) || {};
         if (deliveryType === 'dine-in') {

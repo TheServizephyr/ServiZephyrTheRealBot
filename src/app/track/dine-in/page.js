@@ -1,4 +1,5 @@
 
+
 'use client';
 
 import React, { useState, useEffect, Suspense, useCallback } from 'react';
@@ -97,7 +98,7 @@ function DineInTrackingContent() {
 
     useEffect(() => {
         fetchData();
-        const interval = setInterval(fetchData, 30000);
+        const interval = setInterval(fetchData, 15000);
         return () => clearInterval(interval);
     }, [fetchData]);
     
@@ -188,7 +189,7 @@ function DineInTrackingContent() {
             <footer className="sticky bottom-0 left-0 w-full bg-background/80 backdrop-blur-lg border-t border-border z-10">
                 <div className="container mx-auto p-4 flex justify-center">
                      <Button onClick={handleConfirmPayment} className="w-full max-w-md h-14 text-lg bg-primary hover:bg-primary/90 text-primary-foreground">
-                        <Wallet className="mr-3 h-6 w-6"/> Confirm Payment
+                        <Wallet className="mr-3 h-6 w-6"/> View Bill & Pay
                     </Button>
                 </div>
             </footer>

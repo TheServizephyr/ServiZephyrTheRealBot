@@ -1,4 +1,5 @@
 
+
 'use client';
 
 import React, { useState, useEffect, useMemo, Suspense } from 'react';
@@ -140,7 +141,6 @@ const CheckoutPageInternal = () => {
     const token = searchParams.get('token');
     const tableId = searchParams.get('table');
     const tabId = searchParams.get('tabId');
-    const sessionToken = searchParams.get('session_token');
     const isPaymentConfirmed = searchParams.get('payment_confirmed');
     
     const [isTokenValid, setIsTokenValid] = useState(false);
@@ -167,10 +167,10 @@ const CheckoutPageInternal = () => {
     useEffect(() => {
         if (isPaymentConfirmed) {
             setInfoDialog({ isOpen: true, title: 'Payment Confirmed', message: 'Your payment was successful. Thank you for dining with us!' });
-            const cleanUrl = `/order/${restaurantId}?table=${tableId}&tabId=${tabId}&session_token=${sessionToken}`;
+            const cleanUrl = `/order/${restaurantId}?table=${tableId}&tabId=${tabId}`;
             router.replace(cleanUrl); // Use replace to avoid back-button issues
         }
-    }, [isPaymentConfirmed, restaurantId, tableId, tabId, sessionToken, router]);
+    }, [isPaymentConfirmed, restaurantId, tableId, tabId, router]);
     
 
     useEffect(() => {
@@ -180,26 +180,23 @@ const CheckoutPageInternal = () => {
             // Determine the phone number for API lookups
             const phoneToLookup = phoneFromUrl || user?.phoneNumber || '';
             
-            // Session Verification
-            if (tableId && sessionToken) {
-                 try {
-                    const res = await fetch('/api/auth/verify-token', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ tableId, token: sessionToken }) });
-                    if (!res.ok) throw new Error((await res.json()).message || "Dine-in session validation failed.");
-                } catch (err) {
-                    setTokenError(err.message); setLoading(false); return;
-                }
+            // Session Verification - Simplified for Dine-in
+            if (tableId) {
+                setIsTokenValid(true);
             } else if (!user && phoneFromUrl && token) {
                 try {
                     const res = await fetch('/api/auth/verify-token', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ phone: phoneToLookup, token }) });
                     if (!res.ok) throw new Error((await res.json()).message || "Session validation failed.");
+                    setIsTokenValid(true);
                 } catch (err) {
                     setTokenError(err.message); setLoading(false); return;
                 }
-            } else if (!user && !phoneFromUrl && !tableId) {
+            } else if (user) {
+                setIsTokenValid(true);
+            } else {
                 setTokenError("No session information found."); setLoading(false); return;
             }
 
-            setIsTokenValid(true);
             setOrderPhone(phoneToLookup);
             
             // Fetch initial data
@@ -210,7 +207,7 @@ const CheckoutPageInternal = () => {
             const parsedData = savedCartData ? JSON.parse(savedCartData) : {};
             
             const deliveryType = tableId ? 'dine-in' : (parsedData.deliveryType || 'delivery');
-            const updatedData = { ...parsedData, phone: phoneToLookup, token, tableId, dineInTabId: tabId, deliveryType, sessionToken };
+            const updatedData = { ...parsedData, phone: phoneToLookup, token, tableId, dineInTabId: tabId, deliveryType };
             
             setCart(updatedData.cart || []);
             setAppliedCoupons(updatedData.appliedCoupons || []);
@@ -249,7 +246,7 @@ const CheckoutPageInternal = () => {
         } else if (isPaymentConfirmed) {
             setLoading(false);
         }
-    }, [restaurantId, phoneFromUrl, token, tableId, tabId, sessionToken, user, isUserLoading, router, isPaymentConfirmed]);
+    }, [restaurantId, phoneFromUrl, token, tableId, tabId, user, isUserLoading, router, isPaymentConfirmed]);
     
 
 
@@ -260,7 +257,6 @@ const CheckoutPageInternal = () => {
             token: token || '',
         });
         if (tableId) params.append('table', tableId);
-        if (sessionToken) params.append('session_token', sessionToken);
         router.push(`/add-address?${params.toString()}`);
     };
 
@@ -302,7 +298,7 @@ const CheckoutPageInternal = () => {
     const handleAddMoreToTab = () => {
         const params = new URLSearchParams({
             restaurantId, phone: phoneFromUrl || '', token: token || '',
-            table: tableId, tabId: cartData.dineInTabId, session_token: sessionToken || ''
+            table: tableId, tabId: cartData.dineInTabId
         });
         router.push(`/order/${restaurantId}?${params.toString()}`);
     };
@@ -337,7 +333,7 @@ const CheckoutPageInternal = () => {
             if (!res.ok) throw new Error(data.message || "Failed to place order.");
 
             if (data.razorpay_order_id) {
-                 const redirectUrl = `${window.location.origin}/checkout?restaurantId=${restaurantId}&table=${tableId}&tabId=${data.dine_in_tab_id || tabId}&session_token=${sessionToken}&payment_confirmed=true`;
+                 const redirectUrl = `${window.location.origin}/checkout?restaurantId=${restaurantId}&table=${tableId}&tabId=${data.dine_in_tab_id || tabId}&payment_confirmed=true`;
                 const options = {
                     key: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID, amount: grandTotal * 100, currency: "INR", name: cartData.restaurantName,
                     description: `Order from ${cartData.restaurantName}`, order_id: data.razorpay_order_id,
@@ -357,8 +353,12 @@ const CheckoutPageInternal = () => {
             } else {
                 localStorage.removeItem(`cart_${restaurantId}`);
                 if (orderData.deliveryType === 'dine-in') {
+                    // Show confirmation and then redirect
                     setInfoDialog({ isOpen: true, title: 'Success', message: 'Tab settled at counter. Thank you!' });
-                    setTimeout(() => router.push(`/order/${restaurantId}?table=${tableId}&tabId=${data.dine_in_tab_id || tabId}&session_token=${sessionToken}`), 2000);
+                    setTimeout(() => {
+                        const newUrl = `/order/${restaurantId}?table=${tableId}&tabId=${data.dine_in_tab_id || tabId}`;
+                        router.replace(newUrl); // Use replace to avoid back-button issues
+                    }, 2000);
                 } else {
                     router.push(`/order/placed?orderId=${data.firestore_order_id}`);
                 }
@@ -378,7 +378,7 @@ const CheckoutPageInternal = () => {
         return <TokenVerificationLock message={tokenError} />;
     }
 
-    if (!isTokenValid) {
+    if (!isTokenValid && !tableId) {
         return <div className="min-h-screen bg-background flex items-center justify-center"><Loader2 className="animate-spin text-primary h-16 w-16"/></div>;
     }
 
@@ -547,5 +547,3 @@ const CheckoutPage = () => (
 );
 
 export default CheckoutPage;
-
-    
