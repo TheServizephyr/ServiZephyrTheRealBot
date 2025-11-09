@@ -2,6 +2,7 @@
 
 import { NextResponse } from 'next/server';
 import { getAuth, getFirestore, FieldValue, verifyAndGetUid } from '@/lib/firebase-admin';
+import { isAfter, subDays } from 'date-fns';
 
 // Helper to verify owner and get their first business ID
 async function verifyOwnerAndGetBusiness(req) {
@@ -45,13 +46,80 @@ export async function GET(req) {
     try {
         const businessRef = await verifyOwnerAndGetBusiness(req);
         
-        const tablesSnap = await businessRef.collection('tables').orderBy('createdAt', 'asc').get();
-        const tables = tablesSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        // Fetch all necessary data in parallel
+        const [tablesSnap, tabsSnap, serviceRequestsSnap] = await Promise.all([
+            businessRef.collection('tables').orderBy('createdAt', 'asc').get(),
+            businessRef.collection('dineInTabs').where('status', '==', 'active').get(),
+            businessRef.collection('serviceRequests').where('status', '==', 'pending').orderBy('createdAt', 'desc').get(),
+        ]);
+        
+        const tables = tablesSnap.docs.map(doc => ({ id: doc.id, ...doc.data(), tabs: [] }));
+        
+        const tabsData = {};
+        for (const tabDoc of tabsSnap.docs) {
+            const tabData = { id: tabDoc.id, ...tabDoc.data(), orders: [] };
+            
+            // Fetch orders for each active tab
+            const ordersSnap = await businessRef.firestore.collection('orders')
+                .where('dineInTabId', '==', tabDoc.id)
+                .where('status', '!=', 'delivered')
+                .where('status', '!=', 'rejected')
+                .get();
 
-        return NextResponse.json({ tables }, { status: 200 });
+            if (!ordersSnap.empty) {
+                tabData.orders = ordersSnap.docs.map(orderDoc => ({ id: orderDoc.id, ...orderDoc.data() }));
+            }
+            tabsData[tabDoc.id] = tabData;
+        }
+
+        // Assign tabs to their respective tables
+        tables.forEach(table => {
+            Object.values(tabsData).forEach(tab => {
+                if (tab.tableId === table.id) {
+                    table.tabs.push(tab);
+                }
+            });
+        });
+
+        const serviceRequests = serviceRequestsSnap.docs.map(doc => {
+            const data = doc.data();
+            return {
+                ...data,
+                createdAt: data.createdAt?.toDate ? data.createdAt.toDate().toISOString() : new Date().toISOString(),
+            };
+        });
+
+        // Fetch closed tabs for history
+        const thirtyDaysAgo = subDays(new Date(), 30);
+        const closedTabsSnap = await businessRef.collection('dineInTabs')
+            .where('status', '==', 'closed')
+            .orderBy('closedAt', 'desc')
+            .get();
+
+        const closedTabs = [];
+        for (const tabDoc of closedTabsSnap.docs) {
+            const tabData = tabDoc.data();
+            if (tabData.closedAt && isAfter(tabData.closedAt.toDate(), thirtyDaysAgo)) {
+                 const ordersSnap = await businessRef.firestore.collection('orders')
+                    .where('dineInTabId', '==', tabDoc.id)
+                    .get();
+                
+                 const totalBill = ordersSnap.docs.reduce((sum, doc) => sum + (doc.data().totalAmount || 0), 0);
+
+                closedTabs.push({ 
+                    id: tabDoc.id,
+                    ...tabData,
+                    closedAt: tabData.closedAt.toDate().toISOString(),
+                    totalBill: totalBill,
+                });
+            }
+        }
+
+
+        return NextResponse.json({ tables, serviceRequests, closedTabs }, { status: 200 });
 
     } catch (error) {
-        console.error("GET DINE-IN TABLES ERROR:", error);
+        console.error("GET DINE-IN STATE ERROR:", error);
         return NextResponse.json({ message: `Backend Error: ${error.message}` }, { status: error.status || 500 });
     }
 }
@@ -122,7 +190,7 @@ export async function PATCH(req) {
                         });
                     });
 
-                    transaction.update(tabRef, { status: 'closed' });
+                    transaction.update(tabRef, { status: 'closed', closedAt: FieldValue.serverTimestamp(), paymentMethod: paymentMethod || 'cod' });
                     transaction.update(tableRef, { state: 'needs_cleaning' });
                 });
                 return NextResponse.json({ message: `Table ${tableId} marked as needing cleaning.` }, { status: 200 });
@@ -189,5 +257,6 @@ export async function DELETE(req) {
         return NextResponse.json({ message: `Backend Error: ${error.message}` }, { status: error.status || 500 });
     }
 }
+
 
 

@@ -1,4 +1,3 @@
-
 'use client';
 
 import React, { useState, useEffect, useMemo, useRef, Suspense } from 'react';
@@ -211,7 +210,7 @@ const BillModal = ({ order, restaurant, onClose, onPrint, printRef }) => {
                     </div>
                      <div className="mb-4 text-xs">
                         <p><strong>Table:</strong> {order.tableId}</p>
-                        <p><strong>Date:</strong> {new Date().toLocaleDateString('en-IN')}</p>
+                        <p><strong>Date:</strong> {new Date().toLocaleDateString('en-IN')} - {new Date().toLocaleTimeString('en-IN')}</p>
                     </div>
 
                     <table className="w-full text-xs mb-4">
@@ -564,50 +563,7 @@ const QrGeneratorModal = ({ isOpen, onClose, onSaveTable, restaurantId, initialT
     );
 };
 
-const LiveServiceRequests = ({ impersonatedOwnerId }) => {
-    const [requests, setRequests] = useState([]);
-
-    const fetchRequests = async () => {
-        try {
-            const user = auth.currentUser;
-            if (!user) return;
-            const idToken = await user.getIdToken();
-            let url = '/api/owner/service-requests';
-            if (impersonatedOwnerId) {
-                url += `?impersonate_owner_id=${impersonatedOwnerId}`;
-            }
-            const res = await fetch(url, { headers: { 'Authorization': `Bearer ${idToken}` } });
-            if (res.ok) {
-                const data = await res.json();
-                setRequests(data.requests || []);
-            }
-        } catch (error) {
-            console.error("Failed to fetch service requests:", error);
-        }
-    };
-    
-    const handleAcknowledge = async (requestId) => {
-        try {
-            const user = auth.currentUser;
-            if (!user) return;
-            const idToken = await user.getIdToken();
-            await fetch('/api/owner/service-requests', {
-                method: 'PATCH',
-                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${idToken}` },
-                body: JSON.stringify({ requestId, status: 'acknowledged' })
-            });
-            fetchRequests(); // Refresh list
-        } catch (error) {
-            console.error("Failed to acknowledge request:", error);
-        }
-    };
-
-    useEffect(() => {
-        fetchRequests();
-        const interval = setInterval(fetchRequests, 15000); // Poll every 15 seconds
-        return () => clearInterval(interval);
-    }, [impersonatedOwnerId]);
-
+const LiveServiceRequests = ({ requests, onAcknowledge }) => {
     if(requests.length === 0) return null;
 
     return (
@@ -634,7 +590,7 @@ const LiveServiceRequests = ({ impersonatedOwnerId }) => {
                                 <p className="font-bold">Service needed at Table: {req.tableId}</p>
                                 <p className="text-xs text-muted-foreground">{isValidDate ? formatDistanceToNow(date, { addSuffix: true }) : 'Just now'}</p>
                             </div>
-                            <Button size="sm" onClick={() => handleAcknowledge(req.id)}><CheckCircle className="mr-2 h-4 w-4"/>Acknowledge</Button>
+                            <Button size="sm" onClick={() => onAcknowledge(req.id)}><CheckCircle className="mr-2 h-4 w-4"/>Acknowledge</Button>
                         </motion.div>
                     )
                 })}
@@ -643,153 +599,296 @@ const LiveServiceRequests = ({ impersonatedOwnerId }) => {
     )
 }
 
-const DineInAddItemModal = ({ isOpen, onClose, onSave, itemCategory, showInfoDialog }) => {
-    const [name, setName] = useState('');
-    const [price, setPrice] = useState('');
+function DineInPageContent() {
+    const [tables, setTables] = useState([]);
+    const [serviceRequests, setServiceRequests] = useState([]);
+    const [closedTabs, setClosedTabs] = useState([]);
+    const [loading, setLoading] = useState(true);
+    const [infoDialog, setInfoDialog] = useState({ isOpen: false, title: '', message: '' });
+    const [acknowledgedItems, setAcknowledgedItems] = useState(new Set());
+    const [isManageTablesOpen, setManageTablesOpen] = useState(false);
+    const [isHistoryOpen, setHistoryOpen] = useState(false);
+    const [qrTable, setQrTable] = useState(null);
+    const [editTable, setEditTable] = useState(null);
+    const [deleteConfirmation, setDeleteConfirmation] = useState({ isOpen: false, tableId: null });
+    const [historyData, setHistoryData] = useState(null);
+    const [restaurantId, setRestaurantId] = useState(null);
+    
+    const [billData, setBillData] = useState(null);
+    const billPrintRef = useRef();
+    const handlePrint = useReactToPrint({
+        content: () => billPrintRef.current,
+    });
 
-    useEffect(() => {
-        if (isOpen) {
-            setName('');
-            setPrice('');
+
+    const searchParams = useSearchParams();
+    const impersonatedOwnerId = searchParams.get('impersonate_owner_id');
+
+    const handleApiCall = async (method, body) => {
+        const user = auth.currentUser;
+        if (!user) throw new Error("Authentication required.");
+        const idToken = await user.getIdToken();
+        const endpoint = method === 'GET' ? `/api/owner/dine-in-tables` : '/api/owner/dine-in-tables';
+        
+        let url = new URL(endpoint, window.location.origin);
+        if (impersonatedOwnerId) {
+            url.searchParams.append('impersonate_owner_id', impersonatedOwnerId);
         }
-    }, [isOpen]);
 
-    const handleSave = () => {
-        if (!name.trim() || !price || isNaN(parseFloat(price))) {
-            showInfoDialog({ isOpen: true, title: "Invalid Input", message: "Please enter a valid item name and price." });
+        const res = await fetch(url.toString(), {
+            method,
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${idToken}` },
+            body: JSON.stringify(body),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.message || 'API call failed');
+        return data;
+    };
+    
+    useEffect(() => {
+        const user = auth.currentUser;
+        if (!user) {
+            setLoading(false);
             return;
         }
-        onSave({ name: name.trim(), price: parseFloat(price) });
-        onClose();
+
+        const fetchBusinessId = async () => {
+             const idToken = await user.getIdToken();
+             const settingsRes = await fetch(`/api/owner/settings?impersonate_owner_id=${impersonatedOwnerId || ''}`, { headers: { 'Authorization': `Bearer ${idToken}` }});
+             if (settingsRes.ok) {
+                 const settingsData = await settingsRes.json();
+                 setRestaurantId(settingsData.businessId);
+             }
+        }
+        fetchBusinessId();
+
+        const fetchData = async () => {
+             try {
+                const data = await handleApiCall('GET');
+                const processedTables = (data.tables || []).map(table => {
+                    const tabsWithDetails = (table.tabs || []).map(tab => {
+                        const allItems = tab.orders.flatMap(o => o.items || []);
+                        const itemMap = new Map();
+                        allItems.forEach(item => {
+                             const key = `${item.name}-${item.portion.name}`;
+                             const existing = itemMap.get(key);
+                             if (existing) {
+                                 itemMap.set(key, { ...existing, qty: existing.qty + item.quantity });
+                             } else {
+                                 itemMap.set(key, { ...item, qty: item.quantity });
+                             }
+                        });
+                        return {
+                            ...tab,
+                            totalBill: tab.orders.reduce((sum, o) => sum + (o.totalAmount || 0), 0),
+                            latestOrderTime: Math.max(...tab.orders.map(o => o.orderDate?.seconds ? o.orderDate.seconds * 1000 : new Date(o.orderDate).getTime())),
+                            allItems: Array.from(itemMap.values()),
+                        };
+                    });
+                    return { ...table, tabs: tabsWithDetails };
+                });
+
+                setTables(processedTables);
+                setServiceRequests(data.serviceRequests || []);
+                setClosedTabs(data.closedTabs || []);
+            } catch (error) {
+                console.error("Error fetching dine-in data:", error);
+                setInfoDialog({ isOpen: true, title: "Error", message: "Could not load dine-in data. " + error.message });
+            } finally {
+                setLoading(false);
+            }
+        };
+
+        const unsubscribe = auth.onAuthStateChanged(user => {
+            if (user) {
+                fetchData(); // Initial fetch
+                const interval = setInterval(fetchData, 15000); // Polling
+                return () => clearInterval(interval);
+            } else {
+                setLoading(false);
+            }
+        });
+        return () => unsubscribe();
+    }, [impersonatedOwnerId]);
+
+
+    const onToggleAcknowledge = (itemId) => {
+        setAcknowledgedItems(prev => {
+            const newSet = new Set(prev);
+            if (newSet.has(itemId)) {
+                newSet.delete(itemId);
+            } else {
+                newSet.add(itemId);
+            }
+            return newSet;
+        });
+    };
+
+    const handleConfirmOrders = async (orderIds) => {
+        try {
+            await handleApiCall('PATCH', { orderIds, newStatus: 'confirmed' }, '/api/owner/orders');
+            setInfoDialog({ isOpen: true, title: "Success", message: `${orderIds.length} order(s) confirmed!` });
+        } catch (error) {
+            setInfoDialog({ isOpen: true, title: "Error", message: "Could not confirm orders. " + error.message });
+        }
+    };
+    
+    const handleMarkAsPaid = async (tableId, tabIdToClose) => {
+         try {
+            await handleApiCall('PATCH', { tableId, tabIdToClose, action: 'mark_paid' });
+            setInfoDialog({ isOpen: true, title: "Success", message: `Tab ${tabIdToClose.substring(0,6)} on Table ${tableId} marked as paid.` });
+        } catch (error) {
+            setInfoDialog({ isOpen: true, title: "Error", message: "Failed to mark as paid. " + error.message });
+        }
+    };
+
+     const handleMarkAsCleaned = async (tableId) => {
+        try {
+            await handleApiCall('PATCH', { tableId, action: 'mark_cleaned' });
+        } catch (error) {
+            setInfoDialog({ isOpen: true, title: "Error", message: "Failed to update table status. " + error.message });
+        }
+    };
+
+     const handleSaveTable = async (tableId, maxCapacity) => {
+        try {
+            await handleApiCall('POST', { tableId, max_capacity: maxCapacity });
+            setInfoDialog({ isOpen: true, title: "Success", message: `Table ${tableId} created.` });
+        } catch (error) {
+            setInfoDialog({ isOpen: true, title: "Error", message: `Failed to create table: ${error.message}` });
+        }
+    };
+    
+    const handleEditTable = async (oldTableId, newTableId, newCapacity) => {
+        try {
+            await handleApiCall('PATCH', { tableId: oldTableId, newTableId, newCapacity });
+            setInfoDialog({ isOpen: true, title: "Success", message: `Table ${oldTableId} updated.` });
+            setEditTable(null);
+        } catch(e) {
+             setInfoDialog({ isOpen: true, title: "Error", message: `Failed to edit table: ${e.message}` });
+        }
+    };
+
+    const handleDeleteTable = async (tableId) => {
+         try {
+            await handleApiCall('DELETE', { tableId });
+            setInfoDialog({ isOpen: true, title: "Success", message: `Table ${tableId} deleted.` });
+            setDeleteConfirmation({isOpen: false, tableId: null});
+        } catch(e) {
+             setInfoDialog({ isOpen: true, title: "Error", message: `Failed to delete table: ${e.message}` });
+        }
     };
 
     return (
-        <Dialog open={isOpen} onOpenChange={onClose}>
-            <DialogContent className="bg-background border-border text-foreground">
-                <DialogHeader>
-                    <DialogTitle>Add New {itemCategory}</DialogTitle>
-                </DialogHeader>
-                <div className="grid gap-4 py-4">
-                    <div>
-                        <Label htmlFor="item-name">Item Name</Label>
-                        <Input id="item-name" value={name} onChange={e => setName(e.target.value)} />
-                    </div>
-                    <div>
-                        <Label htmlFor="item-price">Price (₹)</Label>
-                        <Input id="item-price" type="number" value={price} onChange={e => setPrice(e.target.value)} />
-                    </div>
+        <div className="p-4 md:p-6 text-foreground min-h-screen bg-background">
+            <InfoDialog
+                isOpen={infoDialog.isOpen}
+                onClose={() => setInfoDialog({ isOpen: false, title: '', message: '' })}
+                title={infoDialog.title}
+                message={infoDialog.message}
+            />
+            
+            <QrGeneratorModal
+                isOpen={!!editTable || (isManageTablesOpen && !editTable)}
+                onClose={() => setEditTable(null)}
+                onSaveTable={handleSaveTable}
+                restaurantId={restaurantId}
+                initialTable={editTable}
+                onEditTable={handleEditTable}
+                onDeleteTable={(id) => setDeleteConfirmation({ isOpen: true, tableId: id })}
+                showInfoDialog={setInfoDialog}
+            />
+            {qrTable && <QrCodeDisplayModal isOpen={!!qrTable} onClose={() => setQrTable(null)} restaurantId={restaurantId} table={qrTable} />}
+            {historyData && <HistoryModal tableHistory={historyData} onClose={() => setHistoryData(null)} />}
+            {billData && <BillModal order={billData} restaurant={{ name: 'Your Restaurant' }} onClose={() => setBillData(null)} onPrint={handlePrint} printRef={billPrintRef} />}
+
+            <ConfirmationModal
+                isOpen={deleteConfirmation.isOpen}
+                onClose={() => setDeleteConfirmation({ isOpen: false, tableId: null })}
+                onConfirm={() => handleDeleteTable(deleteConfirmation.tableId)}
+                title="Confirm Deletion"
+                description={`Are you sure you want to delete Table ${deleteConfirmation.tableId}? This action cannot be undone.`}
+                confirmText="Delete Table"
+                isDestructive={true}
+            />
+
+             <ManageTablesModal
+                isOpen={isManageTablesOpen}
+                onClose={() => setManageTablesOpen(false)}
+                allTables={tables}
+                onEdit={(table) => {setEditTable(table); setManageTablesOpen(false);}}
+                onDelete={(id) => setDeleteConfirmation({ isOpen: true, tableId: id })}
+                loading={loading}
+                onCreateNew={() => { setEditTable(null); setManageTablesOpen(false); }}
+                onShowQr={setQrTable}
+            />
+            
+            <div className="flex flex-col md:flex-row justify-between md:items-center mb-6 gap-4">
+                <div>
+                    <h1 className="text-3xl font-bold tracking-tight">Dine-In Command Center</h1>
+                    <p className="text-muted-foreground mt-1">A real-time overview of your tables and customer tabs.</p>
                 </div>
-                <DialogFooter>
-                    <Button variant="secondary" onClick={onClose}>Cancel</Button>
-                    <Button onClick={handleSave}>Save Item</Button>
-                </DialogFooter>
-            </DialogContent>
-        </Dialog>
+                <div className="flex gap-2">
+                    <Button variant="outline" onClick={() => setManageTablesOpen(true)}><TableIcon size={16} className="mr-2"/> Manage Tables</Button>
+                    <Button variant="outline" onClick={() => setHistoryOpen(true)}><History size={16} className="mr-2"/> View History</Button>
+                    <Button onClick={() => window.location.reload()} variant="outline" size="icon"><RefreshCw size={16}/></Button>
+                </div>
+            </div>
+            
+            <LiveServiceRequests requests={serviceRequests} onAcknowledge={() => {}} />
+
+             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+                {loading ? (
+                    [...Array(8)].map((_, i) => <Card key={i} className="h-96 animate-pulse"><CardHeader><div className="h-8 bg-muted rounded-md w-3/4"></div></CardHeader><CardContent><div className="h-48 bg-muted rounded-md"></div></CardContent></Card>)
+                ) : tables.length > 0 ? (
+                    tables.map(table => (
+                        <div key={table.id} className="space-y-4">
+                            <TableCard 
+                                tableId={table.id}
+                                tableData={table}
+                                onMarkAsPaid={handleMarkAsPaid}
+                                onPrintBill={setBillData}
+                                onMarkAsCleaned={handleMarkAsCleaned}
+                                onShowHistory={() => {}}
+                                acknowledgedItems={acknowledgedItems}
+                                onToggleAcknowledge={onToggleAcknowledge}
+                                onConfirmOrders={handleConfirmOrders}
+                            />
+                            {table.tabs.map(tab => (
+                                <TableCard
+                                    key={tab.id}
+                                    tableId={tab.tableId}
+                                    tableData={tab}
+                                    onMarkAsPaid={handleMarkAsPaid}
+                                    onPrintBill={setBillData}
+                                    onMarkAsCleaned={handleMarkAsCleaned}
+                                    onShowHistory={() => {}}
+                                    acknowledgedItems={acknowledgedItems}
+                                    onToggleAcknowledge={onToggleAcknowledge}
+                                    onConfirmOrders={handleConfirmOrders}
+                                    isTab={true}
+                                />
+                            ))}
+                        </div>
+                    ))
+                ) : (
+                    <div className="col-span-full text-center py-16 text-muted-foreground">
+                        <TableIcon size={48} className="mx-auto" />
+                        <p className="mt-4 font-semibold">No tables have been set up yet.</p>
+                        <Button onClick={() => setEditTable(null)} className="mt-4">
+                            <PlusCircle size={16} className="mr-2"/> Create Your First Table
+                        </Button>
+                    </div>
+                )}
+            </div>
+        </div>
     );
 }
 
-const DineInMenuModal = ({ isOpen, onClose, showInfoDialog }) => {
-    const [menuItems, setMenuItems] = useState([]);
-    const [cutleryItems, setCutleryItems] = useState([]);
-    const [amenityItems, setAmenityItems] = useState([]);
-    const [isAddItemModalOpen, setAddItemModalOpen] = useState(false);
-    const [addItemCategory, setAddItemCategory] = useState('');
-
-
-    const handleAddItem = (category) => {
-        setAddItemCategory(category);
-        setAddItemModalOpen(true);
-    };
-
-    const handleSaveNewItem = (item) => {
-        if (addItemCategory === 'Cutlery') {
-            setCutleryItems(prev => [...prev, item]);
-        } else if (addItemCategory === 'Amenity') {
-            setAmenityItems(prev => [...prev, item]);
-        }
-    };
-
-    return (
-        <>
-            <DineInAddItemModal
-                isOpen={isAddItemModalOpen}
-                onClose={() => setAddItemModalOpen(false)}
-                onSave={handleSaveNewItem}
-                itemCategory={addItemCategory}
-                showInfoDialog={showInfoDialog}
-            />
-            <Dialog open={isOpen} onOpenChange={onClose}>
-                <DialogContent className="max-w-4xl bg-background border-border text-foreground">
-                    <DialogHeader>
-                        <DialogTitle>Dine-In Menu Editor</DialogTitle>
-                        <Alert>
-                            <AlertTriangle className="h-4 w-4" />
-                            <AlertTitle>Feature in Development</AlertTitle>
-                            <AlertDescription>
-                               This is a preview. Soon, you will be able to copy items from your main menu. Saving items is currently local to this session.
-                            </AlertDescription>
-                        </Alert>
-                    </DialogHeader>
-                    <div className="mt-4 max-h-[70vh] overflow-y-auto pr-4 space-y-6">
-                        <div className="p-4 border border-dashed border-border rounded-lg">
-                            <div className="flex justify-between items-center mb-4">
-                                <h3 className="text-lg font-semibold flex items-center gap-2"><Salad size={20}/> Dine-In Menu Items</h3>
-                                <Button variant="outline" disabled>Copy Items from Main Menu</Button>
-                            </div>
-                            <div className="space-y-2">
-                                {menuItems.length > 0 ? menuItems.map(item => (
-                                    <div key={item.id} className="flex justify-between items-center p-3 bg-muted rounded-md">
-                                        <p>{item.name}</p>
-                                        <p className="font-semibold">{formatCurrency(item.price)}</p>
-                                    </div>
-                                )) : <p className="text-sm text-center text-muted-foreground py-4">No menu items added. Use 'Copy from Main Menu'.</p>}
-                            </div>
-                        </div>
-                        <div className="p-4 border border-dashed border-border rounded-lg">
-                            <div className="flex justify-between items-center mb-4">
-                                <h3 className="text-lg font-semibold flex items-center gap-2"><UtensilsCrossed size={20}/> Cutlery & Crockery</h3>
-                                 <Button variant="outline" size="sm" onClick={() => handleAddItem('Cutlery')}><PlusCircle size={16} className="mr-2"/> Add Item</Button>
-                            </div>
-                            <div className="space-y-2">
-                                 {cutleryItems.length > 0 ? cutleryItems.map((item, index) => (
-                                    <div key={index} className="flex justify-between items-center p-3 bg-muted rounded-md">
-                                        <p>{item.name}</p>
-                                        <p className="font-semibold">{item.price > 0 ? formatCurrency(item.price) : 'Free'}</p>
-                                    </div>
-                                )) : <p className="text-sm text-center text-muted-foreground py-4">No cutlery items added yet.</p>}
-                            </div>
-                        </div>
-                        <div className="p-4 border border-dashed border-border rounded-lg">
-                            <div className="flex justify-between items-center mb-4">
-                                <h3 className="text-lg font-semibold flex items-center gap-2"><Droplet size={20}/> Basic Amenities</h3>
-                                 <Button variant="outline" size="sm" onClick={() => handleAddItem('Amenity')}><PlusCircle size={16} className="mr-2"/> Add Item</Button>
-                            </div>
-                             <div className="space-y-2">
-                                 {amenityItems.length > 0 ? amenityItems.map((item, index) => (
-                                    <div key={index} className="flex justify-between items-center p-3 bg-muted rounded-md">
-                                        <p>{item.name}</p>
-                                        <p className="font-semibold">{formatCurrency(item.price)}</p>
-                                    </div>
-                                )) : <p className="text-sm text-center text-muted-foreground py-4">No amenities added yet.</p>}
-                            </div>
-                        </div>
-                    </div>
-                     <DialogFooter>
-                        <Button onClick={onClose}>Close</Button>
-                    </DialogFooter>
-                </DialogContent>
-            </Dialog>
-        </>
-    )
-}
-function DineInPage() {
-  return <div>Dine-in page is loading...</div>;
-}
-
 export default function DineInPageWrapper() {
-  return (
-    <Suspense fallback={<div className="flex h-full w-full items-center justify-center"><p>Loading...</p></div>}>
-      <DineInPage />
-    </Suspense>
-  );
-}
+    return (
+      <Suspense fallback={<div className="flex h-full w-full items-center justify-center"><p>Loading...</p></div>}>
+        <DineInPageContent />
+      </Suspense>
+    );
+  }
