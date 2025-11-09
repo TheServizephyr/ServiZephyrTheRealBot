@@ -662,7 +662,7 @@ export default function LiveOrdersPage() {
   }
   
   const filteredAndSortedOrders = useMemo(() => {
-    let sortableItems = orders.filter(o => o.deliveryType !== 'dine-in');
+    let sortableItems = [...orders];
 
     const filterMap = {
         'All': () => true,
@@ -946,5 +946,3 @@ export default function LiveOrdersPage() {
     </div>
   );
 }
-
-    
