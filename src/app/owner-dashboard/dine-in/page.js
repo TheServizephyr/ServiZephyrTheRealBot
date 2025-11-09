@@ -678,7 +678,7 @@ const DineInPageContent = () => {
         }
         fetchAndSetRestaurantDetails();
     }, [impersonatedOwnerId]);
-    
+
     const handleSaveTable = async (tableName, maxCapacity) => {
         try {
             await handleApiCall('POST', { tableId: tableName, max_capacity: maxCapacity }, '/api/owner/dine-in-tables');
@@ -764,15 +764,20 @@ const DineInPageContent = () => {
              setLoading(false);
          }
     };
-
+    
     const { activeTableData, closedTabsData } = useMemo(() => {
         const tableMap = allTables.reduce((acc, table) => {
             acc[table.id] = { ...table, tabs: table.tabs || [] };
             return acc;
         }, {});
         
-        return { activeTableData: tableMap, closedTabsData: allTables.filter(t => t.status === 'closed') };
+        // This assumes your API now correctly populates closedTabs if you need it.
+        // For now, we'll just filter them from the main allTables array if they exist.
+        const closedTabs = allTables.filter(t => t.status === 'closed');
+        
+        return { activeTableData: tableMap, closedTabsData: closedTabs };
     }, [allTables]);
+    
     
     const handleShowHistory = (tableId, tabId) => {
         const tableData = activeTableData[tableId];
@@ -829,8 +834,8 @@ const DineInPageContent = () => {
             return newSet;
         });
     };
-
-    const handleConfirmOrders = async (orderIds) => {
+    
+     const handleConfirmOrders = async (orderIds) => {
         try {
             await handleApiCall('PATCH', { orderIds: orderIds, newStatus: 'confirmed' }, '/api/owner/orders');
             setInfoDialog({ isOpen: true, title: "Success", message: "New orders have been confirmed!" });
@@ -839,6 +844,7 @@ const DineInPageContent = () => {
             setInfoDialog({ isOpen: true, title: "Error", message: `Could not confirm orders: ${error.message}` });
         }
     }
+
 
     const renderTableCards = () => {
         const cards = [];
@@ -925,7 +931,7 @@ const DineInPageContent = () => {
                 <Button onClick={() => setIsHistoryModalOpen(true)} variant="outline" className="h-20 flex-col gap-1" disabled={loading}>
                     <History size={20}/> Dine-In History
                 </Button>
-                 <Button variant="outline" className="h-20 flex-col gap-1" disabled={true}>
+                <Button variant="outline" className="h-20 flex-col gap-1" disabled={true}>
                     <Salad size={20}/> Dine-In Menu
                 </Button>
                  <Button onClick={() => setIsManageTablesModalOpen(true)} variant="outline" className="h-20 flex-col gap-1" disabled={loading}>
@@ -934,6 +940,22 @@ const DineInPageContent = () => {
                 <Button onClick={() => fetchData(true)} variant="outline" className="h-20 flex-col gap-1" disabled={loading}>
                     <RefreshCw size={20} className={cn(loading && "animate-spin")} /> Refresh View
                 </Button>
+            </div>
+
+
+            <div className="border border-yellow-500/30 bg-yellow-500/10 p-4 rounded-lg mb-6">
+                <h3 className="font-bold text-yellow-300 flex items-center gap-2"><Bell size={16}/> Service Requests</h3>
+                {allServiceRequests.length > 0 ? (
+                    <div className="flex flex-wrap gap-2 mt-2">
+                        {allServiceRequests.map(req => (
+                            <div key={req.id} className="bg-yellow-500/20 text-yellow-200 px-3 py-1 rounded-full text-sm font-semibold">
+                                Table {req.tableId} needs assistance!
+                            </div>
+                        ))}
+                    </div>
+                ) : (
+                    <p className="text-sm text-yellow-300/80 mt-1">No active service requests.</p>
+                )}
             </div>
             
              <h2 className="text-xl font-bold mb-4">Live Tables</h2>
@@ -956,7 +978,7 @@ const DineInPageContent = () => {
             )}
         </div>
     );
-}
+};
 
 const DineInPage = () => (
     <Suspense fallback={<div className="flex h-full w-full items-center justify-center">Loading...</div>}>
@@ -965,5 +987,3 @@ const DineInPage = () => (
 );
 
 export default DineInPage;
-
-    

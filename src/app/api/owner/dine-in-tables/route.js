@@ -82,11 +82,12 @@ export async function GET(req) {
                     }
                     
                     (order.items || []).forEach(item => {
+                        const uniqueItemId = `${order.id}-${item.name}`; // Ensure unique ID per order
                         const existing = itemMap.get(item.name);
                         if(existing) {
-                            itemMap.set(item.name, {...existing, qty: existing.qty + item.qty, orderItemIds: [...existing.orderItemIds, `${order.id}-${item.name}`]});
+                            itemMap.set(item.name, {...existing, qty: existing.qty + item.qty, orderItemIds: [...existing.orderItemIds, uniqueItemId]});
                         } else {
-                            itemMap.set(item.name, {...item, qty: item.qty, orderItemIds: [`${order.id}-${item.name}`]});
+                            itemMap.set(item.name, {...item, qty: item.qty, orderItemIds: [uniqueItemId]});
                         }
                     });
                 });
@@ -261,5 +262,3 @@ export async function DELETE(req) {
         return NextResponse.json({ message: `Backend Error: ${error.message}` }, { status: error.status || 500 });
     }
 }
-
-    
