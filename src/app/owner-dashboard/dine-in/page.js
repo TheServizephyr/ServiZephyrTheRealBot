@@ -344,7 +344,7 @@ const TableCard = ({ tableId, tableData, onMarkAsPaid, onPrintBill, onMarkAsClea
                                 )}
                                 <div className="space-y-2 max-h-48 overflow-y-auto pr-2">
                                     {tab.allItems.map((item) => {
-                                        const uniqueItemId = `${tab.id}-${item.name}`;
+                                        const uniqueItemId = `${tab.id}-${item.orderItemIds.join('-')}`;
                                         const isAcknowledged = acknowledgedItems.has(uniqueItemId);
                                         const isPending = tab.orders.some(o => o.items.some(i => i.name === item.name) && o.status === 'pending');
 
@@ -564,7 +564,6 @@ const QrGeneratorModal = ({ isOpen, onClose, onSaveTable, restaurantId, initialT
 };
 
 const DineInPageContent = () => {
-    const [allOrders, setAllOrders] = useState([]);
     const [allTables, setAllTables] = useState([]);
     const [allServiceRequests, setAllServiceRequests] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -652,10 +651,6 @@ const DineInPageContent = () => {
             const data = await handleApiCall('GET', null, '/api/owner/dine-in-tables');
             setAllTables(data.tables || []);
             setAllServiceRequests(data.serviceRequests || []);
-            
-            // Assuming settings data is now bundled or fetched separately if needed
-            // For now, let's keep it simple. If restaurant details are needed, they should be in the dine-in-tables response or another call.
-            
         } catch (error) {
             setInfoDialog({ isOpen: true, title: "Error", message: `Could not load dine-in data: ${error.message}` });
         } finally {
@@ -771,14 +766,13 @@ const DineInPageContent = () => {
     };
 
     const { activeTableData, closedTabsData } = useMemo(() => {
-        const closedTabs = allTables.filter(t => t.status === 'closed');
-        const tableMap = allTables.filter(t => t.status !== 'closed').reduce((acc, table) => {
-            acc[table.id] = { ...table, tabs: (table.tabs || []) };
+        const tableMap = allTables.reduce((acc, table) => {
+            acc[table.id] = { ...table, tabs: table.tabs || [] };
             return acc;
         }, {});
-        return { activeTableData: tableMap, closedTabsData: closedTabs };
+        
+        return { activeTableData: tableMap, closedTabsData: allTables.filter(t => t.status === 'closed') };
     }, [allTables]);
-    
     
     const handleShowHistory = (tableId, tabId) => {
         const tableData = activeTableData[tableId];
@@ -836,6 +830,16 @@ const DineInPageContent = () => {
         });
     };
 
+    const handleConfirmOrders = async (orderIds) => {
+        try {
+            await handleApiCall('PATCH', { orderIds: orderIds, newStatus: 'confirmed' }, '/api/owner/orders');
+            setInfoDialog({ isOpen: true, title: "Success", message: "New orders have been confirmed!" });
+            await fetchData(true);
+        } catch(error) {
+            setInfoDialog({ isOpen: true, title: "Error", message: `Could not confirm orders: ${error.message}` });
+        }
+    }
+
     const renderTableCards = () => {
         const cards = [];
         const sortedTableKeys = Object.keys(activeTableData).sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
@@ -857,6 +861,7 @@ const DineInPageContent = () => {
                             onShowHistory={handleShowHistory}
                             acknowledgedItems={acknowledgedItems}
                             onToggleAcknowledge={handleToggleAcknowledge}
+                            onConfirmOrders={handleConfirmOrders}
                         />
                     );
                 });
@@ -951,8 +956,7 @@ const DineInPageContent = () => {
             )}
         </div>
     );
-};
-
+}
 
 const DineInPage = () => (
     <Suspense fallback={<div className="flex h-full w-full items-center justify-center">Loading...</div>}>
@@ -961,3 +965,5 @@ const DineInPage = () => (
 );
 
 export default DineInPage;
+
+    
