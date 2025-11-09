@@ -767,12 +767,80 @@ function DineInPageContent() {
          }
     };
 
-    const activeTableData = useMemo(() => {
-        return allTables.reduce((acc, table) => {
-            acc[table.id] = table;
+    const { activeTableData, closedTabsData } = useMemo(() => {
+        const dineInStatuses = ['pending', 'confirmed', 'preparing', 'active_tab', 'ready_for_pickup'];
+        const thirtyDaysAgo = subDays(new Date(), 30);
+
+        const uniqueTabIds = [...new Set(allOrders.filter(o => o.deliveryType === 'dine-in' && o.dineInTabId).map(o => o.dineInTabId))];
+
+        const tabsData = uniqueTabIds.map(tabId => {
+            const tabOrders = allOrders.filter(o => o.dineInTabId === tabId);
+            if (tabOrders.length === 0) return null;
+            
+            const mainOrder = tabOrders.find(o => o.tab_name) || tabOrders[0];
+            const latestOrder = tabOrders.reduce((latest, current) => {
+                const latestDate = new Date(latest.orderDate?.seconds ? latest.orderDate.seconds * 1000 : latest.orderDate);
+                const currentDate = new Date(current.orderDate?.seconds ? current.orderDate.seconds * 1000 : current.orderDate);
+                return currentDate > latestDate ? current : latest;
+            });
+            
+            const isActive = tabOrders.some(o => dineInStatuses.includes(o.status));
+            const totalBill = tabOrders.reduce((sum, o) => sum + (o.totalAmount || 0), 0);
+            
+            const allItemsMap = new Map();
+            tabOrders.forEach(order => {
+                (order.items || []).forEach(item => {
+                    const uniqueItemId = `${order.id}-${item.name}`; // Ensure unique ID per order
+                    const existing = allItemsMap.get(item.name);
+                    if (existing) {
+                        allItemsMap.set(item.name, { ...existing, qty: existing.qty + item.quantity, orderItemIds: [...existing.orderItemIds, uniqueItemId] });
+                    } else {
+                        allItemsMap.set(item.name, { ...item, qty: item.quantity, orderItemIds: [uniqueItemId] });
+                    }
+                });
+            });
+
+            if (!mainOrder) return null;
+
+            return {
+                id: tabId,
+                tableId: mainOrder.tableId,
+                tab_name: mainOrder.tab_name || "Guest",
+                pax_count: mainOrder.pax_count || 1,
+                orders: tabOrders,
+                isActive,
+                totalBill,
+                allItems: Array.from(allItemsMap.values()),
+                latestOrderTime: new Date(latestOrder.orderDate?.seconds ? latestOrder.orderDate.seconds * 1000 : latestOrder.orderDate),
+                closedAt: !isActive ? new Date(latestOrder.orderDate?.seconds ? latestOrder.orderDate.seconds * 1000 : latestOrder.orderDate) : null,
+                paymentMethod: latestOrder.paymentDetails?.method || 'Pay at Counter',
+            };
+        }).filter(Boolean);
+
+        const closedTabs = tabsData.filter(tab => !tab.isActive && tab.closedAt && isAfter(tab.closedAt, thirtyDaysAgo));
+        closedTabs.sort((a,b) => b.closedAt - a.closedAt);
+
+        const tableMap = allTables.reduce((acc, table) => {
+            acc[table.id] = { ...table, tabs: [], pax_count: 0 };
             return acc;
         }, {});
-    }, [allTables]);
+
+        tabsData.forEach(tab => {
+            if (tab.isActive && tableMap[tab.tableId]) {
+                tableMap[tab.tableId].tabs.push(tab);
+            }
+        });
+        
+        Object.values(tableMap).forEach(table => {
+            if (table.tabs.length > 0) {
+                 table.state = 'occupied';
+            } else if (table.state !== 'needs_cleaning') {
+                table.state = 'available';
+            }
+        });
+
+        return { activeTableData: tableMap, closedTabsData: closedTabs };
+    }, [allOrders, allTables]);
     
     const handleShowHistory = (tableId, tabId) => {
         const tableData = activeTableData[tableId];
@@ -873,7 +941,7 @@ function DineInPageContent() {
 
     return (
         <div className="p-4 md:p-6 text-foreground min-h-screen bg-background">
-            <DineInHistoryModal isOpen={isHistoryModalOpen} onClose={() => setIsHistoryModalOpen(false)} closedTabs={[]} />
+            <DineInHistoryModal isOpen={isHistoryModalOpen} onClose={() => setIsHistoryModalOpen(false)} closedTabs={closedTabsData} />
             <ManageTablesModal isOpen={isManageTablesModalOpen} onClose={() => setIsManageTablesModalOpen(false)} allTables={allTables} onEdit={handleOpenEditModal} onDelete={handleDeleteTable} loading={loading} onCreateNew={() => handleOpenEditModal(null)} onShowQr={handleOpenQrDisplayModal} />
             {historyModalData && <HistoryModal tableHistory={historyModalData} onClose={() => setHistoryModalData(null)} />}
             {billData && (
@@ -924,6 +992,8 @@ function DineInPageContent() {
                     <RefreshCw size={20} className={cn(loading && "animate-spin")} /> Refresh View
                 </Button>
             </div>
+
+            
              <h2 className="text-xl font-bold mb-4">Live Tables</h2>
             {loading ? (
                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 animate-pulse">
@@ -937,11 +1007,9 @@ function DineInPageContent() {
                 </div>
             ) : (
                 <div className="text-center py-16 text-muted-foreground border-2 border-dashed border-border rounded-xl">
-                    <TableIcon size={48} className="mx-auto" />
-                    <p className="mt-4 font-semibold">No tables have been set up yet.</p>
-                    <Button onClick={() => handleOpenEditModal(null)} className="mt-4">
-                        <PlusCircle size={16} className="mr-2"/> Create Your First Table
-                    </Button>
+                    <ShoppingBag size={48} className="mx-auto" />
+                    <p className="mt-4 text-lg font-semibold">No Active Tables</p>
+                    <p>When a customer scans a QR code and orders, their table will appear here live.</p>
                 </div>
             )}
         </div>
@@ -950,7 +1018,7 @@ function DineInPageContent() {
 
 const DineInPage = () => {
     return (
-        <Suspense fallback={<div className="flex h-full w-full items-center justify-center"><p>Loading...</p></div>}>
+        <Suspense fallback={<div>Loading...</div>}>
             <DineInPageContent />
         </Suspense>
     );
