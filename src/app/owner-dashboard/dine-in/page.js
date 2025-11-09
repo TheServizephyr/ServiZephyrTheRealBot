@@ -118,7 +118,7 @@ const DineInHistoryModal = ({ isOpen, onClose, closedTabs }) => {
                                 <div>
                                     <p className="font-semibold text-foreground">Table {tab.tableId} - {tab.tab_name}</p>
                                     <p className="text-xs text-muted-foreground">
-                                        Closed {tab.closedAt ? formatDistanceToNow(tab.closedAt, { addSuffix: true }) : 'Recently'}
+                                        Closed {tab.closedAt ? formatDistanceToNow(new Date(tab.closedAt), { addSuffix: true }) : 'Recently'}
                                     </p>
                                 </div>
                                 <div className="text-right">
@@ -563,7 +563,7 @@ const QrGeneratorModal = ({ isOpen, onClose, onSaveTable, restaurantId, initialT
     );
 };
 
-function DineInPageContent() {
+const DineInPageContent = () => {
     const [allOrders, setAllOrders] = useState([]);
     const [allTables, setAllTables] = useState([]);
     const [allServiceRequests, setAllServiceRequests] = useState([]);
@@ -574,7 +574,6 @@ function DineInPageContent() {
     const [isManageTablesModalOpen, setIsManageTablesModalOpen] = useState(false);
     const [isQrDisplayModalOpen, setIsQrDisplayModalOpen] = useState(false);
     const [isHistoryModalOpen, setIsHistoryModalOpen] = useState(false);
-    const [isDineInMenuModalOpen, setIsDineInMenuModalOpen] = useState(false);
     const [editingTable, setEditingTable] = useState(null);
     const [displayTable, setDisplayTable] = useState(null);
     const [restaurant, setRestaurant] = useState(null);
@@ -650,36 +649,40 @@ function DineInPageContent() {
     const fetchData = async (isManualRefresh = false) => {
         if (!isManualRefresh) setLoading(true);
         try {
-            const user = auth.currentUser;
-            if (!user) return;
-            const idToken = await user.getIdToken();
+            const data = await handleApiCall('GET', null, '/api/owner/dine-in-tables');
+            setAllTables(data.tables || []);
+            setAllServiceRequests(data.serviceRequests || []);
             
-            const finalImpersonatedId = impersonatedOwnerId || searchParams.get('impersonate_owner_id');
-            const settingsUrl = `/api/owner/settings${finalImpersonatedId ? `?impersonate_owner_id=${finalImpersonatedId}` : ''}`;
+            // Assuming settings data is now bundled or fetched separately if needed
+            // For now, let's keep it simple. If restaurant details are needed, they should be in the dine-in-tables response or another call.
             
-            const [tablesData, settingsData] = await Promise.all([
-                 handleApiCall('GET', null, '/api/owner/dine-in-tables'),
-                 fetch(settingsUrl, { headers: { 'Authorization': `Bearer ${idToken}` } }).then(res => res.json()),
-            ]);
-            
-            setAllTables(tablesData.tables || []);
-            
-            const fetchedRestaurant = {
-                name: settingsData.restaurantName,
-                address: settingsData.address,
-                gstin: settingsData.gstin
-             };
-            setRestaurant(fetchedRestaurant);
-            
-            const fetchedRestaurantId = settingsData.businessId;
-            setRestaurantId(fetchedRestaurantId);
-
         } catch (error) {
             setInfoDialog({ isOpen: true, title: "Error", message: `Could not load dine-in data: ${error.message}` });
         } finally {
             if (!isManualRefresh) setLoading(false);
         }
     };
+    
+    useEffect(() => {
+        const fetchAndSetRestaurantDetails = async () => {
+             const user = auth.currentUser;
+             if(user) {
+                const idToken = await user.getIdToken();
+                const settingsUrl = `/api/owner/settings${impersonatedOwnerId ? `?impersonate_owner_id=${impersonatedOwnerId}` : ''}`;
+                const settingsRes = await fetch(settingsUrl, { headers: { 'Authorization': `Bearer ${idToken}` } });
+                if(settingsRes.ok) {
+                    const settingsData = await settingsRes.json();
+                    setRestaurant({
+                        name: settingsData.restaurantName,
+                        address: settingsData.address,
+                        gstin: settingsData.gstin
+                     });
+                    setRestaurantId(settingsData.businessId);
+                }
+             }
+        }
+        fetchAndSetRestaurantDetails();
+    }, [impersonatedOwnerId]);
     
     const handleSaveTable = async (tableName, maxCapacity) => {
         try {
@@ -728,7 +731,7 @@ function DineInPageContent() {
         };
       }, [impersonatedOwnerId]);
 
-      const confirmMarkAsPaid = (tableId, tabId) => {
+    const confirmMarkAsPaid = (tableId, tabId) => {
         setConfirmationState({
             isOpen: true,
             title: "Confirm Payment",
@@ -768,79 +771,14 @@ function DineInPageContent() {
     };
 
     const { activeTableData, closedTabsData } = useMemo(() => {
-        const dineInStatuses = ['pending', 'confirmed', 'preparing', 'active_tab', 'ready_for_pickup'];
-        const thirtyDaysAgo = subDays(new Date(), 30);
-
-        const uniqueTabIds = [...new Set(allOrders.filter(o => o.deliveryType === 'dine-in' && o.dineInTabId).map(o => o.dineInTabId))];
-
-        const tabsData = uniqueTabIds.map(tabId => {
-            const tabOrders = allOrders.filter(o => o.dineInTabId === tabId);
-            if (tabOrders.length === 0) return null;
-            
-            const mainOrder = tabOrders.find(o => o.tab_name) || tabOrders[0];
-            const latestOrder = tabOrders.reduce((latest, current) => {
-                const latestDate = new Date(latest.orderDate?.seconds ? latest.orderDate.seconds * 1000 : latest.orderDate);
-                const currentDate = new Date(current.orderDate?.seconds ? current.orderDate.seconds * 1000 : current.orderDate);
-                return currentDate > latestDate ? current : latest;
-            });
-            
-            const isActive = tabOrders.some(o => dineInStatuses.includes(o.status));
-            const totalBill = tabOrders.reduce((sum, o) => sum + (o.totalAmount || 0), 0);
-            
-            const allItemsMap = new Map();
-            tabOrders.forEach(order => {
-                (order.items || []).forEach(item => {
-                    const uniqueItemId = `${order.id}-${item.name}`; // Ensure unique ID per order
-                    const existing = allItemsMap.get(item.name);
-                    if (existing) {
-                        allItemsMap.set(item.name, { ...existing, qty: existing.qty + item.quantity, orderItemIds: [...existing.orderItemIds, uniqueItemId] });
-                    } else {
-                        allItemsMap.set(item.name, { ...item, qty: item.quantity, orderItemIds: [uniqueItemId] });
-                    }
-                });
-            });
-
-            if (!mainOrder) return null;
-
-            return {
-                id: tabId,
-                tableId: mainOrder.tableId,
-                tab_name: mainOrder.tab_name || "Guest",
-                pax_count: mainOrder.pax_count || 1,
-                orders: tabOrders,
-                isActive,
-                totalBill,
-                allItems: Array.from(allItemsMap.values()),
-                latestOrderTime: new Date(latestOrder.orderDate?.seconds ? latestOrder.orderDate.seconds * 1000 : latestOrder.orderDate),
-                closedAt: !isActive ? new Date(latestOrder.orderDate?.seconds ? latestOrder.orderDate.seconds * 1000 : latestOrder.orderDate) : null,
-                paymentMethod: latestOrder.paymentDetails?.method || 'Pay at Counter',
-            };
-        }).filter(Boolean);
-
-        const closedTabs = tabsData.filter(tab => !tab.isActive && tab.closedAt && isAfter(tab.closedAt, thirtyDaysAgo));
-        closedTabs.sort((a,b) => b.closedAt - a.closedAt);
-
-        const tableMap = allTables.reduce((acc, table) => {
-            acc[table.id] = { ...table, tabs: [], pax_count: 0 };
+        const closedTabs = allTables.filter(t => t.status === 'closed');
+        const tableMap = allTables.filter(t => t.status !== 'closed').reduce((acc, table) => {
+            acc[table.id] = { ...table, tabs: (table.tabs || []) };
             return acc;
         }, {});
-
-        tabsData.forEach(tab => {
-            if (tab.isActive && tableMap[tab.tableId]) {
-                tableMap[tab.tableId].tabs.push(tab);
-            }
-        });
-        
-        Object.values(tableMap).forEach(table => {
-            if (table.tabs.length > 0) {
-                 table.state = 'occupied';
-            } else if (table.state !== 'needs_cleaning') {
-                table.state = 'available';
-            }
-        });
-
         return { activeTableData: tableMap, closedTabsData: closedTabs };
-    }, [allOrders, allTables]);
+    }, [allTables]);
+    
     
     const handleShowHistory = (tableId, tabId) => {
         const tableData = activeTableData[tableId];
@@ -982,7 +920,7 @@ function DineInPageContent() {
                 <Button onClick={() => setIsHistoryModalOpen(true)} variant="outline" className="h-20 flex-col gap-1" disabled={loading}>
                     <History size={20}/> Dine-In History
                 </Button>
-                 <Button onClick={() => {}} variant="outline" className="h-20 flex-col gap-1" disabled={true}>
+                 <Button variant="outline" className="h-20 flex-col gap-1" disabled={true}>
                     <Salad size={20}/> Dine-In Menu
                 </Button>
                  <Button onClick={() => setIsManageTablesModalOpen(true)} variant="outline" className="h-20 flex-col gap-1" disabled={loading}>
@@ -1013,14 +951,13 @@ function DineInPageContent() {
             )}
         </div>
     );
-}
-
-const DineInPage = () => {
-    return (
-        <Suspense fallback={<div>Loading...</div>}>
-            <DineInPageContent />
-        </Suspense>
-    );
 };
+
+
+const DineInPage = () => (
+    <Suspense fallback={<div className="flex h-full w-full items-center justify-center">Loading...</div>}>
+        <DineInPageContent />
+    </Suspense>
+);
 
 export default DineInPage;

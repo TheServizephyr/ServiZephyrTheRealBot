@@ -79,9 +79,9 @@ export async function GET(req) {
         const [currentOrdersSnap, prevOrdersSnap, newCustomersSnap, topItemsSnap, rejectedOrdersSnap] = await Promise.all([
             ordersRef.where('orderDate', '>=', startDate).where('status', '!=', 'rejected').get(),
             ordersRef.where('orderDate', '>=', prevStartDate).where('orderDate', '<', startDate).where('status', '!=', 'rejected').get(),
-            customersRef.where('joinedAt', '>=', startDate).get(), 
+            customersRef.where('lastOrderDate', '>=', startDate).get(), 
             ordersRef.where('orderDate', '>=', startDate).limit(50).get(),
-            ordersRef.where('orderDate', '>=', startDate).where('status', '==', 'rejected').get()
+            ordersRef.where('orderDate', '>=', new Date(new Date().setHours(0,0,0,0))).where('status', '==', 'rejected').get()
         ]);
 
         let sales = 0;
@@ -117,7 +117,6 @@ export async function GET(req) {
         };
 
         const liveOrdersSnap = await ordersRef.where('status', 'in', ['pending', 'confirmed']).orderBy('orderDate', 'desc').limit(3).get();
-        // --- START THE FIX ---
         const liveOrders = liveOrdersSnap.docs.map(doc => {
             const orderData = doc.data();
             return { 
@@ -126,11 +125,10 @@ export async function GET(req) {
                 amount: orderData.totalAmount,
                 items: (orderData.items || []).map(item => ({
                     name: item.name,
-                    quantity: item.quantity
+                    quantity: item.qty
                 }))
             };
         });
-        // --- END THE FIX ---
 
         const salesChartData = [];
         const sevenDaysAgo = new Date(new Date().setDate(new Date().getDate() - 7));

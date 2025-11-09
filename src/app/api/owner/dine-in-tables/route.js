@@ -57,7 +57,7 @@ export async function GET(req) {
         
         const tabsData = {};
         for (const tabDoc of tabsSnap.docs) {
-            const tabData = { id: tabDoc.id, ...tabDoc.data(), orders: [] };
+            const tabData = { id: tabDoc.id, ...tabDoc.data(), orders: [], allItems: [], totalBill: 0, latestOrderTime: null };
             
             // Fetch orders for each active tab
             const ordersSnap = await businessRef.firestore.collection('orders')
@@ -67,7 +67,24 @@ export async function GET(req) {
                 .get();
 
             if (!ordersSnap.empty) {
-                tabData.orders = ordersSnap.docs.map(orderDoc => ({ id: orderDoc.id, ...orderDoc.data() }));
+                const itemMap = new Map();
+                ordersSnap.docs.forEach(orderDoc => {
+                    const order = { id: orderDoc.id, ...orderDoc.data() };
+                    tabData.orders.push(order);
+                    tabData.totalBill += order.totalAmount || 0;
+                    if(order.orderDate && (!tabData.latestOrderTime || order.orderDate.toDate() > tabData.latestOrderTime)) {
+                        tabData.latestOrderTime = order.orderDate.toDate();
+                    }
+                    (order.items || []).forEach(item => {
+                        const existing = itemMap.get(item.name);
+                        if(existing) {
+                            itemMap.set(item.name, {...existing, qty: existing.qty + item.quantity});
+                        } else {
+                            itemMap.set(item.name, {...item, qty: item.quantity});
+                        }
+                    });
+                });
+                tabData.allItems = Array.from(itemMap.values());
             }
             tabsData[tabDoc.id] = tabData;
         }
@@ -77,8 +94,14 @@ export async function GET(req) {
             Object.values(tabsData).forEach(tab => {
                 if (tab.tableId === table.id) {
                     table.tabs.push(tab);
+                    table.state = 'occupied';
+                    table.current_pax = (table.current_pax || 0) + (tab.pax_count || 0);
                 }
             });
+             if (table.tabs.length === 0 && table.state !== 'needs_cleaning') {
+                table.state = 'available';
+                table.current_pax = 0;
+            }
         });
 
         const serviceRequests = serviceRequestsSnap.docs.map(doc => {
@@ -89,17 +112,17 @@ export async function GET(req) {
             };
         });
 
-        // Fetch closed tabs for history
-        const thirtyDaysAgo = subDays(new Date(), 30);
         const closedTabsSnap = await businessRef.collection('dineInTabs')
             .where('status', '==', 'closed')
             .orderBy('closedAt', 'desc')
+            .limit(50) // Limit to last 50 for performance
             .get();
 
         const closedTabs = [];
         for (const tabDoc of closedTabsSnap.docs) {
             const tabData = tabDoc.data();
-            if (tabData.closedAt && isAfter(tabData.closedAt.toDate(), thirtyDaysAgo)) {
+            const closedAtDate = tabData.closedAt?.toDate ? tabData.closedAt.toDate() : null;
+            if (closedAtDate && isAfter(closedAtDate, subDays(new Date(), 30))) {
                  const ordersSnap = await businessRef.firestore.collection('orders')
                     .where('dineInTabId', '==', tabDoc.id)
                     .get();
@@ -109,7 +132,7 @@ export async function GET(req) {
                 closedTabs.push({ 
                     id: tabDoc.id,
                     ...tabData,
-                    closedAt: tabData.closedAt.toDate().toISOString(),
+                    closedAt: closedAtDate.toISOString(),
                     totalBill: totalBill,
                 });
             }
@@ -136,6 +159,7 @@ export async function POST(req) {
         const tableRef = businessRef.collection('tables').doc(tableId);
 
         await tableRef.set({
+            id: tableId,
             max_capacity: Number(max_capacity),
             current_pax: 0,
             createdAt: FieldValue.serverTimestamp(),
@@ -221,7 +245,7 @@ export async function PATCH(req) {
             if (newTableId && newTableId !== tableId) {
                 const newTableRef = businessRef.collection('tables').doc(newTableId);
                 const tableData = tableSnap.data();
-                await newTableRef.set({ ...tableData, ...updateData });
+                await newTableRef.set({ ...tableData, ...updateData, id: newTableId });
                 await oldTableRef.delete();
                 return NextResponse.json({ message: `Table renamed to ${newTableId} and updated.` }, { status: 200 });
             } else {
@@ -257,6 +281,3 @@ export async function DELETE(req) {
         return NextResponse.json({ message: `Backend Error: ${error.message}` }, { status: error.status || 500 });
     }
 }
-
-
-
