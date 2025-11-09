@@ -12,7 +12,7 @@ import { format, formatDistanceToNow, isAfter, subDays } from 'date-fns';
 import { useSearchParams } from 'next/navigation';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import { Label } from '@/components/ui/label';
+import { Label } from "@/components/ui/label';
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import QRCode from 'qrcode.react';
 import { useReactToPrint } from 'react-to-print';
@@ -563,43 +563,7 @@ const QrGeneratorModal = ({ isOpen, onClose, onSaveTable, restaurantId, initialT
     );
 };
 
-const LiveServiceRequests = ({ requests, onAcknowledge }) => {
-    if(requests.length === 0) return null;
-
-    return (
-        <Card className="mb-6 border-primary/50 bg-primary/10">
-            <CardHeader>
-                <CardTitle className="flex items-center gap-3 text-primary">
-                    <Bell className="animate-wiggle"/> Live Service Requests ({requests.length})
-                </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
-                {requests.map(req => {
-                    const date = req.createdAt ? new Date(req.createdAt) : null;
-                    const isValidDate = date && !isNaN(date.getTime());
-                    return (
-                        <motion.div 
-                            key={req.id}
-                            layout
-                            initial={{ opacity: 0, x: -20 }}
-                            animate={{ opacity: 1, x: 0 }}
-                            exit={{ opacity: 0, x: 50 }}
-                            className="flex items-center justify-between p-3 bg-card rounded-lg"
-                        >
-                            <div>
-                                <p className="font-bold">Service needed at Table: {req.tableId}</p>
-                                <p className="text-xs text-muted-foreground">{isValidDate ? formatDistanceToNow(date, { addSuffix: true }) : 'Just now'}</p>
-                            </div>
-                            <Button size="sm" onClick={() => onAcknowledge(req.id)}><CheckCircle className="mr-2 h-4 w-4"/>Acknowledge</Button>
-                        </motion.div>
-                    )
-                })}
-            </CardContent>
-        </Card>
-    )
-}
-
-function DineInPage() {
+function DineInPageContent() {
     const [allOrders, setAllOrders] = useState([]);
     const [allTables, setAllTables] = useState([]);
     const [allServiceRequests, setAllServiceRequests] = useState([]);
@@ -609,7 +573,7 @@ function DineInPage() {
     const [isQrModalOpen, setIsQrModalOpen] = useState(false);
     const [isManageTablesModalOpen, setIsManageTablesModalOpen] = useState(false);
     const [isQrDisplayModalOpen, setIsQrDisplayModalOpen] = useState(false);
-    const [isHistoryOpen, setIsHistoryOpen] = useState(false);
+    const [isHistoryModalOpen, setIsHistoryModalOpen] = useState(false);
     const [isDineInMenuModalOpen, setIsDineInMenuModalOpen] = useState(false);
     const [editingTable, setEditingTable] = useState(null);
     const [displayTable, setDisplayTable] = useState(null);
@@ -693,16 +657,12 @@ function DineInPage() {
             const finalImpersonatedId = impersonatedOwnerId || searchParams.get('impersonate_owner_id');
             const settingsUrl = `/api/owner/settings${finalImpersonatedId ? `?impersonate_owner_id=${finalImpersonatedId}` : ''}`;
             
-            const [ordersData, tablesData, settingsData, requestsData] = await Promise.all([
-                 handleApiCall('GET', null, '/api/owner/orders'),
+            const [tablesData, settingsData] = await Promise.all([
                  handleApiCall('GET', null, '/api/owner/dine-in-tables'),
                  fetch(settingsUrl, { headers: { 'Authorization': `Bearer ${idToken}` } }).then(res => res.json()),
-                 handleApiCall('GET', null, '/api/owner/service-requests')
             ]);
             
-            setAllOrders(ordersData.orders || []);
             setAllTables(tablesData.tables || []);
-            setAllServiceRequests(requestsData.requests || []);
             
             const fetchedRestaurant = {
                 name: settingsData.restaurantName,
@@ -807,80 +767,12 @@ function DineInPage() {
          }
     };
 
-    const { activeTableData, closedTabsData } = useMemo(() => {
-        const dineInStatuses = ['pending', 'confirmed', 'preparing', 'active_tab', 'ready_for_pickup'];
-        const thirtyDaysAgo = subDays(new Date(), 30);
-
-        const uniqueTabIds = [...new Set(allOrders.filter(o => o.deliveryType === 'dine-in' && o.dineInTabId).map(o => o.dineInTabId))];
-
-        const tabsData = uniqueTabIds.map(tabId => {
-            const tabOrders = allOrders.filter(o => o.dineInTabId === tabId);
-            if (tabOrders.length === 0) return null;
-            
-            const mainOrder = tabOrders.find(o => o.tab_name) || tabOrders[0];
-            const latestOrder = tabOrders.reduce((latest, current) => {
-                const latestDate = new Date(latest.orderDate?.seconds ? latest.orderDate.seconds * 1000 : latest.orderDate);
-                const currentDate = new Date(current.orderDate?.seconds ? current.orderDate.seconds * 1000 : current.orderDate);
-                return currentDate > latestDate ? current : latest;
-            });
-            
-            const isActive = tabOrders.some(o => dineInStatuses.includes(o.status));
-            const totalBill = tabOrders.reduce((sum, o) => sum + (o.totalAmount || 0), 0);
-            
-            const allItemsMap = new Map();
-            tabOrders.forEach(order => {
-                (order.items || []).forEach(item => {
-                    const uniqueItemId = `${order.id}-${item.name}`; // Ensure unique ID per order
-                    const existing = allItemsMap.get(item.name);
-                    if (existing) {
-                        allItemsMap.set(item.name, { ...existing, qty: existing.qty + item.quantity, orderItemIds: [...existing.orderItemIds, uniqueItemId] });
-                    } else {
-                        allItemsMap.set(item.name, { ...item, qty: item.quantity, orderItemIds: [uniqueItemId] });
-                    }
-                });
-            });
-
-            if (!mainOrder) return null;
-
-            return {
-                id: tabId,
-                tableId: mainOrder.tableId,
-                tab_name: mainOrder.tab_name || "Guest",
-                pax_count: mainOrder.pax_count || 1,
-                orders: tabOrders,
-                isActive,
-                totalBill,
-                allItems: Array.from(allItemsMap.values()),
-                latestOrderTime: new Date(latestOrder.orderDate?.seconds ? latestOrder.orderDate.seconds * 1000 : latestOrder.orderDate),
-                closedAt: !isActive ? new Date(latestOrder.orderDate?.seconds ? latestOrder.orderDate.seconds * 1000 : latestOrder.orderDate) : null,
-                paymentMethod: latestOrder.paymentDetails?.method || 'Pay at Counter',
-            };
-        }).filter(Boolean);
-
-        const closedTabs = tabsData.filter(tab => !tab.isActive && tab.closedAt && isAfter(tab.closedAt, thirtyDaysAgo));
-        closedTabs.sort((a,b) => b.closedAt - a.closedAt);
-
-        const tableMap = allTables.reduce((acc, table) => {
-            acc[table.id] = { ...table, tabs: [], pax_count: 0 };
+    const activeTableData = useMemo(() => {
+        return allTables.reduce((acc, table) => {
+            acc[table.id] = table;
             return acc;
         }, {});
-
-        tabsData.forEach(tab => {
-            if (tab.isActive && tableMap[tab.tableId]) {
-                tableMap[tab.tableId].tabs.push(tab);
-            }
-        });
-        
-        Object.values(tableMap).forEach(table => {
-            if (table.tabs.length > 0) {
-                 table.state = 'occupied';
-            } else if (table.state !== 'needs_cleaning') {
-                table.state = 'available';
-            }
-        });
-
-        return { activeTableData: tableMap, closedTabsData: closedTabs };
-    }, [allOrders, allTables]);
+    }, [allTables]);
     
     const handleShowHistory = (tableId, tabId) => {
         const tableData = activeTableData[tableId];
@@ -981,7 +873,7 @@ function DineInPage() {
 
     return (
         <div className="p-4 md:p-6 text-foreground min-h-screen bg-background">
-            <DineInHistoryModal isOpen={isHistoryOpen} onClose={() => setIsHistoryOpen(false)} closedTabs={closedTabsData} />
+            <DineInHistoryModal isOpen={isHistoryModalOpen} onClose={() => setIsHistoryModalOpen(false)} closedTabs={[]} />
             <ManageTablesModal isOpen={isManageTablesModalOpen} onClose={() => setIsManageTablesModalOpen(false)} allTables={allTables} onEdit={handleOpenEditModal} onDelete={handleDeleteTable} loading={loading} onCreateNew={() => handleOpenEditModal(null)} onShowQr={handleOpenQrDisplayModal} />
             {historyModalData && <HistoryModal tableHistory={historyModalData} onClose={() => setHistoryModalData(null)} />}
             {billData && (
@@ -1032,10 +924,6 @@ function DineInPage() {
                     <RefreshCw size={20} className={cn(loading && "animate-spin")} /> Refresh View
                 </Button>
             </div>
-
-
-            <LiveServiceRequests requests={allServiceRequests} onAcknowledge={() => {}} />
-            
              <h2 className="text-xl font-bold mb-4">Live Tables</h2>
             {loading ? (
                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 animate-pulse">
@@ -1060,10 +948,12 @@ function DineInPage() {
     );
 }
 
-export default function DineInPageWrapper() {
+const DineInPage = () => {
     return (
         <Suspense fallback={<div className="flex h-full w-full items-center justify-center"><p>Loading...</p></div>}>
             <DineInPageContent />
         </Suspense>
     );
-}
+};
+
+export default DineInPage;
