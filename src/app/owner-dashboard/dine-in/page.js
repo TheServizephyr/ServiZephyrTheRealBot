@@ -12,7 +12,7 @@ import { format, formatDistanceToNow, isAfter, subDays } from 'date-fns';
 import { useSearchParams } from 'next/navigation';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label';
+import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import QRCode from 'qrcode.react';
 import { useReactToPrint } from 'react-to-print';
@@ -218,7 +218,7 @@ const BillModal = ({ order, restaurant, onClose, onPrint, printRef }) => {
                             <tr>
                                 <th className="text-left font-bold py-2">ITEM</th>
                                 <th className="text-center font-bold py-2">QTY</th>
-                                <th className="text-right font-bold py-2">AMOUNT</th>
+                                <th className="text-right font-bold py-2">TOTAL</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -226,7 +226,7 @@ const BillModal = ({ order, restaurant, onClose, onPrint, printRef }) => {
                                 <tr key={index} className="border-b border-dotted border-black">
                                     <td className="py-2">{item.name}</td>
                                     <td className="text-center py-2">{item.qty}</td>
-                                    <td className="text-right py-2">{formatCurrency(item.qty * (item.totalPrice / item.qty))}</td>
+                                    <td className="text-right py-2">{formatCurrency(item.qty * (item.price || item.totalPrice/item.qty))}</td>
                                 </tr>
                             ))}
                         </tbody>
@@ -992,7 +992,6 @@ function DineInPageContent() {
                     <RefreshCw size={20} className={cn(loading && "animate-spin")} /> Refresh View
                 </Button>
             </div>
-
             
              <h2 className="text-xl font-bold mb-4">Live Tables</h2>
             {loading ? (
