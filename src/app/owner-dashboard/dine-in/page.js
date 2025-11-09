@@ -1,6 +1,7 @@
+
 'use client';
 
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef, Suspense } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { RefreshCw, Printer, CheckCircle, IndianRupee, Users, Clock, ShoppingBag, Bell, MoreVertical, Trash2, QrCode, Download, Save, Wind, Edit, Table as TableIcon, History, Search, Salad, UtensilsCrossed, Droplet, PlusCircle, AlertTriangle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -780,4 +781,15 @@ const DineInMenuModal = ({ isOpen, onClose, showInfoDialog }) => {
             </Dialog>
         </>
     )
+}
+function DineInPage() {
+  return <div>Dine-in page is loading...</div>;
+}
+
+export default function DineInPageWrapper() {
+  return (
+    <Suspense fallback={<div className="flex h-full w-full items-center justify-center"><p>Loading...</p></div>}>
+      <DineInPage />
+    </Suspense>
+  );
 }
