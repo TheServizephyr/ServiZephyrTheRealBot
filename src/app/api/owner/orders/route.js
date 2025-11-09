@@ -76,7 +76,6 @@ export async function GET(req) {
             // If customerId is provided, fetch customer details as well
             let customerData = null;
             if (customerId) {
-                // THE FIX: Determine the correct collection based on the business type
                 const businessCollectionName = businessData.businessType === 'shop' ? 'shops' : 'restaurants';
                 const customerRef = firestore.collection(businessCollectionName).doc(businessId).collection('customers').doc(customerId);
                 const customerSnap = await customerRef.get();
@@ -99,10 +98,11 @@ export async function GET(req) {
                 timestamp: h.timestamp && typeof h.timestamp.toDate === 'function' ? h.timestamp.toDate().toISOString() : h.timestamp,
             }));
             
+            // Correctly map quantity to items
             const itemsWithQty = (data.items || []).map(item => ({
                 name: item.name,
                 price: item.price,
-                quantity: item.quantity, 
+                qty: item.quantity, 
             }));
             
 
@@ -229,3 +229,5 @@ export async function PATCH(req) {
         return NextResponse.json({ message: `Backend Error: ${error.message}` }, { status: error.status || 500 });
     }
 }
+
+    

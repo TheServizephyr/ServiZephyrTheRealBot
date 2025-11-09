@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useState, useEffect, useMemo, useRef, Suspense } from 'react';
@@ -6,7 +7,6 @@ import { RefreshCw, Printer, CheckCircle, IndianRupee, Users, Clock, ShoppingBag
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { auth, db } from '@/lib/firebase';
-import { onSnapshot, collection, doc, writeBatch } from 'firebase/firestore';
 import { cn } from "@/lib/utils";
 import { format, formatDistanceToNow, isAfter, subDays } from 'date-fns';
 import { useSearchParams } from 'next/navigation';
@@ -322,71 +322,71 @@ const TableCard = ({ tableId, tableData, onMarkAsPaid, onPrintBill, onMarkAsClea
                     </div>
                 </CardHeader>
                 
-                {state !== 'available' && (
-                     <CardContent className="flex-grow p-4">
-                        {state === 'needs_cleaning' ? (
-                             <div className="flex-grow p-4 flex flex-col items-center justify-center text-center">
-                                <p className="text-muted-foreground">This table's bill has been paid. Mark it as clean once it's ready for the next guests.</p>
+                <CardContent className="flex-grow p-4">
+                    {state === 'needs_cleaning' ? (
+                         <div className="flex-grow p-4 flex flex-col items-center justify-center text-center">
+                            <p className="text-muted-foreground">This table's bill has been paid. Mark it as clean once it's ready for the next guests.</p>
+                        </div>
+                    ) : tab ? (
+                        <div key={tab.id} className="mb-4 last:mb-0">
+                                <div className="flex justify-between items-center bg-muted/50 p-2 rounded-t-lg">
+                                <h4 className="font-semibold text-foreground">{tab.tab_name}</h4>
+                                <span className="text-xs font-mono text-muted-foreground">{tab.id.substring(0,6)}...</span>
                             </div>
-                        ) : tab ? (
-                            <div key={tab.id} className="mb-4 last:mb-0">
-                                    <div className="flex justify-between items-center bg-muted/50 p-2 rounded-t-lg">
-                                    <h4 className="font-semibold text-foreground">{tab.tab_name}</h4>
-                                    <span className="text-xs font-mono text-muted-foreground">{tab.id.substring(0,6)}...</span>
-                                </div>
-                                <div className="text-xs text-muted-foreground my-2 flex items-center gap-2">
-                                    <Clock size={14}/> Last activity: {tab.latestOrderTime ? format(tab.latestOrderTime, 'p') : 'N/A'}
-                                </div>
-                                {hasPendingOrders && (
-                                    <Button size="sm" className="w-full mb-2 bg-yellow-500 hover:bg-yellow-600" onClick={() => onConfirmOrders(tab.orders.filter(o => o.status === 'pending').map(o => o.id))}>
-                                        Confirm Tab's New Orders
-                                    </Button>
-                                )}
-                                <div className="space-y-2 max-h-48 overflow-y-auto pr-2">
-                                    {tab.allItems.map((item) => {
-                                        const uniqueItemId = `${tab.id}-${item.orderItemIds.join('-')}`;
-                                        const isAcknowledged = acknowledgedItems.has(uniqueItemId);
-                                        const isPending = tab.orders.some(o => o.items.some(i => i.name === item.name) && o.status === 'pending');
+                            <div className="text-xs text-muted-foreground my-2 flex items-center gap-2">
+                                <Clock size={14}/> Last activity: {tab.latestOrderTime ? format(tab.latestOrderTime, 'p') : 'N/A'}
+                            </div>
+                            {hasPendingOrders && (
+                                <Button size="sm" className="w-full mb-2 bg-yellow-500 hover:bg-yellow-600" onClick={() => onConfirmOrders(tab.orders.filter(o => o.status === 'pending').map(o => o.id))}>
+                                    Confirm Tab's New Orders
+                                </Button>
+                            )}
+                            <div className="space-y-2 max-h-48 overflow-y-auto pr-2">
+                                {tab.allItems.map((item) => {
+                                    const uniqueItemId = `${tab.id}-${item.orderItemIds.join('-')}`;
+                                    const isAcknowledged = acknowledgedItems.has(uniqueItemId);
+                                    const isPending = tab.orders.some(o => o.items.some(i => i.name === item.name) && o.status === 'pending');
 
-                                        return (
-                                            <div 
-                                                key={uniqueItemId} 
-                                                className={cn(
-                                                    "flex justify-between items-center text-sm p-2 rounded-md transition-colors",
-                                                    isAcknowledged ? "bg-muted/50" : (isPending ? "bg-yellow-400/20" : "bg-green-500/10")
-                                                )}
-                                            >
-                                                <div className="flex items-center gap-2">
-                                                    <Checkbox 
-                                                        checked={isAcknowledged}
-                                                        onCheckedChange={() => onToggleAcknowledge(uniqueItemId)}
-                                                        id={uniqueItemId}
-                                                    />
-                                                    <label htmlFor={uniqueItemId} className="text-foreground">{item.name}</label>
-                                                </div>
-                                                <span className="font-semibold text-foreground">x{item.qty}</span>
+                                    return (
+                                        <div 
+                                            key={uniqueItemId} 
+                                            className={cn(
+                                                "flex justify-between items-center text-sm p-2 rounded-md transition-colors",
+                                                isAcknowledged ? "bg-muted/50" : (isPending ? "bg-yellow-400/20" : "bg-green-500/10")
+                                            )}
+                                        >
+                                            <div className="flex items-center gap-2">
+                                                <Checkbox 
+                                                    checked={isAcknowledged}
+                                                    onCheckedChange={() => onToggleAcknowledge(uniqueItemId)}
+                                                    id={uniqueItemId}
+                                                />
+                                                <label htmlFor={uniqueItemId} className="text-foreground">{item.name}</label>
                                             </div>
-                                        );
-                                    })}
-                                </div>
-                                <CardFooter className="flex-col items-start bg-muted/30 p-4 border-t mt-4">
-                                    <Button variant="outline" size="sm" className="w-full mb-4" onClick={() => onShowHistory(tableId, tab.id)}>
-                                        <History size={14} className="mr-2"/> See History
-                                    </Button>
-                                    <div className="flex justify-between items-center w-full">
-                                        <span className="text-lg font-bold">Total Bill:</span>
-                                        <span className="text-2xl font-bold text-primary">{formatCurrency(tab.totalBill)}</span>
-                                    </div>
-                                    <div className="grid grid-cols-2 gap-2 w-full mt-4">
-                                        <Button variant="outline" onClick={() => onPrintBill({ tableId, orders: tab.orders })}><Printer size={16} className="mr-2"/> Print Bill</Button>
-                                        <Button className="bg-primary hover:bg-primary/90" onClick={() => onMarkAsPaid(tableId, tab.id)}><CheckCircle size={16} className="mr-2"/> Mark as Paid</Button>
-                                    </div>
-                                </CardFooter>
+                                            <span className="font-semibold text-foreground">x{item.qty}</span>
+                                        </div>
+                                    );
+                                })}
                             </div>
-                        ) : null}
-                    </CardContent>
-                )}
+                        </div>
+                    ) : null}
+                </CardContent>
                 
+                 {(state === 'occupied' && tab) && (
+                    <CardFooter className="flex-col items-start bg-muted/30 p-4 border-t mt-4">
+                        <Button variant="outline" size="sm" className="w-full mb-4" onClick={() => onShowHistory(tableId, tab.id)}>
+                            <History size={14} className="mr-2"/> See History
+                        </Button>
+                        <div className="flex justify-between items-center w-full">
+                            <span className="text-lg font-bold">Total Bill:</span>
+                            <span className="text-2xl font-bold text-primary">{formatCurrency(tab.totalBill)}</span>
+                        </div>
+                        <div className="grid grid-cols-2 gap-2 w-full mt-4">
+                            <Button variant="outline" onClick={() => onPrintBill({ tableId, orders: tab.orders })}><Printer size={16} className="mr-2"/> Print Bill</Button>
+                            <Button className="bg-primary hover:bg-primary/90" onClick={() => onMarkAsPaid(tableId, tab.id)}><CheckCircle size={16} className="mr-2"/> Mark as Paid</Button>
+                        </div>
+                    </CardFooter>
+                 )}
                 {state === 'needs_cleaning' && (
                      <CardFooter className="p-4">
                         <Button className="w-full bg-green-500 hover:bg-green-600" onClick={() => onMarkAsCleaned(tableId)}>
@@ -803,7 +803,7 @@ const DineInPageContent = () => {
         };
       }, [impersonatedOwnerId]);
 
-    const confirmMarkAsPaid = (tableId, tabId) => {
+      const confirmMarkAsPaid = (tableId, tabId) => {
         setConfirmationState({
             isOpen: true,
             title: "Confirm Payment",
@@ -842,17 +842,36 @@ const DineInPageContent = () => {
          }
     };
 
+    // Corrected Memoization logic
     const { activeTableData, closedTabsData } = useMemo(() => {
+        if (!allTables || allTables.length === 0) {
+            return { activeTableData: {}, closedTabsData: [] };
+        }
+        
+        const thirtyDaysAgo = subDays(new Date(), 30);
+        let allClosedTabs = [];
+        
         const tableMap = allTables.reduce((acc, table) => {
-            acc[table.id] = { ...table, tabs: table.tabs || [] };
+            const activeTabs = (table.tabs || []).filter(tab => tab.status === 'active');
+            const closedTabsInTable = (table.tabs || []).filter(tab => tab.status === 'closed');
+
+            if (closedTabsInTable.length > 0) {
+                 const recentClosed = closedTabsInTable.filter(tab => {
+                     const closedAtDate = tab.closedAt?.seconds ? new Date(tab.closedAt.seconds * 1000) : new Date(tab.closedAt);
+                     return isAfter(closedAtDate, thirtyDaysAgo);
+                 });
+                 allClosedTabs = [...allClosedTabs, ...recentClosed];
+            }
+            
+            acc[table.id] = { ...table, tabs: activeTabs };
             return acc;
         }, {});
         
-        const closedTabs = allTables.filter(t => t.status === 'closed');
-        
-        return { activeTableData: tableMap, closedTabsData: closedTabs };
+        allClosedTabs.sort((a,b) => new Date(b.closedAt) - new Date(a.closedAt));
+
+        return { activeTableData: tableMap, closedTabsData: allClosedTabs };
+
     }, [allTables]);
-    
     
     const handleShowHistory = (tableId, tabId) => {
         const tableData = activeTableData[tableId];
@@ -1006,7 +1025,7 @@ const DineInPageContent = () => {
                 <Button onClick={() => setIsHistoryModalOpen(true)} variant="outline" className="h-20 flex-col gap-1" disabled={loading}>
                     <History size={20}/> Dine-In History
                 </Button>
-                <Button variant="outline" className="h-20 flex-col gap-1" disabled={true}>
+                 <Button variant="outline" className="h-20 flex-col gap-1" disabled={true}>
                     <Salad size={20}/> Dine-In Menu
                 </Button>
                  <Button onClick={() => setIsManageTablesModalOpen(true)} variant="outline" className="h-20 flex-col gap-1" disabled={loading}>
