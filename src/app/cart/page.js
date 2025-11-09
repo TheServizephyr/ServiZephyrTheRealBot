@@ -173,7 +173,6 @@ const CartPageInternal = () => {
     const token = searchParams.get('token');
     const tableId = searchParams.get('table');
     const tabId = searchParams.get('tabId');
-    const sessionToken = searchParams.get('session_token');
     
     const [cartData, setCartData] = useState(null);
     const [cart, setCart] = useState([]);
@@ -191,19 +190,10 @@ const CartPageInternal = () => {
 
     useEffect(() => {
         const verifyToken = async () => {
-            if (tableId && sessionToken) {
-                try {
-                    const res = await fetch('/api/auth/verify-token', {
-                        method: 'POST', headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ tableId: tableId, token: sessionToken }),
-                    });
-                    if (!res.ok) throw new Error((await res.json()).message || "Session token is invalid for this table.");
-                    setIsTokenValid(true);
-                } catch (err) {
-                    setTokenError(err.message);
-                } finally {
-                    setLoadingPage(false);
-                }
+            if (tableId) {
+                // For dine-in, no token is needed, just the presence of tableId is enough.
+                setIsTokenValid(true);
+                setLoadingPage(false);
                 return;
             }
 
@@ -243,7 +233,7 @@ const CartPageInternal = () => {
         if (!isUserLoading) {
             verifyToken();
         }
-    }, [phone, token, tableId, sessionToken, user, isUserLoading, restaurantId, router]);
+    }, [phone, token, tableId, user, isUserLoading, restaurantId, router]);
     
     useEffect(() => {
         if (isTokenValid && restaurantId) {
@@ -383,7 +373,6 @@ const CartPageInternal = () => {
         if (token) params.append('token', token);
         if (tableId) params.append('table', tableId);
         if (tabId) params.append('tabId', tabId);
-        if (sessionToken) params.append('session_token', sessionToken);
         
         let checkoutUrl = `/checkout?${params.toString()}`;
 
@@ -412,7 +401,6 @@ const CartPageInternal = () => {
                 restaurantId, phone: phone || '', token: token || '',
             });
             if (tableId) params.append('table', tableId);
-             if (sessionToken) params.append('session_token', sessionToken);
             let checkoutUrl = `/checkout?${params.toString()}`;
             router.push(checkoutUrl);
         }
@@ -431,7 +419,6 @@ const CartPageInternal = () => {
         if (token) params.append('token', token);
         if (tableId) params.append('table', tableId);
         if (tabId) params.append('tabId', tabId);
-        if (sessionToken) params.append('session_token', sessionToken);
 
         let backUrl = `/order/${restaurantId}`;
         const paramsString = params.toString();

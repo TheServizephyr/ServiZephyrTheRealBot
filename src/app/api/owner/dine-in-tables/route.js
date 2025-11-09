@@ -85,9 +85,9 @@ export async function GET(req) {
                         const uniqueItemId = `${order.id}-${item.name}`; // Ensure unique ID per order
                         const existing = itemMap.get(item.name);
                         if(existing) {
-                            itemMap.set(item.name, {...existing, qty: existing.qty + item.qty, orderItemIds: [...existing.orderItemIds, uniqueItemId]});
+                            itemMap.set(item.name, {...existing, qty: existing.qty + item.quantity, orderItemIds: [...existing.orderItemIds, uniqueItemId]});
                         } else {
-                            itemMap.set(item.name, {...item, qty: item.qty, orderItemIds: [uniqueItemId]});
+                            itemMap.set(item.name, {...item, qty: item.quantity, orderItemIds: [uniqueItemId]});
                         }
                     });
                 });

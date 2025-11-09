@@ -177,10 +177,8 @@ const CheckoutPageInternal = () => {
         const verifyAndFetch = async () => {
             setLoading(true);
 
-            // Determine the phone number for API lookups
             const phoneToLookup = phoneFromUrl || user?.phoneNumber || '';
             
-            // Session Verification - Simplified for Dine-in
             if (tableId) {
                 setIsTokenValid(true);
             } else if (!user && phoneFromUrl && token) {
@@ -199,7 +197,6 @@ const CheckoutPageInternal = () => {
 
             setOrderPhone(phoneToLookup);
             
-            // Fetch initial data
             if (!restaurantId) { router.push('/'); return; }
             setError('');
 
@@ -378,7 +375,7 @@ const CheckoutPageInternal = () => {
         return <TokenVerificationLock message={tokenError} />;
     }
 
-    if (!isTokenValid && !tableId) {
+    if (!isTokenValid) {
         return <div className="min-h-screen bg-background flex items-center justify-center"><Loader2 className="animate-spin text-primary h-16 w-16"/></div>;
     }
 
