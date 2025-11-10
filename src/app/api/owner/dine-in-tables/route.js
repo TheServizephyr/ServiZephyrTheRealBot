@@ -124,7 +124,7 @@ export async function GET(req) {
         }
         
         const tables = Object.values(tablesData);
-        console.log("[API dine-in-tables] Step 6: Processed tables with their live data.");
+        console.log("[API dine-in-tables] Step 6: Processed", tables.length, "tables with their live data.");
 
         const serviceRequests = serviceRequestsSnap.docs.map(doc => {
             const data = doc.data();
@@ -134,7 +134,7 @@ export async function GET(req) {
             };
         });
         
-        const finalResponse = { tables, activeTabs: [], serviceRequests }; // activeTabs is deprecated but kept for safety
+        const finalResponse = { tables, serviceRequests };
         console.log("[API dine-in-tables] Step 7: Sending final JSON response to client:", JSON.stringify(finalResponse, null, 2));
 
         return NextResponse.json(finalResponse, { status: 200 });
@@ -149,7 +149,7 @@ export async function GET(req) {
 export async function POST(req) {
     console.log("[API dine-in-tables] POST request received to create tab/table.");
     const body = await req.json();
-    const firestore = getFirestore();
+    const firestore = await getFirestore();
 
     // Differentiate between creating a tab and creating a table
     if (body.action === 'create_tab') {
