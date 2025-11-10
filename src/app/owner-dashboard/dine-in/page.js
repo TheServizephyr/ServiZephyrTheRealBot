@@ -277,8 +277,8 @@ const ConfirmationModal = ({ isOpen, onClose, onConfirm, title, description, con
 
 const TableCard = ({ tableId, tableData, onMarkAsPaid, onPrintBill, onMarkAsCleaned, onShowHistory, acknowledgedItems, onToggleAcknowledge, onConfirmOrders, isTab = false }) => {
     const state = tableData.state;
-    
-    const paxCount = isTab ? tableData.pax_count : tableData.current_pax || 0;
+    const tab = isTab ? tableData : null;
+    const paxCount = tab ? tab.pax_count : tableData.current_pax || 0;
 
     const stateConfig = {
         available: {
@@ -304,7 +304,6 @@ const TableCard = ({ tableId, tableData, onMarkAsPaid, onPrintBill, onMarkAsClea
     
     const currentConfig = stateConfig[state] || { title: state, bg: "bg-muted", border: "border-border", icon: null };
 
-    const tab = isTab ? tableData : null;
     const hasPendingOrders = tab?.orders?.some(o => o.status === 'pending');
 
     return (
@@ -325,7 +324,7 @@ const TableCard = ({ tableId, tableData, onMarkAsPaid, onPrintBill, onMarkAsClea
                     </div>
                 </CardHeader>
                 
-                <CardContent className="flex-grow p-4">
+                 <CardContent className="flex-grow p-4">
                     {state === 'needs_cleaning' ? (
                          <div className="flex-grow p-4 flex flex-col items-center justify-center text-center">
                             <p className="text-muted-foreground">This table's bill has been paid. Mark it as clean once it's ready for the next guests.</p>
@@ -727,7 +726,7 @@ const DineInPageContent = () => {
         if (!isManualRefresh) setLoading(true);
         try {
             const data = await handleApiCall('GET', null, '/api/owner/dine-in-tables');
-            setAllData(data || { tables: [], serviceRequests: [], activeTabs: [] });
+            setAllData(data || { tables: [], serviceRequests: [], tabs: [] });
         } catch (error) {
             console.error("[Dine-In Dashboard] Fetch data error:", error);
             setInfoDialog({ isOpen: true, title: "Error", message: `Could not load dine-in data: ${error.message}` });
@@ -845,24 +844,21 @@ const DineInPageContent = () => {
          }
     };
 
-    const { activeTableData, closedTabsData } = useMemo(() => {
-        if (!allData || !allData.tables) return { activeTableData: {}, closedTabsData: [] };
+    const activeTableData = useMemo(() => {
+        if (!allData || !allData.tables) return {};
         
         const tableMap = (allData.tables).reduce((acc, table) => {
-            acc[table.id] = { ...table, tabs: [] }; // Initialize with empty tabs array
+            acc[table.id] = { ...table, tabs: [] };
             return acc;
         }, {});
 
-        // Associate active tabs with their tables
-        (allData.activeTabs || []).forEach(tab => {
+        (allData.tabs || []).forEach(tab => {
             if (tableMap[tab.tableId]) {
                 tableMap[tab.tableId].tabs.push(tab);
             }
         });
         
-        const closedTabs = (allData.closedTabs || []);
-        
-        return { activeTableData: tableMap, closedTabsData: closedTabs };
+        return tableMap;
     }, [allData]);
     
     const handleShowHistory = (tableId, tabId) => {
@@ -933,6 +929,8 @@ const DineInPageContent = () => {
 
 
     const renderTableCards = () => {
+        if (loading || Object.keys(activeTableData).length === 0) return [];
+        
         const cards = [];
         const sortedTableKeys = Object.keys(activeTableData).sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
 
@@ -976,7 +974,7 @@ const DineInPageContent = () => {
 
     return (
         <div className="p-4 md:p-6 text-foreground min-h-screen bg-background">
-            <DineInHistoryModal isOpen={isHistoryModalOpen} onClose={() => setIsHistoryModalOpen(false)} closedTabs={closedTabsData} />
+            <DineInHistoryModal isOpen={isHistoryModalOpen} onClose={() => setIsHistoryModalOpen(false)} closedTabs={allData.closedTabs || []} />
             <ManageTablesModal isOpen={isManageTablesModalOpen} onClose={() => setIsManageTablesModalOpen(false)} allTables={allData.tables} onEdit={handleOpenEditModal} onDelete={handleDeleteTable} loading={loading} onCreateNew={() => handleOpenEditModal(null)} onShowQr={handleOpenQrDisplayModal} />
             {historyModalData && <HistoryModal tableHistory={historyModalData} onClose={() => setHistoryModalData(null)} />}
             {billData && (
