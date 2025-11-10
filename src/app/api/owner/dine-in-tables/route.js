@@ -64,59 +64,45 @@ export async function GET(req) {
         
         const tables = [];
         for (const tableDoc of tablesSnap.docs) {
-            const tableData = { id: tableDoc.id, ...tableDoc.data(), tabs: [] };
-            
-            // Assign active tabs to this table
-            for (const tabDoc of tabsSnap.docs) {
-                if (tabDoc.data().tableId === tableDoc.id) {
-                    const tabData = { id: tabDoc.id, ...tabDoc.data(), orders: [], allItems: [], totalBill: 0, latestOrderTime: null };
-                    
-                    const ordersSnap = await businessRef.firestore.collection('orders')
-                        .where('dineInTabId', '==', tabDoc.id)
-                        .where('status', '!=', 'delivered')
-                        .where('status', '!=', 'rejected')
-                        .get();
-
-                    if (!ordersSnap.empty) {
-                        const itemMap = new Map();
-                        ordersSnap.docs.forEach(orderDoc => {
-                            const order = { id: orderDoc.id, ...orderDoc.data() };
-                            tabData.orders.push(order);
-                            tabData.totalBill += order.totalAmount || 0;
-                            
-                            const orderDate = order.orderDate?.toDate ? order.orderDate.toDate() : new Date(order.orderDate);
-                            if(!tabData.latestOrderTime || orderDate > tabData.latestOrderTime) {
-                                tabData.latestOrderTime = orderDate;
-                            }
-                            
-                            (order.items || []).forEach(item => {
-                                const uniqueItemId = `${order.id}-${item.name}`;
-                                const existing = itemMap.get(item.name);
-                                if(existing) {
-                                    itemMap.set(item.name, {...existing, qty: existing.qty + (item.quantity || 1), orderItemIds: [...existing.orderItemIds, uniqueItemId]});
-                                } else {
-                                    itemMap.set(item.name, {...item, qty: (item.quantity || 1), orderItemIds: [uniqueItemId]});
-                                }
-                            });
-                        });
-                        tabData.allItems = Array.from(itemMap.values());
-                    }
-                    tableData.tabs.push(tabData);
-                }
-            }
-            
-            const currentPax = tableData.tabs.reduce((sum, tab) => sum + (tab.pax_count || 0), 0);
-            tableData.current_pax = currentPax;
-
-            if (tableData.tabs.length > 0) {
-                 tableData.state = 'occupied';
-            } else if (tableData.state !== 'needs_cleaning') {
-                tableData.state = 'available';
-            }
-
-            tables.push(tableData);
+            tables.push({ id: tableDoc.id, ...tableDoc.data() });
         }
-        console.log(`[API dine-in-tables] Step 6: Processed ${tables.length} tables with their live data.`);
+
+        const activeTabs = [];
+        for (const tabDoc of tabsSnap.docs) {
+             const tabData = { id: tabDoc.id, ...tabDoc.data(), orders: [], allItems: [], totalBill: 0, latestOrderTime: null };
+            
+            const ordersSnap = await businessRef.firestore.collection('orders')
+                .where('dineInTabId', '==', tabDoc.id)
+                .where('status', '!=', 'delivered')
+                .where('status', '!=', 'rejected')
+                .get();
+
+            if (!ordersSnap.empty) {
+                const itemMap = new Map();
+                ordersSnap.docs.forEach(orderDoc => {
+                    const order = { id: orderDoc.id, ...orderDoc.data() };
+                    tabData.orders.push(order);
+                    tabData.totalBill += order.totalAmount || 0;
+                    
+                    const orderDate = order.orderDate?.toDate ? order.orderDate.toDate() : new Date(order.orderDate);
+                    if(!tabData.latestOrderTime || orderDate > tabData.latestOrderTime) {
+                        tabData.latestOrderTime = orderDate;
+                    }
+                    
+                    (order.items || []).forEach(item => {
+                        const uniqueItemId = `${order.id}-${item.name}`;
+                        const existing = itemMap.get(item.name);
+                        if(existing) {
+                            itemMap.set(item.name, {...existing, qty: existing.qty + (item.quantity || 1), orderItemIds: [...existing.orderItemIds, uniqueItemId]});
+                        } else {
+                            itemMap.set(item.name, {...item, qty: (item.quantity || 1), orderItemIds: [uniqueItemId]});
+                        }
+                    });
+                });
+                tabData.allItems = Array.from(itemMap.values());
+            }
+            activeTabs.push(tabData);
+        }
 
         const serviceRequests = serviceRequestsSnap.docs.map(doc => {
             const data = doc.data();
@@ -126,8 +112,8 @@ export async function GET(req) {
             };
         });
         
-        const finalResponse = { tables, serviceRequests };
-        console.log("[API dine-in-tables] Step 7: Sending final JSON response to client:", JSON.stringify(finalResponse, null, 2));
+        const finalResponse = { tables, activeTabs, serviceRequests };
+        console.log("[API dine-in-tables] Step 6: Sending final JSON response to client:", JSON.stringify(finalResponse, null, 2));
 
         return NextResponse.json(finalResponse, { status: 200 });
 

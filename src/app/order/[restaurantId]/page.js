@@ -305,6 +305,7 @@ const DineInModal = ({ isOpen, onClose, onBookTable, tableStatus, onStartNewTab,
     }, [isOpen]);
 
      useEffect(() => {
+        if (!bookingDetails.date) return;
         const dateWithTime = setHours(setMinutes(bookingDetails.date, minute), hour);
         setBookingDetails(prev => ({
             ...prev,
@@ -376,6 +377,26 @@ const DineInModal = ({ isOpen, onClose, onBookTable, tableStatus, onStartNewTab,
     
     const [newTabPax, setNewTabPax] = useState(1);
     const [newTabName, setNewTabName] = useState('');
+
+    const handleStartTab = () => {
+        const pax = Number(newTabPax);
+        const name = newTabName.trim();
+        if (pax < 1) {
+            setInfoDialog({ isOpen: true, title: "Invalid Input", message: "Number of guests must be at least 1." });
+            return;
+        }
+        if (!name) {
+             setInfoDialog({ isOpen: true, title: "Invalid Input", message: "Please enter a name for your tab." });
+            return;
+        }
+        const availableCapacity = tableStatus.max_capacity - (tableStatus.current_pax || 0);
+        if (pax > availableCapacity) {
+             console.warn(`[DineInModal] Capacity exceeded. Trying to add ${pax} to a table with ${availableCapacity} seats left.`);
+            setInfoDialog({ isOpen: true, title: "Capacity Exceeded", message: `This table can only accommodate ${availableCapacity} more guest(s).` });
+            return;
+        }
+        onStartNewTab(pax, name);
+    };
 
 
     return (
@@ -506,7 +527,7 @@ const DineInModal = ({ isOpen, onClose, onBookTable, tableStatus, onStartNewTab,
                                     <Label>What's a name for your tab? (Optional)</Label>
                                     <Input value={newTabName} onChange={e => setNewTabName(e.target.value)} placeholder="e.g., Rohan's Group" className="mt-1" />
                                 </div>
-                                <Button onClick={() => onStartNewTab(newTabPax, newTabName || 'Guest')} className="w-full">Start Ordering</Button>
+                                <Button onClick={handleStartTab} className="w-full">Start Ordering</Button>
                             </div>
                         </motion.div>
                     )}
@@ -703,7 +724,7 @@ const OrderPageInternal = () => {
 
 
     const handleStartNewTab = (paxCount, tabName) => {
-        console.log(`[Order Page] Starting new tab. Guests: ${paxCount}, Name: ${tabName}`);
+        console.log(`[Order Page] Action: Starting new tab. Guests: ${paxCount}, Name: ${tabName}`);
         if (!paxCount || paxCount < 1) {
             setInfoDialog({ isOpen: true, title: "Invalid Input", message: "Please enter a valid number of guests." });
             return;
@@ -715,7 +736,7 @@ const OrderPageInternal = () => {
         const availableCapacity = tableStatus.max_capacity - (tableStatus.current_pax || 0);
         if (paxCount > availableCapacity) {
              console.warn(`[Order Page] Capacity exceeded. Trying to add ${paxCount} to a table with ${availableCapacity} seats left.`);
-            setInfoDialog({ isOpen: true, title: "Capacity Exceeded", message: `This table can only accommodate ${availableCapacity} more guests.` });
+            setInfoDialog({ isOpen: true, title: "Capacity Exceeded", message: `This table can only accommodate ${availableCapacity} more guest(s).` });
             return;
         }
 
@@ -726,7 +747,7 @@ const OrderPageInternal = () => {
     };
 
     const handleJoinTab = (tabId) => {
-        console.log(`[Order Page] Joining existing tab: ${tabId}`);
+        console.log(`[Order Page] Action: Joining existing tab: ${tabId}`);
         localStorage.setItem(`dineInSetup_${restaurantId}_${tableIdFromUrl}`, JSON.stringify({ join_tab_id: tabId }));
         const joinedTab = tableStatus.activeTabs.find(t => t.id === tabId);
         setActiveTabInfo({ id: tabId, name: joinedTab?.tab_name || 'Existing Tab', total: 0 });
@@ -775,7 +796,7 @@ const OrderPageInternal = () => {
                     if (dineInSetup || tabIdFromUrl) {
                         console.log("[Order Page] Found existing dine-in setup or tabId in URL.");
                         const setup = dineInSetup ? JSON.parse(dineInSetup) : {};
-                        const currentTabId = tabIdFromUrl || setup.join_tab_id;
+                        const currentTabId = tabIdFromUrl || setup.join_tab_id || null;
                         if (currentTabId) setActiveTabInfo({ id: currentTabId, name: setup.tab_name || 'Active Tab', total: 0 });
                         setDineInState('ready');
                     } else {
@@ -984,7 +1005,7 @@ const OrderPageInternal = () => {
     }
 
     const handleCheckout = () => {
-        console.log("[Order Page] handleCheckout called.");
+        console.log("[Order Page] Action: handleCheckout called.");
         const params = new URLSearchParams();
         if (restaurantId) params.append('restaurantId', restaurantId);
         if (phone) params.append('phone', phone);
@@ -996,6 +1017,7 @@ const OrderPageInternal = () => {
             const setupStr = localStorage.getItem(`dineInSetup_${restaurantId}_${tableIdFromUrl}`);
             if (setupStr) {
                 const dineInSetup = JSON.parse(setupStr);
+                console.log("[Order Page] Found dine-in setup in localStorage:", dineInSetup);
                 currentCartData.dineInTabId = tabIdFromUrl || dineInSetup.join_tab_id || null;
                 currentCartData.pax_count = dineInSetup.pax_count;
                 currentCartData.tab_name = dineInSetup.tab_name;
