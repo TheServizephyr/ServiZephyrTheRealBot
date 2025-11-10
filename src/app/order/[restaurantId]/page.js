@@ -736,20 +736,29 @@ const OrderPageInternal = () => {
         console.log(`[Order Page] Action: Starting new tab. Guests: ${paxCount}, Name: ${tabName}`);
         
         try {
+            // --- START: Authentication FIX ---
             const user = auth.currentUser;
-            if (!user) throw new Error('Authentication error'); // Should be handled by page guard
+            if (!user) {
+                // In a real app, you might want to trigger a login flow here.
+                // For now, we'll throw an error.
+                throw new Error('Authentication error: User not logged in.');
+            }
             const idToken = await user.getIdToken();
+            // --- END: Authentication FIX ---
             
             const res = await fetch('/api/owner/dine-in-tables', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${idToken}` },
+                headers: { 
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${idToken}` // Pass the token
+                },
                 body: JSON.stringify({ action: 'create_tab', tableId: tableIdFromUrl, pax_count: paxCount, tab_name: tabName })
             });
             const data = await res.json();
             if (!res.ok) throw new Error(data.message);
 
             console.log(`[Order Page] Successfully created new tab with ID: ${data.tabId}`);
-            setActiveTabInfo({ id: data.tabId, name: tabName, total: 0 });
+            setActiveTabInfo({ id: data.tabId, name: tabName, pax_count: paxCount });
             setDineInState('ready');
             setIsDineInModalOpen(false);
 
@@ -1337,3 +1346,5 @@ const OrderPage = () => (
 );
 
 export default OrderPage;
+
+    
