@@ -275,9 +275,9 @@ const ConfirmationModal = ({ isOpen, onClose, onConfirm, title, description, con
 };
 
 
-const TableCard = ({ tableId, tableData, onMarkAsPaid, onPrintBill, onMarkAsCleaned, onShowHistory, acknowledgedItems, onToggleAcknowledge, onConfirmOrders, isTab = false }) => {
+const TableCard = ({ tableId, tableData, onMarkAsPaid, onPrintBill, onMarkAsCleaned, onShowHistory, acknowledgedItems, onToggleAcknowledge, onConfirmOrders }) => {
     const state = tableData.state;
-    const tab = isTab ? tableData : null;
+    const tab = tableData.tabs?.[0] || null; // Simplified to one tab per card for now
     const paxCount = tab ? tab.pax_count : tableData.current_pax || 0;
 
     const stateConfig = {
@@ -325,11 +325,7 @@ const TableCard = ({ tableId, tableData, onMarkAsPaid, onPrintBill, onMarkAsClea
                 </CardHeader>
                 
                  <CardContent className="flex-grow p-4">
-                    {state === 'needs_cleaning' ? (
-                         <div className="flex-grow p-4 flex flex-col items-center justify-center text-center">
-                            <p className="text-muted-foreground">This table's bill has been paid. Mark it as clean once it's ready for the next guests.</p>
-                        </div>
-                    ) : tab ? (
+                    {tab ? (
                         <div key={tab.id} className="mb-4 last:mb-0">
                                 <div className="flex justify-between items-center bg-muted/50 p-2 rounded-t-lg">
                                 <h4 className="font-semibold text-foreground">{tab.tab_name}</h4>
@@ -370,6 +366,10 @@ const TableCard = ({ tableId, tableData, onMarkAsPaid, onPrintBill, onMarkAsClea
                                     );
                                 })}
                             </div>
+                        </div>
+                    ) : state === 'needs_cleaning' ? (
+                         <div className="flex-grow p-4 flex flex-col items-center justify-center text-center">
+                            <p className="text-muted-foreground">This table's bill has been paid. Mark it as clean once it's ready for the next guests.</p>
                         </div>
                     ) : null}
                 </CardContent>
@@ -642,7 +642,7 @@ const LiveServiceRequests = ({ impersonatedOwnerId }) => {
 };
 
 const DineInPageContent = () => {
-    const [allData, setAllData] = useState({ tables: [], serviceRequests: [] });
+    const [allData, setAllData] = useState({ tables: [], serviceRequests: [], tabs: [] });
     const [loading, setLoading] = useState(true);
     const searchParams = useSearchParams();
     const impersonatedOwnerId = searchParams.get('impersonate_owner_id');
