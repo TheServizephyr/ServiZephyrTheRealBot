@@ -33,7 +33,7 @@ export async function GET(req) {
             return NextResponse.json({ message: 'Restaurant ID and Table ID are required.' }, { status: 400 });
         }
 
-        const firestore = getFirestore();
+        const firestore = await getFirestore();
         const businessInfo = await getBusinessRef(firestore, restaurantId);
 
         if (!businessInfo) {
@@ -72,3 +72,4 @@ export async function GET(req) {
 }
 
     
+
