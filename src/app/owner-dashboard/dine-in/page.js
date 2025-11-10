@@ -275,7 +275,7 @@ const ConfirmationModal = ({ isOpen, onClose, onConfirm, title, description, con
 const TableCard = ({ tableId, tableData, onMarkAsPaid, onPrintBill, onMarkAsCleaned, onShowHistory, acknowledgedItems, onToggleAcknowledge, onConfirmOrders, isTab = false }) => {
     const state = tableData.state;
     
-    const paxCount = isTab ? tableData.pax_count : tableData.tabs?.reduce((sum, tab) => sum + (tab.pax_count || 0), 0) || 0;
+    const paxCount = isTab ? tableData.pax_count : tableData.current_pax || 0;
 
     const stateConfig = {
         available: {
@@ -286,7 +286,7 @@ const TableCard = ({ tableId, tableData, onMarkAsPaid, onPrintBill, onMarkAsClea
             capacityText: `Capacity: ${tableData.max_capacity}`
         },
         occupied: {
-            title: `Occupied (${paxCount})`,
+            title: `Occupied (${paxCount}/${tableData.max_capacity})`,
             bg: "bg-yellow-500/10",
             border: "border-yellow-500",
             icon: <Users size={16} className="text-yellow-500" />
@@ -859,12 +859,15 @@ const DineInPageContent = () => {
     };
 
     const { activeTableData, closedTabsData } = useMemo(() => {
-        const tableMap = allTables.reduce((acc, table) => {
+        console.log("[Dine-In Dashboard] Processing data for display:", allTables);
+        const tableMap = (allTables || []).reduce((acc, table) => {
             acc[table.id] = { ...table, tabs: (table.tabs || []) };
             return acc;
         }, {});
-        const closedTabs = allTables.filter(t => t.status === 'closed');
-        console.log("[Dine-In Dashboard] Processed data for display:", { activeTables: tableMap, closedTabs: closedTabs });
+        
+        const closedTabs = (allTables || []).flatMap(table => (table.tabs || []).filter(tab => tab.status === 'closed'));
+        
+        console.log("[Dine-In Dashboard] Processed data result:", { tableMap, closedTabs });
         return { activeTableData: tableMap, closedTabsData: closedTabs };
     }, [allTables]);
     
@@ -954,7 +957,7 @@ const DineInPageContent = () => {
                         <TableCard
                             key={tab.id}
                             tableId={tableId}
-                            tableData={{ ...tab, state: 'occupied', pax_count: tab.pax_count }}
+                            tableData={{ ...tab, state: 'occupied', max_capacity: table.max_capacity }}
                             isTab={true}
                             onMarkAsPaid={confirmMarkAsPaid}
                             onPrintBill={setBillData}
@@ -1068,3 +1071,5 @@ const DineInPage = () => (
 );
 
 export default DineInPage;
+
+    
