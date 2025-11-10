@@ -393,13 +393,13 @@ const DineInModal = ({ isOpen, onClose, onBookTable, tableStatus, onStartNewTab,
         const availableCapacity = tableStatus.max_capacity - (tableStatus.current_pax || 0);
         if (pax > availableCapacity) {
              console.warn(`[DineInModal] Capacity exceeded. Trying to add ${pax} to a table with ${availableCapacity} seats left.`);
-             setInfoDialog({ isOpen: true, title: "Error", message: `This table can only accommodate ${availableCapacity} more guest(s). Please enter a valid number.` });
+             setInfoDialog({ isOpen: true, title: "Error", message: `This table can only accommodate ${availableCapacity} more guest(s).` });
             return;
         }
         try {
             await onStartNewTab(pax, name);
         } catch (error) {
-            setInfoDialog({ isOpen: true, title: "Error", message: error.message });
+            setInfoDialog({ isOpen: true, title: "Error Creating Tab", message: error.message });
         }
     };
 
@@ -656,7 +656,7 @@ const OrderPageInternal = () => {
     const phone = searchParams.get('phone');
     const token = searchParams.get('token');
     const tableIdFromUrl = searchParams.get('table');
-    const impersonatedOwnerId = searchParams.get('impersonate_owner_id'); // For admin debugging
+    const impersonatedOwnerId = searchParams.get('impersonate_owner_id');
 
     useEffect(() => {
         console.log(`[Order Page] Component mounted. tableId: ${tableIdFromUrl}, phone: ${phone}, token: ${token}`);
@@ -730,19 +730,36 @@ const OrderPageInternal = () => {
         console.log(`[Order Page] Action: Starting new tab. Guests: ${paxCount}, Name: ${tabName}`);
         
         try {
-            // This is an unauthenticated call from the customer's side.
-            // The API needs to handle this without a user token.
+            const user = auth.currentUser;
+            let idToken = null;
+
+            if (user) {
+                try {
+                    idToken = await user.getIdToken();
+                } catch (e) {
+                    console.warn("Could not get ID token, proceeding as unauthenticated dine-in user.");
+                }
+            }
+
+            const payload = { 
+                action: 'create_tab', 
+                tableId: tableIdFromUrl, 
+                restaurantId,
+                pax_count: paxCount, 
+                tab_name: tabName 
+            };
+
+            const headers = { 'Content-Type': 'application/json' };
+            if (idToken) {
+                headers['Authorization'] = `Bearer ${idToken}`;
+            }
+
             const res = await fetch('/api/owner/dine-in-tables', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ 
-                    action: 'create_tab', 
-                    tableId: tableIdFromUrl, 
-                    restaurantId, // Pass restaurantId so the API knows which business to target
-                    pax_count: paxCount, 
-                    tab_name: tabName 
-                })
+                headers: headers,
+                body: JSON.stringify(payload)
             });
+
             const data = await res.json();
             if (!res.ok) throw new Error(data.message);
 
