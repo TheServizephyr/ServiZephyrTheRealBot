@@ -1,5 +1,3 @@
-
-
 'use client';
 
 import React, { useState, useEffect, Suspense, useMemo, useCallback, useRef } from 'react';
@@ -315,6 +313,7 @@ const DineInModal = ({ isOpen, onClose, onBookTable, tableStatus, onStartNewTab,
     }, [hour, minute, bookingDetails.date]);
 
     useEffect(() => {
+        console.log("[DineInModal] isOpen changed:", isOpen, "tableStatus:", tableStatus);
         if (isOpen) {
             const phoneFromStorage = localStorage.getItem('lastKnownPhone');
             if (phoneFromStorage) {
@@ -331,12 +330,16 @@ const DineInModal = ({ isOpen, onClose, onBookTable, tableStatus, onStartNewTab,
             }, 300);
         } else {
             if (tableStatus?.state === 'available') {
+                console.log("[DineInModal] Table is available, setting modal to 'new_tab'.");
                 setActiveModal('new_tab');
-            } else if (tableStatus?.state === 'occupied') { // Changed from partially_occupied for clarity
+            } else if (tableStatus?.state === 'occupied') {
+                console.log("[DineInModal] Table is occupied, setting modal to 'join_or_new'.");
                 setActiveModal('join_or_new');
-            } else if (tableStatus?.state === 'full') { // A new state for full tables
+            } else if (tableStatus?.state === 'full') {
+                 console.log("[DineInModal] Table is full, setting modal to 'full'.");
                  setActiveModal('full');
             } else {
+                console.log("[DineInModal] No specific table status, setting modal to 'main'.");
                 setActiveModal('main');
             }
         }
@@ -631,27 +634,33 @@ const OrderPageInternal = () => {
     const tableIdFromUrl = searchParams.get('table');
 
     useEffect(() => {
+        console.log(`[Order Page] Component mounted. tableId: ${tableIdFromUrl}, phone: ${phone}, token: ${token}`);
         const verifySession = async () => {
             if (tableIdFromUrl) {
+                console.log("[Order Page] Dine-in session (tableId present). Session is valid.");
                 setIsTokenValid(true);
                 return;
             }
             
             if (phone && token) {
+                console.log("[Order Page] Token and phone found. Verifying via API...");
                 try {
                     const res = await fetch('/api/auth/verify-token', {
                         method: 'POST', headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ phone, token }),
                     });
                     if (!res.ok) throw new Error((await res.json()).message || "Session validation failed.");
+                    console.log("[Order Page] API token verification successful.");
                     setIsTokenValid(true);
                 } catch (err) {
+                    console.error("[Order Page] Token verification failed:", err.message);
                     setTokenError(err.message);
                 }
                 return;
             }
 
             if (!tableIdFromUrl && !phone && !token) {
+                 console.log("[Order Page] No session info found. Setting error.");
                  setTokenError("No valid session information found. Please scan the QR code again or start a new order from WhatsApp.");
             }
         };
@@ -694,6 +703,7 @@ const OrderPageInternal = () => {
 
 
     const handleStartNewTab = (paxCount, tabName) => {
+        console.log(`[Order Page] Starting new tab. Guests: ${paxCount}, Name: ${tabName}`);
         if (!paxCount || paxCount < 1) {
             setInfoDialog({ isOpen: true, title: "Invalid Input", message: "Please enter a valid number of guests." });
             return;
@@ -704,6 +714,7 @@ const OrderPageInternal = () => {
         }
         const availableCapacity = tableStatus.max_capacity - (tableStatus.current_pax || 0);
         if (paxCount > availableCapacity) {
+             console.warn(`[Order Page] Capacity exceeded. Trying to add ${paxCount} to a table with ${availableCapacity} seats left.`);
             setInfoDialog({ isOpen: true, title: "Capacity Exceeded", message: `This table can only accommodate ${availableCapacity} more guests.` });
             return;
         }
@@ -715,6 +726,7 @@ const OrderPageInternal = () => {
     };
 
     const handleJoinTab = (tabId) => {
+        console.log(`[Order Page] Joining existing tab: ${tabId}`);
         localStorage.setItem(`dineInSetup_${restaurantId}_${tableIdFromUrl}`, JSON.stringify({ join_tab_id: tabId }));
         const joinedTab = tableStatus.activeTabs.find(t => t.id === tabId);
         setActiveTabInfo({ id: tabId, name: joinedTab?.tab_name || 'Existing Tab', total: 0 });
@@ -725,6 +737,7 @@ const OrderPageInternal = () => {
 
     useEffect(() => {
         const fetchInitialData = async () => {
+            console.log(`[Order Page] Fetching initial data for restaurant: ${restaurantId}`);
             if (!restaurantId || restaurantId === 'undefined') {
                 setError("Restaurant ID is invalid.");
                 setLoading(false);
@@ -736,10 +749,12 @@ const OrderPageInternal = () => {
 
             try {
                 const url = `/api/menu/${restaurantId}${phone ? `?phone=${phone}`: ''}`;
+                console.log(`[Order Page] Fetching menu from: ${url}`);
                 const menuRes = await fetch(url);
                 const menuData = await menuRes.json();
 
                 if (!menuRes.ok) throw new Error(menuData.message || 'Failed to fetch menu');
+                console.log("[Order Page] Menu data received:", menuData);
                 
                 const fetchedSettings = {
                     name: menuData.restaurantName, status: menuData.approvalStatus,
@@ -754,14 +769,17 @@ const OrderPageInternal = () => {
                 setLoyaltyPoints(menuData.loyaltyPoints || 0);
 
                 if (tableIdFromUrl) {
+                    console.log("[Order Page] tableId found in URL, setting delivery type to dine-in.");
                     setDeliveryType('dine-in');
                     const dineInSetup = localStorage.getItem(`dineInSetup_${restaurantId}_${tableIdFromUrl}`);
                     if (dineInSetup || tabIdFromUrl) {
+                        console.log("[Order Page] Found existing dine-in setup or tabId in URL.");
                         const setup = dineInSetup ? JSON.parse(dineInSetup) : {};
                         const currentTabId = tabIdFromUrl || setup.join_tab_id;
                         if (currentTabId) setActiveTabInfo({ id: currentTabId, name: setup.tab_name || 'Active Tab', total: 0 });
                         setDineInState('ready');
                     } else {
+                        console.log("[Order Page] No dine-in setup found. Fetching table status...");
                         const tableRes = await fetch(`/api/owner/tables?restaurantId=${restaurantId}&tableId=${tableIdFromUrl}`);
                         if (!tableRes.ok) throw new Error((await tableRes.json()).message);
                         const tableData = await tableRes.json();
@@ -773,13 +791,16 @@ const OrderPageInternal = () => {
                         
                         setTableStatus({ ...tableData, tableId: tableIdFromUrl, state });
                         setDineInState('needs_setup');
+                        console.log("[Order Page] Fetched table status. State:", state, "Data:", tableData);
                         setIsDineInModalOpen(true);
                     }
                 } else {
                     setDeliveryType(menuData.deliveryEnabled ? 'delivery' : (menuData.pickupEnabled ? 'pickup' : 'delivery'));
                     setDineInState('ready');
+                    console.log("[Order Page] No tableId. Setting delivery type to:", menuData.deliveryEnabled ? 'delivery' : (menuData.pickupEnabled ? 'pickup' : 'delivery'));
                 }
             } catch (err) {
+                console.error("[Order Page] Error fetching initial data:", err.message);
                 setError(err.message);
             } finally {
                 setLoading(false);
@@ -910,6 +931,7 @@ const OrderPageInternal = () => {
     };
     
     const handleDeliveryTypeChange = (type) => {
+        console.log(`[Order Page] Delivery type changed to: ${type}`);
         if (type === 'dine-in' && !tableIdFromUrl) {
             setDineInState('needs_setup');
             setIsDineInModalOpen(true);
@@ -962,6 +984,7 @@ const OrderPageInternal = () => {
     }
 
     const handleCheckout = () => {
+        console.log("[Order Page] handleCheckout called.");
         const params = new URLSearchParams();
         if (restaurantId) params.append('restaurantId', restaurantId);
         if (phone) params.append('phone', phone);
@@ -983,6 +1006,7 @@ const OrderPageInternal = () => {
         if (currentCartData.dineInTabId) params.append('tabId', currentCartData.dineInTabId);
         
         const url = `/cart?${params.toString()}`;
+        console.log(`[Order Page] Navigating to cart: ${url}`);
         router.push(url);
     };
     

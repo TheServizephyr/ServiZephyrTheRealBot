@@ -1,5 +1,3 @@
-
-
 'use client';
 
 import React, { useState, useEffect, useMemo, Suspense } from 'react';
@@ -174,24 +172,32 @@ const CheckoutPageInternal = () => {
     
 
     useEffect(() => {
+        console.log("[Checkout Page] Component mounting. User loading:", isUserLoading);
         const verifyAndFetch = async () => {
             setLoading(true);
-
+            console.log("[Checkout Page] verifyAndFetch started.");
+            
             const phoneToLookup = phoneFromUrl || user?.phoneNumber || '';
             
             if (tableId) {
+                console.log("[Checkout Page] Dine-in session valid.");
                 setIsTokenValid(true);
             } else if (!user && phoneFromUrl && token) {
                 try {
+                    console.log("[Checkout Page] Verifying token via API for phone:", phoneToLookup);
                     const res = await fetch('/api/auth/verify-token', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ phone: phoneToLookup, token }) });
                     if (!res.ok) throw new Error((await res.json()).message || "Session validation failed.");
+                    console.log("[Checkout Page] Token valid.");
                     setIsTokenValid(true);
                 } catch (err) {
+                    console.error("[Checkout Page] Token verification failed:", err.message);
                     setTokenError(err.message); setLoading(false); return;
                 }
             } else if (user) {
+                console.log("[Checkout Page] User is logged in. Session valid.");
                 setIsTokenValid(true);
             } else {
+                console.log("[Checkout Page] No session info found.");
                 setTokenError("No session information found."); setLoading(false); return;
             }
 
@@ -201,11 +207,13 @@ const CheckoutPageInternal = () => {
             setError('');
 
             const savedCartData = localStorage.getItem(`cart_${restaurantId}`);
+            console.log("[Checkout Page] Fetched cart data from localStorage:", savedCartData ? 'Found' : 'Not Found');
             const parsedData = savedCartData ? JSON.parse(savedCartData) : {};
             
             const deliveryType = tableId ? 'dine-in' : (parsedData.deliveryType || 'delivery');
             const updatedData = { ...parsedData, phone: phoneToLookup, token, tableId, dineInTabId: tabId, deliveryType };
             
+            console.log("[Checkout Page] Parsed and updated cart data:", updatedData);
             setCart(updatedData.cart || []);
             setAppliedCoupons(updatedData.appliedCoupons || []);
             setCartData(updatedData);
@@ -213,25 +221,34 @@ const CheckoutPageInternal = () => {
             try {
                 setOrderName(user?.displayName || '');
                 if (phoneToLookup) {
+                    console.log("[Checkout Page] Looking up customer details for phone:", phoneToLookup);
                     const lookupRes = await fetch('/api/customer/lookup', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ phone: phoneToLookup }) });
                     if (lookupRes.ok) {
                         const data = await lookupRes.json();
+                        console.log("[Checkout Page] Customer lookup successful:", data);
                         setOrderName(prev => prev || data.name || '');
                         if (deliveryType === 'delivery') {
                             setUserAddresses(data.addresses || []);
                             setSelectedAddress(prev => prev || data.addresses?.[0] || null);
                         }
+                    } else {
+                         console.warn("[Checkout Page] Customer lookup failed with status:", lookupRes.status);
                     }
                 }
 
+                console.log("[Checkout Page] Fetching payment settings for restaurant:", restaurantId);
                 const paymentSettingsRes = await fetch(`/api/owner/settings?restaurantId=${restaurantId}`);
                 if (paymentSettingsRes.ok) {
                     const paymentData = await paymentSettingsRes.json();
+                    console.log("[Checkout Page] Payment settings fetched:", paymentData);
                     if (deliveryType === 'delivery') setCodEnabled(paymentData.deliveryCodEnabled);
                     else if (deliveryType === 'pickup') setCodEnabled(paymentData.pickupPodEnabled);
                     else if (deliveryType === 'dine-in') setCodEnabled(paymentData.dineInPayAtCounterEnabled);
+                } else {
+                     console.warn("[Checkout Page] Failed to fetch payment settings.");
                 }
             } catch (err) {
+                console.error("[Checkout Page] Error in data fetching block:", err.message);
                 setError('Failed to load checkout details. Please try again.');
             } finally {
                 setLoading(false);
@@ -279,6 +296,7 @@ const CheckoutPageInternal = () => {
     }, [cartData, cart, appliedCoupons, subtotal]);
 
     const handlePaymentMethodSelect = (method) => {
+        console.log(`[Checkout Page] Payment method selected: ${method}`);
         setError('');
         const deliveryType = cartData.tableId ? 'dine-in' : (cartData.deliveryType || 'delivery');
         if (deliveryType === 'delivery' && !selectedAddress) {
@@ -308,6 +326,7 @@ const CheckoutPageInternal = () => {
     const handleConfirmOrder = async (paymentMethod) => {
         const finalPaymentMethod = paymentMethod || selectedPaymentMethod;
         const deliveryType = cartData.tableId ? 'dine-in' : (cartData.deliveryType || 'delivery');
+        console.log(`[Checkout Page] handleConfirmOrder called. Method: ${finalPaymentMethod}`);
 
         if (!orderName || orderName.trim().length === 0) { setError("Please provide a name for the order."); return; }
         if (!orderPhone || orderPhone.trim().length === 0) { setError("A valid phone number is required to place an order."); return; }
@@ -321,6 +340,7 @@ const CheckoutPageInternal = () => {
             businessType: cartData.businessType || 'restaurant', tableId: cartData.tableId || null, dineInTabId: cartData.dineInTabId || null,
             pax_count: cartData.pax_count || null, tab_name: cartData.tab_name || null, address: selectedAddress 
         };
+        console.log("[Checkout Page] Final order payload:", orderData);
 
         setLoading(true); setError('');
 
@@ -329,12 +349,15 @@ const CheckoutPageInternal = () => {
             const data = await res.json();
             if (!res.ok) throw new Error(data.message || "Failed to place order.");
 
+            console.log("[Checkout Page] Order registration response:", data);
+
             if (data.razorpay_order_id) {
                  const redirectUrl = `${window.location.origin}/checkout?restaurantId=${restaurantId}&table=${tableId}&tabId=${data.dine_in_tab_id || tabId}&payment_confirmed=true`;
                 const options = {
                     key: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID, amount: grandTotal * 100, currency: "INR", name: cartData.restaurantName,
                     description: `Order from ${cartData.restaurantName}`, order_id: data.razorpay_order_id,
                     handler: function (response) {
+                        console.log("[Checkout Page] Razorpay success response:", response);
                         localStorage.removeItem(`cart_${restaurantId}`);
                         if (orderData.deliveryType === 'dine-in') router.push(redirectUrl);
                         else router.push(`/order/placed?orderId=${data.firestore_order_id}`);
@@ -342,25 +365,28 @@ const CheckoutPageInternal = () => {
                     prefill: { name: orderName, email: user?.email || "customer@servizephyr.com", contact: orderPhone },
                     redirect: orderData.deliveryType === 'dine-in' ? true : false,
                 };
+                console.log("[Checkout Page] Opening Razorpay checkout with options:", options);
                 const rzp = new window.Razorpay(options);
                  rzp.on('payment.failed', function (response){
+                    console.error("[Checkout Page] Razorpay payment failed:", response.error);
                     setInfoDialog({ isOpen: true, title: 'Payment Failed', message: response.error.description });
                  });
                 rzp.open();
             } else {
+                console.log("[Checkout Page] COD/Pay at Counter order placed successfully.");
                 localStorage.removeItem(`cart_${restaurantId}`);
                 if (orderData.deliveryType === 'dine-in') {
-                    // Show confirmation and then redirect
                     setInfoDialog({ isOpen: true, title: 'Success', message: 'Tab settled at counter. Thank you!' });
                     setTimeout(() => {
                         const newUrl = `/order/${restaurantId}?table=${tableId}&tabId=${data.dine_in_tab_id || tabId}`;
-                        router.replace(newUrl); // Use replace to avoid back-button issues
+                        router.replace(newUrl);
                     }, 2000);
                 } else {
                     router.push(`/order/placed?orderId=${data.firestore_order_id}`);
                 }
             }
         } catch (err) {
+            console.error("[Checkout Page] Error confirming order:", err.message);
             setError(err.message);
         } finally {
             setLoading(false);

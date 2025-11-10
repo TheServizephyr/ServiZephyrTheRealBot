@@ -1,5 +1,3 @@
-
-
 'use client';
 
 import React, { useState, useEffect, useMemo, Suspense } from 'react';
@@ -189,29 +187,36 @@ const CartPageInternal = () => {
     const [loadingPage, setLoadingPage] = useState(true);
 
     useEffect(() => {
+        console.log("[Cart Page] Component mounting. User loading:", isUserLoading);
         const verifyToken = async () => {
+            console.log("[Cart Page] Verifying token. Table ID:", tableId, "User:", !!user);
             if (tableId) {
                 // For dine-in, no token is needed, just the presence of tableId is enough.
+                console.log("[Cart Page] Dine-in session detected (tableId present). Token is valid.");
                 setIsTokenValid(true);
                 setLoadingPage(false);
                 return;
             }
 
             if (user) {
+                console.log("[Cart Page] Logged-in user detected. Token is valid.");
                 setIsTokenValid(true);
                 setLoadingPage(false);
                 return;
             }
 
             if (phone && token) {
+                console.log("[Cart Page] Phone and token found in URL. Verifying with API...");
                 try {
                     const res = await fetch('/api/auth/verify-token', {
                         method: 'POST', headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ phone, token }),
                     });
                     if (!res.ok) throw new Error((await res.json()).message || "Session validation failed.");
+                    console.log("[Cart Page] API verification successful. Token is valid.");
                     setIsTokenValid(true);
                 } catch (err) {
+                    console.error("[Cart Page] Token verification failed:", err.message);
                     setTokenError(err.message);
                 } finally {
                     setLoadingPage(false);
@@ -220,12 +225,14 @@ const CartPageInternal = () => {
             }
 
             if (!isUserLoading) {
+                 console.log("[Cart Page] No session info found and user is not loading. Setting error.");
                  setTokenError("No session token found. Please start your order from WhatsApp or log in.");
                  setLoadingPage(false);
             }
         };
 
         if (!restaurantId) {
+            console.log("[Cart Page] No restaurantId found. Redirecting to home.");
             router.push('/');
             return;
         }
@@ -237,15 +244,18 @@ const CartPageInternal = () => {
     
     useEffect(() => {
         if (isTokenValid && restaurantId) {
+            console.log("[Cart Page] Token is valid. Loading cart data from localStorage for restaurant:", restaurantId);
             const data = localStorage.getItem(`cart_${restaurantId}`);
             if (data) {
                 const parsedData = JSON.parse(data);
                 const now = new Date().getTime();
                 if (parsedData.expiryTimestamp && now > parsedData.expiryTimestamp) {
+                    console.log("[Cart Page] Cart data expired. Clearing cart.");
                     localStorage.removeItem(`cart_${restaurantId}`);
                     setCartData(null); setCart([]); setNotes('');
                     setAppliedCoupons([]); setTipAmount(0);
                 } else {
+                    console.log("[Cart Page] Found valid cart data:", parsedData);
                     setCartData(parsedData);
                     setCart(parsedData.cart || []);
                     setNotes(parsedData.notes || '');
@@ -254,6 +264,7 @@ const CartPageInternal = () => {
                     setPickupTime(parsedData.pickupTime || '');
                 }
             } else {
+                console.log("[Cart Page] No cart data found in localStorage.");
                 setCart([]);
                 setCartData(null);
             }
@@ -266,6 +277,7 @@ const CartPageInternal = () => {
     }, [tableId, cartData]);
 
     const updateCartInStorage = (updates) => {
+        console.log("[Cart Page] Updating cart in localStorage with:", updates);
         const currentData = JSON.parse(localStorage.getItem(`cart_${restaurantId}`)) || {};
         const expiryTimestamp = new Date().getTime() + (24 * 60 * 60 * 1000);
         const updatedData = { ...currentData, ...updates, expiryTimestamp };
@@ -318,6 +330,7 @@ const CartPageInternal = () => {
     };
 
     const handlePostPaidCheckout = async () => {
+        console.log("[Cart Page] Initiating post-paid checkout.");
         setIsCheckoutFlow(true);
         setInfoDialog({ isOpen: true, title: "Processing...", message: "Placing your order. Please wait." });
 
@@ -336,7 +349,8 @@ const CartPageInternal = () => {
                 pax_count: cartData?.pax_count || 1,
                 tab_name: cartData?.tab_name || 'Guest',
             };
-    
+            
+            console.log("[Cart Page] Sending post-paid order to /api/customer/register:", orderData);
             // This API now returns orderId, botDisplayNumber, and a tracking token
             const res = await fetch('/api/customer/register', {
                 method: 'POST',
@@ -346,16 +360,19 @@ const CartPageInternal = () => {
             const data = await res.json();
             if (!res.ok) throw new Error(data.message || "Failed to place order.");
             
+            console.log("[Cart Page] Post-paid order successful. Response:", data);
             localStorage.removeItem(`cart_${restaurantId}`);
             // Redirect to the new confirmation page with all necessary info
             router.push(`/order/placed?orderId=${data.order_id}&whatsappNumber=${data.whatsappNumber}&token=${data.token}`);
         } catch (err) {
+            console.error("[Cart Page] Post-paid checkout error:", err.message);
             setInfoDialog({ isOpen: true, title: "Error", message: err.message });
             setIsCheckoutFlow(false);
         }
     };
 
     const handleConfirmOrder = () => {
+        console.log(`[Cart Page] Confirm order clicked. Delivery type: ${deliveryType}, Dine-in model: ${cartData?.dineInModel}`);
         if (deliveryType === 'dine-in' && cartData?.dineInModel === 'post-paid') {
             handlePostPaidCheckout();
             return;
@@ -375,11 +392,13 @@ const CartPageInternal = () => {
         if (tabId) params.append('tabId', tabId);
         
         let checkoutUrl = `/checkout?${params.toString()}`;
+        console.log("[Cart Page] Proceeding to checkout URL:", checkoutUrl);
 
         if (deliveryType === 'dine-in' && !tabId) {
             const dineInSetupStr = localStorage.getItem(`dineInSetup_${restaurantId}_${tableId}`);
             if (dineInSetupStr) {
                 const dineInSetup = JSON.parse(dineInSetupStr);
+                console.log("[Cart Page] Found dine-in setup for new tab:", dineInSetup);
                 updateCartInStorage({ pax_count: dineInSetup.pax_count, tab_name: dineInSetup.tab_name });
             }
         }
@@ -843,4 +862,3 @@ const CartPage = () => (
 );
 
 export default CartPage;
-
