@@ -71,57 +71,77 @@ export async function POST(req) {
                 deliveryType,
                 pax_count: pax_count, tab_name: tab_name,
                 status: 'pending', 
-                dineInTabId: dineInTabId, // The FIX: Pass the pre-created tab ID
+                dineInTabId: dineInTabId,
                 orderDate: FieldValue.serverTimestamp(),
             });
             
             console.log(`[DEBUG] Pending order created with ID: ${newOrderRef.id}`);
 
-            // --- THE FIX: Generate token on backend and send all info at once ---
             const trackingToken = await generateSecureToken(firestore, `dine-in-${newOrderRef.id}`);
 
             return NextResponse.json({ 
                 message: "Order placed. Awaiting WhatsApp confirmation.",
                 order_id: newOrderRef.id,
                 whatsappNumber: businessData.botDisplayNumber || businessData.ownerPhone,
-                token: trackingToken // Send the token for the tracking link
+                token: trackingToken
             }, { status: 200 });
         }
-        // --- END: MODIFIED WhatsApp Checkmate Dine-In Logic ---
         
-        // --- START FIX: DINE-IN ORDER PLACEMENT LOGIC ---
+        // --- START: PRE-PAID DINE-IN ORDER PLACEMENT LOGIC ---
         if (deliveryType === 'dine-in') {
-            console.log(`[DEBUG] Dine-in order for tab ${dineInTabId}. Creating order document.`);
-            const newOrderRef = firestore.collection('orders').doc();
-            await newOrderRef.set({
-                customerName: name, // Name from cart state
-                customerPhone: normalizedPhone, // Phone from cart state
-                restaurantId,
-                businessType,
-                deliveryType,
-                tableId,
-                dineInTabId,
-                items,
-                subtotal,
-                cgst,
-                sgst,
-                totalAmount: grandTotal,
-                status: 'pending',
-                orderDate: FieldValue.serverTimestamp(),
-                notes: notes || null,
-                paymentDetails: { method: paymentMethod }
-            });
+            console.log(`[DEBUG] Pre-paid Dine-in order for tab ${dineInTabId}.`);
+            const firestoreOrderId = firestore.collection('orders').doc().id;
 
-            console.log(`[DEBUG] Dine-in order ${newOrderRef.id} created successfully for tab ${dineInTabId}.`);
-            // For dine-in, we just send a success response. The payment part is separate.
-            return NextResponse.json({
-                message: 'Order added to tab successfully.',
-                firestore_order_id: newOrderRef.id,
-                dine_in_tab_id: dineInTabId,
-            }, { status: 200 });
+             const servizephyrOrderPayload = {
+                order_id: firestoreOrderId,
+                user_id: `dine-in|${dineInTabId}`,
+                restaurant_id: restaurantId,
+                business_type: businessType,
+                customer_details: JSON.stringify({ name: tab_name, address: { full: `Table ${tableId}`}, phone: `dine-in-${tableId}` }),
+                items: JSON.stringify(items),
+                bill_details: JSON.stringify({ subtotal, coupon, loyaltyDiscount, grandTotal, deliveryType, tipAmount: 0, pickupTime: '', cgst, sgst, deliveryCharge: 0, tableId, dineInTabId, pax_count, tab_name }),
+                notes: notes || null
+            };
+
+            if (paymentMethod === 'razorpay') {
+                console.log("[DEBUG] Dine-in Razorpay flow...");
+                if (!process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID || !process.env.RAZORPAY_KEY_SECRET) {
+                    return NextResponse.json({ message: 'Payment gateway is not configured.' }, { status: 500 });
+                }
+                const razorpay = new Razorpay({ key_id: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID, key_secret: process.env.RAZORPAY_KEY_SECRET });
+                const razorpayOrderOptions = {
+                    amount: Math.round(grandTotal * 100),
+                    currency: 'INR',
+                    receipt: firestoreOrderId,
+                    notes: { servizephyr_payload: JSON.stringify(servizephyrOrderPayload) }
+                };
+                const razorpayOrder = await razorpay.orders.create(razorpayOrderOptions);
+                return NextResponse.json({ 
+                    message: 'Razorpay order created for dine-in.',
+                    razorpay_order_id: razorpayOrder.id,
+                    firestore_order_id: firestoreOrderId,
+                    dine_in_tab_id: dineInTabId
+                }, { status: 200 });
+            } else { // Pay at Counter for dine-in
+                console.log("[DEBUG] Dine-in 'Pay at Counter' flow...");
+                const newOrderRef = firestore.collection('orders').doc(firestoreOrderId);
+                await newOrderRef.set({
+                    customerName: tab_name, customerId: `dine-in|${dineInTabId}`, customerAddress: `Table ${tableId}`,
+                    restaurantId, businessType, deliveryType, tableId, dineInTabId, items,
+                    subtotal, coupon, loyaltyDiscount, discount: coupon?.discount || 0, cgst, sgst,
+                    totalAmount: grandTotal, status: 'pending', orderDate: FieldValue.serverTimestamp(),
+                    notes: notes || null, paymentDetails: { method: paymentMethod }
+                });
+                 console.log(`[DEBUG] Dine-in order ${newOrderRef.id} created successfully for tab ${dineInTabId}.`);
+                return NextResponse.json({
+                    message: 'Order added to tab successfully.',
+                    firestore_order_id: newOrderRef.id,
+                    dine_in_tab_id: dineInTabId,
+                }, { status: 200 });
+            }
         }
-        // --- END FIX: DINE-IN ORDER PLACEMENT LOGIC ---
         
+        // --- Regular Delivery/Pickup Flow ---
         let razorpayOrderId = null;
         
         console.log("[DEBUG] /api/customer/register: Checking for existing user with phone:", normalizedPhone);
@@ -167,7 +187,7 @@ export async function POST(req) {
                 business_type: businessType,
                 customer_details: JSON.stringify({ name, address, phone: normalizedPhone }),
                 items: JSON.stringify(items),
-                bill_details: JSON.stringify({ subtotal, coupon, loyaltyDiscount, grandTotal, deliveryType, tipAmount, pickupTime, cgst, sgst, deliveryCharge, tableId, pax_count, tab_name, dineInTabId }),
+                bill_details: JSON.stringify({ subtotal, coupon, loyaltyDiscount, grandTotal, deliveryType, tipAmount, pickupTime, cgst, sgst, deliveryCharge }),
                 notes: notes || null
             };
 
@@ -175,7 +195,6 @@ export async function POST(req) {
                 amount: Math.round(grandTotal * 100), 
                 currency: 'INR',
                 receipt: firestoreOrderId,
-                payment_capture: 1,
                 notes: {
                     servizephyr_payload: JSON.stringify(servizephyrOrderPayload)
                 }
@@ -190,7 +209,6 @@ export async function POST(req) {
                 message: 'Razorpay order created. Awaiting payment confirmation.',
                 razorpay_order_id: razorpayOrderId,
                 firestore_order_id: firestoreOrderId,
-                dine_in_tab_id: dineInTabId
             }, { status: 200 });
         }
 
@@ -256,7 +274,7 @@ export async function POST(req) {
             customerName: name, customerId: userId, customerAddress: address?.full || null, customerPhone: normalizedPhone,
             customerLocation: customerLocation,
             restaurantId: restaurantId, restaurantName: businessData.name,
-            businessType, deliveryType, pickupTime, tipAmount, tableId, dineInTabId: dineInTabId,
+            businessType, deliveryType, pickupTime, tipAmount,
             items: items,
             subtotal, coupon, loyaltyDiscount, discount: finalDiscount, cgst, sgst, deliveryCharge,
             totalAmount: grandTotal,
@@ -283,7 +301,6 @@ export async function POST(req) {
         return NextResponse.json({ 
             message: 'Order created successfully.',
             firestore_order_id: newOrderRef.id,
-            dine_in_tab_id: dineInTabId,
         }, { status: 200 });
 
     } catch (error) {

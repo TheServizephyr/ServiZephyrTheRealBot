@@ -1,5 +1,3 @@
-
-
 'use server';
 
 import { NextResponse } from 'next/server';
@@ -31,12 +29,24 @@ async function verifyOwnerAndGetBusinessRef(req) {
         }
 
     } catch (error) {
-        if (req.method !== 'POST' || (await req.clone().json()).action !== 'create_tab') {
-             console.log("[API dine-in-tables] Step 2: Request failed auth check, throwing error.");
-             throw { message: 'Authentication required.', status: 403 };
+        // For POST requests, if there's no token, we might be creating a tab for an unauthenticated user.
+        // We allow this specific action to proceed without authentication.
+        if (req.method === 'POST') {
+             try {
+                const body = await req.clone().json();
+                if (body.action === 'create_tab') {
+                    console.log("[API dine-in-tables] Step 2: No valid token, but allowing 'create_tab' action for unauthenticated user.");
+                    finalUserId = null; // Mark that we don't have an authenticated user for this path
+                } else {
+                    throw { message: 'Authentication required for this action.', status: 403 };
+                }
+             } catch (e) {
+                 throw { message: 'Invalid request body.', status: 400 };
+             }
+        } else {
+            console.log("[API dine-in-tables] Step 2: Request failed auth check, re-throwing error.");
+            throw error; // Re-throw auth error for non-POST or other POST actions
         }
-        console.log("[API dine-in-tables] Step 2: No valid token found for POST, assuming unauthenticated customer creating a tab.");
-        finalUserId = null;
     }
     
     if (finalUserId) {
@@ -55,8 +65,11 @@ async function verifyOwnerAndGetBusinessRef(req) {
     }
     
     // Allow POST requests for creating tabs to proceed without a business ref if no user is found
-    if (req.method === 'POST' && (await req.clone().json()).action === 'create_tab') {
-        return null;
+    if (req.method === 'POST') {
+         const body = await req.clone().json();
+         if (body.action === 'create_tab') {
+             return null;
+         }
     }
     
     throw { message: 'No business associated with this owner.', status: 404 };
@@ -122,12 +135,7 @@ export async function GET(req) {
             }
         }
         
-        const tables = Object.values(tablesData).map(table => {
-            if (table.tabs.length === 0) {
-                return { ...table, current_pax: 0, state: table.state === 'needs_cleaning' ? 'needs_cleaning' : 'available' };
-            }
-            return table;
-        });
+        const tables = Object.values(tablesData);
 
         console.log("[API dine-in-tables] Step 6: Processed", tables.length, "tables with their live data.");
 
@@ -149,7 +157,6 @@ export async function GET(req) {
         });
         
         const finalResponse = { tables, serviceRequests, closedTabs };
-        // console.log("[API dine-in-tables] Step 7: Sending final JSON response to client:", JSON.stringify(finalResponse, null, 2));
 
         return NextResponse.json(finalResponse, { status: 200 });
 
@@ -256,9 +263,29 @@ export async function PATCH(req) {
     const firestore = await getFirestore();
      try {
         const businessRef = await verifyOwnerAndGetBusinessRef(req);
-        const { tableId, action, tabIdToClose, newTableId, newCapacity, paymentMethod } = await req.json();
+        const { tableId, action, tabIdToClose, newTableId, newCapacity, paymentMethod, tabId, paxCount } = await req.json();
         console.log("[API dine-in-tables] PATCH Payload:", { tableId, action, tabIdToClose, newTableId, newCapacity, paymentMethod });
         
+        if (action === 'clear_tab') {
+            if (!tabId || !tableId) {
+                return NextResponse.json({ message: 'Tab ID and Table ID are required to clear a tab.' }, { status: 400 });
+            }
+            const tabRef = firestore.collection('dineInTabs').doc(tabId);
+            const tableRef = businessRef.collection('tables').doc(tableId);
+            
+            await firestore.runTransaction(async (transaction) => {
+                transaction.delete(tabRef);
+                transaction.update(tableRef, {
+                    current_pax: FieldValue.increment(-Number(paxCount || 1)),
+                    state: 'available'
+                });
+            });
+
+            console.log(`[API dine-in-tables] Zombie tab ${tabId} cleared from table ${tableId}.`);
+            return new NextResponse(null, { status: 204 });
+        }
+
+
         if (action) {
             if (!tableId) {
                 return NextResponse.json({ message: 'Table ID is required for actions.' }, { status: 400 });
@@ -294,8 +321,10 @@ export async function PATCH(req) {
                     });
 
                     transaction.update(tabRef, { status: 'closed', closedAt: FieldValue.serverTimestamp(), paymentMethod: paymentMethod || 'cod' });
-                    // THE FIX: Reset current_pax to 0 when the tab is closed.
-                    transaction.update(tableRef, { state: 'needs_cleaning', current_pax: 0 });
+                    transaction.update(tableRef, {
+                        state: 'needs_cleaning',
+                        current_pax: FieldValue.increment(-Number(tabDoc.data().pax_count || 1))
+                    });
                     console.log(`[API dine-in-tables] Transaction successful. Tab closed, table needs cleaning, pax reset.`);
                 });
                 return NextResponse.json({ message: `Table ${tableId} marked as needing cleaning.` }, { status: 200 });

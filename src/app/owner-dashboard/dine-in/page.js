@@ -1,10 +1,8 @@
-
-
 'use client';
 
 import React, { useState, useEffect, useMemo, useRef, Suspense } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { RefreshCw, Printer, CheckCircle, IndianRupee, Users, Clock, ShoppingBag, Bell, MoreVertical, Trash2, QrCode, Download, Save, Wind, Edit, Table as TableIcon, History, Search, Salad, UtensilsCrossed, Droplet, PlusCircle, AlertTriangle } from 'lucide-react';
+import { RefreshCw, Printer, CheckCircle, IndianRupee, Users, Clock, ShoppingBag, Bell, MoreVertical, Trash2, QrCode, Download, Save, Wind, Edit, Table as TableIcon, History, Search, Salad, UtensilsCrossed, Droplet, PlusCircle, AlertTriangle, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { auth, db } from '@/lib/firebase';
@@ -250,6 +248,7 @@ const BillModal = ({ order, restaurant, onClose, onPrint, printRef }) => {
                     <div className="text-center mt-6 pt-4 border-t border-dashed border-black">
                         <p className="text-xs italic">Thank you for dining with us!</p>
                         <p className="text-xs font-bold mt-1">Powered by ServiZephyr</p>
+                 <p className="text-xs italic mt-1">For exclusive offers and faster ordering, visit the ServiZephyr Customer Hub!</p>
                     </div>
                 </div>
                  <div className="p-4 bg-muted border-t border-border flex justify-end no-print">
@@ -282,10 +281,10 @@ const ConfirmationModal = ({ isOpen, onClose, onConfirm, title, description, con
 };
 
 
-const TableCard = ({ tableId, tableData, onMarkAsPaid, onPrintBill, onMarkAsCleaned, onShowHistory, acknowledgedItems, onToggleAcknowledge, onConfirmOrders }) => {
+const TableCard = ({ tableId, tableData, onMarkAsPaid, onPrintBill, onMarkAsCleaned, onShowHistory, acknowledgedItems, onToggleAcknowledge, onConfirmOrders, onClearTab }) => {
     const tab = tableData.tabs?.[0] || null;
     const state = tab ? 'occupied' : tableData.state;
-    const paxCount = tab ? tab.pax_count : tableData.current_pax || 0;
+    const paxCount = tab ? tab.pax_count : 0;
 
     const stateConfig = {
         available: {
@@ -334,45 +333,61 @@ const TableCard = ({ tableId, tableData, onMarkAsPaid, onPrintBill, onMarkAsClea
                  <CardContent className="flex-grow p-4">
                     {tab ? (
                         <div key={tab.id} className="mb-4 last:mb-0">
-                                <div className="flex justify-between items-center bg-muted/50 p-2 rounded-t-lg">
+                            <div className="flex justify-between items-center bg-muted/50 p-2 rounded-t-lg">
                                 <h4 className="font-semibold text-foreground">{tab.tab_name}</h4>
                                 <span className="text-xs font-mono text-muted-foreground">{tab.id.substring(0,6)}...</span>
                             </div>
-                            <div className="text-xs text-muted-foreground my-2 flex items-center gap-2">
-                                <Clock size={14}/> Last activity: {tab.latestOrderTime ? format(new Date(tab.latestOrderTime), 'p') : 'N/A'}
-                            </div>
-                            {hasPendingOrders && (
-                                <Button size="sm" className="w-full mb-2 bg-yellow-500 hover:bg-yellow-600" onClick={() => onConfirmOrders(tab.orders.filter(o => o.status === 'pending').map(o => o.id))}>
-                                    Confirm Tab's New Orders
-                                </Button>
-                            )}
-                            <div className="space-y-2 max-h-48 overflow-y-auto pr-2">
-                                {tab.allItems.map((item) => {
-                                    const uniqueItemId = `${tab.id}-${item.orderItemIds.join('-')}`;
-                                    const isAcknowledged = acknowledgedItems.has(uniqueItemId);
-                                    const isPending = tab.orders.some(o => o.items.some(i => i.name === item.name) && o.status === 'pending');
+                            
+                            {/* --- FIX START: Show this section even if no orders --- */}
+                            {tab.orders?.length > 0 ? (
+                                <>
+                                    <div className="text-xs text-muted-foreground my-2 flex items-center gap-2">
+                                        <Clock size={14}/> Last activity: {tab.latestOrderTime ? format(new Date(tab.latestOrderTime), 'p') : 'N/A'}
+                                    </div>
+                                    {hasPendingOrders && (
+                                        <Button size="sm" className="w-full mb-2 bg-yellow-500 hover:bg-yellow-600" onClick={() => onConfirmOrders(tab.orders.filter(o => o.status === 'pending').map(o => o.id))}>
+                                            Confirm New Orders
+                                        </Button>
+                                    )}
+                                    <div className="space-y-2 max-h-48 overflow-y-auto pr-2">
+                                        {tab.allItems.map((item) => {
+                                            const uniqueItemId = `${tab.id}-${item.orderItemIds.join('-')}`;
+                                            const isAcknowledged = acknowledgedItems.has(uniqueItemId);
+                                            const isPending = tab.orders.some(o => o.items.some(i => i.name === item.name) && o.status === 'pending');
 
-                                    return (
-                                        <div 
-                                            key={uniqueItemId} 
-                                            className={cn(
-                                                "flex justify-between items-center text-sm p-2 rounded-md transition-colors",
-                                                isAcknowledged ? "bg-muted/50" : (isPending ? "bg-yellow-400/20" : "bg-green-500/10")
-                                            )}
-                                        >
-                                            <div className="flex items-center gap-2">
-                                                <Checkbox 
-                                                    checked={isAcknowledged}
-                                                    onCheckedChange={() => onToggleAcknowledge(uniqueItemId)}
-                                                    id={uniqueItemId}
-                                                />
-                                                <label htmlFor={uniqueItemId} className="text-foreground">{item.name}</label>
-                                            </div>
-                                            <span className="font-semibold text-foreground">x{item.qty}</span>
-                                        </div>
-                                    );
-                                })}
-                            </div>
+                                            return (
+                                                <div 
+                                                    key={uniqueItemId} 
+                                                    className={cn(
+                                                        "flex justify-between items-center text-sm p-2 rounded-md transition-colors",
+                                                        isAcknowledged ? "bg-muted/50" : (isPending ? "bg-yellow-400/20" : "bg-green-500/10")
+                                                    )}
+                                                >
+                                                    <div className="flex items-center gap-2">
+                                                        <Checkbox 
+                                                            checked={isAcknowledged}
+                                                            onCheckedChange={() => onToggleAcknowledge(uniqueItemId)}
+                                                            id={uniqueItemId}
+                                                        />
+                                                        <label htmlFor={uniqueItemId} className="text-foreground">{item.name}</label>
+                                                    </div>
+                                                    <span className="font-semibold text-foreground">x{item.qty}</span>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                </>
+                            ) : (
+                                <div className="text-center py-4 text-muted-foreground text-sm flex flex-col items-center">
+                                    <p>Table occupied by <strong>{tab.tab_name}</strong> ({tab.pax_count} guests).</p>
+                                    <p>Waiting for first order...</p>
+                                    <Button size="sm" variant="destructive" className="mt-4" onClick={() => onClearTab(tab.id, tableId, tab.pax_count)}>
+                                        <X size={14} className="mr-2"/> Clear Table
+                                    </Button>
+                                </div>
+                            )}
+                            {/* --- FIX END --- */}
+
                         </div>
                     ) : state === 'needs_cleaning' ? (
                          <div className="flex-grow p-4 flex flex-col items-center justify-center text-center">
@@ -381,7 +396,7 @@ const TableCard = ({ tableId, tableData, onMarkAsPaid, onPrintBill, onMarkAsClea
                     ) : null}
                 </CardContent>
                 
-                 {tab ? (
+                 {tab && tab.orders?.length > 0 ? (
                     <CardFooter className="flex-col items-start bg-muted/30 p-4 border-t mt-auto">
                         <Button variant="outline" size="sm" className="w-full mb-4" onClick={() => onShowHistory(tableId, tab.id)}>
                             <History size={14} className="mr-2"/> See History
@@ -719,7 +734,7 @@ const DineInPageContent = () => {
 
         const res = await fetch(url.toString(), fetchOptions);
         
-        if (res.status === 204) {
+        if (res.status === 204 || res.status === 200 && res.headers.get('content-length') === '0') {
             return null;
         }
 
@@ -850,13 +865,29 @@ const DineInPageContent = () => {
          }
     };
 
+    // --- FIX START: Logic to clear "pre-order" zombie tabs ---
+    const handleClearTab = async (tabId, tableId, paxCount) => {
+        setLoading(true);
+        try {
+            await handleApiCall('PATCH', { action: 'clear_tab', tabId, tableId, paxCount }, '/api/owner/dine-in-tables');
+            setInfoDialog({ isOpen: true, title: "Success", message: `Table ${tableId} has been cleared and is now available.` });
+            await fetchData(true);
+        } catch (error) {
+            setInfoDialog({ isOpen: true, title: "Error", message: `Could not clear tab: ${error.message}` });
+        } finally {
+            setLoading(false);
+        }
+    }
+    // --- FIX END ---
+
     const activeTableData = useMemo(() => {
         if (!allData || !allData.tables) return [];
+        
         return allData.tables.map(table => {
             const tabsForTable = allData.tabs?.filter(tab => tab.tableId === table.id) || [];
-             if (tabsForTable.length === 0) {
-                 return { ...table, tabs: [], current_pax: 0 };
-             }
+            if (tabsForTable.length === 0 && table.state !== 'needs_cleaning') {
+                return { ...table, tabs: [], current_pax: 0 };
+            }
             return { ...table, tabs: tabsForTable };
         });
     }, [allData]);
@@ -946,6 +977,7 @@ const DineInPageContent = () => {
                     acknowledgedItems={acknowledgedItems}
                     onToggleAcknowledge={handleToggleAcknowledge}
                     onConfirmOrders={handleConfirmOrders}
+                    onClearTab={handleClearTab}
                 />
             );
         }).flat();
@@ -1038,5 +1070,6 @@ const DineInPage = () => (
 );
 
 export default DineInPage;
+
 
 
