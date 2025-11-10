@@ -1,4 +1,5 @@
 
+
 'use client';
 
 import React, { useState, useEffect, useMemo, useRef, Suspense } from 'react';
@@ -218,6 +219,7 @@ const BillModal = ({ order, restaurant, onClose, onPrint, printRef }) => {
                             <tr>
                                 <th className="text-left font-bold py-2">ITEM</th>
                                 <th className="text-center font-bold py-2">QTY</th>
+                                <th className="text-right font-bold py-2">PRICE</th>
                                 <th className="text-right font-bold py-2">TOTAL</th>
                             </tr>
                         </thead>
@@ -226,7 +228,8 @@ const BillModal = ({ order, restaurant, onClose, onPrint, printRef }) => {
                                 <tr key={index} className="border-b border-dotted border-black">
                                     <td className="py-2">{item.name}</td>
                                     <td className="text-center py-2">{item.qty}</td>
-                                    <td className="text-right py-2">{formatCurrency(item.qty * (item.price || item.totalPrice/item.qty))}</td>
+                                    <td className="text-right py-2">{formatCurrency((item.totalPrice || item.price) / item.quantity)}</td>
+                                    <td className="text-right py-2">{formatCurrency(item.totalPrice || item.price)}</td>
                                 </tr>
                             ))}
                         </tbody>
@@ -302,7 +305,7 @@ const TableCard = ({ tableId, tableData, onMarkAsPaid, onPrintBill, onMarkAsClea
     const currentConfig = stateConfig[state] || { title: state, bg: "bg-muted", border: "border-border", icon: null };
 
     const tab = isTab ? tableData : null;
-    const hasPendingOrders = tab?.orders.some(o => o.status === 'pending');
+    const hasPendingOrders = tab?.orders?.some(o => o.status === 'pending');
 
     return (
          <motion.div
@@ -372,7 +375,7 @@ const TableCard = ({ tableId, tableData, onMarkAsPaid, onPrintBill, onMarkAsClea
                     ) : null}
                 </CardContent>
                 
-                 {(state === 'occupied' && tab) && (
+                 {tab ? (
                     <CardFooter className="flex-col items-start bg-muted/30 p-4 border-t mt-auto">
                         <Button variant="outline" size="sm" className="w-full mb-4" onClick={() => onShowHistory(tableId, tab.id)}>
                             <History size={14} className="mr-2"/> See History
@@ -386,14 +389,13 @@ const TableCard = ({ tableId, tableData, onMarkAsPaid, onPrintBill, onMarkAsClea
                             <Button className="bg-primary hover:bg-primary/90" onClick={() => onMarkAsPaid(tableId, tab.id)}><CheckCircle size={16} className="mr-2"/> Mark as Paid</Button>
                         </div>
                     </CardFooter>
-                 )}
-                {state === 'needs_cleaning' && (
+                 ) : state === 'needs_cleaning' ? (
                      <CardFooter className="p-4 mt-auto">
                         <Button className="w-full bg-green-500 hover:bg-green-600" onClick={() => onMarkAsCleaned(tableId)}>
                             <CheckCircle size={16} className="mr-2"/> Mark as Cleaned
                         </Button>
                     </CardFooter>
-                )}
+                ) : null}
             </Card>
         </motion.div>
     );
@@ -641,7 +643,6 @@ const LiveServiceRequests = ({ impersonatedOwnerId }) => {
 };
 
 const DineInPageContent = () => {
-    console.log("[Dine-In Dashboard] Component mounted or re-rendered.");
     const [allData, setAllData] = useState({ tables: [], serviceRequests: [] });
     const [loading, setLoading] = useState(true);
     const searchParams = useSearchParams();
@@ -689,7 +690,6 @@ const DineInPageContent = () => {
     });
     
     const handleApiCall = async (method, body, endpoint) => {
-        console.log(`[Dine-In Dashboard] Making API call. Endpoint: ${endpoint}, Method: ${method}`);
         const user = auth.currentUser;
         if (!user) throw new Error("Authentication required.");
         const idToken = await user.getIdToken();
@@ -724,24 +724,20 @@ const DineInPageContent = () => {
     };
 
     const fetchData = async (isManualRefresh = false) => {
-        console.log("[Dine-In Dashboard] Starting data fetch. Is manual refresh:", isManualRefresh);
         if (!isManualRefresh) setLoading(true);
         try {
             const data = await handleApiCall('GET', null, '/api/owner/dine-in-tables');
-            console.log("[Dine-In Dashboard] Raw data received from API:", data);
-            setAllData(data || { tables: [], serviceRequests: [] });
+            setAllData(data || { tables: [], serviceRequests: [], activeTabs: [] });
         } catch (error) {
             console.error("[Dine-In Dashboard] Fetch data error:", error);
             setInfoDialog({ isOpen: true, title: "Error", message: `Could not load dine-in data: ${error.message}` });
         } finally {
             if (!isManualRefresh) setLoading(false);
-            console.log("[Dine-In Dashboard] Data fetch finished.");
         }
     };
     
     useEffect(() => {
         const fetchAndSetRestaurantDetails = async () => {
-             console.log("[Dine-In Dashboard] Fetching restaurant details.");
              const user = auth.currentUser;
              if(user) {
                 const idToken = await user.getIdToken();
@@ -755,7 +751,6 @@ const DineInPageContent = () => {
                         gstin: settingsData.gstin
                      });
                     setRestaurantId(settingsData.businessId);
-                    console.log("[Dine-In Dashboard] Restaurant details set. ID:", settingsData.businessId);
                 } else {
                     console.error("[Dine-In Dashboard] Failed to fetch restaurant settings.");
                 }
@@ -765,7 +760,6 @@ const DineInPageContent = () => {
     }, [impersonatedOwnerId]);
 
     const handleSaveTable = async (tableName, maxCapacity) => {
-        console.log(`[Dine-In Dashboard] Action: Saving new table. Name: ${tableName}`);
         try {
             await handleApiCall('POST', { tableId: tableName, max_capacity: maxCapacity }, '/api/owner/dine-in-tables');
             setInfoDialog({ isOpen: true, title: "Success", message: `Table "${tableName}" saved.` });
@@ -777,7 +771,6 @@ const DineInPageContent = () => {
     };
     
     const handleEditTable = async (originalId, newId, newCapacity) => {
-        console.log(`[Dine-In Dashboard] Action: Editing table. Original ID: ${originalId}`);
         try {
             await handleApiCall('PATCH', { tableId: originalId, newTableId: newId, newCapacity }, '/api/owner/dine-in-tables');
             setInfoDialog({ isOpen: true, title: "Success", message: `Table updated.` });
@@ -789,7 +782,6 @@ const DineInPageContent = () => {
     };
 
     const handleDeleteTable = async (tableId) => {
-        console.log(`[Dine-In Dashboard] Action: Deleting table. ID: ${tableId}`);
         if (window.confirm(`Are you sure you want to delete table "${tableId}"? This cannot be undone.`)) {
             try {
                 await handleApiCall('DELETE', { tableId }, '/api/owner/dine-in-tables');
@@ -815,7 +807,6 @@ const DineInPageContent = () => {
       }, [impersonatedOwnerId]);
 
       const confirmMarkAsPaid = (tableId, tabId) => {
-        console.log(`[Dine-In Dashboard] Action: Prompting to mark as paid. Table: ${tableId}, Tab: ${tabId}`);
         setConfirmationState({
             isOpen: true,
             title: "Confirm Payment",
@@ -829,7 +820,6 @@ const DineInPageContent = () => {
     };
 
     const handleMarkAsPaid = async (tableId, tabId) => {
-        console.log(`[Dine-In Dashboard] Action: Marking as paid. Table: ${tableId}, Tab: ${tabId}`);
         setLoading(true);
         try {
             await handleApiCall('PATCH', { tableId, action: 'mark_paid', tabIdToClose: tabId }, '/api/owner/dine-in-tables');
@@ -843,7 +833,6 @@ const DineInPageContent = () => {
     };
     
     const handleMarkAsCleaned = async (tableId) => {
-         console.log(`[Dine-In Dashboard] Action: Marking as cleaned. Table: ${tableId}`);
          setLoading(true);
          try {
              await handleApiCall('PATCH', { tableId, action: 'mark_cleaned' }, '/api/owner/dine-in-tables');
@@ -857,22 +846,26 @@ const DineInPageContent = () => {
     };
 
     const { activeTableData, closedTabsData } = useMemo(() => {
-        console.log("[Dine-In Dashboard] Processing data for display:", allData);
         if (!allData || !allData.tables) return { activeTableData: {}, closedTabsData: [] };
         
         const tableMap = (allData.tables).reduce((acc, table) => {
-            acc[table.id] = { ...table, tabs: (table.tabs || []) };
+            acc[table.id] = { ...table, tabs: [] }; // Initialize with empty tabs array
             return acc;
         }, {});
+
+        // Associate active tabs with their tables
+        (allData.activeTabs || []).forEach(tab => {
+            if (tableMap[tab.tableId]) {
+                tableMap[tab.tableId].tabs.push(tab);
+            }
+        });
         
-        const closedTabs = (allData.tables).flatMap(table => (table.tabs || []).filter(tab => tab.status === 'closed'));
+        const closedTabs = (allData.closedTabs || []);
         
-        console.log("[Dine-In Dashboard] Processed data result:", { tableMap, closedTabs });
         return { activeTableData: tableMap, closedTabsData: closedTabs };
     }, [allData]);
     
     const handleShowHistory = (tableId, tabId) => {
-        console.log(`[Dine-In Dashboard] Action: Showing history. Table: ${tableId}, Tab: ${tabId}`);
         const tableData = activeTableData[tableId];
         if (!tableData) return;
 
@@ -898,7 +891,6 @@ const DineInPageContent = () => {
     };
 
     const handleOpenEditModal = (table = null) => {
-        console.log("[Dine-In Dashboard] Action: Opening edit/create modal. Initial Table:", table);
         if (!restaurantId) {
             setInfoDialog({isOpen: true, title: "Error", message: "Restaurant data is not loaded yet. Cannot manage tables."});
             return;
@@ -908,7 +900,6 @@ const DineInPageContent = () => {
     };
 
      const handleOpenQrDisplayModal = (table) => {
-        console.log("[Dine-In Dashboard] Action: Showing QR code for table:", table.id);
         if (!restaurantId) {
             setInfoDialog({isOpen: true, title: "Error", message: "Restaurant data is not loaded yet. Cannot show QR code."});
             return;
@@ -919,7 +910,6 @@ const DineInPageContent = () => {
     };
     
     const handleToggleAcknowledge = (uniqueItemId) => {
-        console.log(`[Dine-In Dashboard] Action: Toggling acknowledge for item: ${uniqueItemId}`);
         setAcknowledgedItems(prev => {
             const newSet = new Set(prev);
             if (newSet.has(uniqueItemId)) {
@@ -932,7 +922,6 @@ const DineInPageContent = () => {
     };
     
      const handleConfirmOrders = async (orderIds) => {
-        console.log(`[Dine-In Dashboard] Action: Confirming orders:`, orderIds);
         try {
             await handleApiCall('PATCH', { orderIds: orderIds, newStatus: 'confirmed' }, '/api/owner/orders');
             setInfoDialog({ isOpen: true, title: "Success", message: "New orders have been confirmed!" });

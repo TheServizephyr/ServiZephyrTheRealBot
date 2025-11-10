@@ -89,6 +89,39 @@ export async function POST(req) {
         }
         // --- END: MODIFIED WhatsApp Checkmate Dine-In Logic ---
         
+        // --- START FIX: DINE-IN ORDER PLACEMENT LOGIC ---
+        if (deliveryType === 'dine-in') {
+            console.log(`[DEBUG] Dine-in order for tab ${dineInTabId}. Creating order document.`);
+            const newOrderRef = firestore.collection('orders').doc();
+            await newOrderRef.set({
+                customerName: name, // Name from cart state
+                customerPhone: normalizedPhone, // Phone from cart state
+                restaurantId,
+                businessType,
+                deliveryType,
+                tableId,
+                dineInTabId,
+                items,
+                subtotal,
+                cgst,
+                sgst,
+                totalAmount: grandTotal,
+                status: 'pending',
+                orderDate: FieldValue.serverTimestamp(),
+                notes: notes || null,
+                paymentDetails: { method: paymentMethod }
+            });
+
+            console.log(`[DEBUG] Dine-in order ${newOrderRef.id} created successfully for tab ${dineInTabId}.`);
+            // For dine-in, we just send a success response. The payment part is separate.
+            return NextResponse.json({
+                message: 'Order added to tab successfully.',
+                firestore_order_id: newOrderRef.id,
+                dine_in_tab_id: dineInTabId,
+            }, { status: 200 });
+        }
+        // --- END FIX: DINE-IN ORDER PLACEMENT LOGIC ---
+        
         let razorpayOrderId = null;
         
         console.log("[DEBUG] /api/customer/register: Checking for existing user with phone:", normalizedPhone);
