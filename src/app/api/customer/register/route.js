@@ -71,6 +71,7 @@ export async function POST(req) {
                 deliveryType,
                 pax_count: pax_count, tab_name: tab_name,
                 status: 'pending', 
+                dineInTabId: dineInTabId, // The FIX: Pass the pre-created tab ID
                 orderDate: FieldValue.serverTimestamp(),
             });
             
@@ -216,40 +217,17 @@ export async function POST(req) {
             batch.update(couponRef, { timesUsed: FieldValue.increment(1) });
         }
         
-        let finalDineInTabId = dineInTabId;
-        if (deliveryType === 'dine-in' && tableId && !finalDineInTabId) {
-             console.log(`[DEBUG] /api/customer/register: Dine-in order for new tab on table ${tableId}.`);
-             const newTabRef = businessRef.collection('dineInTabs').doc();
-             finalDineInTabId = newTabRef.id;
-
-             batch.set(newTabRef, {
-                id: finalDineInTabId,
-                tableId: tableId,
-                status: 'active',
-                tab_name: tab_name || "Guest",
-                pax_count: pax_count || 1,
-                createdAt: FieldValue.serverTimestamp(),
-             });
-             
-             const tableRef = businessRef.collection('tables').doc(tableId);
-             batch.update(tableRef, {
-                current_pax: FieldValue.increment(pax_count || 1),
-                state: 'occupied'
-             });
-             console.log(`[DEBUG] /api/customer/register: New tab ${finalDineInTabId} created.`);
-        }
-
         console.log("[DEBUG] /api/customer/register: Creating main order document.");
         const newOrderRef = firestore.collection('orders').doc();
         batch.set(newOrderRef, {
             customerName: name, customerId: userId, customerAddress: address?.full || null, customerPhone: normalizedPhone,
             customerLocation: customerLocation,
             restaurantId: restaurantId, restaurantName: businessData.name,
-            businessType, deliveryType, pickupTime, tipAmount, tableId, dineInTabId: finalDineInTabId,
+            businessType, deliveryType, pickupTime, tipAmount, tableId, dineInTabId: dineInTabId,
             items: items,
             subtotal, coupon, loyaltyDiscount, discount: finalDiscount, cgst, sgst, deliveryCharge,
             totalAmount: grandTotal,
-            status: deliveryType === 'dine-in' ? 'active_tab' : 'pending',
+            status: deliveryType === 'dine-in' ? 'pending' : 'pending', // Always start as pending
             orderDate: FieldValue.serverTimestamp(),
             notes: notes || null,
             paymentDetails: { method: paymentMethod }
@@ -272,7 +250,7 @@ export async function POST(req) {
         return NextResponse.json({ 
             message: 'Order created successfully.',
             firestore_order_id: newOrderRef.id,
-            dine_in_tab_id: finalDineInTabId,
+            dine_in_tab_id: dineInTabId,
         }, { status: 200 });
 
     } catch (error) {

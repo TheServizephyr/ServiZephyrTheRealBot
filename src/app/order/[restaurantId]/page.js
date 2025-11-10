@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useState, useEffect, Suspense, useMemo, useCallback, useRef } from 'react';
@@ -378,7 +379,8 @@ const DineInModal = ({ isOpen, onClose, onBookTable, tableStatus, onStartNewTab,
     const [newTabPax, setNewTabPax] = useState(1);
     const [newTabName, setNewTabName] = useState('');
 
-    const handleStartTab = () => {
+    const handleStartTab = async () => {
+        console.log('[DineInModal] handleStartTab called.');
         const pax = Number(newTabPax);
         const name = newTabName.trim();
         if (pax < 1) {
@@ -392,10 +394,17 @@ const DineInModal = ({ isOpen, onClose, onBookTable, tableStatus, onStartNewTab,
         const availableCapacity = tableStatus.max_capacity - (tableStatus.current_pax || 0);
         if (pax > availableCapacity) {
              console.warn(`[DineInModal] Capacity exceeded. Trying to add ${pax} to a table with ${availableCapacity} seats left.`);
-            setInfoDialog({ isOpen: true, title: "Capacity Exceeded", message: `This table can only accommodate ${availableCapacity} more guest(s).` });
+             // --- START FIX: Show validation message ---
+            setInfoDialog({ isOpen: true, title: "Capacity Exceeded", message: `This table can only accommodate ${availableCapacity} more guest(s). Please enter a valid number.` });
+             // --- END FIX ---
             return;
         }
-        onStartNewTab(pax, name);
+        // This now calls the API
+        try {
+            await onStartNewTab(pax, name);
+        } catch (error) {
+            setInfoDialog({ isOpen: true, title: "Error Creating Tab", message: error.message });
+        }
     };
 
 
@@ -521,10 +530,10 @@ const DineInModal = ({ isOpen, onClose, onBookTable, tableStatus, onStartNewTab,
                             <div className="px-6 pb-6 space-y-4">
                                 <div>
                                     <Label>How many people are in your group?</Label>
-                                    <Input type="number" value={newTabPax} onChange={e => setNewTabPax(parseInt(e.target.value))} min="1" max={tableStatus?.max_capacity - tableStatus?.current_pax} className="mt-1" />
+                                    <Input type="number" value={newTabPax} onChange={e => setNewTabPax(parseInt(e.target.value))} min="1" max={tableStatus?.max_capacity - (tableStatus?.current_pax || 0)} className="mt-1" />
                                 </div>
                                 <div>
-                                    <Label>What's a name for your tab? (Optional)</Label>
+                                    <Label>What's a name for your tab?</Label>
                                     <Input value={newTabName} onChange={e => setNewTabName(e.target.value)} placeholder="e.g., Rohan's Group" className="mt-1" />
                                 </div>
                                 <Button onClick={handleStartTab} className="w-full">Start Ordering</Button>
@@ -723,32 +732,36 @@ const OrderPageInternal = () => {
     const tabIdFromUrl = searchParams.get('tabId');
 
 
-    const handleStartNewTab = (paxCount, tabName) => {
+    const handleStartNewTab = async (paxCount, tabName) => {
         console.log(`[Order Page] Action: Starting new tab. Guests: ${paxCount}, Name: ${tabName}`);
-        if (!paxCount || paxCount < 1) {
-            setInfoDialog({ isOpen: true, title: "Invalid Input", message: "Please enter a valid number of guests." });
-            return;
-        }
-        if (!tabName.trim()) {
-            setInfoDialog({ isOpen: true, title: "Invalid Input", message: "Please enter a name for your tab." });
-            return;
-        }
-        const availableCapacity = tableStatus.max_capacity - (tableStatus.current_pax || 0);
-        if (paxCount > availableCapacity) {
-             console.warn(`[Order Page] Capacity exceeded. Trying to add ${paxCount} to a table with ${availableCapacity} seats left.`);
-            setInfoDialog({ isOpen: true, title: "Capacity Exceeded", message: `This table can only accommodate ${availableCapacity} more guest(s).` });
-            return;
-        }
+        
+        try {
+            const user = auth.currentUser;
+            if (!user) throw new Error('Authentication error'); // Should be handled by page guard
+            const idToken = await user.getIdToken();
+            
+            const res = await fetch('/api/owner/dine-in-tables', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${idToken}` },
+                body: JSON.stringify({ action: 'create_tab', tableId: tableIdFromUrl, pax_count: paxCount, tab_name: tabName })
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.message);
 
-        localStorage.setItem(`dineInSetup_${restaurantId}_${tableIdFromUrl}`, JSON.stringify({ pax_count: paxCount, tab_name: tabName }));
-        setActiveTabInfo({ id: null, name: tabName, total: 0 });
-        setDineInState('ready');
-        setIsDineInModalOpen(false);
+            console.log(`[Order Page] Successfully created new tab with ID: ${data.tabId}`);
+            setActiveTabInfo({ id: data.tabId, name: tabName, total: 0 });
+            setDineInState('ready');
+            setIsDineInModalOpen(false);
+
+        } catch (error) {
+             console.error("[Order Page] Failed to create new tab:", error.message);
+             // Re-throw to be caught by the modal
+             throw error;
+        }
     };
 
     const handleJoinTab = (tabId) => {
         console.log(`[Order Page] Action: Joining existing tab: ${tabId}`);
-        localStorage.setItem(`dineInSetup_${restaurantId}_${tableIdFromUrl}`, JSON.stringify({ join_tab_id: tabId }));
         const joinedTab = tableStatus.activeTabs.find(t => t.id === tabId);
         setActiveTabInfo({ id: tabId, name: joinedTab?.tab_name || 'Existing Tab', total: 0 });
         setDineInState('ready');
@@ -792,20 +805,19 @@ const OrderPageInternal = () => {
                 if (tableIdFromUrl) {
                     console.log("[Order Page] tableId found in URL, setting delivery type to dine-in.");
                     setDeliveryType('dine-in');
-                    const dineInSetup = localStorage.getItem(`dineInSetup_${restaurantId}_${tableIdFromUrl}`);
-                    if (dineInSetup || tabIdFromUrl) {
-                        console.log("[Order Page] Found existing dine-in setup or tabId in URL.");
-                        const setup = dineInSetup ? JSON.parse(dineInSetup) : {};
-                        const currentTabId = tabIdFromUrl || setup.join_tab_id || null;
-                        if (currentTabId) setActiveTabInfo({ id: currentTabId, name: setup.tab_name || 'Active Tab', total: 0 });
+
+                    // Check if we are rejoining an existing session via URL param
+                    if (tabIdFromUrl) {
+                        console.log(`[Order Page] Found tabId in URL: ${tabIdFromUrl}. Setting session as ready.`);
+                        setActiveTabInfo({ id: tabIdFromUrl, name: 'Active Tab', total: 0 }); // Name can be updated later
                         setDineInState('ready');
                     } else {
-                        console.log("[Order Page] No dine-in setup found. Fetching table status...");
+                        console.log("[Order Page] No tabId in URL. Fetching table status to determine next step...");
                         const tableRes = await fetch(`/api/owner/tables?restaurantId=${restaurantId}&tableId=${tableIdFromUrl}`);
                         if (!tableRes.ok) throw new Error((await tableRes.json()).message);
                         const tableData = await tableRes.json();
+
                         let state = 'available';
-                        
                         const occupiedSeats = tableData.current_pax || 0;
                         if (occupiedSeats >= tableData.max_capacity) state = 'full';
                         else if (occupiedSeats > 0) state = 'occupied';
@@ -815,6 +827,7 @@ const OrderPageInternal = () => {
                         console.log("[Order Page] Fetched table status. State:", state, "Data:", tableData);
                         setIsDineInModalOpen(true);
                     }
+
                 } else {
                     setDeliveryType(menuData.deliveryEnabled ? 'delivery' : (menuData.pickupEnabled ? 'pickup' : 'delivery'));
                     setDineInState('ready');
@@ -847,13 +860,17 @@ const OrderPageInternal = () => {
             restaurantName: restaurantData.name,
             phone: phone, token: token,
             tableId: tableIdFromUrl,
+            dineInTabId: activeTabInfo.id,
+            pax_count: activeTabInfo.pax_count,
+            tab_name: activeTabInfo.name,
             deliveryCharge: restaurantData.deliveryCharge,
             businessType: restaurantData.businessType,
             dineInModel: restaurantData.dineInModel,
             loyaltyPoints, expiryTimestamp,
         };
         localStorage.setItem(`cart_${restaurantId}`, JSON.stringify(cartDataToSave));
-    }, [cart, notes, deliveryType, restaurantData, loyaltyPoints, loading, isTokenValid, restaurantId, phone, token, tableIdFromUrl]);
+    }, [cart, notes, deliveryType, restaurantData, loyaltyPoints, loading, isTokenValid, restaurantId, phone, token, tableIdFromUrl, activeTabInfo]);
+
 
     useEffect(() => {
         if (restaurantId && isTokenValid) {
@@ -868,6 +885,10 @@ const OrderPageInternal = () => {
                     setCart(parsedData.cart || []);
                     setNotes(parsedData.notes || '');
                     if (parsedData.deliveryType && !tableIdFromUrl) setDeliveryType(parsedData.deliveryType);
+                    // Pre-fill active tab info if available
+                    if (parsedData.dineInTabId) {
+                        setActiveTabInfo({ id: parsedData.dineInTabId, name: parsedData.tab_name || 'Active Tab', pax_count: parsedData.pax_count || 1 });
+                    }
                 }
             }
         }
@@ -1012,20 +1033,10 @@ const OrderPageInternal = () => {
         if (token) params.append('token', token);
         if (tableIdFromUrl) params.append('table', tableIdFromUrl);
         
-        let currentCartData = JSON.parse(localStorage.getItem(`cart_${restaurantId}`)) || {};
-        if (deliveryType === 'dine-in') {
-            const setupStr = localStorage.getItem(`dineInSetup_${restaurantId}_${tableIdFromUrl}`);
-            if (setupStr) {
-                const dineInSetup = JSON.parse(setupStr);
-                console.log("[Order Page] Found dine-in setup in localStorage:", dineInSetup);
-                currentCartData.dineInTabId = tabIdFromUrl || dineInSetup.join_tab_id || null;
-                currentCartData.pax_count = dineInSetup.pax_count;
-                currentCartData.tab_name = dineInSetup.tab_name;
-            }
+        // Ensure the activeTabInfo.id is passed to cart page
+        if (deliveryType === 'dine-in' && activeTabInfo.id) {
+            params.append('tabId', activeTabInfo.id);
         }
-        localStorage.setItem(`cart_${restaurantId}`, JSON.stringify(currentCartData));
-
-        if (currentCartData.dineInTabId) params.append('tabId', currentCartData.dineInTabId);
         
         const url = `/cart?${params.toString()}`;
         console.log(`[Order Page] Navigating to cart: ${url}`);
@@ -1034,7 +1045,11 @@ const OrderPageInternal = () => {
     
     const handleCloseDineInModal = () => {
         setIsDineInModalOpen(false);
-        setDineInState('ready');
+        // If the user closes the modal without setting up a tab, they can't proceed with dine-in.
+        if (dineInState === 'needs_setup') {
+            setDeliveryType('delivery'); // Revert to a default
+            setDineInState('ready'); // Reset state
+        }
     }
 
     useEffect(() => {
@@ -1243,7 +1258,7 @@ const OrderPageInternal = () => {
                          
                          <motion.div
                             className="absolute right-4 pointer-events-auto"
-                            animate={{ bottom: totalCartItems > 0 || tabIdFromUrl ? '6.5rem' : '1rem' }}
+                            animate={{ bottom: totalCartItems > 0 || (deliveryType === 'dine-in' && activeTabInfo.id) ? '6.5rem' : '1rem' }}
                             transition={{ type: "spring", stiffness: 300, damping: 25 }}
                         >
                              <button
@@ -1256,7 +1271,7 @@ const OrderPageInternal = () => {
                         </motion.div>
 
                         <AnimatePresence>
-                           {(totalCartItems > 0 || tabIdFromUrl) && (
+                           {(totalCartItems > 0 || (deliveryType === 'dine-in' && activeTabInfo.id)) && (
                                 <motion.div
                                     className="absolute bottom-0 left-0 right-0 bg-background/80 backdrop-blur-lg border-t border-border pointer-events-auto"
                                     initial={{ y: "100%" }}
@@ -1266,23 +1281,25 @@ const OrderPageInternal = () => {
                                 >
                                     <div className="container mx-auto p-4">
                                         {deliveryType === 'dine-in' ? (
-                                            totalCartItems > 0 ? (
-                                                <Button onClick={handleCheckout} className="bg-primary hover:bg-primary/90 h-14 text-lg font-bold rounded-lg shadow-primary/30 flex justify-between items-center text-primary-foreground w-full">
-                                                    <span>{totalCartItems} New Item{totalCartItems > 1 ? 's' : ''}</span>
-                                                    <span>Add to Tab | ₹{subtotal}</span>
-                                                </Button>
-                                            ) : (
-                                                <Button onClick={handleCheckout} className="bg-green-600 hover:bg-green-700 h-14 text-lg font-bold rounded-lg shadow-lg flex justify-between items-center text-white w-full">
-                                                    <div className="flex items-center gap-2">
-                                                        <Users size={20}/>
-                                                        <span>{activeTabInfo.name || 'Your Tab'}</span>
-                                                    </div>
-                                                    <div className="flex items-center gap-2">
-                                                        <span>View Bill & Pay</span>
-                                                        <Wallet size={20}/>
-                                                    </div>
-                                                </Button>
-                                            )
+                                            <Button onClick={handleCheckout} className="h-14 text-lg font-bold rounded-lg shadow-lg flex justify-between items-center w-full bg-primary hover:bg-primary/90 text-primary-foreground">
+                                                {totalCartItems > 0 ? (
+                                                     <>
+                                                        <span>{totalCartItems} New Item{totalCartItems > 1 ? 's' : ''}</span>
+                                                        <span>Add to Tab | ₹{subtotal}</span>
+                                                    </>
+                                                ) : (
+                                                    <>
+                                                        <div className="flex items-center gap-2">
+                                                            <Users size={20}/>
+                                                            <span>{activeTabInfo.name || 'Your Tab'}</span>
+                                                        </div>
+                                                        <div className="flex items-center gap-2">
+                                                            <span>View Bill & Pay</span>
+                                                            <Wallet size={20}/>
+                                                        </div>
+                                                    </>
+                                                )}
+                                            </Button>
                                         ) : ( totalCartItems > 0 &&
                                             <Button onClick={handleCheckout} className="bg-primary hover:bg-primary/90 h-14 text-lg font-bold rounded-lg shadow-primary/30 flex justify-between items-center text-primary-foreground w-full">
                                                 <span>{totalCartItems} Item{totalCartItems > 1 ? 's' : ''} in Cart</span>

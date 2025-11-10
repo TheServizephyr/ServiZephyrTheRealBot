@@ -1,3 +1,4 @@
+
 'use server';
 
 import { NextResponse } from 'next/server';
@@ -123,35 +124,78 @@ export async function GET(req) {
     }
 }
 
+// --- START FIX: NEW POST FUNCTION ---
 export async function POST(req) {
-    console.log("[API dine-in-tables] POST request received to create/update table.");
-    try {
-        const businessRef = await verifyOwnerAndGetBusinessRef(req);
-        const { tableId, max_capacity } = await req.json();
-        console.log(`[API dine-in-tables] POST Payload: tableId=${tableId}, max_capacity=${max_capacity}`);
+    console.log("[API dine-in-tables] POST request received to create tab/table.");
+    const businessRef = await verifyOwnerAndGetBusinessRef(req);
+    const body = await req.json();
 
-        if (!tableId || !max_capacity || max_capacity < 1) {
-            return NextResponse.json({ message: 'Table ID and a valid capacity are required.' }, { status: 400 });
+    // Differentiate between creating a tab and creating a table
+    if (body.action === 'create_tab') {
+        console.log("[API dine-in-tables] Action: create_tab. Payload:", body);
+        const { tableId, pax_count, tab_name } = body;
+        if (!tableId || !pax_count || !tab_name) {
+            return NextResponse.json({ message: 'Table ID, pax count, and tab name are required.' }, { status: 400 });
         }
-        
+
+        const firestore = businessRef.firestore;
+        const newTabRef = businessRef.collection('dineInTabs').doc();
         const tableRef = businessRef.collection('tables').doc(tableId);
 
-        await tableRef.set({
-            id: tableId,
-            max_capacity: Number(max_capacity),
-            current_pax: 0,
-            createdAt: FieldValue.serverTimestamp(),
-            state: 'available'
-        }, { merge: true });
-        
-        console.log(`[API dine-in-tables] Successfully saved table ${tableId}.`);
-        return NextResponse.json({ message: 'Table saved successfully.' }, { status: 201 });
+        try {
+            await firestore.runTransaction(async (transaction) => {
+                const tableDoc = await transaction.get(tableRef);
+                if (!tableDoc.exists) {
+                    throw new Error("Table not found.");
+                }
+                const tableData = tableDoc.data();
+                const availableCapacity = tableData.max_capacity - (tableData.current_pax || 0);
+                if (pax_count > availableCapacity) {
+                    throw new Error(`Capacity exceeded. Only ${availableCapacity} seats available.`);
+                }
 
-    } catch (error) {
-        console.error("[API dine-in-tables] CRITICAL POST ERROR:", error);
-        return NextResponse.json({ message: `Backend Error: ${error.message}` }, { status: error.status || 500 });
+                transaction.set(newTabRef, {
+                    id: newTabRef.id,
+                    tableId: tableId,
+                    status: 'active',
+                    tab_name: tab_name,
+                    pax_count: Number(pax_count),
+                    createdAt: FieldValue.serverTimestamp(),
+                });
+
+                transaction.update(tableRef, {
+                    current_pax: FieldValue.increment(Number(pax_count)),
+                    state: 'occupied'
+                });
+            });
+            console.log(`[API dine-in-tables] Successfully created tab ${newTabRef.id} for table ${tableId}.`);
+            return NextResponse.json({ message: 'Tab created successfully!', tabId: newTabRef.id }, { status: 201 });
+        } catch(error) {
+            console.error("[API dine-in-tables] CRITICAL Transaction Error (create_tab):", error);
+            // The custom error message from the transaction will be passed here.
+            return NextResponse.json({ message: error.message }, { status: 400 });
+        }
     }
+
+    // Existing logic for creating/updating a table
+    console.log("[API dine-in-tables] Action: create_or_update_table. Payload:", body);
+    const { tableId, max_capacity } = body;
+    if (!tableId || !max_capacity || max_capacity < 1) {
+        return NextResponse.json({ message: 'Table ID and a valid capacity are required.' }, { status: 400 });
+    }
+    const tableRef = businessRef.collection('tables').doc(tableId);
+    await tableRef.set({
+        id: tableId,
+        max_capacity: Number(max_capacity),
+        current_pax: 0,
+        createdAt: FieldValue.serverTimestamp(),
+        state: 'available'
+    }, { merge: true });
+    
+    console.log(`[API dine-in-tables] Successfully saved table ${tableId}.`);
+    return NextResponse.json({ message: 'Table saved successfully.' }, { status: 201 });
 }
+// --- END FIX ---
 
 
 export async function PATCH(req) {
