@@ -1,4 +1,5 @@
 
+
 'use client';
 
 import React, { useState, useEffect, Suspense, useMemo, useCallback, useRef } from 'react';
@@ -314,14 +315,6 @@ const DineInModal = ({ isOpen, onClose, onBookTable, tableStatus, onStartNewTab,
     }, [hour, minute, bookingDetails.date]);
 
     useEffect(() => {
-        console.log("[DineInModal] isOpen changed:", isOpen, "tableStatus:", tableStatus);
-        if (isOpen) {
-            const phoneFromStorage = localStorage.getItem('lastKnownPhone');
-            if (phoneFromStorage) {
-                setBookingDetails(prev => ({...prev, phone: phoneFromStorage}));
-            }
-        }
-
         if (!isOpen) {
             setTimeout(() => {
                 setActiveModal('main');
@@ -331,16 +324,12 @@ const DineInModal = ({ isOpen, onClose, onBookTable, tableStatus, onStartNewTab,
             }, 300);
         } else {
             if (tableStatus?.state === 'available') {
-                console.log("[DineInModal] Table is available, setting modal to 'new_tab'.");
                 setActiveModal('new_tab');
             } else if (tableStatus?.state === 'occupied') {
-                console.log("[DineInModal] Table is occupied, setting modal to 'join_or_new'.");
                 setActiveModal('join_or_new');
             } else if (tableStatus?.state === 'full') {
-                 console.log("[DineInModal] Table is full, setting modal to 'full'.");
                  setActiveModal('full');
             } else {
-                console.log("[DineInModal] No specific table status, setting modal to 'main'.");
                 setActiveModal('main');
             }
         }
@@ -378,29 +367,24 @@ const DineInModal = ({ isOpen, onClose, onBookTable, tableStatus, onStartNewTab,
     const [newTabPax, setNewTabPax] = useState(1);
     const [newTabName, setNewTabName] = useState('');
 
-    const handleStartTab = async () => {
-        console.log('[DineInModal] handleStartTab called.');
+    const handleStartTab = () => {
         const pax = Number(newTabPax);
         const name = newTabName.trim();
         if (pax < 1) {
-            setInfoDialog({ isOpen: true, title: "Error", message: "Number of guests must be at least 1." });
+            setInfoDialog({ isOpen: true, title: "Input Error", message: "Number of guests must be at least 1." });
             return;
         }
         if (!name) {
-             setInfoDialog({ isOpen: true, title: "Error", message: "Please enter a name for your tab." });
+             setInfoDialog({ isOpen: true, title: "Input Error", message: "Please enter a name for your tab." });
             return;
         }
         const availableCapacity = tableStatus.max_capacity - (tableStatus.current_pax || 0);
         if (pax > availableCapacity) {
-             console.warn(`[DineInModal] Capacity exceeded. Trying to add ${pax} to a table with ${availableCapacity} seats left.`);
-             setInfoDialog({ isOpen: true, title: "Error", message: `This table can only accommodate ${availableCapacity} more guest(s).` });
+             setInfoDialog({ isOpen: true, title: "Capacity Exceeded", message: `This table can only accommodate ${availableCapacity} more guest(s).` });
             return;
         }
-        try {
-            await onStartNewTab(pax, name);
-        } catch (error) {
-            setInfoDialog({ isOpen: true, title: "Error Creating Tab", message: error.message });
-        }
+        
+        onStartNewTab(pax, name);
     };
 
 
@@ -659,33 +643,27 @@ const OrderPageInternal = () => {
     const impersonatedOwnerId = searchParams.get('impersonate_owner_id');
 
     useEffect(() => {
-        console.log(`[Order Page] Component mounted. tableId: ${tableIdFromUrl}, phone: ${phone}, token: ${token}`);
         const verifySession = async () => {
             if (tableIdFromUrl) {
-                console.log("[Order Page] Dine-in session (tableId present). Session is valid.");
                 setIsTokenValid(true);
                 return;
             }
             
             if (phone && token) {
-                console.log("[Order Page] Token and phone found. Verifying via API...");
                 try {
                     const res = await fetch('/api/auth/verify-token', {
                         method: 'POST', headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ phone, token }),
                     });
                     if (!res.ok) throw new Error((await res.json()).message || "Session validation failed.");
-                    console.log("[Order Page] API token verification successful.");
                     setIsTokenValid(true);
                 } catch (err) {
-                    console.error("[Order Page] Token verification failed:", err.message);
                     setTokenError(err.message);
                 }
                 return;
             }
 
             if (!tableIdFromUrl && !phone && !token) {
-                 console.log("[Order Page] No session info found. Setting error.");
                  setTokenError("No valid session information found. Please scan the QR code again or start a new order from WhatsApp.");
             }
         };
@@ -727,18 +705,11 @@ const OrderPageInternal = () => {
 
 
     const handleStartNewTab = async (paxCount, tabName) => {
-        console.log(`[Order Page] Action: Starting new tab. Guests: ${paxCount}, Name: ${tabName}`);
-        
         try {
             const user = auth.currentUser;
             let idToken = null;
-
             if (user) {
-                try {
-                    idToken = await user.getIdToken();
-                } catch (e) {
-                    console.warn("Could not get ID token, proceeding as unauthenticated dine-in user.");
-                }
+                try { idToken = await user.getIdToken(); } catch (e) { console.warn("Could not get ID token for user, proceeding as anonymous."); }
             }
 
             const payload = { 
@@ -746,9 +717,13 @@ const OrderPageInternal = () => {
                 tableId: tableIdFromUrl, 
                 restaurantId,
                 pax_count: paxCount, 
-                tab_name: tabName 
+                tab_name: tabName,
             };
-
+            
+            if (impersonatedOwnerId) {
+                payload.impersonate_owner_id = impersonatedOwnerId;
+            }
+            
             const headers = { 'Content-Type': 'application/json' };
             if (idToken) {
                 headers['Authorization'] = `Bearer ${idToken}`;
@@ -763,19 +738,17 @@ const OrderPageInternal = () => {
             const data = await res.json();
             if (!res.ok) throw new Error(data.message);
 
-            console.log(`[Order Page] Successfully created new tab with ID: ${data.tabId}`);
             setActiveTabInfo({ id: data.tabId, name: tabName, pax_count: paxCount });
             setDineInState('ready');
             setIsDineInModalOpen(false);
 
         } catch (error) {
-             console.error("[Order Page] Failed to create new tab:", error.message);
+             setInfoDialog({ isOpen: true, title: "Error Creating Tab", message: error.message });
              throw error;
         }
     };
 
     const handleJoinTab = (tabId) => {
-        console.log(`[Order Page] Action: Joining existing tab: ${tabId}`);
         const joinedTab = tableStatus.activeTabs.find(t => t.id === tabId);
         setActiveTabInfo({ id: tabId, name: joinedTab?.tab_name || 'Existing Tab', total: 0 });
         setDineInState('ready');
@@ -785,7 +758,6 @@ const OrderPageInternal = () => {
 
     useEffect(() => {
         const fetchInitialData = async () => {
-            console.log(`[Order Page] Fetching initial data for restaurant: ${restaurantId}`);
             if (!restaurantId || restaurantId === 'undefined') {
                 setError("Restaurant ID is invalid.");
                 setLoading(false);
@@ -797,12 +769,10 @@ const OrderPageInternal = () => {
 
             try {
                 const url = `/api/menu/${restaurantId}${phone ? `?phone=${phone}`: ''}`;
-                console.log(`[Order Page] Fetching menu from: ${url}`);
                 const menuRes = await fetch(url);
                 const menuData = await menuRes.json();
 
                 if (!menuRes.ok) throw new Error(menuData.message || 'Failed to fetch menu');
-                console.log("[Order Page] Menu data received:", menuData);
                 
                 const fetchedSettings = {
                     name: menuData.restaurantName, status: menuData.approvalStatus,
@@ -817,15 +787,12 @@ const OrderPageInternal = () => {
                 setLoyaltyPoints(menuData.loyaltyPoints || 0);
 
                 if (tableIdFromUrl) {
-                    console.log("[Order Page] tableId found in URL, setting delivery type to dine-in.");
                     setDeliveryType('dine-in');
 
                     if (tabIdFromUrl) {
-                        console.log(`[Order Page] Found tabId in URL: ${tabIdFromUrl}. Setting session as ready.`);
                         setActiveTabInfo({ id: tabIdFromUrl, name: 'Active Tab', total: 0 });
                         setDineInState('ready');
                     } else {
-                        console.log("[Order Page] No tabId in URL. Fetching table status to determine next step...");
                         const tableRes = await fetch(`/api/owner/tables?restaurantId=${restaurantId}&tableId=${tableIdFromUrl}`);
                         if (!tableRes.ok) throw new Error((await tableRes.json()).message);
                         const tableData = await tableRes.json();
@@ -837,17 +804,14 @@ const OrderPageInternal = () => {
                         
                         setTableStatus({ ...tableData, tableId: tableIdFromUrl, state });
                         setDineInState('needs_setup');
-                        console.log("[Order Page] Fetched table status. State:", state, "Data:", tableData);
                         setIsDineInModalOpen(true);
                     }
 
                 } else {
                     setDeliveryType(menuData.deliveryEnabled ? 'delivery' : (menuData.pickupEnabled ? 'pickup' : 'delivery'));
                     setDineInState('ready');
-                    console.log("[Order Page] No tableId. Setting delivery type to:", menuData.deliveryEnabled ? 'delivery' : (menuData.pickupEnabled ? 'pickup' : 'delivery'));
                 }
             } catch (err) {
-                console.error("[Order Page] Error fetching initial data:", err.message);
                 setError(err.message);
             } finally {
                 setLoading(false);
@@ -985,7 +949,6 @@ const OrderPageInternal = () => {
     };
     
     const handleDeliveryTypeChange = (type) => {
-        console.log(`[Order Page] Delivery type changed to: ${type}`);
         if (type === 'dine-in' && !tableIdFromUrl) {
             setDineInState('needs_setup');
             setIsDineInModalOpen(true);
@@ -1038,7 +1001,6 @@ const OrderPageInternal = () => {
     }
 
     const handleCheckout = () => {
-        console.log("[Order Page] Action: handleCheckout called.");
         const params = new URLSearchParams();
         if (restaurantId) params.append('restaurantId', restaurantId);
         if (phone) params.append('phone', phone);
@@ -1050,7 +1012,6 @@ const OrderPageInternal = () => {
         }
         
         const url = `/cart?${params.toString()}`;
-        console.log(`[Order Page] Navigating to cart: ${url}`);
         router.push(url);
     };
     
@@ -1125,7 +1086,15 @@ const OrderPageInternal = () => {
                 )}
             </AnimatePresence>
             <div className="min-h-screen bg-background text-foreground green-theme">
-                 <DineInModal isOpen={isDineInModalOpen} onClose={handleCloseDineInModal} onBookTable={handleBookTable} tableStatus={tableStatus} onStartNewTab={handleStartNewTab} onJoinTab={handleJoinTab} setIsQrScannerOpen={setIsQrScannerOpen} setInfoDialog={setInfoDialog} />
+                 <DineInModal 
+                    isOpen={isDineInModalOpen} 
+                    onClose={handleCloseDineInModal} 
+                    onBookTable={handleBookTable} 
+                    tableStatus={tableStatus} 
+                    onStartNewTab={handleStartNewTab}
+                    onJoinTab={handleJoinTab} 
+                    setIsQrScannerOpen={setIsQrScannerOpen} 
+                    setInfoDialog={setInfoDialog} />
                 <CustomizationDrawer item={customizationItem} isOpen={!!customizationItem} onClose={() => setCustomizationItem(null)} onAddToCart={handleAddToCart} />
 
                  <header>
