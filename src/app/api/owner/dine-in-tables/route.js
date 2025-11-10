@@ -9,43 +9,60 @@ import { isAfter, subDays } from 'date-fns';
 async function verifyOwnerAndGetBusinessRef(req) {
     const firestore = await getFirestore();
     console.log("[API dine-in-tables] Step 1: Verifying owner token.");
-    const uid = await verifyAndGetUid(req); // Use central helper
-    console.log(`[API dine-in-tables] Step 2: Owner UID Verified: ${uid}`);
-    
-    const { searchParams } = new URL(req.url, `http://${req.headers.host}`);
-    const impersonatedOwnerId = searchParams.get('impersonate_owner_id');
 
-    const userDoc = await firestore.collection('users').doc(uid).get();
+    let finalUserId;
+    let isAdminImpersonating = false;
 
-    if (!userDoc.exists) {
-        throw { message: 'Access Denied: User profile not found.', status: 403 };
-    }
+    // Try to get UID from token for authenticated requests (like from the dashboard)
+    try {
+        const uid = await verifyAndGetUid(req);
+        finalUserId = uid;
+        console.log(`[API dine-in-tables] Step 2: Owner/Admin UID Verified: ${uid}`);
 
-    const userData = userDoc.data();
-    const userRole = userData.role;
+        const { searchParams } = new URL(req.url, `http://${req.headers.host}`);
+        const impersonatedOwnerId = searchParams.get('impersonate_owner_id');
+        
+        const userDoc = await firestore.collection('users').doc(uid).get();
 
-    let targetOwnerId = uid;
-    if (userRole === 'admin' && impersonatedOwnerId) {
-        targetOwnerId = impersonatedOwnerId;
-        console.log(`[API dine-in-tables] Admin impersonation for owner ID: ${targetOwnerId}`);
-    } else if (userRole !== 'owner' && userRole !== 'restaurant-owner' && userRole !== 'shop-owner') {
-        throw { message: 'Access Denied: You do not have sufficient privileges.', status: 403 };
-    }
-    
-    console.log(`[API dine-in-tables] Step 3: Searching for business for owner: ${targetOwnerId}`);
-    const restaurantsQuery = await firestore.collection('restaurants').where('ownerId', '==', targetOwnerId).limit(1).get();
-    if (!restaurantsQuery.empty) {
-        console.log("[API dine-in-tables] Found business in 'restaurants' collection.");
-        return restaurantsQuery.docs[0].ref;
-    }
+        if (userDoc.exists && userDoc.data().role === 'admin' && impersonatedOwnerId) {
+            finalUserId = impersonatedOwnerId;
+            isAdminImpersonating = true;
+            console.log(`[API dine-in-tables] Admin impersonation for owner ID: ${finalUserId}`);
+        } else if (!userDoc.exists || (userDoc.data().role !== 'owner' && userDoc.data().role !== 'restaurant-owner' && userDoc.data().role !== 'shop-owner')) {
+             throw { message: 'Access Denied: You do not have sufficient privileges.', status: 403 };
+        }
 
-    const shopsQuery = await firestore.collection('shops').where('ownerId', '==', targetOwnerId).limit(1).get();
-    if (!shopsQuery.empty) {
-         console.log("[API dine-in-tables] Found business in 'shops' collection.");
-        return shopsQuery.docs[0].ref;
+    } catch (error) {
+        // If token verification fails, it might be an unauthenticated customer request.
+        // We'll proceed without a UID and rely on other data for POST requests.
+        console.log("[API dine-in-tables] Step 2: No valid token found. Assuming unauthenticated customer request for POST.");
+        finalUserId = null;
     }
     
-    throw { message: 'No business associated with this owner.', status: 404 };
+    console.log(`[API dine-in-tables] Step 3: Searching for business for owner: ${finalUserId}`);
+    
+    if (finalUserId) {
+        const restaurantsQuery = await firestore.collection('restaurants').where('ownerId', '==', finalUserId).limit(1).get();
+        if (!restaurantsQuery.empty) {
+            console.log("[API dine-in-tables] Found business in 'restaurants' collection.");
+            return restaurantsQuery.docs[0].ref;
+        }
+
+        const shopsQuery = await firestore.collection('shops').where('ownerId', '==', finalUserId).limit(1).get();
+        if (!shopsQuery.empty) {
+            console.log("[API dine-in-tables] Found business in 'shops' collection.");
+            return shopsQuery.docs[0].ref;
+        }
+    }
+    
+    // For GET requests, if we haven't found a business by now, it's an error.
+    // For POST, we might not have a user ID, so we can't search this way.
+    if (req.method === 'GET') {
+      throw { message: 'No business associated with this owner.', status: 404 };
+    }
+    
+    // For POST, we return null and let the POST handler find the business by ID.
+    return null;
 }
 
 
@@ -55,7 +72,6 @@ export async function GET(req) {
         const businessRef = await verifyOwnerAndGetBusinessRef(req);
         console.log(`[API dine-in-tables] Step 4: Business Ref obtained: ${businessRef.path}`);
         
-        // Fetch all necessary data in parallel
         const [tablesSnap, tabsSnap, serviceRequestsSnap] = await Promise.all([
             businessRef.collection('tables').orderBy('createdAt', 'asc').get(),
             businessRef.collection('dineInTabs').where('status', '==', 'active').get(),
@@ -63,47 +79,52 @@ export async function GET(req) {
         ]);
         console.log(`[API dine-in-tables] Step 5: Fetched initial data. Tables: ${tablesSnap.size}, Active Tabs: ${tabsSnap.size}, Service Requests: ${serviceRequestsSnap.size}`);
         
-        const tables = [];
+        const tablesData = {};
         for (const tableDoc of tablesSnap.docs) {
-            tables.push({ id: tableDoc.id, ...tableDoc.data() });
+             tablesData[tableDoc.id] = { ...tableDoc.data(), id: tableDoc.id, tabs: [] };
         }
 
-        const activeTabs = [];
         for (const tabDoc of tabsSnap.docs) {
-             const tabData = { id: tabDoc.id, ...tabDoc.data(), orders: [], allItems: [], totalBill: 0, latestOrderTime: null };
+            const tabData = { id: tabDoc.id, ...tabDoc.data(), orders: [], allItems: [], totalBill: 0, latestOrderTime: null };
+            const tableId = tabData.tableId;
             
-            const ordersSnap = await businessRef.firestore.collection('orders')
-                .where('dineInTabId', '==', tabDoc.id)
-                .where('status', '!=', 'delivered')
-                .where('status', '!=', 'rejected')
-                .get();
+            if (tablesData[tableId]) {
+                 const ordersSnap = await businessRef.firestore.collection('orders')
+                    .where('dineInTabId', '==', tabDoc.id)
+                    .where('status', '!=', 'delivered')
+                    .where('status', '!=', 'rejected')
+                    .get();
 
-            if (!ordersSnap.empty) {
-                const itemMap = new Map();
-                ordersSnap.docs.forEach(orderDoc => {
-                    const order = { id: orderDoc.id, ...orderDoc.data() };
-                    tabData.orders.push(order);
-                    tabData.totalBill += order.totalAmount || 0;
-                    
-                    const orderDate = order.orderDate?.toDate ? order.orderDate.toDate() : new Date(order.orderDate);
-                    if(!tabData.latestOrderTime || orderDate > tabData.latestOrderTime) {
-                        tabData.latestOrderTime = orderDate;
-                    }
-                    
-                    (order.items || []).forEach(item => {
-                        const uniqueItemId = `${order.id}-${item.name}`;
-                        const existing = itemMap.get(item.name);
-                        if(existing) {
-                            itemMap.set(item.name, {...existing, qty: existing.qty + (item.quantity || 1), orderItemIds: [...existing.orderItemIds, uniqueItemId]});
-                        } else {
-                            itemMap.set(item.name, {...item, qty: (item.quantity || 1), orderItemIds: [uniqueItemId]});
+                if (!ordersSnap.empty) {
+                    const itemMap = new Map();
+                    ordersSnap.docs.forEach(orderDoc => {
+                        const order = { id: orderDoc.id, ...orderDoc.data() };
+                        tabData.orders.push(order);
+                        tabData.totalBill += order.totalAmount || 0;
+                        
+                        const orderDate = order.orderDate?.toDate ? order.orderDate.toDate() : new Date(order.orderDate);
+                        if(!tabData.latestOrderTime || orderDate > tabData.latestOrderTime) {
+                            tabData.latestOrderTime = orderDate;
                         }
+                        
+                        (order.items || []).forEach(item => {
+                            const uniqueItemId = `${order.id}-${item.name}`;
+                            const existing = itemMap.get(item.name);
+                            if(existing) {
+                                itemMap.set(item.name, {...existing, qty: existing.qty + (item.quantity || 1), orderItemIds: [...existing.orderItemIds, uniqueItemId]});
+                            } else {
+                                itemMap.set(item.name, {...item, qty: (item.quantity || 1), orderItemIds: [uniqueItemId]});
+                            }
+                        });
                     });
-                });
-                tabData.allItems = Array.from(itemMap.values());
+                    tabData.allItems = Array.from(itemMap.values());
+                }
+                tablesData[tableId].tabs.push(tabData);
             }
-            activeTabs.push(tabData);
         }
+        
+        const tables = Object.values(tablesData);
+        console.log("[API dine-in-tables] Step 6: Processed tables with their live data.");
 
         const serviceRequests = serviceRequestsSnap.docs.map(doc => {
             const data = doc.data();
@@ -113,8 +134,8 @@ export async function GET(req) {
             };
         });
         
-        const finalResponse = { tables, activeTabs, serviceRequests };
-        console.log("[API dine-in-tables] Step 6: Sending final JSON response to client:", JSON.stringify(finalResponse, null, 2));
+        const finalResponse = { tables, activeTabs: [], serviceRequests }; // activeTabs is deprecated but kept for safety
+        console.log("[API dine-in-tables] Step 7: Sending final JSON response to client:", JSON.stringify(finalResponse, null, 2));
 
         return NextResponse.json(finalResponse, { status: 200 });
 
@@ -127,20 +148,34 @@ export async function GET(req) {
 // --- START FIX: NEW POST FUNCTION ---
 export async function POST(req) {
     console.log("[API dine-in-tables] POST request received to create tab/table.");
-    const businessRef = await verifyOwnerAndGetBusinessRef(req);
     const body = await req.json();
+    const firestore = getFirestore();
 
     // Differentiate between creating a tab and creating a table
     if (body.action === 'create_tab') {
         console.log("[API dine-in-tables] Action: create_tab. Payload:", body);
-        const { tableId, pax_count, tab_name } = body;
+        const { tableId, pax_count, tab_name, restaurantId } = body;
+        
+        if (!restaurantId) {
+            return NextResponse.json({ message: 'Restaurant ID is required.'}, { status: 400 });
+        }
         if (!tableId || !pax_count || !tab_name) {
             return NextResponse.json({ message: 'Table ID, pax count, and tab name are required.' }, { status: 400 });
         }
 
-        const firestore = businessRef.firestore;
-        const newTabRef = businessRef.collection('dineInTabs').doc();
+        // --- THE FIX: Find business by ID, not by owner token ---
+        let businessRef = firestore.collection('restaurants').doc(restaurantId);
+        let businessSnap = await businessRef.get();
+        if (!businessSnap.exists) {
+            businessRef = firestore.collection('shops').doc(restaurantId);
+            businessSnap = await businessRef.get();
+            if (!businessSnap.exists) {
+                return NextResponse.json({ message: 'Business not found.' }, { status: 404 });
+            }
+        }
+
         const tableRef = businessRef.collection('tables').doc(tableId);
+        const newTabRef = businessRef.collection('dineInTabs').doc();
 
         try {
             await firestore.runTransaction(async (transaction) => {
@@ -177,7 +212,11 @@ export async function POST(req) {
         }
     }
 
-    // Existing logic for creating/updating a table
+    // Existing logic for creating/updating a table (requires authenticated owner)
+    const businessRef = await verifyOwnerAndGetBusinessRef(req);
+    if (!businessRef) {
+        return NextResponse.json({ message: 'Authentication required to manage tables.' }, { status: 403 });
+    }
     console.log("[API dine-in-tables] Action: create_or_update_table. Payload:", body);
     const { tableId, max_capacity } = body;
     if (!tableId || !max_capacity || max_capacity < 1) {
