@@ -260,7 +260,7 @@ export async function POST(req) {
             items: items,
             subtotal, coupon, loyaltyDiscount, discount: finalDiscount, cgst, sgst, deliveryCharge,
             totalAmount: grandTotal,
-            status: deliveryType === 'dine-in' ? 'pending' : 'pending', // Always start as pending
+            status: 'pending', // Always start as pending
             orderDate: FieldValue.serverTimestamp(),
             notes: notes || null,
             paymentDetails: { method: paymentMethod }

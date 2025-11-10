@@ -205,7 +205,7 @@ const BillModal = ({ order, restaurant, onClose, onPrint, printRef }) => {
             <DialogContent className="bg-background border-border text-foreground max-w-md p-0">
                  <div ref={printRef} className="font-mono text-black bg-white p-6">
                     <div className="text-center mb-6 border-b-2 border-dashed border-black pb-4">
-                        <h1 className="text-2xl font-bold uppercase">{restaurant.name}</h1>
+                        <h1 className="text-xl font-bold uppercase">{restaurant.name}</h1>
                         <p className="text-xs">{restaurant.address?.street}, {restaurant.address?.city}</p>
                         {restaurant.gstin && <p className="text-xs mt-1">GSTIN: {restaurant.gstin}</p>}
                     </div>
@@ -217,25 +217,32 @@ const BillModal = ({ order, restaurant, onClose, onPrint, printRef }) => {
                     <table className="w-full text-xs mb-4">
                         <thead className="border-y-2 border-dashed border-black">
                             <tr>
-                                <th className="text-left font-bold py-2">ITEM</th>
-                                <th className="text-center font-bold py-2">QTY</th>
-                                <th className="text-right font-bold py-2">PRICE</th>
-                                <th className="text-right font-bold py-2">TOTAL</th>
+                                <th className="text-left font-bold py-1">ITEM</th>
+                                <th className="text-center font-bold py-1">QTY</th>
+                                <th className="text-right font-bold py-1">PRICE</th>
+                                <th className="text-right font-bold py-1">TOTAL</th>
                             </tr>
                         </thead>
                         <tbody>
                             {allItems.map((item, index) => (
                                 <tr key={index} className="border-b border-dotted border-black">
-                                    <td className="py-2">{item.name}</td>
-                                    <td className="text-center py-2">{item.qty}</td>
-                                    <td className="text-right py-2">{formatCurrency((item.totalPrice || item.price) / item.quantity)}</td>
-                                    <td className="text-right py-2">{formatCurrency(item.totalPrice || item.price)}</td>
+                                    <td className="py-1">{item.name}</td>
+                                    <td className="text-center py-1">{item.qty}</td>
+                                    <td className="text-right py-1">{formatCurrency((item.totalPrice || item.price) / item.quantity)}</td>
+                                    <td className="text-right py-1">{formatCurrency(item.totalPrice || item.price)}</td>
                                 </tr>
                             ))}
                         </tbody>
                     </table>
                     
-                    <div className="flex justify-between font-bold text-lg pt-2 mt-2 border-t-2 border-dashed border-black">
+                    <div className="text-xs border-t-2 border-dashed border-black pt-2 mt-2">
+                         <div className="flex justify-between">
+                            <span>Subtotal</span>
+                            <span>{formatCurrency(totalBill)}</span>
+                        </div>
+                    </div>
+                    
+                    <div className="flex justify-between font-bold text-lg pt-1 mt-1 border-t-2 border-black">
                         <span>GRAND TOTAL</span>
                         <span>{formatCurrency(totalBill)}</span>
                     </div>
@@ -845,24 +852,19 @@ const DineInPageContent = () => {
     };
 
     const activeTableData = useMemo(() => {
-        if (!allData || !allData.tables) return {};
-        
-        const tableMap = (allData.tables).reduce((acc, table) => {
-            acc[table.id] = { ...table, tabs: [] };
-            return acc;
-        }, {});
-
-        (allData.tabs || []).forEach(tab => {
-            if (tableMap[tab.tableId]) {
-                tableMap[tab.tableId].tabs.push(tab);
+        if (!allData || !allData.tables) return [];
+        return allData.tables.map(table => {
+            const tabsForTable = allData.tabs?.filter(tab => tab.tableId === table.id) || [];
+            if (tabsForTable.length === 0 && table.current_pax > 0) {
+                 // Data inconsistency, reset pax count visually
+                return { ...table, tabs: [], current_pax: 0, state: 'available' };
             }
+            return { ...table, tabs: tabsForTable };
         });
-        
-        return tableMap;
     }, [allData]);
     
     const handleShowHistory = (tableId, tabId) => {
-        const tableData = activeTableData[tableId];
+        const tableData = activeTableData.find(t => t.id === tableId);
         if (!tableData) return;
 
         const tab = tableData.tabs.find(t => t.id === tabId);
@@ -929,46 +931,38 @@ const DineInPageContent = () => {
 
 
     const renderTableCards = () => {
-        if (loading || Object.keys(activeTableData).length === 0) return [];
+        if (loading || activeTableData.length === 0) return [];
         
-        const cards = [];
-        const sortedTableKeys = Object.keys(activeTableData).sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+        const sortedTables = activeTableData.sort((a, b) => a.id.localeCompare(b, undefined, { numeric: true }));
 
-        for (const tableId of sortedTableKeys) {
-            const table = activeTableData[tableId];
-
+        return sortedTables.map(table => {
             if (table.state === 'occupied' && table.tabs.length > 0) {
-                // One card per tab
-                table.tabs.forEach(tab => {
-                    cards.push(
-                        <TableCard
-                            key={tab.id}
-                            tableId={tableId}
-                            tableData={{ ...tab, state: 'occupied', max_capacity: table.max_capacity }}
-                            isTab={true}
-                            onMarkAsPaid={confirmMarkAsPaid}
-                            onPrintBill={setBillData}
-                            onShowHistory={handleShowHistory}
-                            acknowledgedItems={acknowledgedItems}
-                            onToggleAcknowledge={handleToggleAcknowledge}
-                            onConfirmOrders={handleConfirmOrders}
-                        />
-                    );
-                });
-            } else {
-                // One card for the empty/cleaning table
-                cards.push(
+                // One card per tab on an occupied table
+                return table.tabs.map(tab => (
                     <TableCard
-                        key={tableId}
-                        tableId={tableId}
+                        key={tab.id}
+                        tableId={table.id}
+                        tableData={{ ...table, ...tab, state: 'occupied' }}
+                        onMarkAsPaid={confirmMarkAsPaid}
+                        onPrintBill={setBillData}
+                        onShowHistory={handleShowHistory}
+                        acknowledgedItems={acknowledgedItems}
+                        onToggleAcknowledge={handleToggleAcknowledge}
+                        onConfirmOrders={handleConfirmOrders}
+                    />
+                ));
+            } else {
+                // One card for available or cleaning table
+                return (
+                    <TableCard
+                        key={table.id}
+                        tableId={table.id}
                         tableData={table}
-                        isTab={false}
                         onMarkAsCleaned={handleMarkAsCleaned}
                     />
                 );
             }
-        }
-        return cards;
+        }).flat();
     };
 
 
@@ -1036,7 +1030,7 @@ const DineInPageContent = () => {
                         <div key={i} className="bg-card border border-border rounded-xl h-96"></div>
                     ))}
                 </div>
-            ) : Object.keys(activeTableData).length > 0 ? (
+            ) : activeTableData.length > 0 ? (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
                     {renderTableCards()}
                 </div>
