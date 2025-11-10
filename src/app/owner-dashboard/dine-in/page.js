@@ -642,8 +642,7 @@ const LiveServiceRequests = ({ impersonatedOwnerId }) => {
 
 const DineInPageContent = () => {
     console.log("[Dine-In Dashboard] Component mounted or re-rendered.");
-    const [allTables, setAllTables] = useState([]);
-    const [allServiceRequests, setAllServiceRequests] = useState([]);
+    const [allData, setAllData] = useState({ tables: [], serviceRequests: [] });
     const [loading, setLoading] = useState(true);
     const searchParams = useSearchParams();
     const impersonatedOwnerId = searchParams.get('impersonate_owner_id');
@@ -730,8 +729,7 @@ const DineInPageContent = () => {
         try {
             const data = await handleApiCall('GET', null, '/api/owner/dine-in-tables');
             console.log("[Dine-In Dashboard] Raw data received from API:", data);
-            setAllTables(data.tables || []);
-            setAllServiceRequests(data.serviceRequests || []);
+            setAllData(data || { tables: [], serviceRequests: [] });
         } catch (error) {
             console.error("[Dine-In Dashboard] Fetch data error:", error);
             setInfoDialog({ isOpen: true, title: "Error", message: `Could not load dine-in data: ${error.message}` });
@@ -859,17 +857,19 @@ const DineInPageContent = () => {
     };
 
     const { activeTableData, closedTabsData } = useMemo(() => {
-        console.log("[Dine-In Dashboard] Processing data for display:", allTables);
-        const tableMap = (allTables || []).reduce((acc, table) => {
+        console.log("[Dine-In Dashboard] Processing data for display:", allData);
+        if (!allData || !allData.tables) return { activeTableData: {}, closedTabsData: [] };
+        
+        const tableMap = (allData.tables).reduce((acc, table) => {
             acc[table.id] = { ...table, tabs: (table.tabs || []) };
             return acc;
         }, {});
         
-        const closedTabs = (allTables || []).flatMap(table => (table.tabs || []).filter(tab => tab.status === 'closed'));
+        const closedTabs = (allData.tables).flatMap(table => (table.tabs || []).filter(tab => tab.status === 'closed'));
         
         console.log("[Dine-In Dashboard] Processed data result:", { tableMap, closedTabs });
         return { activeTableData: tableMap, closedTabsData: closedTabs };
-    }, [allTables]);
+    }, [allData]);
     
     const handleShowHistory = (tableId, tabId) => {
         console.log(`[Dine-In Dashboard] Action: Showing history. Table: ${tableId}, Tab: ${tabId}`);
@@ -887,7 +887,7 @@ const DineInPageContent = () => {
             totalAmount: o.totalAmount
         }));
     
-        const requestEvents = (allServiceRequests || []).filter(r => r.dineInTabId === tabId).map(r => ({
+        const requestEvents = (allData.serviceRequests || []).filter(r => r.dineInTabId === tabId).map(r => ({
             type: 'request',
             timestamp: r.createdAt.seconds ? r.createdAt.seconds * 1000 : new Date(r.createdAt).getTime(),
         }));
@@ -988,7 +988,7 @@ const DineInPageContent = () => {
     return (
         <div className="p-4 md:p-6 text-foreground min-h-screen bg-background">
             <DineInHistoryModal isOpen={isHistoryModalOpen} onClose={() => setIsHistoryModalOpen(false)} closedTabs={closedTabsData} />
-            <ManageTablesModal isOpen={isManageTablesModalOpen} onClose={() => setIsManageTablesModalOpen(false)} allTables={allTables} onEdit={handleOpenEditModal} onDelete={handleDeleteTable} loading={loading} onCreateNew={() => handleOpenEditModal(null)} onShowQr={handleOpenQrDisplayModal} />
+            <ManageTablesModal isOpen={isManageTablesModalOpen} onClose={() => setIsManageTablesModalOpen(false)} allTables={allData.tables} onEdit={handleOpenEditModal} onDelete={handleDeleteTable} loading={loading} onCreateNew={() => handleOpenEditModal(null)} onShowQr={handleOpenQrDisplayModal} />
             {historyModalData && <HistoryModal tableHistory={historyModalData} onClose={() => setHistoryModalData(null)} />}
             {billData && (
                 <BillModal 
@@ -1071,5 +1071,3 @@ const DineInPage = () => (
 );
 
 export default DineInPage;
-
-    

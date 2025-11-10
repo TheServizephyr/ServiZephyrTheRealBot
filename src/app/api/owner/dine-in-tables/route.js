@@ -40,9 +40,8 @@ async function verifyOwnerAndGetBusinessRef(req) {
         finalUserId = null;
     }
     
-    console.log(`[API dine-in-tables] Step 3: Searching for business for owner: ${finalUserId}`);
-    
     if (finalUserId) {
+        console.log(`[API dine-in-tables] Step 3: Searching for business for owner: ${finalUserId}`);
         const restaurantsQuery = await firestore.collection('restaurants').where('ownerId', '==', finalUserId).limit(1).get();
         if (!restaurantsQuery.empty) {
             console.log("[API dine-in-tables] Found business in 'restaurants' collection.");
@@ -58,6 +57,9 @@ async function verifyOwnerAndGetBusinessRef(req) {
     
     // For GET requests, if we haven't found a business by now, it's an error.
     // For POST, we might not have a user ID, so we can't search this way.
+    if (req.method === 'GET' && !finalUserId) {
+      throw { message: 'Authentication required to view tables.', status: 403 };
+    }
     if (req.method === 'GET') {
       throw { message: 'No business associated with this owner.', status: 404 };
     }
@@ -69,15 +71,18 @@ async function verifyOwnerAndGetBusinessRef(req) {
 
 export async function GET(req) {
     console.log("[API dine-in-tables] GET request received.");
+    const firestore = await getFirestore();
     try {
         const businessRef = await verifyOwnerAndGetBusinessRef(req);
         console.log(`[API dine-in-tables] Step 4: Business Ref obtained: ${businessRef.path}`);
         
+        // --- START FIX: Fetch tabs from root collection ---
         const [tablesSnap, tabsSnap, serviceRequestsSnap] = await Promise.all([
             businessRef.collection('tables').orderBy('createdAt', 'asc').get(),
-            businessRef.collection('dineInTabs').where('status', '==', 'active').get(),
+            firestore.collection('dineInTabs').where('restaurantId', '==', businessRef.id).where('status', '==', 'active').get(),
             businessRef.collection('serviceRequests').where('status', '==', 'pending').orderBy('createdAt', 'desc').get(),
         ]);
+        // --- END FIX ---
         console.log(`[API dine-in-tables] Step 5: Fetched initial data. Tables: ${tablesSnap.size}, Active Tabs: ${tabsSnap.size}, Service Requests: ${serviceRequestsSnap.size}`);
         
         const tablesData = {};
@@ -90,9 +95,9 @@ export async function GET(req) {
             const tableId = tabData.tableId;
             
             if (tablesData[tableId]) {
-                 const ordersSnap = await businessRef.firestore.collection('orders')
+                 const ordersSnap = await firestore.collection('orders')
                     .where('dineInTabId', '==', tabDoc.id)
-                    .where('status', 'not-in', ['delivered', 'rejected'])
+                    .where('status', 'not-in', ['delivered', 'rejected', 'picked_up'])
                     .get();
 
                 if (!ordersSnap.empty) {
@@ -145,7 +150,7 @@ export async function GET(req) {
     }
 }
 
-// --- START FIX: NEW POST FUNCTION ---
+
 export async function POST(req) {
     console.log("[API dine-in-tables] POST request received to create tab/table.");
     const body = await req.json();
@@ -163,7 +168,6 @@ export async function POST(req) {
             return NextResponse.json({ message: 'Table ID, pax count, and tab name are required.' }, { status: 400 });
         }
 
-        // --- THE FIX: Find business by ID, not by owner token ---
         let businessRef = firestore.collection('restaurants').doc(restaurantId);
         let businessSnap = await businessRef.get();
         if (!businessSnap.exists) {
@@ -175,7 +179,9 @@ export async function POST(req) {
         }
 
         const tableRef = businessRef.collection('tables').doc(tableId);
-        const newTabRef = businessRef.collection('dineInTabs').doc();
+        // --- START FIX: Create tab in root collection ---
+        const newTabRef = firestore.collection('dineInTabs').doc();
+        // --- END FIX ---
 
         try {
             await firestore.runTransaction(async (transaction) => {
@@ -188,15 +194,18 @@ export async function POST(req) {
                 if (pax_count > availableCapacity) {
                     throw new Error(`Capacity exceeded. Only ${availableCapacity} seats available.`);
                 }
-
+                
+                // --- START FIX: Add restaurantId to tab data ---
                 transaction.set(newTabRef, {
                     id: newTabRef.id,
                     tableId: tableId,
+                    restaurantId: restaurantId, // Add this line
                     status: 'active',
                     tab_name: tab_name,
                     pax_count: Number(pax_count),
                     createdAt: FieldValue.serverTimestamp(),
                 });
+                // --- END FIX ---
 
                 transaction.update(tableRef, {
                     current_pax: FieldValue.increment(Number(pax_count)),
@@ -207,12 +216,11 @@ export async function POST(req) {
             return NextResponse.json({ message: 'Tab created successfully!', tabId: newTabRef.id }, { status: 201 });
         } catch(error) {
             console.error("[API dine-in-tables] CRITICAL Transaction Error (create_tab):", error);
-            // The custom error message from the transaction will be passed here.
             return NextResponse.json({ message: error.message }, { status: 400 });
         }
     }
 
-    // Existing logic for creating/updating a table (requires authenticated owner)
+    // This part requires authentication
     const businessRef = await verifyOwnerAndGetBusinessRef(req);
     if (!businessRef) {
         return NextResponse.json({ message: 'Authentication required to manage tables.' }, { status: 403 });
@@ -234,11 +242,10 @@ export async function POST(req) {
     console.log(`[API dine-in-tables] Successfully saved table ${tableId}.`);
     return NextResponse.json({ message: 'Table saved successfully.' }, { status: 201 });
 }
-// --- END FIX ---
-
 
 export async function PATCH(req) {
     console.log("[API dine-in-tables] PATCH request received for table action.");
+    const firestore = await getFirestore();
      try {
         const businessRef = await verifyOwnerAndGetBusinessRef(req);
         const { tableId, action, tabIdToClose, newTableId, newCapacity, paymentMethod } = await req.json();
@@ -254,8 +261,7 @@ export async function PATCH(req) {
             }
             
             const tableRef = businessRef.collection('tables').doc(tableId);
-            const firestore = businessRef.firestore;
-
+            
             if (action === 'mark_paid') {
                 if (!tabIdToClose) {
                     return NextResponse.json({ message: 'Tab ID is required to mark a tab as paid.' }, { status: 400 });
@@ -263,7 +269,9 @@ export async function PATCH(req) {
                 
                 await firestore.runTransaction(async (transaction) => {
                     console.log(`[API dine-in-tables] Starting transaction to close tab ${tabIdToClose}.`);
-                    const tabRef = businessRef.collection('dineInTabs').doc(tabIdToClose);
+                    // --- START FIX: Fetch tab from root collection ---
+                    const tabRef = firestore.collection('dineInTabs').doc(tabIdToClose);
+                    // --- END FIX ---
                     const tabDoc = await transaction.get(tabRef);
                     if (!tabDoc.exists) throw new Error("Tab to be closed not found.");
                     
