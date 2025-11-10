@@ -283,8 +283,8 @@ const ConfirmationModal = ({ isOpen, onClose, onConfirm, title, description, con
 
 
 const TableCard = ({ tableId, tableData, onMarkAsPaid, onPrintBill, onMarkAsCleaned, onShowHistory, acknowledgedItems, onToggleAcknowledge, onConfirmOrders }) => {
-    const state = tableData.state;
     const tab = tableData.tabs?.[0] || null;
+    const state = tab ? 'occupied' : tableData.state;
     const paxCount = tab ? tab.pax_count : tableData.current_pax || 0;
 
     const stateConfig = {
@@ -445,9 +445,9 @@ const QrCodeDisplay = ({ text, tableName, innerRef }) => {
     );
 };
 
-const QrCodeDisplayModal = ({ isOpen, onClose, restaurantId, table }) => {
-    if (!table) return null;
-    const qrValue = `${window.location.origin}/order/${restaurantId}?table=${table.id}`;
+const QrCodeDisplayModal = ({ isOpen, onClose, restaurant, table }) => {
+    if (!table || !restaurant?.id) return null;
+    const qrValue = `${window.location.origin}/order/${restaurant.id}?table=${table.id}`;
     const printRef = useRef();
 
     return (
@@ -854,10 +854,9 @@ const DineInPageContent = () => {
         if (!allData || !allData.tables) return [];
         return allData.tables.map(table => {
             const tabsForTable = allData.tabs?.filter(tab => tab.tableId === table.id) || [];
-            if (tabsForTable.length === 0 && table.current_pax > 0) {
-                 // Data inconsistency, reset pax count visually
-                return { ...table, tabs: [], current_pax: 0, state: 'available' };
-            }
+             if (tabsForTable.length === 0) {
+                 return { ...table, tabs: [], current_pax: 0 };
+             }
             return { ...table, tabs: tabsForTable };
         });
     }, [allData]);
@@ -974,7 +973,7 @@ const DineInPageContent = () => {
                 message={infoDialog.message}
             />
             {restaurantDetails?.id && <QrGeneratorModal isOpen={isQrModalOpen} onClose={() => setIsQrModalOpen(false)} restaurantId={restaurantDetails.id} onSaveTable={handleSaveTable} onEditTable={handleEditTable} onDeleteTable={handleDeleteTable} initialTable={editingTable} showInfoDialog={setInfoDialog} />}
-            {restaurantDetails?.id && <QrCodeDisplayModal isOpen={isQrDisplayModalOpen} onClose={() => setIsQrDisplayModalOpen(false)} restaurantId={restaurantDetails.id} table={displayTable} />}
+            <QrCodeDisplayModal isOpen={isQrDisplayModalOpen} onClose={() => setIsQrDisplayModalOpen(false)} restaurant={restaurantDetails} table={displayTable} />
             <ConfirmationModal 
                 isOpen={confirmationState.isOpen}
                 onClose={() => setConfirmationState({ isOpen: false })}
@@ -999,7 +998,7 @@ const DineInPageContent = () => {
                  <Button variant="outline" className="h-20 flex-col gap-1" disabled={true}>
                     <Salad size={20}/> Dine-In Menu
                 </Button>
-                 <Button onClick={() => setIsManageTablesModalOpen(true)} variant="outline" className="h-20 flex-col gap-1" disabled={loading}>
+                 <Button onClick={() => setIsManageTablesModalOpen(true)} variant="outline" className="h-20 flex-col gap-1" disabled={loading || !restaurantDetails}>
                     <TableIcon size={20}/> Manage Tables
                 </Button>
                 <Button onClick={() => fetchData(true)} variant="outline" className="h-20 flex-col gap-1" disabled={loading}>
@@ -1039,4 +1038,5 @@ const DineInPage = () => (
 );
 
 export default DineInPage;
+
 
