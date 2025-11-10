@@ -1,4 +1,5 @@
 
+
 import { NextResponse } from 'next/server';
 import { getFirestore, verifyAndGetUid } from '@/lib/firebase-admin';
 
@@ -9,14 +10,14 @@ async function getBusinessRef(firestore, restaurantId) {
     let businessSnap = await businessRef.get();
     
     if (businessSnap.exists) {
-        return { ref: businessRef, data: businessSnap.data() };
+        return businessRef;
     }
 
     businessRef = firestore.collection('shops').doc(restaurantId);
     businessSnap = await businessRef.get();
 
     if (businessSnap.exists) {
-         return { ref: businessRef, data: businessSnap.data() };
+         return businessRef;
     }
     
     return null;
@@ -39,7 +40,7 @@ export async function GET(req) {
              return NextResponse.json({ message: 'Business not found.' }, { status: 404 });
         }
         
-        const tableRef = businessInfo.ref.collection('tables').doc(tableId);
+        const tableRef = businessInfo.collection('tables').doc(tableId);
         const tableSnap = await tableRef.get();
 
         if (!tableSnap.exists) {
@@ -48,7 +49,7 @@ export async function GET(req) {
         const tableData = tableSnap.data();
 
         // Fetch active tabs for this table
-        const tabsSnap = await businessInfo.ref.collection('dineInTabs')
+        const tabsSnap = await businessInfo.collection('dineInTabs')
             .where('tableId', '==', tableId)
             .where('status', '==', 'active')
             .get();
