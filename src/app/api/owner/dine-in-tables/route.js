@@ -1,11 +1,12 @@
 
+
 'use server';
 
 import { NextResponse } from 'next/server';
 import { getAuth, getFirestore, FieldValue, verifyAndGetUid } from '@/lib/firebase-admin';
 import { isAfter, subDays } from 'date-fns';
 
-// Helper to verify owner and get their first business ID
+// Helper to verify owner and get their first business Ref
 async function verifyOwnerAndGetBusinessRef(req) {
     const firestore = await getFirestore();
     console.log("[API dine-in-tables] Step 1: Verifying owner token.");
@@ -91,8 +92,7 @@ export async function GET(req) {
             if (tablesData[tableId]) {
                  const ordersSnap = await businessRef.firestore.collection('orders')
                     .where('dineInTabId', '==', tabDoc.id)
-                    .where('status', '!=', 'delivered')
-                    .where('status', '!=', 'rejected')
+                    .where('status', 'not-in', ['delivered', 'rejected'])
                     .get();
 
                 if (!ordersSnap.empty) {
