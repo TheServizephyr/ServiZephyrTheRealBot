@@ -284,7 +284,7 @@ const ConfirmationModal = ({ isOpen, onClose, onConfirm, title, description, con
 
 const TableCard = ({ tableId, tableData, onMarkAsPaid, onPrintBill, onMarkAsCleaned, onShowHistory, acknowledgedItems, onToggleAcknowledge, onConfirmOrders }) => {
     const state = tableData.state;
-    const tab = tableData.tabs?.[0] || null; // Simplified to one tab per card for now
+    const tab = tableData.tabs?.[0] || null;
     const paxCount = tab ? tab.pax_count : tableData.current_pax || 0;
 
     const stateConfig = {
@@ -659,8 +659,7 @@ const DineInPageContent = () => {
     const [isHistoryModalOpen, setIsHistoryModalOpen] = useState(false);
     const [editingTable, setEditingTable] = useState(null);
     const [displayTable, setDisplayTable] = useState(null);
-    const [restaurant, setRestaurant] = useState(null);
-    const [restaurantId, setRestaurantId] = useState('');
+    const [restaurantDetails, setRestaurantDetails] = useState(null);
     const [billData, setBillData] = useState(null);
     const [historyModalData, setHistoryModalData] = useState(null);
     const [infoDialog, setInfoDialog] = useState({ isOpen: false, title: '', message: '' });
@@ -751,12 +750,12 @@ const DineInPageContent = () => {
                 const settingsRes = await fetch(settingsUrl, { headers: { 'Authorization': `Bearer ${idToken}` } });
                 if(settingsRes.ok) {
                     const settingsData = await settingsRes.json();
-                    setRestaurant({
+                    setRestaurantDetails({
+                        id: settingsData.businessId,
                         name: settingsData.restaurantName,
                         address: settingsData.address,
                         gstin: settingsData.gstin
                      });
-                    setRestaurantId(settingsData.businessId);
                 } else {
                     console.error("[Dine-In Dashboard] Failed to fetch restaurant settings.");
                 }
@@ -889,7 +888,7 @@ const DineInPageContent = () => {
     };
 
     const handleOpenEditModal = (table = null) => {
-        if (!restaurantId) {
+        if (!restaurantDetails?.id) {
             setInfoDialog({isOpen: true, title: "Error", message: "Restaurant data is not loaded yet. Cannot manage tables."});
             return;
         }
@@ -898,7 +897,7 @@ const DineInPageContent = () => {
     };
 
      const handleOpenQrDisplayModal = (table) => {
-        if (!restaurantId) {
+        if (!restaurantDetails?.id) {
             setInfoDialog({isOpen: true, title: "Error", message: "Restaurant data is not loaded yet. Cannot show QR code."});
             return;
         }
@@ -933,35 +932,23 @@ const DineInPageContent = () => {
     const renderTableCards = () => {
         if (loading || activeTableData.length === 0) return [];
         
-        const sortedTables = activeTableData.sort((a, b) => a.id.localeCompare(b, undefined, { numeric: true }));
+        const sortedTables = activeTableData.sort((a, b) => a.id.localeCompare(b.id, undefined, { numeric: true }));
 
         return sortedTables.map(table => {
-            if (table.state === 'occupied' && table.tabs.length > 0) {
-                // One card per tab on an occupied table
-                return table.tabs.map(tab => (
-                    <TableCard
-                        key={tab.id}
-                        tableId={table.id}
-                        tableData={{ ...table, ...tab, state: 'occupied' }}
-                        onMarkAsPaid={confirmMarkAsPaid}
-                        onPrintBill={setBillData}
-                        onShowHistory={handleShowHistory}
-                        acknowledgedItems={acknowledgedItems}
-                        onToggleAcknowledge={handleToggleAcknowledge}
-                        onConfirmOrders={handleConfirmOrders}
-                    />
-                ));
-            } else {
-                // One card for available or cleaning table
-                return (
-                    <TableCard
-                        key={table.id}
-                        tableId={table.id}
-                        tableData={table}
-                        onMarkAsCleaned={handleMarkAsCleaned}
-                    />
-                );
-            }
+            return (
+                <TableCard
+                    key={table.id}
+                    tableId={table.id}
+                    tableData={table}
+                    onMarkAsPaid={confirmMarkAsPaid}
+                    onPrintBill={setBillData}
+                    onMarkAsCleaned={handleMarkAsCleaned}
+                    onShowHistory={handleShowHistory}
+                    acknowledgedItems={acknowledgedItems}
+                    onToggleAcknowledge={handleToggleAcknowledge}
+                    onConfirmOrders={handleConfirmOrders}
+                />
+            );
         }).flat();
     };
 
@@ -974,7 +961,7 @@ const DineInPageContent = () => {
             {billData && (
                 <BillModal 
                     order={billData}
-                    restaurant={restaurant}
+                    restaurant={restaurantDetails}
                     onClose={() => setBillData(null)}
                     onPrint={handlePrint}
                     printRef={billPrintRef}
@@ -986,8 +973,8 @@ const DineInPageContent = () => {
                 title={infoDialog.title}
                 message={infoDialog.message}
             />
-            {restaurantId && <QrGeneratorModal isOpen={isQrModalOpen} onClose={() => setIsQrModalOpen(false)} restaurantId={restaurantId} onSaveTable={handleSaveTable} onEditTable={handleEditTable} onDeleteTable={handleDeleteTable} initialTable={editingTable} showInfoDialog={setInfoDialog} />}
-            {restaurantId && <QrCodeDisplayModal isOpen={isQrDisplayModalOpen} onClose={() => setIsQrDisplayModalOpen(false)} restaurantId={restaurantId} table={displayTable} />}
+            {restaurantDetails?.id && <QrGeneratorModal isOpen={isQrModalOpen} onClose={() => setIsQrModalOpen(false)} restaurantId={restaurantDetails.id} onSaveTable={handleSaveTable} onEditTable={handleEditTable} onDeleteTable={handleDeleteTable} initialTable={editingTable} showInfoDialog={setInfoDialog} />}
+            {restaurantDetails?.id && <QrCodeDisplayModal isOpen={isQrDisplayModalOpen} onClose={() => setIsQrDisplayModalOpen(false)} restaurantId={restaurantDetails.id} table={displayTable} />}
             <ConfirmationModal 
                 isOpen={confirmationState.isOpen}
                 onClose={() => setConfirmationState({ isOpen: false })}
@@ -1052,3 +1039,4 @@ const DineInPage = () => (
 );
 
 export default DineInPage;
+
