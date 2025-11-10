@@ -31,7 +31,7 @@ async function verifyOwnerAndGetBusinessRef(req) {
         }
 
     } catch (error) {
-        if (req.method !== 'POST' || (req.method === 'POST' && (await req.clone().json()).action !== 'create_tab')) {
+        if (req.method !== 'POST' || (await req.clone().json()).action !== 'create_tab') {
              console.log("[API dine-in-tables] Step 2: Request failed auth check, throwing error.");
              throw { message: 'Authentication required.', status: 403 };
         }
@@ -123,8 +123,8 @@ export async function GET(req) {
         }
         
         const tables = Object.values(tablesData).map(table => {
-            if (table.tabs.length === 0 && table.state !== 'needs_cleaning') {
-                return { ...table, current_pax: 0, state: 'available' };
+            if (table.tabs.length === 0) {
+                return { ...table, current_pax: 0, state: table.state === 'needs_cleaning' ? 'needs_cleaning' : 'available' };
             }
             return table;
         });
