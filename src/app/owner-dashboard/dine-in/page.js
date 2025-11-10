@@ -1,4 +1,3 @@
-
 'use client';
 
 import React, { useState, useEffect, useMemo, useRef, Suspense } from 'react';
@@ -373,7 +372,7 @@ const TableCard = ({ tableId, tableData, onMarkAsPaid, onPrintBill, onMarkAsClea
                 </CardContent>
                 
                  {(state === 'occupied' && tab) && (
-                    <CardFooter className="flex-col items-start bg-muted/30 p-4 border-t mt-4">
+                    <CardFooter className="flex-col items-start bg-muted/30 p-4 border-t mt-auto">
                         <Button variant="outline" size="sm" className="w-full mb-4" onClick={() => onShowHistory(tableId, tab.id)}>
                             <History size={14} className="mr-2"/> See History
                         </Button>
@@ -388,7 +387,7 @@ const TableCard = ({ tableId, tableData, onMarkAsPaid, onPrintBill, onMarkAsClea
                     </CardFooter>
                  )}
                 {state === 'needs_cleaning' && (
-                     <CardFooter className="p-4">
+                     <CardFooter className="p-4 mt-auto">
                         <Button className="w-full bg-green-500 hover:bg-green-600" onClick={() => onMarkAsCleaned(tableId)}>
                             <CheckCircle size={16} className="mr-2"/> Mark as Cleaned
                         </Button>
@@ -642,6 +641,7 @@ const LiveServiceRequests = ({ impersonatedOwnerId }) => {
 
 const DineInPageContent = () => {
     const [allTables, setAllTables] = useState([]);
+    const [allOrders, setAllOrders] = useState([]);
     const [allServiceRequests, setAllServiceRequests] = useState([]);
     const [loading, setLoading] = useState(true);
     const searchParams = useSearchParams();
@@ -842,35 +842,13 @@ const DineInPageContent = () => {
          }
     };
 
-    // Corrected Memoization logic
     const { activeTableData, closedTabsData } = useMemo(() => {
-        if (!allTables || allTables.length === 0) {
-            return { activeTableData: {}, closedTabsData: [] };
-        }
-        
-        const thirtyDaysAgo = subDays(new Date(), 30);
-        let allClosedTabs = [];
-        
         const tableMap = allTables.reduce((acc, table) => {
-            const activeTabs = (table.tabs || []).filter(tab => tab.status === 'active');
-            const closedTabsInTable = (table.tabs || []).filter(tab => tab.status === 'closed');
-
-            if (closedTabsInTable.length > 0) {
-                 const recentClosed = closedTabsInTable.filter(tab => {
-                     const closedAtDate = tab.closedAt?.seconds ? new Date(tab.closedAt.seconds * 1000) : new Date(tab.closedAt);
-                     return isAfter(closedAtDate, thirtyDaysAgo);
-                 });
-                 allClosedTabs = [...allClosedTabs, ...recentClosed];
-            }
-            
-            acc[table.id] = { ...table, tabs: activeTabs };
+            acc[table.id] = { ...table, tabs: (table.tabs || []) };
             return acc;
         }, {});
-        
-        allClosedTabs.sort((a,b) => new Date(b.closedAt) - new Date(a.closedAt));
-
-        return { activeTableData: tableMap, closedTabsData: allClosedTabs };
-
+        const closedTabs = allTables.filter(t => t.status === 'closed');
+        return { activeTableData: tableMap, closedTabsData: closedTabs };
     }, [allTables]);
     
     const handleShowHistory = (tableId, tabId) => {
