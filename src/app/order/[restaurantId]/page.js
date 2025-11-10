@@ -1,4 +1,5 @@
 
+
 'use client';
 
 import React, { useState, useEffect, Suspense, useMemo, useCallback, useRef } from 'react';
@@ -282,7 +283,7 @@ const MenuBrowserModal = ({ isOpen, onClose, categories, onCategoryClick }) => {
 };
 
 const DineInModal = ({ isOpen, onClose, onBookTable, tableStatus, onStartNewTab, onJoinTab, setIsQrScannerOpen }) => {
-    const [activeModal, setActiveModal] = useState('main'); // 'main', 'book', 'success'
+    const [activeModal, setActiveModal] = useState('main');
     const [bookingDetails, setBookingDetails] = useState({ name: '', phone: '', guests: 2, date: new Date(), time: '19:00' });
     const [isSaving, setIsSaving] = useState(false);
     const [infoDialog, setInfoDialog] = useState({ isOpen: false, title: '', message: '' });
@@ -331,9 +332,9 @@ const DineInModal = ({ isOpen, onClose, onBookTable, tableStatus, onStartNewTab,
         } else {
             if (tableStatus?.state === 'available') {
                 setActiveModal('new_tab');
-            } else if (tableStatus?.state === 'partially_occupied') {
+            } else if (tableStatus?.state === 'occupied') { // Changed from partially_occupied for clarity
                 setActiveModal('join_or_new');
-            } else if (tableStatus?.state === 'full') {
+            } else if (tableStatus?.state === 'full') { // A new state for full tables
                  setActiveModal('full');
             } else {
                 setActiveModal('main');
@@ -491,7 +492,7 @@ const DineInModal = ({ isOpen, onClose, onBookTable, tableStatus, onStartNewTab,
                         <motion.div key="new_tab">
                              <DialogHeader className="p-6 pb-4">
                                 <DialogTitle>Start a New Tab</DialogTitle>
-                                <DialogDescription>Welcome to Table {tableStatus?.tableId}! (Max {tableStatus?.max_capacity} guests). Let's get your tab started.</DialogDescription>
+                                <DialogDescription>Welcome to Table {tableStatus?.tableId}! (Capacity: {tableStatus?.max_capacity}). Let's get your tab started.</DialogDescription>
                             </DialogHeader>
                             <div className="px-6 pb-6 space-y-4">
                                 <div>
@@ -631,13 +632,11 @@ const OrderPageInternal = () => {
 
     useEffect(() => {
         const verifySession = async () => {
-            // Dine-in doesn't need token verification anymore. If tableId is present, it's valid.
             if (tableIdFromUrl) {
                 setIsTokenValid(true);
                 return;
             }
             
-            // WhatsApp/Logged-in flow still uses tokens.
             if (phone && token) {
                 try {
                     const res = await fetch('/api/auth/verify-token', {
@@ -652,7 +651,6 @@ const OrderPageInternal = () => {
                 return;
             }
 
-            // If neither condition is met, show an error.
             if (!tableIdFromUrl && !phone && !token) {
                  setTokenError("No valid session information found. Please scan the QR code again or start a new order from WhatsApp.");
             }
@@ -661,7 +659,7 @@ const OrderPageInternal = () => {
         if (restaurantId) {
             verifySession();
         }
-    }, [restaurantId, tableIdFromUrl, phone, token, router]);
+    }, [restaurantId, tableIdFromUrl, phone, token]);
     // --- END: UNIFIED TOKEN/SESSION LOGIC ---
 
     const [customerLocation, setCustomerLocation] = useState(null);
@@ -704,8 +702,9 @@ const OrderPageInternal = () => {
             setInfoDialog({ isOpen: true, title: "Invalid Input", message: "Please enter a name for your tab." });
             return;
         }
-        if (paxCount > (tableStatus.max_capacity - tableStatus.current_pax)) {
-            setInfoDialog({ isOpen: true, title: "Capacity Exceeded", message: `This table can only accommodate ${tableStatus.max_capacity - tableStatus.current_pax} more guests.` });
+        const availableCapacity = tableStatus.max_capacity - (tableStatus.current_pax || 0);
+        if (paxCount > availableCapacity) {
+            setInfoDialog({ isOpen: true, title: "Capacity Exceeded", message: `This table can only accommodate ${availableCapacity} more guests.` });
             return;
         }
 
@@ -764,10 +763,14 @@ const OrderPageInternal = () => {
                         setDineInState('ready');
                     } else {
                         const tableRes = await fetch(`/api/owner/tables?restaurantId=${restaurantId}&tableId=${tableIdFromUrl}`);
+                        if (!tableRes.ok) throw new Error((await tableRes.json()).message);
                         const tableData = await tableRes.json();
                         let state = 'available';
-                        if (tableData.current_pax >= tableData.max_capacity) state = 'full';
-                        else if (tableData.current_pax > 0) state = 'partially_occupied';
+                        
+                        const occupiedSeats = tableData.current_pax || 0;
+                        if (occupiedSeats >= tableData.max_capacity) state = 'full';
+                        else if (occupiedSeats > 0) state = 'occupied';
+                        
                         setTableStatus({ ...tableData, tableId: tableIdFromUrl, state });
                         setDineInState('needs_setup');
                         setIsDineInModalOpen(true);

@@ -97,12 +97,13 @@ export async function GET(req) {
             }
             
              // Set table state based on tabs
+            const currentPax = tableData.tabs.reduce((sum, tab) => sum + (tab.pax_count || 0), 0);
+            tableData.current_pax = currentPax;
+
             if (tableData.tabs.length > 0) {
                  tableData.state = 'occupied';
-                 tableData.current_pax = tableData.tabs.reduce((sum, tab) => sum + (tab.pax_count || 0), 0);
             } else if (tableData.state !== 'needs_cleaning') {
                 tableData.state = 'available';
-                tableData.current_pax = 0;
             }
 
             tables.push(tableData);
@@ -116,7 +117,6 @@ export async function GET(req) {
             };
         });
 
-        // ** THE FIX: Re-adding the JSON response that was accidentally deleted **
         return NextResponse.json({ tables, serviceRequests }, { status: 200 });
 
     } catch (error) {
