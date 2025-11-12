@@ -64,6 +64,8 @@ export async function POST(req) {
             console.log("[DEBUG] Post-paid dine-in flow initiated. Creating pending order.");
             const newOrderRef = firestore.collection('orders').doc();
             
+            const trackingToken = await generateSecureToken(firestore, `dine-in-${newOrderRef.id}`);
+
             await newOrderRef.set({
                 restaurantId, businessType, tableId,
                 items: items, notes: notes || null,
@@ -73,11 +75,10 @@ export async function POST(req) {
                 status: 'pending', 
                 dineInTabId: dineInTabId,
                 orderDate: FieldValue.serverTimestamp(),
+                trackingToken: trackingToken, // --- THE FIX: ADD TOKEN HERE ---
             });
             
             console.log(`[DEBUG] Pending order created with ID: ${newOrderRef.id}`);
-
-            const trackingToken = await generateSecureToken(firestore, `dine-in-${newOrderRef.id}`);
 
             return NextResponse.json({ 
                 message: "Order placed. Awaiting WhatsApp confirmation.",

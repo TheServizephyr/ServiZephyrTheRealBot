@@ -14,12 +14,14 @@ const OrderPlacedContent = () => {
     const orderId = searchParams.get('orderId');
     const whatsappNumber = searchParams.get('whatsappNumber');
     
+    // --- START: THE FIX ---
     const [trackingToken, setTrackingToken] = useState(searchParams.get('token'));
 
     useEffect(() => {
         const fetchTokenIfNeeded = async () => {
             if (!trackingToken && orderId) {
                 try {
+                    // This can happen on Razorpay redirect where the webhook is faster
                     const res = await fetch(`/api/order/status/${orderId}`);
                     if (res.ok) {
                         const data = await res.json();
@@ -33,24 +35,25 @@ const OrderPlacedContent = () => {
             }
         };
 
-        fetchTokenIfNeeded();
+        // If no token, check for it after a small delay to allow webhook to run
+        if (!trackingToken) {
+            const timer = setTimeout(fetchTokenIfNeeded, 2000); // Wait 2s
+            return () => clearTimeout(timer);
+        }
     }, [orderId, trackingToken]);
 
 
-    const isDineIn = !!whatsappNumber;
-
-
     const handleBackToMenu = () => {
-        // Construct the URL to go back to the menu page of the specific restaurant
-        const restaurantId = localStorage.getItem(`last_ordered_from_${orderId}`); // You would save this in checkout
-        if (restaurantId) {
-             const phone = searchParams.get('phone');
-             const token = searchParams.get('token');
+        const restaurantId = localStorage.getItem('lastOrderedFrom');
+        const phone = searchParams.get('phone');
+        const token = searchParams.get('token');
+        if (restaurantId && phone && token) {
              router.push(`/order/${restaurantId}?phone=${phone}&token=${token}`);
         } else {
             router.push('/');
         }
     };
+    // --- END: THE FIX ---
 
     const handleConfirmOnWhatsApp = () => {
         if (orderId && whatsappNumber) {
@@ -63,6 +66,7 @@ const OrderPlacedContent = () => {
     };
     
     const handleTrackOrder = () => {
+        const isDineIn = !!whatsappNumber;
         const trackingPath = isDineIn ? 'dine-in/' : '';
         if (orderId && trackingToken) {
             router.push(`/track/${trackingPath}${orderId}?token=${trackingToken}`);
@@ -71,6 +75,8 @@ const OrderPlacedContent = () => {
         }
     }
     
+    const isDineIn = !!whatsappNumber;
+
     if (isDineIn) {
         return (
             <div className="min-h-screen bg-background text-foreground flex flex-col items-center justify-center text-center p-4 green-theme">

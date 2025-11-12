@@ -43,7 +43,9 @@ export async function POST(req) {
         }
 
         // --- WHATSAPP & TRACKING TOKEN VERIFICATION ---
+        // START FIX: Added 'tracking' to the condition
         if (tokenData.type === 'whatsapp' || tokenData.type === 'tracking') {
+        // END FIX
             if (!phone) {
                  return NextResponse.json({ message: 'Phone number is required for this session.' }, { status: 400 });
             }
