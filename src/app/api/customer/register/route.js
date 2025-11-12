@@ -125,8 +125,8 @@ export async function POST(req) {
             } else { // Pay at Counter for dine-in
                 console.log("[DEBUG] Dine-in 'Pay at Counter' flow...");
                 const newOrderRef = firestore.collection('orders').doc(firestoreOrderId);
-                // --- FIX: Add order to the correct subcollection for dine-in ---
-                const newTabRef = businessRef.collection('dineInTabs').doc(dineInTabId);
+                const trackingToken = await generateSecureToken(firestore, `dine-in-${firestoreOrderId}`);
+
                 const batch = firestore.batch();
                 
                 batch.set(newOrderRef, {
@@ -134,12 +134,10 @@ export async function POST(req) {
                     restaurantId, businessType, deliveryType, tableId, dineInTabId, items,
                     subtotal, coupon, loyaltyDiscount, discount: coupon?.discount || 0, cgst, sgst,
                     totalAmount: grandTotal, status: 'pending', orderDate: FieldValue.serverTimestamp(),
-                    notes: notes || null, paymentDetails: { method: paymentMethod }
+                    notes: notes || null, paymentDetails: { method: paymentMethod },
+                    trackingToken: trackingToken
                 });
                 
-                // Also update the tab if it exists
-                batch.update(newTabRef, { totalBill: FieldValue.increment(grandTotal) }, { merge: true });
-
                 await batch.commit();
 
                  console.log(`[DEBUG] Dine-in order ${newOrderRef.id} created successfully for tab ${dineInTabId}.`);
@@ -147,6 +145,7 @@ export async function POST(req) {
                     message: 'Order added to tab successfully.',
                     firestore_order_id: newOrderRef.id,
                     dine_in_tab_id: dineInTabId,
+                    token: trackingToken,
                 }, { status: 200 });
             }
         }
@@ -280,6 +279,8 @@ export async function POST(req) {
         
         console.log("[DEBUG] /api/customer/register: Creating main order document.");
         const newOrderRef = firestore.collection('orders').doc();
+        const trackingToken = await generateSecureToken(firestore, normalizedPhone);
+
         batch.set(newOrderRef, {
             customerName: name, customerId: userId, customerAddress: address?.full || null, customerPhone: normalizedPhone,
             customerLocation: customerLocation,
@@ -291,6 +292,7 @@ export async function POST(req) {
             status: 'pending', // Always start as pending
             orderDate: FieldValue.serverTimestamp(),
             notes: notes || null,
+            trackingToken: trackingToken,
             paymentDetails: { method: paymentMethod }
         });
         
@@ -311,6 +313,7 @@ export async function POST(req) {
         return NextResponse.json({ 
             message: 'Order created successfully.',
             firestore_order_id: newOrderRef.id,
+            token: trackingToken
         }, { status: 200 });
 
     } catch (error) {

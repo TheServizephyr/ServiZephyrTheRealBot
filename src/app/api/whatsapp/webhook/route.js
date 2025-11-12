@@ -208,34 +208,24 @@ const handleButtonActions = async (firestore, buttonId, fromNumber, business, bo
             }
             case 'track': {
                 const ordersRef = firestore.collection('orders');
-                const q = ordersRef.where('customerPhone', '==', customerPhone);
+                const q = ordersRef.where('customerPhone', '==', customerPhone).orderBy('orderDate', 'desc').limit(1);
                 const querySnapshot = await q.get();
 
                 if (querySnapshot.empty) {
                     await sendWhatsAppMessage(fromNumber, `You don't have any recent orders to track.`, botPhoneNumberId);
                 } else {
-                    const allOrders = querySnapshot.docs.map(doc => ({
-                        id: doc.id,
-                        ...doc.data()
-                    }));
-
-                    allOrders.sort((a,b) => {
-                        const dateA = a.orderDate?.toDate ? a.orderDate.toDate() : new Date(a.orderDate);
-                        const dateB = b.orderDate?.toDate ? b.orderDate.toDate() : new Date(b.orderDate);
-                        return dateB - dateA;
-                    });
+                    const latestOrderDoc = querySnapshot.docs[0];
+                    const latestOrder = latestOrderDoc.data();
                     
-                    const latestOrder = allOrders[0];
-                    if (!latestOrder || !latestOrder.id) {
-                         await sendWhatsAppMessage(fromNumber, `We couldn't find the ID for your last order. Please contact support.`, botPhoneNumberId);
-                         return;
+                    if (!latestOrder.trackingToken) {
+                        await sendWhatsAppMessage(fromNumber, `We couldn't find tracking information for your last order. Please contact support.`, botPhoneNumberId);
+                        return;
                     }
-                    const orderId = latestOrder.id;
+                    const orderId = latestOrderDoc.id;
+                    const token = latestOrder.trackingToken;
 
-                    const token = await generateSecureToken(firestore, customerPhone);
-                    const link = latestOrder.deliveryType === 'dine-in'
-                        ? `https://servizephyr.com/track/dine-in/${orderId}?token=${token}`
-                        : `https://servizephyr.com/track/${orderId}?token=${token}`;
+                    const trackingPath = latestOrder.deliveryType === 'dine-in' ? 'dine-in/' : '';
+                    const link = `https://servizephyr.com/track/${trackingPath}${orderId}?token=${token}`;
 
                     await sendWhatsAppMessage(fromNumber, `Here is the tracking link for your latest order (#${orderId.substring(0, 6)}):\n\n${link}`, botPhoneNumberId);
                 }

@@ -14,15 +14,12 @@ const OrderPlacedContent = () => {
     const orderId = searchParams.get('orderId');
     const whatsappNumber = searchParams.get('whatsappNumber');
     
-    // --- THE FIX: State to hold the token ---
     const [trackingToken, setTrackingToken] = useState(searchParams.get('token'));
 
-    // --- THE FIX: Effect to fetch token if not present in URL ---
     useEffect(() => {
         const fetchTokenIfNeeded = async () => {
             if (!trackingToken && orderId) {
                 try {
-                    // This is a simplified fetch; in a real app, you might need auth
                     const res = await fetch(`/api/order/status/${orderId}`);
                     if (res.ok) {
                         const data = await res.json();
@@ -43,8 +40,16 @@ const OrderPlacedContent = () => {
     const isDineIn = !!whatsappNumber;
 
 
-    const handleBackToHome = () => {
-        router.push('/');
+    const handleBackToMenu = () => {
+        // Construct the URL to go back to the menu page of the specific restaurant
+        const restaurantId = localStorage.getItem(`last_ordered_from_${orderId}`); // You would save this in checkout
+        if (restaurantId) {
+             const phone = searchParams.get('phone');
+             const token = searchParams.get('token');
+             router.push(`/order/${restaurantId}?phone=${phone}&token=${token}`);
+        } else {
+            router.push('/');
+        }
     };
 
     const handleConfirmOnWhatsApp = () => {
@@ -59,7 +64,7 @@ const OrderPlacedContent = () => {
     
     const handleTrackOrder = () => {
         const trackingPath = isDineIn ? 'dine-in/' : '';
-        if (orderId && trackingToken) { // --- THE FIX: Check for the state variable
+        if (orderId && trackingToken) {
             router.push(`/track/${trackingPath}${orderId}?token=${trackingToken}`);
         } else {
             alert("Tracking information is not yet available for this order. Please try again in a moment.");
@@ -108,7 +113,7 @@ const OrderPlacedContent = () => {
                         onClick={handleTrackOrder}
                         variant="outline"
                         className="flex items-center gap-2 px-6 py-3 rounded-md text-lg font-medium"
-                        disabled={!trackingToken} // --- THE FIX: Disable if token not ready
+                        disabled={!trackingToken}
                     >
                         <Navigation className="w-5 h-5" /> Track Your Order
                     </Button>
@@ -117,7 +122,6 @@ const OrderPlacedContent = () => {
         );
     }
 
-    // Default view for Delivery/Pickup orders
     return (
          <div className="min-h-screen bg-background text-foreground flex flex-col items-center justify-center text-center p-4">
             <CheckCircle className="w-24 h-24 text-primary mx-auto" />
@@ -127,16 +131,16 @@ const OrderPlacedContent = () => {
                  <Button 
                     onClick={handleTrackOrder}
                     className="flex items-center gap-2 px-6 py-3 rounded-md bg-primary hover:bg-primary/90 text-primary-foreground text-lg font-medium"
-                    disabled={!trackingToken} // --- THE FIX: Disable if token not ready
+                    disabled={!trackingToken}
                 >
                     <Navigation className="w-5 h-5" /> Track Your Order
                 </Button>
                 <Button 
-                    onClick={handleBackToHome}
+                    onClick={handleBackToMenu}
                     variant="outline"
                     className="flex items-center gap-2 px-6 py-3 rounded-md text-lg font-medium"
                 >
-                    <ArrowLeft className="w-5 h-5" /> Back to Home
+                    <ArrowLeft className="w-5 h-5" /> Back to Menu
                 </Button>
             </div>
         </div>
