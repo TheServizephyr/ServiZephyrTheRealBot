@@ -1,5 +1,4 @@
 
-
 'use client';
 
 import React, { Suspense, useEffect, useState, useCallback } from 'react';
@@ -12,20 +11,20 @@ const OrderPlacedContent = () => {
     const router = useRouter();
     const searchParams = useSearchParams();
     
-    // Get all params from the URL using useCallback to memoize
+    // Get all params from the URL
     const orderId = searchParams.get('orderId');
     const whatsappNumber = searchParams.get('whatsappNumber');
-    const tokenFromUrl = searchParams.get('token');
     const phone = searchParams.get('phone');
-    const restaurantIdFromUrl = searchParams.get('restaurantId');
     
-    const [trackingToken, setTrackingToken] = useState(tokenFromUrl);
-    const [restaurantId, setRestaurantId] = useState(restaurantIdFromUrl);
+    // State to hold the token and restaurantId
+    const [trackingToken, setTrackingToken] = useState(searchParams.get('token'));
+    const [restaurantId, setRestaurantId] = useState(searchParams.get('restaurantId'));
 
     useEffect(() => {
-        // This effect runs when the component mounts and whenever searchParams changes.
+        // This effect runs once on mount and then whenever the searchParams change.
         
-        // 1. Immediately save the restaurantId to localStorage for the "Back to Menu" button.
+        // 1. Immediately save the restaurantId from URL to localStorage if it exists.
+        // This makes the "Back to Menu" button robust.
         const currentRestaurantId = searchParams.get('restaurantId');
         if (currentRestaurantId) {
             localStorage.setItem('lastOrderedFrom', currentRestaurantId);
@@ -38,7 +37,7 @@ const OrderPlacedContent = () => {
             }
         }
 
-        // 2. Fetch the tracking token if it's not in the URL.
+        // 2. Smartly fetch the tracking token if it's not present in the URL.
         const fetchTokenIfNeeded = async () => {
             const currentOrderId = searchParams.get('orderId');
             const tokenInUrl = searchParams.get('token');
@@ -71,7 +70,7 @@ const OrderPlacedContent = () => {
 
         fetchTokenIfNeeded();
 
-    }, [searchParams]); // CRITICAL FIX: The effect now depends on searchParams.
+    }, [searchParams]);
 
 
     const handleBackToMenu = () => {
