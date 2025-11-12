@@ -21,7 +21,7 @@ import InfoDialog from '@/components/InfoDialog';
 import { Checkbox } from '@/components/ui/checkbox';
 
 
-const formatCurrency = (value) => `₹${Number(value || 0).toLocaleString('en-IN')}`;
+const formatCurrency = (value) => `₹${Number(value || 0).toLocaleString('en-IN', { maximumFractionDigits: 2 })}`;
 
 const ManageTablesModal = ({ isOpen, onClose, allTables, onEdit, onDelete, loading, onCreateNew, onShowQr }) => {
     return (
@@ -227,7 +227,7 @@ const BillModal = ({ order, restaurant, onClose, onPrint, printRef }) => {
                             {allItems.map((item, index) => (
                                 <tr key={index} className="border-b border-dotted border-black">
                                     <td className="py-1">{item.name}</td>
-                                    <td className="text-center py-1">{item.qty}</td>
+                                    <td className="text-center py-1">{item.quantity}</td>
                                     <td className="text-right py-1">{formatCurrency((item.totalPrice || item.price) / item.quantity)}</td>
                                     <td className="text-right py-1">{formatCurrency(item.totalPrice || item.price)}</td>
                                 </tr>
@@ -297,7 +297,6 @@ const ConfirmationModal = ({ isOpen, onClose, onConfirm, title, description, con
 };
 
 
-// --- START: Revamped TableCard Component ---
 const TableCard = ({ tableData, onMarkAsPaid, onPrintBill, onMarkAsCleaned, onConfirmOrder, onRejectOrder }) => {
     const state = tableData.state;
     const stateConfig = {
@@ -325,7 +324,18 @@ const TableCard = ({ tableData, onMarkAsPaid, onPrintBill, onMarkAsCleaned, onCo
                                 const tabName = isPendingTab ? tab.customerName : tab.tab_name;
                                 const paxCount = isPendingTab ? tab.pax_count : tab.pax_count;
                                 const totalBill = isPendingTab ? tab.totalAmount : tab.totalBill;
-                                const isPaid = isPendingTab ? tab.paymentDetails?.method === 'razorpay' : tab.status === 'closed';
+                                
+                                // THE FIX: A robust check for payment status
+                                let isPaid = false;
+                                let paymentMethod = 'Pending';
+                                
+                                if (tab.status === 'closed' && tab.paymentMethod) {
+                                    isPaid = true;
+                                    paymentMethod = tab.paymentMethod;
+                                } else if (tab.paymentDetails?.method === 'razorpay') {
+                                    isPaid = true;
+                                    paymentMethod = 'Online';
+                                }
 
                                 return (
                                     <div key={tab.id} className="bg-muted/50 p-3 rounded-lg border border-border">
@@ -351,7 +361,7 @@ const TableCard = ({ tableData, onMarkAsPaid, onPrintBill, onMarkAsCleaned, onCo
                                              <div className="flex justify-between items-center text-xs mt-1">
                                                 <span>Payment Status:</span>
                                                 <span className={cn('font-semibold', isPaid ? 'text-green-500' : 'text-yellow-500')}>
-                                                    {isPaid ? 'Paid Online' : 'Payment Pending'}
+                                                    {isPaid ? `Paid (${paymentMethod})` : 'Payment Pending'}
                                                 </span>
                                             </div>
                                         </div>
@@ -399,7 +409,6 @@ const TableCard = ({ tableData, onMarkAsPaid, onPrintBill, onMarkAsCleaned, onCo
         </motion.div>
     );
 };
-// --- END: Revamped TableCard Component ---
 
 const QrCodeDisplay = ({ text, tableName, innerRef }) => {
     const handleDownload = () => {
@@ -862,7 +871,7 @@ const DineInPageContent = () => {
     const handleConfirmOrder = async (orderId) => {
         setLoading(true);
         try {
-            await handleApiCall('PATCH', { orderId, newStatus: 'confirmed' }, '/api/owner/orders');
+            await handleApiCall('PATCH', { orderIds: [orderId], newStatus: 'confirmed' }, '/api/owner/orders');
             setInfoDialog({ isOpen: true, title: "Success", message: "Order confirmed!" });
             await fetchData(true);
         } catch (error) {
@@ -875,7 +884,7 @@ const DineInPageContent = () => {
     const handleRejectOrder = async (orderId) => {
         setLoading(true);
          try {
-            await handleApiCall('PATCH', { orderId, newStatus: 'rejected', rejectionReason: 'Rejected by restaurant' }, '/api/owner/orders');
+            await handleApiCall('PATCH', { orderIds: [orderId], newStatus: 'rejected', rejectionReason: 'Rejected by restaurant' }, '/api/owner/orders');
             setInfoDialog({ isOpen: true, title: "Success", message: "Order rejected." });
             await fetchData(true);
         } catch (error)
