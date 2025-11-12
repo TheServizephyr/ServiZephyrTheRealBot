@@ -8,61 +8,36 @@ import { isAfter, subDays } from 'date-fns';
 
 async function getBusinessRef(req) {
     const firestore = await getFirestore();
-    let finalUserId = null;
     const { searchParams } = new URL(req.url, `http://${req.headers.host}`);
     const impersonatedOwnerId = searchParams.get('impersonate_owner_id');
 
     console.log("[API dine-in-tables] getBusinessRef: Starting verification.");
+    
+    // This will now throw an error if not authenticated, which is correct for GET/PATCH/DELETE
+    const uid = await verifyAndGetUid(req);
+    let finalUserId = uid;
 
-    try {
-        const uid = await verifyAndGetUid(req);
-        finalUserId = uid;
-        const userDoc = await firestore.collection('users').doc(uid).get();
+    const userDoc = await firestore.collection('users').doc(uid).get();
 
-        if (userDoc.exists && userDoc.data().role === 'admin' && impersonatedOwnerId) {
-            finalUserId = impersonatedOwnerId;
-            console.log(`[API dine-in-tables] getBusinessRef: Admin impersonation. Target UID: ${finalUserId}`);
-        } else if (!userDoc.exists || !['owner', 'restaurant-owner', 'shop-owner', 'admin'].includes(userDoc.data().role)) {
-             throw { message: 'Access Denied: You do not have sufficient privileges.', status: 403 };
-        }
-    } catch (error) {
-        console.error("[API dine-in-tables] getBusinessRef: Authentication error. Allowing unauthenticated check for create_tab.");
-        finalUserId = null;
+    if (userDoc.exists && userDoc.data().role === 'admin' && impersonatedOwnerId) {
+        finalUserId = impersonatedOwnerId;
+        console.log(`[API dine-in-tables] getBusinessRef: Admin impersonation. Target UID: ${finalUserId}`);
+    } else if (!userDoc.exists || !['owner', 'restaurant-owner', 'shop-owner', 'admin'].includes(userDoc.data().role)) {
+         throw { message: 'Access Denied: You do not have sufficient privileges.', status: 403 };
     }
     
-    if (finalUserId) {
-        console.log(`[API dine-in-tables] getBusinessRef: Searching business for owner UID: ${finalUserId}`);
-        const collectionsToTry = ['restaurants', 'shops'];
-        for (const collection of collectionsToTry) {
-            const query = await firestore.collection(collection).where('ownerId', '==', finalUserId).limit(1).get();
-            if (!query.empty) {
-                console.log(`[API dine-in-tables] getBusinessRef: Found business in '${collection}'.`);
-                return query.docs[0].ref;
-            }
+    console.log(`[API dine-in-tables] getBusinessRef: Searching business for owner UID: ${finalUserId}`);
+    const collectionsToTry = ['restaurants', 'shops'];
+    for (const collection of collectionsToTry) {
+        const query = await firestore.collection(collection).where('ownerId', '==', finalUserId).limit(1).get();
+        if (!query.empty) {
+            console.log(`[API dine-in-tables] getBusinessRef: Found business in '${collection}'.`);
+            return query.docs[0].ref;
         }
     }
     
-    // This allows create_tab to find the business without authentication
-    try {
-      const body = await req.clone().json();
-      if (req.method === 'POST' && body?.action === 'create_tab' && body?.restaurantId) {
-           console.log(`[API dine-in-tables] getBusinessRef: Searching for business by ID for create_tab: ${body.restaurantId}`);
-           const collectionsToTry = ['restaurants', 'shops'];
-           for (const collection of collectionsToTry) {
-              const businessRef = firestore.collection(collection).doc(body.restaurantId);
-              const businessSnap = await businessRef.get();
-              if (businessSnap.exists) {
-                  console.log(`[API dine-in-tables] getBusinessRef: Found business by ID in '${collection}'.`);
-                  return businessRef;
-              }
-           }
-      }
-    } catch(e) {
-      // Ignore if body parsing fails, the next check will handle it.
-    }
-    
-    console.error(`[API dine-in-tables] getBusinessRef: Could not associate request with any business.`);
-    throw { message: 'No business associated with this request.', status: 404 };
+    console.error(`[API dine-in-tables] getBusinessRef: Could not associate request with any business for UID ${finalUserId}.`);
+    throw { message: 'No business associated with this owner account.', status: 404 };
 }
 
 
@@ -72,6 +47,23 @@ export async function GET(req) {
         const businessRef = await getBusinessRef(req);
         if (!businessRef) throw { message: 'Business reference not found.', status: 404 };
         console.log(`[API dine-in-tables] GET: Business ref found: ${businessRef.path}`);
+
+        // --- DATA CLEANUP LOGIC ---
+        const thirtyDaysAgoForCleanup = subDays(new Date(), 30);
+        const oldPendingOrdersQuery = firestore.collection('orders')
+            .where('restaurantId', '==', businessRef.id)
+            .where('deliveryType', '==', 'dine-in')
+            .where('status', '==', 'pending')
+            .where('orderDate', '<', thirtyDaysAgoForCleanup);
+        const oldPendingOrdersSnap = await oldPendingOrdersQuery.get();
+        if (!oldPendingOrdersSnap.empty) {
+            console.log(`[API dine-in-tables] CLEANUP: Found ${oldPendingOrdersSnap.size} old, pending dine-in orders to delete.`);
+            const deleteBatch = firestore.batch();
+            oldPendingOrdersSnap.docs.forEach(doc => deleteBatch.delete(doc.ref));
+            await deleteBatch.commit();
+            console.log(`[API dine-in-tables] CLEANUP: Successfully deleted old pending orders.`);
+        }
+        // --- END DATA CLEANUP LOGIC ---
 
         const tablesSnap = await businessRef.collection('tables').orderBy('createdAt', 'asc').get();
         console.log(`[API dine-in-tables] GET: Fetched ${tablesSnap.size} tables.`);
@@ -91,9 +83,15 @@ export async function GET(req) {
         pendingOrdersSnap.forEach(orderDoc => {
             const orderData = orderDoc.data();
             const tableId = orderData.tableId;
-            if (tableMap.has(tableId)) {
-                const table = tableMap.get(tableId);
+            
+            // Check if this pending order corresponds to an already active tab. If so, ignore it to prevent duplicates.
+            const table = tableMap.get(tableId);
+            const tabAlreadyExists = table && table.tabs && Object.values(table.tabs).some(tab => tab.id === orderData.dineInTabId);
+            
+            if (table && !tabAlreadyExists) {
                 table.pendingOrders.push({ id: orderDoc.id, ...orderData });
+            } else if (tabAlreadyExists) {
+                console.log(`[API dine-in-tables] GET: Ignoring pending order ${orderDoc.id} because its tab ${orderData.dineInTabId} is already active.`);
             }
         });
         
@@ -101,7 +99,6 @@ export async function GET(req) {
         // --- END NEW LOGIC ---
 
         const serviceRequestsSnap = await businessRef.collection('serviceRequests').where('status', '==', 'pending').orderBy('createdAt', 'desc').get();
-        console.log(`[API dine-in-tables] GET: Fetched ${serviceRequestsSnap.size} pending service requests.`);
         const serviceRequests = serviceRequestsSnap.docs.map(doc => ({ ...doc.data(), createdAt: doc.data().createdAt?.toDate ? doc.data().createdAt.toDate().toISOString() : new Date().toISOString() }));
 
         const thirtyDaysAgo = subDays(new Date(), 30);
@@ -122,7 +119,6 @@ export async function GET(req) {
             }
         });
         closedTabs.sort((a,b) => new Date(b.closedAt) - new Date(a.closedAt));
-        console.log(`[API dine-in-tables] GET: Fetched ${closedTabs.length} closed tabs from the last 30 days.`);
 
         console.log("[API dine-in-tables] GET: Request successful. Sending response.");
         return NextResponse.json({ tables: tablesData, serviceRequests, closedTabs }, { status: 200 });
@@ -137,17 +133,16 @@ export async function GET(req) {
 export async function POST(req) {
     const body = await req.json();
     const firestore = await getFirestore();
-
-    const businessRef = await getBusinessRef(req);
-    if (!businessRef) return NextResponse.json({ message: 'Business not found or authentication failed.' }, { status: 404 });
-
-    if (body.action === 'create_tab') {
+    
+    // Special handling for unauthenticated 'create_tab' action
+    if (body.action === 'create_tab' && body.restaurantId) {
         console.log("[API dine-in-tables] POST request received with action: create_tab");
-        const { tableId, pax_count, tab_name } = body;
+        const { tableId, pax_count, tab_name, restaurantId } = body;
         if (!tableId || !pax_count || !tab_name) {
             return NextResponse.json({ message: 'Table ID, pax count, and tab name are required.' }, { status: 400 });
         }
         
+        const businessRef = firestore.collection('restaurants').doc(restaurantId); // Assuming restaurants for now
         const tableRef = businessRef.collection('tables').doc(tableId);
         const newTabId = `tab_${Date.now()}`;
 
@@ -191,7 +186,11 @@ export async function POST(req) {
             return NextResponse.json({ message: error.message }, { status: 400 });
         }
     }
-
+    
+    // All other POST actions must be authenticated
+    const businessRef = await getBusinessRef(req);
+    if (!businessRef) return NextResponse.json({ message: 'Business not found or authentication failed.' }, { status: 404 });
+    
     console.log("[API dine-in-tables] POST request received to create/update table.");
     const { tableId, max_capacity } = body;
     if (!tableId || !max_capacity || max_capacity < 1) return NextResponse.json({ message: 'Table ID and a valid capacity are required.' }, { status: 400 });
@@ -246,12 +245,12 @@ export async function PATCH(req) {
                 const tabToClose = tableData.tabs?.[tabId];
                 if (!tabToClose) throw new Error("Tab to close not found.");
 
-                const ordersQuery = firestore.collection('orders').where('dineInTabId', '==', tabId);
-                const ordersSnap = await transaction.get(ordersQuery);
-                ordersSnap.forEach(orderDoc => {
-                    transaction.update(orderDoc.ref, { 
+                // Assuming all orders in the tab are being marked as paid
+                 Object.values(tabToClose.orders || {}).forEach(order => {
+                    const orderRef = firestore.collection('orders').doc(order.id);
+                    transaction.update(orderRef, { 
                         status: 'delivered', 
-                        paymentDetails: { ...(orderDoc.data().paymentDetails || {}), method: paymentMethod || 'cod' }
+                        paymentDetails: { ...(order.paymentDetails || {}), method: paymentMethod || 'cod' }
                     });
                 });
                 
