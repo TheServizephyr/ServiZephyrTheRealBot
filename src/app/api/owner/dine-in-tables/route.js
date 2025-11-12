@@ -70,9 +70,17 @@ async function verifyOwnerAndGetBusinessRef(req) {
          const body = await req.clone().json();
          if (body.action === 'create_tab') {
              const businessRef = firestore.collection('restaurants').doc(body.restaurantId);
-             if((await businessRef.get()).exists) return businessRef;
+             const businessSnap = await businessRef.get();
+             if (businessSnap.exists) {
+                console.log("[API dine-in-tables] Found business ref for create_tab action (unauthenticated).");
+                return businessRef;
+             }
              const shopRef = firestore.collection('shops').doc(body.restaurantId);
-             if((await shopRef.get()).exists) return shopRef;
+             const shopSnap = await shopRef.get();
+             if (shopSnap.exists) {
+                console.log("[API dine-in-tables] Found shop ref for create_tab action (unauthenticated).");
+                return shopRef;
+             }
              return null;
          }
     }
@@ -86,11 +94,13 @@ export async function GET(req) {
     const firestore = await getFirestore();
     try {
         const businessRef = await verifyOwnerAndGetBusinessRef(req);
+        if (!businessRef) {
+            throw { message: 'Business reference not found.', status: 404 };
+        }
         console.log(`[API dine-in-tables] Step 4: Business Ref obtained: ${businessRef.path}`);
         
         const [tablesSnap, tabsSnap, serviceRequestsSnap, closedTabsSnap] = await Promise.all([
             businessRef.collection('tables').orderBy('createdAt', 'asc').get(),
-            // --- FIX: Fetch from the correct subcollection ---
             businessRef.collection('dineInTabs').where('status', '==', 'active').get(),
             businessRef.collection('serviceRequests').where('status', '==', 'pending').orderBy('createdAt', 'desc').get(),
             businessRef.collection('dineInTabs').where('status', '==', 'closed').where('closedAt', '>=', subDays(new Date(), 30)).orderBy('closedAt', 'desc').get()
@@ -103,43 +113,49 @@ export async function GET(req) {
              tablesData[tableDoc.id] = { ...tableDoc.data(), id: tableDoc.id, tabs: [] };
         }
 
-        for (const tabDoc of tabsSnap.docs) {
+        const tabsWithOrdersPromises = tabsSnap.docs.map(async (tabDoc) => {
             const tabData = { id: tabDoc.id, ...tabDoc.data(), orders: [], allItems: [], totalBill: 0, latestOrderTime: null };
-            const tableId = tabData.tableId;
             
-            if (tablesData[tableId]) {
-                 const ordersSnap = await firestore.collection('orders')
-                    .where('dineInTabId', '==', tabDoc.id)
-                    .where('status', 'not-in', ['delivered', 'rejected', 'picked_up', 'closed'])
-                    .get();
+            const ordersSnap = await firestore.collection('orders')
+                .where('dineInTabId', '==', tabDoc.id)
+                .where('status', 'not-in', ['delivered', 'rejected', 'picked_up', 'closed'])
+                .get();
 
-                if (!ordersSnap.empty) {
-                    const itemMap = new Map();
-                    ordersSnap.docs.forEach(orderDoc => {
-                        const order = { id: orderDoc.id, ...orderDoc.data() };
-                        tabData.orders.push(order);
-                        tabData.totalBill += order.totalAmount || 0;
-                        
-                        const orderDate = order.orderDate?.toDate ? order.orderDate.toDate() : new Date(order.orderDate);
-                        if(!tabData.latestOrderTime || orderDate > tabData.latestOrderTime) {
-                            tabData.latestOrderTime = orderDate;
+            if (!ordersSnap.empty) {
+                const itemMap = new Map();
+                ordersSnap.docs.forEach(orderDoc => {
+                    const order = { id: orderDoc.id, ...orderDoc.data() };
+                    tabData.orders.push(order);
+                    tabData.totalBill += order.totalAmount || 0;
+                    
+                    const orderDate = order.orderDate?.toDate ? order.orderDate.toDate() : new Date(order.orderDate);
+                    if(!tabData.latestOrderTime || orderDate > tabData.latestOrderTime) {
+                        tabData.latestOrderTime = orderDate;
+                    }
+                    
+                    (order.items || []).forEach(item => {
+                        const uniqueItemId = `${order.id}-${item.name}`;
+                        const existing = itemMap.get(item.name);
+                        if(existing) {
+                            itemMap.set(item.name, {...existing, qty: existing.qty + (item.quantity || 1), orderItemIds: [...existing.orderItemIds, uniqueItemId]});
+                        } else {
+                            itemMap.set(item.name, {...item, qty: (item.quantity || 1), orderItemIds: [uniqueItemId]});
                         }
-                        
-                        (order.items || []).forEach(item => {
-                            const uniqueItemId = `${order.id}-${item.name}`;
-                            const existing = itemMap.get(item.name);
-                            if(existing) {
-                                itemMap.set(item.name, {...existing, qty: existing.qty + (item.quantity || 1), orderItemIds: [...existing.orderItemIds, uniqueItemId]});
-                            } else {
-                                itemMap.set(item.name, {...item, qty: (item.quantity || 1), orderItemIds: [uniqueItemId]});
-                            }
-                        });
                     });
-                    tabData.allItems = Array.from(itemMap.values());
-                }
-                tablesData[tableId].tabs.push(tabData);
+                });
+                tabData.allItems = Array.from(itemMap.values());
             }
-        }
+            return tabData;
+        });
+
+        const resolvedTabs = await Promise.all(tabsWithOrdersPromises);
+
+        resolvedTabs.forEach(tabData => {
+             const tableId = tabData.tableId;
+            if (tablesData[tableId]) {
+                 tablesData[tableId].tabs.push(tabData);
+            }
+        });
         
         const tables = Object.values(tablesData);
 
@@ -204,7 +220,6 @@ export async function POST(req) {
         }
         
         const tableRef = businessRef.collection('tables').doc(tableId);
-        // --- FIX: Create tab in the business's subcollection ---
         const newTabRef = businessRef.collection('dineInTabs').doc();
 
         try {
@@ -229,7 +244,8 @@ export async function POST(req) {
                     createdAt: FieldValue.serverTimestamp(),
                 });
 
-                transaction.update(tableRef, {
+                // This was the missing return statement. The transaction was failing silently.
+                return transaction.update(tableRef, {
                     current_pax: FieldValue.increment(Number(pax_count)),
                     state: 'occupied'
                 });
@@ -329,8 +345,6 @@ export async function PATCH(req) {
 
                     transaction.update(tabRef, { status: 'closed', closedAt: FieldValue.serverTimestamp(), paymentMethod: paymentMethod || 'cod' });
                     
-                    // --- THE FIX ---
-                    // Correctly decrement pax count when a tab is paid and closed.
                     transaction.update(tableRef, {
                         state: 'needs_cleaning',
                         current_pax: FieldValue.increment(-Number(tabDoc.data().pax_count || 0))
@@ -341,7 +355,6 @@ export async function PATCH(req) {
             }
             
             if (action === 'mark_cleaned') {
-                 // --- THE FIX: Explicitly set current_pax to 0 on clean ---
                  await tableRef.update({ state: 'available', current_pax: 0 });
                  console.log(`[API dine-in-tables] Table ${tableId} marked as cleaned and available. Pax count reset to 0.`);
                  return NextResponse.json({ message: `Table ${tableId} cleaning acknowledged.` }, { status: 200 });
