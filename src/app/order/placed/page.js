@@ -1,9 +1,8 @@
-
 'use client';
 
 import React, { Suspense, useEffect, useState, useCallback } from 'react';
 import { motion } from 'framer-motion';
-import { CheckCircle, ArrowLeft, Navigation, MessageSquare } from 'lucide-react';
+import { CheckCircle, ArrowLeft, Navigation, MessageSquare, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useRouter, useSearchParams } from 'next/navigation';
 
@@ -11,80 +10,84 @@ const OrderPlacedContent = () => {
     const router = useRouter();
     const searchParams = useSearchParams();
     
-    // Get all params from the URL
     const orderId = searchParams.get('orderId');
     const whatsappNumber = searchParams.get('whatsappNumber');
     const phone = searchParams.get('phone');
     
-    // State to hold the token and restaurantId
     const [trackingToken, setTrackingToken] = useState(searchParams.get('token'));
     const [restaurantId, setRestaurantId] = useState(searchParams.get('restaurantId'));
 
     useEffect(() => {
-        // This effect runs once on mount and then whenever the searchParams change.
-        
-        // 1. Immediately save the restaurantId from URL to localStorage if it exists.
-        // This makes the "Back to Menu" button robust.
+        // --- START: THE CORE FIX ---
+
+        // 1. Immediately try to get and save the restaurantId.
         const currentRestaurantId = searchParams.get('restaurantId');
         if (currentRestaurantId) {
             localStorage.setItem('lastOrderedFrom', currentRestaurantId);
-            setRestaurantId(currentRestaurantId);
+            if (!restaurantId) {
+                setRestaurantId(currentRestaurantId);
+            }
         } else {
-            // If not in URL, try to get it from storage.
             const storedId = localStorage.getItem('lastOrderedFrom');
-            if (storedId) {
+            if (storedId && !restaurantId) {
                 setRestaurantId(storedId);
             }
         }
-
-        // 2. Smartly fetch the tracking token if it's not present in the URL.
+        
+        // 2. Smartly fetch the tracking token if needed.
         const fetchTokenIfNeeded = async () => {
-            const currentOrderId = searchParams.get('orderId');
             const tokenInUrl = searchParams.get('token');
 
-            if (!tokenInUrl && currentOrderId) {
-                console.log("Token not in URL, attempting to fetch from backend for order:", currentOrderId);
+            if (!tokenInUrl && orderId) {
+                console.log("[Placed Page] Token not in URL, will fetch from backend for order:", orderId);
                 try {
-                    // This delay gives the webhook a moment to process the payment and generate the token.
+                    // This delay is crucial for Razorpay webhook to process.
                     await new Promise(resolve => setTimeout(resolve, 1500)); 
                     
-                    const res = await fetch(`/api/order/status/${currentOrderId}`);
+                    const res = await fetch(`/api/order/status/${orderId}`);
                     if (res.ok) {
                         const data = await res.json();
                         if (data.order?.trackingToken) {
-                            console.log("Successfully fetched token:", data.order.trackingToken);
+                            console.log("[Placed Page] Successfully fetched token:", data.order.trackingToken);
                             setTrackingToken(data.order.trackingToken);
                         } else {
-                            console.warn("Order found, but no tracking token yet. Retrying might be needed.");
+                            console.warn("[Placed Page] Order found, but no tracking token yet. The webhook might be slow.");
                         }
                     } else {
-                        console.error("Failed to fetch order status to get token. Status:", res.status);
+                        console.error("[Placed Page] Failed to fetch order status to get token. Status:", res.status);
                     }
                 } catch (error) {
-                    console.error("Error fetching tracking token:", error);
+                    console.error("[Placed Page] Error fetching tracking token:", error);
                 }
             } else if (tokenInUrl) {
-                setTrackingToken(tokenInUrl);
+                // If token is in the URL, make sure it's set in the state.
+                if (tokenInUrl !== trackingToken) {
+                    setTrackingToken(tokenInUrl);
+                }
             }
         };
 
-        fetchTokenIfNeeded();
+        // This effect runs whenever the orderId from the URL changes.
+        if(orderId) {
+            fetchTokenIfNeeded();
+        }
+        // --- END: THE CORE FIX ---
 
-    }, [searchParams]);
+    }, [orderId, searchParams, restaurantId, trackingToken]); // Dependency array is key
 
 
     const handleBackToMenu = () => {
-        // Uses the state variable `restaurantId` which is now reliably set.
+        // Now it uses the reliable `restaurantId` from state
         if (restaurantId) {
             const params = new URLSearchParams();
             if (phone) params.set('phone', phone);
             // Re-use the session token if available for seamless navigation back to the menu
-            const sessionToken = searchParams.get('token');
+            const sessionToken = searchParams.get('token') || trackingToken; // Use whichever token is available
             if (sessionToken) params.set('token', sessionToken);
             
             router.push(`/order/${restaurantId}?${params.toString()}`);
         } else {
-            console.error("Could not determine which restaurant to go back to. Falling back to home.");
+            console.error("[Placed Page] Could not determine which restaurant to go back to. Falling back to home.");
             router.push('/'); // Fallback to home if restaurantId is somehow lost
         }
     };
@@ -105,7 +108,7 @@ const OrderPlacedContent = () => {
         if (orderId && trackingToken) {
             router.push(`/track/${trackingPath}${orderId}?token=${trackingToken}`);
         } else {
-            alert("Tracking information is not yet available for this order. Please refresh and try again in a moment.");
+            alert("Tracking information is not yet available. This can happen with online payments. Please wait a moment and try again.");
         }
     }
     
@@ -155,7 +158,8 @@ const OrderPlacedContent = () => {
                         className="flex items-center gap-2 px-6 py-3 rounded-md text-lg font-medium"
                         disabled={!trackingToken}
                     >
-                        <Navigation className="w-5 h-5" /> Track Your Order
+                        { !trackingToken ? <Loader2 className="w-5 h-5 animate-spin"/> : <Navigation className="w-5 h-5" /> }
+                         <span className="ml-2">Track Your Order</span>
                     </Button>
                 </motion.div>
             </div>
@@ -173,12 +177,14 @@ const OrderPlacedContent = () => {
                     className="flex items-center gap-2 px-6 py-3 rounded-md bg-primary hover:bg-primary/90 text-primary-foreground text-lg font-medium"
                     disabled={!trackingToken}
                 >
-                    <Navigation className="w-5 h-5" /> Track Your Order
+                   { !trackingToken ? <Loader2 className="w-5 h-5 animate-spin"/> : <Navigation className="w-5 h-5" /> }
+                   <span className="ml-2">Track Your Order</span>
                 </Button>
                 <Button 
                     onClick={handleBackToMenu}
                     variant="outline"
                     className="flex items-center gap-2 px-6 py-3 rounded-md text-lg font-medium"
+                    disabled={!restaurantId}
                 >
                     <ArrowLeft className="w-5 h-5" /> Back to Menu
                 </Button>
@@ -190,7 +196,7 @@ const OrderPlacedContent = () => {
 
 export default function OrderPlacedPage() {
     return (
-        <Suspense fallback={<div className="min-h-screen bg-background flex items-center justify-center"><p>Loading...</p></div>}>
+        <Suspense fallback={<div className="min-h-screen bg-background flex items-center justify-center"><Loader2 className="w-16 h-16 text-primary animate-spin"/></div>}>
             <OrderPlacedContent />
         </Suspense>
     );
