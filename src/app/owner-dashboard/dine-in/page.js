@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useState, useEffect, useMemo, useRef, Suspense } from 'react';
@@ -303,7 +304,32 @@ const TableCard = ({ tableData, onMarkAsPaid, onPrintBill, onMarkAsCleaned, onCo
         needs_cleaning: { title: "Needs Cleaning", bg: "bg-red-500/10", border: "border-red-500", icon: <Wind size={16} className="text-red-500" /> }
     };
     const currentConfig = stateConfig[state] || stateConfig.available;
-    const allGroups = [...(Object.values(tableData.tabs || {})), ...(tableData.pendingOrders || [])];
+    
+    // Combine active tabs and pending orders into one list for rendering
+    const allGroups = [
+        ...Object.values(tableData.tabs || {}),
+        ...(tableData.pendingOrders || [])
+    ];
+    
+    // --- START FIX: Order Status Action Buttons Component ---
+    const OrderActionButtons = ({ order, isPending }) => {
+        if (isPending) {
+            return (
+                 <div className="grid grid-cols-2 gap-2 mt-2">
+                    <Button size="sm" variant="destructive" onClick={() => onRejectOrder(order.id)}>
+                        <X size={16} className="mr-2"/> Reject
+                    </Button>
+                    <Button size="sm" className="bg-primary hover:bg-primary/90" onClick={() => onConfirmOrder(order.id)}>
+                        <Check size={16} className="mr-2"/> Confirm
+                    </Button>
+                </div>
+            )
+        }
+        
+        // Add logic for further status updates if needed
+        return <p className="text-xs text-center text-green-500 font-semibold mt-2">Order Confirmed</p>;
+    }
+    // --- END FIX ---
 
     return (
         <motion.div layout initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }}>
@@ -317,21 +343,32 @@ const TableCard = ({ tableData, onMarkAsPaid, onPrintBill, onMarkAsCleaned, onCo
                     {allGroups.length > 0 ? (
                         <div className="space-y-4">
                             {allGroups.map(group => {
-                                const isPendingTab = group.status === 'pending';
-                                const tabName = isPendingTab ? group.customerName : group.tab_name;
-                                const paxCount = group.pax_count || group.items?.reduce((acc, item) => acc + (item.pax_count || 0), 0) || 1;
+                                const isPendingTab = group.status === 'pending'; // This identifies a new, unconfirmed order
+                                const isActiveTab = group.status === 'active'; // This is a confirmed, ongoing tab
                                 
-                                // For pending orders, bill comes from totalAmount. For active tabs, it's calculated.
+                                const tabName = isPendingTab ? (group.tab_name || 'New Customer') : group.tab_name;
+                                const paxCount = group.pax_count || 1;
+                                
+                                // For pending orders, bill is from the order itself. For active tabs, sum up its internal orders.
                                 const totalBill = isPendingTab ? group.totalAmount : (group.orders || []).reduce((sum, o) => sum + (o.totalAmount || 0), 0);
-
-                                const paymentMethod = group.orders?.[0]?.paymentDetails?.method === 'razorpay' ? 'Online' : 'Pending';
+                                const isOnlinePayment = isPendingTab ? group.paymentDetails?.method === 'razorpay' : (group.orders || []).some(o => o.paymentDetails?.method === 'razorpay');
+                                
+                                const isPaid = group.isPaid || isOnlinePayment; // A simple flag for now, can be improved
 
                                 return (
-                                    <div key={group.id} className={cn("p-3 rounded-lg border", isPendingTab ? "bg-yellow-500/10 border-yellow-500/30" : "bg-muted/50 border-border")}>
+                                    <div key={group.id} className={cn("p-3 rounded-lg border", 
+                                        isPendingTab ? "bg-yellow-500/10 border-yellow-500/30" : "bg-muted/50 border-border"
+                                    )}>
                                         <div className="flex justify-between items-center mb-2">
                                             <h4 className="font-semibold text-foreground">{tabName} <span className="text-xs text-muted-foreground">({paxCount} guests)</span></h4>
                                             {group.dineInToken && <p className="text-xs font-bold text-yellow-400">TOKEN: {group.dineInToken}</p>}
                                         </div>
+
+                                        {isPendingTab && (
+                                            <div className="mb-2 p-2 bg-yellow-500/10 rounded">
+                                                <p className="text-sm font-bold text-yellow-300 text-center">New Order Received!</p>
+                                            </div>
+                                        )}
 
                                         <div className="space-y-1 text-sm max-h-32 overflow-y-auto pr-2 my-2">
                                             {(group.items || []).map((item, i) => (
@@ -342,31 +379,26 @@ const TableCard = ({ tableData, onMarkAsPaid, onPrintBill, onMarkAsCleaned, onCo
                                             ))}
                                         </div>
                                         
-                                        <div className="mt-3 pt-3 border-t border-dashed border-border/50">
-                                            <div className="flex justify-between items-center font-bold">
-                                                <span>Total Bill:</span>
-                                                <span className="text-lg text-primary">{formatCurrency(totalBill)}</span>
-                                            </div>
-                                             <div className="flex justify-between items-center text-xs mt-1">
-                                                <span>Payment Status:</span>
-                                                <span className={cn('font-semibold', paymentMethod === 'Pending' ? 'text-yellow-500' : 'text-green-500')}>
-                                                    {paymentMethod}
-                                                </span>
-                                            </div>
-                                        </div>
-
-                                        <div className="mt-4 grid grid-cols-1 gap-2">
-                                            {isPendingTab ? (
-                                                <div className="grid grid-cols-2 gap-2">
-                                                    <Button size="sm" variant="destructive" onClick={() => onRejectOrder(group.id)}>
-                                                        <X size={16} className="mr-2"/> Reject
-                                                    </Button>
-                                                    <Button size="sm" className="bg-primary hover:bg-primary/90" onClick={() => onConfirmOrder(group.id)}>
-                                                        <Check size={16} className="mr-2"/> Confirm
-                                                    </Button>
+                                        {totalBill > 0 && (
+                                            <div className="mt-3 pt-3 border-t border-dashed border-border/50">
+                                                <div className="flex justify-between items-center font-bold">
+                                                    <span>Total Bill:</span>
+                                                    <span className="text-lg text-primary">{formatCurrency(totalBill)}</span>
                                                 </div>
-                                            ) : (
-                                                <div className="grid grid-cols-2 gap-2">
+                                                <div className="flex justify-between items-center text-xs mt-1">
+                                                    <span>Payment Status:</span>
+                                                    <span className={cn('font-semibold', isPaid ? 'text-green-500' : 'text-yellow-500')}>
+                                                        {isPaid ? 'Paid' : 'Payment Due'}
+                                                    </span>
+                                                </div>
+                                            </div>
+                                        )}
+
+                                        {isPendingTab ? (
+                                            <OrderActionButtons order={group} isPending={true} onConfirmOrder={onConfirmOrder} onRejectOrder={onRejectOrder} />
+                                        ) : isActiveTab && totalBill > 0 ? (
+                                            !isPaid && (
+                                                <div className="grid grid-cols-2 gap-2 mt-4">
                                                     <Button variant="outline" size="sm" onClick={() => onPrintBill({ tableId: tableData.id, ...group })}>
                                                         <Printer size={16} className="mr-2"/> Print Bill
                                                     </Button>
@@ -374,8 +406,8 @@ const TableCard = ({ tableData, onMarkAsPaid, onPrintBill, onMarkAsCleaned, onCo
                                                         <CheckCircle size={16} className="mr-2"/> Mark as Paid
                                                     </Button>
                                                 </div>
-                                            )}
-                                        </div>
+                                            )
+                                        ) : null}
                                     </div>
                                 );
                             })}

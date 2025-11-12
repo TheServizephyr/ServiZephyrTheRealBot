@@ -13,7 +13,21 @@ async function getBusinessRef(req) {
 
     console.log("[API dine-in-tables] getBusinessRef: Starting verification.");
     
-    // This will now throw an error if not authenticated, which is correct for GET/PATCH/DELETE
+    // For POST requests for creating a tab, auth is not required.
+    // We check the body for a restaurantId instead.
+    if (req.method === 'POST') {
+        try {
+            const body = await req.json(); // Peek at the body
+            if (body.action === 'create_tab' && body.restaurantId) {
+                console.log(`[API dine-in-tables] getBusinessRef: Unauthenticated create_tab request for restaurantId: ${body.restaurantId}.`);
+                return firestore.collection('restaurants').doc(body.restaurantId); // Assuming restaurants for now
+            }
+        } catch (e) {
+             throw { message: 'Invalid request body.', status: 400 };
+        }
+    }
+
+    // All other requests (GET, PATCH, DELETE) MUST be authenticated.
     const uid = await verifyAndGetUid(req);
     let finalUserId = uid;
 
@@ -37,7 +51,7 @@ async function getBusinessRef(req) {
     }
     
     console.error(`[API dine-in-tables] getBusinessRef: Could not associate request with any business for UID ${finalUserId}.`);
-    throw { message: 'No business associated with this owner account.', status: 404 };
+    throw { message: 'No business associated with this request.', status: 404 };
 }
 
 
@@ -84,14 +98,16 @@ export async function GET(req) {
             const orderData = orderDoc.data();
             const tableId = orderData.tableId;
             
-            // Check if this pending order corresponds to an already active tab. If so, ignore it to prevent duplicates.
             const table = tableMap.get(tableId);
-            const tabAlreadyExists = table && table.tabs && Object.values(table.tabs).some(tab => tab.id === orderData.dineInTabId);
+
+            // A "pending" order is only added if a corresponding active tab doesn't already exist for it.
+            // This prevents showing a "New Order" card for an order that has already been confirmed and is now part of an active tab.
+            const isOrderAlreadyInActiveTab = Object.values(table?.tabs || {}).some(tab =>
+                (tab.orders || []).some(o => o.id === orderDoc.id)
+            );
             
-            if (table && !tabAlreadyExists) {
+            if (table && !isOrderAlreadyInActiveTab) {
                 table.pendingOrders.push({ id: orderDoc.id, ...orderData });
-            } else if (tabAlreadyExists) {
-                console.log(`[API dine-in-tables] GET: Ignoring pending order ${orderDoc.id} because its tab ${orderData.dineInTabId} is already active.`);
             }
         });
         
@@ -131,73 +147,78 @@ export async function GET(req) {
 
 
 export async function POST(req) {
-    const body = await req.json();
     const firestore = await getFirestore();
-    
-    // Special handling for unauthenticated 'create_tab' action
-    if (body.action === 'create_tab' && body.restaurantId) {
-        console.log("[API dine-in-tables] POST request received with action: create_tab");
-        const { tableId, pax_count, tab_name, restaurantId } = body;
-        if (!tableId || !pax_count || !tab_name) {
-            return NextResponse.json({ message: 'Table ID, pax count, and tab name are required.' }, { status: 400 });
+    const body = await req.json(); // Read the body once
+
+    try {
+        const businessRef = await getBusinessRef(req);
+        if (!businessRef) return NextResponse.json({ message: 'Business not found or authentication failed.', status: 404 });
+        
+        console.log("[API dine-in-tables] POST request received to create/update table.");
+        const { tableId, max_capacity } = body;
+        if (!tableId || !max_capacity || max_capacity < 1) return NextResponse.json({ message: 'Table ID and a valid capacity are required.' }, { status: 400 });
+        const tableRef = businessRef.collection('tables').doc(tableId);
+        await tableRef.set({ id: tableId, max_capacity: Number(max_capacity), current_pax: 0, createdAt: FieldValue.serverTimestamp(), state: 'available', tabs: {} }, { merge: true });
+        
+        return NextResponse.json({ message: 'Table saved successfully.' }, { status: 201 });
+
+    } catch (error) {
+         // This block handles the special unauthenticated 'create_tab' action
+        if (body.action === 'create_tab' && body.restaurantId) {
+            console.log("[API dine-in-tables] POST request received with action: create_tab");
+            const { tableId, pax_count, tab_name, restaurantId } = body;
+            if (!tableId || !pax_count || !tab_name) {
+                return NextResponse.json({ message: 'Table ID, pax count, and tab name are required.' }, { status: 400 });
+            }
+            
+            const businessRef = firestore.collection('restaurants').doc(restaurantId);
+            const tableRef = businessRef.collection('tables').doc(tableId);
+            const newTabId = `tab_${Date.now()}`;
+
+            try {
+                await firestore.runTransaction(async (transaction) => {
+                    const tableDoc = await transaction.get(tableRef);
+                    if (!tableDoc.exists) throw new Error("Table not found.");
+                    
+                    const tableData = tableDoc.data();
+                    const currentPaxInTabs = Object.values(tableData.tabs || {}).reduce((sum, tab) => sum + (tab.pax_count || 0), 0);
+                    const availableCapacity = tableData.max_capacity - currentPaxInTabs;
+
+                    if (pax_count > availableCapacity) {
+                        throw new Error(`Capacity exceeded. Only ${availableCapacity} seats available.`);
+                    }
+                    
+                    const newTabData = { 
+                        id: newTabId, 
+                        tableId, 
+                        restaurantId: businessRef.id, 
+                        status: 'active', 
+                        tab_name, 
+                        pax_count: Number(pax_count), 
+                        createdAt: FieldValue.serverTimestamp(),
+                        totalBill: 0,
+                        orders: []
+                    };
+                    
+                    const updatePayload = {
+                        [`tabs.${newTabId}`]: newTabData,
+                        current_pax: FieldValue.increment(Number(pax_count)),
+                        state: 'occupied'
+                    };
+                    
+                    transaction.update(tableRef, updatePayload);
+                });
+                console.log(`[API dine-in-tables] Successfully created tab ${newTabId}`);
+                return NextResponse.json({ message: 'Tab created successfully!', tabId: newTabId }, { status: 201 });
+            } catch(txError) {
+                console.error("[API dine-in-tables] CRITICAL Transaction Error (create_tab):", txError);
+                return NextResponse.json({ message: txError.message }, { status: 400 });
+            }
         }
         
-        const businessRef = firestore.collection('restaurants').doc(restaurantId); // Assuming restaurants for now
-        const tableRef = businessRef.collection('tables').doc(tableId);
-        const newTabId = `tab_${Date.now()}`;
-
-        try {
-            await firestore.runTransaction(async (transaction) => {
-                const tableDoc = await transaction.get(tableRef);
-                if (!tableDoc.exists) throw new Error("Table not found.");
-                
-                const tableData = tableDoc.data();
-                const currentPaxInTabs = Object.values(tableData.tabs || {}).reduce((sum, tab) => sum + (tab.pax_count || 0), 0);
-                const availableCapacity = tableData.max_capacity - currentPaxInTabs;
-
-                if (pax_count > availableCapacity) {
-                    throw new Error(`Capacity exceeded. Only ${availableCapacity} seats available.`);
-                }
-                
-                const newTabData = { 
-                    id: newTabId, 
-                    tableId, 
-                    restaurantId: businessRef.id, 
-                    status: 'active', 
-                    tab_name, 
-                    pax_count: Number(pax_count), 
-                    createdAt: FieldValue.serverTimestamp(),
-                    totalBill: 0,
-                    orders: []
-                };
-                
-                const updatePayload = {
-                    [`tabs.${newTabId}`]: newTabData,
-                    current_pax: FieldValue.increment(Number(pax_count)),
-                    state: 'occupied'
-                };
-                
-                transaction.update(tableRef, updatePayload);
-            });
-            console.log(`[API dine-in-tables] Successfully created tab ${newTabId}`);
-            return NextResponse.json({ message: 'Tab created successfully!', tabId: newTabId }, { status: 201 });
-        } catch(error) {
-            console.error("[API dine-in-tables] CRITICAL Transaction Error (create_tab):", error);
-            return NextResponse.json({ message: error.message }, { status: 400 });
-        }
+        console.error("[API dine-in-tables] CRITICAL POST ERROR:", error);
+        return NextResponse.json({ message: `Backend Error: ${error.message}` }, { status: error.status || 500 });
     }
-    
-    // All other POST actions must be authenticated
-    const businessRef = await getBusinessRef(req);
-    if (!businessRef) return NextResponse.json({ message: 'Business not found or authentication failed.' }, { status: 404 });
-    
-    console.log("[API dine-in-tables] POST request received to create/update table.");
-    const { tableId, max_capacity } = body;
-    if (!tableId || !max_capacity || max_capacity < 1) return NextResponse.json({ message: 'Table ID and a valid capacity are required.' }, { status: 400 });
-    const tableRef = businessRef.collection('tables').doc(tableId);
-    await tableRef.set({ id: tableId, max_capacity: Number(max_capacity), current_pax: 0, createdAt: FieldValue.serverTimestamp(), state: 'available', tabs: {} }, { merge: true });
-    
-    return NextResponse.json({ message: 'Table saved successfully.' }, { status: 201 });
 }
 
 export async function PATCH(req) {
