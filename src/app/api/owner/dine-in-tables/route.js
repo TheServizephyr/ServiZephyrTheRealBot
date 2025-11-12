@@ -321,17 +321,20 @@ export async function PATCH(req) {
                     });
 
                     transaction.update(tabRef, { status: 'closed', closedAt: FieldValue.serverTimestamp(), paymentMethod: paymentMethod || 'cod' });
+                    // --- THE FIX ---
+                    // Correctly decrement pax count when a tab is paid and closed.
                     transaction.update(tableRef, {
                         state: 'needs_cleaning',
-                        current_pax: FieldValue.increment(-Number(tabDoc.data().pax_count || 1))
+                        current_pax: FieldValue.increment(-Number(tabDoc.data().pax_count || 0))
                     });
+                    // --- END THE FIX ---
                     console.log(`[API dine-in-tables] Transaction successful. Tab closed, table needs cleaning, pax reset.`);
                 });
                 return NextResponse.json({ message: `Table ${tableId} marked as needing cleaning.` }, { status: 200 });
             }
             
             if (action === 'mark_cleaned') {
-                 await tableRef.update({ state: 'available', current_pax: 0 });
+                 await tableRef.update({ state: 'available' }); // current_pax is already 0
                  console.log(`[API dine-in-tables] Table ${tableId} marked as cleaned and available.`);
                  return NextResponse.json({ message: `Table ${tableId} cleaning acknowledged.` }, { status: 200 });
             }

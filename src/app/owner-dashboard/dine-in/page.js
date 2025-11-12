@@ -1,4 +1,3 @@
-
 'use client';
 
 import React, { useState, useEffect, useMemo, useRef, Suspense } from 'react';
@@ -285,7 +284,8 @@ const ConfirmationModal = ({ isOpen, onClose, onConfirm, title, description, con
 const TableCard = ({ tableId, tableData, onMarkAsPaid, onPrintBill, onMarkAsCleaned, onShowHistory, acknowledgedItems, onToggleAcknowledge, onConfirmOrders, onClearTab }) => {
     const tab = tableData.tabs?.[0] || null;
     const state = tab ? 'occupied' : tableData.state;
-    const paxCount = tab ? (tab.pax_count || 0) : 0;
+    // --- THE FIX: Correctly calculate paxCount ---
+    const paxCount = tab ? (tab.pax_count || 0) : tableData.current_pax || 0;
 
     const stateConfig = {
         available: {
@@ -338,6 +338,7 @@ const TableCard = ({ tableId, tableData, onMarkAsPaid, onPrintBill, onMarkAsClea
                                 <span className="text-xs font-mono text-muted-foreground">{tab.id.substring(0,6)}...</span>
                             </div>
                             
+                            {/* --- THE FIX: Logic for displaying pre-order state vs order details --- */}
                             {(tab.orders && tab.orders.length > 0) ? (
                                 <>
                                     <div className="text-xs text-muted-foreground my-2 flex items-center gap-2">
@@ -378,9 +379,9 @@ const TableCard = ({ tableId, tableData, onMarkAsPaid, onPrintBill, onMarkAsClea
                                 </>
                             ) : (
                                 <div className="text-center py-4 text-muted-foreground text-sm flex flex-col items-center">
-                                    <p>Table occupied by <strong>{tab.tab_name}</strong> ({tab.pax_count} guests).</p>
+                                    <p>Occupied by <strong>{tab.tab_name}</strong> ({paxCount} guests).</p>
                                     <p>Waiting for first order...</p>
-                                    <Button size="sm" variant="destructive" className="mt-4" onClick={() => onClearTab(tab.id, tableId, tab.pax_count)}>
+                                    <Button size="sm" variant="destructive" className="mt-4" onClick={() => onClearTab(tab.id, tableId, paxCount)}>
                                         <X size={14} className="mr-2"/> Clear Table
                                     </Button>
                                 </div>
@@ -394,7 +395,8 @@ const TableCard = ({ tableId, tableData, onMarkAsPaid, onPrintBill, onMarkAsClea
                     ) : null}
                 </CardContent>
                 
-                 {tab && (tab.orders && tab.orders.length > 0) ? (
+                {/* --- THE FIX: Conditional footer logic --- */}
+                {tab && (tab.orders && tab.orders.length > 0) && (
                     <CardFooter className="flex-col items-start bg-muted/30 p-4 border-t mt-auto">
                         <Button variant="outline" size="sm" className="w-full mb-4" onClick={() => onShowHistory(tableId, tab.id)}>
                             <History size={14} className="mr-2"/> See History
@@ -408,13 +410,14 @@ const TableCard = ({ tableId, tableData, onMarkAsPaid, onPrintBill, onMarkAsClea
                             <Button className="bg-primary hover:bg-primary/90" onClick={() => onMarkAsPaid(tableId, tab.id)}><CheckCircle size={16} className="mr-2"/> Mark as Paid</Button>
                         </div>
                     </CardFooter>
-                 ) : state === 'needs_cleaning' ? (
+                )}
+                 {state === 'needs_cleaning' && (
                      <CardFooter className="p-4 mt-auto">
                         <Button className="w-full bg-green-500 hover:bg-green-600" onClick={() => onMarkAsCleaned(tableId)}>
                             <CheckCircle size={16} className="mr-2"/> Mark as Cleaned
                         </Button>
                     </CardFooter>
-                ) : null}
+                )}
             </Card>
         </motion.div>
     );
@@ -459,9 +462,10 @@ const QrCodeDisplay = ({ text, tableName, innerRef }) => {
 };
 
 const QrCodeDisplayModal = ({ isOpen, onClose, restaurant, table }) => {
+    const printRef = useRef();
+
     if (!table || !restaurant?.id) return null;
     const qrValue = `${window.location.origin}/order/${restaurant.id}?table=${table.id}`;
-    const printRef = useRef();
 
     return (
         <Dialog open={isOpen} onOpenChange={onClose}>
