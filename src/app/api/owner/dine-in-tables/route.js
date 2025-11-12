@@ -1,3 +1,4 @@
+
 'use server';
 
 import { NextResponse } from 'next/server';
@@ -68,6 +69,10 @@ async function verifyOwnerAndGetBusinessRef(req) {
     if (req.method === 'POST') {
          const body = await req.clone().json();
          if (body.action === 'create_tab') {
+             const businessRef = firestore.collection('restaurants').doc(body.restaurantId);
+             if((await businessRef.get()).exists) return businessRef;
+             const shopRef = firestore.collection('shops').doc(body.restaurantId);
+             if((await shopRef.get()).exists) return shopRef;
              return null;
          }
     }
@@ -334,7 +339,7 @@ export async function PATCH(req) {
             }
             
             if (action === 'mark_cleaned') {
-                 await tableRef.update({ state: 'available' }); // current_pax is already 0
+                 await tableRef.update({ state: 'available' }); // current_pax should be 0 already
                  console.log(`[API dine-in-tables] Table ${tableId} marked as cleaned and available.`);
                  return NextResponse.json({ message: `Table ${tableId} cleaning acknowledged.` }, { status: 200 });
             }

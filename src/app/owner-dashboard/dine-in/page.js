@@ -284,10 +284,9 @@ const ConfirmationModal = ({ isOpen, onClose, onConfirm, title, description, con
 
 const TableCard = ({ tableId, tableData, onMarkAsPaid, onPrintBill, onMarkAsCleaned, onShowHistory, acknowledgedItems, onToggleAcknowledge, onConfirmOrders, onClearTab }) => {
     const tab = tableData.tabs?.[0] || null;
-    const state = tab ? 'occupied' : tableData.state;
-    // --- THE FIX: Correctly calculate paxCount ---
     const paxCount = tab ? (tab.pax_count || 0) : (tableData.current_pax || 0);
-
+    const state = tableData.current_pax > 0 ? 'occupied' : tableData.state;
+    
     const stateConfig = {
         available: {
             title: "Available",
@@ -1065,5 +1064,3 @@ const DineInPage = () => (
 );
 
 export default DineInPage;
-
-    
