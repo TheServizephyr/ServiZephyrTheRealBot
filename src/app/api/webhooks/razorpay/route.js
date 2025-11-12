@@ -131,6 +131,7 @@ export async function POST(req) {
             const orderItems = JSON.parse(itemsString);
             const billDetails = JSON.parse(billDetailsString);
             
+            // --- THE FIX: Generate tracking token ---
             const trackingToken = await generateSecureToken(firestore, customerDetails.phone);
 
             const batch = firestore.batch();
@@ -174,6 +175,7 @@ export async function POST(req) {
             
             const newOrderRef = firestore.collection('orders').doc(firestoreOrderId);
             
+            // DINE IN LOGIC: Handle new tab creation if it was a dine-in order
             let finalDineInTabId = billDetails.dineInTabId;
             if (billDetails.deliveryType === 'dine-in' && billDetails.tableId && !finalDineInTabId) {
                 const newTabRef = firestore.collection(businessCollectionName).doc(restaurantId).collection('dineInTabs').doc();
@@ -213,10 +215,10 @@ export async function POST(req) {
                 sgst: billDetails.sgst, 
                 deliveryCharge: billDetails.deliveryCharge,
                 totalAmount: billDetails.grandTotal,
-                status: 'pending',
+                status: 'pending', // THE FIX: Always set to 'pending' for consistency
                 orderDate: FieldValue.serverTimestamp(),
                 notes: customNotes || null,
-                trackingToken: trackingToken,
+                trackingToken: trackingToken, // --- THE FIX: Save the token ---
                 paymentDetails: {
                     razorpay_payment_id: paymentId,
                     razorpay_order_id: razorpayOrderId,

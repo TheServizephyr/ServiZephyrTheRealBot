@@ -17,20 +17,16 @@ const OrderPlacedContent = () => {
     const whatsappNumber = searchParams.get('whatsappNumber');
     const tokenFromUrl = searchParams.get('token');
     const phone = searchParams.get('phone');
-    const restaurantIdFromUrl = searchParams.get('restaurantId');
     
+    // --- START FIX: Use state for restaurantId and token ---
     const [trackingToken, setTrackingToken] = useState(tokenFromUrl);
-    const [restaurantId, setRestaurantId] = useState(restaurantIdFromUrl);
+    const [restaurantId, setRestaurantId] = useState('');
+    // --- END FIX ---
 
     useEffect(() => {
-        // --- Smart Restaurant ID saving ---
+        // --- START FIX: Smart restaurant ID and token fetching ---
         const lastRestaurantId = localStorage.getItem('lastOrderedFrom');
-        if (restaurantIdFromUrl) {
-            if (restaurantIdFromUrl !== lastRestaurantId) {
-                localStorage.setItem('lastOrderedFrom', restaurantIdFromUrl);
-            }
-            setRestaurantId(restaurantIdFromUrl);
-        } else if (lastRestaurantId) {
+        if (lastRestaurantId) {
             setRestaurantId(lastRestaurantId);
         }
 
@@ -38,6 +34,9 @@ const OrderPlacedContent = () => {
             if (!trackingToken && orderId) {
                 console.log("Token not in URL, attempting to fetch from backend...");
                 try {
+                    // Wait for a moment to allow webhook to process
+                    await new Promise(resolve => setTimeout(resolve, 1500));
+                    
                     const res = await fetch(`/api/order/status/${orderId}`);
                     if (res.ok) {
                         const data = await res.json();
@@ -56,22 +55,24 @@ const OrderPlacedContent = () => {
             }
         };
 
-        const timer = setTimeout(fetchTokenIfNeeded, 1500); // Give webhook a moment to run
-        return () => clearTimeout(timer);
+        fetchTokenIfNeeded();
+        // --- END FIX ---
 
-    }, [orderId, trackingToken, restaurantIdFromUrl]);
+    }, [orderId, trackingToken]); // Rerun if orderId or token changes
 
 
     const handleBackToMenu = () => {
+        // --- START FIX: Correct redirect logic ---
         if (restaurantId) {
             const params = new URLSearchParams();
             if (phone) params.set('phone', phone);
-            // Re-use the order token for the session token, as it's valid.
+            // Re-use the order token for the session token, as it's valid for a period
             if (tokenFromUrl) params.set('token', tokenFromUrl);
             router.push(`/order/${restaurantId}?${params.toString()}`);
         } else {
-            router.push('/'); // Fallback
+            router.push('/'); // Fallback to home if restaurantId is somehow lost
         }
+        // --- END FIX ---
     };
 
     const handleConfirmOnWhatsApp = () => {

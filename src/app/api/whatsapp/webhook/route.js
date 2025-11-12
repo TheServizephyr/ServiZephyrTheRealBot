@@ -57,12 +57,12 @@ async function getBusiness(firestore, botPhoneNumberId) {
 
 const generateSecureToken = async (firestore, customerPhone) => {
     const token = nanoid(24);
-    const expiry = new Date(Date.now() + 2 * 60 * 60 * 1000); // 2-hour validity for ordering link
+    const expiry = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24-hour validity for tracking link
     const authTokenRef = firestore.collection('auth_tokens').doc(token);
     await authTokenRef.set({
         phone: customerPhone,
         expiresAt: expiry,
-        type: 'whatsapp' // Use a specific type for this token
+        type: 'tracking'
     });
     return token;
 };
@@ -147,7 +147,7 @@ const handleDineInConfirmation = async (firestore, text, fromNumber, business, b
             dineInToken = `#${String(newTokenNumber).padStart(2, '0')}-${randomChar}`;
             
             const customerPhone = fromNumber.startsWith('91') ? fromNumber.substring(2) : fromNumber;
-            trackingTokenForLink = orderData.trackingToken;
+            trackingTokenForLink = orderData.trackingToken; // Use the one from the order now
             
             transaction.update(businessRef, { lastDineInToken: newTokenNumber });
             
@@ -202,7 +202,7 @@ const handleButtonActions = async (firestore, buttonId, fromNumber, business, bo
                 const businessId = payloadParts.join('_');
                 const token = await generateSecureToken(firestore, customerPhone);
                 const link = `https://servizephyr.com/order/${businessId}?phone=${customerPhone}&token=${token}`;
-                await sendWhatsAppMessage(fromNumber, `Here is your personal link to place an order:\n\n${link}\n\nThis link is valid for 2 hours.`, botPhoneNumberId);
+                await sendWhatsAppMessage(fromNumber, `Here is your personal link to place an order:\n\n${link}\n\nThis link is valid for 24 hours.`, botPhoneNumberId);
                 break;
             }
             case 'track': {
