@@ -63,7 +63,7 @@ const ManageTablesModal = ({ isOpen, onClose, allTables, onEdit, onDelete, loadi
                                             </Button>
                                             <Button variant="ghost" size="icon" className="h-9 w-9" onClick={() => onEdit(table)}>
                                                 <Edit size={16}/>
-                                            </Button>
+                                             </Button>
                                              <Button variant="ghost" size="icon" className="h-9 w-9 text-destructive hover:bg-destructive/10" onClick={() => onDelete(table.id)}>
                                                 <Trash2 size={16}/>
                                              </Button>
@@ -303,8 +303,7 @@ const TableCard = ({ tableData, onMarkAsPaid, onPrintBill, onMarkAsCleaned, onCo
         needs_cleaning: { title: "Needs Cleaning", bg: "bg-red-500/10", border: "border-red-500", icon: <Wind size={16} className="text-red-500" /> }
     };
     const currentConfig = stateConfig[state] || stateConfig.available;
-
-    const allTabs = [...Object.values(tableData.tabs || {}), ...(tableData.pendingOrders || [])];
+    const allGroups = [...(Object.values(tableData.tabs || {})), ...(tableData.pendingOrders || [])];
 
     return (
         <motion.div layout initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }}>
@@ -315,29 +314,27 @@ const TableCard = ({ tableData, onMarkAsPaid, onPrintBill, onMarkAsCleaned, onCo
                 </CardHeader>
                 
                 <CardContent className="flex-grow p-4">
-                    {allTabs.length > 0 ? (
+                    {allGroups.length > 0 ? (
                         <div className="space-y-4">
-                            {allTabs.map(tab => {
-                                const isPendingTab = tab.status === 'pending';
-                                const tabName = isPendingTab ? tab.customerName : tab.tab_name;
-                                const paxCount = tab.pax_count || tab.items?.reduce((acc, item) => acc + (item.pax_count || 0), 0) || 1;
-                                const totalBill = isPendingTab ? tab.totalAmount : tab.totalBill;
+                            {allGroups.map(group => {
+                                const isPendingTab = group.status === 'pending';
+                                const tabName = isPendingTab ? group.customerName : group.tab_name;
+                                const paxCount = group.pax_count || group.items?.reduce((acc, item) => acc + (item.pax_count || 0), 0) || 1;
+                                
+                                // For pending orders, bill comes from totalAmount. For active tabs, it's calculated.
+                                const totalBill = isPendingTab ? group.totalAmount : (group.orders || []).reduce((sum, o) => sum + (o.totalAmount || 0), 0);
 
-                                // Payment status logic for active tabs
-                                const isPaid = !isPendingTab && tab.status === 'closed';
-                                const paymentMethod = isPaid
-                                    ? (tab.paymentMethod || 'Pay at Counter')
-                                    : (isPendingTab ? 'Pending' : (tab.orders?.[0]?.paymentDetails?.method === 'razorpay' ? 'Online' : 'Pending'));
+                                const paymentMethod = group.orders?.[0]?.paymentDetails?.method === 'razorpay' ? 'Online' : 'Pending';
 
                                 return (
-                                    <div key={tab.id} className="bg-muted/50 p-3 rounded-lg border border-border">
+                                    <div key={group.id} className={cn("p-3 rounded-lg border", isPendingTab ? "bg-yellow-500/10 border-yellow-500/30" : "bg-muted/50 border-border")}>
                                         <div className="flex justify-between items-center mb-2">
                                             <h4 className="font-semibold text-foreground">{tabName} <span className="text-xs text-muted-foreground">({paxCount} guests)</span></h4>
-                                            {isPendingTab && tab.dineInToken && <p className="text-xs font-bold text-yellow-400">TOKEN: {tab.dineInToken}</p>}
+                                            {group.dineInToken && <p className="text-xs font-bold text-yellow-400">TOKEN: {group.dineInToken}</p>}
                                         </div>
 
                                         <div className="space-y-1 text-sm max-h-32 overflow-y-auto pr-2 my-2">
-                                            {(tab.items || []).map((item, i) => (
+                                            {(group.items || []).map((item, i) => (
                                                 <div key={i} className="flex justify-between items-center text-muted-foreground">
                                                     <span>{item.quantity || item.qty} x {item.name}</span>
                                                     <span>{formatCurrency((item.totalPrice || item.price) * (item.quantity || item.qty))}</span>
@@ -361,19 +358,19 @@ const TableCard = ({ tableData, onMarkAsPaid, onPrintBill, onMarkAsCleaned, onCo
                                         <div className="mt-4 grid grid-cols-1 gap-2">
                                             {isPendingTab ? (
                                                 <div className="grid grid-cols-2 gap-2">
-                                                    <Button size="sm" variant="destructive" onClick={() => onRejectOrder(tab.id)}>
+                                                    <Button size="sm" variant="destructive" onClick={() => onRejectOrder(group.id)}>
                                                         <X size={16} className="mr-2"/> Reject
                                                     </Button>
-                                                    <Button size="sm" className="bg-primary hover:bg-primary/90" onClick={() => onConfirmOrder(tab.id)}>
+                                                    <Button size="sm" className="bg-primary hover:bg-primary/90" onClick={() => onConfirmOrder(group.id)}>
                                                         <Check size={16} className="mr-2"/> Confirm
                                                     </Button>
                                                 </div>
                                             ) : (
                                                 <div className="grid grid-cols-2 gap-2">
-                                                    <Button variant="outline" size="sm" onClick={() => onPrintBill({ tableId: tableData.id, ...tab })}>
+                                                    <Button variant="outline" size="sm" onClick={() => onPrintBill({ tableId: tableData.id, ...group })}>
                                                         <Printer size={16} className="mr-2"/> Print Bill
                                                     </Button>
-                                                    <Button onClick={() => onMarkAsPaid(tableData.id, tab.id)} disabled={isPaid}>
+                                                    <Button onClick={() => onMarkAsPaid(tableData.id, group.id)}>
                                                         <CheckCircle size={16} className="mr-2"/> Mark as Paid
                                                     </Button>
                                                 </div>
@@ -896,7 +893,7 @@ const DineInPageContent = () => {
         const tableData = activeTableData.find(t => t.id === tableId);
         if (!tableData) return;
 
-        const tab = tableData.tabs.find(t => t.id === tabId);
+        const tab = (Object.values(tableData.tabs || {})).find(t => t.id === tabId);
         if (!tab) return;
     
         const orderEvents = (tab.orders || []).map(o => ({
@@ -1068,5 +1065,3 @@ const DineInPage = () => (
 );
 
 export default DineInPage;
-
-    
