@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useMemo, useRef, Suspense } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { RefreshCw, Printer, CheckCircle, IndianRupee, Users, Clock, ShoppingBag, Bell, MoreVertical, Trash2, QrCode, Download, Save, Wind, Edit, Table as TableIcon, History, Search, Salad, UtensilsCrossed, Droplet, PlusCircle, AlertTriangle, X, Wallet, Check } from 'lucide-react';
+import { RefreshCw, Printer, CheckCircle, IndianRupee, Users, Clock, ShoppingBag, Bell, MoreVertical, Trash2, QrCode, Download, Save, Wind, Edit, Table as TableIcon, History, Search, Salad, UtensilsCrossed, Droplet, PlusCircle, AlertTriangle, X, Wallet, Check, CookingPot, Bike, Home } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { auth, db } from '@/lib/firebase';
@@ -182,21 +182,10 @@ const BillModal = ({ order, restaurant, onClose, onPrint, printRef }) => {
     if (!order || !restaurant) return null;
 
     const allItems = useMemo(() => {
-        const itemMap = new Map();
-        (order.orders || []).forEach(o => {
-            (o.items || []).forEach(item => {
-                const existing = itemMap.get(item.name);
-                if (existing) {
-                    itemMap.set(item.name, { ...existing, qty: existing.qty + item.qty });
-                } else {
-                    itemMap.set(item.name, { ...item });
-                }
-            });
-        });
-        return Array.from(itemMap.values());
+        return Object.values(order.orders || {});
     }, [order.orders]);
     
-    const totalBill = useMemo(() => Object.values(order.orders || {}).reduce((sum, o) => sum + (o.totalAmount || 0), 0), [order.orders]);
+    const totalBill = useMemo(() => allItems.reduce((sum, o) => sum + (o.totalAmount || 0), 0), [allItems]);
 
 
     return (
@@ -218,28 +207,19 @@ const BillModal = ({ order, restaurant, onClose, onPrint, printRef }) => {
                             <tr>
                                 <th className="text-left font-bold py-1">ITEM</th>
                                 <th className="text-center font-bold py-1">QTY</th>
-                                <th className="text-right font-bold py-1">PRICE</th>
                                 <th className="text-right font-bold py-1">TOTAL</th>
                             </tr>
                         </thead>
                         <tbody>
-                            {allItems.map((item, index) => (
+                            {allItems.flatMap(o => o.items).map((item, index) => (
                                 <tr key={index} className="border-b border-dotted border-black">
                                     <td className="py-1">{item.name}</td>
                                     <td className="text-center py-1">{item.quantity}</td>
-                                    <td className="text-right py-1">{formatCurrency((item.totalPrice || item.price) / item.quantity)}</td>
                                     <td className="text-right py-1">{formatCurrency(item.totalPrice || item.price)}</td>
                                 </tr>
                             ))}
                         </tbody>
                     </table>
-                    
-                    <div className="text-xs border-t-2 border-dashed border-black pt-2 mt-2">
-                         <div className="flex justify-between">
-                            <span>Subtotal</span>
-                            <span>{formatCurrency(totalBill)}</span>
-                        </div>
-                    </div>
                     
                     <div className="flex justify-between font-bold text-lg pt-1 mt-1 border-t-2 border-black">
                         <span>GRAND TOTAL</span>
@@ -249,7 +229,6 @@ const BillModal = ({ order, restaurant, onClose, onPrint, printRef }) => {
                     <div className="text-center mt-6 pt-4 border-t border-dashed border-black">
                         <p className="text-xs italic">Thank you for dining with us!</p>
                         <p className="text-xs font-bold mt-1">Powered by ServiZephyr</p>
-                 <p className="text-xs italic mt-1">For exclusive offers and faster ordering, visit the ServiZephyr Customer Hub!</p>
                     </div>
                 </div>
                  <div className="p-4 bg-muted border-t border-border flex justify-end no-print">
@@ -295,8 +274,15 @@ const ConfirmationModal = ({ isOpen, onClose, onConfirm, title, description, con
     );
 };
 
+const statusFlow = ['confirmed', 'preparing', 'ready_for_pickup', 'delivered'];
+const actionConfig = {
+    'confirmed': { text: 'Start Preparing', icon: CookingPot, next: 'preparing' },
+    'preparing': { text: 'Ready for Pickup', icon: ShoppingBag, next: 'ready_for_pickup' },
+    'ready_for_pickup': { text: 'Mark as Served', icon: Home, next: 'delivered' },
+};
 
-const TableCard = ({ tableData, onMarkAsPaid, onPrintBill, onMarkAsCleaned, onConfirmOrder, onRejectOrder, onClearTab }) => {
+
+const TableCard = ({ tableData, onMarkAsPaid, onPrintBill, onMarkAsCleaned, onConfirmOrder, onRejectOrder, onClearTab, onUpdateStatus }) => {
     const state = tableData.state;
     const stateConfig = {
         available: { title: "Available", bg: "bg-card", border: "border-border", icon: <CheckCircle size={16} className="text-green-500" /> },
@@ -305,9 +291,10 @@ const TableCard = ({ tableData, onMarkAsPaid, onPrintBill, onMarkAsCleaned, onCo
     };
     const currentConfig = stateConfig[state] || stateConfig.available;
     
+    // Combine pending orders and active tabs into one list for rendering
     const allGroups = [
-        ...Object.values(tableData.tabs || {}),
-        ...(tableData.pendingOrders || [])
+        ...(tableData.pendingOrders || []),
+        ...Object.values(tableData.tabs || {})
     ];
     
     return (
@@ -324,11 +311,12 @@ const TableCard = ({ tableData, onMarkAsPaid, onPrintBill, onMarkAsCleaned, onCo
                             {allGroups.map(group => {
                                 const isPending = !group.status || group.status === 'pending';
                                 const isActiveTab = group.status === 'active';
-                                // THIS IS THE FIX
-                                const totalBill = isPending ? group.totalAmount : (Object.values(group.orders || {})).reduce((sum, o) => sum + (o.totalAmount || 0), 0);
-                                const isOnlinePayment = isPending ? group.paymentDetails?.method === 'razorpay' : false;
-                                const allOrdersPaid = isActiveTab ? (Object.values(group.orders || {})).every(o => o.paymentDetails?.method === 'razorpay') : false;
-                                const isPaid = isOnlinePayment || allOrdersPaid;
+                                const orderId = isPending ? group.id : Object.keys(group.orders || {})[0];
+                                const orderData = isPending ? group : Object.values(group.orders || {})[0];
+                                const totalBill = isPending ? group.totalAmount : Object.values(group.orders || {}).reduce((sum, o) => sum + (o.totalAmount || 0), 0);
+                                
+                                const isCOD = (orderData?.paymentDetails?.method || 'cod') === 'cod';
+                                const isServed = orderData?.status === 'delivered';
 
                                 return (
                                     <div key={group.id} className={cn("relative p-3 rounded-lg border", 
@@ -338,32 +326,16 @@ const TableCard = ({ tableData, onMarkAsPaid, onPrintBill, onMarkAsCleaned, onCo
                                             <h4 className="font-semibold text-foreground">{group.tab_name || 'New Group'} <span className="text-xs text-muted-foreground">({group.pax_count || 1} guests)</span></h4>
                                             {group.dineInToken && <p className="text-xs font-bold text-yellow-400">TOKEN: {group.dineInToken}</p>}
                                         </div>
-
-                                        {isPending ? (
-                                             <div className="mb-2 p-2 bg-yellow-500/10 rounded">
-                                                <p className="text-sm font-bold text-yellow-300 text-center">New Order Received!</p>
-                                                {(group.items || []).length > 0 && (
-                                                    <div className="space-y-1 text-sm max-h-32 overflow-y-auto pr-2 my-2">
-                                                        {(group.items || []).map((item, i) => (
-                                                            <div key={i} className="flex justify-between items-center text-yellow-200/80">
-                                                                <span>{item.quantity || item.qty} x {item.name}</span>
-                                                                <span>{formatCurrency((item.totalPrice || item.price) * (item.quantity || item.qty))}</span>
-                                                            </div>
-                                                        ))}
+                                        
+                                        {(orderData?.items || []).length > 0 && (
+                                            <div className="space-y-1 text-sm max-h-32 overflow-y-auto pr-2 my-2">
+                                                {(orderData.items || []).map((item, i) => (
+                                                    <div key={i} className="flex justify-between items-center text-muted-foreground">
+                                                        <span>{item.quantity || item.qty} x {item.name}</span>
+                                                        <span>{formatCurrency((item.totalPrice || item.price))}</span>
                                                     </div>
-                                                )}
-                                             </div>
-                                        ) : (
-                                            (Object.values(group.orders || {})).length > 0 && (
-                                                <div className="space-y-1 text-sm max-h-32 overflow-y-auto pr-2 my-2">
-                                                     {(Object.values(group.orders || {})).flatMap(o => o.items).map((item, i) => (
-                                                        <div key={i} className="flex justify-between items-center text-muted-foreground">
-                                                            <span>{item.quantity || item.qty} x {item.name}</span>
-                                                            <span>{formatCurrency((item.totalPrice || item.price) * (item.quantity || item.qty))}</span>
-                                                        </div>
-                                                    ))}
-                                                </div>
-                                            )
+                                                ))}
+                                            </div>
                                         )}
 
                                         {totalBill > 0 && (
@@ -374,30 +346,43 @@ const TableCard = ({ tableData, onMarkAsPaid, onPrintBill, onMarkAsCleaned, onCo
                                                 </div>
                                                 <div className="flex justify-between items-center text-xs mt-1">
                                                     <span>Payment Status:</span>
-                                                    <span className={cn('font-semibold', isPaid ? 'text-green-500' : 'text-yellow-500')}>
-                                                        {isPaid ? 'PAID' : 'Payment Due'}
+                                                    <span className={cn('font-semibold', !isCOD ? 'text-green-500' : 'text-yellow-500')}>
+                                                        {!isCOD ? 'PAID' : 'Payment Due'}
                                                     </span>
                                                 </div>
                                             </div>
                                         )}
 
                                         {isPending ? (
-                                             <div className="grid grid-cols-2 gap-2 mt-2">
-                                                <Button size="sm" variant="destructive" onClick={() => onRejectOrder(group.id)}> <X size={16} className="mr-2"/> Reject </Button>
-                                                <Button size="sm" className="bg-primary hover:bg-primary/90" onClick={() => onConfirmOrder(group.id)}> <Check size={16} className="mr-2"/> Confirm </Button>
+                                             <div className="grid grid-cols-2 gap-2 mt-4">
+                                                <Button size="sm" variant="destructive" onClick={() => onRejectOrder(orderId)}> <X size={16} className="mr-2"/> Reject </Button>
+                                                <Button size="sm" className="bg-primary hover:bg-primary/90" onClick={() => onConfirmOrder(orderId)}> <Check size={16} className="mr-2"/> Confirm </Button>
                                              </div>
-                                        ) : isActiveTab && totalBill > 0 ? (
-                                            !isPaid && (
-                                                <div className="grid grid-cols-2 gap-2 mt-4">
-                                                    <Button variant="outline" size="sm" onClick={() => onPrintBill({ tableId: tableData.id, ...group })}> <Printer size={16} className="mr-2"/> Print Bill </Button>
-                                                    <Button onClick={() => onMarkAsPaid(tableData.id, group.id)}> <CheckCircle size={16} className="mr-2"/> Mark as Paid </Button>
+                                        ) : isActiveTab ? (
+                                            <div className="mt-4 space-y-2">
+                                                <div className="flex items-center gap-2">
+                                                    <p className="text-xs font-semibold text-muted-foreground">STATUS:</p>
+                                                    <p className="text-sm font-bold capitalize text-primary">{orderData?.status?.replace('_', ' ') || 'Confirmed'}</p>
                                                 </div>
-                                            )
-                                        ) : isActiveTab && totalBill === 0 ? (
+                                                <div className="grid grid-cols-2 gap-2">
+                                                    {actionConfig[orderData?.status] ? (
+                                                         <Button size="sm" className="w-full col-span-2" onClick={() => onUpdateStatus(orderId, actionConfig[orderData.status].next)}>
+                                                            <actionConfig[orderData.status].icon size={16} className="mr-2"/> {actionConfig[orderData.status].text}
+                                                        </Button>
+                                                    ) : isServed && isCOD ? (
+                                                        <Button onClick={() => onMarkAsPaid(tableData.id, group.id)} className="w-full col-span-2 bg-green-500 hover:bg-green-600">
+                                                            <Wallet size={16} className="mr-2"/> Mark as Paid
+                                                        </Button>
+                                                    ) : null}
+                                                     <Button variant="outline" size="sm" className="w-full" onClick={() => onPrintBill({ tableId: tableData.id, ...group })}> <Printer size={16} className="mr-2"/> Print Bill </Button>
+                                                </div>
+                                            </div>
+                                        ) : null}
+                                        {isActiveTab && totalBill === 0 && (
                                             <button onClick={() => onClearTab(group.id, tableData.id, group.pax_count)} className="absolute top-2 right-2 p-1.5 bg-background/50 text-destructive rounded-full hover:bg-destructive hover:text-destructive-foreground">
                                                  <X size={14} />
                                             </button>
-                                        ) : null}
+                                        )}
                                     </div>
                                 );
                             })}
@@ -668,42 +653,18 @@ const DineInPageContent = () => {
     const [loading, setLoading] = useState(true);
     const searchParams = useSearchParams();
     const impersonatedOwnerId = searchParams.get('impersonate_owner_id');
-    const [isQrModalOpen, setIsQrModalOpen] = useState(false);
     const [isManageTablesModalOpen, setIsManageTablesModalOpen] = useState(false);
     const [isHistoryModalOpen, setIsHistoryModalOpen] = useState(false);
     const [editingTable, setEditingTable] = useState(null);
     const [displayTable, setDisplayTable] = useState(null);
     const [isQrDisplayModalOpen, setIsQrDisplayModalOpen] = useState(false);
+    const [isQrGeneratorModalOpen, setIsQrGeneratorModalOpen] = useState(false);
     const [restaurantDetails, setRestaurantDetails] = useState(null);
     const [billData, setBillData] = useState(null);
-    const [historyModalData, setHistoryModalData] = useState(null);
     const [infoDialog, setInfoDialog] = useState({ isOpen: false, title: '', message: '' });
     const [confirmationState, setConfirmationState] = useState({ isOpen: false, onConfirm: () => {}, title: '', description: '', confirmText: '', paymentMethod: 'cod' });
     
-    const [acknowledgedItems, setAcknowledgedItems] = useState(() => {
-        if (typeof window === 'undefined') {
-            return new Set();
-        }
-        try {
-            const item = window.localStorage.getItem('acknowledgedDineInItems');
-            return item ? new Set(JSON.parse(item)) : new Set();
-        } catch (error) {
-            console.error("Error reading from localStorage", error);
-            return new Set();
-        }
-    });
-
     const billPrintRef = useRef();
-
-    useEffect(() => {
-        if (typeof window !== 'undefined') {
-            try {
-                window.localStorage.setItem('acknowledgedDineInItems', JSON.stringify(Array.from(acknowledgedItems)));
-            } catch (error) {
-                console.error("Error writing to localStorage", error);
-            }
-        }
-    }, [acknowledgedItems]);
 
     const handlePrint = useReactToPrint({
         content: () => billPrintRef.current,
@@ -743,7 +704,7 @@ const DineInPageContent = () => {
         return data;
     };
 
-    const fetchData = async (isManualRefresh = false) => {
+    const fetchData = useCallback(async (isManualRefresh = false) => {
         if (!isManualRefresh) setLoading(true);
         try {
             const data = await handleApiCall('GET', null, '/api/owner/dine-in-tables');
@@ -754,7 +715,7 @@ const DineInPageContent = () => {
         } finally {
             if (!isManualRefresh) setLoading(false);
         }
-    };
+    }, [impersonatedOwnerId]);
     
     useEffect(() => {
         const fetchAndSetRestaurantDetails = async () => {
@@ -824,9 +785,9 @@ const DineInPageContent = () => {
             unsubscribe();
             clearInterval(interval);
         };
-      }, [impersonatedOwnerId]);
+      }, [impersonatedOwnerId, fetchData]);
 
-      const confirmMarkAsPaid = (tableId, tabId) => {
+    const confirmMarkAsPaid = (tableId, tabId) => {
         setConfirmationState({
             isOpen: true,
             title: "Confirm Payment",
@@ -879,14 +840,13 @@ const DineInPageContent = () => {
         }
     }
     
-    const handleConfirmOrder = async (orderId) => {
+    const handleUpdateStatus = async (orderId, newStatus) => {
         setLoading(true);
         try {
-            await handleApiCall('PATCH', { orderIds: [orderId], newStatus: 'confirmed' }, '/api/owner/orders');
-            setInfoDialog({ isOpen: true, title: "Success", message: "Order confirmed!" });
+            await handleApiCall('PATCH', { orderIds: [orderId], newStatus }, '/api/owner/orders');
             await fetchData(true);
         } catch (error) {
-            setInfoDialog({ isOpen: true, title: "Error", message: `Could not confirm order: ${error.message}` });
+            setInfoDialog({ isOpen: true, title: "Error", message: `Could not update status: ${error.message}` });
         } finally {
             setLoading(false);
         }
@@ -911,38 +871,13 @@ const DineInPageContent = () => {
         return allData.tables;
     }, [allData]);
     
-    const handleShowHistory = (tableId, tabId) => {
-        const tableData = activeTableData.find(t => t.id === tableId);
-        if (!tableData) return;
-
-        const tab = (Object.values(tableData.tabs || {})).find(t => t.id === tabId);
-        if (!tab) return;
-    
-        const orderEvents = (tab.orders || []).map(o => ({
-            type: 'order',
-            timestamp: o.orderDate.seconds ? o.orderDate.seconds * 1000 : new Date(o.orderDate).getTime(),
-            customerName: o.customerName,
-            items: o.items,
-            totalAmount: o.totalAmount
-        }));
-    
-        const requestEvents = (allData.serviceRequests || []).filter(r => r.dineInTabId === tabId).map(r => ({
-            type: 'request',
-            timestamp: r.createdAt.seconds ? r.createdAt.seconds * 1000 : new Date(r.createdAt).getTime(),
-        }));
-        
-        const allEvents = [...orderEvents, ...requestEvents].sort((a, b) => b.timestamp - a.timestamp);
-        
-        setHistoryModalData({ tableId, events: allEvents });
-    };
-
     const handleOpenEditModal = (table = null) => {
         if (!restaurantDetails?.id) {
             setInfoDialog({isOpen: true, title: "Error", message: "Restaurant data is not loaded yet. Cannot manage tables."});
             return;
         }
         setEditingTable(table);
-        setIsQrModalOpen(true);
+        setIsQrGeneratorModalOpen(true);
     };
 
      const handleOpenQrDisplayModal = (table) => {
@@ -954,29 +889,6 @@ const DineInPageContent = () => {
         setIsManageTablesModalOpen(false); // Close manage modal if open
         setIsQrDisplayModalOpen(true);
     };
-    
-    const handleToggleAcknowledge = (uniqueItemId) => {
-        setAcknowledgedItems(prev => {
-            const newSet = new Set(prev);
-            if (newSet.has(uniqueItemId)) {
-                newSet.delete(uniqueItemId);
-            } else {
-                newSet.add(uniqueItemId);
-            }
-            return newSet;
-        });
-    };
-    
-     const handleConfirmOrders = async (orderIds) => {
-        try {
-            await handleApiCall('PATCH', { orderIds: orderIds, newStatus: 'confirmed' }, '/api/owner/orders');
-            setInfoDialog({ isOpen: true, title: "Success", message: "New orders have been confirmed!" });
-            await fetchData(true);
-        } catch(error) {
-            setInfoDialog({ isOpen: true, title: "Error", message: `Could not confirm orders: ${error.message}` });
-        }
-    }
-
 
     const renderTableCards = () => {
         if (loading || activeTableData.length === 0) return [];
@@ -991,9 +903,10 @@ const DineInPageContent = () => {
                     onMarkAsPaid={confirmMarkAsPaid}
                     onPrintBill={setBillData}
                     onMarkAsCleaned={handleMarkAsCleaned}
-                    onConfirmOrder={handleConfirmOrder}
+                    onConfirmOrder={handleUpdateStatus} // Changed from onConfirmOrder
                     onRejectOrder={handleRejectOrder}
                     onClearTab={handleClearTab}
+                    onUpdateStatus={handleUpdateStatus}
                 />
             );
         }).flat();
@@ -1004,7 +917,6 @@ const DineInPageContent = () => {
         <div className="p-4 md:p-6 text-foreground min-h-screen bg-background">
             <DineInHistoryModal isOpen={isHistoryModalOpen} onClose={() => setIsHistoryModalOpen(false)} closedTabs={allData.closedTabs || []} />
             <ManageTablesModal isOpen={isManageTablesModalOpen} onClose={() => setIsManageTablesModalOpen(false)} allTables={allData.tables} onEdit={handleOpenEditModal} onDelete={handleDeleteTable} loading={loading} onCreateNew={() => handleOpenEditModal(null)} onShowQr={handleOpenQrDisplayModal} />
-            {historyModalData && <HistoryModal tableHistory={historyModalData} onClose={() => setHistoryModalData(null)} />}
             {billData && (
                 <BillModal 
                     order={billData}
@@ -1020,7 +932,7 @@ const DineInPageContent = () => {
                 title={infoDialog.title}
                 message={infoDialog.message}
             />
-            {restaurantDetails?.id && <QrGeneratorModal isOpen={isQrModalOpen} onClose={() => setIsQrModalOpen(false)} restaurantId={restaurantDetails.id} onSaveTable={handleSaveTable} onEditTable={handleEditTable} onDeleteTable={handleDeleteTable} initialTable={editingTable} showInfoDialog={setInfoDialog} />}
+            {restaurantDetails?.id && <QrGeneratorModal isOpen={isQrGeneratorModalOpen} onClose={() => setIsQrGeneratorModalOpen(false)} restaurantId={restaurantDetails.id} onSaveTable={handleSaveTable} onEditTable={handleEditTable} onDeleteTable={handleDeleteTable} initialTable={editingTable} showInfoDialog={setInfoDialog} />}
             <QrCodeDisplayModal isOpen={isQrDisplayModalOpen} onClose={() => setIsQrDisplayModalOpen(false)} restaurant={restaurantDetails} table={displayTable} />
              <ConfirmationModal 
                 isOpen={confirmationState.isOpen}
