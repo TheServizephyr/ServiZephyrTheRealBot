@@ -90,9 +90,10 @@ export async function GET(req) {
         
         const [tablesSnap, tabsSnap, serviceRequestsSnap, closedTabsSnap] = await Promise.all([
             businessRef.collection('tables').orderBy('createdAt', 'asc').get(),
-            firestore.collection('dineInTabs').where('restaurantId', '==', businessRef.id).where('status', '==', 'active').get(),
+            // --- FIX: Fetch from the correct subcollection ---
+            businessRef.collection('dineInTabs').where('status', '==', 'active').get(),
             businessRef.collection('serviceRequests').where('status', '==', 'pending').orderBy('createdAt', 'desc').get(),
-            firestore.collection('dineInTabs').where('restaurantId', '==', businessRef.id).where('status', '==', 'closed').where('closedAt', '>=', subDays(new Date(), 30)).orderBy('closedAt', 'desc').get()
+            businessRef.collection('dineInTabs').where('status', '==', 'closed').where('closedAt', '>=', subDays(new Date(), 30)).orderBy('closedAt', 'desc').get()
         ]);
 
         console.log(`[API dine-in-tables] Step 5: Fetched initial data. Tables: ${tablesSnap.size}, Active Tabs: ${tabsSnap.size}, Service Requests: ${serviceRequestsSnap.size}`);
@@ -203,7 +204,8 @@ export async function POST(req) {
         }
         
         const tableRef = businessRef.collection('tables').doc(tableId);
-        const newTabRef = firestore.collection('dineInTabs').doc();
+        // --- FIX: Create tab in the business's subcollection ---
+        const newTabRef = businessRef.collection('dineInTabs').doc();
 
         try {
             await firestore.runTransaction(async (transaction) => {
@@ -275,7 +277,7 @@ export async function PATCH(req) {
             if (!tabId || !tableId) {
                 return NextResponse.json({ message: 'Tab ID and Table ID are required to clear a tab.' }, { status: 400 });
             }
-            const tabRef = firestore.collection('dineInTabs').doc(tabId);
+            const tabRef = businessRef.collection('dineInTabs').doc(tabId);
             const tableRef = businessRef.collection('tables').doc(tableId);
             
             await firestore.runTransaction(async (transaction) => {
@@ -309,7 +311,7 @@ export async function PATCH(req) {
                 
                 await firestore.runTransaction(async (transaction) => {
                     console.log(`[API dine-in-tables] Starting transaction to close tab ${tabIdToClose}.`);
-                    const tabRef = firestore.collection('dineInTabs').doc(tabIdToClose);
+                    const tabRef = businessRef.collection('dineInTabs').doc(tabIdToClose);
                     const tabDoc = await transaction.get(tabRef);
                     if (!tabDoc.exists) throw new Error("Tab to be closed not found.");
                     
@@ -326,21 +328,22 @@ export async function PATCH(req) {
                     });
 
                     transaction.update(tabRef, { status: 'closed', closedAt: FieldValue.serverTimestamp(), paymentMethod: paymentMethod || 'cod' });
+                    
                     // --- THE FIX ---
                     // Correctly decrement pax count when a tab is paid and closed.
                     transaction.update(tableRef, {
                         state: 'needs_cleaning',
                         current_pax: FieldValue.increment(-Number(tabDoc.data().pax_count || 0))
                     });
-                    // --- END THE FIX ---
                     console.log(`[API dine-in-tables] Transaction successful. Tab closed, table needs cleaning, pax reset.`);
                 });
                 return NextResponse.json({ message: `Table ${tableId} marked as needing cleaning.` }, { status: 200 });
             }
             
             if (action === 'mark_cleaned') {
-                 await tableRef.update({ state: 'available' }); // current_pax should be 0 already
-                 console.log(`[API dine-in-tables] Table ${tableId} marked as cleaned and available.`);
+                 // --- THE FIX: Explicitly set current_pax to 0 on clean ---
+                 await tableRef.update({ state: 'available', current_pax: 0 });
+                 console.log(`[API dine-in-tables] Table ${tableId} marked as cleaned and available. Pax count reset to 0.`);
                  return NextResponse.json({ message: `Table ${tableId} cleaning acknowledged.` }, { status: 200 });
             }
         }

@@ -125,13 +125,23 @@ export async function POST(req) {
             } else { // Pay at Counter for dine-in
                 console.log("[DEBUG] Dine-in 'Pay at Counter' flow...");
                 const newOrderRef = firestore.collection('orders').doc(firestoreOrderId);
-                await newOrderRef.set({
+                // --- FIX: Add order to the correct subcollection for dine-in ---
+                const newTabRef = businessRef.collection('dineInTabs').doc(dineInTabId);
+                const batch = firestore.batch();
+                
+                batch.set(newOrderRef, {
                     customerName: tab_name, customerId: `dine-in|${dineInTabId}`, customerAddress: `Table ${tableId}`,
                     restaurantId, businessType, deliveryType, tableId, dineInTabId, items,
                     subtotal, coupon, loyaltyDiscount, discount: coupon?.discount || 0, cgst, sgst,
                     totalAmount: grandTotal, status: 'pending', orderDate: FieldValue.serverTimestamp(),
                     notes: notes || null, paymentDetails: { method: paymentMethod }
                 });
+                
+                // Also update the tab if it exists
+                batch.update(newTabRef, { totalBill: FieldValue.increment(grandTotal) }, { merge: true });
+
+                await batch.commit();
+
                  console.log(`[DEBUG] Dine-in order ${newOrderRef.id} created successfully for tab ${dineInTabId}.`);
                 return NextResponse.json({
                     message: 'Order added to tab successfully.',
