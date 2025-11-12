@@ -270,7 +270,6 @@ const ConfirmationModal = ({ isOpen, onClose, onConfirm, title, description, con
                     <DialogTitle>{title}</DialogTitle>
                     {description && <DialogDescription>{description}</DialogDescription>}
                 </DialogHeader>
-                {/* --- START FIX: Add payment method selection --- */}
                 <div className="py-4">
                     <Label htmlFor="payment-method">Select Payment Method</Label>
                     <select
@@ -285,7 +284,6 @@ const ConfirmationModal = ({ isOpen, onClose, onConfirm, title, description, con
                         <option value="other">Other</option>
                     </select>
                 </div>
-                {/* --- END FIX --- */}
                 <DialogFooter>
                     <Button variant="secondary" onClick={onClose}>Cancel</Button>
                     <Button onClick={onConfirm} variant={isDestructive ? "destructive" : "default"}>
@@ -344,7 +342,8 @@ const TableCard = ({ tableId, tableData, onMarkAsPaid, onPrintBill, onMarkAsClea
                         <div className="space-y-4">
                             {tableData.tabs.map(tab => {
                                 const hasPendingOrders = tab.orders?.some(o => o.status === 'pending');
-                                const allOrdersPaid = tab.orders?.every(o => o.paymentDetails?.method === 'razorpay' || o.status === 'delivered');
+                                const allOrdersPaid = tab.status === 'closed';
+                                
                                 return (
                                     <div key={tab.id} className="bg-muted/50 p-3 rounded-lg border border-border">
                                         <div className="flex justify-between items-center">
