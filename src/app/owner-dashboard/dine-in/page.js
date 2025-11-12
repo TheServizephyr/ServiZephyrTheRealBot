@@ -341,7 +341,7 @@ const TableCard = ({ tableId, tableData, onMarkAsPaid, onPrintBill, onMarkAsClea
                             {(tab.orders && tab.orders.length > 0) ? (
                                 <>
                                     <div className="text-xs text-muted-foreground my-2 flex items-center gap-2">
-                                        <Clock size={14}/> Last activity: {tab.latestOrderTime ? format(new Date(tab.latestOrderTime), 'p') : 'N/A'}
+                                        <Clock size={14}/> Last activity: {tab.latestOrderTime ? format(new Date(tab.latestOrderTime.seconds * 1000), 'p') : 'N/A'}
                                     </div>
                                     {hasPendingOrders && (
                                         <Button size="sm" className="w-full mb-2 bg-yellow-500 hover:bg-yellow-600" onClick={() => onConfirmOrders(tab.orders.filter(o => o.status === 'pending').map(o => o.id))}>
@@ -663,16 +663,16 @@ const LiveServiceRequests = ({ impersonatedOwnerId }) => {
 };
 
 const DineInPageContent = () => {
-    const [allData, setAllData] = useState({ tables: [], serviceRequests: [], tabs: [] });
+    const [allData, setAllData] = useState({ tables: [], serviceRequests: [], closedTabs: [] });
     const [loading, setLoading] = useState(true);
     const searchParams = useSearchParams();
     const impersonatedOwnerId = searchParams.get('impersonate_owner_id');
     const [isQrModalOpen, setIsQrModalOpen] = useState(false);
     const [isManageTablesModalOpen, setIsManageTablesModalOpen] = useState(false);
-    const [isQrDisplayModalOpen, setIsQrDisplayModalOpen] = useState(false);
     const [isHistoryModalOpen, setIsHistoryModalOpen] = useState(false);
     const [editingTable, setEditingTable] = useState(null);
     const [displayTable, setDisplayTable] = useState(null);
+    const [isQrDisplayModalOpen, setIsQrDisplayModalOpen] = useState(false);
     const [restaurantDetails, setRestaurantDetails] = useState(null);
     const [billData, setBillData] = useState(null);
     const [historyModalData, setHistoryModalData] = useState(null);
@@ -746,7 +746,7 @@ const DineInPageContent = () => {
         if (!isManualRefresh) setLoading(true);
         try {
             const data = await handleApiCall('GET', null, '/api/owner/dine-in-tables');
-            setAllData(data || { tables: [], serviceRequests: [], tabs: [] });
+            setAllData(data || { tables: [], serviceRequests: [], closedTabs: [] });
         } catch (error) {
             console.error("[Dine-In Dashboard] Fetch data error:", error);
             setInfoDialog({ isOpen: true, title: "Error", message: `Could not load dine-in data: ${error.message}` });
@@ -841,7 +841,7 @@ const DineInPageContent = () => {
     const handleMarkAsPaid = async (tableId, tabId) => {
         setLoading(true);
         try {
-            await handleApiCall('PATCH', { tableId, action: 'mark_paid', tabIdToClose: tabId }, '/api/owner/dine-in-tables');
+            await handleApiCall('PATCH', { tableId, action: 'mark_paid', tabId }, '/api/owner/dine-in-tables');
             setInfoDialog({ isOpen: true, title: "Success", message: "Table has been marked for cleaning." });
             await fetchData(true);
         } catch (error) {
@@ -879,11 +879,7 @@ const DineInPageContent = () => {
 
     const activeTableData = useMemo(() => {
         if (!allData || !allData.tables) return [];
-        
-        return allData.tables.map(table => {
-            const tabsForTable = (allData.tabs || []).filter(tab => tab.tableId === table.id);
-            return { ...table, tabs: tabsForTable };
-        });
+        return allData.tables;
     }, [allData]);
     
     const handleShowHistory = (tableId, tabId) => {

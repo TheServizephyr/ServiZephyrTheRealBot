@@ -73,7 +73,7 @@ export async function POST(req) {
                 deliveryType,
                 pax_count: pax_count, tab_name: tab_name,
                 status: 'pending', 
-                dineInTabId: dineInTabId,
+                dineInTabId: dineInTabId || null, // FIX: Use null if dineInTabId is undefined
                 orderDate: FieldValue.serverTimestamp(),
                 trackingToken: trackingToken, // Save the token
             });
@@ -84,7 +84,7 @@ export async function POST(req) {
                 message: "Order placed. Awaiting WhatsApp confirmation.",
                 order_id: newOrderRef.id,
                 whatsappNumber: businessData.botDisplayNumber || businessData.ownerPhone,
-                token: trackingToken // Return the token to the client
+                token: trackingToken
             }, { status: 200 });
         }
         
@@ -325,6 +325,3 @@ export async function POST(req) {
         return NextResponse.json({ message: `Backend Error: ${error.message}` }, { status: 500 });
     }
 }
-
-    
-
