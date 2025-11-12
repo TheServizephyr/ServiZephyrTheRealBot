@@ -42,25 +42,30 @@ export async function GET(req) {
 
         const tablesSnap = await businessRef.collection('tables').orderBy('createdAt', 'asc').get();
         const tableMap = new Map();
+        
+        // --- START FIX: Initialize tables with empty tabs ---
         tablesSnap.docs.forEach(doc => {
             tableMap.set(doc.id, { 
                 id: doc.id, 
                 ...doc.data(), 
-                tabs: {}, 
+                tabs: {}, // Initialize with an empty object for tabs
                 pendingOrders: [] 
             });
         });
+        // --- END FIX ---
 
         const activeTabsSnap = await businessRef.collection('dineInTabs').where('status', '==', 'active').get();
+        
+        // --- START FIX: Correctly populate tabs for each table ---
         activeTabsSnap.forEach(tabDoc => {
             const tabData = tabDoc.data();
-            const table = tableMap.get(tabData.tableId);
-            if(table) {
-                table.tabs[tabData.id] = { ...tabData, orders: {} }; // Initialize orders object
+            if (tableMap.has(tabData.tableId)) {
+                const table = tableMap.get(tabData.tableId);
+                table.tabs[tabData.id] = { ...tabData, orders: {} };
             }
         });
+        // --- END FIX ---
 
-        // --- THE FIX: Use a 'not-in' filter instead of two '!=' filters ---
         const ordersQuery = firestore.collection('orders')
             .where('restaurantId', '==', businessRef.id)
             .where('deliveryType', '==', 'dine-in')
