@@ -5,11 +5,13 @@ import { NextResponse } from 'next/server';
 import { getAuth, getFirestore, FieldValue, verifyAndGetUid } from '@/lib/firebase-admin';
 import { isAfter, subDays } from 'date-fns';
 
-async function getBusinessRef(req) {
+async function getBusinessRef(req, body = null) {
     const firestore = await getFirestore();
     let finalUserId;
     const { searchParams } = new URL(req.url, `http://${req.headers.host}`);
     const impersonatedOwnerId = searchParams.get('impersonate_owner_id');
+
+    console.log("[API dine-in-tables] getBusinessRef: Starting verification.");
 
     try {
         const uid = await verifyAndGetUid(req);
@@ -18,55 +20,43 @@ async function getBusinessRef(req) {
 
         if (userDoc.exists && userDoc.data().role === 'admin' && impersonatedOwnerId) {
             finalUserId = impersonatedOwnerId;
-        } else if (req.method === 'POST' && !userDoc.exists) {
-            const body = await req.clone().json();
-            if (body.action !== 'create_tab') {
-                throw { message: 'Authentication required for this action.', status: 403 };
-            }
-            finalUserId = null;
         } else if (!userDoc.exists || !['owner', 'restaurant-owner', 'shop-owner', 'admin'].includes(userDoc.data().role)) {
              throw { message: 'Access Denied: You do not have sufficient privileges.', status: 403 };
         }
     } catch (error) {
-        if (req.method === 'POST') {
-             try {
-                const body = await req.clone().json();
-                if (body.action === 'create_tab') {
-                    finalUserId = null;
-                } else {
-                    throw { message: 'Authentication required for this action.', status: 403 };
-                }
-             } catch (e) {
-                 throw { message: 'Invalid request body.', status: 400 };
-             }
+        // If auth fails but it's a create_tab action, we might proceed without a user ID.
+        if (req.method === 'POST' && body?.action === 'create_tab') {
+            finalUserId = null;
         } else {
+            // For any other case, re-throw the auth error.
             throw error;
         }
     }
     
     if (finalUserId) {
+        console.log(`[API dine-in-tables] getBusinessRef: Searching business for owner UID: ${finalUserId}`);
         const collectionsToTry = ['restaurants', 'shops'];
         for (const collection of collectionsToTry) {
             const query = await firestore.collection(collection).where('ownerId', '==', finalUserId).limit(1).get();
             if (!query.empty) {
+                console.log(`[API dine-in-tables] getBusinessRef: Found business in '${collection}'.`);
                 return query.docs[0].ref;
             }
         }
     }
     
-    if (req.method === 'POST') {
-         const body = await req.clone().json();
-         if (body.action === 'create_tab' && body.restaurantId) {
-             const collectionsToTry = ['restaurants', 'shops'];
-             for (const collection of collectionsToTry) {
-                const businessRef = firestore.collection(collection).doc(body.restaurantId);
-                const businessSnap = await businessRef.get();
-                if (businessSnap.exists) {
-                    return businessRef;
-                }
-             }
-             return null; // Business not found
+    if (req.method === 'POST' && body?.action === 'create_tab' && body?.restaurantId) {
+         console.log(`[API dine-in-tables] getBusinessRef: Searching for business by ID: ${body.restaurantId}`);
+         const collectionsToTry = ['restaurants', 'shops'];
+         for (const collection of collectionsToTry) {
+            const businessRef = firestore.collection(collection).doc(body.restaurantId);
+            const businessSnap = await businessRef.get();
+            if (businessSnap.exists) {
+                console.log(`[API dine-in-tables] getBusinessRef: Found business by ID in '${collection}'.`);
+                return businessRef;
+            }
          }
+         return null; // Business not found
     }
     
     throw { message: 'No business associated with this owner.', status: 404 };
@@ -78,8 +68,10 @@ export async function GET(req) {
     try {
         const businessRef = await getBusinessRef(req);
         if (!businessRef) throw { message: 'Business reference not found.', status: 404 };
+        console.log(`[API dine-in-tables] GET: Business ref found: ${businessRef.path}`);
 
         const tablesSnap = await businessRef.collection('tables').orderBy('createdAt', 'asc').get();
+        console.log(`[API dine-in-tables] GET: Fetched ${tablesSnap.size} tables.`);
         
         const activeTabIds = [];
         tablesSnap.docs.forEach(doc => {
@@ -92,6 +84,7 @@ export async function GET(req) {
                 });
             }
         });
+        console.log(`[API dine-in-tables] GET: Found ${activeTabIds.length} active tab IDs.`);
 
 
         const ordersByTab = {};
@@ -135,12 +128,11 @@ export async function GET(req) {
                 const allItems = tabOrders.flatMap(o => o.items || []);
                 const itemMap = new Map();
                 allItems.forEach(item => {
-                    const uniqueItemId = item.cartItemId || `${item.id}-${item.portion?.name}`;
                     const existing = itemMap.get(item.name);
                     if (existing) {
-                        itemMap.set(item.name, { ...existing, qty: existing.qty + item.quantity });
+                        itemMap.set(item.name, { ...existing, qty: existing.qty + (item.quantity || 1) });
                     } else {
-                        itemMap.set(item.name, { ...item, qty: item.quantity });
+                        itemMap.set(item.name, { ...item, qty: item.quantity || 1 });
                     }
                 });
 
@@ -151,6 +143,7 @@ export async function GET(req) {
         });
 
         const serviceRequestsSnap = await businessRef.collection('serviceRequests').where('status', '==', 'pending').orderBy('createdAt', 'desc').get();
+        console.log(`[API dine-in-tables] GET: Fetched ${serviceRequestsSnap.size} pending service requests.`);
         const serviceRequests = serviceRequestsSnap.docs.map(doc => ({ ...doc.data(), createdAt: doc.data().createdAt?.toDate ? doc.data().createdAt.toDate().toISOString() : new Date().toISOString() }));
 
         const thirtyDaysAgo = subDays(new Date(), 30);
@@ -171,7 +164,9 @@ export async function GET(req) {
             }
         });
         closedTabs.sort((a,b) => new Date(b.closedAt) - new Date(a.closedAt));
+        console.log(`[API dine-in-tables] GET: Fetched ${closedTabs.length} closed tabs from the last 30 days.`);
 
+        console.log("[API dine-in-tables] GET: Request successful. Sending response.");
         return NextResponse.json({ tables: tablesData, serviceRequests, closedTabs }, { status: 200 });
 
     } catch (error) {
@@ -187,12 +182,13 @@ export async function POST(req) {
 
     // Action to create a new tab for a table
     if (body.action === 'create_tab') {
+        console.log("[API dine-in-tables] POST request received with action: create_tab");
         const { tableId, pax_count, tab_name, restaurantId } = body;
         if (!restaurantId || !tableId || !pax_count || !tab_name) {
             return NextResponse.json({ message: 'Table ID, pax count, and tab name are required.' }, { status: 400 });
         }
 
-        const businessRef = await getBusinessRef(req);
+        const businessRef = await getBusinessRef(req, body);
         if (!businessRef) {
             return NextResponse.json({ message: 'Business not found.' }, { status: 404 });
         }
@@ -233,7 +229,6 @@ export async function POST(req) {
                 
                 transaction.update(tableRef, updatePayload);
             });
-            // --- THE FIX ---
             return NextResponse.json({ message: 'Tab created successfully!', tabId: newTabId }, { status: 201 });
         } catch(error) {
             console.error("[API dine-in-tables] CRITICAL Transaction Error (create_tab):", error);
@@ -242,6 +237,7 @@ export async function POST(req) {
     }
 
     // Default action: Create a new table
+    console.log("[API dine-in-tables] POST request received to create/update table.");
     const businessRef = await getBusinessRef(req);
     if (!businessRef) return NextResponse.json({ message: 'Authentication required to manage tables.' }, { status: 403 });
     const { tableId, max_capacity } = body;
@@ -255,8 +251,9 @@ export async function POST(req) {
 export async function PATCH(req) {
     const firestore = await getFirestore();
      try {
-        const businessRef = await getBusinessRef(req);
-        const { tableId, action, tabId, newTableId, newCapacity, paymentMethod, paxCount } = await req.json();
+        const body = await req.json();
+        const businessRef = await getBusinessRef(req, body);
+        const { tableId, action, tabId, newTableId, newCapacity, paymentMethod, paxCount } = body;
         
         const tableRef = businessRef.collection('tables').doc(tableId);
 
@@ -351,8 +348,9 @@ export async function PATCH(req) {
 
 export async function DELETE(req) {
     try {
-        const businessRef = await getBusinessRef(req);
-        const { tableId } = await req.json();
+        const body = await req.json();
+        const businessRef = await getBusinessRef(req, body);
+        const { tableId } = body;
         if (!tableId) return NextResponse.json({ message: 'Table ID is required.' }, { status: 400 });
         const tableRef = businessRef.collection('tables').doc(tableId);
         await tableRef.delete();
@@ -362,7 +360,3 @@ export async function DELETE(req) {
         return NextResponse.json({ message: `Backend Error: ${error.message}` }, { status: error.status || 500 });
     }
 }
-
-
-
-    
