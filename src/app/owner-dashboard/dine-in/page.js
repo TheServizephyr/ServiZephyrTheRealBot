@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useState, useEffect, useMemo, useRef, Suspense } from 'react';
@@ -284,7 +285,7 @@ const ConfirmationModal = ({ isOpen, onClose, onConfirm, title, description, con
 const TableCard = ({ tableId, tableData, onMarkAsPaid, onPrintBill, onMarkAsCleaned, onShowHistory, acknowledgedItems, onToggleAcknowledge, onConfirmOrders, onClearTab }) => {
     const tab = tableData.tabs?.[0] || null;
     const state = tab ? 'occupied' : tableData.state;
-    const paxCount = tab ? tab.pax_count : 0;
+    const paxCount = tab ? (tab.pax_count || 0) : 0;
 
     const stateConfig = {
         available: {
@@ -309,7 +310,6 @@ const TableCard = ({ tableId, tableData, onMarkAsPaid, onPrintBill, onMarkAsClea
     };
     
     const currentConfig = stateConfig[state] || { title: state, bg: "bg-muted", border: "border-border", icon: null };
-
     const hasPendingOrders = tab?.orders?.some(o => o.status === 'pending');
 
     return (
@@ -330,7 +330,7 @@ const TableCard = ({ tableId, tableData, onMarkAsPaid, onPrintBill, onMarkAsClea
                     </div>
                 </CardHeader>
                 
-                 <CardContent className="flex-grow p-4">
+                <CardContent className="flex-grow p-4">
                     {tab ? (
                         <div key={tab.id} className="mb-4 last:mb-0">
                             <div className="flex justify-between items-center bg-muted/50 p-2 rounded-t-lg">
@@ -338,8 +338,7 @@ const TableCard = ({ tableId, tableData, onMarkAsPaid, onPrintBill, onMarkAsClea
                                 <span className="text-xs font-mono text-muted-foreground">{tab.id.substring(0,6)}...</span>
                             </div>
                             
-                            {/* --- FIX START: Show this section even if no orders --- */}
-                            {tab.orders?.length > 0 ? (
+                            {(tab.orders && tab.orders.length > 0) ? (
                                 <>
                                     <div className="text-xs text-muted-foreground my-2 flex items-center gap-2">
                                         <Clock size={14}/> Last activity: {tab.latestOrderTime ? format(new Date(tab.latestOrderTime), 'p') : 'N/A'}
@@ -386,7 +385,6 @@ const TableCard = ({ tableId, tableData, onMarkAsPaid, onPrintBill, onMarkAsClea
                                     </Button>
                                 </div>
                             )}
-                            {/* --- FIX END --- */}
 
                         </div>
                     ) : state === 'needs_cleaning' ? (
@@ -396,7 +394,7 @@ const TableCard = ({ tableId, tableData, onMarkAsPaid, onPrintBill, onMarkAsClea
                     ) : null}
                 </CardContent>
                 
-                 {tab && tab.orders?.length > 0 ? (
+                 {tab && (tab.orders && tab.orders.length > 0) ? (
                     <CardFooter className="flex-col items-start bg-muted/30 p-4 border-t mt-auto">
                         <Button variant="outline" size="sm" className="w-full mb-4" onClick={() => onShowHistory(tableId, tab.id)}>
                             <History size={14} className="mr-2"/> See History
@@ -734,7 +732,7 @@ const DineInPageContent = () => {
 
         const res = await fetch(url.toString(), fetchOptions);
         
-        if (res.status === 204 || res.status === 200 && res.headers.get('content-length') === '0') {
+        if (res.status === 204 || (res.ok && res.headers.get('content-length') === '0')) {
             return null;
         }
 
@@ -865,7 +863,6 @@ const DineInPageContent = () => {
          }
     };
 
-    // --- FIX START: Logic to clear "pre-order" zombie tabs ---
     const handleClearTab = async (tabId, tableId, paxCount) => {
         setLoading(true);
         try {
@@ -878,17 +875,28 @@ const DineInPageContent = () => {
             setLoading(false);
         }
     }
-    // --- FIX END ---
 
     const activeTableData = useMemo(() => {
         if (!allData || !allData.tables) return [];
         
-        return allData.tables.map(table => {
-            const tabsForTable = allData.tabs?.filter(tab => tab.tableId === table.id) || [];
-            if (tabsForTable.length === 0 && table.state !== 'needs_cleaning') {
-                return { ...table, tabs: [], current_pax: 0 };
+        const tabsMap = new Map();
+        (allData.tabs || []).forEach(tab => {
+            if (!tabsMap.has(tab.tableId)) {
+                tabsMap.set(tab.tableId, []);
             }
-            return { ...table, tabs: tabsForTable };
+            tabsMap.get(tab.tableId).push(tab);
+        });
+        
+        return allData.tables.map(table => {
+            const tabsForTable = tabsMap.get(table.id) || [];
+            // Recalculate current_pax on the client for accuracy
+            const clientSidePax = tabsForTable.reduce((sum, tab) => sum + (tab.pax_count || 0), 0);
+            
+            // If there are no active tabs, ensure the pax count is 0
+            if (tabsForTable.length === 0) {
+                 return { ...table, tabs: [], current_pax: 0 };
+            }
+            return { ...table, tabs: tabsForTable, current_pax: clientSidePax };
         });
     }, [allData]);
     
@@ -1070,6 +1078,3 @@ const DineInPage = () => (
 );
 
 export default DineInPage;
-
-
-
