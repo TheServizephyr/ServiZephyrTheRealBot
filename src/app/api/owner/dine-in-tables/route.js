@@ -53,8 +53,7 @@ export async function GET(req) {
 
         const ordersQuery = firestore.collection('orders')
             .where('restaurantId', '==', businessRef.id)
-            .where('deliveryType', '==', 'dine-in')
-            .where('status', 'in', ['pending', 'confirmed', 'preparing', 'ready_for_pickup']);
+            .where('deliveryType', '==', 'dine-in');
             
         const ordersSnap = await ordersQuery.get();
 
@@ -68,8 +67,9 @@ export async function GET(req) {
 
             if (orderData.status === 'pending') {
                  table.pendingOrders.push({ id: orderDoc.id, ...orderData });
-            } else if (tabId) {
+            } else if (tabId && orderData.status !== 'delivered' && orderData.status !== 'rejected') {
                 if (!table.tabs[tabId]) {
+                    // This logic is now primarily handled on PATCH, but as a fallback:
                     table.tabs[tabId] = {
                         id: tabId,
                         tableId: tableId,
@@ -84,16 +84,17 @@ export async function GET(req) {
             }
         });
         
-        // ** THE FIX **
         tableMap.forEach(table => {
             const totalPaxInTabs = Object.values(table.tabs).reduce((sum, tab) => sum + (tab.pax_count || 0), 0);
             const totalPaxInPending = table.pendingOrders.reduce((sum, order) => sum + (order.pax_count || 0), 0);
             const current_pax = totalPaxInTabs + totalPaxInPending;
             table.current_pax = current_pax;
 
-            if (current_pax > 0) {
+            if (table.state === 'needs_cleaning') {
+                // Keep the state as 'needs_cleaning' regardless of occupancy until manually cleared
+            } else if (current_pax > 0) {
                 table.state = 'occupied';
-            } else if (table.state !== 'needs_cleaning') {
+            } else {
                 table.state = 'available';
             }
         });
