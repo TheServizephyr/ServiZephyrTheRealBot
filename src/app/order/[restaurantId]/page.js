@@ -1,4 +1,5 @@
 
+
 'use client';
 
 import React, { useState, useEffect, Suspense, useMemo, useCallback, useRef } from 'react';
@@ -713,11 +714,9 @@ const OrderPageInternal = () => {
                 tab_name: tabName,
             };
             
-            const headers = { 'Content-Type': 'application/json' };
-            
             const res = await fetch('/api/owner/dine-in-tables', {
                 method: 'POST',
-                headers: headers,
+                headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(payload)
             });
 

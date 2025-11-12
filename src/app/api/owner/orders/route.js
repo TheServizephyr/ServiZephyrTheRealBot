@@ -190,7 +190,7 @@ export async function PATCH(req) {
             if (newStatus === 'delivered' && orderData.deliveryType === 'dine-in' && orderData.tableId && orderData.dineInTabId) {
                 const tableRef = businessSnap.ref.collection('tables').doc(orderData.tableId);
                 const updatePath = `tabs.${orderData.dineInTabId}.orders`;
-                // This is a simple update, more complex logic might be needed for arrays
+                // This will set the order status within the nested object. Firestore handles dot notation for maps.
                 batch.update(tableRef, { [`${updatePath}.${id}.status`]: 'delivered' });
             }
             
@@ -198,6 +198,7 @@ export async function PATCH(req) {
 
             const businessData = businessSnap.data();
             
+            // Do not send automated message for simple confirmation in dine-in, as it's handled by owner.
             if (orderData.deliveryType === 'dine-in' && newStatus === 'confirmed') {
                 continue;
             }

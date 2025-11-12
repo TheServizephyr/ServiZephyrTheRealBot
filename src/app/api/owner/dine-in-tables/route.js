@@ -1,4 +1,5 @@
 
+
 'use server';
 
 import { NextResponse } from 'next/server';
@@ -18,7 +19,14 @@ async function getBusinessRef(req) {
 
         if (userDoc.exists && userDoc.data().role === 'admin' && impersonatedOwnerId) {
             finalUserId = impersonatedOwnerId;
-        } else if (req.method !== 'POST' && (!userDoc.exists || !['owner', 'restaurant-owner', 'shop-owner'].includes(userDoc.data().role))) {
+        } else if (req.method === 'POST' && !userDoc.exists) {
+            // Allow unauthenticated POST only for create_tab action
+            const body = await req.clone().json();
+            if (body.action !== 'create_tab') {
+                throw { message: 'Authentication required for this action.', status: 403 };
+            }
+            finalUserId = null;
+        } else if (!userDoc.exists || !['owner', 'restaurant-owner', 'shop-owner', 'admin'].includes(userDoc.data().role)) {
              throw { message: 'Access Denied: You do not have sufficient privileges.', status: 403 };
         }
     } catch (error) {
@@ -48,16 +56,17 @@ async function getBusinessRef(req) {
         }
     }
     
+    // For unauthenticated tab creation, find business by ID
     if (req.method === 'POST') {
          const body = await req.clone().json();
-         if (body.action === 'create_tab') {
+         if (body.action === 'create_tab' && body.restaurantId) {
              const collectionsToTry = ['restaurants', 'shops'];
              for (const collection of collectionsToTry) {
                 const businessRef = firestore.collection(collection).doc(body.restaurantId);
                 const businessSnap = await businessRef.get();
                 if (businessSnap.exists) return businessRef;
              }
-             return null;
+             return null; // Business not found
          }
     }
     
@@ -72,21 +81,33 @@ export async function GET(req) {
         if (!businessRef) throw { message: 'Business reference not found.', status: 404 };
 
         const tablesSnap = await businessRef.collection('tables').orderBy('createdAt', 'asc').get();
-        const ordersSnap = await firestore.collection('orders')
-            .where('restaurantId', '==', businessRef.id)
-            .where('status', 'in', ['pending', 'confirmed', 'preparing'])
-            .get();
-
-        const ordersByTab = {};
-        ordersSnap.forEach(doc => {
-            const order = doc.data();
-            if (order.dineInTabId) {
-                if (!ordersByTab[order.dineInTabId]) {
-                    ordersByTab[order.dineInTabId] = [];
-                }
-                ordersByTab[order.dineInTabId].push({ id: doc.id, ...order });
+        
+        const activeTabIds = [];
+        tablesSnap.forEach(doc => {
+            const tableData = doc.data();
+            if (tableData.tabs) {
+                activeTabIds.push(...Object.keys(tableData.tabs));
             }
         });
+
+        const ordersByTab = {};
+        if (activeTabIds.length > 0) {
+            const ordersSnap = await firestore.collection('orders')
+                .where('restaurantId', '==', businessRef.id)
+                .where('dineInTabId', 'in', activeTabIds)
+                .get();
+
+            ordersSnap.forEach(doc => {
+                const order = doc.data();
+                if (order.dineInTabId) {
+                    if (!ordersByTab[order.dineInTabId]) {
+                        ordersByTab[order.dineInTabId] = [];
+                    }
+                    ordersByTab[order.dineInTabId].push({ id: doc.id, ...order });
+                }
+            });
+        }
+
 
         const tablesData = tablesSnap.docs.map(tableDoc => {
             const table = tableDoc.data();
@@ -98,15 +119,18 @@ export async function GET(req) {
                 
                 const itemMap = new Map();
                 tabOrders.forEach(order => {
+                    const orderItemIds = (order.items || []).map(i => i.cartItemId || `${i.id}-${i.portion?.name}`);
                     (order.items || []).forEach(item => {
+                        const uniqueItemId = item.cartItemId || `${item.id}-${item.portion?.name}`;
                         const existing = itemMap.get(item.name);
                         if (existing) {
-                            itemMap.set(item.name, { ...existing, qty: existing.qty + (item.quantity || 1) });
+                            itemMap.set(item.name, { ...existing, qty: existing.qty + (item.quantity || 1), orderItemIds: [...existing.orderItemIds, uniqueItemId] });
                         } else {
-                            itemMap.set(item.name, { ...item, qty: item.quantity || 1 });
+                            itemMap.set(item.name, { ...item, qty: item.quantity || 1, orderItemIds: [uniqueItemId] });
                         }
                     });
                 });
+
                 return { ...tab, orders: tabOrders, totalBill, latestOrderTime, allItems: Array.from(itemMap.values()) };
             });
             return { ...table, id: tableDoc.id, tabs: processedTabs };
@@ -123,13 +147,14 @@ export async function GET(req) {
             const tableData = doc.data();
             if(tableData.closedTabs) {
                 Object.values(tableData.closedTabs).forEach(tab => {
-                    if (tab.closedAt && isAfter(tab.closedAt.toDate(), thirtyDaysAgo)) {
-                         closedTabs.push(tab);
+                    const closedAtDate = tab.closedAt?.toDate ? tab.closedAt.toDate() : new Date(tab.closedAt);
+                    if (isAfter(closedAtDate, thirtyDaysAgo)) {
+                         closedTabs.push({ ...tab, closedAt: closedAtDate });
                     }
                 })
             }
         });
-        closedTabs.sort((a,b) => b.closedAt.toDate() - a.closedAt.toDate());
+        closedTabs.sort((a,b) => b.closedAt - a.closedAt);
 
 
         return NextResponse.json({ tables: tablesData, serviceRequests, closedTabs }, { status: 200 });
@@ -172,7 +197,7 @@ export async function POST(req) {
                     state: 'occupied'
                 };
                 
-                return transaction.update(tableRef, updatePayload);
+                transaction.update(tableRef, updatePayload);
             });
             return NextResponse.json({ message: 'Tab created successfully!', tabId: newTabId }, { status: 201 });
         } catch(error) {
@@ -195,7 +220,7 @@ export async function PATCH(req) {
     const firestore = await getFirestore();
      try {
         const businessRef = await getBusinessRef(req);
-        const { tableId, action, tabId, newTableId, newCapacity, paymentMethod } = await req.json();
+        const { tableId, action, tabId, newTableId, newCapacity, paymentMethod, paxCount } = await req.json();
         
         const tableRef = businessRef.collection('tables').doc(tableId);
 
@@ -209,7 +234,10 @@ export async function PATCH(req) {
                 const tabToClear = tableData.tabs?.[tabId];
                 if (!tabToClear) return; // Already cleared, no-op
                 
-                const newPax = (tableData.current_pax || 0) - (tabToClear.pax_count || 0);
+                const currentPax = tableData.current_pax || 0;
+                const tabPax = tabToClear.pax_count || paxCount || 0;
+                const newPax = Math.max(0, currentPax - tabPax);
+                
                 const updatePayload = {
                     [`tabs.${tabId}`]: FieldValue.delete(),
                     current_pax: newPax,
@@ -236,11 +264,13 @@ export async function PATCH(req) {
                 ordersSnap.forEach(orderDoc => {
                     transaction.update(orderDoc.ref, { 
                         status: 'delivered', 
-                        paymentDetails: { ...orderDoc.data().paymentDetails, method: paymentMethod || 'cod' }
+                        paymentDetails: { ...(orderDoc.data().paymentDetails || {}), method: paymentMethod || 'cod' }
                     });
                 });
-
-                const newPax = (tableData.current_pax || 0) - (tabToClose.pax_count || 0);
+                
+                const currentPax = tableData.current_pax || 0;
+                const tabPax = tabToClose.pax_count || 0;
+                const newPax = Math.max(0, currentPax - tabPax);
                 
                 const closedTabInfo = {
                   ...tabToClose,
