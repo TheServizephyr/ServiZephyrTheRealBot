@@ -6,7 +6,7 @@ import { NextResponse } from 'next/server';
 import { getAuth, getFirestore, FieldValue, verifyAndGetUid } from '@/lib/firebase-admin';
 import { isAfter, subDays } from 'date-fns';
 
-async function getBusinessRef(req, body = null) {
+async function getBusinessRef(req) {
     const firestore = await getFirestore();
     let finalUserId = null;
     const { searchParams } = new URL(req.url, `http://${req.headers.host}`);
@@ -14,7 +14,6 @@ async function getBusinessRef(req, body = null) {
 
     console.log("[API dine-in-tables] getBusinessRef: Starting verification.");
 
-    // This block handles authenticated users (owners or impersonating admins)
     try {
         const uid = await verifyAndGetUid(req);
         finalUserId = uid;
@@ -27,18 +26,10 @@ async function getBusinessRef(req, body = null) {
              throw { message: 'Access Denied: You do not have sufficient privileges.', status: 403 };
         }
     } catch (error) {
-        // If auth fails, we only proceed if it's a create_tab action, which is unauthenticated.
-        if (req.method === 'POST' && body?.action === 'create_tab') {
-            console.log("[API dine-in-tables] getBusinessRef: Unauthenticated but valid 'create_tab' action. Proceeding without user ID.");
-            finalUserId = null; // Explicitly set to null for clarity
-        } else {
-            // For any other case (GET, PATCH, DELETE, or POST without create_tab), re-throw the auth error.
-            console.error("[API dine-in-tables] getBusinessRef: Authentication error and not a valid unauthenticated action. Throwing error.");
-            throw error;
-        }
+        console.error("[API dine-in-tables] getBusinessRef: Authentication error. Allowing unauthenticated check for create_tab.");
+        finalUserId = null;
     }
     
-    // If we have a user ID (either original or impersonated), find their business.
     if (finalUserId) {
         console.log(`[API dine-in-tables] getBusinessRef: Searching business for owner UID: ${finalUserId}`);
         const collectionsToTry = ['restaurants', 'shops'];
@@ -51,23 +42,25 @@ async function getBusinessRef(req, body = null) {
         }
     }
     
-    // This block handles the unauthenticated 'create_tab' action by looking up the business by ID.
-    if (req.method === 'POST' && body?.action === 'create_tab' && body?.restaurantId) {
-         console.log(`[API dine-in-tables] getBusinessRef: Searching for business by ID for create_tab: ${body.restaurantId}`);
-         const collectionsToTry = ['restaurants', 'shops'];
-         for (const collection of collectionsToTry) {
-            const businessRef = firestore.collection(collection).doc(body.restaurantId);
-            const businessSnap = await businessRef.get();
-            if (businessSnap.exists) {
-                console.log(`[API dine-in-tables] getBusinessRef: Found business by ID in '${collection}'.`);
-                return businessRef;
-            }
-         }
-         console.error(`[API dine-in-tables] getBusinessRef: Business not found for ID: ${body.restaurantId}`);
-         return null; // Business not found
+    // This allows create_tab to find the business without authentication
+    try {
+      const body = await req.clone().json();
+      if (req.method === 'POST' && body?.action === 'create_tab' && body?.restaurantId) {
+           console.log(`[API dine-in-tables] getBusinessRef: Searching for business by ID for create_tab: ${body.restaurantId}`);
+           const collectionsToTry = ['restaurants', 'shops'];
+           for (const collection of collectionsToTry) {
+              const businessRef = firestore.collection(collection).doc(body.restaurantId);
+              const businessSnap = await businessRef.get();
+              if (businessSnap.exists) {
+                  console.log(`[API dine-in-tables] getBusinessRef: Found business by ID in '${collection}'.`);
+                  return businessRef;
+              }
+           }
+      }
+    } catch(e) {
+      // Ignore if body parsing fails, the next check will handle it.
     }
     
-    // If no business could be found by any method, throw an error.
     console.error(`[API dine-in-tables] getBusinessRef: Could not associate request with any business.`);
     throw { message: 'No business associated with this request.', status: 404 };
 }
@@ -83,7 +76,7 @@ export async function GET(req) {
         const tablesSnap = await businessRef.collection('tables').orderBy('createdAt', 'asc').get();
         console.log(`[API dine-in-tables] GET: Fetched ${tablesSnap.size} tables.`);
         
-        let tablesData = tablesSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        let tablesData = tablesSnap.docs.map(doc => ({ id: doc.id, ...doc.data(), pendingOrders: [] }));
         const tableMap = new Map(tablesData.map(t => [t.id, t]));
 
         // --- START NEW LOGIC: Fetch pending orders and associate them ---
@@ -100,9 +93,6 @@ export async function GET(req) {
             const tableId = orderData.tableId;
             if (tableMap.has(tableId)) {
                 const table = tableMap.get(tableId);
-                if (!table.pendingOrders) {
-                    table.pendingOrders = [];
-                }
                 table.pendingOrders.push({ id: orderDoc.id, ...orderData });
             }
         });
@@ -148,16 +138,14 @@ export async function POST(req) {
     const body = await req.json();
     const firestore = await getFirestore();
 
+    const businessRef = await getBusinessRef(req);
+    if (!businessRef) return NextResponse.json({ message: 'Business not found or authentication failed.' }, { status: 404 });
+
     if (body.action === 'create_tab') {
         console.log("[API dine-in-tables] POST request received with action: create_tab");
-        const { tableId, pax_count, tab_name, restaurantId } = body;
-        if (!restaurantId || !tableId || !pax_count || !tab_name) {
+        const { tableId, pax_count, tab_name } = body;
+        if (!tableId || !pax_count || !tab_name) {
             return NextResponse.json({ message: 'Table ID, pax count, and tab name are required.' }, { status: 400 });
-        }
-
-        const businessRef = await getBusinessRef(req, body);
-        if (!businessRef) {
-            return NextResponse.json({ message: 'Business not found.' }, { status: 404 });
         }
         
         const tableRef = businessRef.collection('tables').doc(tableId);
@@ -179,7 +167,7 @@ export async function POST(req) {
                 const newTabData = { 
                     id: newTabId, 
                     tableId, 
-                    restaurantId, 
+                    restaurantId: businessRef.id, 
                     status: 'active', 
                     tab_name, 
                     pax_count: Number(pax_count), 
@@ -205,8 +193,6 @@ export async function POST(req) {
     }
 
     console.log("[API dine-in-tables] POST request received to create/update table.");
-    const businessRef = await getBusinessRef(req, body);
-    if (!businessRef) return NextResponse.json({ message: 'Authentication required to manage tables.' }, { status: 403 });
     const { tableId, max_capacity } = body;
     if (!tableId || !max_capacity || max_capacity < 1) return NextResponse.json({ message: 'Table ID and a valid capacity are required.' }, { status: 400 });
     const tableRef = businessRef.collection('tables').doc(tableId);
@@ -218,9 +204,8 @@ export async function POST(req) {
 export async function PATCH(req) {
     const firestore = await getFirestore();
      try {
-        const body = await req.json();
-        const businessRef = await getBusinessRef(req, body);
-        const { tableId, action, tabId, newTableId, newCapacity, paymentMethod, paxCount } = body;
+        const businessRef = await getBusinessRef(req);
+        const { tableId, action, tabId, newTableId, newCapacity, paymentMethod, paxCount } = await req.json();
         
         const tableRef = businessRef.collection('tables').doc(tableId);
 
@@ -314,10 +299,10 @@ export async function PATCH(req) {
 }
 
 export async function DELETE(req) {
+     const firestore = await getFirestore();
     try {
-        const body = await req.json();
-        const businessRef = await getBusinessRef(req, body);
-        const { tableId } = body;
+        const businessRef = await getBusinessRef(req);
+        const { tableId } = await req.json();
         if (!tableId) return NextResponse.json({ message: 'Table ID is required.' }, { status: 400 });
         const tableRef = businessRef.collection('tables').doc(tableId);
         await tableRef.delete();
@@ -328,3 +313,6 @@ export async function DELETE(req) {
     }
 }
 
+
+
+    

@@ -1,5 +1,3 @@
-
-
 'use client';
 
 import React, { useState, useEffect, useMemo, useRef, Suspense } from 'react';
@@ -320,13 +318,16 @@ const TableCard = ({ tableData, onMarkAsPaid, onPrintBill, onMarkAsCleaned, onCo
                     {allTabs.length > 0 ? (
                         <div className="space-y-4">
                             {allTabs.map(tab => {
-                                const isPendingTab = !!tab.dineInToken; // Distinguish pending orders by token presence
+                                const isPendingTab = tab.status === 'pending';
                                 const tabName = isPendingTab ? tab.customerName : tab.tab_name;
-                                const paxCount = isPendingTab ? tab.pax_count : tab.pax_count;
+                                const paxCount = tab.pax_count || tab.items?.reduce((acc, item) => acc + (item.pax_count || 0), 0) || 1;
                                 const totalBill = isPendingTab ? tab.totalAmount : tab.totalBill;
-                                
+
+                                // Payment status logic for active tabs
                                 const isPaid = !isPendingTab && tab.status === 'closed';
-                                const paymentMethod = isPaid ? (tab.paymentMethod || 'Pay at Counter') : (tab.paymentDetails?.method === 'razorpay' ? 'Online' : 'Pending');
+                                const paymentMethod = isPaid
+                                    ? (tab.paymentMethod || 'Pay at Counter')
+                                    : (isPendingTab ? 'Pending' : (tab.orders?.[0]?.paymentDetails?.method === 'razorpay' ? 'Online' : 'Pending'));
 
                                 return (
                                     <div key={tab.id} className="bg-muted/50 p-3 rounded-lg border border-border">
@@ -369,10 +370,10 @@ const TableCard = ({ tableData, onMarkAsPaid, onPrintBill, onMarkAsCleaned, onCo
                                                 </div>
                                             ) : (
                                                 <div className="grid grid-cols-2 gap-2">
-                                                    <Button variant="outline" size="sm" onClick={() => onPrintBill({ tableId: tab.tableId, orders: tab.orders, ...tab })}>
+                                                    <Button variant="outline" size="sm" onClick={() => onPrintBill({ tableId: tableData.id, ...tab })}>
                                                         <Printer size={16} className="mr-2"/> Print Bill
                                                     </Button>
-                                                    <Button onClick={() => onMarkAsPaid(tab.tableId, tab.id)} disabled={isPaid}>
+                                                    <Button onClick={() => onMarkAsPaid(tableData.id, tab.id)} disabled={isPaid}>
                                                         <CheckCircle size={16} className="mr-2"/> Mark as Paid
                                                     </Button>
                                                 </div>
@@ -1067,3 +1068,5 @@ const DineInPage = () => (
 );
 
 export default DineInPage;
+
+    
