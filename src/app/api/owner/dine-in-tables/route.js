@@ -7,12 +7,13 @@ import { isAfter, subDays } from 'date-fns';
 
 async function getBusinessRef(req, body = null) {
     const firestore = await getFirestore();
-    let finalUserId;
+    let finalUserId = null;
     const { searchParams } = new URL(req.url, `http://${req.headers.host}`);
     const impersonatedOwnerId = searchParams.get('impersonate_owner_id');
 
     console.log("[API dine-in-tables] getBusinessRef: Starting verification.");
 
+    // This block handles authenticated users (owners or impersonating admins)
     try {
         const uid = await verifyAndGetUid(req);
         finalUserId = uid;
@@ -20,19 +21,23 @@ async function getBusinessRef(req, body = null) {
 
         if (userDoc.exists && userDoc.data().role === 'admin' && impersonatedOwnerId) {
             finalUserId = impersonatedOwnerId;
+            console.log(`[API dine-in-tables] getBusinessRef: Admin impersonation. Target UID: ${finalUserId}`);
         } else if (!userDoc.exists || !['owner', 'restaurant-owner', 'shop-owner', 'admin'].includes(userDoc.data().role)) {
              throw { message: 'Access Denied: You do not have sufficient privileges.', status: 403 };
         }
     } catch (error) {
-        // If auth fails but it's a create_tab action, we might proceed without a user ID.
+        // If auth fails, we only proceed if it's a create_tab action, which is unauthenticated.
         if (req.method === 'POST' && body?.action === 'create_tab') {
-            finalUserId = null;
+            console.log("[API dine-in-tables] getBusinessRef: Unauthenticated but valid 'create_tab' action. Proceeding without user ID.");
+            finalUserId = null; // Explicitly set to null for clarity
         } else {
-            // For any other case, re-throw the auth error.
+            // For any other case (GET, PATCH, DELETE, or POST without create_tab), re-throw the auth error.
+            console.error("[API dine-in-tables] getBusinessRef: Authentication error and not a valid unauthenticated action. Throwing error.");
             throw error;
         }
     }
     
+    // If we have a user ID (either original or impersonated), find their business.
     if (finalUserId) {
         console.log(`[API dine-in-tables] getBusinessRef: Searching business for owner UID: ${finalUserId}`);
         const collectionsToTry = ['restaurants', 'shops'];
@@ -45,8 +50,9 @@ async function getBusinessRef(req, body = null) {
         }
     }
     
+    // This block handles the unauthenticated 'create_tab' action by looking up the business by ID.
     if (req.method === 'POST' && body?.action === 'create_tab' && body?.restaurantId) {
-         console.log(`[API dine-in-tables] getBusinessRef: Searching for business by ID: ${body.restaurantId}`);
+         console.log(`[API dine-in-tables] getBusinessRef: Searching for business by ID for create_tab: ${body.restaurantId}`);
          const collectionsToTry = ['restaurants', 'shops'];
          for (const collection of collectionsToTry) {
             const businessRef = firestore.collection(collection).doc(body.restaurantId);
@@ -56,10 +62,13 @@ async function getBusinessRef(req, body = null) {
                 return businessRef;
             }
          }
+         console.error(`[API dine-in-tables] getBusinessRef: Business not found for ID: ${body.restaurantId}`);
          return null; // Business not found
     }
     
-    throw { message: 'No business associated with this owner.', status: 404 };
+    // If no business could be found by any method, throw an error.
+    console.error(`[API dine-in-tables] getBusinessRef: Could not associate request with any business.`);
+    throw { message: 'No business associated with this request.', status: 404 };
 }
 
 
@@ -128,11 +137,12 @@ export async function GET(req) {
                 const allItems = tabOrders.flatMap(o => o.items || []);
                 const itemMap = new Map();
                 allItems.forEach(item => {
-                    const existing = itemMap.get(item.name);
+                    const uniqueItemKey = `${item.name}-${item.portion?.name || ''}`;
+                    const existing = itemMap.get(uniqueItemKey);
                     if (existing) {
-                        itemMap.set(item.name, { ...existing, qty: existing.qty + (item.quantity || 1) });
+                        itemMap.set(uniqueItemKey, { ...existing, qty: existing.qty + (item.quantity || 1), orderItemIds: [...existing.orderItemIds, item.cartItemId] });
                     } else {
-                        itemMap.set(item.name, { ...item, qty: item.quantity || 1 });
+                        itemMap.set(uniqueItemKey, { ...item, qty: item.quantity || 1, orderItemIds: [item.cartItemId] });
                     }
                 });
 
@@ -177,6 +187,7 @@ export async function GET(req) {
 
 
 export async function POST(req) {
+    // Read the body ONCE and pass it to helpers that need it.
     const body = await req.json();
     const firestore = await getFirestore();
 
@@ -229,6 +240,7 @@ export async function POST(req) {
                 
                 transaction.update(tableRef, updatePayload);
             });
+            console.log(`[API dine-in-tables] Successfully created tab ${newTabId}`);
             return NextResponse.json({ message: 'Tab created successfully!', tabId: newTabId }, { status: 201 });
         } catch(error) {
             console.error("[API dine-in-tables] CRITICAL Transaction Error (create_tab):", error);
@@ -238,7 +250,7 @@ export async function POST(req) {
 
     // Default action: Create a new table
     console.log("[API dine-in-tables] POST request received to create/update table.");
-    const businessRef = await getBusinessRef(req);
+    const businessRef = await getBusinessRef(req, body);
     if (!businessRef) return NextResponse.json({ message: 'Authentication required to manage tables.' }, { status: 403 });
     const { tableId, max_capacity } = body;
     if (!tableId || !max_capacity || max_capacity < 1) return NextResponse.json({ message: 'Table ID and a valid capacity are required.' }, { status: 400 });
