@@ -42,20 +42,21 @@ export async function POST(req) {
             return NextResponse.json({ message: 'Token is valid.' }, { status: 200 });
         }
 
-        // --- WHATSAPP TOKEN VERIFICATION (existing logic) ---
-        if (tokenData.type === 'whatsapp') {
+        // --- WHATSAPP & TRACKING TOKEN VERIFICATION ---
+        if (tokenData.type === 'whatsapp' || tokenData.type === 'tracking') {
             if (!phone) {
-                 return NextResponse.json({ message: 'Phone number is required for WhatsApp session verification.' }, { status: 400 });
+                 return NextResponse.json({ message: 'Phone number is required for this session.' }, { status: 400 });
             }
             if (tokenData.phone !== phone) {
                 console.warn(`[API verify-token] Phone number mismatch. Token phone: ${tokenData.phone}, Provided phone: ${phone}`);
                 return NextResponse.json({ message: 'Session token is not valid for this phone number.' }, { status: 403 });
             }
-            console.log(`[API verify-token] WHATSAPP token verified successfully for phone: ${phone}`);
+            console.log(`[API verify-token] ${tokenData.type.toUpperCase()} token verified successfully for phone: ${phone}`);
             return NextResponse.json({ message: 'Token is valid.' }, { status: 200 });
         }
         
         // If token type is unknown
+        console.error(`[API verify-token] Unknown token type found: '${tokenData.type}'`);
         return NextResponse.json({ message: 'Unknown token type.' }, { status: 400 });
 
     } catch (error) {
