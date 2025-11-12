@@ -3,7 +3,7 @@
 
 import React, { useState, useEffect, useMemo, useRef, Suspense } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { RefreshCw, Printer, CheckCircle, IndianRupee, Users, Clock, ShoppingBag, Bell, MoreVertical, Trash2, QrCode, Download, Save, Wind, Edit, Table as TableIcon, History, Search, Salad, UtensilsCrossed, Droplet, PlusCircle, AlertTriangle, X } from 'lucide-react';
+import { RefreshCw, Printer, CheckCircle, IndianRupee, Users, Clock, ShoppingBag, Bell, MoreVertical, Trash2, QrCode, Download, Save, Wind, Edit, Table as TableIcon, History, Search, Salad, UtensilsCrossed, Droplet, PlusCircle, AlertTriangle, X, Wallet } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { auth, db } from '@/lib/firebase';
@@ -262,14 +262,30 @@ const BillModal = ({ order, restaurant, onClose, onPrint, printRef }) => {
     );
 };
 
-const ConfirmationModal = ({ isOpen, onClose, onConfirm, title, description, confirmText, isDestructive = false }) => {
+const ConfirmationModal = ({ isOpen, onClose, onConfirm, title, description, confirmText, paymentMethod, setPaymentMethod, isDestructive = false }) => {
     return (
         <Dialog open={isOpen} onOpenChange={onClose}>
             <DialogContent className="bg-background border-border text-foreground">
                 <DialogHeader>
                     <DialogTitle>{title}</DialogTitle>
-                    <DialogDescription>{description}</DialogDescription>
+                    {description && <DialogDescription>{description}</DialogDescription>}
                 </DialogHeader>
+                {/* --- START FIX: Add payment method selection --- */}
+                <div className="py-4">
+                    <Label htmlFor="payment-method">Select Payment Method</Label>
+                    <select
+                        id="payment-method"
+                        value={paymentMethod}
+                        onChange={(e) => setPaymentMethod(e.target.value)}
+                        className="mt-1 w-full p-2 border rounded-md bg-input border-border"
+                    >
+                        <option value="cod">Cash</option>
+                        <option value="upi">UPI</option>
+                        <option value="card">Card</option>
+                        <option value="other">Other</option>
+                    </select>
+                </div>
+                {/* --- END FIX --- */}
                 <DialogFooter>
                     <Button variant="secondary" onClick={onClose}>Cancel</Button>
                     <Button onClick={onConfirm} variant={isDestructive ? "destructive" : "default"}>
@@ -283,20 +299,16 @@ const ConfirmationModal = ({ isOpen, onClose, onConfirm, title, description, con
 
 
 const TableCard = ({ tableId, tableData, onMarkAsPaid, onPrintBill, onMarkAsCleaned, onShowHistory, acknowledgedItems, onToggleAcknowledge, onConfirmOrders, onClearTab }) => {
-    const tab = tableData.tabs?.[0] || null;
-    const paxCount = tab ? (tab.pax_count || 0) : (tableData.current_pax || 0);
-    const state = tableData.current_pax > 0 ? 'occupied' : tableData.state;
-    
+    const state = tableData.state;
     const stateConfig = {
         available: {
             title: "Available",
             bg: "bg-card",
             border: "border-border",
-            icon: <CheckCircle size={16} className="text-green-500" />,
-            capacityText: `Capacity: ${tableData.max_capacity}`
+            icon: <CheckCircle size={16} className="text-green-500" />
         },
         occupied: {
-            title: `Occupied (${paxCount}/${tableData.max_capacity})`,
+            title: `Occupied (${tableData.current_pax || 0}/${tableData.max_capacity})`,
             bg: "bg-yellow-500/10",
             border: "border-yellow-500",
             icon: <Users size={16} className="text-yellow-500" />
@@ -309,11 +321,10 @@ const TableCard = ({ tableId, tableData, onMarkAsPaid, onPrintBill, onMarkAsClea
         }
     };
     
-    const currentConfig = stateConfig[state] || { title: state, bg: "bg-muted", border: "border-border", icon: null };
-    const hasPendingOrders = tab?.orders?.some(o => o.status === 'pending');
+    const currentConfig = stateConfig[state] || stateConfig.available;
 
     return (
-         <motion.div
+        <motion.div
             layout
             initial={{ scale: 0.9, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
@@ -324,97 +335,90 @@ const TableCard = ({ tableId, tableData, onMarkAsPaid, onPrintBill, onMarkAsClea
                 <CardHeader className={cn("flex-row items-center justify-between space-y-0 pb-2", currentConfig.bg)}>
                     <CardTitle className="text-2xl font-bold">{tableId}</CardTitle>
                     <div className="flex items-center gap-2 text-sm font-semibold">
-                        {currentConfig.icon} 
-                        {currentConfig.title}
-                        {currentConfig.capacityText && <span className="text-xs text-muted-foreground ml-2">({currentConfig.capacityText})</span>}
+                        {currentConfig.icon} {currentConfig.title}
                     </div>
                 </CardHeader>
                 
                 <CardContent className="flex-grow p-4">
-                    {tab ? (
-                        <div key={tab.id} className="mb-4 last:mb-0">
-                            <div className="flex justify-between items-center bg-muted/50 p-2 rounded-t-lg">
-                                <h4 className="font-semibold text-foreground">{tab.tab_name}</h4>
-                                <span className="text-xs font-mono text-muted-foreground">{tab.id.substring(0,6)}...</span>
-                            </div>
-                            
-                            {(tab.orders && tab.orders.length > 0) ? (
-                                <>
-                                    <div className="text-xs text-muted-foreground my-2 flex items-center gap-2">
-                                        <Clock size={14}/> Last activity: {tab.latestOrderTime ? format(new Date(tab.latestOrderTime.seconds * 1000), 'p') : 'N/A'}
-                                    </div>
-                                    {hasPendingOrders && (
-                                        <Button size="sm" className="w-full mb-2 bg-yellow-500 hover:bg-yellow-600" onClick={() => onConfirmOrders(tab.orders.filter(o => o.status === 'pending').map(o => o.id))}>
-                                            Confirm New Orders
-                                        </Button>
-                                    )}
-                                    <div className="space-y-2 max-h-48 overflow-y-auto pr-2">
-                                        {tab.allItems.map((item) => {
-                                            const uniqueItemId = `${tab.id}-${item.orderItemIds.join('-')}`;
-                                            const isAcknowledged = acknowledgedItems.has(uniqueItemId);
-                                            const isPending = tab.orders.some(o => o.items.some(i => i.name === item.name) && o.status === 'pending');
+                   {(tableData.tabs && tableData.tabs.length > 0) ? (
+                        <div className="space-y-4">
+                            {tableData.tabs.map(tab => {
+                                const hasPendingOrders = tab.orders?.some(o => o.status === 'pending');
+                                const allOrdersPaid = tab.orders?.every(o => o.paymentDetails?.method === 'razorpay' || o.status === 'delivered');
+                                return (
+                                    <div key={tab.id} className="bg-muted/50 p-3 rounded-lg border border-border">
+                                        <div className="flex justify-between items-center">
+                                            <h4 className="font-semibold text-foreground">{tab.tab_name} <span className="text-xs text-muted-foreground">({tab.pax_count} guests)</span></h4>
+                                            {allOrdersPaid ? 
+                                                <span className="text-xs font-semibold text-green-500 bg-green-500/10 px-2 py-1 rounded-full">Paid</span>
+                                                : <span className="text-xs font-semibold text-yellow-500 bg-yellow-500/10 px-2 py-1 rounded-full">Payment Pending</span>
+                                            }
+                                        </div>
 
-                                            return (
-                                                <div 
-                                                    key={uniqueItemId} 
-                                                    className={cn(
-                                                        "flex justify-between items-center text-sm p-2 rounded-md transition-colors",
-                                                        isAcknowledged ? "bg-muted/50" : (isPending ? "bg-yellow-400/20" : "bg-green-500/10")
-                                                    )}
-                                                >
-                                                    <div className="flex items-center gap-2">
-                                                        <Checkbox 
-                                                            checked={isAcknowledged}
-                                                            onCheckedChange={() => onToggleAcknowledge(uniqueItemId)}
-                                                            id={uniqueItemId}
-                                                        />
-                                                        <label htmlFor={uniqueItemId} className="text-foreground">{item.name}</label>
-                                                    </div>
-                                                    <span className="font-semibold text-foreground">x{item.qty}</span>
+                                        {(tab.orders && tab.orders.length > 0) ? (
+                                            <>
+                                                {hasPendingOrders && (
+                                                    <Button size="sm" className="w-full my-2 bg-yellow-500 hover:bg-yellow-600" onClick={() => onConfirmOrders(tab.orders.filter(o => o.status === 'pending').map(o => o.id))}>
+                                                        Confirm New Orders
+                                                    </Button>
+                                                )}
+                                                <div className="space-y-2 max-h-48 overflow-y-auto pr-2 mt-2">
+                                                     {tab.allItems.map((item) => {
+                                                        const uniqueItemId = `${tab.id}-${item.orderItemIds.join('-')}`;
+                                                        const isAcknowledged = acknowledgedItems.has(uniqueItemId);
+                                                        const isPending = tab.orders.some(o => o.items.some(i => i.name === item.name) && o.status === 'pending');
+                                                        return (
+                                                             <div key={uniqueItemId} className={cn("flex justify-between items-center text-sm p-2 rounded-md transition-colors", isAcknowledged ? "bg-muted" : (isPending ? "bg-yellow-400/20" : "bg-green-500/10"))}>
+                                                                <div className="flex items-center gap-2">
+                                                                    <Checkbox checked={isAcknowledged} onCheckedChange={() => onToggleAcknowledge(uniqueItemId)} id={uniqueItemId} />
+                                                                    <label htmlFor={uniqueItemId} className="text-foreground">{item.name}</label>
+                                                                </div>
+                                                                <span className="font-semibold text-foreground">x{item.qty}</span>
+                                                            </div>
+                                                        );
+                                                    })}
                                                 </div>
-                                            );
-                                        })}
+                                                 <div className="flex justify-between items-center w-full mt-3 pt-3 border-t border-border/50">
+                                                    <span className="text-md font-bold">Total:</span>
+                                                    <span className="text-xl font-bold text-primary">{formatCurrency(tab.totalBill)}</span>
+                                                </div>
+                                                <div className="grid grid-cols-2 gap-2 w-full mt-3">
+                                                    <Button variant="outline" size="sm" onClick={() => onPrintBill({ tableId, orders: tab.orders })}><Printer size={16} className="mr-2"/> Print Bill</Button>
+                                                    <Button onClick={() => onMarkAsPaid(tableId, tab.id)} disabled={allOrdersPaid}>
+                                                        <CheckCircle size={16} className="mr-2"/> Mark as Paid
+                                                    </Button>
+                                                </div>
+                                            </>
+                                        ) : (
+                                            <div className="text-center py-4 text-muted-foreground text-sm">
+                                                <p>Waiting for first order...</p>
+                                                <Button size="sm" variant="destructive" className="mt-4" onClick={() => onClearTab(tab.id, tableId, tab.pax_count)}>
+                                                    <X size={14} className="mr-2"/> Clear Tab
+                                                </Button>
+                                            </div>
+                                        )}
                                     </div>
-                                </>
-                            ) : (
-                                <div className="text-center py-4 text-muted-foreground text-sm flex flex-col items-center">
-                                    <p>Occupied by <strong>{tab.tab_name}</strong> ({paxCount} guests).</p>
-                                    <p>Waiting for first order...</p>
-                                    <Button size="sm" variant="destructive" className="mt-4" onClick={() => onClearTab(tab.id, tableId, paxCount)}>
-                                        <X size={14} className="mr-2"/> Clear Table
-                                    </Button>
-                                </div>
-                            )}
-
+                                );
+                            })}
                         </div>
                     ) : state === 'needs_cleaning' ? (
                          <div className="flex-grow p-4 flex flex-col items-center justify-center text-center">
                             <p className="text-muted-foreground">This table's bill has been paid. Mark it as clean once it's ready for the next guests.</p>
                         </div>
-                    ) : null}
+                    ) : (
+                        <div className="flex-grow p-4 flex flex-col items-center justify-center text-center">
+                            <p className="text-muted-foreground">This table is available and ready for guests.</p>
+                        </div>
+                    )}
                 </CardContent>
                 
-                {tab && (tab.orders && tab.orders.length > 0) ? (
-                    <CardFooter className="flex-col items-start bg-muted/30 p-4 border-t mt-auto">
-                        <Button variant="outline" size="sm" className="w-full mb-4" onClick={() => onShowHistory(tableId, tab.id)}>
-                            <History size={14} className="mr-2"/> See History
-                        </Button>
-                        <div className="flex justify-between items-center w-full">
-                            <span className="text-lg font-bold">Total Bill:</span>
-                            <span className="text-2xl font-bold text-primary">{formatCurrency(tab.totalBill)}</span>
-                        </div>
-                        <div className="grid grid-cols-2 gap-2 w-full mt-4">
-                            <Button variant="outline" onClick={() => onPrintBill({ tableId, orders: tab.orders })}><Printer size={16} className="mr-2"/> Print Bill</Button>
-                            <Button className="bg-primary hover:bg-primary/90" onClick={() => onMarkAsPaid(tableId, tab.id)}><CheckCircle size={16} className="mr-2"/> Mark as Paid</Button>
-                        </div>
-                    </CardFooter>
-                ) : state === 'needs_cleaning' ? (
+                {(state === 'needs_cleaning') && (
                      <CardFooter className="p-4 mt-auto">
                         <Button className="w-full bg-green-500 hover:bg-green-600" onClick={() => onMarkAsCleaned(tableId)}>
                             <CheckCircle size={16} className="mr-2"/> Mark as Cleaned
                         </Button>
                     </CardFooter>
-                ) : null}
+                )}
             </Card>
         </motion.div>
     );
@@ -677,7 +681,7 @@ const DineInPageContent = () => {
     const [billData, setBillData] = useState(null);
     const [historyModalData, setHistoryModalData] = useState(null);
     const [infoDialog, setInfoDialog] = useState({ isOpen: false, title: '', message: '' });
-    const [confirmationState, setConfirmationState] = useState({ isOpen: false, onConfirm: () => {}, title: '', description: '', confirmText: '' });
+    const [confirmationState, setConfirmationState] = useState({ isOpen: false, onConfirm: () => {}, title: '', description: '', confirmText: '', paymentMethod: 'cod' });
     
     const [acknowledgedItems, setAcknowledgedItems] = useState(() => {
         if (typeof window === 'undefined') {
@@ -829,19 +833,20 @@ const DineInPageContent = () => {
         setConfirmationState({
             isOpen: true,
             title: "Confirm Payment",
-            description: `Mark all orders for this tab on Table ${tableId} as paid? This will close the tab and mark the table as needing cleaning.`,
-            confirmText: "Yes, Mark as Paid",
-            onConfirm: () => {
-                handleMarkAsPaid(tableId, tabId);
+            description: `Select the payment method used to settle the bill for this tab on Table ${tableId}.`,
+            confirmText: "Mark as Paid",
+            paymentMethod: 'cod',
+            onConfirm: (method) => {
+                handleMarkAsPaid(tableId, tabId, method);
                 setConfirmationState({ isOpen: false });
             },
         });
     };
 
-    const handleMarkAsPaid = async (tableId, tabId) => {
+    const handleMarkAsPaid = async (tableId, tabId, paymentMethod) => {
         setLoading(true);
         try {
-            await handleApiCall('PATCH', { tableId, action: 'mark_paid', tabId }, '/api/owner/dine-in-tables');
+            await handleApiCall('PATCH', { tableId, action: 'mark_paid', tabId, paymentMethod }, '/api/owner/dine-in-tables');
             setInfoDialog({ isOpen: true, title: "Success", message: "Table has been marked for cleaning." });
             await fetchData(true);
         } catch (error) {
@@ -996,13 +1001,15 @@ const DineInPageContent = () => {
             />
             {restaurantDetails?.id && <QrGeneratorModal isOpen={isQrModalOpen} onClose={() => setIsQrModalOpen(false)} restaurantId={restaurantDetails.id} onSaveTable={handleSaveTable} onEditTable={handleEditTable} onDeleteTable={handleDeleteTable} initialTable={editingTable} showInfoDialog={setInfoDialog} />}
             <QrCodeDisplayModal isOpen={isQrDisplayModalOpen} onClose={() => setIsQrDisplayModalOpen(false)} restaurant={restaurantDetails} table={displayTable} />
-            <ConfirmationModal 
+             <ConfirmationModal 
                 isOpen={confirmationState.isOpen}
-                onClose={() => setConfirmationState({ isOpen: false })}
-                onConfirm={confirmationState.onConfirm}
+                onClose={() => setConfirmationState({ ...confirmationState, isOpen: false })}
+                onConfirm={() => confirmationState.onConfirm(confirmationState.paymentMethod)}
                 title={confirmationState.title}
                 description={confirmationState.description}
                 confirmText={confirmationState.confirmText}
+                paymentMethod={confirmationState.paymentMethod}
+                setPaymentMethod={(method) => setConfirmationState(prev => ({ ...prev, paymentMethod: method }))}
             />
 
 
