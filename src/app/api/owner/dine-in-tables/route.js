@@ -16,15 +16,9 @@ async function getBusinessRef(req) {
     // For POST requests for creating a tab, auth is not required.
     // We check the body for a restaurantId instead.
     if (req.method === 'POST') {
-        try {
-            const body = await req.json(); // Peek at the body
-            if (body.action === 'create_tab' && body.restaurantId) {
-                console.log(`[API dine-in-tables] getBusinessRef: Unauthenticated create_tab request for restaurantId: ${body.restaurantId}.`);
-                return firestore.collection('restaurants').doc(body.restaurantId); // Assuming restaurants for now
-            }
-        } catch (e) {
-             throw { message: 'Invalid request body.', status: 400 };
-        }
+         // Because req.json() consumes the body, we can't call it here and in the POST handler.
+         // The POST handler will be responsible for finding the businessRef for this specific action.
+         return null; 
     }
 
     // All other requests (GET, PATCH, DELETE) MUST be authenticated.
@@ -62,7 +56,7 @@ export async function GET(req) {
         if (!businessRef) throw { message: 'Business reference not found.', status: 404 };
         console.log(`[API dine-in-tables] GET: Business ref found: ${businessRef.path}`);
 
-        // --- DATA CLEANUP LOGIC ---
+        // --- START: ONE-TIME DATA CLEANUP ---
         const thirtyDaysAgoForCleanup = subDays(new Date(), 30);
         const oldPendingOrdersQuery = firestore.collection('orders')
             .where('restaurantId', '==', businessRef.id)
@@ -77,7 +71,7 @@ export async function GET(req) {
             await deleteBatch.commit();
             console.log(`[API dine-in-tables] CLEANUP: Successfully deleted old pending orders.`);
         }
-        // --- END DATA CLEANUP LOGIC ---
+        // --- END: ONE-TIME DATA CLEANUP ---
 
         const tablesSnap = await businessRef.collection('tables').orderBy('createdAt', 'asc').get();
         console.log(`[API dine-in-tables] GET: Fetched ${tablesSnap.size} tables.`);
@@ -85,7 +79,7 @@ export async function GET(req) {
         let tablesData = tablesSnap.docs.map(doc => ({ id: doc.id, ...doc.data(), pendingOrders: [] }));
         const tableMap = new Map(tablesData.map(t => [t.id, t]));
 
-        // --- START NEW LOGIC: Fetch pending orders and associate them ---
+        // --- Fetch pending orders and associate them ---
         const pendingOrdersSnap = await firestore.collection('orders')
             .where('restaurantId', '==', businessRef.id)
             .where('deliveryType', '==', 'dine-in')
@@ -100,19 +94,19 @@ export async function GET(req) {
             
             const table = tableMap.get(tableId);
 
-            // A "pending" order is only added if a corresponding active tab doesn't already exist for it.
-            // This prevents showing a "New Order" card for an order that has already been confirmed and is now part of an active tab.
-            const isOrderAlreadyInActiveTab = Object.values(table?.tabs || {}).some(tab =>
-                (tab.orders || []).some(o => o.id === orderDoc.id)
-            );
-            
-            if (table && !isOrderAlreadyInActiveTab) {
-                table.pendingOrders.push({ id: orderDoc.id, ...orderData });
+            if (table) {
+                // Check if an active tab already corresponds to this pending order's tabId
+                const isOrderInActiveTab = Object.values(table.tabs || {}).some(tab => 
+                    (tab.orders || []).some(o => o.id === orderDoc.id)
+                );
+
+                if (!isOrderInActiveTab) {
+                    table.pendingOrders.push({ id: orderDoc.id, ...orderData });
+                }
             }
         });
         
         tablesData = Array.from(tableMap.values());
-        // --- END NEW LOGIC ---
 
         const serviceRequestsSnap = await businessRef.collection('serviceRequests').where('status', '==', 'pending').orderBy('createdAt', 'desc').get();
         const serviceRequests = serviceRequestsSnap.docs.map(doc => ({ ...doc.data(), createdAt: doc.data().createdAt?.toDate ? doc.data().createdAt.toDate().toISOString() : new Date().toISOString() }));
@@ -151,19 +145,7 @@ export async function POST(req) {
     const body = await req.json(); // Read the body once
 
     try {
-        const businessRef = await getBusinessRef(req);
-        if (!businessRef) return NextResponse.json({ message: 'Business not found or authentication failed.', status: 404 });
-        
-        console.log("[API dine-in-tables] POST request received to create/update table.");
-        const { tableId, max_capacity } = body;
-        if (!tableId || !max_capacity || max_capacity < 1) return NextResponse.json({ message: 'Table ID and a valid capacity are required.' }, { status: 400 });
-        const tableRef = businessRef.collection('tables').doc(tableId);
-        await tableRef.set({ id: tableId, max_capacity: Number(max_capacity), current_pax: 0, createdAt: FieldValue.serverTimestamp(), state: 'available', tabs: {} }, { merge: true });
-        
-        return NextResponse.json({ message: 'Table saved successfully.' }, { status: 201 });
-
-    } catch (error) {
-         // This block handles the special unauthenticated 'create_tab' action
+        // This block handles the special unauthenticated 'create_tab' action
         if (body.action === 'create_tab' && body.restaurantId) {
             console.log("[API dine-in-tables] POST request received with action: create_tab");
             const { tableId, pax_count, tab_name, restaurantId } = body;
@@ -216,6 +198,19 @@ export async function POST(req) {
             }
         }
         
+        // Authenticated POST for creating/updating a table
+        const businessRef = await getBusinessRef(req);
+        if (!businessRef) return NextResponse.json({ message: 'Business not found or authentication failed.', status: 404 });
+        
+        console.log("[API dine-in-tables] POST request received to create/update table.");
+        const { tableId, max_capacity } = body;
+        if (!tableId || !max_capacity || max_capacity < 1) return NextResponse.json({ message: 'Table ID and a valid capacity are required.' }, { status: 400 });
+        const tableRef = businessRef.collection('tables').doc(tableId);
+        await tableRef.set({ id: tableId, max_capacity: Number(max_capacity), current_pax: 0, createdAt: FieldValue.serverTimestamp(), state: 'available', tabs: {} }, { merge: true });
+        
+        return NextResponse.json({ message: 'Table saved successfully.' }, { status: 201 });
+
+    } catch (error) {
         console.error("[API dine-in-tables] CRITICAL POST ERROR:", error);
         return NextResponse.json({ message: `Backend Error: ${error.message}` }, { status: error.status || 500 });
     }

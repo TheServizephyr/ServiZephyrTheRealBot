@@ -1,4 +1,3 @@
-
 'use client';
 
 import React, { useState, useEffect, useMemo, useRef, Suspense } from 'react';
@@ -296,7 +295,7 @@ const ConfirmationModal = ({ isOpen, onClose, onConfirm, title, description, con
 };
 
 
-const TableCard = ({ tableData, onMarkAsPaid, onPrintBill, onMarkAsCleaned, onConfirmOrder, onRejectOrder }) => {
+const TableCard = ({ tableData, onMarkAsPaid, onPrintBill, onMarkAsCleaned, onConfirmOrder, onRejectOrder, onClearTab }) => {
     const state = tableData.state;
     const stateConfig = {
         available: { title: "Available", bg: "bg-card", border: "border-border", icon: <CheckCircle size={16} className="text-green-500" /> },
@@ -305,32 +304,11 @@ const TableCard = ({ tableData, onMarkAsPaid, onPrintBill, onMarkAsCleaned, onCo
     };
     const currentConfig = stateConfig[state] || stateConfig.available;
     
-    // Combine active tabs and pending orders into one list for rendering
     const allGroups = [
         ...Object.values(tableData.tabs || {}),
         ...(tableData.pendingOrders || [])
     ];
     
-    // --- START FIX: Order Status Action Buttons Component ---
-    const OrderActionButtons = ({ order, isPending }) => {
-        if (isPending) {
-            return (
-                 <div className="grid grid-cols-2 gap-2 mt-2">
-                    <Button size="sm" variant="destructive" onClick={() => onRejectOrder(order.id)}>
-                        <X size={16} className="mr-2"/> Reject
-                    </Button>
-                    <Button size="sm" className="bg-primary hover:bg-primary/90" onClick={() => onConfirmOrder(order.id)}>
-                        <Check size={16} className="mr-2"/> Confirm
-                    </Button>
-                </div>
-            )
-        }
-        
-        // Add logic for further status updates if needed
-        return <p className="text-xs text-center text-green-500 font-semibold mt-2">Order Confirmed</p>;
-    }
-    // --- END FIX ---
-
     return (
         <motion.div layout initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }}>
             <Card className={cn("flex flex-col h-full shadow-lg hover:shadow-primary/20 transition-shadow duration-300 border-2", currentConfig.border)}>
@@ -343,42 +321,34 @@ const TableCard = ({ tableData, onMarkAsPaid, onPrintBill, onMarkAsCleaned, onCo
                     {allGroups.length > 0 ? (
                         <div className="space-y-4">
                             {allGroups.map(group => {
-                                const isPendingTab = group.status === 'pending'; // This identifies a new, unconfirmed order
-                                const isActiveTab = group.status === 'active'; // This is a confirmed, ongoing tab
-                                
-                                const tabName = isPendingTab ? (group.tab_name || 'New Customer') : group.tab_name;
-                                const paxCount = group.pax_count || 1;
-                                
-                                // For pending orders, bill is from the order itself. For active tabs, sum up its internal orders.
-                                const totalBill = isPendingTab ? group.totalAmount : (group.orders || []).reduce((sum, o) => sum + (o.totalAmount || 0), 0);
-                                const isOnlinePayment = isPendingTab ? group.paymentDetails?.method === 'razorpay' : (group.orders || []).some(o => o.paymentDetails?.method === 'razorpay');
-                                
-                                const isPaid = group.isPaid || isOnlinePayment; // A simple flag for now, can be improved
+                                const isPending = !group.status || group.status === 'pending';
+                                const isActiveTab = group.status === 'active';
+                                const totalBill = isPending ? group.totalAmount : (group.orders || []).reduce((sum, o) => sum + (o.totalAmount || 0), 0);
+                                const isOnlinePayment = isPending ? group.paymentDetails?.method === 'razorpay' : false;
+                                const isPaid = isOnlinePayment;
 
                                 return (
-                                    <div key={group.id} className={cn("p-3 rounded-lg border", 
-                                        isPendingTab ? "bg-yellow-500/10 border-yellow-500/30" : "bg-muted/50 border-border"
+                                    <div key={group.id} className={cn("relative p-3 rounded-lg border", 
+                                        isPending ? "bg-yellow-500/10 border-yellow-500/30" : "bg-muted/50 border-border"
                                     )}>
                                         <div className="flex justify-between items-center mb-2">
-                                            <h4 className="font-semibold text-foreground">{tabName} <span className="text-xs text-muted-foreground">({paxCount} guests)</span></h4>
+                                            <h4 className="font-semibold text-foreground">{group.tab_name || 'New Group'} <span className="text-xs text-muted-foreground">({group.pax_count || 1} guests)</span></h4>
                                             {group.dineInToken && <p className="text-xs font-bold text-yellow-400">TOKEN: {group.dineInToken}</p>}
                                         </div>
 
-                                        {isPendingTab && (
-                                            <div className="mb-2 p-2 bg-yellow-500/10 rounded">
-                                                <p className="text-sm font-bold text-yellow-300 text-center">New Order Received!</p>
+                                        {isPending && <div className="mb-2 p-2 bg-yellow-500/10 rounded"><p className="text-sm font-bold text-yellow-300 text-center">New Order Received!</p></div>}
+                                        
+                                        {(group.items || []).length > 0 && (
+                                            <div className="space-y-1 text-sm max-h-32 overflow-y-auto pr-2 my-2">
+                                                {(group.items || []).map((item, i) => (
+                                                    <div key={i} className="flex justify-between items-center text-muted-foreground">
+                                                        <span>{item.quantity || item.qty} x {item.name}</span>
+                                                        <span>{formatCurrency((item.totalPrice || item.price) * (item.quantity || item.qty))}</span>
+                                                    </div>
+                                                ))}
                                             </div>
                                         )}
 
-                                        <div className="space-y-1 text-sm max-h-32 overflow-y-auto pr-2 my-2">
-                                            {(group.items || []).map((item, i) => (
-                                                <div key={i} className="flex justify-between items-center text-muted-foreground">
-                                                    <span>{item.quantity || item.qty} x {item.name}</span>
-                                                    <span>{formatCurrency((item.totalPrice || item.price) * (item.quantity || item.qty))}</span>
-                                                </div>
-                                            ))}
-                                        </div>
-                                        
                                         {totalBill > 0 && (
                                             <div className="mt-3 pt-3 border-t border-dashed border-border/50">
                                                 <div className="flex justify-between items-center font-bold">
@@ -388,25 +358,28 @@ const TableCard = ({ tableData, onMarkAsPaid, onPrintBill, onMarkAsCleaned, onCo
                                                 <div className="flex justify-between items-center text-xs mt-1">
                                                     <span>Payment Status:</span>
                                                     <span className={cn('font-semibold', isPaid ? 'text-green-500' : 'text-yellow-500')}>
-                                                        {isPaid ? 'Paid' : 'Payment Due'}
+                                                        {isPaid ? 'PAID' : 'Payment Due'}
                                                     </span>
                                                 </div>
                                             </div>
                                         )}
 
-                                        {isPendingTab ? (
-                                            <OrderActionButtons order={group} isPending={true} onConfirmOrder={onConfirmOrder} onRejectOrder={onRejectOrder} />
+                                        {isPending ? (
+                                             <div className="grid grid-cols-2 gap-2 mt-2">
+                                                <Button size="sm" variant="destructive" onClick={() => onRejectOrder(group.id)}> <X size={16} className="mr-2"/> Reject </Button>
+                                                <Button size="sm" className="bg-primary hover:bg-primary/90" onClick={() => onConfirmOrder(group.id)}> <Check size={16} className="mr-2"/> Confirm </Button>
+                                             </div>
                                         ) : isActiveTab && totalBill > 0 ? (
                                             !isPaid && (
                                                 <div className="grid grid-cols-2 gap-2 mt-4">
-                                                    <Button variant="outline" size="sm" onClick={() => onPrintBill({ tableId: tableData.id, ...group })}>
-                                                        <Printer size={16} className="mr-2"/> Print Bill
-                                                    </Button>
-                                                    <Button onClick={() => onMarkAsPaid(tableData.id, group.id)}>
-                                                        <CheckCircle size={16} className="mr-2"/> Mark as Paid
-                                                    </Button>
+                                                    <Button variant="outline" size="sm" onClick={() => onPrintBill({ tableId: tableData.id, ...group })}> <Printer size={16} className="mr-2"/> Print Bill </Button>
+                                                    <Button onClick={() => onMarkAsPaid(tableData.id, group.id)}> <CheckCircle size={16} className="mr-2"/> Mark as Paid </Button>
                                                 </div>
                                             )
+                                        ) : isActiveTab && totalBill === 0 ? (
+                                            <button onClick={() => onClearTab(group.id, tableData.id, group.pax_count)} className="absolute top-2 right-2 p-1.5 bg-background/50 text-destructive rounded-full hover:bg-destructive hover:text-destructive-foreground">
+                                                 <X size={14} />
+                                            </button>
                                         ) : null}
                                     </div>
                                 );
@@ -880,7 +853,7 @@ const DineInPageContent = () => {
         setLoading(true);
         try {
             await handleApiCall('PATCH', { action: 'clear_tab', tabId, tableId, paxCount }, '/api/owner/dine-in-tables');
-            setInfoDialog({ isOpen: true, title: "Success", message: `Table ${tableId} has been cleared and is now available.` });
+            setInfoDialog({ isOpen: true, title: "Success", message: `Tab on Table ${tableId} has been cleared.` });
             await fetchData(true);
         } catch (error) {
             setInfoDialog({ isOpen: true, title: "Error", message: `Could not clear tab: ${error.message}` });
@@ -1003,6 +976,7 @@ const DineInPageContent = () => {
                     onMarkAsCleaned={handleMarkAsCleaned}
                     onConfirmOrder={handleConfirmOrder}
                     onRejectOrder={handleRejectOrder}
+                    onClearTab={handleClearTab}
                 />
             );
         }).flat();
