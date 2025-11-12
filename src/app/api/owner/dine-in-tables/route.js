@@ -235,7 +235,7 @@ export async function POST(req) {
                 
                 transaction.update(tableRef, updatePayload);
             });
-            // --- FIX: Return a valid JSON response with the new tabId ---
+            // --- THE FIX ---
             return NextResponse.json({ message: 'Tab created successfully!', tabId: newTabId }, { status: 201 });
         } catch(error) {
             console.error("[API dine-in-tables] CRITICAL Transaction Error (create_tab):", error);
@@ -332,10 +332,8 @@ export async function PATCH(req) {
                 const tableDoc = await transaction.get(tableRef);
                 if (!tableDoc.exists) throw new Error("Table not found.");
                 const tableData = tableDoc.data();
-                const hasActiveTabs = tableData.tabs && Object.keys(tableData.tabs).length > 0;
                 
                 const newPax = Object.values(tableData.tabs || {}).reduce((sum, tab) => sum + tab.pax_count, 0);
-
                 const newState = newPax > 0 ? 'occupied' : 'available';
 
                 transaction.update(tableRef, { state: newState, current_pax: newPax });
@@ -365,3 +363,6 @@ export async function DELETE(req) {
     }
 }
 
+
+
+    
