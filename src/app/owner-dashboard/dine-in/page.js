@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useState, useEffect, useMemo, useRef, Suspense } from 'react';
@@ -274,7 +275,7 @@ const ConfirmationModal = ({ isOpen, onClose, onConfirm, title, description, con
     );
 };
 
-const statusFlow = ['confirmed', 'preparing', 'ready_for_pickup', 'delivered'];
+
 const actionConfig = {
     'confirmed': { text: 'Start Preparing', icon: CookingPot, next: 'preparing' },
     'preparing': { text: 'Ready for Pickup', icon: ShoppingBag, next: 'ready_for_pickup' },
@@ -292,10 +293,7 @@ const TableCard = ({ tableData, onMarkAsPaid, onPrintBill, onMarkAsCleaned, onCo
     const currentConfig = stateConfig[state] || stateConfig.available;
     
     // Combine pending orders and active tabs into one list for rendering
-    const allGroups = [
-        ...(tableData.pendingOrders || []),
-        ...Object.values(tableData.tabs || {})
-    ];
+    const allGroups = [...(tableData.pendingOrders || []), ...Object.values(tableData.tabs || {})];
     
     return (
         <motion.div layout initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }}>
@@ -311,12 +309,25 @@ const TableCard = ({ tableData, onMarkAsPaid, onPrintBill, onMarkAsCleaned, onCo
                             {allGroups.map(group => {
                                 const isPending = !group.status || group.status === 'pending';
                                 const isActiveTab = group.status === 'active';
+                                
                                 const orderId = isPending ? group.id : Object.keys(group.orders || {})[0];
                                 const orderData = isPending ? group : Object.values(group.orders || {})[0];
-                                const totalBill = isPending ? group.totalAmount : Object.values(group.orders || {}).reduce((sum, o) => sum + (o.totalAmount || 0), 0);
                                 
-                                const isCOD = (orderData?.paymentDetails?.method || 'cod') === 'cod';
-                                const isServed = orderData?.status === 'delivered';
+                                const totalBill = useMemo(() => {
+                                    if (isPending) return group.totalAmount;
+                                    return Object.values(group.orders || {}).reduce((sum, o) => sum + (o.totalAmount || 0), 0);
+                                }, [group, isPending]);
+
+                                const allItems = useMemo(() => {
+                                    if (isPending) return group.items || [];
+                                    return Object.values(group.orders || {}).flatMap(o => o.items);
+                                }, [group, isPending]);
+                                
+                                const isCOD = !isPending && (orderData?.paymentDetails?.method || 'cod') === 'cod';
+                                const isServed = !isPending && orderData?.status === 'delivered';
+                                
+                                const actionDetails = actionConfig[orderData?.status];
+                                const ActionIcon = actionDetails ? actionDetails.icon : null;
 
                                 return (
                                     <div key={group.id} className={cn("relative p-3 rounded-lg border", 
@@ -327,9 +338,9 @@ const TableCard = ({ tableData, onMarkAsPaid, onPrintBill, onMarkAsCleaned, onCo
                                             {group.dineInToken && <p className="text-xs font-bold text-yellow-400">TOKEN: {group.dineInToken}</p>}
                                         </div>
                                         
-                                        {(orderData?.items || []).length > 0 && (
+                                        {allItems.length > 0 && (
                                             <div className="space-y-1 text-sm max-h-32 overflow-y-auto pr-2 my-2">
-                                                {(orderData.items || []).map((item, i) => (
+                                                {allItems.map((item, i) => (
                                                     <div key={i} className="flex justify-between items-center text-muted-foreground">
                                                         <span>{item.quantity || item.qty} x {item.name}</span>
                                                         <span>{formatCurrency((item.totalPrice || item.price))}</span>
@@ -346,8 +357,8 @@ const TableCard = ({ tableData, onMarkAsPaid, onPrintBill, onMarkAsCleaned, onCo
                                                 </div>
                                                 <div className="flex justify-between items-center text-xs mt-1">
                                                     <span>Payment Status:</span>
-                                                    <span className={cn('font-semibold', !isCOD ? 'text-green-500' : 'text-yellow-500')}>
-                                                        {!isCOD ? 'PAID' : 'Payment Due'}
+                                                    <span className={cn('font-semibold', isCOD ? 'text-yellow-500' : 'text-green-500')}>
+                                                        {isCOD ? 'Payment Due' : 'PAID'}
                                                     </span>
                                                 </div>
                                             </div>
@@ -356,25 +367,25 @@ const TableCard = ({ tableData, onMarkAsPaid, onPrintBill, onMarkAsCleaned, onCo
                                         {isPending ? (
                                              <div className="grid grid-cols-2 gap-2 mt-4">
                                                 <Button size="sm" variant="destructive" onClick={() => onRejectOrder(orderId)}> <X size={16} className="mr-2"/> Reject </Button>
-                                                <Button size="sm" className="bg-primary hover:bg-primary/90" onClick={() => onConfirmOrder(orderId)}> <Check size={16} className="mr-2"/> Confirm </Button>
+                                                <Button size="sm" className="bg-primary hover:bg-primary/90" onClick={() => onConfirmOrder(orderId, 'confirmed')}> <Check size={16} className="mr-2"/> Confirm </Button>
                                              </div>
                                         ) : isActiveTab ? (
                                             <div className="mt-4 space-y-2">
-                                                <div className="flex items-center gap-2">
-                                                    <p className="text-xs font-semibold text-muted-foreground">STATUS:</p>
-                                                    <p className="text-sm font-bold capitalize text-primary">{orderData?.status?.replace('_', ' ') || 'Confirmed'}</p>
+                                                <div className="flex items-center justify-between text-xs font-semibold text-muted-foreground">
+                                                    <p>STATUS:</p>
+                                                    <p className="font-bold capitalize text-primary">{orderData?.status?.replace('_', ' ') || 'Confirmed'}</p>
                                                 </div>
                                                 <div className="grid grid-cols-2 gap-2">
-                                                    {actionConfig[orderData?.status] ? (
-                                                         <Button size="sm" className="w-full col-span-2" onClick={() => onUpdateStatus(orderId, actionConfig[orderData.status].next)}>
-                                                            <actionConfig[orderData.status].icon size={16} className="mr-2"/> {actionConfig[orderData.status].text}
+                                                    {ActionIcon ? (
+                                                         <Button size="sm" className="w-full col-span-2" onClick={() => onUpdateStatus(orderId, actionDetails.next)}>
+                                                            <ActionIcon size={16} className="mr-2"/> {actionDetails.text}
                                                         </Button>
                                                     ) : isServed && isCOD ? (
                                                         <Button onClick={() => onMarkAsPaid(tableData.id, group.id)} className="w-full col-span-2 bg-green-500 hover:bg-green-600">
                                                             <Wallet size={16} className="mr-2"/> Mark as Paid
                                                         </Button>
                                                     ) : null}
-                                                     <Button variant="outline" size="sm" className="w-full" onClick={() => onPrintBill({ tableId: tableData.id, ...group })}> <Printer size={16} className="mr-2"/> Print Bill </Button>
+                                                    <Button variant="outline" size="sm" className="w-full col-span-2" onClick={() => onPrintBill({ tableId: tableData.id, ...group })}> <Printer size={16} className="mr-2"/> Print Bill </Button>
                                                 </div>
                                             </div>
                                         ) : null}
@@ -405,6 +416,7 @@ const TableCard = ({ tableData, onMarkAsPaid, onPrintBill, onMarkAsCleaned, onCo
         </motion.div>
     );
 };
+
 
 const QrCodeDisplay = ({ text, tableName, innerRef }) => {
     const handleDownload = () => {
@@ -1000,3 +1012,5 @@ const DineInPage = () => (
 );
 
 export default DineInPage;
+
+    
