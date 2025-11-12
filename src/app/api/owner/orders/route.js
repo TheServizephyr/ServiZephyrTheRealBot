@@ -188,49 +188,18 @@ export async function PATCH(req) {
                 updateData.deliveryBoyId = deliveryBoyId;
             }
             
-            // --- START: THE CRITICAL FIX FOR DINE-IN ---
             if (orderData.deliveryType === 'dine-in' && newStatus === 'confirmed') {
-                const tableRef = businessSnap.ref.collection('tables').doc(orderData.tableId);
                 const newTabId = `tab_${Date.now()}`;
-                
-                // Create a new tab object in the table
-                const tabData = {
-                    id: newTabId,
-                    tableId: orderData.tableId,
-                    tab_name: orderData.tab_name || 'Guest',
-                    pax_count: orderData.pax_count || 1,
-                    status: 'active',
-                    createdAt: orderData.orderDate, // Use the original order date
-                    totalBill: orderData.totalAmount,
-                    orders: { [id]: orderData } // Nest the full order data
-                };
-                
-                batch.set(tableRef, {
-                    tabs: { [newTabId]: tabData }
-                }, { merge: true });
-
-                // Also update the order with its new tabId for reference
                 updateData.dineInTabId = newTabId;
-
-            } else if (orderData.deliveryType === 'dine-in' && orderData.dineInTabId) {
-                // If the order already has a tab, just update its status within the tab
-                const tableRef = businessSnap.ref.collection('tables').doc(orderData.tableId);
-                const updatePath = `tabs.${orderData.dineInTabId}.orders.${id}.status`;
-                batch.update(tableRef, { [updatePath]: newStatus });
-                 console.log(`[API][PATCH /orders] Dine-in order ${id} status updated to ${newStatus} in table ${orderData.tableId}.`);
             }
-            // --- END: THE CRITICAL FIX FOR DINE-IN ---
             
             batch.update(orderRef, updateData);
 
             const businessData = businessSnap.data();
             
-            // Do not send automated message for simple confirmation in dine-in, as it's handled by owner.
-            if (orderData.deliveryType === 'dine-in' && newStatus === 'confirmed') {
-                continue;
-            }
-            
+            // --- THE FIX: Send notification for all relevant statuses ---
             if (orderData.customerPhone) {
+                console.log(`[API LOG] Preparing to send notification for status '${newStatus}' for order ${id}.`);
                 const notificationPayload = {
                     customerPhone: orderData.customerPhone,
                     botPhoneNumberId: businessData.botPhoneNumberId,
@@ -245,6 +214,8 @@ export async function PATCH(req) {
                 sendOrderStatusUpdateToCustomer(notificationPayload).catch(e => 
                     console.error(`[API LOG] CRITICAL: Failed to send WhatsApp notification for order ${id}. Error:`, e.message)
                 );
+            } else {
+                 console.warn(`[API LOG] No customer phone for order ${id}, skipping notification.`);
             }
         }
         
