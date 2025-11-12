@@ -51,9 +51,20 @@ export async function GET(req) {
             });
         });
 
+        const activeTabsSnap = await businessRef.collection('dineInTabs').where('status', '==', 'active').get();
+        activeTabsSnap.forEach(tabDoc => {
+            const tabData = tabDoc.data();
+            const table = tableMap.get(tabData.tableId);
+            if(table) {
+                table.tabs[tabData.id] = { ...tabData, orders: {} }; // Initialize orders object
+            }
+        });
+
         const ordersQuery = firestore.collection('orders')
             .where('restaurantId', '==', businessRef.id)
-            .where('deliveryType', '==', 'dine-in');
+            .where('deliveryType', '==', 'dine-in')
+            .where('status', '!=', 'delivered')
+            .where('status', '!=', 'rejected');
             
         const ordersSnap = await ordersQuery.get();
 
@@ -67,19 +78,7 @@ export async function GET(req) {
 
             if (orderData.status === 'pending') {
                  table.pendingOrders.push({ id: orderDoc.id, ...orderData });
-            } else if (tabId && orderData.status !== 'delivered' && orderData.status !== 'rejected') {
-                if (!table.tabs[tabId]) {
-                    // This logic is now primarily handled on PATCH, but as a fallback:
-                    table.tabs[tabId] = {
-                        id: tabId,
-                        tableId: tableId,
-                        tab_name: orderData.tab_name || 'Guest',
-                        pax_count: orderData.pax_count || 1,
-                        createdAt: orderData.orderDate,
-                        status: 'active',
-                        orders: {},
-                    };
-                }
+            } else if (tabId && table.tabs[tabId]) {
                 table.tabs[tabId].orders[orderDoc.id] = { id: orderDoc.id, ...orderData };
             }
         });

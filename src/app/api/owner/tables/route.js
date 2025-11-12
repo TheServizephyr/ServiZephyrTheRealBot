@@ -62,7 +62,7 @@ export async function GET(req) {
             max_capacity: tableData.max_capacity,
             current_pax,
             activeTabs,
-            state: tableData.state || 'available'
+            state: current_pax > 0 ? 'occupied' : 'available'
         }, { status: 200 });
 
     } catch (error) {
@@ -72,4 +72,5 @@ export async function GET(req) {
 }
 
     
+
 
