@@ -4,22 +4,22 @@ import { NextResponse } from 'next/server';
 import { getFirestore } from '@/lib/firebase-admin';
 
 export async function GET(request, { params }) {
-    console.log("[API][Order Status] Request received.");
+    console.log("[API][Order Status] GET request received.");
     try {
         const { orderId } = params;
         const firestore = await getFirestore();
 
         if (!orderId) {
-            console.log("[API][Order Status] Error: Order ID is missing.");
+            console.log("[API][Order Status] Error: Order ID is missing from params.");
             return NextResponse.json({ message: 'Order ID is missing.' }, { status: 400 });
         }
 
-        console.log(`[API][Order Status] Fetching order: ${orderId}`);
+        console.log(`[API][Order Status] Fetching order document: orders/${orderId}`);
         const orderRef = firestore.collection('orders').doc(orderId);
         const orderSnap = await orderRef.get();
 
         if (!orderSnap.exists) {
-            console.log(`[API][Order Status] Error: Order ${orderId} not found.`);
+            console.log(`[API][Order Status] Error: Order document ${orderId} not found.`);
             return NextResponse.json({ message: 'Order not found.' }, { status: 404 });
         }
         
@@ -63,9 +63,7 @@ export async function GET(request, { params }) {
                 id: orderSnap.id,
                 status: orderData.status,
                 customerLocation: orderData.customerLocation,
-                // --- THE FIX ---
                 restaurantLocation: restaurantLocationForMap, 
-                // --- END FIX ---
                 customerName: orderData.customerName,
                 customerAddress: orderData.customerAddress,
                 customerPhone: orderData.customerPhone,
@@ -75,6 +73,7 @@ export async function GET(request, { params }) {
                 dineInToken: orderData.dineInToken,
                 tableId: orderData.tableId,
                 dineInTabId: orderData.dineInTabId,
+                trackingToken: orderData.trackingToken || null, // Make sure to send the token
             },
             restaurant: {
                 id: businessDoc.id,
@@ -91,7 +90,7 @@ export async function GET(request, { params }) {
             } : null
         };
         
-        console.log("[API][Order Status] Successfully built response payload:", JSON.stringify(responsePayload));
+        console.log("[API][Order Status] Successfully built response payload. Tracking token included:", !!responsePayload.order.trackingToken);
         return NextResponse.json(responsePayload, { status: 200 });
 
     } catch (error) {

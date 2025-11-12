@@ -11,6 +11,7 @@ async function getBusinessRef(req) {
     let finalUserId;
     const { searchParams } = new URL(req.url, `http://${req.headers.host}`);
     const impersonatedOwnerId = searchParams.get('impersonate_owner_id');
+    console.log("[API dine-in-tables] getBusinessRef: Starting verification.");
 
     try {
         const uid = await verifyAndGetUid(req);
@@ -19,8 +20,8 @@ async function getBusinessRef(req) {
 
         if (userDoc.exists && userDoc.data().role === 'admin' && impersonatedOwnerId) {
             finalUserId = impersonatedOwnerId;
+            console.log(`[API dine-in-tables] getBusinessRef: Admin impersonation. Target UID: ${finalUserId}`);
         } else if (req.method === 'POST' && !userDoc.exists) {
-            // Allow unauthenticated POST only for create_tab action
             const body = await req.clone().json();
             if (body.action !== 'create_tab') {
                 throw { message: 'Authentication required for this action.', status: 403 };
@@ -35,6 +36,7 @@ async function getBusinessRef(req) {
                 const body = await req.clone().json();
                 if (body.action === 'create_tab') {
                     finalUserId = null;
+                    console.log("[API dine-in-tables] getBusinessRef: Unauthenticated 'create_tab' action detected.");
                 } else {
                     throw { message: 'Authentication required for this action.', status: 403 };
                 }
@@ -47,24 +49,29 @@ async function getBusinessRef(req) {
     }
     
     if (finalUserId) {
+        console.log(`[API dine-in-tables] getBusinessRef: Searching business for owner UID: ${finalUserId}`);
         const collectionsToTry = ['restaurants', 'shops'];
         for (const collection of collectionsToTry) {
             const query = await firestore.collection(collection).where('ownerId', '==', finalUserId).limit(1).get();
             if (!query.empty) {
+                console.log(`[API dine-in-tables] getBusinessRef: Found business in '${collection}'.`);
                 return query.docs[0].ref;
             }
         }
     }
     
-    // For unauthenticated tab creation, find business by ID
     if (req.method === 'POST') {
          const body = await req.clone().json();
          if (body.action === 'create_tab' && body.restaurantId) {
+             console.log(`[API dine-in-tables] getBusinessRef: Searching for business by ID: ${body.restaurantId}`);
              const collectionsToTry = ['restaurants', 'shops'];
              for (const collection of collectionsToTry) {
                 const businessRef = firestore.collection(collection).doc(body.restaurantId);
                 const businessSnap = await businessRef.get();
-                if (businessSnap.exists) return businessRef;
+                if (businessSnap.exists) {
+                    console.log(`[API dine-in-tables] getBusinessRef: Found business in '${collection}' by ID.`);
+                    return businessRef;
+                }
              }
              return null; // Business not found
          }
@@ -76,11 +83,14 @@ async function getBusinessRef(req) {
 
 export async function GET(req) {
     const firestore = await getFirestore();
+    console.log("[API dine-in-tables] GET request received.");
     try {
         const businessRef = await getBusinessRef(req);
         if (!businessRef) throw { message: 'Business reference not found.', status: 404 };
+        console.log(`[API dine-in-tables] GET: Business ref found: ${businessRef.path}`);
 
         const tablesSnap = await businessRef.collection('tables').orderBy('createdAt', 'asc').get();
+        console.log(`[API dine-in-tables] GET: Fetched ${tablesSnap.size} tables.`);
         
         const activeTabIds = [];
         tablesSnap.docs.forEach(doc => {
@@ -93,6 +103,7 @@ export async function GET(req) {
                 });
             }
         });
+        console.log(`[API dine-in-tables] GET: Found ${activeTabIds.length} active tab IDs.`);
 
 
         const ordersByTab = {};
@@ -112,6 +123,7 @@ export async function GET(req) {
                     ordersByTab[order.dineInTabId].push({ id: doc.id, ...order });
                 }
             });
+            console.log(`[API dine-in-tables] GET: Grouped orders for ${Object.keys(ordersByTab).length} tabs.`);
         }
 
 
@@ -153,6 +165,7 @@ export async function GET(req) {
 
         const serviceRequestsSnap = await businessRef.collection('serviceRequests').where('status', '==', 'pending').orderBy('createdAt', 'desc').get();
         const serviceRequests = serviceRequestsSnap.docs.map(doc => ({ ...doc.data(), createdAt: doc.data().createdAt?.toDate ? doc.data().createdAt.toDate().toISOString() : new Date().toISOString() }));
+        console.log(`[API dine-in-tables] GET: Fetched ${serviceRequests.length} pending service requests.`);
 
         const thirtyDaysAgo = subDays(new Date(), 30);
         const closedTabsQuery = businessRef.collection('tables').where('lastClosedAt', '>=', thirtyDaysAgo);
@@ -172,8 +185,9 @@ export async function GET(req) {
             }
         });
         closedTabs.sort((a,b) => new Date(b.closedAt) - new Date(a.closedAt));
+        console.log(`[API dine-in-tables] GET: Fetched ${closedTabs.length} closed tabs from the last 30 days.`);
 
-
+        console.log("[API dine-in-tables] GET: Request successful. Sending response.");
         return NextResponse.json({ tables: tablesData, serviceRequests, closedTabs }, { status: 200 });
 
     } catch (error) {
@@ -186,21 +200,25 @@ export async function GET(req) {
 export async function POST(req) {
     const body = await req.json();
     const firestore = await getFirestore();
+    console.log("[API dine-in-tables] POST request received with action:", body.action);
 
     // Action to create a new tab for a table
     if (body.action === 'create_tab') {
         const { tableId, pax_count, tab_name, restaurantId } = body;
         if (!restaurantId || !tableId || !pax_count || !tab_name) {
+            console.error("[API dine-in-tables] POST create_tab: Validation failed. Missing data.");
             return NextResponse.json({ message: 'Table ID, pax count, and tab name are required.' }, { status: 400 });
         }
 
         const businessRef = await getBusinessRef(req);
         if (!businessRef) {
+            console.error("[API dine-in-tables] POST create_tab: Business not found for ID:", restaurantId);
             return NextResponse.json({ message: 'Business not found.' }, { status: 404 });
         }
         
         const tableRef = businessRef.collection('tables').doc(tableId);
         const newTabId = `tab_${Date.now()}`;
+        console.log(`[API dine-in-tables] POST create_tab: Attempting to create new tab ${newTabId} on table ${tableId}`);
 
         try {
             await firestore.runTransaction(async (transaction) => {
@@ -234,7 +252,9 @@ export async function POST(req) {
                 };
                 
                 transaction.update(tableRef, updatePayload);
+                 console.log("[API dine-in-tables] POST create_tab: Transaction payload prepared.");
             });
+            console.log(`[API dine-in-tables] POST create_tab: Transaction successful for tab ${newTabId}.`);
             // --- THE FIX ---
             return NextResponse.json({ message: 'Tab created successfully!', tabId: newTabId }, { status: 201 });
         } catch(error) {
@@ -244,6 +264,7 @@ export async function POST(req) {
     }
 
     // Default action: Create a new table
+    console.log("[API dine-in-tables] POST: Default action to create/update table.");
     const businessRef = await getBusinessRef(req);
     if (!businessRef) return NextResponse.json({ message: 'Authentication required to manage tables.' }, { status: 403 });
     const { tableId, max_capacity } = body;
@@ -251,14 +272,17 @@ export async function POST(req) {
     const tableRef = businessRef.collection('tables').doc(tableId);
     await tableRef.set({ id: tableId, max_capacity: Number(max_capacity), current_pax: 0, createdAt: FieldValue.serverTimestamp(), state: 'available', tabs: {} }, { merge: true });
     
+    console.log(`[API dine-in-tables] POST: Table ${tableId} saved successfully.`);
     return NextResponse.json({ message: 'Table saved successfully.' }, { status: 201 });
 }
 
 export async function PATCH(req) {
     const firestore = await getFirestore();
+    console.log("[API dine-in-tables] PATCH request received.");
      try {
         const businessRef = await getBusinessRef(req);
         const { tableId, action, tabId, newTableId, newCapacity, paymentMethod, paxCount } = await req.json();
+        console.log(`[API dine-in-tables] PATCH: Action: ${action}, Table: ${tableId}, Tab: ${tabId}`);
         
         const tableRef = businessRef.collection('tables').doc(tableId);
 
@@ -270,7 +294,10 @@ export async function PATCH(req) {
                 if (!tableDoc.exists) throw new Error("Table not found.");
                 const tableData = tableDoc.data();
                 const tabToClear = tableData.tabs?.[tabId];
-                if (!tabToClear) return; // Already cleared, no-op
+                if (!tabToClear) {
+                     console.log(`[API dine-in-tables] PATCH clear_tab: Tab ${tabId} already cleared. No-op.`);
+                    return; 
+                }
                 
                 const currentPax = tableData.current_pax || 0;
                 const tabPax = tabToClear.pax_count || paxCount || 0;
@@ -282,7 +309,9 @@ export async function PATCH(req) {
                     state: newPax > 0 ? 'occupied' : 'available'
                 };
                 transaction.update(tableRef, updatePayload);
+                 console.log(`[API dine-in-tables] PATCH clear_tab: Transaction for table ${tableId} prepared.`);
             });
+            console.log(`[API dine-in-tables] PATCH clear_tab: Tab ${tabId} cleared successfully.`);
             return new NextResponse(null, { status: 204 });
         }
 
@@ -305,6 +334,7 @@ export async function PATCH(req) {
                         paymentDetails: { ...(orderDoc.data().paymentDetails || {}), method: paymentMethod || 'cod' }
                     });
                 });
+                 console.log(`[API dine-in-tables] PATCH mark_paid: Updated ${ordersSnap.size} orders to 'delivered'.`);
                 
                 const tabPax = tabToClose.pax_count || 0;
                 
@@ -323,7 +353,9 @@ export async function PATCH(req) {
                     lastClosedAt: FieldValue.serverTimestamp()
                 };
                 transaction.update(tableRef, updatePayload);
+                console.log(`[API dine-in-tables] PATCH mark_paid: Transaction for table ${tableId} prepared.`);
             });
+            console.log(`[API dine-in-tables] PATCH mark_paid: Table ${tableId} marked as 'needs_cleaning'.`);
             return NextResponse.json({ message: `Table ${tableId} marked as needing cleaning.` }, { status: 200 });
         }
         
@@ -338,6 +370,7 @@ export async function PATCH(req) {
 
                 transaction.update(tableRef, { state: newState, current_pax: newPax });
             });
+            console.log(`[API dine-in-tables] PATCH mark_cleaned: Table ${tableId} status updated.`);
              return NextResponse.json({ message: `Table ${tableId} cleaning acknowledged.` }, { status: 200 });
         }
         
@@ -350,12 +383,14 @@ export async function PATCH(req) {
 }
 
 export async function DELETE(req) {
+    console.log("[API dine-in-tables] DELETE request received.");
     try {
         const businessRef = await getBusinessRef(req);
         const { tableId } = await req.json();
         if (!tableId) return NextResponse.json({ message: 'Table ID is required.' }, { status: 400 });
         const tableRef = businessRef.collection('tables').doc(tableId);
         await tableRef.delete();
+        console.log(`[API dine-in-tables] DELETE: Table ${tableId} deleted successfully.`);
         return NextResponse.json({ message: 'Table deleted successfully.' }, { status: 200 });
     } catch (error) {
         console.error("[API dine-in-tables] CRITICAL DELETE ERROR:", error);

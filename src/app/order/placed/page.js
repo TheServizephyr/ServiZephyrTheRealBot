@@ -18,18 +18,24 @@ const OrderPlacedContent = () => {
     const [restaurantId, setRestaurantId] = useState(searchParams.get('restaurantId'));
 
     useEffect(() => {
+        console.log("[Placed Page] useEffect triggered. Current orderId from URL:", orderId);
+
         // --- START: THE CORE FIX ---
 
         // 1. Immediately try to get and save the restaurantId.
         const currentRestaurantId = searchParams.get('restaurantId');
         if (currentRestaurantId) {
+            console.log("[Placed Page] Found restaurantId in URL, saving to localStorage:", currentRestaurantId);
             localStorage.setItem('lastOrderedFrom', currentRestaurantId);
             if (!restaurantId) {
+                console.log("[Placed Page] Setting restaurantId state from URL param.");
                 setRestaurantId(currentRestaurantId);
             }
         } else {
             const storedId = localStorage.getItem('lastOrderedFrom');
+            console.log("[Placed Page] No restaurantId in URL. Found in localStorage:", storedId);
             if (storedId && !restaurantId) {
+                 console.log("[Placed Page] Setting restaurantId state from localStorage.");
                 setRestaurantId(storedId);
             }
         }
@@ -37,13 +43,16 @@ const OrderPlacedContent = () => {
         // 2. Smartly fetch the tracking token if needed.
         const fetchTokenIfNeeded = async () => {
             const tokenInUrl = searchParams.get('token');
+            console.log("[Placed Page] fetchTokenIfNeeded called. Token in URL:", tokenInUrl);
 
             if (!tokenInUrl && orderId) {
                 console.log("[Placed Page] Token not in URL, will fetch from backend for order:", orderId);
                 try {
                     // This delay is crucial for Razorpay webhook to process.
+                    console.log("[Placed Page] Waiting 1.5s for webhook to process...");
                     await new Promise(resolve => setTimeout(resolve, 1500)); 
                     
+                    console.log(`[Placed Page] Fetching token from /api/order/status/${orderId}`);
                     const res = await fetch(`/api/order/status/${orderId}`);
                     if (res.ok) {
                         const data = await res.json();
@@ -62,14 +71,19 @@ const OrderPlacedContent = () => {
             } else if (tokenInUrl) {
                 // If token is in the URL, make sure it's set in the state.
                 if (tokenInUrl !== trackingToken) {
+                    console.log("[Placed Page] Setting trackingToken state from URL param.");
                     setTrackingToken(tokenInUrl);
                 }
+            } else {
+                console.log("[Placed Page] No orderId or token in URL. Cannot fetch token.");
             }
         };
 
         // This effect runs whenever the orderId from the URL changes.
         if(orderId) {
             fetchTokenIfNeeded();
+        } else {
+             console.log("[Placed Page] No orderId found in URL. Skipping token fetch.");
         }
         // --- END: THE CORE FIX ---
 
@@ -77,6 +91,7 @@ const OrderPlacedContent = () => {
 
 
     const handleBackToMenu = () => {
+        console.log("[Placed Page] handleBackToMenu clicked. Current restaurantId state:", restaurantId);
         // Now it uses the reliable `restaurantId` from state
         if (restaurantId) {
             const params = new URLSearchParams();
@@ -85,7 +100,9 @@ const OrderPlacedContent = () => {
             const sessionToken = searchParams.get('token') || trackingToken; // Use whichever token is available
             if (sessionToken) params.set('token', sessionToken);
             
-            router.push(`/order/${restaurantId}?${params.toString()}`);
+            const backUrl = `/order/${restaurantId}?${params.toString()}`;
+            console.log("[Placed Page] Navigating back to menu:", backUrl);
+            router.push(backUrl);
         } else {
             console.error("[Placed Page] Could not determine which restaurant to go back to. Falling back to home.");
             router.push('/'); // Fallback to home if restaurantId is somehow lost
@@ -105,8 +122,11 @@ const OrderPlacedContent = () => {
     const handleTrackOrder = () => {
         const isDineIn = !!whatsappNumber;
         const trackingPath = isDineIn ? 'dine-in/' : '';
+        console.log(`[Placed Page] handleTrackOrder clicked. Order ID: ${orderId}, Token: ${trackingToken}`);
         if (orderId && trackingToken) {
-            router.push(`/track/${trackingPath}${orderId}?token=${trackingToken}`);
+            const trackUrl = `/track/${trackingPath}${orderId}?token=${trackingToken}`;
+            console.log(`[Placed Page] Navigating to track page: ${trackUrl}`);
+            router.push(trackUrl);
         } else {
             alert("Tracking information is not yet available. This can happen with online payments. Please wait a moment and try again.");
         }

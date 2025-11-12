@@ -1,13 +1,17 @@
 
+
 import { NextResponse } from 'next/server';
 import { getFirestore } from '@/lib/firebase-admin';
 
 export async function POST(req) {
+    console.log("[API verify-token] POST request received.");
     try {
         const firestore = await getFirestore();
         const { phone, token, tableId } = await req.json();
+        console.log(`[API verify-token] Received payload - Phone: ${phone}, Token: ${token ? 'Present' : 'Missing'}, TableID: ${tableId}`);
 
         if (!token) {
+            console.error("[API verify-token] Validation failed: Session token is required.");
             return NextResponse.json({ message: 'Session token is required.' }, { status: 400 });
         }
 
@@ -15,23 +19,24 @@ export async function POST(req) {
         const tokenDoc = await tokenRef.get();
 
         if (!tokenDoc.exists) {
-            console.warn(`[API verify-token] Token not found: ${token}`);
+            console.warn(`[API verify-token] Token not found in Firestore: ${token}`);
             return NextResponse.json({ message: 'Invalid or expired session token.' }, { status: 403 });
         }
 
         const tokenData = tokenDoc.data();
         const expiresAt = tokenData.expiresAt.toDate();
 
-        // Check for expiry first
         if (new Date() > expiresAt) {
             console.warn(`[API verify-token] Token has expired for token: ${token}`);
-            await tokenRef.delete(); // Clean up expired token
+            await tokenRef.delete();
             return NextResponse.json({ message: 'Your session has expired. Please restart.' }, { status: 403 });
         }
+        
+        console.log(`[API verify-token] Token found. Type: ${tokenData.type}, Expires: ${expiresAt.toISOString()}`);
 
-        // --- DINE-IN TOKEN VERIFICATION ---
         if (tokenData.type === 'dine-in') {
             if (!tableId) {
+                console.error("[API verify-token] Validation failed: Table ID is required for dine-in session.");
                 return NextResponse.json({ message: 'Table ID is required for dine-in session verification.' }, { status: 400 });
             }
             if (tokenData.tableId !== tableId) {
@@ -42,11 +47,9 @@ export async function POST(req) {
             return NextResponse.json({ message: 'Token is valid.' }, { status: 200 });
         }
 
-        // --- WHATSAPP & TRACKING TOKEN VERIFICATION ---
-        // START FIX: Added 'tracking' to the condition
         if (tokenData.type === 'whatsapp' || tokenData.type === 'tracking') {
-        // END FIX
             if (!phone) {
+                 console.error("[API verify-token] Validation failed: Phone number is required for this session type.");
                  return NextResponse.json({ message: 'Phone number is required for this session.' }, { status: 400 });
             }
             if (tokenData.phone !== phone) {
@@ -57,12 +60,11 @@ export async function POST(req) {
             return NextResponse.json({ message: 'Token is valid.' }, { status: 200 });
         }
         
-        // If token type is unknown
-        console.error(`[API verify-token] Unknown token type found: '${tokenData.type}'`);
+        console.error(`[API verify-token] Unknown token type found: '${tokenData.type}' for token ${token}`);
         return NextResponse.json({ message: 'Unknown token type.' }, { status: 400 });
 
     } catch (error) {
-        console.error('VERIFY TOKEN API ERROR:', error);
+        console.error('[API verify-token] CRITICAL ERROR:', error);
         return NextResponse.json({ message: `Backend Error: ${error.message}` }, { status: 500 });
     }
 }
