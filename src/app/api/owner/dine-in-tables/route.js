@@ -1,5 +1,4 @@
 
-
 'use server';
 
 import { NextResponse } from 'next/server';
@@ -43,20 +42,18 @@ export async function GET(req) {
         const tablesSnap = await businessRef.collection('tables').orderBy('createdAt', 'asc').get();
         const tableMap = new Map();
         
-        // --- START FIX: Initialize tables with empty tabs ---
         tablesSnap.docs.forEach(doc => {
             tableMap.set(doc.id, { 
                 id: doc.id, 
-                ...doc.data(), 
-                tabs: {}, // Initialize with an empty object for tabs
+                ...doc.data(),
+                current_pax: 0, // CRITICAL FIX: Reset pax count to 0 initially
+                tabs: {},
                 pendingOrders: [] 
             });
         });
-        // --- END FIX ---
 
         const activeTabsSnap = await businessRef.collection('dineInTabs').where('status', '==', 'active').get();
         
-        // --- START FIX: Correctly populate tabs for each table ---
         activeTabsSnap.forEach(tabDoc => {
             const tabData = tabDoc.data();
             if (tableMap.has(tabData.tableId)) {
@@ -64,7 +61,6 @@ export async function GET(req) {
                 table.tabs[tabData.id] = { ...tabData, orders: {} };
             }
         });
-        // --- END FIX ---
 
         const ordersQuery = firestore.collection('orders')
             .where('restaurantId', '==', businessRef.id)
@@ -88,6 +84,7 @@ export async function GET(req) {
             }
         });
         
+        // CRITICAL FIX: Recalculate current_pax and state for every table
         tableMap.forEach(table => {
             const totalPaxInTabs = Object.values(table.tabs).reduce((sum, tab) => sum + (tab.pax_count || 0), 0);
             const totalPaxInPending = table.pendingOrders.reduce((sum, order) => sum + (order.pax_count || 0), 0);
