@@ -306,7 +306,7 @@ const TableCard = ({ tableData, onMarkAsPaid, onPrintBill, onMarkAsCleaned, onCo
     };
     const currentConfig = stateConfig[state] || stateConfig.available;
 
-    const allTabs = [...(tableData.tabs || []), ...(tableData.pendingOrders || [])];
+    const allTabs = [...Object.values(tableData.tabs || {}), ...(tableData.pendingOrders || [])];
 
     return (
         <motion.div layout initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }}>
@@ -320,21 +320,13 @@ const TableCard = ({ tableData, onMarkAsPaid, onPrintBill, onMarkAsCleaned, onCo
                     {allTabs.length > 0 ? (
                         <div className="space-y-4">
                             {allTabs.map(tab => {
-                                const isPendingTab = !!tab.customerName; // Distinguish pending orders
+                                const isPendingTab = !!tab.dineInToken; // Distinguish pending orders by token presence
                                 const tabName = isPendingTab ? tab.customerName : tab.tab_name;
                                 const paxCount = isPendingTab ? tab.pax_count : tab.pax_count;
                                 const totalBill = isPendingTab ? tab.totalAmount : tab.totalBill;
                                 
-                                let isPaid = false;
-                                let paymentMethod = 'Pending';
-                                
-                                if (!isPendingTab && tab.status === 'closed') {
-                                    isPaid = true;
-                                    paymentMethod = tab.paymentMethod || 'Pay at Counter';
-                                } else if (tab.paymentDetails?.method === 'razorpay') {
-                                    isPaid = true;
-                                    paymentMethod = 'Online';
-                                }
+                                const isPaid = !isPendingTab && tab.status === 'closed';
+                                const paymentMethod = isPaid ? (tab.paymentMethod || 'Pay at Counter') : (tab.paymentDetails?.method === 'razorpay' ? 'Online' : 'Pending');
 
                                 return (
                                     <div key={tab.id} className="bg-muted/50 p-3 rounded-lg border border-border">
@@ -347,7 +339,7 @@ const TableCard = ({ tableData, onMarkAsPaid, onPrintBill, onMarkAsCleaned, onCo
                                             {(tab.items || []).map((item, i) => (
                                                 <div key={i} className="flex justify-between items-center text-muted-foreground">
                                                     <span>{item.quantity || item.qty} x {item.name}</span>
-                                                    <span>{formatCurrency((item.price || 0) * (item.quantity || item.qty))}</span>
+                                                    <span>{formatCurrency((item.totalPrice || item.price) * (item.quantity || item.qty))}</span>
                                                 </div>
                                             ))}
                                         </div>
@@ -359,8 +351,8 @@ const TableCard = ({ tableData, onMarkAsPaid, onPrintBill, onMarkAsCleaned, onCo
                                             </div>
                                              <div className="flex justify-between items-center text-xs mt-1">
                                                 <span>Payment Status:</span>
-                                                <span className={cn('font-semibold', isPaid ? 'text-green-500' : 'text-yellow-500')}>
-                                                    {isPaid ? `Paid (${paymentMethod})` : 'Payment Pending'}
+                                                <span className={cn('font-semibold', paymentMethod === 'Pending' ? 'text-yellow-500' : 'text-green-500')}>
+                                                    {paymentMethod}
                                                 </span>
                                             </div>
                                         </div>
