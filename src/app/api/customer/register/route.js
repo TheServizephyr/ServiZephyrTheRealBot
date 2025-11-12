@@ -64,6 +64,7 @@ export async function POST(req) {
             console.log("[DEBUG] Post-paid dine-in flow initiated. Creating pending order.");
             const newOrderRef = firestore.collection('orders').doc();
             
+            // --- THE FIX: Generate tracking token for post-paid dine-in orders ---
             const trackingToken = await generateSecureToken(firestore, `dine-in-${newOrderRef.id}`);
 
             await newOrderRef.set({
@@ -75,7 +76,7 @@ export async function POST(req) {
                 status: 'pending', 
                 dineInTabId: dineInTabId,
                 orderDate: FieldValue.serverTimestamp(),
-                trackingToken: trackingToken, // --- THE FIX: ADD TOKEN HERE ---
+                trackingToken: trackingToken,
             });
             
             console.log(`[DEBUG] Pending order created with ID: ${newOrderRef.id}`);
@@ -84,7 +85,7 @@ export async function POST(req) {
                 message: "Order placed. Awaiting WhatsApp confirmation.",
                 order_id: newOrderRef.id,
                 whatsappNumber: businessData.botDisplayNumber || businessData.ownerPhone,
-                token: trackingToken
+                token: trackingToken // Return the token to the client
             }, { status: 200 });
         }
         
@@ -280,6 +281,7 @@ export async function POST(req) {
         
         console.log("[DEBUG] /api/customer/register: Creating main order document.");
         const newOrderRef = firestore.collection('orders').doc();
+        // --- THE FIX: Generate tracking token for offline orders ---
         const trackingToken = await generateSecureToken(firestore, normalizedPhone);
 
         batch.set(newOrderRef, {
@@ -314,7 +316,7 @@ export async function POST(req) {
         return NextResponse.json({ 
             message: 'Order created successfully.',
             firestore_order_id: newOrderRef.id,
-            token: trackingToken
+            token: trackingToken // --- THE FIX: Send the token back to the client ---
         }, { status: 200 });
 
     } catch (error) {

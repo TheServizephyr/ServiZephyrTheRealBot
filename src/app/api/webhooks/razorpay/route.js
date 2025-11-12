@@ -97,6 +97,7 @@ export async function POST(req) {
             };
 
             const rzpOrder = await makeRazorpayRequest(fetchOrderOptions);
+            // --- FIX: Correctly parse the nested payload string ---
             const payloadString = rzpOrder.notes?.servizephyr_payload;
             
             if (!payloadString) {
@@ -114,6 +115,7 @@ export async function POST(req) {
                 bill_details: billDetailsString,
                 notes: customNotes 
             } = JSON.parse(payloadString);
+            // --- END FIX ---
             
             if (!firestoreOrderId || !userId || !restaurantId || !businessType) {
                 console.error(`[Webhook] CRITICAL: Missing key identifiers in payload for Razorpay Order ${razorpayOrderId}`);
@@ -126,10 +128,12 @@ export async function POST(req) {
                 return NextResponse.json({ status: 'ok', message: 'Order already exists.'});
             }
 
+            // Parse stringified JSON from notes
             const customerDetails = JSON.parse(customerDetailsString);
             const orderItems = JSON.parse(itemsString);
             const billDetails = JSON.parse(billDetailsString);
             
+            // --- THE FIX: Generate tracking token ---
             const trackingToken = await generateSecureToken(firestore, customerDetails.phone);
 
             const batch = firestore.batch();
@@ -143,7 +147,7 @@ export async function POST(req) {
                  batch.set(unclaimedUserRef, {
                     name: customerDetails.name, 
                     phone: customerDetails.phone, 
-                    addresses: [customerDetails.address],
+                    addresses: [customerDetails.address], // Save the full address object
                     createdAt: FieldValue.serverTimestamp(),
                     orderedFrom: FieldValue.arrayUnion({
                         restaurantId: restaurantId,
@@ -173,6 +177,7 @@ export async function POST(req) {
             
             const newOrderRef = firestore.collection('orders').doc(firestoreOrderId);
             
+            // DINE IN LOGIC: Handle new tab creation if it was a dine-in order
             let finalDineInTabId = billDetails.dineInTabId;
             if (billDetails.deliveryType === 'dine-in' && billDetails.tableId && !finalDineInTabId) {
                 const newTabRef = firestore.collection(businessCollectionName).doc(restaurantId).collection('dineInTabs').doc();
@@ -212,10 +217,10 @@ export async function POST(req) {
                 sgst: billDetails.sgst, 
                 deliveryCharge: billDetails.deliveryCharge,
                 totalAmount: billDetails.grandTotal,
-                status: 'pending',
+                status: 'pending', // THE FIX: Always set to 'pending' for consistency
                 orderDate: FieldValue.serverTimestamp(),
                 notes: customNotes || null,
-                trackingToken: trackingToken,
+                trackingToken: trackingToken, // --- THE FIX: Save the token ---
                 paymentDetails: {
                     razorpay_payment_id: paymentId,
                     razorpay_order_id: razorpayOrderId,
@@ -277,4 +282,3 @@ export async function POST(req) {
         return NextResponse.json({ status: 'error', message: 'Internal server error' }, { status: 200 });
     }
 }
-    

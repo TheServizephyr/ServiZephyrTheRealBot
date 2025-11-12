@@ -57,12 +57,12 @@ async function getBusiness(firestore, botPhoneNumberId) {
 
 const generateSecureToken = async (firestore, customerPhone) => {
     const token = nanoid(24);
-    const expiry = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24-hour validity for tracking link
+    const expiry = new Date(Date.now() + 2 * 60 * 60 * 1000); // 2-hour validity for ordering link
     const authTokenRef = firestore.collection('auth_tokens').doc(token);
     await authTokenRef.set({
         phone: customerPhone,
         expiresAt: expiry,
-        type: 'tracking'
+        type: 'whatsapp' // Use a specific type for this token
     });
     return token;
 };
@@ -147,14 +147,14 @@ const handleDineInConfirmation = async (firestore, text, fromNumber, business, b
             dineInToken = `#${String(newTokenNumber).padStart(2, '0')}-${randomChar}`;
             
             const customerPhone = fromNumber.startsWith('91') ? fromNumber.substring(2) : fromNumber;
-            trackingTokenForLink = await generateSecureToken(firestore, customerPhone);
+            // --- THE FIX: Use the token from the order now ---
+            trackingTokenForLink = orderData.trackingToken;
             
             transaction.update(businessRef, { lastDineInToken: newTokenNumber });
             
             transaction.update(orderRef, {
                 customerPhone: customerPhone,
                 dineInToken: dineInToken,
-                trackingToken: trackingTokenForLink 
             });
         });
         
@@ -208,6 +208,7 @@ const handleButtonActions = async (firestore, buttonId, fromNumber, business, bo
             }
             case 'track': {
                 const ordersRef = firestore.collection('orders');
+                // --- THE FIX: Order by date to get the LATEST order ---
                 const q = ordersRef.where('customerPhone', '==', customerPhone).orderBy('orderDate', 'desc').limit(1);
                 const querySnapshot = await q.get();
 

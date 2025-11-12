@@ -44,12 +44,25 @@ const OrderPlacedContent = () => {
 
 
     const handleBackToMenu = () => {
-        const restaurantId = localStorage.getItem('lastOrderedFrom');
+        // Retrieve restaurantId from localStorage or another source
+        const lastRestaurantId = localStorage.getItem('lastOrderedFrom');
         const phone = searchParams.get('phone');
         const token = searchParams.get('token');
-        if (restaurantId && phone && token) {
-             router.push(`/order/${restaurantId}?phone=${phone}&token=${token}`);
+        
+        // Ensure all necessary parameters are available before redirecting
+        if (lastRestaurantId) {
+            let url = `/order/${lastRestaurantId}`;
+            const queryParams = new URLSearchParams();
+            if (phone) queryParams.append('phone', phone);
+            if (token) queryParams.append('token', token);
+            
+            const queryString = queryParams.toString();
+            if (queryString) {
+                url += `?${queryString}`;
+            }
+            router.push(url);
         } else {
+            // Fallback to home if restaurantId is not found
             router.push('/');
         }
     };
