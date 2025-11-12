@@ -1,7 +1,7 @@
 
 'use client';
 
-import React, { useState, useEffect, useMemo, useRef, Suspense } from 'react';
+import React, { useState, useEffect, useMemo, useRef, Suspense, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { RefreshCw, Printer, CheckCircle, IndianRupee, Users, Clock, ShoppingBag, Bell, MoreVertical, Trash2, QrCode, Download, Save, Wind, Edit, Table as TableIcon, History, Search, Salad, UtensilsCrossed, Droplet, PlusCircle, AlertTriangle, X, Wallet, Check, CookingPot, Bike, Home } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -186,7 +186,7 @@ const BillModal = ({ order, restaurant, onClose, onPrint, printRef }) => {
         return Object.values(order.orders || {});
     }, [order.orders]);
     
-    const totalBill = useMemo(() => allItems.reduce((sum, o) => sum + (o.totalAmount || 0), 0), [allItems]);
+    const totalBill = useMemo(() => Object.values(order.orders || {}).reduce((sum, o) => sum + (o.totalAmount || 0), 0), [order.orders]);
 
 
     return (
@@ -216,7 +216,7 @@ const BillModal = ({ order, restaurant, onClose, onPrint, printRef }) => {
                                 <tr key={index} className="border-b border-dotted border-black">
                                     <td className="py-1">{item.name}</td>
                                     <td className="text-center py-1">{item.quantity}</td>
-                                    <td className="text-right py-1">{formatCurrency(item.totalPrice || item.price)}</td>
+                                    <td className="text-right py-1">{formatCurrency((item.totalPrice || item.price))}</td>
                                 </tr>
                             ))}
                         </tbody>
@@ -230,6 +230,7 @@ const BillModal = ({ order, restaurant, onClose, onPrint, printRef }) => {
                     <div className="text-center mt-6 pt-4 border-t border-dashed border-black">
                         <p className="text-xs italic">Thank you for dining with us!</p>
                         <p className="text-xs font-bold mt-1">Powered by ServiZephyr</p>
+                         <p className="text-xs italic mt-1">For exclusive offers and faster ordering, visit the ServiZephyr Customer Hub!</p>
                     </div>
                 </div>
                  <div className="p-4 bg-muted border-t border-border flex justify-end no-print">
@@ -323,7 +324,10 @@ const TableCard = ({ tableData, onMarkAsPaid, onPrintBill, onMarkAsCleaned, onCo
                                     return Object.values(group.orders || {}).flatMap(o => o.items);
                                 }, [group, isPending]);
                                 
-                                const isCOD = !isPending && (orderData?.paymentDetails?.method || 'cod') === 'cod';
+                                const isOnlinePayment = isPending ? group.paymentDetails?.method === 'razorpay' : orderData?.paymentDetails?.method === 'razorpay';
+                                const isPaid = isOnlinePayment || group.paymentStatus === 'paid'; // Add a paymentStatus check if you have it
+                                const isCOD = !isPaid;
+                                
                                 const isServed = !isPending && orderData?.status === 'delivered';
                                 
                                 const actionDetails = actionConfig[orderData?.status];
@@ -334,7 +338,7 @@ const TableCard = ({ tableData, onMarkAsPaid, onPrintBill, onMarkAsCleaned, onCo
                                         isPending ? "bg-yellow-500/10 border-yellow-500/30" : "bg-muted/50 border-border"
                                     )}>
                                         <div className="flex justify-between items-center mb-2">
-                                            <h4 className="font-semibold text-foreground">{group.tab_name || 'New Group'} <span className="text-xs text-muted-foreground">({group.pax_count || 1} guests)</span></h4>
+                                            <h4 className="font-semibold text-foreground">{group.tab_name || 'New Order'} <span className="text-xs text-muted-foreground">({group.pax_count || 1} guests)</span></h4>
                                             {group.dineInToken && <p className="text-xs font-bold text-yellow-400">TOKEN: {group.dineInToken}</p>}
                                         </div>
                                         
@@ -357,8 +361,8 @@ const TableCard = ({ tableData, onMarkAsPaid, onPrintBill, onMarkAsCleaned, onCo
                                                 </div>
                                                 <div className="flex justify-between items-center text-xs mt-1">
                                                     <span>Payment Status:</span>
-                                                    <span className={cn('font-semibold', isCOD ? 'text-yellow-500' : 'text-green-500')}>
-                                                        {isCOD ? 'Payment Due' : 'PAID'}
+                                                    <span className={cn('font-semibold', isPaid ? 'text-green-500' : 'text-yellow-500')}>
+                                                        {isPaid ? 'PAID' : 'Payment Due'}
                                                     </span>
                                                 </div>
                                             </div>
@@ -389,7 +393,7 @@ const TableCard = ({ tableData, onMarkAsPaid, onPrintBill, onMarkAsCleaned, onCo
                                                 </div>
                                             </div>
                                         ) : null}
-                                        {isActiveTab && totalBill === 0 && (
+                                        {!isPending && totalBill === 0 && (
                                             <button onClick={() => onClearTab(group.id, tableData.id, group.pax_count)} className="absolute top-2 right-2 p-1.5 bg-background/50 text-destructive rounded-full hover:bg-destructive hover:text-destructive-foreground">
                                                  <X size={14} />
                                             </button>
@@ -453,27 +457,6 @@ const QrCodeDisplay = ({ text, tableName, innerRef }) => {
                 <Button onClick={handleDownload} variant="outline"><Download className="mr-2 h-4 w-4" /> Download PNG</Button>
             </div>
         </div>
-    );
-};
-
-const QrCodeDisplayModal = ({ isOpen, onClose, restaurant, table }) => {
-    const printRef = useRef();
-
-    if (!table || !restaurant?.id) return null;
-    const qrValue = `${window.location.origin}/order/${restaurant.id}?table=${table.id}`;
-
-    return (
-        <Dialog open={isOpen} onOpenChange={onClose}>
-            <DialogContent className="bg-background border-border text-foreground">
-                <DialogHeader>
-                    <DialogTitle>QR Code for Table: {table.id}</DialogTitle>
-                    <DialogDescription>
-                        Customers can scan this code with their phone camera to open the menu and order directly from this table.
-                    </DialogDescription>
-                </DialogHeader>
-                <QrCodeDisplay text={qrValue} tableName={table.id} innerRef={printRef} />
-            </DialogContent>
-        </Dialog>
     );
 };
 
@@ -578,6 +561,27 @@ const QrGeneratorModal = ({ isOpen, onClose, onSaveTable, restaurantId, initialT
                         </div>
                     )}
                 </div>
+            </DialogContent>
+        </Dialog>
+    );
+};
+
+const QrCodeDisplayModal = ({ isOpen, onClose, restaurant, table }) => {
+    const printRef = useRef();
+
+    if (!table || !restaurant?.id) return null;
+    const qrValue = `${window.location.origin}/order/${restaurant.id}?table=${table.id}`;
+
+    return (
+        <Dialog open={isOpen} onOpenChange={onClose}>
+            <DialogContent className="bg-background border-border text-foreground">
+                <DialogHeader>
+                    <DialogTitle>QR Code for Table: {table.id}</DialogTitle>
+                    <DialogDescription>
+                        Customers can scan this code with their phone camera to open the menu and order directly from this table.
+                    </DialogDescription>
+                </DialogHeader>
+                <QrCodeDisplay text={qrValue} tableName={table.id} innerRef={printRef} />
             </DialogContent>
         </Dialog>
     );
@@ -915,7 +919,7 @@ const DineInPageContent = () => {
                     onMarkAsPaid={confirmMarkAsPaid}
                     onPrintBill={setBillData}
                     onMarkAsCleaned={handleMarkAsCleaned}
-                    onConfirmOrder={handleUpdateStatus} // Changed from onConfirmOrder
+                    onConfirmOrder={handleUpdateStatus}
                     onRejectOrder={handleRejectOrder}
                     onClearTab={handleClearTab}
                     onUpdateStatus={handleUpdateStatus}
