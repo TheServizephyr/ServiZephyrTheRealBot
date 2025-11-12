@@ -1,4 +1,5 @@
 
+
 'use server';
 
 import { NextResponse } from 'next/server';
@@ -82,75 +83,32 @@ export async function GET(req) {
         const tablesSnap = await businessRef.collection('tables').orderBy('createdAt', 'asc').get();
         console.log(`[API dine-in-tables] GET: Fetched ${tablesSnap.size} tables.`);
         
-        const activeTabIds = [];
-        tablesSnap.docs.forEach(doc => {
-            const tableData = doc.data();
-            if (tableData.tabs) {
-                Object.keys(tableData.tabs).forEach(tabId => {
-                    if (tableData.tabs[tabId].status === 'active') {
-                        activeTabIds.push(tabId);
-                    }
-                });
+        let tablesData = tablesSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        const tableMap = new Map(tablesData.map(t => [t.id, t]));
+
+        // --- START NEW LOGIC: Fetch pending orders and associate them ---
+        const pendingOrdersSnap = await firestore.collection('orders')
+            .where('restaurantId', '==', businessRef.id)
+            .where('deliveryType', '==', 'dine-in')
+            .where('status', '==', 'pending')
+            .get();
+            
+        console.log(`[API dine-in-tables] GET: Fetched ${pendingOrdersSnap.size} pending dine-in orders.`);
+
+        pendingOrdersSnap.forEach(orderDoc => {
+            const orderData = orderDoc.data();
+            const tableId = orderData.tableId;
+            if (tableMap.has(tableId)) {
+                const table = tableMap.get(tableId);
+                if (!table.pendingOrders) {
+                    table.pendingOrders = [];
+                }
+                table.pendingOrders.push({ id: orderDoc.id, ...orderData });
             }
         });
-        console.log(`[API dine-in-tables] GET: Found ${activeTabIds.length} active tab IDs.`);
-
-
-        const ordersByTab = {};
-        if (activeTabIds.length > 0) {
-            // Firestore 'in' queries are limited to 30 items. If more tabs, we'd need to chunk this.
-            const ordersSnap = await firestore.collection('orders')
-                .where('restaurantId', '==', businessRef.id)
-                .where('dineInTabId', 'in', activeTabIds)
-                .get();
-
-            ordersSnap.forEach(doc => {
-                const order = doc.data();
-                if (order.dineInTabId) {
-                    if (!ordersByTab[order.dineInTabId]) {
-                        ordersByTab[order.dineInTabId] = [];
-                    }
-                    ordersByTab[order.dineInTabId].push({ id: doc.id, ...order });
-                }
-            });
-        }
-
-
-        const tablesData = tablesSnap.docs.map(tableDoc => {
-            const table = tableDoc.data();
-            const activeTabs = table.tabs || {};
-            const processedTabs = Object.values(activeTabs).map(tab => {
-                const tabOrders = ordersByTab[tab.id] || [];
-                
-                const latestOrder = tabOrders.length > 0 
-                    ? tabOrders.reduce((latest, o) => {
-                        const latestDate = latest.orderDate?.toDate ? latest.orderDate.toDate() : new Date(latest.orderDate);
-                        const oDate = o.orderDate?.toDate ? o.orderDate.toDate() : new Date(o.orderDate);
-                        return oDate > latestDate ? o : latest;
-                    })
-                    : null;
-                const latestOrderTime = latestOrder?.orderDate || null;
-
-
-                const totalBill = tabOrders.reduce((sum, o) => sum + (o.totalAmount || 0), 0);
-                
-                const allItems = tabOrders.flatMap(o => o.items || []);
-                const itemMap = new Map();
-                allItems.forEach(item => {
-                    const uniqueItemKey = `${item.name}-${item.portion?.name || ''}`;
-                    const existing = itemMap.get(uniqueItemKey);
-                    if (existing) {
-                        itemMap.set(uniqueItemKey, { ...existing, qty: existing.qty + (item.quantity || 1), orderItemIds: [...existing.orderItemIds, item.cartItemId] });
-                    } else {
-                        itemMap.set(uniqueItemKey, { ...item, qty: item.quantity || 1, orderItemIds: [item.cartItemId] });
-                    }
-                });
-
-
-                return { ...tab, orders: tabOrders, totalBill, latestOrderTime, allItems: Array.from(itemMap.values()) };
-            });
-            return { ...table, id: tableDoc.id, tabs: processedTabs };
-        });
+        
+        tablesData = Array.from(tableMap.values());
+        // --- END NEW LOGIC ---
 
         const serviceRequestsSnap = await businessRef.collection('serviceRequests').where('status', '==', 'pending').orderBy('createdAt', 'desc').get();
         console.log(`[API dine-in-tables] GET: Fetched ${serviceRequestsSnap.size} pending service requests.`);
@@ -187,11 +145,9 @@ export async function GET(req) {
 
 
 export async function POST(req) {
-    // Read the body ONCE and pass it to helpers that need it.
     const body = await req.json();
     const firestore = await getFirestore();
 
-    // Action to create a new tab for a table
     if (body.action === 'create_tab') {
         console.log("[API dine-in-tables] POST request received with action: create_tab");
         const { tableId, pax_count, tab_name, restaurantId } = body;
@@ -248,7 +204,6 @@ export async function POST(req) {
         }
     }
 
-    // Default action: Create a new table
     console.log("[API dine-in-tables] POST request received to create/update table.");
     const businessRef = await getBusinessRef(req, body);
     if (!businessRef) return NextResponse.json({ message: 'Authentication required to manage tables.' }, { status: 403 });
@@ -372,3 +327,4 @@ export async function DELETE(req) {
         return NextResponse.json({ message: `Backend Error: ${error.message}` }, { status: error.status || 500 });
     }
 }
+

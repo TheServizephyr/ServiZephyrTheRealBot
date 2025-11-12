@@ -325,13 +325,12 @@ const TableCard = ({ tableData, onMarkAsPaid, onPrintBill, onMarkAsCleaned, onCo
                                 const paxCount = isPendingTab ? tab.pax_count : tab.pax_count;
                                 const totalBill = isPendingTab ? tab.totalAmount : tab.totalBill;
                                 
-                                // THE FIX: A robust check for payment status
                                 let isPaid = false;
                                 let paymentMethod = 'Pending';
                                 
-                                if (tab.status === 'closed' && tab.paymentMethod) {
+                                if (!isPendingTab && tab.status === 'closed') {
                                     isPaid = true;
-                                    paymentMethod = tab.paymentMethod;
+                                    paymentMethod = tab.paymentMethod || 'Pay at Counter';
                                 } else if (tab.paymentDetails?.method === 'razorpay') {
                                     isPaid = true;
                                     paymentMethod = 'Online';
@@ -341,14 +340,14 @@ const TableCard = ({ tableData, onMarkAsPaid, onPrintBill, onMarkAsCleaned, onCo
                                     <div key={tab.id} className="bg-muted/50 p-3 rounded-lg border border-border">
                                         <div className="flex justify-between items-center mb-2">
                                             <h4 className="font-semibold text-foreground">{tabName} <span className="text-xs text-muted-foreground">({paxCount} guests)</span></h4>
-                                            {isPendingTab && <p className="text-xs font-bold text-yellow-400">TOKEN: {tab.dineInToken}</p>}
+                                            {isPendingTab && tab.dineInToken && <p className="text-xs font-bold text-yellow-400">TOKEN: {tab.dineInToken}</p>}
                                         </div>
 
                                         <div className="space-y-1 text-sm max-h-32 overflow-y-auto pr-2 my-2">
                                             {(tab.items || []).map((item, i) => (
                                                 <div key={i} className="flex justify-between items-center text-muted-foreground">
                                                     <span>{item.quantity || item.qty} x {item.name}</span>
-                                                    <span>{formatCurrency(item.price * (item.quantity || item.qty))}</span>
+                                                    <span>{formatCurrency((item.price || 0) * (item.quantity || item.qty))}</span>
                                                 </div>
                                             ))}
                                         </div>
