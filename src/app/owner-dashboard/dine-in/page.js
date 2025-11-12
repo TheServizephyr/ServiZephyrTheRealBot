@@ -311,7 +311,7 @@ const TableCard = ({ tableData, onMarkAsPaid, onPrintBill, onMarkAsCleaned, onCo
                                 const isPending = !group.status || group.status === 'pending';
                                 const isActiveTab = group.status === 'active';
                                 
-                                const orderId = isPending ? group.id : Object.keys(group.orders || {})[0];
+                                const orderId = group.id; // Use group ID for both pending and active tabs
                                 const orderData = isPending ? group : Object.values(group.orders || {})[0];
                                 
                                 const totalBill = useMemo(() => {
@@ -325,10 +325,10 @@ const TableCard = ({ tableData, onMarkAsPaid, onPrintBill, onMarkAsCleaned, onCo
                                 }, [group, isPending]);
                                 
                                 const isOnlinePayment = isPending ? group.paymentDetails?.method === 'razorpay' : orderData?.paymentDetails?.method === 'razorpay';
-                                const isPaid = isOnlinePayment || group.paymentStatus === 'paid'; // Add a paymentStatus check if you have it
+                                const isPaid = isOnlinePayment || group.paymentStatus === 'paid';
                                 const isCOD = !isPaid;
                                 
-                                const isServed = !isPending && orderData?.status === 'delivered';
+                                const isServed = orderData?.status === 'delivered';
                                 
                                 const actionDetails = actionConfig[orderData?.status];
                                 const ActionIcon = actionDetails ? actionDetails.icon : null;
@@ -371,7 +371,7 @@ const TableCard = ({ tableData, onMarkAsPaid, onPrintBill, onMarkAsCleaned, onCo
                                         {isPending ? (
                                              <div className="grid grid-cols-2 gap-2 mt-4">
                                                 <Button size="sm" variant="destructive" onClick={() => onRejectOrder(orderId)}> <X size={16} className="mr-2"/> Reject </Button>
-                                                <Button size="sm" className="bg-primary hover:bg-primary/90" onClick={() => onConfirmOrder(orderId, 'confirmed')}> <Check size={16} className="mr-2"/> Confirm </Button>
+                                                <Button size="sm" className="bg-primary hover:bg-primary/90" onClick={() => onConfirmOrder(orderId)}> <Check size={16} className="mr-2"/> Confirm </Button>
                                              </div>
                                         ) : isActiveTab ? (
                                             <div className="mt-4 space-y-2">
@@ -919,7 +919,7 @@ const DineInPageContent = () => {
                     onMarkAsPaid={confirmMarkAsPaid}
                     onPrintBill={setBillData}
                     onMarkAsCleaned={handleMarkAsCleaned}
-                    onConfirmOrder={handleUpdateStatus}
+                    onConfirmOrder={(orderId) => handleUpdateStatus(orderId, 'confirmed')}
                     onRejectOrder={handleRejectOrder}
                     onClearTab={handleClearTab}
                     onUpdateStatus={handleUpdateStatus}
@@ -1016,5 +1016,3 @@ const DineInPage = () => (
 );
 
 export default DineInPage;
-
-    

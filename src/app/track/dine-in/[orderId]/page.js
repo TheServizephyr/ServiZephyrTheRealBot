@@ -81,7 +81,8 @@ function DineInTrackingContent() {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
 
-    const fetchData = useCallback(async () => {
+    const fetchData = useCallback(async (isBackground = false) => {
+        if (!isBackground) setLoading(true);
         if (!orderId) {
             setError("Order ID is missing.");
             setLoading(false);
@@ -99,13 +100,13 @@ function DineInTrackingContent() {
         } catch (err) {
             setError(err.message);
         } finally {
-            setLoading(false);
+            if (!isBackground) setLoading(false);
         }
     }, [orderId]);
 
     useEffect(() => {
         fetchData();
-        const interval = setInterval(fetchData, 15000); // Poll every 15 seconds
+        const interval = setInterval(() => fetchData(true), 20000); // Poll every 20 seconds
         return () => clearInterval(interval);
     }, [fetchData]);
     
@@ -156,7 +157,7 @@ function DineInTrackingContent() {
                     <p className="text-xs text-muted-foreground">Tracking Dine-In Order</p>
                     <h1 className="font-bold text-lg">{orderData.restaurant?.name}</h1>
                 </div>
-                <Button onClick={() => fetchData()} variant="outline" size="icon" disabled={loading}>
+                <Button onClick={() => fetchData(true)} variant="outline" size="icon" disabled={loading}>
                     <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
                 </Button>
             </header>
@@ -165,8 +166,8 @@ function DineInTrackingContent() {
                 <div className="w-full max-w-2xl mx-auto">
                      <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
                         <div className="p-4 bg-card border-b border-border text-center">
-                            <h2 className="text-lg font-semibold text-muted-foreground">Order ID</h2>
-                            <p className="text-2xl font-mono tracking-widest text-foreground">{orderId.substring(0,8)}...</p>
+                            <h2 className="text-lg font-semibold text-muted-foreground">Your Token</h2>
+                            <p className="text-3xl font-bold text-primary tracking-widest">{orderData.order.dineInToken || "N/A"}</p>
                         </div>
                         <div className="p-6 bg-card">
                             <StatusTimeline currentStatus={orderData.order.status} />
@@ -211,5 +212,3 @@ export default function DineInTrackingPage() {
         </Suspense>
     )
 }
-
-    
