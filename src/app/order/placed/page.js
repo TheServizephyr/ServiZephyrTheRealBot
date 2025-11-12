@@ -2,7 +2,7 @@
 
 'use client';
 
-import React, { Suspense } from 'react';
+import React, { Suspense, useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
 import { CheckCircle, ArrowLeft, Navigation, MessageSquare } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -13,7 +13,33 @@ const OrderPlacedContent = () => {
     const searchParams = useSearchParams();
     const orderId = searchParams.get('orderId');
     const whatsappNumber = searchParams.get('whatsappNumber');
-    const token = searchParams.get('token'); 
+    
+    // --- THE FIX: State to hold the token ---
+    const [trackingToken, setTrackingToken] = useState(searchParams.get('token'));
+
+    // --- THE FIX: Effect to fetch token if not present in URL ---
+    useEffect(() => {
+        const fetchTokenIfNeeded = async () => {
+            if (!trackingToken && orderId) {
+                try {
+                    // This is a simplified fetch; in a real app, you might need auth
+                    const res = await fetch(`/api/order/status/${orderId}`);
+                    if (res.ok) {
+                        const data = await res.json();
+                        if (data.order?.trackingToken) {
+                            setTrackingToken(data.order.trackingToken);
+                        }
+                    }
+                } catch (error) {
+                    console.error("Failed to fetch tracking token:", error);
+                }
+            }
+        };
+
+        fetchTokenIfNeeded();
+    }, [orderId, trackingToken]);
+
+
     const isDineIn = !!whatsappNumber;
 
 
@@ -33,14 +59,10 @@ const OrderPlacedContent = () => {
     
     const handleTrackOrder = () => {
         const trackingPath = isDineIn ? 'dine-in/' : '';
-        if (orderId && token) {
-            router.push(`/track/${trackingPath}${orderId}?token=${token}`);
-        } else if (orderId) {
-            // Fallback for cases where token might be missing but we still want to try.
-            router.push(`/track/${trackingPath}${orderId}`);
-        }
-        else {
-            alert("Tracking information is not yet available for this order.");
+        if (orderId && trackingToken) { // --- THE FIX: Check for the state variable
+            router.push(`/track/${trackingPath}${orderId}?token=${trackingToken}`);
+        } else {
+            alert("Tracking information is not yet available for this order. Please try again in a moment.");
         }
     }
     
@@ -86,6 +108,7 @@ const OrderPlacedContent = () => {
                         onClick={handleTrackOrder}
                         variant="outline"
                         className="flex items-center gap-2 px-6 py-3 rounded-md text-lg font-medium"
+                        disabled={!trackingToken} // --- THE FIX: Disable if token not ready
                     >
                         <Navigation className="w-5 h-5" /> Track Your Order
                     </Button>
@@ -104,6 +127,7 @@ const OrderPlacedContent = () => {
                  <Button 
                     onClick={handleTrackOrder}
                     className="flex items-center gap-2 px-6 py-3 rounded-md bg-primary hover:bg-primary/90 text-primary-foreground text-lg font-medium"
+                    disabled={!trackingToken} // --- THE FIX: Disable if token not ready
                 >
                     <Navigation className="w-5 h-5" /> Track Your Order
                 </Button>

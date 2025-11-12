@@ -1,10 +1,24 @@
 
 
 import { NextResponse } from 'next/server';
-import { getFirestore } from '@/lib/firebase-admin';
+import { getFirestore, FieldValue } from '@/lib/firebase-admin';
 import { sendNewOrderToOwner } from '@/lib/notifications';
 import crypto from 'crypto';
 import https from 'https';
+import { nanoid } from 'nanoid';
+
+
+const generateSecureToken = async (firestore, customerPhone) => {
+    const token = nanoid(24);
+    const expiry = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24-hour validity for tracking link
+    const authTokenRef = firestore.collection('auth_tokens').doc(token);
+    await authTokenRef.set({
+        phone: customerPhone,
+        expiresAt: expiry,
+        type: 'tracking'
+    });
+    return token;
+};
 
 
 async function makeRazorpayRequest(options, payload) {
@@ -68,7 +82,7 @@ export async function POST(req) {
                 return NextResponse.json({ status: 'ok' });
             }
             
-            const firestore = getFirestore();
+            const firestore = await getFirestore();
             
             // Fetch order notes to get our internal payload
             const key_id = process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID;
@@ -83,7 +97,13 @@ export async function POST(req) {
             };
 
             const rzpOrder = await makeRazorpayRequest(fetchOrderOptions);
-            const notes = rzpOrder.notes;
+            // --- FIX: Correctly parse the nested payload string ---
+            const payloadString = rzpOrder.notes?.servizephyr_payload;
+            
+            if (!payloadString) {
+                console.error(`[Webhook] CRITICAL: servizephyr_payload not found in notes for Razorpay Order ${razorpayOrderId}`);
+                return NextResponse.json({ status: 'error', message: 'Order payload not found in notes.' });
+            }
             
             const { 
                 order_id: firestoreOrderId,
@@ -94,10 +114,11 @@ export async function POST(req) {
                 items: itemsString,
                 bill_details: billDetailsString,
                 notes: customNotes 
-            } = notes;
+            } = JSON.parse(payloadString);
+            // --- END FIX ---
             
             if (!firestoreOrderId || !userId || !restaurantId || !businessType) {
-                console.error(`[Webhook] CRITICAL: Missing key identifiers in notes for Razorpay Order ${razorpayOrderId}`);
+                console.error(`[Webhook] CRITICAL: Missing key identifiers in payload for Razorpay Order ${razorpayOrderId}`);
                 return NextResponse.json({ status: 'error', message: 'Order identifier notes missing.' });
             }
 
@@ -111,6 +132,9 @@ export async function POST(req) {
             const customerDetails = JSON.parse(customerDetailsString);
             const orderItems = JSON.parse(itemsString);
             const billDetails = JSON.parse(billDetailsString);
+            
+            // --- THE FIX: Generate tracking token ---
+            const trackingToken = await generateSecureToken(firestore, customerDetails.phone);
 
             const batch = firestore.batch();
             const usersRef = firestore.collection('users');
@@ -123,9 +147,9 @@ export async function POST(req) {
                  batch.set(unclaimedUserRef, {
                     name: customerDetails.name, 
                     phone: customerDetails.phone, 
-                    addresses: [{ id: `addr_${Date.now()}`, full: customerDetails.address }],
-                    createdAt: firestore.FieldValue.serverTimestamp(),
-                    orderedFrom: firestore.FieldValue.arrayUnion({
+                    addresses: [customerDetails.address], // Save the full address object
+                    createdAt: FieldValue.serverTimestamp(),
+                    orderedFrom: FieldValue.arrayUnion({
                         restaurantId: restaurantId,
                         restaurantName: rzpOrder.notes?.restaurantName || 'Unknown',
                         businessType: businessType,
@@ -145,21 +169,45 @@ export async function POST(req) {
             batch.set(restaurantCustomerRef, {
                 name: customerDetails.name, phone: customerDetails.phone, 
                 status: isNewUser ? 'unclaimed' : 'verified',
-                totalSpend: firestore.FieldValue.increment(subtotal),
-                loyaltyPoints: firestore.FieldValue.increment(pointsEarned - pointsSpent),
-                lastOrderDate: firestore.FieldValue.serverTimestamp(),
-                totalOrders: firestore.FieldValue.increment(1),
+                totalSpend: FieldValue.increment(subtotal),
+                loyaltyPoints: FieldValue.increment(pointsEarned - pointsSpent),
+                lastOrderDate: FieldValue.serverTimestamp(),
+                totalOrders: FieldValue.increment(1),
             }, { merge: true });
             
             const newOrderRef = firestore.collection('orders').doc(firestoreOrderId);
             
+            // DINE IN LOGIC: Handle new tab creation if it was a dine-in order
+            let finalDineInTabId = billDetails.dineInTabId;
+            if (billDetails.deliveryType === 'dine-in' && billDetails.tableId && !finalDineInTabId) {
+                const newTabRef = firestore.collection(businessCollectionName).doc(restaurantId).collection('dineInTabs').doc();
+                finalDineInTabId = newTabRef.id;
+
+                batch.set(newTabRef, {
+                    id: finalDineInTabId,
+                    tableId: billDetails.tableId,
+                    status: 'active',
+                    tab_name: billDetails.tab_name || "Guest",
+                    pax_count: billDetails.pax_count || 1,
+                    createdAt: FieldValue.serverTimestamp(),
+                });
+                
+                const tableRef = firestore.collection(businessCollectionName).doc(restaurantId).collection('tables').doc(billDetails.tableId);
+                batch.update(tableRef, {
+                    current_pax: FieldValue.increment(billDetails.pax_count || 1),
+                    state: 'occupied'
+                });
+            }
+
             batch.set(newOrderRef, {
-                customerName: customerDetails.name, customerId: userId, customerAddress: customerDetails.address, customerPhone: customerDetails.phone,
+                customerName: customerDetails.name, customerId: userId, customerAddress: customerDetails.address.full, customerPhone: customerDetails.phone,
                 restaurantId: restaurantId,
                 businessType: businessType,
                 deliveryType: billDetails.deliveryType || 'delivery',
                 pickupTime: billDetails.pickupTime || '',
                 tipAmount: billDetails.tipAmount || 0,
+                tableId: billDetails.tableId,
+                dineInTabId: finalDineInTabId,
                 items: orderItems,
                 subtotal: billDetails.subtotal, 
                 coupon: billDetails.coupon, 
@@ -169,9 +217,10 @@ export async function POST(req) {
                 sgst: billDetails.sgst, 
                 deliveryCharge: billDetails.deliveryCharge,
                 totalAmount: billDetails.grandTotal,
-                status: 'paid',
-                orderDate: firestore.FieldValue.serverTimestamp(),
+                status: 'pending', // THE FIX: Always set to 'pending' for consistency
+                orderDate: FieldValue.serverTimestamp(),
                 notes: customNotes || null,
+                trackingToken: trackingToken, // --- THE FIX: Save the token ---
                 paymentDetails: {
                     razorpay_payment_id: paymentId,
                     razorpay_order_id: razorpayOrderId,
@@ -219,7 +268,8 @@ export async function POST(req) {
                         botPhoneNumberId: businessData.botPhoneNumberId,
                         customerName: customerDetails.name,
                         totalAmount: billDetails.grandTotal,
-                        orderId: newOrderRef.id
+                        orderId: newOrderRef.id,
+                        restaurantName: businessData.name
                     });
                 }
             }
@@ -232,3 +282,4 @@ export async function POST(req) {
         return NextResponse.json({ status: 'error', message: 'Internal server error' }, { status: 200 });
     }
 }
+    
