@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { Suspense, useEffect, useState, useCallback } from 'react';
@@ -19,8 +20,6 @@ const OrderPlacedContent = () => {
 
     useEffect(() => {
         console.log("[Placed Page] useEffect triggered. Current orderId from URL:", orderId);
-
-        // --- START: THE CORE FIX ---
 
         // 1. Immediately try to get and save the restaurantId.
         const currentRestaurantId = searchParams.get('restaurantId');
@@ -58,7 +57,7 @@ const OrderPlacedContent = () => {
                         const data = await res.json();
                         if (data.order?.trackingToken) {
                             console.log("[Placed Page] Successfully fetched token:", data.order.trackingToken);
-                            setTrackingToken(data.order.trackingToken);
+                            setTrackingToken(data.order.trackingToken); // This is the critical line that was missing
                         } else {
                             console.warn("[Placed Page] Order found, but no tracking token yet. The webhook might be slow.");
                         }
@@ -69,7 +68,6 @@ const OrderPlacedContent = () => {
                     console.error("[Placed Page] Error fetching tracking token:", error);
                 }
             } else if (tokenInUrl) {
-                // If token is in the URL, make sure it's set in the state.
                 if (tokenInUrl !== trackingToken) {
                     console.log("[Placed Page] Setting trackingToken state from URL param.");
                     setTrackingToken(tokenInUrl);
@@ -79,25 +77,21 @@ const OrderPlacedContent = () => {
             }
         };
 
-        // This effect runs whenever the orderId from the URL changes.
         if(orderId) {
             fetchTokenIfNeeded();
         } else {
              console.log("[Placed Page] No orderId found in URL. Skipping token fetch.");
         }
-        // --- END: THE CORE FIX ---
 
     }, [orderId, searchParams, restaurantId, trackingToken]); // Dependency array is key
 
 
     const handleBackToMenu = () => {
         console.log("[Placed Page] handleBackToMenu clicked. Current restaurantId state:", restaurantId);
-        // Now it uses the reliable `restaurantId` from state
         if (restaurantId) {
             const params = new URLSearchParams();
             if (phone) params.set('phone', phone);
-            // Re-use the session token if available for seamless navigation back to the menu
-            const sessionToken = searchParams.get('token') || trackingToken; // Use whichever token is available
+            const sessionToken = searchParams.get('token') || trackingToken;
             if (sessionToken) params.set('token', sessionToken);
             
             const backUrl = `/order/${restaurantId}?${params.toString()}`;
@@ -105,7 +99,7 @@ const OrderPlacedContent = () => {
             router.push(backUrl);
         } else {
             console.error("[Placed Page] Could not determine which restaurant to go back to. Falling back to home.");
-            router.push('/'); // Fallback to home if restaurantId is somehow lost
+            router.push('/'); 
         }
     };
 
