@@ -60,11 +60,11 @@ export async function GET(req) {
             }
         });
 
+        // --- THE FIX: Use a 'not-in' filter instead of two '!=' filters ---
         const ordersQuery = firestore.collection('orders')
             .where('restaurantId', '==', businessRef.id)
             .where('deliveryType', '==', 'dine-in')
-            .where('status', '!=', 'delivered')
-            .where('status', '!=', 'rejected');
+            .where('status', 'not-in', ['delivered', 'rejected']);
             
         const ordersSnap = await ordersQuery.get();
 
