@@ -133,14 +133,11 @@ export async function PATCH(req) {
         const firestore = await getFirestore();
         const { businessId, businessSnap } = await verifyOwnerAndGetBusiness(req, auth, firestore);
 
-        
         const body = await req.json();
         console.log(`[API][PATCH /orders] Body:`, body);
         
-        
         const { orderId, orderIds, newStatus, deliveryBoyId, rejectionReason } = body;
         
-
         const idsToUpdate = orderIds && orderIds.length > 0 ? orderIds : (orderId ? [orderId] : []);
 
         if (idsToUpdate.length === 0 || !newStatus) {
@@ -174,6 +171,7 @@ export async function PATCH(req) {
                  console.warn(`[API][PATCH /orders] Skipping order ${id}: Not found or access denied.`);
                 continue; // Skip this order
             }
+            const orderData = orderDoc.data();
 
             const updateData = { 
                 status: newStatus,
@@ -186,37 +184,40 @@ export async function PATCH(req) {
             if (newStatus === 'rejected' && rejectionReason) {
                 updateData.rejectionReason = rejectionReason;
             }
-
             if (newStatus === 'dispatched' && deliveryBoyId) {
                 updateData.deliveryBoyId = deliveryBoyId;
+            }
+            if (newStatus === 'delivered' && orderData.deliveryType === 'dine-in' && orderData.tableId && orderData.dineInTabId) {
+                const tableRef = businessSnap.ref.collection('tables').doc(orderData.tableId);
+                const updatePath = `tabs.${orderData.dineInTabId}.orders`;
+                // This is a simple update, more complex logic might be needed for arrays
+                batch.update(tableRef, { [`${updatePath}.${id}.status`]: 'delivered' });
             }
             
             batch.update(orderRef, updateData);
 
-            // Send notification for each order
-            const orderData = orderDoc.data();
             const businessData = businessSnap.data();
             
-            // Do not send notification for 'pending' -> 'confirmed' for dine-in post-paid
             if (orderData.deliveryType === 'dine-in' && newStatus === 'confirmed') {
-                console.log(`[API][PATCH /orders] Skipping notification for dine-in confirmation of order ${id}.`);
                 continue;
             }
             
-            const notificationPayload = {
-                customerPhone: orderData.customerPhone,
-                botPhoneNumberId: businessData.botPhoneNumberId,
-                customerName: orderData.customerName,
-                orderId: id,
-                restaurantName: businessData.name,
-                status: newStatus,
-                deliveryBoy: deliveryBoyData,
-                businessType: businessData.businessType || 'restaurant',
-            };
-
-            sendOrderStatusUpdateToCustomer(notificationPayload).catch(e => 
-                console.error(`[API LOG] CRITICAL: Failed to send WhatsApp notification for order ${id}. Error:`, e.message)
-            );
+            if (orderData.customerPhone) {
+                const notificationPayload = {
+                    customerPhone: orderData.customerPhone,
+                    botPhoneNumberId: businessData.botPhoneNumberId,
+                    customerName: orderData.customerName,
+                    orderId: id,
+                    restaurantName: businessData.name,
+                    status: newStatus,
+                    deliveryBoy: deliveryBoyData,
+                    businessType: businessData.businessType || 'restaurant',
+                };
+    
+                sendOrderStatusUpdateToCustomer(notificationPayload).catch(e => 
+                    console.error(`[API LOG] CRITICAL: Failed to send WhatsApp notification for order ${id}. Error:`, e.message)
+                );
+            }
         }
         
         await batch.commit();
@@ -229,7 +230,3 @@ export async function PATCH(req) {
         return NextResponse.json({ message: `Backend Error: ${error.message}` }, { status: error.status || 500 });
     }
 }
-
-    
-
-    

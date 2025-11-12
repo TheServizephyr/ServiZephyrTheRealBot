@@ -705,12 +705,6 @@ const OrderPageInternal = () => {
 
     const handleStartNewTab = async (paxCount, tabName) => {
         try {
-            const user = auth.currentUser;
-            let idToken = null;
-            if (user) {
-                try { idToken = await user.getIdToken(); } catch (e) { console.warn("Could not get ID token for user, proceeding as anonymous."); }
-            }
-
             const payload = { 
                 action: 'create_tab', 
                 tableId: tableIdFromUrl, 
@@ -719,15 +713,8 @@ const OrderPageInternal = () => {
                 tab_name: tabName,
             };
             
-            if (impersonatedOwnerId) {
-                payload.impersonate_owner_id = impersonatedOwnerId;
-            }
-            
             const headers = { 'Content-Type': 'application/json' };
-            if (idToken) {
-                headers['Authorization'] = `Bearer ${idToken}`;
-            }
-
+            
             const res = await fetch('/api/owner/dine-in-tables', {
                 method: 'POST',
                 headers: headers,
@@ -776,7 +763,9 @@ const OrderPageInternal = () => {
                 const fetchedSettings = {
                     name: menuData.restaurantName, status: menuData.approvalStatus,
                     logoUrl: menuData.logoUrl || '', bannerUrls: (menuData.bannerUrls?.length > 0) ? menuData.bannerUrls : ['/order_banner.jpg'],
-                    deliveryCharge: menuData.deliveryCharge || 0, menu: menuData.menu || {}, coupons: menuData.coupons || [],
+                    deliveryCharge: menuData.deliveryCharge || 0,
+                    deliveryFreeThreshold: menuData.deliveryFreeThreshold,
+                    menu: menuData.menu || {}, coupons: menuData.coupons || [],
                     deliveryEnabled: menuData.deliveryEnabled, pickupEnabled: menuData.pickupEnabled,
                     dineInEnabled: menuData.dineInEnabled, businessAddress: menuData.businessAddress || null,
                     businessType: menuData.businessType || 'restaurant',
@@ -840,6 +829,7 @@ const OrderPageInternal = () => {
             pax_count: activeTabInfo.pax_count,
             tab_name: activeTabInfo.name,
             deliveryCharge: restaurantData.deliveryCharge,
+            deliveryFreeThreshold: restaurantData.deliveryFreeThreshold,
             businessType: restaurantData.businessType,
             dineInModel: restaurantData.dineInModel,
             loyaltyPoints, expiryTimestamp,
