@@ -2,7 +2,7 @@
 
 'use client';
 
-import React, { Suspense, useEffect, useState } from 'react';
+import React, { Suspense, useEffect, useState, useCallback } from 'react';
 import { motion } from 'framer-motion';
 import { CheckCircle, ArrowLeft, Navigation, MessageSquare } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -12,67 +12,82 @@ const OrderPlacedContent = () => {
     const router = useRouter();
     const searchParams = useSearchParams();
     
-    // Get all params from the URL right away
+    // Get all params from the URL using useCallback to memoize
     const orderId = searchParams.get('orderId');
     const whatsappNumber = searchParams.get('whatsappNumber');
     const tokenFromUrl = searchParams.get('token');
     const phone = searchParams.get('phone');
+    const restaurantIdFromUrl = searchParams.get('restaurantId');
     
-    // --- START FIX: Use state for restaurantId and token ---
     const [trackingToken, setTrackingToken] = useState(tokenFromUrl);
-    const [restaurantId, setRestaurantId] = useState('');
-    // --- END FIX ---
+    const [restaurantId, setRestaurantId] = useState(restaurantIdFromUrl);
 
     useEffect(() => {
-        // --- START FIX: Smart restaurant ID and token fetching ---
-        const lastRestaurantId = localStorage.getItem('lastOrderedFrom');
-        if (lastRestaurantId) {
-            setRestaurantId(lastRestaurantId);
+        // This effect runs when the component mounts and whenever searchParams changes.
+        
+        // 1. Immediately save the restaurantId to localStorage for the "Back to Menu" button.
+        const currentRestaurantId = searchParams.get('restaurantId');
+        if (currentRestaurantId) {
+            localStorage.setItem('lastOrderedFrom', currentRestaurantId);
+            setRestaurantId(currentRestaurantId);
+        } else {
+            // If not in URL, try to get it from storage.
+            const storedId = localStorage.getItem('lastOrderedFrom');
+            if (storedId) {
+                setRestaurantId(storedId);
+            }
         }
 
+        // 2. Fetch the tracking token if it's not in the URL.
         const fetchTokenIfNeeded = async () => {
-            if (!trackingToken && orderId) {
-                console.log("Token not in URL, attempting to fetch from backend...");
+            const currentOrderId = searchParams.get('orderId');
+            const tokenInUrl = searchParams.get('token');
+
+            if (!tokenInUrl && currentOrderId) {
+                console.log("Token not in URL, attempting to fetch from backend for order:", currentOrderId);
                 try {
-                    // Wait for a moment to allow webhook to process
-                    await new Promise(resolve => setTimeout(resolve, 1500));
+                    // This delay gives the webhook a moment to process the payment and generate the token.
+                    await new Promise(resolve => setTimeout(resolve, 1500)); 
                     
-                    const res = await fetch(`/api/order/status/${orderId}`);
+                    const res = await fetch(`/api/order/status/${currentOrderId}`);
                     if (res.ok) {
                         const data = await res.json();
                         if (data.order?.trackingToken) {
                             console.log("Successfully fetched token:", data.order.trackingToken);
                             setTrackingToken(data.order.trackingToken);
                         } else {
-                            console.log("Order found, but no tracking token yet.");
+                            console.warn("Order found, but no tracking token yet. Retrying might be needed.");
                         }
                     } else {
-                        console.error("Failed to fetch order status to get token.");
+                        console.error("Failed to fetch order status to get token. Status:", res.status);
                     }
                 } catch (error) {
                     console.error("Error fetching tracking token:", error);
                 }
+            } else if (tokenInUrl) {
+                setTrackingToken(tokenInUrl);
             }
         };
 
         fetchTokenIfNeeded();
-        // --- END FIX ---
 
-    }, [orderId, trackingToken]); // Rerun if orderId or token changes
+    }, [searchParams]); // CRITICAL FIX: The effect now depends on searchParams.
 
 
     const handleBackToMenu = () => {
-        // --- START FIX: Correct redirect logic ---
+        // Uses the state variable `restaurantId` which is now reliably set.
         if (restaurantId) {
             const params = new URLSearchParams();
             if (phone) params.set('phone', phone);
-            // Re-use the order token for the session token, as it's valid for a period
-            if (tokenFromUrl) params.set('token', tokenFromUrl);
+            // Re-use the session token if available for seamless navigation back to the menu
+            const sessionToken = searchParams.get('token');
+            if (sessionToken) params.set('token', sessionToken);
+            
             router.push(`/order/${restaurantId}?${params.toString()}`);
         } else {
+            console.error("Could not determine which restaurant to go back to. Falling back to home.");
             router.push('/'); // Fallback to home if restaurantId is somehow lost
         }
-        // --- END FIX ---
     };
 
     const handleConfirmOnWhatsApp = () => {
@@ -91,7 +106,7 @@ const OrderPlacedContent = () => {
         if (orderId && trackingToken) {
             router.push(`/track/${trackingPath}${orderId}?token=${trackingToken}`);
         } else {
-            alert("Tracking information is not yet available for this order. Please try again in a moment.");
+            alert("Tracking information is not yet available for this order. Please refresh and try again in a moment.");
         }
     }
     
@@ -181,5 +196,3 @@ export default function OrderPlacedPage() {
         </Suspense>
     );
 }
-
-    
