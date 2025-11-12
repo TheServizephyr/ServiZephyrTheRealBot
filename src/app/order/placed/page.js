@@ -11,62 +11,68 @@ import { useRouter, useSearchParams } from 'next/navigation';
 const OrderPlacedContent = () => {
     const router = useRouter();
     const searchParams = useSearchParams();
+    
+    // Get all params from the URL right away
     const orderId = searchParams.get('orderId');
     const whatsappNumber = searchParams.get('whatsappNumber');
+    const tokenFromUrl = searchParams.get('token');
+    const phone = searchParams.get('phone');
+    const restaurantIdFromUrl = searchParams.get('restaurantId');
     
-    // --- START: THE FIX ---
-    const [trackingToken, setTrackingToken] = useState(searchParams.get('token'));
+    const [trackingToken, setTrackingToken] = useState(tokenFromUrl);
+    const [restaurantId, setRestaurantId] = useState(restaurantIdFromUrl);
 
     useEffect(() => {
+        // --- Smart Restaurant ID saving ---
+        const lastRestaurantId = localStorage.getItem('lastOrderedFrom');
+        if (restaurantIdFromUrl) {
+            if (restaurantIdFromUrl !== lastRestaurantId) {
+                localStorage.setItem('lastOrderedFrom', restaurantIdFromUrl);
+            }
+            setRestaurantId(restaurantIdFromUrl);
+        } else if (lastRestaurantId) {
+            setRestaurantId(lastRestaurantId);
+        }
+
         const fetchTokenIfNeeded = async () => {
             if (!trackingToken && orderId) {
+                console.log("Token not in URL, attempting to fetch from backend...");
                 try {
-                    // This can happen on Razorpay redirect where the webhook is faster
                     const res = await fetch(`/api/order/status/${orderId}`);
                     if (res.ok) {
                         const data = await res.json();
                         if (data.order?.trackingToken) {
+                            console.log("Successfully fetched token:", data.order.trackingToken);
                             setTrackingToken(data.order.trackingToken);
+                        } else {
+                            console.log("Order found, but no tracking token yet.");
                         }
+                    } else {
+                        console.error("Failed to fetch order status to get token.");
                     }
                 } catch (error) {
-                    console.error("Failed to fetch tracking token:", error);
+                    console.error("Error fetching tracking token:", error);
                 }
             }
         };
 
-        // If no token, check for it after a small delay to allow webhook to run
-        if (!trackingToken) {
-            const timer = setTimeout(fetchTokenIfNeeded, 2000); // Wait 2s
-            return () => clearTimeout(timer);
-        }
-    }, [orderId, trackingToken]);
+        const timer = setTimeout(fetchTokenIfNeeded, 1500); // Give webhook a moment to run
+        return () => clearTimeout(timer);
+
+    }, [orderId, trackingToken, restaurantIdFromUrl]);
 
 
     const handleBackToMenu = () => {
-        // Retrieve restaurantId from localStorage or another source
-        const lastRestaurantId = localStorage.getItem('lastOrderedFrom');
-        const phone = searchParams.get('phone');
-        const token = searchParams.get('token');
-        
-        // Ensure all necessary parameters are available before redirecting
-        if (lastRestaurantId) {
-            let url = `/order/${lastRestaurantId}`;
-            const queryParams = new URLSearchParams();
-            if (phone) queryParams.append('phone', phone);
-            if (token) queryParams.append('token', token);
-            
-            const queryString = queryParams.toString();
-            if (queryString) {
-                url += `?${queryString}`;
-            }
-            router.push(url);
+        if (restaurantId) {
+            const params = new URLSearchParams();
+            if (phone) params.set('phone', phone);
+            // Re-use the order token for the session token, as it's valid.
+            if (tokenFromUrl) params.set('token', tokenFromUrl);
+            router.push(`/order/${restaurantId}?${params.toString()}`);
         } else {
-            // Fallback to home if restaurantId is not found
-            router.push('/');
+            router.push('/'); // Fallback
         }
     };
-    // --- END: THE FIX ---
 
     const handleConfirmOnWhatsApp = () => {
         if (orderId && whatsappNumber) {
@@ -174,3 +180,5 @@ export default function OrderPlacedPage() {
         </Suspense>
     );
 }
+
+    

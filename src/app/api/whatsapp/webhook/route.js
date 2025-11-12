@@ -147,7 +147,6 @@ const handleDineInConfirmation = async (firestore, text, fromNumber, business, b
             dineInToken = `#${String(newTokenNumber).padStart(2, '0')}-${randomChar}`;
             
             const customerPhone = fromNumber.startsWith('91') ? fromNumber.substring(2) : fromNumber;
-            // --- THE FIX: Use the token from the order now ---
             trackingTokenForLink = orderData.trackingToken;
             
             transaction.update(businessRef, { lastDineInToken: newTokenNumber });
@@ -208,7 +207,6 @@ const handleButtonActions = async (firestore, buttonId, fromNumber, business, bo
             }
             case 'track': {
                 const ordersRef = firestore.collection('orders');
-                // --- THE FIX: Order by date to get the LATEST order ---
                 const q = ordersRef.where('customerPhone', '==', customerPhone).orderBy('orderDate', 'desc').limit(1);
                 const querySnapshot = await q.get();
 
@@ -350,4 +348,5 @@ export async function POST(request) {
         return NextResponse.json({ message: 'Error processing request, but acknowledged.' }, { status: 200 });
     }
 }
+
     
