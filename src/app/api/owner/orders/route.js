@@ -187,12 +187,15 @@ export async function PATCH(req) {
             if (newStatus === 'dispatched' && deliveryBoyId) {
                 updateData.deliveryBoyId = deliveryBoyId;
             }
-            if (newStatus === 'delivered' && orderData.deliveryType === 'dine-in' && orderData.tableId && orderData.dineInTabId) {
+            
+            // --- START FIX: Update the status within the table's tab as well ---
+            if (orderData.deliveryType === 'dine-in' && orderData.tableId && orderData.dineInTabId) {
                 const tableRef = businessSnap.ref.collection('tables').doc(orderData.tableId);
-                const updatePath = `tabs.${orderData.dineInTabId}.orders`;
-                // This will set the order status within the nested object. Firestore handles dot notation for maps.
-                batch.update(tableRef, { [`${updatePath}.${id}.status`]: 'delivered' });
+                const updatePath = `tabs.${orderData.dineInTabId}.orders.${id}.status`;
+                batch.update(tableRef, { [updatePath]: newStatus });
+                 console.log(`[API][PATCH /orders] Dine-in order ${id} status updated to ${newStatus} in table ${orderData.tableId}.`);
             }
+            // --- END FIX ---
             
             batch.update(orderRef, updateData);
 

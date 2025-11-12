@@ -1,9 +1,10 @@
 
+
 'use client';
 
 import React, { useState, useEffect, useMemo, useRef, Suspense } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { RefreshCw, Printer, CheckCircle, IndianRupee, Users, Clock, ShoppingBag, Bell, MoreVertical, Trash2, QrCode, Download, Save, Wind, Edit, Table as TableIcon, History, Search, Salad, UtensilsCrossed, Droplet, PlusCircle, AlertTriangle, X, Wallet } from 'lucide-react';
+import { RefreshCw, Printer, CheckCircle, IndianRupee, Users, Clock, ShoppingBag, Bell, MoreVertical, Trash2, QrCode, Download, Save, Wind, Edit, Table as TableIcon, History, Search, Salad, UtensilsCrossed, Droplet, PlusCircle, AlertTriangle, X, Wallet, Check } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { auth, db } from '@/lib/firebase';
@@ -296,124 +297,100 @@ const ConfirmationModal = ({ isOpen, onClose, onConfirm, title, description, con
 };
 
 
-const TableCard = ({ tableId, tableData, onMarkAsPaid, onPrintBill, onMarkAsCleaned, onShowHistory, acknowledgedItems, onToggleAcknowledge, onConfirmOrders, onClearTab }) => {
+// --- START: Revamped TableCard Component ---
+const TableCard = ({ tableData, onMarkAsPaid, onPrintBill, onMarkAsCleaned, onConfirmOrder, onRejectOrder }) => {
     const state = tableData.state;
     const stateConfig = {
-        available: {
-            title: "Available",
-            bg: "bg-card",
-            border: "border-border",
-            icon: <CheckCircle size={16} className="text-green-500" />
-        },
-        occupied: {
-            title: `Occupied (${tableData.current_pax || 0}/${tableData.max_capacity})`,
-            bg: "bg-yellow-500/10",
-            border: "border-yellow-500",
-            icon: <Users size={16} className="text-yellow-500" />
-        },
-        needs_cleaning: {
-            title: "Needs Cleaning",
-            bg: "bg-red-500/10",
-            border: "border-red-500",
-            icon: <Wind size={16} className="text-red-500" />
-        }
+        available: { title: "Available", bg: "bg-card", border: "border-border", icon: <CheckCircle size={16} className="text-green-500" /> },
+        occupied: { title: `Occupied (${tableData.current_pax || 0}/${tableData.max_capacity})`, bg: "bg-yellow-500/10", border: "border-yellow-500", icon: <Users size={16} className="text-yellow-500" /> },
+        needs_cleaning: { title: "Needs Cleaning", bg: "bg-red-500/10", border: "border-red-500", icon: <Wind size={16} className="text-red-500" /> }
     };
-    
     const currentConfig = stateConfig[state] || stateConfig.available;
 
+    const allTabs = [...(tableData.tabs || []), ...(tableData.pendingOrders || [])];
+
     return (
-        <motion.div
-            layout
-            initial={{ scale: 0.9, opacity: 0 }}
-            animate={{ scale: 1, opacity: 1 }}
-            exit={{ scale: 0.9, opacity: 0 }}
-            transition={{ type: 'spring', stiffness: 260, damping: 20 }}
-        >
+        <motion.div layout initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }}>
             <Card className={cn("flex flex-col h-full shadow-lg hover:shadow-primary/20 transition-shadow duration-300 border-2", currentConfig.border)}>
                 <CardHeader className={cn("flex-row items-center justify-between space-y-0 pb-2", currentConfig.bg)}>
-                    <CardTitle className="text-2xl font-bold">{tableId}</CardTitle>
-                    <div className="flex items-center gap-2 text-sm font-semibold">
-                        {currentConfig.icon} {currentConfig.title}
-                    </div>
+                    <CardTitle className="text-2xl font-bold">{tableData.id}</CardTitle>
+                    <div className="flex items-center gap-2 text-sm font-semibold">{currentConfig.icon} {currentConfig.title}</div>
                 </CardHeader>
                 
                 <CardContent className="flex-grow p-4">
-                   {(tableData.tabs && tableData.tabs.length > 0) ? (
+                    {allTabs.length > 0 ? (
                         <div className="space-y-4">
-                            {tableData.tabs.map(tab => {
-                                const hasPendingOrders = tab.orders?.some(o => o.status === 'pending');
-                                const allOrdersPaid = tab.status === 'closed';
-                                
+                            {allTabs.map(tab => {
+                                const isPendingTab = !!tab.customerName; // Distinguish pending orders
+                                const tabName = isPendingTab ? tab.customerName : tab.tab_name;
+                                const paxCount = isPendingTab ? tab.pax_count : tab.pax_count;
+                                const totalBill = isPendingTab ? tab.totalAmount : tab.totalBill;
+                                const isPaid = isPendingTab ? tab.paymentDetails?.method === 'razorpay' : tab.status === 'closed';
+
                                 return (
                                     <div key={tab.id} className="bg-muted/50 p-3 rounded-lg border border-border">
-                                        <div className="flex justify-between items-center">
-                                            <h4 className="font-semibold text-foreground">{tab.tab_name} <span className="text-xs text-muted-foreground">({tab.pax_count} guests)</span></h4>
-                                            {allOrdersPaid ? 
-                                                <span className="text-xs font-semibold text-green-500 bg-green-500/10 px-2 py-1 rounded-full">Paid</span>
-                                                : <span className="text-xs font-semibold text-yellow-500 bg-yellow-500/10 px-2 py-1 rounded-full">Payment Pending</span>
-                                            }
+                                        <div className="flex justify-between items-center mb-2">
+                                            <h4 className="font-semibold text-foreground">{tabName} <span className="text-xs text-muted-foreground">({paxCount} guests)</span></h4>
+                                            {isPendingTab && <p className="text-xs font-bold text-yellow-400">TOKEN: {tab.dineInToken}</p>}
                                         </div>
 
-                                        {(tab.orders && tab.orders.length > 0) ? (
-                                            <>
-                                                {hasPendingOrders && (
-                                                    <Button size="sm" className="w-full my-2 bg-yellow-500 hover:bg-yellow-600" onClick={() => onConfirmOrders(tab.orders.filter(o => o.status === 'pending').map(o => o.id))}>
-                                                        Confirm New Orders
+                                        <div className="space-y-1 text-sm max-h-32 overflow-y-auto pr-2 my-2">
+                                            {(tab.items || []).map((item, i) => (
+                                                <div key={i} className="flex justify-between items-center text-muted-foreground">
+                                                    <span>{item.quantity || item.qty} x {item.name}</span>
+                                                    <span>{formatCurrency(item.price * (item.quantity || item.qty))}</span>
+                                                </div>
+                                            ))}
+                                        </div>
+                                        
+                                        <div className="mt-3 pt-3 border-t border-dashed border-border/50">
+                                            <div className="flex justify-between items-center font-bold">
+                                                <span>Total Bill:</span>
+                                                <span className="text-lg text-primary">{formatCurrency(totalBill)}</span>
+                                            </div>
+                                             <div className="flex justify-between items-center text-xs mt-1">
+                                                <span>Payment Status:</span>
+                                                <span className={cn('font-semibold', isPaid ? 'text-green-500' : 'text-yellow-500')}>
+                                                    {isPaid ? 'Paid Online' : 'Payment Pending'}
+                                                </span>
+                                            </div>
+                                        </div>
+
+                                        <div className="mt-4 grid grid-cols-1 gap-2">
+                                            {isPendingTab ? (
+                                                <div className="grid grid-cols-2 gap-2">
+                                                    <Button size="sm" variant="destructive" onClick={() => onRejectOrder(tab.id)}>
+                                                        <X size={16} className="mr-2"/> Reject
                                                     </Button>
-                                                )}
-                                                <div className="space-y-2 max-h-48 overflow-y-auto pr-2 mt-2">
-                                                     {tab.allItems.map((item) => {
-                                                        const uniqueItemId = `${tab.id}-${item.orderItemIds.join('-')}`;
-                                                        const isAcknowledged = acknowledgedItems.has(uniqueItemId);
-                                                        const isPending = tab.orders.some(o => o.items.some(i => i.name === item.name) && o.status === 'pending');
-                                                        return (
-                                                             <div key={uniqueItemId} className={cn("flex justify-between items-center text-sm p-2 rounded-md transition-colors", isAcknowledged ? "bg-muted" : (isPending ? "bg-yellow-400/20" : "bg-green-500/10"))}>
-                                                                <div className="flex items-center gap-2">
-                                                                    <Checkbox checked={isAcknowledged} onCheckedChange={() => onToggleAcknowledge(uniqueItemId)} id={uniqueItemId} />
-                                                                    <label htmlFor={uniqueItemId} className="text-foreground">{item.name}</label>
-                                                                </div>
-                                                                <span className="font-semibold text-foreground">x{item.qty}</span>
-                                                            </div>
-                                                        );
-                                                    })}
+                                                    <Button size="sm" className="bg-primary hover:bg-primary/90" onClick={() => onConfirmOrder(tab.id)}>
+                                                        <Check size={16} className="mr-2"/> Confirm
+                                                    </Button>
                                                 </div>
-                                                 <div className="flex justify-between items-center w-full mt-3 pt-3 border-t border-border/50">
-                                                    <span className="text-md font-bold">Total:</span>
-                                                    <span className="text-xl font-bold text-primary">{formatCurrency(tab.totalBill)}</span>
-                                                </div>
-                                                <div className="grid grid-cols-2 gap-2 w-full mt-3">
-                                                    <Button variant="outline" size="sm" onClick={() => onPrintBill({ tableId, orders: tab.orders })}><Printer size={16} className="mr-2"/> Print Bill</Button>
-                                                    <Button onClick={() => onMarkAsPaid(tableId, tab.id)} disabled={allOrdersPaid}>
+                                            ) : (
+                                                <div className="grid grid-cols-2 gap-2">
+                                                    <Button variant="outline" size="sm" onClick={() => onPrintBill({ tableId: tab.tableId, orders: tab.orders, ...tab })}>
+                                                        <Printer size={16} className="mr-2"/> Print Bill
+                                                    </Button>
+                                                    <Button onClick={() => onMarkAsPaid(tab.tableId, tab.id)} disabled={isPaid}>
                                                         <CheckCircle size={16} className="mr-2"/> Mark as Paid
                                                     </Button>
                                                 </div>
-                                            </>
-                                        ) : (
-                                            <div className="text-center py-4 text-muted-foreground text-sm">
-                                                <p>Waiting for first order...</p>
-                                                <Button size="sm" variant="destructive" className="mt-4" onClick={() => onClearTab(tab.id, tableId, tab.pax_count)}>
-                                                    <X size={14} className="mr-2"/> Clear Tab
-                                                </Button>
-                                            </div>
-                                        )}
+                                            )}
+                                        </div>
                                     </div>
                                 );
                             })}
                         </div>
-                    ) : state === 'needs_cleaning' ? (
-                         <div className="flex-grow p-4 flex flex-col items-center justify-center text-center">
-                            <p className="text-muted-foreground">This table's bill has been paid. Mark it as clean once it's ready for the next guests.</p>
-                        </div>
                     ) : (
-                        <div className="flex-grow p-4 flex flex-col items-center justify-center text-center">
-                            <p className="text-muted-foreground">This table is available and ready for guests.</p>
+                         <div className="flex-grow p-4 flex flex-col items-center justify-center text-center">
+                            <p className="text-muted-foreground">{state === 'needs_cleaning' ? "Ready to be cleaned." : "This table is available."}</p>
                         </div>
                     )}
                 </CardContent>
                 
                 {(state === 'needs_cleaning') && (
                      <CardFooter className="p-4 mt-auto">
-                        <Button className="w-full bg-green-500 hover:bg-green-600" onClick={() => onMarkAsCleaned(tableId)}>
+                        <Button className="w-full bg-green-500 hover:bg-green-600" onClick={() => onMarkAsCleaned(tableData.id)}>
                             <CheckCircle size={16} className="mr-2"/> Mark as Cleaned
                         </Button>
                     </CardFooter>
@@ -422,6 +399,7 @@ const TableCard = ({ tableId, tableData, onMarkAsPaid, onPrintBill, onMarkAsClea
         </motion.div>
     );
 };
+// --- END: Revamped TableCard Component ---
 
 const QrCodeDisplay = ({ text, tableName, innerRef }) => {
     const handleDownload = () => {
@@ -880,6 +858,33 @@ const DineInPageContent = () => {
             setLoading(false);
         }
     }
+    
+    const handleConfirmOrder = async (orderId) => {
+        setLoading(true);
+        try {
+            await handleApiCall('PATCH', { orderId, newStatus: 'confirmed' }, '/api/owner/orders');
+            setInfoDialog({ isOpen: true, title: "Success", message: "Order confirmed!" });
+            await fetchData(true);
+        } catch (error) {
+            setInfoDialog({ isOpen: true, title: "Error", message: `Could not confirm order: ${error.message}` });
+        } finally {
+            setLoading(false);
+        }
+    }
+    
+    const handleRejectOrder = async (orderId) => {
+        setLoading(true);
+         try {
+            await handleApiCall('PATCH', { orderId, newStatus: 'rejected', rejectionReason: 'Rejected by restaurant' }, '/api/owner/orders');
+            setInfoDialog({ isOpen: true, title: "Success", message: "Order rejected." });
+            await fetchData(true);
+        } catch (error)
+        {
+            setInfoDialog({ isOpen: true, title: "Error", message: `Could not reject order: ${error.message}` });
+        } finally {
+            setLoading(false);
+        }
+    }
 
     const activeTableData = useMemo(() => {
         if (!allData || !allData.tables) return [];
@@ -962,16 +967,12 @@ const DineInPageContent = () => {
             return (
                 <TableCard
                     key={table.id}
-                    tableId={table.id}
                     tableData={table}
                     onMarkAsPaid={confirmMarkAsPaid}
                     onPrintBill={setBillData}
                     onMarkAsCleaned={handleMarkAsCleaned}
-                    onShowHistory={handleShowHistory}
-                    acknowledgedItems={acknowledgedItems}
-                    onToggleAcknowledge={handleToggleAcknowledge}
-                    onConfirmOrders={handleConfirmOrders}
-                    onClearTab={handleClearTab}
+                    onConfirmOrder={handleConfirmOrder}
+                    onRejectOrder={handleRejectOrder}
                 />
             );
         }).flat();

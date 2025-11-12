@@ -1,3 +1,4 @@
+
 "use client";
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
@@ -268,7 +269,10 @@ const ActionButton = ({ status, onNext, onRevert, order, onRejectClick, isUpdati
     
     const currentIndex = statusFlow.indexOf(status);
     
-    const isFinalStatus = status === 'delivered' || status === 'rejected' || status === 'picked_up' || status === 'active_tab';
+    // --- START FIX: Correctly handle dine-in final status ---
+    const isFinalStatus = status === 'delivered' || status === 'rejected' || status === 'picked_up';
+    // --- END FIX ---
+
 
     if (isUpdating) {
         return (
@@ -840,7 +844,7 @@ export default function LiveOrdersPage() {
                                     className="hover:bg-muted/50"
                                 >
                                     <td className="p-4 w-12 align-top">
-                                        {order.status === 'preparing' && order.deliveryType !== 'pickup' && (
+                                        {order.status === 'preparing' && order.deliveryType !== 'pickup' && order.deliveryType !== 'dine-in' && (
                                             <Checkbox
                                                 checked={selectedOrders.includes(order.id)}
                                                 onCheckedChange={() => handleSelectOrder(order.id)}
@@ -857,25 +861,31 @@ export default function LiveOrdersPage() {
                                         >
                                             {order.customer}
                                         </div>
-                                        {order.deliveryType === 'dine-in' && (
-                                            <div className="mt-1 font-mono text-xs text-primary bg-primary/10 border border-primary/20 rounded px-2 py-1 inline-flex flex-col">
-                                                <span>Table: {order.tableId}</span>
-                                                <span>Token: {order.dineInToken}</span>
-                                            </div>
-                                        )}
+                                        {/* --- START FIX: Smart Badge Display --- */}
                                         <div className="mt-1 flex items-center gap-2">
-                                            {order.deliveryType === 'pickup' ? (
-                                                <div title="Pickup Order" className="flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full bg-purple-500/20 text-purple-400 border border-purple-500/30 w-fit"><ShoppingBag size={12}/> Pickup</div>
-                                            ) : order.deliveryType === 'dine-in' ? (
-                                                <div title="Dine-In Order" className="flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full bg-cyan-500/20 text-cyan-400 border border-cyan-500/30 w-fit"><ConciergeBell size={12}/> Dine-In</div>
-                                            ) : (
+                                            {order.deliveryType === 'delivery' && (
                                                 <div title="Delivery Order" className="flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full bg-blue-500/20 text-blue-400 border border-blue-500/30 w-fit"><Bike size={12}/> Delivery</div>
                                             )}
-                                            {order.paymentDetails?.method === 'cod' 
-                                                ? <div title="Cash on Delivery" className="flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full bg-yellow-500/20 text-yellow-400 border border-yellow-500/30 w-fit"><IndianRupee size={12}/> POD</div>
-                                                : <div title="Prepaid Order" className="flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full bg-green-500/20 text-green-400 border border-green-500/30 w-fit"><Wallet size={12}/> PAID</div>
-                                            }
+                                            {order.deliveryType === 'pickup' && (
+                                                 <div title="Pickup Order" className="flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full bg-purple-500/20 text-purple-400 border border-purple-500/30 w-fit"><ShoppingBag size={12}/> Pickup</div>
+                                            )}
+                                            {order.deliveryType === 'dine-in' && (
+                                                <div title="Dine-In Order" className="flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full bg-cyan-500/20 text-cyan-400 border border-cyan-500/30 w-fit"><ConciergeBell size={12}/> Dine-In</div>
+                                            )}
+
+                                            {order.paymentDetails?.method === 'cod' && (
+                                                <div title="Pay on Delivery" className="flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full bg-yellow-500/20 text-yellow-400 border border-yellow-500/30 w-fit"><IndianRupee size={12}/> POD</div>
+                                            )}
+                                            {order.paymentDetails?.method === 'razorpay' && (
+                                                 <div title="Prepaid Order" className="flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full bg-green-500/20 text-green-400 border border-green-500/30 w-fit"><Wallet size={12}/> PAID</div>
+                                            )}
+                                             {order.deliveryType === 'dine-in' && order.tableId && (
+                                                <div title="Table & Token" className="flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full bg-gray-500/20 text-gray-400 border border-gray-500/30 w-fit">
+                                                    Table: {order.tableId} | Token: {order.dineInToken}
+                                                </div>
+                                            )}
                                         </div>
+                                        {/* --- END FIX --- */}
                                     </td>
                                     <td className="p-4 align-top hidden md:table-cell">
                                         {(order.items || []).slice(0, 2).map((item, index) => (
