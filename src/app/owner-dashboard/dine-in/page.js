@@ -196,7 +196,8 @@ const BillModal = ({ order, restaurant, onClose, onPrint, printRef }) => {
         return Array.from(itemMap.values());
     }, [order.orders]);
     
-    const totalBill = useMemo(() => (order.orders || []).reduce((sum, o) => sum + (o.totalAmount || 0), 0), [order.orders]);
+    const totalBill = useMemo(() => Object.values(order.orders || {}).reduce((sum, o) => sum + (o.totalAmount || 0), 0), [order.orders]);
+
 
     return (
         <Dialog open={true} onOpenChange={onClose}>
@@ -323,9 +324,11 @@ const TableCard = ({ tableData, onMarkAsPaid, onPrintBill, onMarkAsCleaned, onCo
                             {allGroups.map(group => {
                                 const isPending = !group.status || group.status === 'pending';
                                 const isActiveTab = group.status === 'active';
-                                const totalBill = isPending ? group.totalAmount : (group.orders || []).reduce((sum, o) => sum + (o.totalAmount || 0), 0);
+                                // THIS IS THE FIX
+                                const totalBill = isPending ? group.totalAmount : (Object.values(group.orders || {})).reduce((sum, o) => sum + (o.totalAmount || 0), 0);
                                 const isOnlinePayment = isPending ? group.paymentDetails?.method === 'razorpay' : false;
-                                const isPaid = isOnlinePayment;
+                                const allOrdersPaid = isActiveTab ? (Object.values(group.orders || {})).every(o => o.paymentDetails?.method === 'razorpay') : false;
+                                const isPaid = isOnlinePayment || allOrdersPaid;
 
                                 return (
                                     <div key={group.id} className={cn("relative p-3 rounded-lg border", 
@@ -336,17 +339,31 @@ const TableCard = ({ tableData, onMarkAsPaid, onPrintBill, onMarkAsCleaned, onCo
                                             {group.dineInToken && <p className="text-xs font-bold text-yellow-400">TOKEN: {group.dineInToken}</p>}
                                         </div>
 
-                                        {isPending && <div className="mb-2 p-2 bg-yellow-500/10 rounded"><p className="text-sm font-bold text-yellow-300 text-center">New Order Received!</p></div>}
-                                        
-                                        {(group.items || []).length > 0 && (
-                                            <div className="space-y-1 text-sm max-h-32 overflow-y-auto pr-2 my-2">
-                                                {(group.items || []).map((item, i) => (
-                                                    <div key={i} className="flex justify-between items-center text-muted-foreground">
-                                                        <span>{item.quantity || item.qty} x {item.name}</span>
-                                                        <span>{formatCurrency((item.totalPrice || item.price) * (item.quantity || item.qty))}</span>
+                                        {isPending ? (
+                                             <div className="mb-2 p-2 bg-yellow-500/10 rounded">
+                                                <p className="text-sm font-bold text-yellow-300 text-center">New Order Received!</p>
+                                                {(group.items || []).length > 0 && (
+                                                    <div className="space-y-1 text-sm max-h-32 overflow-y-auto pr-2 my-2">
+                                                        {(group.items || []).map((item, i) => (
+                                                            <div key={i} className="flex justify-between items-center text-yellow-200/80">
+                                                                <span>{item.quantity || item.qty} x {item.name}</span>
+                                                                <span>{formatCurrency((item.totalPrice || item.price) * (item.quantity || item.qty))}</span>
+                                                            </div>
+                                                        ))}
                                                     </div>
-                                                ))}
-                                            </div>
+                                                )}
+                                             </div>
+                                        ) : (
+                                            (Object.values(group.orders || {})).length > 0 && (
+                                                <div className="space-y-1 text-sm max-h-32 overflow-y-auto pr-2 my-2">
+                                                     {(Object.values(group.orders || {})).flatMap(o => o.items).map((item, i) => (
+                                                        <div key={i} className="flex justify-between items-center text-muted-foreground">
+                                                            <span>{item.quantity || item.qty} x {item.name}</span>
+                                                            <span>{formatCurrency((item.totalPrice || item.price) * (item.quantity || item.qty))}</span>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            )
                                         )}
 
                                         {totalBill > 0 && (
