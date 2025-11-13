@@ -9,7 +9,7 @@ import QRCode from 'qrcode.react';
 import { useReactToPrint } from 'react-to-print';
 import { useUser } from '@/firebase';
 import { db } from '@/lib/firebase';
-import { collection, query, where, getDocs, limit, doc, updateDoc } from 'firebase/firestore';
+import { collection, query, where, getDoc, limit, doc, updateDoc } from 'firebase/firestore';
 import { nanoid } from 'nanoid';
 import { FirestorePermissionError } from '@/firebase/errors';
 import { errorEmitter } from '@/firebase/error-emitter';
@@ -51,17 +51,21 @@ export default function StreetVendorQrPage() {
 
     const fetchVendorData = async () => {
         try {
-            const streetVendorQuery = query(collection(db, 'street_vendors'), where('ownerId', '==', user.uid), limit(1));
-            const vendorSnapshot = await getDocs(streetVendorQuery);
-            if (!vendorSnapshot.empty) {
-                const vendorDoc = vendorSnapshot.docs[0];
-                setVendorId(vendorDoc.id);
-                setQrId(vendorDoc.data().qrId || vendorDoc.id);
+            // FIX: Use doc() and getDoc() to fetch a single document directly
+            const vendorRef = doc(db, 'street_vendors', user.uid);
+            const vendorSnap = await getDoc(vendorRef);
+
+            if (vendorSnap.exists()) {
+                const vendorData = vendorSnap.data();
+                setVendorId(vendorSnap.id);
+                setQrId(vendorData.qrId || vendorSnap.id); // Use qrId if it exists, otherwise fallback to vendorId
+            } else {
+                 console.log("No street vendor profile found for this user.");
             }
         } catch(err) {
-            const contextualError = new FirestorePermissionError({ path: `street_vendors`, operation: 'list' });
+            const contextualError = new FirestorePermissionError({ path: `street_vendors/${user.uid}`, operation: 'get' });
             errorEmitter.emit('permission-error', contextualError);
-            console.error(err);
+            console.error("Error fetching vendor data:", err);
         } finally {
             setLoading(false);
         }

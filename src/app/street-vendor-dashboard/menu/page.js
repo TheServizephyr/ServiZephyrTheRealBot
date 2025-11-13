@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button';
 import Link from 'next/link';
 import { useUser } from '@/firebase';
 import { db } from '@/lib/firebase';
-import { collection, query, where, getDocs, onSnapshot, addDoc, doc, updateDoc, deleteDoc, limit } from 'firebase/firestore';
+import { collection, query, where, getDoc, onSnapshot, addDoc, doc, updateDoc, deleteDoc, limit } from 'firebase/firestore';
 import { FirestorePermissionError } from '@/firebase/errors';
 import { errorEmitter } from '@/firebase/error-emitter';
 
@@ -99,25 +99,31 @@ export default function StreetVendorMenuPage() {
 
     useEffect(() => {
         if (isUserLoading) return;
-        if (!user) return;
+        if (!user) {
+            setLoading(false);
+            return;
+        }
 
-        const fetchVendorId = async () => {
+        const fetchVendorData = async () => {
             try {
-                const streetVendorQuery = query(collection(db, 'street_vendors'), where('ownerId', '==', user.uid), limit(1));
-                const vendorSnapshot = await getDocs(streetVendorQuery);
-                if (!vendorSnapshot.empty) {
-                    setVendorId(vendorSnapshot.docs[0].id);
+                // FIX: Use doc() and getDoc() to fetch a single document directly
+                const vendorRef = doc(db, 'street_vendors', user.uid);
+                const vendorSnap = await getDoc(vendorRef);
+
+                if (vendorSnap.exists()) {
+                    setVendorId(vendorSnap.id);
                 } else {
+                    console.log("No street vendor profile found for this user.");
                     setLoading(false);
                 }
             } catch (err) {
-                 const contextualError = new FirestorePermissionError({ path: `street_vendors`, operation: 'list' });
+                const contextualError = new FirestorePermissionError({ path: `street_vendors/${user.uid}`, operation: 'get' });
                 errorEmitter.emit('permission-error', contextualError);
-                console.error(err);
+                console.error("Error fetching vendor ID:", err);
                 setLoading(false);
             }
         };
-        fetchVendorId();
+        fetchVendorData();
     }, [user, isUserLoading]);
 
     useEffect(() => {
