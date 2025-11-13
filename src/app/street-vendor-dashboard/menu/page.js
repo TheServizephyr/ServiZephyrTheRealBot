@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useState, useEffect } from 'react';
@@ -7,7 +8,7 @@ import { Button } from '@/components/ui/button';
 import Link from 'next/link';
 import { useUser } from '@/firebase';
 import { db } from '@/lib/firebase';
-import { collection, query, where, getDoc, onSnapshot, addDoc, doc, updateDoc, deleteDoc, limit } from 'firebase/firestore';
+import { collection, query, where, getDoc, onSnapshot, addDoc, doc, updateDoc, deleteDoc, setDoc } from 'firebase/firestore';
 import { FirestorePermissionError } from '@/firebase/errors';
 import { errorEmitter } from '@/firebase/error-emitter';
 
@@ -164,6 +165,7 @@ export default function StreetVendorMenuPage() {
 
     const handleDeleteItem = async (itemId) => {
         if (!vendorId) return alert("Vendor ID not loaded yet. Please wait a moment.");
+        if (!window.confirm("Are you sure you want to delete this item?")) return;
         const itemRef = doc(db, 'street_vendors', vendorId, 'menu', itemId);
         deleteDoc(itemRef).catch(() => {
             errorEmitter.emit('permission-error', new FirestorePermissionError({
@@ -174,15 +176,25 @@ export default function StreetVendorMenuPage() {
     };
     
     const handleAddItem = async (newItem) => {
-        if (!vendorId) return alert("Vendor ID not loaded yet. Please wait a moment.");
+        if (!vendorId || !user) return alert("Vendor or user information not available yet. Please try again.");
         const menuCollectionRef = collection(db, 'street_vendors', vendorId, 'menu');
-        const itemData = { ...newItem, available: true };
-        addDoc(menuCollectionRef, itemData).catch(() => {
+        
+        // --- START FIX: Use setDoc with an explicit ID ---
+        const newItemRef = doc(menuCollectionRef); // Creates a new doc reference with a generated ID
+        const itemData = { 
+            ...newItem, 
+            id: newItemRef.id, // Store the generated ID in the document itself
+            ownerId: user.uid, // Add ownerId for security rule validation
+            available: true 
+        };
+        setDoc(newItemRef, itemData).catch((err) => {
+        // --- END FIX ---
              errorEmitter.emit('permission-error', new FirestorePermissionError({
-                path: menuCollectionRef.path,
+                path: newItemRef.path,
                 operation: 'create',
                 requestResourceData: itemData
             }));
+             alert("Could not save item. Error: " + err.message);
         });
     };
 
@@ -227,6 +239,11 @@ export default function StreetVendorMenuPage() {
                             </div>
                         </div>
                     ))}
+                     {Object.keys(groupedMenu).length === 0 && !showAddItem && (
+                        <div className="text-center py-20 text-slate-500">
+                            <p>Your menu is empty. Click the '+' button to add your first item!</p>
+                        </div>
+                    )}
                 </div>
             )}
         </main>
