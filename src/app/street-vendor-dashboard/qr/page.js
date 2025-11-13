@@ -79,7 +79,7 @@ export default function StreetVendorQrPage() {
                         level={"H"} // High error correction for logo
                         includeMargin={true}
                         imageSettings={{
-                            src: "/logo-icon.png",
+                            src: "/logo.png",
                             x: undefined,
                             y: undefined,
                             height: 48,
