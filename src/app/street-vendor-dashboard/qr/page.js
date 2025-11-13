@@ -9,10 +9,8 @@ import QRCode from 'qrcode.react';
 import { useReactToPrint } from 'react-to-print';
 import { useUser } from '@/firebase';
 import { db } from '@/lib/firebase';
-import { collection, query, where, getDocs, doc, updateDoc, getDoc } from 'firebase/firestore';
-import { nanoid } from 'nanoid';
-import { FirestorePermissionError } from '@/firebase/errors';
-import { errorEmitter } from '@/firebase/error-emitter';
+import { doc, getDoc } from 'firebase/firestore';
+import { FirestorePermissionError, errorEmitter } from '@/firebase/errors';
 
 
 export default function StreetVendorQrPage() {
@@ -66,14 +64,14 @@ export default function StreetVendorQrPage() {
             const vendorSnap = await getDoc(vendorDocRef);
 
             if (vendorSnap.exists()) {
-                setVendorId(vendorSnap.id); // The document ID, e.g., "baaghi-chai"
+                setVendorId(vendorSnap.id); // This will be the businessId, e.g., "baaghi-chai"
                 setQrId(vendorSnap.id);
             } else {
                  console.log("No street vendor profile found for this business ID.");
                  throw new Error("Could not find your registered stall information.");
             }
         } catch(err) {
-            const contextualError = new FirestorePermissionError({ path: `street_vendors/${user.uid}`, operation: 'get' });
+            const contextualError = new FirestorePermissionError({ path: `users/${user.uid}`, operation: 'get' });
             errorEmitter.emit('permission-error', contextualError);
             console.error("Error fetching vendor data:", err);
         } finally {
@@ -91,7 +89,7 @@ export default function StreetVendorQrPage() {
       alert("This feature is for future use.");
   }
 
-  const qrValue = `${window.location.origin}/pre-order/${qrId}`;
+  const qrValue = qrId ? `${window.location.origin}/pre-order/${qrId}` : '';
 
   return (
     <>
