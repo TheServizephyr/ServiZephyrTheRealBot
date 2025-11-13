@@ -8,7 +8,8 @@ import Link from 'next/link';
 import { useUser } from '@/firebase';
 import { db } from '@/lib/firebase';
 import { collection, query, where, getDocs, onSnapshot, addDoc, doc, updateDoc, deleteDoc, limit } from 'firebase/firestore';
-import { FirestorePermissionError, errorEmitter } from '@/firebase/errors';
+import { FirestorePermissionError } from '@/firebase/errors';
+import { errorEmitter } from '@/firebase/error-emitter';
 
 
 const MenuItem = ({ item, onToggle, onDelete }) => (

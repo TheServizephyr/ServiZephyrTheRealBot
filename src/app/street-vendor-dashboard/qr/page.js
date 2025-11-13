@@ -11,7 +11,8 @@ import { useUser } from '@/firebase';
 import { db } from '@/lib/firebase';
 import { collection, query, where, getDocs, limit, doc, updateDoc } from 'firebase/firestore';
 import { nanoid } from 'nanoid';
-import { FirestorePermissionError, errorEmitter } from '@/firebase/errors';
+import { FirestorePermissionError } from '@/firebase/errors';
+import { errorEmitter } from '@/firebase/error-emitter';
 
 
 export default function StreetVendorQrPage() {
