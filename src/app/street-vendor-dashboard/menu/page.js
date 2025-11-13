@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useState, useEffect } from 'react';
@@ -122,19 +123,19 @@ export default function StreetVendorMenuPage() {
 
         const fetchVendorData = async () => {
             try {
-                const vendorsRef = collection(db, 'street_vendors');
-                const q = query(vendorsRef, where("ownerId", "==", user.uid));
-                
-                const querySnapshot = await getDocs(q);
+                // --- START FIX: Use direct getDoc instead of query ---
+                const vendorRef = doc(db, 'street_vendors', user.uid);
+                const vendorSnap = await getDoc(vendorRef);
+                // --- END FIX ---
 
-                if (querySnapshot.empty) {
+                if (!vendorSnap.exists()) {
                     throw new Error("No street vendor profile found for this user.");
                 }
                 
-                const vendorDoc = querySnapshot.docs[0];
+                const vendorDoc = vendorSnap;
                 setVendorId(vendorDoc.id);
             } catch (err) {
-                 const contextualError = new FirestorePermissionError({ path: `street_vendors`, operation: 'list' });
+                 const contextualError = new FirestorePermissionError({ path: `street_vendors/${user.uid}`, operation: 'get' });
                  errorEmitter.emit('permission-error', contextualError);
                 console.error("Error fetching vendor data:", err);
                 setInfoDialog({ isOpen: true, title: 'Error', message: 'Could not load your vendor profile. ' + err.message });
