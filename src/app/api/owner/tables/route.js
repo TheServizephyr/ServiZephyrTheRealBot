@@ -54,15 +54,16 @@ export async function GET(req) {
             .get();
             
         const activeTabs = tabsSnap.docs.map(doc => doc.data());
-        // ** THE FIX: Calculate pax count from ALL active tabs, not just one. **
+        
+        // Calculate current pax from ALL active tabs, not just one.
         const current_pax = activeTabs.reduce((sum, tab) => sum + (tab.pax_count || 0), 0);
 
         return NextResponse.json({ 
-            tableId: tableId, // Return the ID
+            tableId: tableId, 
             max_capacity: tableData.max_capacity,
             current_pax,
             activeTabs,
-            // ** THE FIX: Determine state based on the calculated pax count. **
+            // Determine state based on the calculated pax count.
             state: current_pax >= tableData.max_capacity ? 'full' : (current_pax > 0 ? 'occupied' : 'available')
         }, { status: 200 });
 
@@ -71,5 +72,3 @@ export async function GET(req) {
         return NextResponse.json({ message: 'Internal Server Error' }, { status: 500 });
     }
 }
-
-    

@@ -85,10 +85,12 @@ export async function GET(req) {
             if (tabId && table.tabs[tabId]) {
                 table.tabs[tabId].orders[orderDoc.id] = { id: orderDoc.id, ...orderData };
             } 
-            // If it's a pending order that isn't yet in a tab, and is NOT part of an existing active tab
+            // If it's a pending order that isn't yet in a tab
             else if (orderData.status === 'pending' && !tabId) {
-                 const isAlreadyInTab = Array.from(tableMap.values()).some(t => Object.values(t.tabs).some(tb => tb.orders?.[orderDoc.id]));
-                 if (!isAlreadyInTab) {
+                 const isAlreadyInAnActiveTab = Array.from(tableMap.values()).some(t => 
+                    Object.values(t.tabs).some(activeTab => activeTab.orders?.[orderDoc.id])
+                 );
+                 if (!isAlreadyInAnActiveTab) {
                     table.pendingOrders.push({ id: orderDoc.id, ...orderData });
                  }
             }
@@ -100,11 +102,12 @@ export async function GET(req) {
             const totalPaxInPending = table.pendingOrders.reduce((sum, order) => sum + (order.pax_count || 0), 0);
             const current_pax = totalPaxInTabs + totalPaxInPending;
             
-            table.current_pax = current_pax; // Overwrite database value with calculated value
+            // Overwrite database value with calculated value
+            table.current_pax = current_pax;
 
             // Update state based on live pax count, unless it needs cleaning
             if (table.state === 'needs_cleaning') {
-                // Keep the state
+                // Keep the state as is
             } else if (current_pax > 0) {
                 table.state = 'occupied';
             } else {
@@ -315,5 +318,3 @@ export async function DELETE(req) {
         return NextResponse.json({ message: `Backend Error: ${error.message}` }, { status: error.status || 500 });
     }
 }
-
-    
