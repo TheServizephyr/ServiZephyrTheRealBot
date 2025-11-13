@@ -48,7 +48,7 @@ const MenuItem = ({ item, onToggle, onDelete }) => (
   </motion.div>
 );
 
-const AddItemForm = ({ onAddItem, onCancel }) => {
+const AddItemForm = ({ vendorId, onAddItem, onCancel }) => {
     const [name, setName] = useState('');
     const [price, setPrice] = useState('');
     const [category, setCategory] = useState('Snacks');
@@ -59,13 +59,10 @@ const AddItemForm = ({ onAddItem, onCancel }) => {
         if(!name || !price || isSaving) return;
         setIsSaving(true);
         try {
-            await onAddItem({ name, price: parseFloat(price), category });
-            // Only cancel/close if save is successful
+            await onAddItem({ name, price: parseFloat(price), category }, vendorId);
             onCancel(); 
         } catch (error) {
-            // Error is now handled by the parent component's InfoDialog
-            // No need to alert here, but we re-throw to signal failure.
-            throw error;
+            // Error is handled by the parent
         } finally {
             setIsSaving(false);
         }
@@ -112,7 +109,6 @@ export default function StreetVendorMenuPage() {
     const [showAddItem, setShowAddItem] = useState(false);
     const [infoDialog, setInfoDialog] = useState({ isOpen: false, title: '', message: '' });
 
-    // --- START: REFACTORED DATA FETCHING ---
     const vendorDocRef = useMemo(() => {
         if (!user) return null;
         return doc(db, 'street_vendors', user.uid);
@@ -153,7 +149,6 @@ export default function StreetVendorMenuPage() {
 
         return () => unsubscribe();
     }, [user, isUserLoading, vendorData, isVendorLoading]);
-    // --- END: REFACTORED DATA FETCHING ---
 
     const handleToggleAvailability = async (itemId, newAvailability) => {
         if (!vendorData?.id) {
@@ -192,13 +187,13 @@ export default function StreetVendorMenuPage() {
         }
     };
     
-    const handleAddItem = async (newItem) => {
-        if (!vendorData?.id || !user) {
+    const handleAddItem = async (newItem, currentVendorId) => {
+        if (!currentVendorId || !user) {
              setInfoDialog({ isOpen: true, title: 'Error', message: 'Vendor or user information not available yet. Please try again.' });
              throw new Error('Vendor or user information not available.');
         }
         
-        const menuCollectionRef = collection(db, 'street_vendors', vendorData.id, 'menu');
+        const menuCollectionRef = collection(db, 'street_vendors', currentVendorId, 'menu');
         const newItemRef = doc(menuCollectionRef);
         const itemData = { 
             ...newItem, 
@@ -217,7 +212,7 @@ export default function StreetVendorMenuPage() {
                 requestResourceData: itemData
             }));
             setInfoDialog({ isOpen: true, title: 'Error', message: 'Could not save item: ' + err.message });
-            throw err; // Re-throw to signal failure to the form
+            throw err;
         }
     };
 
@@ -248,7 +243,7 @@ export default function StreetVendorMenuPage() {
 
         <main>
             <AnimatePresence>
-                {showAddItem && <AddItemForm onAddItem={handleAddItem} onCancel={() => setShowAddItem(false)} />}
+                {showAddItem && <AddItemForm vendorId={vendorData?.id} onAddItem={handleAddItem} onCancel={() => setShowAddItem(false)} />}
             </AnimatePresence>
             
             {(loading || isUserLoading || isVendorLoading) ? (
