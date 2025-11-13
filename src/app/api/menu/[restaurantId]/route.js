@@ -76,7 +76,7 @@ export async function GET(request, { params }) {
         }
         
         // Check restaurant status
-        if (restaurantData.approvalStatus !== 'approved' || !restaurantData.isOpen) {
+        if (restaurantData.approvalStatus === 'rejected' || restaurantData.approvalStatus === 'suspended' || restaurantData.isOpen === false) {
              console.warn(`[DEBUG] Menu API: Business '${restaurantData.name}' is not accepting orders. Status: ${restaurantData.approvalStatus}, isOpen: ${restaurantData.isOpen}`);
             return NextResponse.json({ 
                 message: 'This business is currently not accepting orders.',
@@ -179,6 +179,8 @@ export async function GET(request, { params }) {
             deliveryCodEnabled: restaurantData.deliveryCodEnabled === undefined ? true : restaurantData.deliveryCodEnabled,
             pickupOnlinePaymentEnabled: restaurantData.pickupOnlinePaymentEnabled === undefined ? true : restaurantData.pickupOnlinePaymentEnabled,
             pickupPodEnabled: restaurantData.pickupPodEnabled === undefined ? true : restaurantData.pickupPodEnabled,
+            dineInOnlinePaymentEnabled: restaurantData.dineInOnlinePaymentEnabled === undefined ? true : restaurantData.dineInOnlinePaymentEnabled,
+            dineInPayAtCounterEnabled: restaurantData.dineInPayAtCounterEnabled === undefined ? true : restaurantData.dineInPayAtCounterEnabled,
             businessAddress: businessAddress,
         }, { status: 200 });
 
