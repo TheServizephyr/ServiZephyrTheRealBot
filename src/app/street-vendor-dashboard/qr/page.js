@@ -49,7 +49,7 @@ export default function StreetVendorQrPage() {
             100% { background-position: 0% 50%; }
         }
         .animated-gradient {
-            background: linear-gradient(-45deg, #4f5bd5, #9B36B7, #cc2366, #bc1888);
+            background: linear-gradient(-45deg, hsl(var(--primary)), #ffffff, hsl(var(--primary)));
             background-size: 400% 400%;
             animation: gradient-animation 10s ease infinite;
         }
