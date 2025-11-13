@@ -9,7 +9,7 @@ import QRCode from 'qrcode.react';
 import { useReactToPrint } from 'react-to-print';
 import { useUser } from '@/firebase';
 import { db } from '@/lib/firebase';
-import { collection, query, where, getDocs, doc, updateDoc } from 'firebase/firestore';
+import { collection, query, where, getDocs, doc, updateDoc, getDoc } from 'firebase/firestore';
 import { nanoid } from 'nanoid';
 import { FirestorePermissionError } from '@/firebase/errors';
 import { errorEmitter } from '@/firebase/error-emitter';
@@ -51,21 +51,29 @@ export default function StreetVendorQrPage() {
 
     const fetchVendorData = async () => {
         try {
-            const vendorsRef = collection(db, 'street_vendors');
-            const q = query(vendorsRef, where("ownerId", "==", user.uid));
-            const querySnapshot = await getDocs(q);
+            // Step 1: Get the user's profile to find their businessId
+            const userDocRef = doc(db, 'users', user.uid);
+            const userDocSnap = await getDoc(userDocRef);
 
-            if (!querySnapshot.empty) {
-                const vendorDoc = querySnapshot.docs[0];
-                const vendorData = vendorDoc.data();
-                setVendorId(vendorDoc.id); // The document ID, e.g., "baaghi-chai"
-                // The QR ID should be the document ID itself for the pre-order link
-                setQrId(vendorDoc.id);
+            if (!userDocSnap.exists() || !userDocSnap.data().businessId) {
+                throw new Error("User profile is incomplete or business ID is missing.");
+            }
+            
+            const userBusinessId = userDocSnap.data().businessId;
+
+            // Step 2: Use the businessId to get the vendor document directly
+            const vendorDocRef = doc(db, 'street_vendors', userBusinessId);
+            const vendorSnap = await getDoc(vendorDocRef);
+
+            if (vendorSnap.exists()) {
+                setVendorId(vendorSnap.id); // The document ID, e.g., "baaghi-chai"
+                setQrId(vendorSnap.id);
             } else {
-                 console.log("No street vendor profile found for this user.");
+                 console.log("No street vendor profile found for this business ID.");
+                 throw new Error("Could not find your registered stall information.");
             }
         } catch(err) {
-            const contextualError = new FirestorePermissionError({ path: `street_vendors`, operation: 'list' });
+            const contextualError = new FirestorePermissionError({ path: `street_vendors/${user.uid}`, operation: 'get' });
             errorEmitter.emit('permission-error', contextualError);
             console.error("Error fetching vendor data:", err);
         } finally {
