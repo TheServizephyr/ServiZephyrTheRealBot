@@ -17,7 +17,7 @@ export async function POST(req) {
              return NextResponse.json({ message: 'User role and phone are missing in payload.' }, { status: 400 });
         }
         
-        const isBusinessOwner = finalUserData.role === 'restaurant-owner' || finalUserData.role === 'shop-owner';
+        const isBusinessOwner = finalUserData.role === 'restaurant-owner' || finalUserData.role === 'shop-owner' || finalUserData.role === 'street-vendor';
 
         if (isBusinessOwner && !businessData) {
             return NextResponse.json({ message: 'Business data is required for owners.' }, { status: 400 });
@@ -143,7 +143,11 @@ export async function POST(req) {
             console.log(`[PROFILE COMPLETION] Rider Action: New rider profile for UID ${uid} added to 'drivers' collection.`);
         } 
         else if (isBusinessOwner && businessData) {
-             const collectionName = businessType === 'restaurant' ? 'restaurants' : 'shops';
+             let collectionName;
+             if (businessType === 'restaurant') collectionName = 'restaurants';
+             else if (businessType === 'shop') collectionName = 'shops';
+             else if (businessType === 'street-vendor') collectionName = 'street_vendors';
+
              const businessId = businessData.name.replace(/\s+/g, '-').toLowerCase();
              const businessRef = firestore.collection(collectionName).doc(businessId);
              

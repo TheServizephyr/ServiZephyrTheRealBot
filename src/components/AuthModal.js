@@ -95,7 +95,6 @@ export default function AuthModal({ isOpen, onClose }) {
   
       setTimeout(() => {
         closeModal();
-        // --- START THE FIX ---
         if (role === "owner" || role === "restaurant-owner" || role === "shop-owner") {
           console.log("[DEBUG] AuthModal: Redirecting to /owner-dashboard.");
           router.push("/owner-dashboard");
@@ -105,11 +104,13 @@ export default function AuthModal({ isOpen, onClose }) {
         } else if (role === "rider") {
           console.log("[DEBUG] AuthModal: Redirecting to /rider-dashboard.");
           router.push("/rider-dashboard");
+        } else if (role === "street-vendor") {
+          console.log("[DEBUG] AuthModal: Redirecting to /street-vendor-dashboard.");
+          router.push("/street-vendor-dashboard");
         } else {
           console.log("[DEBUG] AuthModal: Redirecting to /customer-dashboard.");
           router.push("/customer-dashboard");
         }
-        // --- END THE FIX ---
       }, 1500);
   
     } catch (err) {

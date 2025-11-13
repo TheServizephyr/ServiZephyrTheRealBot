@@ -1,4 +1,5 @@
 
+
 import { NextResponse } from 'next/server';
 import { getAuth, getFirestore, verifyAndGetUid } from '@/lib/firebase-admin';
 
@@ -9,7 +10,7 @@ export async function POST(req) {
         const firestore = await getFirestore();
         console.log(`[DEBUG] /api/auth/check-role: Token verified for UID: ${uid}`);
 
-        // 1. Check the 'users' collection first (for customers, owners, admins)
+        // 1. Check the 'users' collection first (for customers, owners, admins, street vendors)
         const userRef = firestore.collection('users').doc(uid);
         const userDoc = await userRef.get();
         console.log(`[DEBUG] /api/auth/check-role: Firestore 'users' document fetched. Exists: ${userDoc.exists}`);

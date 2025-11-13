@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
-import { User, Store, Shield, ShoppingCart, Phone, Key, ArrowRight, MapPin, HelpCircle, Bike } from 'lucide-react';
+import { User, Store, Shield, ShoppingCart, Phone, Key, ArrowRight, MapPin, HelpCircle, Bike, Map } from 'lucide-react';
 import { auth, db } from '@/lib/firebase';
 import { doc, getDoc } from 'firebase/firestore';
 
@@ -53,6 +53,8 @@ export default function CompleteProfile() {
               router.push('/admin-dashboard');
             } else if (role === 'rider') {
                 router.push('/rider-dashboard');
+            } else if (role === 'street-vendor') { // New Role Check
+                router.push('/street-vendor-dashboard');
             } else {
               router.push('/customer-dashboard');
             }
@@ -121,8 +123,11 @@ export default function CompleteProfile() {
           throw new Error("User not authenticated. Please login again.");
         }
         
-        const isBusinessOwner = role === 'restaurant-owner' || role === 'shop-owner';
-        const businessType = isBusinessOwner ? (role === 'restaurant-owner' ? 'restaurant' : 'shop') : null;
+        const isBusinessOwner = role === 'restaurant-owner' || role === 'shop-owner' || role === 'street-vendor';
+        let businessType = null;
+        if (role === 'restaurant-owner') businessType = 'restaurant';
+        else if (role === 'shop-owner') businessType = 'shop';
+        else if (role === 'street-vendor') businessType = 'street-vendor';
 
         const finalUserData = {
             uid: user.uid,
@@ -179,11 +184,16 @@ export default function CompleteProfile() {
         localStorage.setItem('role', role);
         if (isBusinessOwner) {
           localStorage.setItem('businessType', businessType);
+        }
+
+        if (role === 'restaurant-owner' || role === 'shop-owner') {
           router.push('/owner-dashboard');
         } else if (role === 'admin') {
           router.push('/admin-dashboard');
         } else if (role === 'rider') {
-            router.push('/rider-dashboard');
+          router.push('/rider-dashboard');
+        } else if (role === 'street-vendor') {
+          router.push('/street-vendor-dashboard');
         } else {
           router.push('/customer-dashboard');
         }
@@ -196,8 +206,12 @@ export default function CompleteProfile() {
   };
 
   const renderRoleFields = () => {
-    const isBusinessOwner = role === 'restaurant-owner' || role === 'shop-owner';
-    const businessLabel = role === 'restaurant-owner' ? 'Restaurant Name' : 'Shop Name';
+    const isBusinessOwner = role === 'restaurant-owner' || role === 'shop-owner' || role === 'street-vendor';
+    let businessLabel = 'Business Name';
+    if (role === 'restaurant-owner') businessLabel = 'Restaurant Name';
+    else if (role === 'shop-owner') businessLabel = 'Shop Name';
+    else if (role === 'street-vendor') businessLabel = 'Stall / Thela Name';
+
 
     if (isBusinessOwner) {
        return (
@@ -283,7 +297,7 @@ export default function CompleteProfile() {
   return (
     <div className="min-h-screen flex items-center justify-center bg-background p-4">
       <motion.div
-        className="w-full max-w-lg p-8 space-y-6 bg-card rounded-xl shadow-2xl shadow-primary/10 border border-border"
+        className="w-full max-w-2xl p-8 space-y-6 bg-card rounded-xl shadow-2xl shadow-primary/10 border border-border"
         variants={cardVariants}
         initial="hidden"
         animate="visible"
@@ -296,11 +310,12 @@ export default function CompleteProfile() {
         <form onSubmit={handleSubmit} className="space-y-6">
           <div>
             <label className="block text-sm font-medium text-muted-foreground mb-2">I am a...</label>
-            <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
               {[
                 {id: 'customer', label: 'Customer', icon: User},
                 {id: 'restaurant-owner', label: 'Restaurant Owner', icon: Store},
                 {id: 'shop-owner', label: 'Shop Owner', icon: ShoppingCart},
+                {id: 'street-vendor', label: 'Street Vendor', icon: Map},
                 {id: 'rider', label: 'Rider', icon: Bike},
                 {id: 'admin', label: 'Admin', icon: Shield}
               ].map((r) => (
