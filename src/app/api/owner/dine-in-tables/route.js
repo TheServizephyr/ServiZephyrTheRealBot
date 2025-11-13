@@ -64,7 +64,7 @@ export async function GET(req) {
             }
         });
 
-        // 4. Fetch all relevant orders
+        // 4. Fetch all relevant orders that are not finished or rejected
         const ordersQuery = firestore.collection('orders')
             .where('restaurantId', '==', businessRef.id)
             .where('deliveryType', '==', 'dine-in')
@@ -85,9 +85,12 @@ export async function GET(req) {
             if (tabId && table.tabs[tabId]) {
                 table.tabs[tabId].orders[orderDoc.id] = { id: orderDoc.id, ...orderData };
             } 
-            // If it's a pending order (e.g., from WhatsApp) that isn't yet in a tab
+            // If it's a pending order that isn't yet in a tab, and is NOT part of an existing active tab
             else if (orderData.status === 'pending' && !tabId) {
-                 table.pendingOrders.push({ id: orderDoc.id, ...orderData });
+                 const isAlreadyInTab = Array.from(tableMap.values()).some(t => Object.values(t.tabs).some(tb => tb.orders?.[orderDoc.id]));
+                 if (!isAlreadyInTab) {
+                    table.pendingOrders.push({ id: orderDoc.id, ...orderData });
+                 }
             }
         });
         
@@ -312,6 +315,5 @@ export async function DELETE(req) {
         return NextResponse.json({ message: `Backend Error: ${error.message}` }, { status: error.status || 500 });
     }
 }
-
 
     
