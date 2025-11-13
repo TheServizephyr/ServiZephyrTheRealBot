@@ -46,7 +46,6 @@ export async function GET(req) {
             tableMap.set(doc.id, { 
                 id: doc.id, 
                 ...doc.data(),
-                current_pax: 0, // CRITICAL FIX: Reset pax count to 0 initially
                 tabs: {},
                 pendingOrders: [] 
             });
@@ -54,8 +53,10 @@ export async function GET(req) {
 
         const activeTabsSnap = await businessRef.collection('dineInTabs').where('status', '==', 'active').get();
         
+        const activeTabIds = new Set();
         activeTabsSnap.forEach(tabDoc => {
             const tabData = tabDoc.data();
+            activeTabIds.add(tabData.id);
             if (tableMap.has(tabData.tableId)) {
                 const table = tableMap.get(tabData.tableId);
                 table.tabs[tabData.id] = { ...tabData, orders: {} };
@@ -65,7 +66,7 @@ export async function GET(req) {
         const ordersQuery = firestore.collection('orders')
             .where('restaurantId', '==', businessRef.id)
             .where('deliveryType', '==', 'dine-in')
-            .where('status', 'not-in', ['delivered', 'rejected']);
+            .where('status', 'not-in', ['delivered', 'rejected', 'picked_up']);
             
         const ordersSnap = await ordersQuery.get();
 
@@ -77,14 +78,16 @@ export async function GET(req) {
             const table = tableMap.get(tableId);
             if (!table) return;
 
-            if (orderData.status === 'pending') {
+            // This is the main fix: if an order has a tabId that is already in our active tabs, it's NOT a pending order.
+            const isAlreadyInActiveTab = tabId && activeTabIds.has(tabId);
+
+            if (orderData.status === 'pending' && !isAlreadyInActiveTab) {
                  table.pendingOrders.push({ id: orderDoc.id, ...orderData });
             } else if (tabId && table.tabs[tabId]) {
                 table.tabs[tabId].orders[orderDoc.id] = { id: orderDoc.id, ...orderData };
             }
         });
         
-        // CRITICAL FIX: Recalculate current_pax and state for every table
         tableMap.forEach(table => {
             const totalPaxInTabs = Object.values(table.tabs).reduce((sum, tab) => sum + (tab.pax_count || 0), 0);
             const totalPaxInPending = table.pendingOrders.reduce((sum, order) => sum + (order.pax_count || 0), 0);
@@ -92,7 +95,7 @@ export async function GET(req) {
             table.current_pax = current_pax;
 
             if (table.state === 'needs_cleaning') {
-                // Keep the state as 'needs_cleaning' regardless of occupancy until manually cleared
+                // Keep the state
             } else if (current_pax > 0) {
                 table.state = 'occupied';
             } else {
@@ -302,5 +305,3 @@ export async function DELETE(req) {
         return NextResponse.json({ message: `Backend Error: ${error.message}` }, { status: error.status || 500 });
     }
 }
-
-    
