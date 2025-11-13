@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button';
 import Link from 'next/link';
 import { useUser } from '@/firebase';
 import { db } from '@/lib/firebase';
-import { collection, query, where, getDoc, onSnapshot, doc, updateDoc, deleteDoc, setDoc } from 'firebase/firestore';
+import { collection, query, where, getDoc, onSnapshot, doc, updateDoc, deleteDoc, setDoc, getDocs } from 'firebase/firestore';
 import { FirestorePermissionError } from '@/firebase/errors';
 import { errorEmitter } from '@/firebase/error-emitter';
 import InfoDialog from '@/components/InfoDialog';
@@ -48,7 +48,7 @@ const MenuItem = ({ item, onToggle, onDelete }) => (
   </motion.div>
 );
 
-const AddItemForm = ({ onAddItem, onCancel, showInfoDialog }) => {
+const AddItemForm = ({ onAddItem, onCancel }) => {
     const [name, setName] = useState('');
     const [price, setPrice] = useState('');
     const [category, setCategory] = useState('Snacks');
@@ -122,20 +122,22 @@ export default function StreetVendorMenuPage() {
 
         const fetchVendorData = async () => {
             try {
-                const userDocRef = doc(db, 'users', user.uid);
-                const userDocSnap = await getDoc(userDocRef);
+                const vendorsRef = collection(db, 'street_vendors');
+                const q = query(vendorsRef, where("ownerId", "==", user.uid));
+                
+                const querySnapshot = await getDocs(q);
 
-                if (userDocSnap.exists() && userDocSnap.data().businessId) {
-                    const userBusinessId = userDocSnap.data().businessId;
-                    setVendorId(userBusinessId);
-                } else {
-                    console.log("No street vendor profile found for this user.");
-                    setLoading(false);
+                if (querySnapshot.empty) {
+                    throw new Error("No street vendor profile found for this user.");
                 }
+                
+                const vendorDoc = querySnapshot.docs[0];
+                setVendorId(vendorDoc.id);
             } catch (err) {
-                const contextualError = new FirestorePermissionError({ path: `users/${user.uid}`, operation: 'get' });
-                errorEmitter.emit('permission-error', contextualError);
+                 const contextualError = new FirestorePermissionError({ path: `street_vendors`, operation: 'list' });
+                 errorEmitter.emit('permission-error', contextualError);
                 console.error("Error fetching vendor data:", err);
+                setInfoDialog({ isOpen: true, title: 'Error', message: 'Could not load your vendor profile. ' + err.message });
                 setLoading(false);
             }
         };
@@ -143,7 +145,10 @@ export default function StreetVendorMenuPage() {
     }, [user, isUserLoading]);
 
     useEffect(() => {
-        if (!vendorId) return;
+        if (!vendorId) {
+            if (!isUserLoading && user) setLoading(false); // Stop loading if we know there's no vendorId
+            return;
+        }
 
         const menuCollectionRef = collection(db, 'street_vendors', vendorId, 'menu');
         const q = query(menuCollectionRef);
@@ -159,11 +164,12 @@ export default function StreetVendorMenuPage() {
             const contextualError = new FirestorePermissionError({ path: menuCollectionRef.path, operation: 'list' });
             errorEmitter.emit('permission-error', contextualError);
             console.error("Firestore Error:", err);
+            setInfoDialog({ isOpen: true, title: 'Error', message: 'Could not load menu items. ' + err.message });
             setLoading(false);
         });
 
         return () => unsubscribe();
-    }, [vendorId]);
+    }, [vendorId, user, isUserLoading]);
 
     const handleToggleAvailability = async (itemId, newAvailability) => {
         if (!vendorId) {
@@ -258,7 +264,7 @@ export default function StreetVendorMenuPage() {
 
         <main>
             <AnimatePresence>
-                {showAddItem && <AddItemForm onAddItem={handleAddItem} onCancel={() => setShowAddItem(false)} showInfoDialog={setInfoDialog} />}
+                {showAddItem && <AddItemForm onAddItem={handleAddItem} onCancel={() => setShowAddItem(false)} />}
             </AnimatePresence>
             
             {loading ? (
