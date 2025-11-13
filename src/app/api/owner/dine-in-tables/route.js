@@ -68,7 +68,7 @@ export async function GET(req) {
         const ordersQuery = firestore.collection('orders')
             .where('restaurantId', '==', businessRef.id)
             .where('deliveryType', '==', 'dine-in')
-            .where('status', 'not-in', ['delivered', 'picked_up', 'rejected']); // Simplified query
+            .where('status', 'not-in', ['delivered', 'picked_up', 'rejected']);
             
         const ordersSnap = await ordersQuery.get();
         
@@ -313,3 +313,5 @@ export async function DELETE(req) {
     }
 }
 
+
+    
