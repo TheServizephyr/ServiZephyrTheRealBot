@@ -1,13 +1,13 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ArrowLeft, PlusCircle, Trash2, IndianRupee, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import Link from 'next/link';
-import { useUser } from '@/firebase';
+import { useUser, useDoc } from '@/firebase';
 import { db } from '@/lib/firebase';
-import { collection, query, where, getDoc, onSnapshot, doc, updateDoc, deleteDoc, setDoc, getDocs } from 'firebase/firestore';
+import { collection, query, onSnapshot, doc, updateDoc, deleteDoc, setDoc, getDocs } from 'firebase/firestore';
 import { FirestorePermissionError } from '@/firebase/errors';
 import { errorEmitter } from '@/firebase/error-emitter';
 import InfoDialog from '@/components/InfoDialog';
@@ -107,49 +107,33 @@ const AddItemForm = ({ onAddItem, onCancel }) => {
 
 export default function StreetVendorMenuPage() {
     const { user, isUserLoading } = useUser();
-    const [vendorId, setVendorId] = useState(null);
     const [menuItems, setMenuItems] = useState([]);
     const [loading, setLoading] = useState(true);
     const [showAddItem, setShowAddItem] = useState(false);
     const [infoDialog, setInfoDialog] = useState({ isOpen: false, title: '', message: '' });
 
+    // --- START: REFACTORED DATA FETCHING ---
+    const vendorDocRef = useMemo(() => {
+        if (!user) return null;
+        return doc(db, 'street_vendors', user.uid);
+    }, [user]);
+
+    const { data: vendorData, isLoading: isVendorLoading, error: vendorError } = useDoc(vendorDocRef);
+
     useEffect(() => {
-        if (isUserLoading) return;
-        if (!user) {
+        if (vendorError) {
+            setInfoDialog({ isOpen: true, title: 'Error', message: 'Could not load your vendor profile. ' + vendorError.message });
+        }
+    }, [vendorError]);
+    
+    useEffect(() => {
+        if (isUserLoading || isVendorLoading) return;
+        if (!user || !vendorData) {
             setLoading(false);
             return;
         }
 
-        const fetchVendorData = async () => {
-            try {
-                // --- START FIX: Use getDoc directly instead of a query ---
-                const vendorRef = doc(db, 'street_vendors', user.uid);
-                const vendorSnap = await getDoc(vendorRef);
-
-                if (vendorSnap.exists()) {
-                    setVendorId(vendorSnap.id);
-                } else {
-                     throw new Error("No street vendor profile found for this user.");
-                }
-                // --- END FIX ---
-            } catch (err) {
-                 const contextualError = new FirestorePermissionError({ path: `street_vendors/${user.uid}`, operation: 'get' });
-                 errorEmitter.emit('permission-error', contextualError);
-                console.error("Error fetching vendor data:", err);
-                setInfoDialog({ isOpen: true, title: 'Error', message: 'Could not load your vendor profile. ' + err.message });
-                setLoading(false);
-            }
-        };
-        fetchVendorData();
-    }, [user, isUserLoading]);
-
-    useEffect(() => {
-        if (!vendorId) {
-            if (!isUserLoading && user) setLoading(false); // Stop loading if we know there's no vendorId
-            return;
-        }
-
-        const menuCollectionRef = collection(db, 'street_vendors', vendorId, 'menu');
+        const menuCollectionRef = collection(db, 'street_vendors', vendorData.id, 'menu');
         const q = query(menuCollectionRef);
 
         const unsubscribe = onSnapshot(q, (querySnapshot) => {
@@ -168,14 +152,15 @@ export default function StreetVendorMenuPage() {
         });
 
         return () => unsubscribe();
-    }, [vendorId, user, isUserLoading]);
+    }, [user, isUserLoading, vendorData, isVendorLoading]);
+    // --- END: REFACTORED DATA FETCHING ---
 
     const handleToggleAvailability = async (itemId, newAvailability) => {
-        if (!vendorId) {
+        if (!vendorData?.id) {
              setInfoDialog({ isOpen: true, title: 'Error', message: 'Vendor ID not loaded yet. Please wait a moment.' });
              return;
         }
-        const itemRef = doc(db, 'street_vendors', vendorId, 'menu', itemId);
+        const itemRef = doc(db, 'street_vendors', vendorData.id, 'menu', itemId);
         const updateData = { available: newAvailability };
         try {
             await updateDoc(itemRef, updateData)
@@ -190,12 +175,12 @@ export default function StreetVendorMenuPage() {
     };
 
     const handleDeleteItem = async (itemId) => {
-        if (!vendorId) {
+        if (!vendorData?.id) {
              setInfoDialog({ isOpen: true, title: 'Error', message: 'Vendor ID not loaded yet. Please wait a moment.' });
              return;
         }
         if (!window.confirm("Are you sure you want to delete this item?")) return;
-        const itemRef = doc(db, 'street_vendors', vendorId, 'menu', itemId);
+        const itemRef = doc(db, 'street_vendors', vendorData.id, 'menu', itemId);
         try {
             await deleteDoc(itemRef);
         } catch(error) {
@@ -208,12 +193,12 @@ export default function StreetVendorMenuPage() {
     };
     
     const handleAddItem = async (newItem) => {
-        if (!vendorId || !user) {
+        if (!vendorData?.id || !user) {
              setInfoDialog({ isOpen: true, title: 'Error', message: 'Vendor or user information not available yet. Please try again.' });
              throw new Error('Vendor or user information not available.');
         }
         
-        const menuCollectionRef = collection(db, 'street_vendors', vendorId, 'menu');
+        const menuCollectionRef = collection(db, 'street_vendors', vendorData.id, 'menu');
         const newItemRef = doc(menuCollectionRef);
         const itemData = { 
             ...newItem, 
@@ -266,7 +251,7 @@ export default function StreetVendorMenuPage() {
                 {showAddItem && <AddItemForm onAddItem={handleAddItem} onCancel={() => setShowAddItem(false)} />}
             </AnimatePresence>
             
-            {loading ? (
+            {(loading || isUserLoading || isVendorLoading) ? (
                  <div className="text-center py-20 text-slate-500">
                     <Loader2 className="mx-auto animate-spin" size={48} />
                     <p className="mt-4">Loading your menu...</p>
