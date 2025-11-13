@@ -1,5 +1,4 @@
 
-
 import { NextResponse } from 'next/server';
 import { getFirestore, verifyAndGetUid } from '@/lib/firebase-admin';
 
@@ -55,6 +54,7 @@ export async function GET(req) {
             .get();
             
         const activeTabs = tabsSnap.docs.map(doc => doc.data());
+        // ** THE FIX: Calculate pax count from ALL active tabs, not just one. **
         const current_pax = activeTabs.reduce((sum, tab) => sum + (tab.pax_count || 0), 0);
 
         return NextResponse.json({ 
@@ -62,7 +62,8 @@ export async function GET(req) {
             max_capacity: tableData.max_capacity,
             current_pax,
             activeTabs,
-            state: current_pax > 0 ? 'occupied' : 'available'
+            // ** THE FIX: Determine state based on the calculated pax count. **
+            state: current_pax >= tableData.max_capacity ? 'full' : (current_pax > 0 ? 'occupied' : 'available')
         }, { status: 200 });
 
     } catch (error) {
@@ -70,10 +71,3 @@ export async function GET(req) {
         return NextResponse.json({ message: 'Internal Server Error' }, { status: 500 });
     }
 }
-
-    
-
-
-
-
-    

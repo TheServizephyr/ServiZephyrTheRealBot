@@ -39,61 +39,67 @@ export async function GET(req) {
         const businessRef = await getBusinessRef(req);
         if (!businessRef) throw { message: 'Business reference not found.', status: 404 };
 
+        // 1. Fetch ALL tables from the `/tables` subcollection. This is our source of truth.
         const tablesSnap = await businessRef.collection('tables').orderBy('createdAt', 'asc').get();
         const tableMap = new Map();
         
-        tablesSnap.docs.forEach(doc => {
+        tablesSnap.forEach(doc => {
             tableMap.set(doc.id, { 
                 id: doc.id, 
                 ...doc.data(),
-                tabs: {},
-                pendingOrders: [] 
+                tabs: {}, // Initialize as empty object
+                pendingOrders: [] // Initialize as empty array
             });
         });
 
+        // 2. Fetch all active tabs
         const activeTabsSnap = await businessRef.collection('dineInTabs').where('status', '==', 'active').get();
         
-        const activeTabIds = new Set();
+        // 3. Group active tabs by their tableId
         activeTabsSnap.forEach(tabDoc => {
             const tabData = tabDoc.data();
-            activeTabIds.add(tabData.id);
             if (tableMap.has(tabData.tableId)) {
                 const table = tableMap.get(tabData.tableId);
                 table.tabs[tabData.id] = { ...tabData, orders: {} };
             }
         });
 
+        // 4. Fetch all relevant orders
         const ordersQuery = firestore.collection('orders')
             .where('restaurantId', '==', businessRef.id)
             .where('deliveryType', '==', 'dine-in')
-            .where('status', 'not-in', ['delivered', 'rejected', 'picked_up']);
+            .where('status', 'not-in', ['delivered', 'picked_up', 'rejected']); // Simplified query
             
         const ordersSnap = await ordersQuery.get();
-
+        
+        // 5. Assign orders to the correct tab or as a pending order on the correct table
         ordersSnap.forEach(orderDoc => {
             const orderData = orderDoc.data();
             const tableId = orderData.tableId;
             const tabId = orderData.dineInTabId;
             
             const table = tableMap.get(tableId);
-            if (!table) return;
+            if (!table) return; // Skip if order is for a table that doesn't exist anymore
 
-            // This is the main fix: if an order has a tabId that is already in our active tabs, it's NOT a pending order.
-            const isAlreadyInActiveTab = tabId && activeTabIds.has(tabId);
-
-            if (orderData.status === 'pending' && !isAlreadyInActiveTab) {
-                 table.pendingOrders.push({ id: orderDoc.id, ...orderData });
-            } else if (tabId && table.tabs[tabId]) {
+            // If it belongs to an active tab, place it inside that tab
+            if (tabId && table.tabs[tabId]) {
                 table.tabs[tabId].orders[orderDoc.id] = { id: orderDoc.id, ...orderData };
+            } 
+            // If it's a pending order (e.g., from WhatsApp) that isn't yet in a tab
+            else if (orderData.status === 'pending' && !tabId) {
+                 table.pendingOrders.push({ id: orderDoc.id, ...orderData });
             }
         });
         
+        // 6. Recalculate current_pax and state for EVERY table based on live data
         tableMap.forEach(table => {
             const totalPaxInTabs = Object.values(table.tabs).reduce((sum, tab) => sum + (tab.pax_count || 0), 0);
             const totalPaxInPending = table.pendingOrders.reduce((sum, order) => sum + (order.pax_count || 0), 0);
             const current_pax = totalPaxInTabs + totalPaxInPending;
-            table.current_pax = current_pax;
+            
+            table.current_pax = current_pax; // Overwrite database value with calculated value
 
+            // Update state based on live pax count, unless it needs cleaning
             if (table.state === 'needs_cleaning') {
                 // Keep the state
             } else if (current_pax > 0) {
@@ -105,6 +111,7 @@ export async function GET(req) {
 
         const finalTablesData = Array.from(tableMap.values());
 
+        // Fetch other data as before
         const serviceRequestsSnap = await businessRef.collection('serviceRequests').where('status', '==', 'pending').orderBy('createdAt', 'desc').get();
         const serviceRequests = serviceRequestsSnap.docs.map(doc => ({ ...doc.data(), createdAt: doc.data().createdAt?.toDate ? doc.data().createdAt.toDate().toISOString() : new Date().toISOString() }));
 
@@ -305,3 +312,4 @@ export async function DELETE(req) {
         return NextResponse.json({ message: `Backend Error: ${error.message}` }, { status: error.status || 500 });
     }
 }
+
