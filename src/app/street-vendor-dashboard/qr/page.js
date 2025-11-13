@@ -9,7 +9,7 @@ import QRCode from 'qrcode.react';
 import { useReactToPrint } from 'react-to-print';
 import { useUser } from '@/firebase';
 import { db } from '@/lib/firebase';
-import { doc, getDoc } from 'firebase/firestore';
+import { collection, query, where, getDocs } from 'firebase/firestore';
 import { FirestorePermissionError } from '@/firebase/errors';
 import { errorEmitter } from '@/firebase/error-emitter';
 
@@ -17,7 +17,6 @@ import { errorEmitter } from '@/firebase/error-emitter';
 export default function StreetVendorQrPage() {
   const { user, isUserLoading } = useUser();
   const [vendorId, setVendorId] = useState(null);
-  const [qrId, setQrId] = useState(null);
   const [loading, setLoading] = useState(true);
   const printRef = useRef();
 
@@ -50,29 +49,22 @@ export default function StreetVendorQrPage() {
 
     const fetchVendorData = async () => {
         try {
-            // Step 1: Get the user's profile to find their businessId
-            const userDocRef = doc(db, 'users', user.uid);
-            const userDocSnap = await getDoc(userDocRef);
+            // Directly query the street_vendors collection for the document owned by the current user.
+            const vendorsRef = collection(db, 'street_vendors');
+            const q = query(vendorsRef, where("ownerId", "==", user.uid));
+            
+            const querySnapshot = await getDocs(q);
 
-            if (!userDocSnap.exists() || !userDocSnap.data().businessId) {
-                throw new Error("User profile is incomplete or business ID is missing.");
+            if (querySnapshot.empty) {
+                throw new Error("No street vendor profile found for this user.");
             }
             
-            const userBusinessId = userDocSnap.data().businessId;
+            // Get the first document found.
+            const vendorDoc = querySnapshot.docs[0];
+            setVendorId(vendorDoc.id);
 
-            // Step 2: Use the businessId to get the vendor document directly
-            const vendorDocRef = doc(db, 'street_vendors', userBusinessId);
-            const vendorSnap = await getDoc(vendorDocRef);
-
-            if (vendorSnap.exists()) {
-                setVendorId(vendorSnap.id); // This will be the businessId, e.g., "baaghi-chai"
-                setQrId(vendorSnap.id);
-            } else {
-                 console.log("No street vendor profile found for this business ID.");
-                 throw new Error("Could not find your registered stall information.");
-            }
         } catch(err) {
-            const contextualError = new FirestorePermissionError({ path: `users/${user.uid}`, operation: 'get' });
+            const contextualError = new FirestorePermissionError({ path: `street_vendors`, operation: 'list' });
             errorEmitter.emit('permission-error', contextualError);
             console.error("Error fetching vendor data:", err);
         } finally {
@@ -84,13 +76,10 @@ export default function StreetVendorQrPage() {
   
   const handleGenerateNew = async () => {
       if (!vendorId) return;
-      // This function might not be needed if the QR ID is always the vendor ID.
-      // If it's for link invalidation, this logic needs to be revisited.
-      // For now, we assume the QR ID is stable.
       alert("This feature is for future use.");
   }
 
-  const qrValue = qrId ? `${window.location.origin}/pre-order/${qrId}` : '';
+  const qrValue = vendorId ? `${window.location.origin}/pre-order/${vendorId}` : '';
 
   return (
     <>
@@ -114,13 +103,13 @@ export default function StreetVendorQrPage() {
                 </Button>
             </Link>
             <h1 className="text-2xl font-bold font-headline">My QR Code</h1>
-            <div className="w-12"></div> {/* Spacer */}
+            <div className="w-12"> {/* Spacer */}</div>
         </header>
 
         <main className="flex-grow flex flex-col items-center justify-center text-center">
             {loading ? (
                  <Loader2 className="mx-auto animate-spin" size={48} />
-            ) : qrId ? (
+            ) : vendorId ? (
                 <>
                 <motion.div
                     initial={{ scale: 0.8, opacity: 0 }}
