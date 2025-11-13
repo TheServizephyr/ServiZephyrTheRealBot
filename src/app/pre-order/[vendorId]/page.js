@@ -1,22 +1,23 @@
 'use client';
 
 import { useState, useEffect, useMemo } from 'react';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import { ShoppingCart, Plus, Minus, X, IndianRupee, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { db } from '@/lib/firebase';
-import { doc, getDoc, collection, getDocs, query } from 'firebase/firestore';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 
 const MenuItem = ({ item, addToCart }) => (
     <div className="flex justify-between items-center p-4 bg-slate-800 rounded-lg">
         <div>
             <p className="font-bold text-white">{item.name}</p>
-            <p className="text-slate-400">₹{item.price}</p>
+            {item.portions.map(p => (
+                 <p key={p.name} className="text-slate-400">₹{p.price}</p>
+            ))}
         </div>
-        <Button onClick={() => addToCart(item)} size="sm" className="bg-primary hover:bg-primary/80 text-primary-foreground">Add</Button>
+        <Button onClick={() => addToCart(item, item.portions[0])} size="sm" className="bg-primary hover:bg-primary/80 text-primary-foreground">Add</Button>
     </div>
 );
+
 
 const CartSheet = ({ cart, updateQuantity, onCheckout, grandTotal, onClose }) => (
     <motion.div
@@ -32,17 +33,17 @@ const CartSheet = ({ cart, updateQuantity, onCheckout, grandTotal, onClose }) =>
         </div>
         <div className="flex-grow overflow-y-auto space-y-3">
             {cart.map(item => (
-                <div key={item.id} className="flex items-center justify-between bg-slate-700 p-3 rounded-md">
+                <div key={item.cartItemId} className="flex items-center justify-between bg-slate-700 p-3 rounded-md">
                     <div>
-                        <p className="font-semibold">{item.name}</p>
-                        <p className="text-sm text-slate-400">₹{item.price}</p>
+                        <p className="font-semibold">{item.name} <span className="text-xs text-slate-400">({item.portion.name})</span></p>
+                        <p className="text-sm text-slate-400">₹{item.portion.price}</p>
                     </div>
                     <div className="flex items-center gap-2">
-                        <Button size="icon" variant="ghost" className="w-8 h-8" onClick={() => updateQuantity(item.id, -1)}>-</Button>
+                        <Button size="icon" variant="ghost" className="w-8 h-8" onClick={() => updateQuantity(item.cartItemId, -1)}>-</Button>
                         <span className="font-bold text-lg w-6 text-center">{item.quantity}</span>
-                        <Button size="icon" variant="ghost" className="w-8 h-8" onClick={() => updateQuantity(item.id, 1)}>+</Button>
+                        <Button size="icon" variant="ghost" className="w-8 h-8" onClick={() => updateQuantity(item.cartItemId, 1)}>+</Button>
                     </div>
-                    <p className="font-bold w-16 text-right">₹{item.price * item.quantity}</p>
+                    <p className="font-bold w-16 text-right">₹{item.portion.price * item.quantity}</p>
                 </div>
             ))}
         </div>
@@ -111,20 +112,17 @@ export default function PreOrderPage({ params }) {
             }
 
             try {
-                const vendorRef = doc(db, 'street_vendors', vendorId);
-                const vendorSnap = await getDoc(vendorRef);
-
-                if (!vendorSnap.exists()) {
-                    throw new Error("This vendor does not exist.");
+                // Use the public API endpoint instead of direct Firestore access
+                const res = await fetch(`/api/menu/${vendorId}`);
+                if (!res.ok) {
+                    const errorData = await res.json();
+                    throw new Error(errorData.message || "Could not load menu for this vendor.");
                 }
-                setVendor({ id: vendorSnap.id, ...vendorSnap.data() });
+                const data = await res.json();
+                
+                setVendor({ name: data.restaurantName, address: data.businessAddress?.full || '' });
 
-                const menuQuery = query(collection(db, 'street_vendors', vendorId, 'menu'), where('available', '==', true));
-                const menuSnap = await getDocs(menuQuery);
-                const menuItems = [];
-                menuSnap.forEach(doc => {
-                    menuItems.push({ id: doc.id, ...doc.data() });
-                });
+                const menuItems = Object.values(data.menu).flat();
                 setMenu(menuItems);
 
             } catch (err) {
@@ -137,29 +135,30 @@ export default function PreOrderPage({ params }) {
         fetchVendorAndMenu();
     }, [vendorId]);
 
-    const addToCart = (item) => {
+    const addToCart = (item, portion) => {
+        const cartItemId = `${item.id}-${portion.name}`;
         setCart(prevCart => {
-            const existingItem = prevCart.find(cartItem => cartItem.id === item.id);
+            const existingItem = prevCart.find(cartItem => cartItem.cartItemId === cartItemId);
             if (existingItem) {
                 return prevCart.map(cartItem =>
-                    cartItem.id === item.id ? { ...cartItem, quantity: cartItem.quantity + 1 } : cartItem
+                    cartItem.cartItemId === cartItemId ? { ...cartItem, quantity: cartItem.quantity + 1 } : cartItem
                 );
             } else {
-                return [...prevCart, { ...item, quantity: 1 }];
+                return [...prevCart, { ...item, quantity: 1, portion, cartItemId }];
             }
         });
     };
 
-    const updateQuantity = (itemId, change) => {
+    const updateQuantity = (cartItemId, change) => {
         setCart(prevCart => {
-            const itemIndex = prevCart.findIndex(i => i.id === itemId);
+            const itemIndex = prevCart.findIndex(i => i.cartItemId === cartItemId);
             if (itemIndex === -1) return prevCart;
 
             const newCart = [...prevCart];
             const newQuantity = newCart[itemIndex].quantity + change;
 
             if (newQuantity <= 0) {
-                return newCart.filter(i => i.id !== itemId);
+                return newCart.filter(i => i.cartItemId !== cartItemId);
             } else {
                 newCart[itemIndex].quantity = newQuantity;
                 return newCart;
@@ -168,7 +167,7 @@ export default function PreOrderPage({ params }) {
     };
     
     const grandTotal = useMemo(() => {
-        return cart.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+        return cart.reduce((sum, item) => sum + (item.portion.price * item.quantity), 0);
     }, [cart]);
     
     const totalItems = useMemo(() => {
@@ -186,7 +185,7 @@ export default function PreOrderPage({ params }) {
     }
     
     if (error) {
-         return <div className="min-h-screen bg-slate-900 flex items-center justify-center text-red-400">{error}</div>;
+         return <div className="min-h-screen bg-slate-900 flex items-center justify-center text-red-400 p-4 text-center">{error}</div>;
     }
 
     return (
