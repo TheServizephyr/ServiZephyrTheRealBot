@@ -1,4 +1,3 @@
-
 'use client';
 
 import { useState, useEffect } from 'react';
@@ -8,9 +7,10 @@ import { Button } from '@/components/ui/button';
 import Link from 'next/link';
 import { useUser } from '@/firebase';
 import { db } from '@/lib/firebase';
-import { collection, query, where, getDoc, onSnapshot, addDoc, doc, updateDoc, deleteDoc, setDoc } from 'firebase/firestore';
+import { collection, query, where, getDoc, onSnapshot, doc, updateDoc, deleteDoc, setDoc } from 'firebase/firestore';
 import { FirestorePermissionError } from '@/firebase/errors';
 import { errorEmitter } from '@/firebase/error-emitter';
+import InfoDialog from '@/components/InfoDialog';
 
 
 const MenuItem = ({ item, onToggle, onDelete }) => (
@@ -48,16 +48,27 @@ const MenuItem = ({ item, onToggle, onDelete }) => (
   </motion.div>
 );
 
-const AddItemForm = ({ onAddItem, onCancel }) => {
+const AddItemForm = ({ onAddItem, onCancel, showInfoDialog }) => {
     const [name, setName] = useState('');
     const [price, setPrice] = useState('');
     const [category, setCategory] = useState('Snacks');
+    const [isSaving, setIsSaving] = useState(false);
 
-    const handleSubmit = (e) => {
+    const handleSubmit = async (e) => {
         e.preventDefault();
-        if(!name || !price) return;
-        onAddItem({ name, price: parseFloat(price), category });
-        onCancel();
+        if(!name || !price || isSaving) return;
+        setIsSaving(true);
+        try {
+            await onAddItem({ name, price: parseFloat(price), category });
+            // Only cancel/close if save is successful
+            onCancel(); 
+        } catch (error) {
+            // Error is now handled by the parent component's InfoDialog
+            // No need to alert here, but we re-throw to signal failure.
+            throw error;
+        } finally {
+            setIsSaving(false);
+        }
     };
 
     return (
@@ -84,8 +95,11 @@ const AddItemForm = ({ onAddItem, onCancel }) => {
                 </div>
             </div>
             <div className="flex justify-end gap-4">
-                <Button type="button" variant="ghost" onClick={onCancel}>Cancel</Button>
-                <Button type="submit" className="bg-primary hover:bg-primary/90 text-primary-foreground">Save Item</Button>
+                <Button type="button" variant="ghost" onClick={onCancel} disabled={isSaving}>Cancel</Button>
+                <Button type="submit" className="bg-primary hover:bg-primary/90 text-primary-foreground" disabled={isSaving}>
+                    {isSaving ? <Loader2 className="animate-spin mr-2" /> : null}
+                    {isSaving ? 'Saving...' : 'Save Item'}
+                </Button>
             </div>
         </motion.form>
     )
@@ -97,6 +111,7 @@ export default function StreetVendorMenuPage() {
     const [menuItems, setMenuItems] = useState([]);
     const [loading, setLoading] = useState(true);
     const [showAddItem, setShowAddItem] = useState(false);
+    const [infoDialog, setInfoDialog] = useState({ isOpen: false, title: '', message: '' });
 
     useEffect(() => {
         if (isUserLoading) return;
@@ -151,51 +166,69 @@ export default function StreetVendorMenuPage() {
     }, [vendorId]);
 
     const handleToggleAvailability = async (itemId, newAvailability) => {
-        if (!vendorId) return alert("Vendor ID not loaded yet. Please wait a moment.");
+        if (!vendorId) {
+             setInfoDialog({ isOpen: true, title: 'Error', message: 'Vendor ID not loaded yet. Please wait a moment.' });
+             return;
+        }
         const itemRef = doc(db, 'street_vendors', vendorId, 'menu', itemId);
         const updateData = { available: newAvailability };
-        updateDoc(itemRef, updateData).catch(() => {
+        try {
+            await updateDoc(itemRef, updateData)
+        } catch(error) {
             errorEmitter.emit('permission-error', new FirestorePermissionError({
                 path: itemRef.path,
                 operation: 'update',
                 requestResourceData: updateData
             }));
-        });
+            setInfoDialog({ isOpen: true, title: 'Error', message: 'Could not update item status: ' + error.message });
+        };
     };
 
     const handleDeleteItem = async (itemId) => {
-        if (!vendorId) return alert("Vendor ID not loaded yet. Please wait a moment.");
+        if (!vendorId) {
+             setInfoDialog({ isOpen: true, title: 'Error', message: 'Vendor ID not loaded yet. Please wait a moment.' });
+             return;
+        }
         if (!window.confirm("Are you sure you want to delete this item?")) return;
         const itemRef = doc(db, 'street_vendors', vendorId, 'menu', itemId);
-        deleteDoc(itemRef).catch(() => {
+        try {
+            await deleteDoc(itemRef);
+        } catch(error) {
             errorEmitter.emit('permission-error', new FirestorePermissionError({
                 path: itemRef.path,
                 operation: 'delete'
             }));
-        });
+             setInfoDialog({ isOpen: true, title: 'Error', message: 'Could not delete item: ' + error.message });
+        }
     };
     
     const handleAddItem = async (newItem) => {
-        if (!vendorId || !user) return alert("Vendor or user information not available yet. Please try again.");
-        const menuCollectionRef = collection(db, 'street_vendors', vendorId, 'menu');
+        if (!vendorId || !user) {
+             setInfoDialog({ isOpen: true, title: 'Error', message: 'Vendor or user information not available yet. Please try again.' });
+             throw new Error('Vendor or user information not available.');
+        }
         
-        // --- START FIX: Use setDoc with an explicit ID ---
-        const newItemRef = doc(menuCollectionRef); // Creates a new doc reference with a generated ID
+        const menuCollectionRef = collection(db, 'street_vendors', vendorId, 'menu');
+        const newItemRef = doc(menuCollectionRef);
         const itemData = { 
             ...newItem, 
-            id: newItemRef.id, // Store the generated ID in the document itself
-            ownerId: user.uid, // Add ownerId for security rule validation
+            id: newItemRef.id,
+            ownerId: user.uid,
             available: true 
         };
-        setDoc(newItemRef, itemData).catch((err) => {
-        // --- END FIX ---
+
+        try {
+            await setDoc(newItemRef, itemData);
+            setInfoDialog({ isOpen: true, title: 'Success', message: 'Item saved successfully!' });
+        } catch (err) {
              errorEmitter.emit('permission-error', new FirestorePermissionError({
                 path: newItemRef.path,
                 operation: 'create',
                 requestResourceData: itemData
             }));
-             alert("Could not save item. Error: " + err.message);
-        });
+            setInfoDialog({ isOpen: true, title: 'Error', message: 'Could not save item: ' + err.message });
+            throw err; // Re-throw to signal failure to the form
+        }
     };
 
     const groupedMenu = menuItems.reduce((acc, item) => {
@@ -205,6 +238,12 @@ export default function StreetVendorMenuPage() {
 
   return (
     <div className="min-h-screen bg-slate-900 text-white font-body p-4">
+        <InfoDialog 
+            isOpen={infoDialog.isOpen} 
+            onClose={() => setInfoDialog({isOpen: false, title: '', message: ''})} 
+            title={infoDialog.title} 
+            message={infoDialog.message}
+        />
         <header className="flex justify-between items-center mb-6">
             <Link href="/street-vendor-dashboard" passHref>
                 <Button variant="ghost" className="text-slate-400 hover:text-white">
@@ -219,7 +258,7 @@ export default function StreetVendorMenuPage() {
 
         <main>
             <AnimatePresence>
-                {showAddItem && <AddItemForm onAddItem={handleAddItem} onCancel={() => setShowAddItem(false)} />}
+                {showAddItem && <AddItemForm onAddItem={handleAddItem} onCancel={() => setShowAddItem(false)} showInfoDialog={setInfoDialog} />}
             </AnimatePresence>
             
             {loading ? (
