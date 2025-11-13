@@ -1016,3 +1016,5 @@ const DineInPage = () => (
 );
 
 export default DineInPage;
+
+    
