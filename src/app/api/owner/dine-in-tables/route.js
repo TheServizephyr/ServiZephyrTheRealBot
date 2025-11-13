@@ -140,13 +140,15 @@ export async function POST(req) {
     const body = await req.json();
 
     try {
-        if (body.action === 'create_tab' && body.restaurantId) {
-            const { tableId, pax_count, tab_name, restaurantId } = body;
+        const businessRef = await getBusinessRef(req);
+        if (!businessRef) return NextResponse.json({ message: 'Business not found or authentication failed.', status: 404 });
+        
+        if (body.action === 'create_tab') {
+            const { tableId, pax_count, tab_name } = body;
             if (!tableId || !pax_count || !tab_name) {
                 return NextResponse.json({ message: 'Table ID, pax count, and tab name are required.' }, { status: 400 });
             }
             
-            const businessRef = firestore.collection('restaurants').doc(restaurantId);
             const tableRef = businessRef.collection('tables').doc(tableId);
             const newTabId = `tab_${Date.now()}`;
 
@@ -187,9 +189,6 @@ export async function POST(req) {
                 return NextResponse.json({ message: txError.message }, { status: 400 });
             }
         }
-        
-        const businessRef = await getBusinessRef(req);
-        if (!businessRef) return NextResponse.json({ message: 'Business not found or authentication failed.', status: 404 });
         
         const { tableId, max_capacity } = body;
         if (!tableId || !max_capacity || max_capacity < 1) return NextResponse.json({ message: 'Table ID and a valid capacity are required.' }, { status: 400 });
@@ -318,7 +317,3 @@ export async function DELETE(req) {
         return NextResponse.json({ message: `Backend Error: ${error.message}` }, { status: error.status || 500 });
     }
 }
-
-    
-
-    
