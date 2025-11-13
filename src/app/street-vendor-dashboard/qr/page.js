@@ -10,7 +10,8 @@ import { useReactToPrint } from 'react-to-print';
 import { useUser } from '@/firebase';
 import { db } from '@/lib/firebase';
 import { doc, getDoc } from 'firebase/firestore';
-import { FirestorePermissionError, errorEmitter } from '@/firebase/errors';
+import { FirestorePermissionError } from '@/firebase/errors';
+import { errorEmitter } from '@/firebase/error-emitter';
 
 
 export default function StreetVendorQrPage() {
