@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
@@ -9,7 +10,7 @@ import QRCode from 'qrcode.react';
 import { useReactToPrint } from 'react-to-print';
 import { useUser } from '@/firebase';
 import { db } from '@/lib/firebase';
-import { collection, query, where, getDocs, doc, getDoc } from 'firebase/firestore';
+import { collection, query, where, getDocs } from 'firebase/firestore';
 import { FirestorePermissionError } from '@/firebase/errors';
 import { errorEmitter } from '@/firebase/error-emitter';
 
@@ -49,19 +50,20 @@ export default function StreetVendorQrPage() {
 
     const fetchVendorData = async () => {
         try {
-            // FIX: Directly get the document by user's UID instead of querying.
-            // This is more efficient and doesn't require list permissions.
-            const vendorRef = doc(db, 'street_vendors', user.uid);
-            const vendorSnap = await getDoc(vendorRef);
+            const vendorsRef = collection(db, 'street_vendors');
+            const q = query(vendorsRef, where("ownerId", "==", user.uid));
+            const querySnapshot = await getDocs(q);
 
-            if (!vendorSnap.exists()) {
+            if (querySnapshot.empty) {
                  throw new Error("No street vendor profile found for this user.");
             }
             
-            setVendorId(vendorSnap.id);
+            // Assuming one user has only one street vendor profile
+            const vendorDoc = querySnapshot.docs[0];
+            setVendorId(vendorDoc.id);
 
         } catch(err) {
-            const contextualError = new FirestorePermissionError({ path: `street_vendors/${user.uid}`, operation: 'get' });
+            const contextualError = new FirestorePermissionError({ path: `street_vendors`, operation: 'list' });
             errorEmitter.emit('permission-error', contextualError);
             console.error("Error fetching vendor data:", err);
         } finally {
