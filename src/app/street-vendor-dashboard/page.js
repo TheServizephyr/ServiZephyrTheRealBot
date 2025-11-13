@@ -5,13 +5,9 @@ import { motion } from 'framer-motion';
 import { QrCode, ClipboardList, Package, Check, X, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import Link from 'next/link';
-
-// Mock Data for initial design
-const mockOrders = [
-  { id: 101, token: 101, items: "2x Samosa, 1x Coke", status: "Preparing" },
-  { id: 102, token: 102, items: "1x Momos", status: "Preparing" },
-  { id: 103, token: 103, items: "3x Jalebi", status: "Ready" },
-];
+import { useUser } from '@/firebase';
+import { db } from '@/lib/firebase';
+import { collection, query, where, onSnapshot, doc, getDoc, updateDoc } from 'firebase/firestore';
 
 const OrderCard = ({ order, onMarkReady, onCancel }) => {
   const isReady = order.status === 'Ready';
@@ -25,7 +21,7 @@ const OrderCard = ({ order, onMarkReady, onCancel }) => {
       <div className="flex justify-between items-start">
         <div>
           <p className="text-5xl font-bold text-white">#{order.token}</p>
-          <p className="text-slate-400 text-lg mt-2">{order.items}</p>
+          <p className="text-slate-400 text-lg mt-2">{order.items.map(item => `${item.quantity}x ${item.name}`).join(', ')}</p>
         </div>
         <div className={`px-3 py-1 rounded-full text-sm font-semibold ${isReady ? 'bg-green-500/20 text-green-400' : 'bg-yellow-500/20 text-yellow-400'}`}>
           {order.status}
@@ -47,19 +43,64 @@ const OrderCard = ({ order, onMarkReady, onCancel }) => {
 
 
 export default function StreetVendorDashboard() {
-    const [orders, setOrders] = useState(mockOrders);
+    const { user, isUserLoading } = useUser();
+    const [vendorId, setVendorId] = useState(null);
+    const [orders, setOrders] = useState([]);
+    const [loading, setLoading] = useState(true);
     
-    // In a real app, you would fetch and update orders using Firebase here.
-    
-    const handleMarkReady = (orderId) => {
-        setOrders(prevOrders => 
-            prevOrders.map(o => o.id === orderId ? { ...o, status: 'Ready' } : o)
+    useEffect(() => {
+        if (isUserLoading) return;
+        if (!user) return;
+
+        const fetchVendorId = async () => {
+            const userDocRef = doc(db, 'users', user.uid);
+            const userDoc = await getDoc(userDocRef);
+            if (userDoc.exists() && userDoc.data().role === 'street-vendor') {
+                const streetVendorQuery = query(collection(db, 'street_vendors'), where('ownerId', '==', user.uid), limit(1));
+                const vendorSnapshot = await getDocs(streetVendorQuery);
+                if (!vendorSnapshot.empty) {
+                    const vendorDoc = vendorSnapshot.docs[0];
+                    setVendorId(vendorDoc.id);
+                }
+            }
+            setLoading(false);
+        };
+
+        fetchVendorId();
+
+    }, [user, isUserLoading]);
+
+    useEffect(() => {
+        if (!vendorId) return;
+
+        const q = query(
+            collection(db, "orders"), 
+            where("restaurantId", "==", vendorId),
+            where("status", "in", ["Preparing", "Ready"])
         );
-        // Here you would also trigger the WhatsApp notification via a Firebase Function
+        
+        const unsubscribe = onSnapshot(q, (querySnapshot) => {
+            const liveOrders = [];
+            querySnapshot.forEach((doc) => {
+                liveOrders.push({ id: doc.id, ...doc.data() });
+            });
+            // Sort by token number
+            liveOrders.sort((a,b) => a.token - b.token);
+            setOrders(liveOrders);
+        });
+
+        return () => unsubscribe();
+    }, [vendorId]);
+    
+    const handleMarkReady = async (orderId) => {
+        const orderRef = doc(db, 'orders', orderId);
+        await updateDoc(orderRef, { status: 'Ready' });
+        // TODO: Trigger WhatsApp notification here in a real scenario
     };
     
-    const handleCancelOrder = (orderId) => {
-        setOrders(prevOrders => prevOrders.filter(o => o.id !== orderId));
+    const handleCancelOrder = async (orderId) => {
+        const orderRef = doc(db, 'orders', orderId);
+        await updateDoc(orderRef, { status: 'Cancelled' });
     };
 
     return (
@@ -80,7 +121,12 @@ export default function StreetVendorDashboard() {
             
             <main>
                 <div className="space-y-4">
-                     {orders.length > 0 ? (
+                     {loading ? (
+                        <div className="text-center py-20 text-slate-500">
+                            <Loader2 className="mx-auto animate-spin" size={48} />
+                            <p className="mt-4">Loading your dashboard...</p>
+                        </div>
+                     ) : orders.length > 0 ? (
                         orders.map(order => (
                             <OrderCard key={order.id} order={order} onMarkReady={handleMarkReady} onCancel={handleCancelOrder} />
                         ))

@@ -1,18 +1,14 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ArrowLeft, PlusCircle, Trash2, IndianRupee } from 'lucide-react';
+import { ArrowLeft, PlusCircle, Trash2, IndianRupee, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import Link from 'next/link';
+import { useUser } from '@/firebase';
+import { db } from '@/lib/firebase';
+import { collection, query, where, getDocs, onSnapshot, addDoc, doc, updateDoc, deleteDoc, limit } from 'firebase/firestore';
 
-// Mock Data for initial design
-const initialMenu = [
-  { id: 1, name: 'Samosa', price: 15, category: 'Snacks', available: true },
-  { id: 2, name: 'Coke', price: 20, category: 'Beverages', available: true },
-  { id: 3, name: 'Jalebi (100g)', price: 30, category: 'Sweets', available: true },
-  { id: 4, name: 'Bread Pakoda', price: 25, category: 'Snacks', available: false },
-];
 
 const MenuItem = ({ item, onToggle, onDelete }) => (
   <motion.div
@@ -31,7 +27,7 @@ const MenuItem = ({ item, onToggle, onDelete }) => (
           {item.available ? 'Available' : 'Out of Stock'}
         </label>
         <button
-            onClick={() => onToggle(item.id)}
+            onClick={() => onToggle(item.id, !item.available)}
             className={`w-14 h-8 rounded-full p-1 transition-colors ${item.available ? 'bg-green-600' : 'bg-slate-700'}`}
         >
             <motion.div
@@ -93,21 +89,63 @@ const AddItemForm = ({ onAddItem, onCancel }) => {
 }
 
 export default function StreetVendorMenuPage() {
-    const [menuItems, setMenuItems] = useState(initialMenu);
+    const { user, isUserLoading } = useUser();
+    const [vendorId, setVendorId] = useState(null);
+    const [menuItems, setMenuItems] = useState([]);
+    const [loading, setLoading] = useState(true);
     const [showAddItem, setShowAddItem] = useState(false);
 
-    const handleToggleAvailability = (itemId) => {
-        setMenuItems(prev => prev.map(item => item.id === itemId ? { ...item, available: !item.available } : item));
+    useEffect(() => {
+        if (isUserLoading) return;
+        if (!user) return;
+
+        const fetchVendorId = async () => {
+            const userDocRef = doc(db, 'users', user.uid);
+            const userDoc = await getDoc(userDocRef);
+            if (userDoc.exists() && userDoc.data().role === 'street-vendor') {
+                const streetVendorQuery = query(collection(db, 'street_vendors'), where('ownerId', '==', user.uid), limit(1));
+                const vendorSnapshot = await getDocs(streetVendorQuery);
+                if (!vendorSnapshot.empty) {
+                    setVendorId(vendorSnapshot.docs[0].id);
+                }
+            }
+            setLoading(false);
+        };
+        fetchVendorId();
+    }, [user, isUserLoading]);
+
+    useEffect(() => {
+        if (!vendorId) return;
+
+        const menuCollectionRef = collection(db, 'street_vendors', vendorId, 'menu');
+        const q = query(menuCollectionRef);
+
+        const unsubscribe = onSnapshot(q, (querySnapshot) => {
+            const items = [];
+            querySnapshot.forEach((doc) => {
+                items.push({ id: doc.id, ...doc.data() });
+            });
+            setMenuItems(items);
+            setLoading(false);
+        });
+
+        return () => unsubscribe();
+    }, [vendorId]);
+
+    const handleToggleAvailability = async (itemId, newAvailability) => {
+        const itemRef = doc(db, 'street_vendors', vendorId, 'menu', itemId);
+        await updateDoc(itemRef, { available: newAvailability });
     };
 
-    const handleDeleteItem = (itemId) => {
-        setMenuItems(prev => prev.filter(item => item.id !== itemId));
+    const handleDeleteItem = async (itemId) => {
+        const itemRef = doc(db, 'street_vendors', vendorId, 'menu', itemId);
+        await deleteDoc(itemRef);
     };
     
-    const handleAddItem = (newItem) => {
-        const itemToAdd = { ...newItem, id: Date.now(), available: true };
-        setMenuItems(prev => [itemToAdd, ...prev]);
-    }
+    const handleAddItem = async (newItem) => {
+        const menuCollectionRef = collection(db, 'street_vendors', vendorId, 'menu');
+        await addDoc(menuCollectionRef, { ...newItem, available: true });
+    };
 
     const groupedMenu = menuItems.reduce((acc, item) => {
         (acc[item.category] = acc[item.category] || []).push(item);
@@ -133,18 +171,25 @@ export default function StreetVendorMenuPage() {
                 {showAddItem && <AddItemForm onAddItem={handleAddItem} onCancel={() => setShowAddItem(false)} />}
             </AnimatePresence>
             
-            <div className="space-y-6">
-                {Object.entries(groupedMenu).map(([category, items]) => (
-                    <div key={category}>
-                        <h2 className="text-xl font-bold text-primary mb-2">{category}</h2>
-                        <div className="space-y-3">
-                            {items.map(item => (
-                                <MenuItem key={item.id} item={item} onToggle={handleToggleAvailability} onDelete={handleDeleteItem} />
-                            ))}
+            {loading ? (
+                 <div className="text-center py-20 text-slate-500">
+                    <Loader2 className="mx-auto animate-spin" size={48} />
+                    <p className="mt-4">Loading your menu...</p>
+                 </div>
+            ) : (
+                <div className="space-y-6">
+                    {Object.entries(groupedMenu).map(([category, items]) => (
+                        <div key={category}>
+                            <h2 className="text-xl font-bold text-primary mb-2">{category}</h2>
+                            <div className="space-y-3">
+                                {items.map(item => (
+                                    <MenuItem key={item.id} item={item} onToggle={handleToggleAvailability} onDelete={handleDeleteItem} />
+                                ))}
+                            </div>
                         </div>
-                    </div>
-                ))}
-            </div>
+                    ))}
+                </div>
+            )}
         </main>
     </div>
   );
