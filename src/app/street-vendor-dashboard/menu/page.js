@@ -122,6 +122,7 @@ export default function StreetVendorMenuPage() {
 
         const fetchVendorData = async () => {
             try {
+                // --- START FIX: Use getDoc directly instead of a query ---
                 const vendorRef = doc(db, 'street_vendors', user.uid);
                 const vendorSnap = await getDoc(vendorRef);
 
@@ -130,6 +131,7 @@ export default function StreetVendorMenuPage() {
                 } else {
                      throw new Error("No street vendor profile found for this user.");
                 }
+                // --- END FIX ---
             } catch (err) {
                  const contextualError = new FirestorePermissionError({ path: `street_vendors/${user.uid}`, operation: 'get' });
                  errorEmitter.emit('permission-error', contextualError);
