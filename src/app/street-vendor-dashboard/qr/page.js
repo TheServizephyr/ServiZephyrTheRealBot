@@ -11,6 +11,8 @@ import { useUser } from '@/firebase';
 import { db } from '@/lib/firebase';
 import { collection, query, where, getDocs, limit, doc, updateDoc } from 'firebase/firestore';
 import { nanoid } from 'nanoid';
+import { FirestorePermissionError, errorEmitter } from '@/firebase/errors';
+
 
 export default function StreetVendorQrPage() {
   const { user, isUserLoading } = useUser();
@@ -56,15 +58,28 @@ export default function StreetVendorQrPage() {
         }
         setLoading(false);
     }
-    fetchVendorData();
+    fetchVendorData().catch(err => {
+        const contextualError = new FirestorePermissionError({ path: `street_vendors`, operation: 'list' });
+        errorEmitter.emit('permission-error', contextualError);
+        console.error(err);
+        setLoading(false);
+    });
   }, [user, isUserLoading]);
   
   const handleGenerateNew = async () => {
       if (!vendorId) return;
       const newQrId = nanoid(10);
       const vendorRef = doc(db, 'street_vendors', vendorId);
-      await updateDoc(vendorRef, { qrId: newQrId });
-      setQrId(newQrId);
+      const updateData = { qrId: newQrId };
+      updateDoc(vendorRef, updateData).then(() => {
+          setQrId(newQrId);
+      }).catch(() => {
+          errorEmitter.emit('permission-error', new FirestorePermissionError({
+              path: vendorRef.path,
+              operation: 'update',
+              requestResourceData: updateData
+          }));
+      });
   }
 
   const qrValue = `${window.location.origin}/pre-order/${qrId}`;

@@ -8,6 +8,7 @@ import Link from 'next/link';
 import { useUser } from '@/firebase';
 import { db } from '@/lib/firebase';
 import { collection, query, where, getDocs, onSnapshot, addDoc, doc, updateDoc, deleteDoc, limit } from 'firebase/firestore';
+import { FirestorePermissionError, errorEmitter } from '@/firebase/errors';
 
 
 const MenuItem = ({ item, onToggle, onDelete }) => (
@@ -127,6 +128,11 @@ export default function StreetVendorMenuPage() {
             });
             setMenuItems(items);
             setLoading(false);
+        }, (err) => {
+            const contextualError = new FirestorePermissionError({ path: menuCollectionRef.path, operation: 'list' });
+            errorEmitter.emit('permission-error', contextualError);
+            console.error("Firestore Error:", err);
+            setLoading(false);
         });
 
         return () => unsubscribe();
@@ -134,17 +140,36 @@ export default function StreetVendorMenuPage() {
 
     const handleToggleAvailability = async (itemId, newAvailability) => {
         const itemRef = doc(db, 'street_vendors', vendorId, 'menu', itemId);
-        await updateDoc(itemRef, { available: newAvailability });
+        const updateData = { available: newAvailability };
+        updateDoc(itemRef, updateData).catch(() => {
+            errorEmitter.emit('permission-error', new FirestorePermissionError({
+                path: itemRef.path,
+                operation: 'update',
+                requestResourceData: updateData
+            }));
+        });
     };
 
     const handleDeleteItem = async (itemId) => {
         const itemRef = doc(db, 'street_vendors', vendorId, 'menu', itemId);
-        await deleteDoc(itemRef);
+        deleteDoc(itemRef).catch(() => {
+            errorEmitter.emit('permission-error', new FirestorePermissionError({
+                path: itemRef.path,
+                operation: 'delete'
+            }));
+        });
     };
     
     const handleAddItem = async (newItem) => {
         const menuCollectionRef = collection(db, 'street_vendors', vendorId, 'menu');
-        await addDoc(menuCollectionRef, { ...newItem, available: true });
+        const itemData = { ...newItem, available: true };
+        addDoc(menuCollectionRef, itemData).catch(() => {
+             errorEmitter.emit('permission-error', new FirestorePermissionError({
+                path: menuCollectionRef.path,
+                operation: 'create',
+                requestResourceData: itemData
+            }));
+        });
     };
 
     const groupedMenu = menuItems.reduce((acc, item) => {

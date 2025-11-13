@@ -7,7 +7,9 @@ import { Button } from '@/components/ui/button';
 import Link from 'next/link';
 import { useUser } from '@/firebase';
 import { db } from '@/lib/firebase';
-import { collection, query, where, onSnapshot, doc, getDoc, updateDoc } from 'firebase/firestore';
+import { collection, query, where, onSnapshot, doc, getDoc, updateDoc, limit } from 'firebase/firestore';
+import { FirestorePermissionError, errorEmitter } from '@/firebase/errors';
+
 
 const OrderCard = ({ order, onMarkReady, onCancel }) => {
   const isReady = order.status === 'Ready';
@@ -87,21 +89,29 @@ export default function StreetVendorDashboard() {
             // Sort by token number
             liveOrders.sort((a,b) => a.token - b.token);
             setOrders(liveOrders);
+        }, (err) => {
+            const contextualError = new FirestorePermissionError({ path: `orders`, operation: 'list' });
+            errorEmitter.emit('permission-error', contextualError);
+            console.error("Firestore Error:", err);
         });
 
         return () => unsubscribe();
     }, [vendorId]);
     
-    const handleMarkReady = async (orderId) => {
+    const handleUpdateStatus = (orderId, newStatus) => {
         const orderRef = doc(db, 'orders', orderId);
-        await updateDoc(orderRef, { status: 'Ready' });
-        // TODO: Trigger WhatsApp notification here in a real scenario
+        const updateData = { status: newStatus };
+        updateDoc(orderRef, updateData).catch(() => {
+            errorEmitter.emit('permission-error', new FirestorePermissionError({
+                path: orderRef.path,
+                operation: 'update',
+                requestResourceData: updateData
+            }));
+        });
     };
-    
-    const handleCancelOrder = async (orderId) => {
-        const orderRef = doc(db, 'orders', orderId);
-        await updateDoc(orderRef, { status: 'Cancelled' });
-    };
+
+    const handleMarkReady = (orderId) => handleUpdateStatus(orderId, 'Ready');
+    const handleCancelOrder = (orderId) => handleUpdateStatus(orderId, 'Cancelled');
 
     return (
         <div className="min-h-screen bg-slate-900 text-white font-body p-4">
