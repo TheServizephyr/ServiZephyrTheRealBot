@@ -75,8 +75,8 @@ export async function GET(request, { params }) {
             }
         }
         
-        // Check restaurant status
-        if (restaurantData.approvalStatus === 'pending' || restaurantData.approvalStatus === 'rejected' || restaurantData.approvalStatus === 'suspended' || restaurantData.isOpen === false) {
+        // --- START FIX: Robust approval and open status check ---
+        if (restaurantData.approvalStatus !== 'approved' || restaurantData.isOpen === false) {
              console.warn(`[DEBUG] Menu API: Business '${restaurantData.name}' is not accepting orders. Status: ${restaurantData.approvalStatus}, isOpen: ${restaurantData.isOpen}`);
             const message = restaurantData.approvalStatus === 'pending' 
                 ? 'This business is currently pending approval and not accepting orders.'
@@ -89,6 +89,7 @@ export async function GET(request, { params }) {
                 isOpen: restaurantData.isOpen,
             }, { status: 403 });
         }
+        // --- END FIX ---
         
         const couponsRef = restaurantRef.collection('coupons');
         const generalCouponsQuery = couponsRef.where('status', '==', 'Active').where('customerId', '==', null);
