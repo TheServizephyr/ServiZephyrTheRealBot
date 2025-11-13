@@ -76,11 +76,15 @@ export async function GET(request, { params }) {
         }
         
         // Check restaurant status
-        if (restaurantData.approvalStatus === 'rejected' || restaurantData.approvalStatus === 'suspended' || restaurantData.isOpen === false) {
+        if (restaurantData.approvalStatus === 'pending' || restaurantData.approvalStatus === 'rejected' || restaurantData.approvalStatus === 'suspended' || restaurantData.isOpen === false) {
              console.warn(`[DEBUG] Menu API: Business '${restaurantData.name}' is not accepting orders. Status: ${restaurantData.approvalStatus}, isOpen: ${restaurantData.isOpen}`);
+            const message = restaurantData.approvalStatus === 'pending' 
+                ? 'This business is currently pending approval and not accepting orders.'
+                : 'This business is currently not accepting orders.';
             return NextResponse.json({ 
-                message: 'This business is currently not accepting orders.',
+                message: message,
                 restaurantName: restaurantData.name,
+                businessAddress: restaurantData.address,
                 status: restaurantData.approvalStatus,
                 isOpen: restaurantData.isOpen,
             }, { status: 403 });
