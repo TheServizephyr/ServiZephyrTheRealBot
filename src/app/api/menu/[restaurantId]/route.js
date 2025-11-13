@@ -19,7 +19,6 @@ export async function GET(request, { params }) {
             return NextResponse.json({ message: 'Restaurant ID is invalid or missing.' }, { status: 400 });
         }
         
-        // --- THE FIX: Check all relevant collections ---
         let businessDoc;
         let businessType = 'restaurant';
         let collectionName = 'restaurants';
@@ -38,7 +37,6 @@ export async function GET(request, { params }) {
             }
         }
 
-        // If it doesn't exist in any collection, return 404.
         if (!businessDoc || !businessDoc.exists) {
             console.error(`[DEBUG] Menu API: Business with ID ${restaurantId} not found in any collection.`);
             return NextResponse.json({ message: `Business with ID ${restaurantId} not found.` }, { status: 404 });
@@ -49,7 +47,6 @@ export async function GET(request, { params }) {
         const restaurantRef = businessDoc.ref;
         const restaurantData = businessDoc.data();
         
-        // --- CUSTOMER DATA FETCHING LOGS (No change here) ---
         let loyaltyPoints = 0;
         let customerData = null;
         if (phone) {
@@ -75,8 +72,8 @@ export async function GET(request, { params }) {
             }
         }
         
-        // --- START FIX: Robust approval and open status check ---
-        if (restaurantData.approvalStatus !== 'approved' || restaurantData.isOpen === false) {
+        // --- START FIX: Robust approval status check ---
+        if (restaurantData.approvalStatus !== 'approved') {
              console.warn(`[DEBUG] Menu API: Business '${restaurantData.name}' is not accepting orders. Status: ${restaurantData.approvalStatus}, isOpen: ${restaurantData.isOpen}`);
             const message = restaurantData.approvalStatus === 'pending' 
                 ? 'This business is currently pending approval and not accepting orders.'
@@ -106,13 +103,12 @@ export async function GET(request, { params }) {
 
         const [menuSnap, generalCouponsSnap, customerCouponsSnap] = await Promise.all(promises);
 
-        // Process Menu
         const menuData = {};
         const defaultRestaurantCategories = ["momos", "burgers", "rolls", "soup", "tandoori-item", "starters", "main-course", "tandoori-khajana", "rice", "noodles", "pasta", "raita", "desserts", "beverages"];
         const defaultShopCategories = ["electronics", "groceries", "clothing", "books", "home-appliances", "toys-games", "beauty-personal-care", "sports-outdoors"];
         const customCategories = restaurantData.customCategories || [];
         
-        const defaultCategoryKeys = businessType === 'restaurant' ? defaultRestaurantCategories : defaultShopCategories;
+        const defaultCategoryKeys = businessType === 'restaurant' ? defaultRestaurantCategories : (businessType === 'shop' ? defaultShopCategories : []);
         const allCategoryKeys = [...new Set([...defaultCategoryKeys, ...customCategories.map(c => c.id)])];
 
         allCategoryKeys.forEach(key => {
@@ -129,7 +125,6 @@ export async function GET(request, { params }) {
             }
         });
         
-        // Process Coupons
         let allCoupons = [];
 
         const processCouponSnap = (snap) => {
@@ -187,6 +182,7 @@ export async function GET(request, { params }) {
             dineInOnlinePaymentEnabled: restaurantData.dineInOnlinePaymentEnabled === undefined ? true : restaurantData.dineInOnlinePaymentEnabled,
             dineInPayAtCounterEnabled: restaurantData.dineInPayAtCounterEnabled === undefined ? true : restaurantData.dineInPayAtCounterEnabled,
             businessAddress: businessAddress,
+            dineInModel: restaurantData.dineInModel || 'post-paid',
         }, { status: 200 });
 
     } catch (error) {
