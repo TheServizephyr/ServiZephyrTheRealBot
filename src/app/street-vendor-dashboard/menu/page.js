@@ -125,12 +125,11 @@ export default function StreetVendorMenuPage() {
                 const vendorRef = doc(db, 'street_vendors', user.uid);
                 const vendorSnap = await getDoc(vendorRef);
 
-                if (!vendorSnap.exists()) {
-                    throw new Error("No street vendor profile found for this user.");
+                if (vendorSnap.exists()) {
+                    setVendorId(vendorSnap.id);
+                } else {
+                     throw new Error("No street vendor profile found for this user.");
                 }
-                
-                const vendorDoc = vendorSnap;
-                setVendorId(vendorDoc.id);
             } catch (err) {
                  const contextualError = new FirestorePermissionError({ path: `street_vendors/${user.uid}`, operation: 'get' });
                  errorEmitter.emit('permission-error', contextualError);
