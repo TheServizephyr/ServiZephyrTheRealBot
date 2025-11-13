@@ -20,7 +20,7 @@ export async function GET(request, { params }) {
         }
         
         let businessDoc;
-        let businessType = 'restaurant';
+        let businessType = 'restaurant'; // Default
         let collectionName = 'restaurants';
         
         const collectionsToTry = ['restaurants', 'shops', 'street_vendors'];
@@ -32,7 +32,9 @@ export async function GET(request, { params }) {
             if (docSnap.exists) {
                 businessDoc = docSnap;
                 collectionName = name;
-                businessType = name.slice(0, -1); // 'restaurants' -> 'restaurant'
+                // --- START FIX: Correctly handle singular vs plural ---
+                businessType = name === 'street_vendors' ? 'street-vendor' : name.slice(0, -1);
+                // --- END FIX ---
                 break; // Found it, stop searching
             }
         }
@@ -108,7 +110,7 @@ export async function GET(request, { params }) {
         const defaultShopCategories = ["electronics", "groceries", "clothing", "books", "home-appliances", "toys-games", "beauty-personal-care", "sports-outdoors"];
         const customCategories = restaurantData.customCategories || [];
         
-        const defaultCategoryKeys = businessType === 'restaurant' ? defaultRestaurantCategories : (businessType === 'shop' ? defaultShopCategories : []);
+        const defaultCategoryKeys = businessType === 'restaurant' ? defaultRestaurantCategories : (businessType === 'shop' || businessType === 'street-vendor' ? defaultShopCategories : []);
         const allCategoryKeys = [...new Set([...defaultCategoryKeys, ...customCategories.map(c => c.id)])];
 
         allCategoryKeys.forEach(key => {
@@ -169,7 +171,7 @@ export async function GET(request, { params }) {
             menu: menuData,
             coupons: allCoupons,
             loyaltyPoints: loyaltyPoints,
-            businessType: restaurantData.businessType || 'restaurant',
+            businessType: restaurantData.businessType || businessType,
             approvalStatus: restaurantData.approvalStatus,
             isOpen: restaurantData.isOpen,
             deliveryEnabled: restaurantData.deliveryEnabled === undefined ? true : restaurantData.deliveryEnabled,
