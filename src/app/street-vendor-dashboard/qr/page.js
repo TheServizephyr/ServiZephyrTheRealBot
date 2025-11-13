@@ -9,7 +9,7 @@ import QRCode from 'qrcode.react';
 import { useReactToPrint } from 'react-to-print';
 import { useUser } from '@/firebase';
 import { db } from '@/lib/firebase';
-import { collection, query, where, getDocs } from 'firebase/firestore';
+import { collection, query, where, getDocs, doc, getDoc } from 'firebase/firestore';
 import { FirestorePermissionError } from '@/firebase/errors';
 import { errorEmitter } from '@/firebase/error-emitter';
 
@@ -49,22 +49,19 @@ export default function StreetVendorQrPage() {
 
     const fetchVendorData = async () => {
         try {
-            // Directly query the street_vendors collection for the document owned by the current user.
-            const vendorsRef = collection(db, 'street_vendors');
-            const q = query(vendorsRef, where("ownerId", "==", user.uid));
-            
-            const querySnapshot = await getDocs(q);
+            // FIX: Directly get the document by user's UID instead of querying.
+            // This is more efficient and doesn't require list permissions.
+            const vendorRef = doc(db, 'street_vendors', user.uid);
+            const vendorSnap = await getDoc(vendorRef);
 
-            if (querySnapshot.empty) {
-                throw new Error("No street vendor profile found for this user.");
+            if (!vendorSnap.exists()) {
+                 throw new Error("No street vendor profile found for this user.");
             }
             
-            // Get the first document found.
-            const vendorDoc = querySnapshot.docs[0];
-            setVendorId(vendorDoc.id);
+            setVendorId(vendorSnap.id);
 
         } catch(err) {
-            const contextualError = new FirestorePermissionError({ path: `street_vendors`, operation: 'list' });
+            const contextualError = new FirestorePermissionError({ path: `street_vendors/${user.uid}`, operation: 'get' });
             errorEmitter.emit('permission-error', contextualError);
             console.error("Error fetching vendor data:", err);
         } finally {
