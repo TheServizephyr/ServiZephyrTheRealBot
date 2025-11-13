@@ -1,4 +1,3 @@
-
 'use client';
 
 import { useState, useRef } from 'react';
@@ -77,7 +76,7 @@ export default function StreetVendorQrPage() {
                     <QRCode
                         value={qrValue}
                         size={256}
-                        level={"H"}
+                        level={"H"} // High error correction for logo
                         includeMargin={true}
                         imageSettings={{
                             src: "/logo-icon.png",
