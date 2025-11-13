@@ -106,19 +106,20 @@ export default function StreetVendorMenuPage() {
 
         const fetchVendorData = async () => {
             try {
-                const vendorRef = doc(db, 'street_vendors', user.uid);
-                const vendorSnap = await getDoc(vendorRef);
+                const userDocRef = doc(db, 'users', user.uid);
+                const userDocSnap = await getDoc(userDocRef);
 
-                if (vendorSnap.exists()) {
-                    setVendorId(vendorSnap.id);
+                if (userDocSnap.exists() && userDocSnap.data().businessId) {
+                    const userBusinessId = userDocSnap.data().businessId;
+                    setVendorId(userBusinessId);
                 } else {
                     console.log("No street vendor profile found for this user.");
                     setLoading(false);
                 }
             } catch (err) {
-                const contextualError = new FirestorePermissionError({ path: `street_vendors/${user.uid}`, operation: 'get' });
+                const contextualError = new FirestorePermissionError({ path: `users/${user.uid}`, operation: 'get' });
                 errorEmitter.emit('permission-error', contextualError);
-                console.error("Error fetching vendor ID:", err);
+                console.error("Error fetching vendor data:", err);
                 setLoading(false);
             }
         };
@@ -149,6 +150,7 @@ export default function StreetVendorMenuPage() {
     }, [vendorId]);
 
     const handleToggleAvailability = async (itemId, newAvailability) => {
+        if (!vendorId) return alert("Vendor ID not loaded yet. Please wait a moment.");
         const itemRef = doc(db, 'street_vendors', vendorId, 'menu', itemId);
         const updateData = { available: newAvailability };
         updateDoc(itemRef, updateData).catch(() => {
@@ -161,6 +163,7 @@ export default function StreetVendorMenuPage() {
     };
 
     const handleDeleteItem = async (itemId) => {
+        if (!vendorId) return alert("Vendor ID not loaded yet. Please wait a moment.");
         const itemRef = doc(db, 'street_vendors', vendorId, 'menu', itemId);
         deleteDoc(itemRef).catch(() => {
             errorEmitter.emit('permission-error', new FirestorePermissionError({
@@ -171,6 +174,7 @@ export default function StreetVendorMenuPage() {
     };
     
     const handleAddItem = async (newItem) => {
+        if (!vendorId) return alert("Vendor ID not loaded yet. Please wait a moment.");
         const menuCollectionRef = collection(db, 'street_vendors', vendorId, 'menu');
         const itemData = { ...newItem, available: true };
         addDoc(menuCollectionRef, itemData).catch(() => {
