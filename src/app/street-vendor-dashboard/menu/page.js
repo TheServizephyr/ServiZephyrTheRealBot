@@ -122,10 +122,8 @@ export default function StreetVendorMenuPage() {
 
         const fetchVendorData = async () => {
             try {
-                // --- START FIX: Use direct getDoc instead of query ---
                 const vendorRef = doc(db, 'street_vendors', user.uid);
                 const vendorSnap = await getDoc(vendorRef);
-                // --- END FIX ---
 
                 if (!vendorSnap.exists()) {
                     throw new Error("No street vendor profile found for this user.");
