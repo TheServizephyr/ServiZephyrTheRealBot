@@ -19,69 +19,63 @@ export async function GET(request, { params }) {
             return NextResponse.json({ message: 'Restaurant ID is invalid or missing.' }, { status: 400 });
         }
         
-        // ** THE FIX: Check both collections
-        let restaurantDoc;
+        // --- THE FIX: Check all relevant collections ---
+        let businessDoc;
         let businessType = 'restaurant';
+        let collectionName = 'restaurants';
         
-        console.log(`[DEBUG] Menu API: Trying to fetch from 'restaurants' collection with ID: ${restaurantId}`);
-        restaurantDoc = await firestore.collection('restaurants').doc(restaurantId).get();
-        if (!restaurantDoc.exists) {
-            console.log(`[DEBUG] Menu API: Not found in 'restaurants'. Trying 'shops' collection.`);
-            restaurantDoc = await firestore.collection('shops').doc(restaurantId).get();
-            businessType = 'shop';
+        const collectionsToTry = ['restaurants', 'shops', 'street_vendors'];
+
+        for (const name of collectionsToTry) {
+            console.log(`[DEBUG] Menu API: Trying to fetch from '${name}' collection with ID: ${restaurantId}`);
+            const docRef = firestore.collection(name).doc(restaurantId);
+            const docSnap = await docRef.get();
+            if (docSnap.exists) {
+                businessDoc = docSnap;
+                collectionName = name;
+                businessType = name.slice(0, -1); // 'restaurants' -> 'restaurant'
+                break; // Found it, stop searching
+            }
         }
 
-        // If it doesn't exist in either, return 404.
-        if (!restaurantDoc.exists) {
-            console.error(`[DEBUG] Menu API: Business with ID ${restaurantId} not found in either collection.`);
+        // If it doesn't exist in any collection, return 404.
+        if (!businessDoc || !businessDoc.exists) {
+            console.error(`[DEBUG] Menu API: Business with ID ${restaurantId} not found in any collection.`);
             return NextResponse.json({ message: `Business with ID ${restaurantId} not found.` }, { status: 404 });
         }
         
-        console.log(`[DEBUG] Menu API: Found business '${restaurantDoc.data().name}' in collection '${businessType}s'.`);
+        console.log(`[DEBUG] Menu API: Found business '${businessDoc.data().name}' in collection '${collectionName}'.`);
 
-        const restaurantRef = restaurantDoc.ref;
-        const restaurantData = restaurantDoc.data();
+        const restaurantRef = businessDoc.ref;
+        const restaurantData = businessDoc.data();
         
-        // --- CUSTOMER DATA FETCHING LOGS ---
+        // --- CUSTOMER DATA FETCHING LOGS (No change here) ---
         let loyaltyPoints = 0;
         let customerData = null;
         if (phone) {
-            console.log(`[DEBUG] Menu API: Phone number provided: ${phone}. Fetching customer data.`);
             const usersRef = firestore.collection('users');
-            console.log(`[DEBUG] Menu API: Searching for user with phone '${phone}' in 'users' collection.`);
             const userQuery = await usersRef.where('phone', '==', phone).limit(1).get();
 
             if (!userQuery.empty) {
                 const userDoc = userQuery.docs[0];
                 const userId = userDoc.id;
                 customerData = userDoc.data();
-                console.log(`[DEBUG] Menu API: User found in 'users' collection. UID: ${userId}`);
-
+                
                 const customerInBusinessRef = restaurantRef.collection('customers').doc(userId);
                 const customerInBusinessSnap = await customerInBusinessRef.get();
                 if(customerInBusinessSnap.exists) {
                     loyaltyPoints = customerInBusinessSnap.data().loyaltyPoints || 0;
-                    console.log(`[DEBUG] Menu API: Customer loyalty points found: ${loyaltyPoints}`);
-                } else {
-                    console.log(`[DEBUG] Menu API: Customer has a main profile but has not ordered from this business yet. Loyalty points are 0.`);
                 }
             } else {
-                 console.log(`[DEBUG] Menu API: No user found in 'users' collection. Checking 'unclaimed_profiles'.`);
                  const unclaimedProfileRef = firestore.collection('unclaimed_profiles').doc(phone);
                  const unclaimedSnap = await unclaimedProfileRef.get();
                  if (unclaimedSnap.exists) {
                      customerData = unclaimedSnap.data();
-                     console.log(`[DEBUG] Menu API: User found in 'unclaimed_profiles'. Data:`, customerData);
-                 } else {
-                     console.log(`[DEBUG] Menu API: No profile found for this phone number anywhere.`);
                  }
             }
-        } else {
-            console.log("[DEBUG] Menu API: No phone number provided. Skipping customer data fetch.");
         }
-        // --- END CUSTOMER DATA FETCHING LOGS ---
-
-        // ** NEW **: Check restaurant status
+        
+        // Check restaurant status
         if (restaurantData.approvalStatus !== 'approved' || !restaurantData.isOpen) {
              console.warn(`[DEBUG] Menu API: Business '${restaurantData.name}' is not accepting orders. Status: ${restaurantData.approvalStatus}, isOpen: ${restaurantData.isOpen}`);
             return NextResponse.json({ 
@@ -89,21 +83,17 @@ export async function GET(request, { params }) {
                 restaurantName: restaurantData.name,
                 status: restaurantData.approvalStatus,
                 isOpen: restaurantData.isOpen,
-            }, { status: 403 }); // Using 403 Forbidden is appropriate here
+            }, { status: 403 });
         }
         
         const couponsRef = restaurantRef.collection('coupons');
-        
-        // Base query for general, active coupons
         const generalCouponsQuery = couponsRef.where('status', '==', 'Active').where('customerId', '==', null);
 
-        // Fetch everything concurrently
         const promises = [
             restaurantRef.collection('menu').where('isAvailable', '==', true).orderBy('order', 'asc').get(),
             generalCouponsQuery.get()
         ];
         
-        // If a customer phone number is provided, also fetch their specific coupons
         if (phone) {
             const customerCouponsQuery = couponsRef.where('status', '==', 'Active').where('customerId', '==', phone);
             promises.push(customerCouponsQuery.get());
@@ -138,7 +128,7 @@ export async function GET(request, { params }) {
         let allCoupons = [];
 
         const processCouponSnap = (snap) => {
-             if (!snap) return []; // Guard against undefined snap
+             if (!snap) return [];
              return snap.docs.map(doc => {
                 const data = doc.data();
                 return {
@@ -154,52 +144,42 @@ export async function GET(request, { params }) {
         if (customerCouponsSnap) {
              allCoupons = allCoupons.concat(processCouponSnap(customerCouponsSnap));
         }
-
-        console.log(`[DEBUG] Menu API: Successfully processed menu with ${Object.keys(menuData).length} categories and ${allCoupons.length} coupons.`);
         
         const businessAddress = restaurantData.address ? {
             ...restaurantData.address,
             full: `${restaurantData.address.street}, ${restaurantData.address.city}, ${restaurantData.address.state} ${restaurantData.address.postalCode}`.trim()
         } : null;
 
-        // --- START DELIVERY CHARGE FIX ---
         let deliveryCharge = 0;
         const feeType = restaurantData.deliveryFeeType || 'fixed';
-        // Always calculate a base charge, distance calculation will happen on the client if needed later.
         if (feeType === 'fixed') {
             deliveryCharge = restaurantData.deliveryFixedFee !== undefined ? restaurantData.deliveryFixedFee : 30;
         } else if (feeType === 'per-km') {
-            // For now, since we cannot calculate distance, we'll use the per-km fee as a base fee.
-            // This ensures a charge is always present if per-km is selected.
             deliveryCharge = restaurantData.deliveryPerKmFee || 10;
         } else if (feeType === 'free-over') {
-            // This is primarily handled on the client, but we can set a default charge here which the client will override if threshold is met
              deliveryCharge = restaurantData.deliveryFixedFee !== undefined ? restaurantData.deliveryFixedFee : 30;
         }
-        // --- END DELIVERY CHARGE FIX ---
 
-        // Return all public data together
         return NextResponse.json({ 
             restaurantName: restaurantData.name,
-            deliveryCharge: deliveryCharge, // Use the dynamically determined charge
+            deliveryCharge: deliveryCharge,
             deliveryFreeThreshold: restaurantData.deliveryFreeThreshold,
             logoUrl: restaurantData.logoUrl,
             bannerUrls: restaurantData.bannerUrls,
             menu: menuData,
             coupons: allCoupons,
-            loyaltyPoints: loyaltyPoints, // Send loyalty points
+            loyaltyPoints: loyaltyPoints,
             businessType: restaurantData.businessType || 'restaurant',
-            // ** NEW **: Pass all order and payment settings to the client
             approvalStatus: restaurantData.approvalStatus,
             isOpen: restaurantData.isOpen,
             deliveryEnabled: restaurantData.deliveryEnabled === undefined ? true : restaurantData.deliveryEnabled,
             pickupEnabled: restaurantData.pickupEnabled === undefined ? false : restaurantData.pickupEnabled,
-            dineInEnabled: restaurantData.dineInEnabled !== undefined ? restaurantData.dineInEnabled : true, // THE FIX
+            dineInEnabled: restaurantData.dineInEnabled !== undefined ? restaurantData.dineInEnabled : true,
             deliveryOnlinePaymentEnabled: restaurantData.deliveryOnlinePaymentEnabled === undefined ? true : restaurantData.deliveryOnlinePaymentEnabled,
             deliveryCodEnabled: restaurantData.deliveryCodEnabled === undefined ? true : restaurantData.deliveryCodEnabled,
             pickupOnlinePaymentEnabled: restaurantData.pickupOnlinePaymentEnabled === undefined ? true : restaurantData.pickupOnlinePaymentEnabled,
             pickupPodEnabled: restaurantData.pickupPodEnabled === undefined ? true : restaurantData.pickupPodEnabled,
-            businessAddress: businessAddress, // THE FIX: Send the formatted business address
+            businessAddress: businessAddress,
         }, { status: 200 });
 
     } catch (error) {
