@@ -9,7 +9,7 @@ import QRCode from 'qrcode.react';
 import { useReactToPrint } from 'react-to-print';
 import { useUser } from '@/firebase';
 import { db } from '@/lib/firebase';
-import { collection, query, where, getDoc, limit, doc, updateDoc } from 'firebase/firestore';
+import { collection, query, where, getDocs, doc, updateDoc } from 'firebase/firestore';
 import { nanoid } from 'nanoid';
 import { FirestorePermissionError } from '@/firebase/errors';
 import { errorEmitter } from '@/firebase/error-emitter';
@@ -51,18 +51,21 @@ export default function StreetVendorQrPage() {
 
     const fetchVendorData = async () => {
         try {
-            const vendorRef = doc(db, 'street_vendors', user.uid);
-            const vendorSnap = await getDoc(vendorRef);
+            const vendorsRef = collection(db, 'street_vendors');
+            const q = query(vendorsRef, where("ownerId", "==", user.uid));
+            const querySnapshot = await getDocs(q);
 
-            if (vendorSnap.exists()) {
-                const vendorData = vendorSnap.data();
-                setVendorId(vendorSnap.id);
-                setQrId(vendorData.qrId || vendorSnap.id);
+            if (!querySnapshot.empty) {
+                const vendorDoc = querySnapshot.docs[0];
+                const vendorData = vendorDoc.data();
+                setVendorId(vendorDoc.id); // The document ID, e.g., "baaghi-chai"
+                // The QR ID should be the document ID itself for the pre-order link
+                setQrId(vendorDoc.id);
             } else {
                  console.log("No street vendor profile found for this user.");
             }
         } catch(err) {
-            const contextualError = new FirestorePermissionError({ path: `street_vendors/${user.uid}`, operation: 'get' });
+            const contextualError = new FirestorePermissionError({ path: `street_vendors`, operation: 'list' });
             errorEmitter.emit('permission-error', contextualError);
             console.error("Error fetching vendor data:", err);
         } finally {
@@ -74,18 +77,10 @@ export default function StreetVendorQrPage() {
   
   const handleGenerateNew = async () => {
       if (!vendorId) return;
-      const newQrId = nanoid(10);
-      const vendorRef = doc(db, 'street_vendors', vendorId);
-      const updateData = { qrId: newQrId };
-      updateDoc(vendorRef, updateData).then(() => {
-          setQrId(newQrId);
-      }).catch(() => {
-          errorEmitter.emit('permission-error', new FirestorePermissionError({
-              path: vendorRef.path,
-              operation: 'update',
-              requestResourceData: updateData
-          }));
-      });
+      // This function might not be needed if the QR ID is always the vendor ID.
+      // If it's for link invalidation, this logic needs to be revisited.
+      // For now, we assume the QR ID is stable.
+      alert("This feature is for future use.");
   }
 
   const qrValue = `${window.location.origin}/pre-order/${qrId}`;
@@ -157,13 +152,13 @@ export default function StreetVendorQrPage() {
                      <Button onClick={handlePrint} className="text-lg h-14 px-8 bg-primary hover:bg-primary/90 text-primary-foreground">
                         <Printer className="mr-2"/> Print
                     </Button>
-                     <Button onClick={handleGenerateNew} variant="destructive" className="text-lg h-14 px-8">
+                     <Button onClick={handleGenerateNew} variant="destructive" className="text-lg h-14 px-8" disabled>
                         <RefreshCw className="mr-2"/> Generate New
                     </Button>
                 </div>
                 </>
             ) : (
-                <p>Could not load vendor QR code.</p>
+                <p>Could not load vendor QR code. Please make sure your profile is set up.</p>
             )}
         </main>
     </div>
