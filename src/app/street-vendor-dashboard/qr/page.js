@@ -50,21 +50,23 @@ export default function StreetVendorQrPage() {
     };
 
     const fetchVendorData = async () => {
-        const streetVendorQuery = query(collection(db, 'street_vendors'), where('ownerId', '==', user.uid), limit(1));
-        const vendorSnapshot = await getDocs(streetVendorQuery);
-        if (!vendorSnapshot.empty) {
-            const vendorDoc = vendorSnapshot.docs[0];
-            setVendorId(vendorDoc.id);
-            setQrId(vendorDoc.data().qrId || vendorDoc.id);
+        try {
+            const streetVendorQuery = query(collection(db, 'street_vendors'), where('ownerId', '==', user.uid), limit(1));
+            const vendorSnapshot = await getDocs(streetVendorQuery);
+            if (!vendorSnapshot.empty) {
+                const vendorDoc = vendorSnapshot.docs[0];
+                setVendorId(vendorDoc.id);
+                setQrId(vendorDoc.data().qrId || vendorDoc.id);
+            }
+        } catch(err) {
+            const contextualError = new FirestorePermissionError({ path: `street_vendors`, operation: 'list' });
+            errorEmitter.emit('permission-error', contextualError);
+            console.error(err);
+        } finally {
+            setLoading(false);
         }
-        setLoading(false);
     }
-    fetchVendorData().catch(err => {
-        const contextualError = new FirestorePermissionError({ path: `street_vendors`, operation: 'list' });
-        errorEmitter.emit('permission-error', contextualError);
-        console.error(err);
-        setLoading(false);
-    });
+    fetchVendorData();
   }, [user, isUserLoading]);
   
   const handleGenerateNew = async () => {
@@ -125,7 +127,7 @@ export default function StreetVendorQrPage() {
                         <QRCode
                             value={qrValue}
                             size={256}
-                            level={"H"} // High error correction for logo
+                            level={"H"}
                             includeMargin={true}
                             imageSettings={{
                                 src: "/logo.png",

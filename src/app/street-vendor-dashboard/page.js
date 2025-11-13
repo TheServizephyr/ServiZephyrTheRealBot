@@ -56,19 +56,22 @@ export default function StreetVendorDashboard() {
         if (!user) return;
 
         const fetchVendorId = async () => {
-            const userDocRef = doc(db, 'users', user.uid);
-            const userDoc = await getDoc(userDocRef);
-            if (userDoc.exists() && userDoc.data().role === 'street-vendor') {
+            try {
                 const streetVendorQuery = query(collection(db, 'street_vendors'), where('ownerId', '==', user.uid), limit(1));
                 const vendorSnapshot = await getDocs(streetVendorQuery);
                 if (!vendorSnapshot.empty) {
                     const vendorDoc = vendorSnapshot.docs[0];
                     setVendorId(vendorDoc.id);
+                } else {
+                    setLoading(false);
                 }
+            } catch (err) {
+                 const contextualError = new FirestorePermissionError({ path: `street_vendors`, operation: 'list' });
+                errorEmitter.emit('permission-error', contextualError);
+                console.error(err);
+                setLoading(false);
             }
-            setLoading(false);
         };
-
         fetchVendorId();
 
     }, [user, isUserLoading]);
@@ -87,13 +90,14 @@ export default function StreetVendorDashboard() {
             querySnapshot.forEach((doc) => {
                 liveOrders.push({ id: doc.id, ...doc.data() });
             });
-            // Sort by token number
             liveOrders.sort((a,b) => a.token - b.token);
             setOrders(liveOrders);
+            setLoading(false);
         }, (err) => {
             const contextualError = new FirestorePermissionError({ path: `orders`, operation: 'list' });
             errorEmitter.emit('permission-error', contextualError);
             console.error("Firestore Error:", err);
+            setLoading(false);
         });
 
         return () => unsubscribe();
