@@ -8,8 +8,7 @@ import Link from 'next/link';
 import { useUser } from '@/firebase';
 import { db } from '@/lib/firebase';
 import { collection, query, where, onSnapshot, doc, getDoc, updateDoc } from 'firebase/firestore';
-import { FirestorePermissionError } from '@/firebase/errors';
-import { errorEmitter } from '@/firebase/error-emitter';
+import { FirestorePermissionError, errorEmitter } from '@/firebase/errors';
 
 
 const OrderCard = ({ order, onMarkReady, onCancel }) => {

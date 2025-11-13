@@ -106,7 +106,6 @@ export default function StreetVendorMenuPage() {
 
         const fetchVendorData = async () => {
             try {
-                // FIX: Use doc() and getDoc() to fetch a single document directly
                 const vendorRef = doc(db, 'street_vendors', user.uid);
                 const vendorSnap = await getDoc(vendorRef);
 

@@ -51,14 +51,13 @@ export default function StreetVendorQrPage() {
 
     const fetchVendorData = async () => {
         try {
-            // FIX: Use doc() and getDoc() to fetch a single document directly
             const vendorRef = doc(db, 'street_vendors', user.uid);
             const vendorSnap = await getDoc(vendorRef);
 
             if (vendorSnap.exists()) {
                 const vendorData = vendorSnap.data();
                 setVendorId(vendorSnap.id);
-                setQrId(vendorData.qrId || vendorSnap.id); // Use qrId if it exists, otherwise fallback to vendorId
+                setQrId(vendorData.qrId || vendorSnap.id);
             } else {
                  console.log("No street vendor profile found for this user.");
             }
