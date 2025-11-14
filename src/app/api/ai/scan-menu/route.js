@@ -15,6 +15,7 @@ const MenuItemSchema = z.object({
   categoryId: z.string().describe("The category of the item (e.g., 'snacks', 'main-course'). Default to 'general' if unsure."),
   isVeg: z
     .boolean()
+    .default(true)
     .describe(
       'Set to true if the item is vegetarian, false if non-vegetarian. Default to true if not specified.'
     ),
