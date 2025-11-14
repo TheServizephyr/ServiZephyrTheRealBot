@@ -97,10 +97,10 @@ const CustomizationDrawer = ({ item, isOpen, onClose, onAddToCart }) => {
                         transition={{ type: "spring", stiffness: 300, damping: 30 }}
                         onClick={(e) => e.stopPropagation()}
                     >
-                        <DialogHeader>
-                            <DialogTitle className="text-2xl">{item.name}</DialogTitle>
-                            <DialogDescription>Select a portion size</DialogDescription>
-                        </DialogHeader>
+                        <div className="flex-shrink-0">
+                            <h3 className="text-2xl font-bold">{item.name}</h3>
+                            <p className="text-sm text-muted-foreground">Select a portion size</p>
+                        </div>
                         <div className="py-4 space-y-3 overflow-y-auto">
                             {(item.portions || []).map(portion => (
                                 <div
@@ -116,11 +116,11 @@ const CustomizationDrawer = ({ item, isOpen, onClose, onAddToCart }) => {
                                 </div>
                             ))}
                         </div>
-                        <DialogFooter>
+                        <div className="flex-shrink-0 pt-4 border-t border-border">
                             <Button onClick={handleFinalAddToCart} className="w-full h-14 text-lg bg-primary hover:bg-primary/90 text-primary-foreground" disabled={!selectedPortion}>
                                 Add Item for ₹{selectedPortion?.price || 0}
                             </Button>
-                        </DialogFooter>
+                        </div>
                     </motion.div>
                 </motion.div>
             )}
@@ -400,3 +400,5 @@ export default function PreOrderPage({ params }) {
         </div>
     );
 }
+
+    
