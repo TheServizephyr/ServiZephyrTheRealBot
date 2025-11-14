@@ -44,9 +44,7 @@ export async function GET(request, { params }) {
         const restaurantRef = businessDoc.ref;
         const restaurantData = businessDoc.data();
         
-        // --- START FIX: Directly use businessType from data ---
-        businessType = restaurantData.businessType || (collectionName === 'restaurants' ? 'restaurant' : (collectionName === 'shops' ? 'shop' : 'street-vendor'));
-        // --- END FIX ---
+        businessType = restaurantData.businessType || 'restaurant';
         
         console.log(`[DEBUG] Menu API: Found business '${restaurantData.name}' in collection '${collectionName}'. BusinessType set to: '${businessType}'`);
 
