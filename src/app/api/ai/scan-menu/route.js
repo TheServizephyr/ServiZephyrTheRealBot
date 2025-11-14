@@ -129,7 +129,6 @@ export async function POST(req) {
             isVeg: item.isVeg,
             portions: item.portions,
             tags: item.tags || [],
-            imageUrl: '', // Explicitly set to empty string
             available: true,
         };
         batch.set(newItemRef, itemData);
