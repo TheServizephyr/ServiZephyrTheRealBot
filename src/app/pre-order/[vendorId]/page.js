@@ -96,7 +96,7 @@ const CheckoutModal = ({ isOpen, onClose, onConfirm, total }) => {
 export default function PreOrderPage({ params }) {
     const { vendorId } = params;
     const [vendor, setVendor] = useState(null);
-    const [menu, setMenu] = useState({});
+    const [menu, setMenu] = useState([]); // Default to an empty array
     const [cart, setCart] = useState([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
@@ -118,12 +118,13 @@ export default function PreOrderPage({ params }) {
                     throw new Error(errorData.message || "Could not load menu for this vendor.");
                 }
                 const data = await res.json();
-                
-                // This logic is now handled by the API itself with the trump card fix.
-                // We can trust the API to only send data for approved vendors.
-                
+
+                // THE FIX: Do not check approval here, trust the API
                 setVendor({ name: data.restaurantName, address: data.businessAddress?.full || '' });
-                setMenu(data.menu || {});
+
+                // THE FIX: Flatten the menu data from the API into a single list
+                const allItems = Object.values(data.menu || {}).flat();
+                setMenu(allItems);
 
             } catch (err) {
                 setError(err.message);
@@ -188,9 +189,6 @@ export default function PreOrderPage({ params }) {
          return <div className="min-h-screen bg-slate-900 flex items-center justify-center text-red-400 p-4 text-center">{error}</div>;
     }
 
-    // New: Group menu by category for rendering
-    const groupedMenu = Object.entries(menu).filter(([category, items]) => items.length > 0);
-
     return (
         <div className="min-h-screen bg-slate-900 text-white font-body p-4">
             <header className="text-center mb-6">
@@ -199,17 +197,10 @@ export default function PreOrderPage({ params }) {
             </header>
 
             <main className="pb-28">
-                 <div className="space-y-6">
-                    {groupedMenu.length > 0 ? (
-                        groupedMenu.map(([category, items]) => (
-                            <div key={category}>
-                                <h2 className="text-2xl font-bold text-primary mb-3 capitalize">{category.replace(/-/g, ' ')}</h2>
-                                <div className="space-y-4">
-                                    {items.map(item => (
-                                        <MenuItem key={item.id} item={item} addToCart={addToCart} />
-                                    ))}
-                                </div>
-                            </div>
+                 <div className="space-y-4">
+                    {menu.length > 0 ? (
+                        menu.map(item => (
+                            <MenuItem key={item.id} item={item} addToCart={addToCart} />
                         ))
                     ) : (
                          <div className="text-center py-20 text-slate-500">
