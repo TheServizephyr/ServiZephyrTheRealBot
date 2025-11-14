@@ -322,8 +322,7 @@ const AiScanModal = ({ isOpen, onClose, onScan }) => {
         if (selectedFile) {
             setIsScanning(true);
             await onScan(selectedFile);
-            setIsScanning(false);
-            onClose();
+            // Don't close automatically, let the parent handle it
         }
     };
 
@@ -338,10 +337,10 @@ const AiScanModal = ({ isOpen, onClose, onScan }) => {
                     <input type="file" ref={inputRef} onChange={handleFileChange} className="hidden" accept="image/*" />
                     <div
                         onClick={() => inputRef.current?.click()}
-                        className="w-full h-48 border-2 border-dashed border-slate-600 rounded-lg flex flex-col items-center justify-center cursor-pointer hover:border-primary hover:bg-slate-800/50 transition-colors"
+                        className="relative w-full h-48 border-2 border-dashed border-slate-600 rounded-lg flex flex-col items-center justify-center cursor-pointer hover:border-primary hover:bg-slate-800/50 transition-colors"
                     >
                         {previewUrl ? (
-                            <Image src={previewUrl} alt="Menu preview" layout="fill" objectFit="contain" className="p-2"/>
+                            <Image src={previewUrl} alt="Menu preview" layout="fill" objectFit="contain" className="p-2 rounded-lg"/>
                         ) : (
                             <>
                                 <Camera size={48} className="text-slate-500" />
