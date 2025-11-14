@@ -57,6 +57,7 @@ const AddItemModal = ({ isOpen, setIsOpen, onSave, editingItem, allCategories, s
     const [newCategory, setNewCategory] = useState('');
     const [showNewCategory, setShowNewCategory] = useState(false);
     const fileInputRef = useRef(null);
+    const [pricingType, setPricingType] = useState('portions');
 
     const sortedCategories = useMemo(() => Object.entries(allCategories)
         .map(([id, config]) => ({ id, title: config?.title || id }))
@@ -68,11 +69,24 @@ const AddItemModal = ({ isOpen, setIsOpen, onSave, editingItem, allCategories, s
             setNewCategory('');
             setShowNewCategory(false);
             if (editingItem) {
+                const hasMultiplePortions = editingItem.portions && editingItem.portions.length > 1;
+                const hasDifferentPortionName = editingItem.portions && editingItem.portions.length === 1 && editingItem.portions[0].name.toLowerCase() !== 'full';
+                
+                if (hasMultiplePortions || hasDifferentPortionName) {
+                    setPricingType('portions');
+                } else {
+                    setPricingType('single');
+                }
+                
                 setItem({
                     ...editingItem,
                     tags: Array.isArray(editingItem.tags) ? editingItem.tags.join(', ') : '',
+                    addOnGroups: editingItem.addOnGroups || [],
+                    // --- FIX: Ensure portions is always an array ---
+                    portions: Array.isArray(editingItem.portions) && editingItem.portions.length > 0 ? editingItem.portions : [{ name: 'Full', price: '' }],
                 });
             } else {
+                setPricingType('portions');
                 setItem({
                     name: "",
                     description: "",
@@ -118,6 +132,10 @@ const AddItemModal = ({ isOpen, setIsOpen, onSave, editingItem, allCategories, s
             reader.readAsDataURL(file);
         }
     };
+    
+    const handleBasePriceChange = (value) => {
+        setItem(prev => ({ ...prev, portions: [{ name: 'Full', price: value }] }));
+    };
 
     const handleSubmit = async (e) => {
         e.preventDefault();
@@ -133,17 +151,50 @@ const AddItemModal = ({ isOpen, setIsOpen, onSave, editingItem, allCategories, s
         setIsSaving(true);
         try {
             const tagsArray = item.tags ? item.tags.split(',').map(tag => tag.trim()).filter(Boolean) : [];
-            const finalPortions = item.portions.filter(p => p.name.trim() && p.price && !isNaN(parseFloat(p.price))).map(p => ({ name: p.name.trim(), price: parseFloat(p.price) }));
-            if (finalPortions.length === 0) {
-                 showInfoDialog({ isOpen: true, title: 'Input Error', message: "Please add at least one valid portion."});
-                 setIsSaving(false);
-                 return;
+            
+            let finalPortions;
+            if (pricingType === 'single') {
+                const basePrice = item.portions?.[0]?.price;
+                if (!basePrice || isNaN(parseFloat(basePrice))) {
+                    showInfoDialog({ isOpen: true, title: 'Input Error', message: "Please enter a valid base price."});
+                    setIsSaving(false);
+                    return;
+                }
+                finalPortions = [{ name: 'Full', price: parseFloat(basePrice) }];
+            } else {
+                 finalPortions = item.portions
+                  .filter(p => p.name.trim() && p.price && !isNaN(parseFloat(p.price)))
+                  .map(p => ({ name: p.name.trim(), price: parseFloat(p.price) }));
             }
 
-            await onSave({ ...item, tags: tagsArray, portions: finalPortions }, finalCategoryId, finalNewCategoryName, !!editingItem);
+            if (finalPortions.length === 0) {
+                showInfoDialog({ isOpen: true, title: 'Input Error', message: "Please add at least one valid portion with a name and price."});
+                setIsSaving(false);
+                return;
+            }
+
+            const newItemData = {
+                id: editingItem ? item.id : undefined,
+                name: item.name,
+                description: item.description,
+                portions: finalPortions,
+                isVeg: item.isVeg,
+                isAvailable: item.isAvailable,
+                imageUrl: item.imageUrl || `https://picsum.photos/seed/${item.name.replace(/\s/g, '')}/100/100`,
+                tags: tagsArray,
+            };
+            
+
+            if (!newItemData.name) {
+                showInfoDialog({ isOpen: true, title: 'Input Error', message: "Please provide an item name."});
+                setIsSaving(false);
+                return;
+            }
+            
+            await onSave(newItemData, finalCategoryId, finalNewCategoryName, !!editingItem);
             setIsOpen(false);
         } catch (error) {
-             // Error shown by parent
+             // Error alert is handled in the parent `handleSaveItem`
         } finally {
             setIsSaving(false);
         }
@@ -190,17 +241,17 @@ const AddItemModal = ({ isOpen, setIsOpen, onSave, editingItem, allCategories, s
                                 </div>
                             </div>
                             <div>
-                                <Label>Pricing (Portions)</Label>
-                                <div className="mt-2 space-y-2">
-                                {item.portions.map((portion, index) => (
-                                    <div key={index} className="flex items-center gap-2">
-                                        <input value={portion.name} onChange={(e) => handlePortionChange(index, 'name', e.target.value)} placeholder="e.g., Half" className="flex-1 p-2 bg-slate-800 border border-slate-700 rounded-md" required/>
-                                        <IndianRupee className="text-slate-400" size={16}/>
-                                        <input type="number" value={portion.price} onChange={(e) => handlePortionChange(index, 'price', e.target.value)} placeholder="Price" className="w-24 p-2 bg-slate-800 border border-slate-700 rounded-md" required/>
-                                        <Button type="button" variant="ghost" size="icon" className="text-red-500" onClick={() => removePortion(index)} disabled={item.portions.length <= 1}><Trash2 size={16}/></Button>
-                                    </div>
-                                ))}
-                                <Button type="button" variant="outline" size="sm" onClick={addPortion} className="text-white border-slate-700 hover:bg-slate-800"><PlusCircle size={16} className="mr-2"/> Add Portion</Button>
+                                <Label>Pricing</Label>
+                                <div className="mt-2 space-y-3">
+                                    {item.portions.map((portion, index) => (
+                                        <div key={index} className="flex items-center gap-2">
+                                            <input value={portion.name} onChange={(e) => handlePortionChange(index, 'name', e.target.value)} placeholder="e.g., Half" className="flex-1 p-2 bg-slate-800 border border-slate-700 rounded-md" required/>
+                                            <IndianRupee className="text-slate-400" size={16}/>
+                                            <input type="number" value={portion.price} onChange={(e) => handlePortionChange(index, 'price', e.target.value)} placeholder="Price" className="w-24 p-2 bg-slate-800 border border-slate-700 rounded-md" required/>
+                                            <Button type="button" variant="ghost" size="icon" className="text-red-500" onClick={() => removePortion(index)} disabled={item.portions.length <= 1}><Trash2 size={16}/></Button>
+                                        </div>
+                                    ))}
+                                    <Button type="button" variant="outline" size="sm" onClick={addPortion} className="text-white border-slate-700 hover:bg-slate-800"><PlusCircle size={16} className="mr-2"/> Add Portion</Button>
                                 </div>
                             </div>
                         </div>
@@ -344,7 +395,7 @@ ${placeholderText}
             setJsonText('');
             setIsOpen(false);
         } catch (error) {
-            // error is handled by the parent
+            // alert is handled by the parent
         } finally {
             setIsSaving(false);
         }
