@@ -20,6 +20,24 @@ import Image from 'next/image';
 import { cn } from '@/lib/utils';
 
 
+const ConfirmationModal = ({ isOpen, onClose, onConfirm, itemName }) => (
+    <Dialog open={isOpen} onOpenChange={onClose}>
+        <DialogContent className="bg-slate-900 border-slate-700 text-white">
+            <DialogHeader>
+                <DialogTitle>Confirm Deletion</DialogTitle>
+                <DialogDescription>
+                    Are you sure you want to permanently delete the item: <span className="font-bold text-primary">{itemName}</span>? This action cannot be undone.
+                </DialogDescription>
+            </DialogHeader>
+            <DialogFooter>
+                <Button variant="ghost" onClick={onClose}>Cancel</Button>
+                <Button variant="destructive" onClick={onConfirm}>Confirm Delete</Button>
+            </DialogFooter>
+        </DialogContent>
+    </Dialog>
+);
+
+
 const MenuItem = ({ item, onEdit, onDelete, onToggle }) => (
   <motion.div
     layout
@@ -47,7 +65,7 @@ const MenuItem = ({ item, onEdit, onDelete, onToggle }) => (
       <Button onClick={() => onEdit(item)} size="icon" variant="ghost" className="text-slate-400 hover:bg-slate-700 hover:text-white">
         <Edit />
       </Button>
-      <Button onClick={() => onDelete(item.id)} size="icon" variant="ghost" className="text-red-500 hover:bg-red-500/10">
+      <Button onClick={() => onDelete(item.id, item.name)} size="icon" variant="ghost" className="text-red-500 hover:bg-red-500/10">
         <Trash2 />
       </Button>
     </div>
@@ -493,6 +511,7 @@ export default function StreetVendorMenuPage() {
     const [infoDialog, setInfoDialog] = useState({ isOpen: false, title: '', message: '' });
     const [isScanning, setIsScanning] = useState(false);
     const [customCategories, setCustomCategories] = useState([]);
+    const [itemToDelete, setItemToDelete] = useState(null);
 
     const vendorQuery = useMemoFirebase(() => {
         if (!user) return null;
@@ -554,15 +573,21 @@ export default function StreetVendorMenuPage() {
         };
     };
 
-    const handleDeleteItem = async (itemId) => {
-        if (!vendorId) return;
-        if (!window.confirm("Are you sure you want to delete this item?")) return;
-        const itemRef = doc(db, 'street_vendors', vendorId, 'menu', itemId);
+    const handleDeleteItem = (itemId, itemName) => {
+        setItemToDelete({ id: itemId, name: itemName });
+    };
+
+    const confirmDeleteItem = async () => {
+        if (!itemToDelete || !vendorId) return;
+        const itemRef = doc(db, 'street_vendors', vendorId, 'menu', itemToDelete.id);
         try {
             await deleteDoc(itemRef);
+            setInfoDialog({ isOpen: true, title: 'Success', message: `Item "${itemToDelete.name}" has been deleted.` });
         } catch(error) {
             errorEmitter.emit('permission-error', new FirestorePermissionError({ path: itemRef.path, operation: 'delete' }));
-             setInfoDialog({ isOpen: true, title: 'Error', message: 'Could not delete item: ' + error.message });
+            setInfoDialog({ isOpen: true, title: 'Error', message: 'Could not delete item: ' + error.message });
+        } finally {
+            setItemToDelete(null);
         }
     };
     
@@ -677,6 +702,12 @@ export default function StreetVendorMenuPage() {
             onClose={() => setInfoDialog({isOpen: false, title: '', message: ''})} 
             title={infoDialog.title} 
             message={infoDialog.message}
+        />
+        <ConfirmationModal
+            isOpen={!!itemToDelete}
+            onClose={() => setItemToDelete(null)}
+            onConfirm={confirmDeleteItem}
+            itemName={itemToDelete?.name}
         />
         <AiScanModal isOpen={isAiModalOpen} onClose={() => setIsAiModalOpen(false)} onScan={handleAiScan} />
         <BulkAddModal isOpen={isBulkModalOpen} setIsOpen={setIsBulkModalOpen} onSave={handleBulkSave} businessType="street-vendor" showInfoDialog={setInfoDialog} />
