@@ -17,6 +17,7 @@ const generateSecureToken = async (firestore, customerPhone) => {
         expiresAt: expiry,
         type: 'tracking'
     });
+    console.log(`[Webhook RZP] Generated secure tracking token for ${customerPhone}.`);
     return token;
 };
 
@@ -49,10 +50,11 @@ async function makeRazorpayRequest(options, payload) {
 
 
 export async function POST(req) {
+    console.log("[Webhook RZP] Received POST request.");
     const secret = process.env.RAZORPAY_WEBHOOK_SECRET;
 
     if (!secret) {
-        console.error("[Webhook Error] RAZORPAY_WEBHOOK_SECRET is not set.");
+        console.error("[Webhook RZP] CRITICAL: RAZORPAY_WEBHOOK_SECRET is not set.");
         return NextResponse.json({ message: 'Webhook secret not configured' }, { status: 500 });
     }
 
@@ -65,11 +67,12 @@ export async function POST(req) {
         const digest = shasum.digest('hex');
 
         if (digest !== signature) {
-            console.warn("[Webhook] Invalid signature received.");
+            console.warn("[Webhook RZP] Invalid signature received.");
             return NextResponse.json({ message: 'Invalid signature' }, { status: 403 });
         }
 
         const eventData = JSON.parse(body);
+        console.log(`[Webhook RZP] Event received: ${eventData.event}`);
         
         if (eventData.event === 'payment.captured') {
             const paymentEntity = eventData.payload.payment.entity;
@@ -78,13 +81,13 @@ export async function POST(req) {
             const paymentAmount = paymentEntity.amount; 
             
             if (!razorpayOrderId) {
-                console.warn("[Webhook] 'order_id' not found in payment entity.");
+                console.warn("[Webhook RZP] 'order_id' not found in payment entity. Skipping.");
                 return NextResponse.json({ status: 'ok' });
             }
             
             const firestore = await getFirestore();
             
-            // Fetch order notes to get our internal payload
+            console.log(`[Webhook RZP] Fetching Razorpay order details for ${razorpayOrderId}`);
             const key_id = process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID;
             const key_secret = process.env.RAZORPAY_KEY_SECRET;
             const credentials = Buffer.from(`${key_id}:${key_secret}`).toString('base64');
@@ -97,11 +100,10 @@ export async function POST(req) {
             };
 
             const rzpOrder = await makeRazorpayRequest(fetchOrderOptions);
-            // --- FIX: Correctly parse the nested payload string ---
             const payloadString = rzpOrder.notes?.servizephyr_payload;
             
             if (!payloadString) {
-                console.error(`[Webhook] CRITICAL: servizephyr_payload not found in notes for Razorpay Order ${razorpayOrderId}`);
+                console.error(`[Webhook RZP] CRITICAL: servizephyr_payload not found in notes for Razorpay Order ${razorpayOrderId}`);
                 return NextResponse.json({ status: 'error', message: 'Order payload not found in notes.' });
             }
             
@@ -115,26 +117,24 @@ export async function POST(req) {
                 bill_details: billDetailsString,
                 notes: customNotes 
             } = JSON.parse(payloadString);
-            // --- END FIX ---
             
             if (!firestoreOrderId || !userId || !restaurantId || !businessType) {
-                console.error(`[Webhook] CRITICAL: Missing key identifiers in payload for Razorpay Order ${razorpayOrderId}`);
+                console.error(`[Webhook RZP] CRITICAL: Missing key identifiers in payload for Razorpay Order ${razorpayOrderId}`);
                 return NextResponse.json({ status: 'error', message: 'Order identifier notes missing.' });
             }
 
             const existingOrderQuery = await firestore.collection('orders').where('paymentDetails.razorpay_order_id', '==', razorpayOrderId).limit(1).get();
             if (!existingOrderQuery.empty) {
-                console.log(`[Webhook] Order ${razorpayOrderId} already processed. Skipping.`);
+                console.log(`[Webhook RZP] Order ${razorpayOrderId} already processed. Skipping.`);
                 return NextResponse.json({ status: 'ok', message: 'Order already exists.'});
             }
 
-            // Parse stringified JSON from notes
             const customerDetails = JSON.parse(customerDetailsString);
             const orderItems = JSON.parse(itemsString);
             const billDetails = JSON.parse(billDetailsString);
             
-            // --- THE FIX: Generate tracking token ---
             const trackingToken = await generateSecureToken(firestore, customerDetails.phone);
+            console.log(`[Webhook RZP] Generated tracking token: ${trackingToken}`);
 
             const batch = firestore.batch();
             const usersRef = firestore.collection('users');
@@ -143,11 +143,12 @@ export async function POST(req) {
             const isNewUser = existingUserQuery.empty;
 
             if (isNewUser) {
+                console.log(`[Webhook RZP] New user detected: ${customerDetails.phone}. Creating unclaimed profile.`);
                 const unclaimedUserRef = firestore.collection('unclaimed_profiles').doc(customerDetails.phone);
                  batch.set(unclaimedUserRef, {
                     name: customerDetails.name, 
                     phone: customerDetails.phone, 
-                    addresses: [customerDetails.address], // Save the full address object
+                    addresses: [customerDetails.address],
                     createdAt: FieldValue.serverTimestamp(),
                     orderedFrom: FieldValue.arrayUnion({
                         restaurantId: restaurantId,
@@ -159,7 +160,6 @@ export async function POST(req) {
             
             const subtotal = billDetails.subtotal || 0;
             const loyaltyDiscount = billDetails.loyaltyDiscount || 0;
-            
             const pointsEarned = Math.floor(subtotal / 100) * 10;
             const pointsSpent = loyaltyDiscount > 0 ? loyaltyDiscount / 0.5 : 0;
             
@@ -177,9 +177,9 @@ export async function POST(req) {
             
             const newOrderRef = firestore.collection('orders').doc(firestoreOrderId);
             
-            // DINE IN LOGIC: Handle new tab creation if it was a dine-in order
             let finalDineInTabId = billDetails.dineInTabId;
             if (billDetails.deliveryType === 'dine-in' && billDetails.tableId && !finalDineInTabId) {
+                console.log(`[Webhook RZP] Pre-paid dine-in order for table ${billDetails.tableId}. Creating new tab.`);
                 const newTabRef = firestore.collection(businessCollectionName).doc(restaurantId).collection('dineInTabs').doc();
                 finalDineInTabId = newTabRef.id;
 
@@ -199,6 +199,7 @@ export async function POST(req) {
                 });
             }
 
+            console.log(`[Webhook RZP] Creating order document ${newOrderRef.id}`);
             batch.set(newOrderRef, {
                 customerName: customerDetails.name, customerId: userId, customerAddress: customerDetails.address.full, customerPhone: customerDetails.phone,
                 restaurantId: restaurantId,
@@ -217,10 +218,10 @@ export async function POST(req) {
                 sgst: billDetails.sgst, 
                 deliveryCharge: billDetails.deliveryCharge,
                 totalAmount: billDetails.grandTotal,
-                status: 'pending', // THE FIX: Always set to 'pending' for consistency
+                status: 'pending',
                 orderDate: FieldValue.serverTimestamp(),
                 notes: customNotes || null,
-                trackingToken: trackingToken, // --- THE FIX: Save the token ---
+                trackingToken: trackingToken,
                 paymentDetails: {
                     razorpay_payment_id: paymentId,
                     razorpay_order_id: razorpayOrderId,
@@ -229,7 +230,7 @@ export async function POST(req) {
             });
             
             await batch.commit();
-            console.log(`[Webhook] Successfully created Firestore order ${newOrderRef.id} from Razorpay Order ${razorpayOrderId}.`);
+            console.log(`[Webhook RZP] Successfully created Firestore order ${newOrderRef.id} from Razorpay Order ${razorpayOrderId}.`);
 
             const businessDoc = await firestore.collection(businessCollectionName).doc(restaurantId).get();
             if (businessDoc.exists) {
@@ -241,7 +242,6 @@ export async function POST(req) {
                 }
 
                 const linkedAccountId = businessData.razorpayAccountId;
-
                 if (linkedAccountId && linkedAccountId.startsWith('acc_')) {
                     const transferPayload = JSON.stringify({ transfers: [{ account: linkedAccountId, amount: paymentAmount, currency: "INR" }] });
                     const transferOptions = {
@@ -254,12 +254,12 @@ export async function POST(req) {
                     
                     try {
                         await makeRazorpayRequest(transferOptions, transferPayload);
-                        console.log(`[Webhook] Initiated transfer for payment ${paymentId} to account ${linkedAccountId}.`);
+                        console.log(`[Webhook RZP] Initiated transfer for payment ${paymentId} to account ${linkedAccountId}.`);
                     } catch (transferError) {
-                        console.error(`[Webhook] CRITICAL: Failed to process transfer for payment ${paymentId}. Error:`, JSON.stringify(transferError, null, 2));
+                        console.error(`[Webhook RZP] CRITICAL: Failed to process transfer for payment ${paymentId}. Error:`, JSON.stringify(transferError, null, 2));
                     }
                 } else {
-                    console.warn(`[Webhook] Restaurant ${restaurantId} has no Linked Account. Skipping transfer.`);
+                    console.warn(`[Webhook RZP] Restaurant ${restaurantId} has no Linked Account. Skipping transfer.`);
                 }
 
                 if (businessData.ownerPhone && businessData.botPhoneNumberId) {
@@ -278,7 +278,7 @@ export async function POST(req) {
         return NextResponse.json({ status: 'ok' });
 
     } catch (error) {
-        console.error('[Webhook] Error processing webhook:', error);
+        console.error('[Webhook RZP] CRITICAL Error processing webhook:', error);
         return NextResponse.json({ status: 'error', message: 'Internal server error' }, { status: 200 });
     }
 }

@@ -12,7 +12,7 @@ import { nanoid } from 'nanoid';
 const VERIFY_TOKEN = process.env.WHATSAPP_VERIFY_TOKEN;
 
 export async function GET(request) {
-  console.log("[Webhook] Received GET request for verification.");
+  console.log("[Webhook WA] GET request received for verification.");
   try {
     const { searchParams } = new URL(request.url);
     
@@ -20,56 +20,58 @@ export async function GET(request) {
     const token = searchParams.get('hub.verify_token');
     const challenge = searchParams.get('hub.challenge');
 
-    console.log(`[Webhook] Mode: ${mode}, Token: ${token ? 'Present' : 'Missing'}, Challenge: ${challenge ? 'Present' : 'Missing'}`);
+    console.log(`[Webhook WA] Mode: ${mode}, Token: ${token ? 'Present' : 'Missing'}, Challenge: ${challenge ? 'Present' : 'Missing'}`);
 
     if (mode === 'subscribe' && token === VERIFY_TOKEN) {
-      console.log("[Webhook] Verification SUCCESS. Responding with challenge.");
+      console.log("[Webhook WA] Verification SUCCESS. Responding with challenge.");
       return new NextResponse(challenge, { status: 200 });
     } else {
-      console.error("[Webhook] Verification FAILED. Tokens do not match or mode is not 'subscribe'.");
+      console.error("[Webhook WA] Verification FAILED. Tokens do not match or mode is not 'subscribe'.");
       return new NextResponse('Verification Failed', { status: 403 });
     }
   } catch (error) {
-    console.error('[Webhook] CRITICAL ERROR in GET handler:', error);
+    console.error('[Webhook WA] CRITICAL ERROR in GET handler:', error);
     return new NextResponse('Server Error', { status: 500 });
   }
 }
 
 async function getBusiness(firestore, botPhoneNumberId) {
-    console.log(`[Webhook] getBusiness: Searching for business with botPhoneNumberId: ${botPhoneNumberId}`);
+    console.log(`[Webhook WA] getBusiness: Searching for business with botPhoneNumberId: ${botPhoneNumberId}`);
     const restaurantsQuery = await firestore.collection('restaurants').where('botPhoneNumberId', '==', botPhoneNumberId).limit(1).get();
     if (!restaurantsQuery.empty) {
         const doc = restaurantsQuery.docs[0];
-        console.log(`[Webhook] getBusiness: Found business in 'restaurants' collection with ID: ${doc.id}`);
+        console.log(`[Webhook WA] getBusiness: Found business in 'restaurants' collection with ID: ${doc.id}`);
         return { id: doc.id, ref: doc.ref, data: doc.data(), collectionName: 'restaurants' };
     }
     
     const shopsQuery = await firestore.collection('shops').where('botPhoneNumberId', '==', botPhoneNumberId).limit(1).get();
     if (!shopsQuery.empty) {
         const doc = shopsQuery.docs[0];
-        console.log(`[Webhook] getBusiness: Found business in 'shops' collection with ID: ${doc.id}`);
+        console.log(`[Webhook WA] getBusiness: Found business in 'shops' collection with ID: ${doc.id}`);
         return { id: doc.id, ref: doc.ref, data: doc.data(), collectionName: 'shops' };
     }
     
-    console.warn(`[Webhook] getBusiness: No business found for botPhoneNumberId: ${botPhoneNumberId}`);
+    console.warn(`[Webhook WA] getBusiness: No business found for botPhoneNumberId: ${botPhoneNumberId}`);
     return null;
 }
 
 const generateSecureToken = async (firestore, customerPhone) => {
+    console.log(`[Webhook WA] generateSecureToken: Generating for phone: ${customerPhone}`);
     const token = nanoid(24);
-    const expiry = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24-hour validity for tracking link
+    const expiry = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24-hour validity
     const authTokenRef = firestore.collection('auth_tokens').doc(token);
     await authTokenRef.set({
         phone: customerPhone,
         expiresAt: expiry,
         type: 'tracking'
     });
+    console.log("[Webhook WA] generateSecureToken: Token generated.");
     return token;
 };
 
 
 const sendWelcomeMessageWithOptions = async (customerPhoneWithCode, business, botPhoneNumberId) => {
-    console.log(`[Webhook] Sending interactive welcome message to ${customerPhoneWithCode}`);
+    console.log(`[Webhook WA] Sending interactive welcome message to ${customerPhoneWithCode}`);
     
     const payload = {
         type: "interactive",
@@ -80,27 +82,9 @@ const sendWelcomeMessageWithOptions = async (customerPhoneWithCode, business, bo
             },
             action: {
                 buttons: [
-                    {
-                        type: "reply",
-                        reply: {
-                            id: `action_order_${business.id}`,
-                            title: "Order Food"
-                        }
-                    },
-                    {
-                        type: "reply",
-                        reply: {
-                            id: `action_track_${business.id}`,
-                            title: "Track Last Order"
-                        }
-                    },
-                    {
-                        type: "reply",
-                        reply: {
-                            id: `action_help`,
-                            title: "Need Help?"
-                        }
-                    }
+                    { type: "reply", reply: { id: `action_order_${business.id}`, title: "Order Food" } },
+                    { type: "reply", reply: { id: `action_track_${business.id}`, title: "Track Last Order" } },
+                    { type: "reply", reply: { id: `action_help`, title: "Need Help?" } }
                 ]
             }
         }
@@ -117,7 +101,7 @@ const handleDineInConfirmation = async (firestore, text, fromNumber, business, b
     }
     
     const orderId = orderIdMatch[1];
-    console.log(`[Webhook DineIn] Found confirmation request for orderId: ${orderId}`);
+    console.log(`[Webhook WA DineIn] Found confirmation request for orderId: ${orderId}`);
 
     const orderRef = firestore.collection('orders').doc(orderId);
     const businessRef = business.ref;
@@ -126,6 +110,7 @@ const handleDineInConfirmation = async (firestore, text, fromNumber, business, b
 
     try {
         await firestore.runTransaction(async (transaction) => {
+            console.log(`[Webhook WA DineIn] Starting transaction for order ${orderId}`);
             const businessDoc = await transaction.get(businessRef);
             if (!businessDoc.exists) throw new Error("Business document not found.");
 
@@ -138,6 +123,7 @@ const handleDineInConfirmation = async (firestore, text, fromNumber, business, b
             if (orderData.dineInToken && orderData.trackingToken) {
                 dineInToken = orderData.dineInToken;
                 trackingTokenForLink = orderData.trackingToken;
+                 console.log(`[Webhook WA DineIn] Token already exists for order ${orderId}. Re-sending.`);
                 return;
             }
 
@@ -147,14 +133,11 @@ const handleDineInConfirmation = async (firestore, text, fromNumber, business, b
             dineInToken = `#${String(newTokenNumber).padStart(2, '0')}-${randomChar}`;
             
             const customerPhone = fromNumber.startsWith('91') ? fromNumber.substring(2) : fromNumber;
-            trackingTokenForLink = orderData.trackingToken; // Use the one from the order now
+            trackingTokenForLink = orderData.trackingToken; 
             
             transaction.update(businessRef, { lastDineInToken: newTokenNumber });
-            
-            transaction.update(orderRef, {
-                customerPhone: customerPhone,
-                dineInToken: dineInToken,
-            });
+            transaction.update(orderRef, { customerPhone: customerPhone, dineInToken: dineInToken });
+            console.log(`[Webhook WA DineIn] Transaction successful. New token: ${dineInToken}`);
         });
         
         const trackingUrl = `https://servizephyr.com/track/dine-in/${orderId}?token=${trackingTokenForLink}`;
@@ -175,7 +158,7 @@ const handleDineInConfirmation = async (firestore, text, fromNumber, business, b
         return true;
 
     } catch (error) {
-        console.error(`[Webhook DineIn] CRITICAL error processing confirmation for ${orderId}:`, error);
+        console.error(`[Webhook WA DineIn] CRITICAL error processing confirmation for ${orderId}:`, error);
         if (error.message.includes("Order document not found")) {
             await sendWhatsAppMessage(fromNumber, "Sorry, this order ID is invalid. Please try placing your order again.", botPhoneNumberId);
         } else {
@@ -194,7 +177,7 @@ const handleButtonActions = async (firestore, buttonId, fromNumber, business, bo
     const customerPhone = fromNumber.startsWith('91') ? fromNumber.substring(2) : fromNumber;
     const conversationRef = business.ref.collection('conversations').doc(customerPhone);
     
-    console.log(`[Webhook] Handling action: '${type}' for customer ${customerPhone}`);
+    console.log(`[Webhook WA] Handling button action: '${type}' for customer ${customerPhone}`);
 
     try {
         switch(type) {
@@ -202,26 +185,30 @@ const handleButtonActions = async (firestore, buttonId, fromNumber, business, bo
                 const businessId = payloadParts.join('_');
                 const token = await generateSecureToken(firestore, customerPhone);
                 const link = `https://servizephyr.com/order/${businessId}?phone=${customerPhone}&token=${token}`;
-                await sendWhatsAppMessage(fromNumber, `Here is your personal link to place an order:\n\n${link}\n\nThis link is valid for 2 hours.`, botPhoneNumberId);
+                await sendWhatsAppMessage(fromNumber, `Here is your personal link to place an order:\n\n${link}\n\nThis link is valid for 24 hours.`, botPhoneNumberId);
                 break;
             }
             case 'track': {
+                console.log(`[Webhook WA] 'track' action initiated for ${customerPhone}.`);
                 const ordersRef = firestore.collection('orders');
                 const q = ordersRef.where('customerPhone', '==', customerPhone).orderBy('orderDate', 'desc').limit(1);
                 const querySnapshot = await q.get();
 
                 if (querySnapshot.empty) {
+                    console.log(`[Webhook WA] No recent orders found for ${customerPhone}.`);
                     await sendWhatsAppMessage(fromNumber, `You don't have any recent orders to track.`, botPhoneNumberId);
                 } else {
                     const latestOrderDoc = querySnapshot.docs[0];
                     const latestOrder = latestOrderDoc.data();
                     
                     if (!latestOrder.trackingToken) {
+                        console.error(`[Webhook WA] CRITICAL: Tracking token missing for latest order ${latestOrderDoc.id} of customer ${customerPhone}.`);
                         await sendWhatsAppMessage(fromNumber, `We couldn't find tracking information for your last order. Please contact support.`, botPhoneNumberId);
                         return;
                     }
                     const orderId = latestOrderDoc.id;
                     const token = latestOrder.trackingToken;
+                    console.log(`[Webhook WA] Found latest order ${orderId} with tracking token.`);
 
                     const trackingPath = latestOrder.deliveryType === 'dine-in' ? 'dine-in/' : '';
                     const link = `https://servizephyr.com/track/${trackingPath}${orderId}?token=${token}`;
@@ -244,30 +231,30 @@ const handleButtonActions = async (firestore, buttonId, fromNumber, business, bo
             }
             case 'report': {
                 if (payloadParts[0] === 'admin') {
-                    console.log(`[Webhook] Admin Report triggered by ${customerPhone} for business ${business.id}`);
+                    console.log(`[Webhook WA] Admin Report triggered by ${customerPhone} for business ${business.id}`);
                     await sendWhatsAppMessage(fromNumber, `Thank you. Your request to speak with an admin has been noted. We will review the conversation and get back to you shortly.`, botPhoneNumberId);
                 }
                 break;
             }
             default:
-                 console.warn(`[Webhook] Unhandled action type: ${type}`);
+                 console.warn(`[Webhook WA] Unhandled button action type: ${type}`);
         }
     } catch (e) {
-        console.error(`[Webhook] Error handling button action '${type}':`, e);
+        console.error(`[Webhook WA] Error handling button action '${type}':`, e);
         await sendWhatsAppMessage(fromNumber, `Sorry, we couldn't process your request right now. Please try again.`, botPhoneNumberId);
     }
 }
 
 
 export async function POST(request) {
-    console.log("[Webhook] Received POST request.");
+    console.log("[Webhook WA] POST request received.");
     try {
         const body = await request.json();
         
-        console.log("[Webhook] Request Body Received:", JSON.stringify(body, null, 2));
+        console.log("[Webhook WA] Request Body Received:", JSON.stringify(body, null, 2));
 
         if (body.object !== 'whatsapp_business_account') {
-            console.log("[Webhook] Event is not from a WhatsApp Business Account. Skipping.");
+            console.log("[Webhook WA] Event is not from a WhatsApp Business Account. Skipping.");
             return NextResponse.json({ message: 'Not a WhatsApp event' }, { status: 200 });
         }
 
@@ -275,14 +262,14 @@ export async function POST(request) {
         const change = body.entry?.[0]?.changes?.[0];
         
         if (!change || !change.value) {
-            console.log("[Webhook] No 'change' or 'value' object found in payload. Skipping.");
+            console.log("[Webhook WA] No 'change' or 'value' object found in payload. Skipping.");
             return NextResponse.json({ message: 'No change data' }, { status: 200 });
         }
         
         const botPhoneNumberId = change.value.metadata.phone_number_id;
         const business = await getBusiness(firestore, botPhoneNumberId);
         if (!business) {
-             console.error(`[Webhook] No business found for Bot Phone Number ID: ${botPhoneNumberId}`);
+             console.error(`[Webhook WA] No business found for Bot Phone Number ID: ${botPhoneNumberId}`);
              return NextResponse.json({ message: 'Business not found' }, { status: 404 });
         }
 
@@ -294,7 +281,7 @@ export async function POST(request) {
             if (message.type === 'text') {
                 const isDineInHandled = await handleDineInConfirmation(firestore, message.text.body, fromNumber, business, botPhoneNumberId);
                 if (isDineInHandled) {
-                    console.log(`[Webhook] Message handled by Dine-in flow. Skipping further processing.`);
+                    console.log(`[Webhook WA] Message handled by Dine-in flow. Skipping further processing.`);
                     return NextResponse.json({ message: 'Dine-in confirmation processed.' }, { status: 200 });
                 }
             }
@@ -324,7 +311,7 @@ export async function POST(request) {
                     unreadCount: FieldValue.increment(1)
                 }, { merge: true });
                 
-                console.log(`[Webhook] Message from ${fromPhoneNumber} forwarded to owner.`);
+                console.log(`[Webhook WA] Message from ${fromPhoneNumber} forwarded to owner.`);
                 return NextResponse.json({ message: 'Forwarded to owner' }, { status: 200 });
             }
 
@@ -332,7 +319,7 @@ export async function POST(request) {
                 const buttonReply = message.interactive.button_reply;
                 const buttonId = buttonReply.id;
                 
-                console.log(`[Webhook] Button click detected. Button ID: "${buttonId}", From: ${fromNumber}`);
+                console.log(`[Webhook WA] Button click detected. Button ID: "${buttonId}", From: ${fromNumber}`);
                 
                 await handleButtonActions(firestore, buttonId, fromNumber, business, botPhoneNumberId);
             } 
@@ -341,10 +328,11 @@ export async function POST(request) {
             }
         }
         
+        console.log("[Webhook WA] POST request processed successfully.");
         return NextResponse.json({ message: 'Event received' }, { status: 200 });
 
     } catch (error) {
-        console.error('[Webhook] CRITICAL Error processing POST request:', error);
+        console.error('[Webhook WA] CRITICAL Error processing POST request:', error);
         return NextResponse.json({ message: 'Error processing request, but acknowledged.' }, { status: 200 });
     }
 }
