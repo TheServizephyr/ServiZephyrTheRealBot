@@ -1,3 +1,4 @@
+
 'use server';
 
 import {NextResponse} from 'next/server';
@@ -61,7 +62,7 @@ const MenuScanOutputSchema = z.object({
 // Define the Genkit prompt for the AI
 const menuScanPrompt = ai.definePrompt({
   name: 'menuScanPrompt',
-  model: 'googleai/gemini-2.5-flash-preview-09-2025',
+  model: 'googleai/gemini-pro-vision',
   input: {
     schema: z.object({
       photoDataUri: z.string(),
@@ -156,6 +157,7 @@ export async function POST(req) {
             portions: item.portions,
             tags: item.tags || [],
             available: true,
+            imageUrl: `https://picsum.photos/seed/${item.name.replace(/\s/g, '')}/200`, // THE FIX
         };
         batch.set(newItemRef, itemData);
     });
