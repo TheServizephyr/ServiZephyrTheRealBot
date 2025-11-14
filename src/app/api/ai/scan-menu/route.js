@@ -6,8 +6,6 @@ import {genkit} from 'genkit';
 import {googleAI} from '@genkit-ai/google-genai';
 import {z} from 'zod';
 
-console.log('[API LOG] /api/ai/scan-menu/route.js file loaded.');
-
 // Initialize Genkit and AI plugins right here in the server-side route.
 const ai = genkit({
   plugins: [
@@ -61,7 +59,7 @@ const MenuScanOutputSchema = z.object({
 // Define the Genkit prompt for the AI
 const menuScanPrompt = ai.definePrompt({
   name: 'menuScanPrompt',
-  model: 'googleai/gemini-pro-vision',
+  model: 'googleai/gemini-1.5-flash-preview-0514',
   input: {
     schema: z.object({
       photoDataUri: z.string(),
@@ -89,10 +87,7 @@ const menuScanPrompt = ai.definePrompt({
 
 
 export async function POST(req) {
-  console.log('[API LOG] POST /api/ai/scan-menu: Request received.');
-
   async function getVendorId(uid) {
-    console.log(`[API LOG] getVendorId: Searching for vendor with ownerId: ${uid}`);
     const firestore = await getFirestore();
     const q = firestore
       .collection('street_vendors')
@@ -100,51 +95,33 @@ export async function POST(req) {
       .limit(1);
     const snapshot = await q.get();
     if (snapshot.empty) {
-      console.error(`[API ERROR] getVendorId: No street vendor profile found for UID: ${uid}`);
       throw new Error('No street vendor profile found for this user.');
     }
-    const vendorId = snapshot.docs[0].id;
-    console.log(`[API LOG] getVendorId: Found vendor ID: ${vendorId}`);
-    return vendorId;
+    return snapshot.docs[0].id;
   }
 
   try {
-    console.log('[API LOG] Verifying user token...');
     const uid = await verifyAndGetUid(req);
-    console.log(`[API LOG] User verified. UID: ${uid}`);
-
     const vendorId = await getVendorId(uid);
-    console.log(`[API LOG] Vendor ID retrieved: ${vendorId}`);
-
     const {imageDataUri} = await req.json();
-    console.log('[API LOG] Image data URI received:', imageDataUri ? 'Present' : 'Missing');
-
 
     if (!imageDataUri) {
-      console.error('[API ERROR] Image data is required but was not provided.');
       return NextResponse.json(
         {message: 'Image data is required.'},
         {status: 400}
       );
     }
 
-    console.log('[API LOG] Calling Genkit menuScanPrompt...');
     const llmResponse = await menuScanPrompt({photoDataUri: imageDataUri});
-    console.log('[API LOG] Genkit response received.');
-
     const scannedData = llmResponse.output;
 
     if (!scannedData || !scannedData.items || scannedData.items.length === 0) {
-      console.warn('[API WARN] AI could not detect any menu items from the image.');
       return NextResponse.json(
         {message: 'AI could not detect any menu items. Please try a clearer image.'},
         {status: 400}
       );
     }
-    
-    console.log(`[API LOG] AI detected ${scannedData.items.length} items. Preparing to save to Firestore.`);
 
-    // Save the extracted items to Firestore
     const firestore = await getFirestore();
     const batch = firestore.batch();
     const menuCollectionRef = firestore.collection('street_vendors').doc(vendorId).collection('menu');
@@ -161,13 +138,10 @@ export async function POST(req) {
             tags: item.tags || [],
             available: true,
         };
-        console.log(`[API LOG] Adding item to batch: ${JSON.stringify(itemData)}`);
         batch.set(newItemRef, itemData);
     });
 
-    console.log('[API LOG] Committing batch write to Firestore...');
     await batch.commit();
-    console.log('[API LOG] Batch commit successful!');
 
     return NextResponse.json({
       message: `Successfully scanned and added ${scannedData.items.length} items to your menu!`,
@@ -176,7 +150,6 @@ export async function POST(req) {
 
   } catch (error) {
     console.error('[/api/ai/scan-menu] CRITICAL ERROR:', error);
-    // Return a JSON response even on error
     return NextResponse.json(
       {message: `An error occurred: ${error.message}`},
       {status: 500}
