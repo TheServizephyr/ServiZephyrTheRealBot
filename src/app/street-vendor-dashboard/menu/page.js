@@ -192,9 +192,9 @@ const AddItemModal = ({ isOpen, setIsOpen, onSave, editingItem, allCategories, s
                                 <div className="mt-2 space-y-2">
                                 {item.portions.map((portion, index) => (
                                     <div key={index} className="flex items-center gap-2">
-                                        <input value={portion.name} onChange={e => handlePortionChange(index, 'name', e.target.value)} placeholder="e.g., Half" className="flex-1 p-2 bg-slate-800 border border-slate-700 rounded-md" required/>
+                                        <input value={portion.name} onChange={(e) => handlePortionChange(index, 'name', e.target.value)} placeholder="e.g., Half" className="flex-1 p-2 bg-slate-800 border border-slate-700 rounded-md" required/>
                                         <IndianRupee className="text-slate-400" size={16}/>
-                                        <input type="number" value={portion.price} onChange={e => handlePortionChange(index, 'price', e.target.value)} placeholder="Price" className="w-24 p-2 bg-slate-800 border border-slate-700 rounded-md" required/>
+                                        <input type="number" value={portion.price} onChange={(e) => handlePortionChange(index, 'price', e.target.value)} placeholder="Price" className="w-24 p-2 bg-slate-800 border border-slate-700 rounded-md" required/>
                                         <Button type="button" variant="ghost" size="icon" className="text-red-500" onClick={() => removePortion(index)} disabled={item.portions.length <= 1}><Trash2 size={16}/></Button>
                                     </div>
                                 ))}
@@ -331,6 +331,68 @@ ${placeholderText}
         </Dialog>
     );
 };
+
+const AiScanModal = ({ isOpen, onClose, onScan }) => {
+    const [selectedFile, setSelectedFile] = useState(null);
+    const [previewUrl, setPreviewUrl] = useState(null);
+    const inputRef = useRef(null);
+
+    useEffect(() => {
+        if (!isOpen) {
+            setSelectedFile(null);
+            setPreviewUrl(null);
+        }
+    }, [isOpen]);
+
+    const handleFileChange = (e) => {
+        const file = e.target.files[0];
+        if (file) {
+            setSelectedFile(file);
+            setPreviewUrl(URL.createObjectURL(file));
+        }
+    };
+
+    const handleScan = async () => {
+        if (selectedFile) {
+            await onScan(selectedFile);
+            onClose();
+        }
+    };
+
+    return (
+        <Dialog open={isOpen} onOpenChange={onClose}>
+            <DialogContent className="bg-slate-900 border-slate-700 text-white">
+                <DialogHeader>
+                    <DialogTitle>Scan Menu with AI</DialogTitle>
+                    <DialogDescription>Upload an image of your menu, and our AI will automatically add the items for you.</DialogDescription>
+                </DialogHeader>
+                <div className="py-4 space-y-4">
+                    <input type="file" ref={inputRef} onChange={handleFileChange} className="hidden" accept="image/*" />
+                    <div
+                        onClick={() => inputRef.current?.click()}
+                        className="w-full h-48 border-2 border-dashed border-slate-600 rounded-lg flex flex-col items-center justify-center cursor-pointer hover:border-primary hover:bg-slate-800/50 transition-colors"
+                    >
+                        {previewUrl ? (
+                            <Image src={previewUrl} alt="Menu preview" layout="fill" objectFit="contain" className="p-2"/>
+                        ) : (
+                            <>
+                                <Camera size={48} className="text-slate-500" />
+                                <p className="mt-2 text-slate-400">Click to Upload Image</p>
+                            </>
+                        )}
+                    </div>
+                </div>
+                <DialogFooter>
+                    <Button variant="ghost" onClick={onClose}>Cancel</Button>
+                    <Button onClick={handleScan} disabled={!selectedFile} className="bg-primary hover:bg-primary/80 text-primary-foreground">
+                        Start AI Scan
+                    </Button>
+                </DialogFooter>
+            </DialogContent>
+        </Dialog>
+    );
+};
+
 
 export default function StreetVendorMenuPage() {
     const { user, isUserLoading } = useUser();
@@ -499,7 +561,7 @@ export default function StreetVendorMenuPage() {
     };
 
     const groupedMenu = menuItems.reduce((acc, item) => {
-        const category = item.category || 'General';
+        const category = item.categoryId || 'General';
         (acc[category] = acc[category] || []).push(item);
         return acc;
     }, {});
