@@ -11,30 +11,21 @@ async function verifyOwnerAndGetBusiness(req) {
     const uid = await verifyAndGetUid(req);
     
     const userDoc = await firestore.collection('users').doc(uid).get();
-    if (!userDoc.exists || (userDoc.data().role !== 'owner' && userDoc.data().role !== 'restaurant-owner' && userDoc.data().role !== 'shop-owner')) {
+    if (!userDoc.exists || (userDoc.data().role !== 'owner' && userDoc.data().role !== 'restaurant-owner' && userDoc.data().role !== 'shop-owner' && userDoc.data().role !== 'street-vendor')) {
         throw { message: 'Access Denied: You do not have owner privileges.', status: 403 };
     }
     
-    const restaurantsQuery = await firestore.collection('restaurants').where('ownerId', '==', uid).limit(1).get();
-    if (!restaurantsQuery.empty) {
-        const restaurantDoc = restaurantsQuery.docs[0];
-        const restaurantData = restaurantDoc.data();
-        return { 
-            status: restaurantData.approvalStatus || 'pending', 
-            restrictedFeatures: restaurantData.restrictedFeatures || [],
-            suspensionRemark: restaurantData.suspensionRemark || '',
-        };
-    }
-
-    const shopsQuery = await firestore.collection('shops').where('ownerId', '==', uid).limit(1).get();
-    if (!shopsQuery.empty) {
-        const shopDoc = shopsQuery.docs[0];
-        const shopData = shopDoc.data();
-        return { 
-            status: shopData.approvalStatus || 'pending', 
-            restrictedFeatures: shopData.restrictedFeatures || [],
-            suspensionRemark: shopData.suspensionRemark || '',
-        };
+    const collectionsToTry = ['restaurants', 'shops', 'street_vendors'];
+    for (const collectionName of collectionsToTry) {
+        const querySnapshot = await firestore.collection(collectionName).where('ownerId', '==', uid).limit(1).get();
+        if (!querySnapshot.empty) {
+            const docData = querySnapshot.docs[0].data();
+            return { 
+                status: docData.approvalStatus || 'pending', 
+                restrictedFeatures: docData.restrictedFeatures || [],
+                suspensionRemark: docData.suspensionRemark || '',
+            };
+        }
     }
 
     throw { message: 'No business associated with this owner.', status: 404 };

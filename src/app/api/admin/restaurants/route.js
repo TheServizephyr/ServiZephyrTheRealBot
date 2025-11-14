@@ -17,6 +17,17 @@ async function fetchCollection(firestore, collectionName) {
         const status = data.approvalStatus || 'pending';
         const capitalizedStatus = status.charAt(0).toUpperCase() + status.slice(1);
 
+        let businessType;
+        if (collectionName === 'restaurants') {
+            businessType = 'restaurant';
+        } else if (collectionName === 'shops') {
+            businessType = 'shop';
+        } else if (collectionName === 'street_vendors') {
+            businessType = 'street-vendor';
+        } else {
+            businessType = collectionName.slice(0, -1);
+        }
+
         const business = {
             id: doc.id,
             name: data.name || 'Unnamed Business',
@@ -26,7 +37,7 @@ async function fetchCollection(firestore, collectionName) {
             onboarded: data.createdAt?.toDate?.()?.toISOString() || new Date().toISOString(),
             status: capitalizedStatus,
             restrictedFeatures: data.restrictedFeatures || [],
-            businessType: data.businessType || (collectionName === 'restaurants' ? 'restaurant' : 'shop'),
+            businessType: data.businessType || businessType,
         };
 
         if (business.ownerId) {
@@ -48,12 +59,13 @@ export async function GET(req) {
     try {
         const firestore = getFirestore();
         
-        const [restaurants, shops] = await Promise.all([
+        const [restaurants, shops, streetVendors] = await Promise.all([
             fetchCollection(firestore, 'restaurants'),
-            fetchCollection(firestore, 'shops')
+            fetchCollection(firestore, 'shops'),
+            fetchCollection(firestore, 'street_vendors')
         ]);
         
-        const allListings = [...restaurants, ...shops];
+        const allListings = [...restaurants, ...shops, ...streetVendors];
         
         // Sort by onboarding date as a default
         allListings.sort((a, b) => new Date(b.onboarded) - new Date(a.onboarded));
@@ -81,7 +93,17 @@ export async function PATCH(req) {
         }
 
         const firestore = getFirestore();
-        const collectionName = businessType === 'restaurant' ? 'restaurants' : 'shops';
+        let collectionName;
+        if (businessType === 'restaurant') {
+            collectionName = 'restaurants';
+        } else if (businessType === 'shop') {
+            collectionName = 'shops';
+        } else if (businessType === 'street-vendor') {
+            collectionName = 'street_vendors';
+        } else {
+             return NextResponse.json({ message: 'Invalid business type' }, { status: 400 });
+        }
+
         const restaurantRef = firestore.collection(collectionName).doc(restaurantId);
         
         const updateData = {
