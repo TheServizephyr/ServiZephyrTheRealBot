@@ -173,13 +173,13 @@ const CheckoutModal = ({ isOpen, onClose, onConfirm, total }) => {
     const [error, setError] = useState('');
 
     const handleSubmit = () => {
-         setError('');
-        if (!name.trim() || !phone.trim()) {
-            setError("Name and phone are required.");
+        setError('');
+        if (!name.trim()) {
+            setError("Name is required.");
             return;
         }
-        if (!/^\d{10}$/.test(phone.trim())) {
-            setError("Please enter a valid 10-digit phone number.");
+        if (phone.trim() && !/^\d{10}$/.test(phone.trim())) {
+            setError("If providing a phone number, it must be a valid 10-digit number.");
             return;
         }
         onConfirm({ name, phone });
@@ -194,11 +194,11 @@ const CheckoutModal = ({ isOpen, onClose, onConfirm, total }) => {
                 </DialogHeader>
                 <div className="space-y-4 py-4">
                     <div>
-                        <label className="text-muted-foreground">Name</label>
+                        <label className="text-muted-foreground">Name *</label>
                         <input type="text" value={name} onChange={e => setName(e.target.value)} className="w-full p-2 mt-1 bg-input border border-border rounded-md" />
                     </div>
                     <div>
-                        <label className="text-muted-foreground">Phone Number</label>
+                        <label className="text-muted-foreground">Phone Number (Optional)</label>
                         <input type="tel" value={phone} onChange={e => setPhone(e.target.value)} className="w-full p-2 mt-1 bg-input border border-border rounded-md" />
                     </div>
                     {error && <p className="text-sm text-destructive">{error}</p>}
@@ -239,7 +239,7 @@ export default function PreOrderPage({ params }) {
                 }
                 const data = await res.json();
                 setVendor({ name: data.restaurantName, address: data.businessAddress?.full || '' });
-                const allItems = Object.values(data.menu || {}).flat().filter(item => item.isAvailable);
+                const allItems = Object.values(data.menu || {}).flat().filter(item => item.isAvailable === true || item.available === true);
                 setMenu(allItems);
             } catch (err) {
                 setError(err.message);
