@@ -32,8 +32,12 @@ export async function GET(request, { params }) {
             if (docSnap.exists) {
                 businessDoc = docSnap;
                 collectionName = name;
-                // --- START FIX: Correctly handle singular vs plural ---
-                businessType = name === 'street_vendors' ? 'street-vendor' : name.slice(0, -1);
+                // --- START FIX: Correctly handle businessType for all cases ---
+                if (name === 'street_vendors') {
+                    businessType = 'street-vendor';
+                } else {
+                    businessType = name.slice(0, -1);
+                }
                 // --- END FIX ---
                 break; // Found it, stop searching
             }
@@ -44,7 +48,7 @@ export async function GET(request, { params }) {
             return NextResponse.json({ message: `Business with ID ${restaurantId} not found.` }, { status: 404 });
         }
         
-        console.log(`[DEBUG] Menu API: Found business '${businessDoc.data().name}' in collection '${collectionName}'.`);
+        console.log(`[DEBUG] Menu API: Found business '${businessDoc.data().name}' in collection '${collectionName}'. BusinessType set to: '${businessType}'`);
 
         const restaurantRef = businessDoc.ref;
         const restaurantData = businessDoc.data();
@@ -74,9 +78,8 @@ export async function GET(request, { params }) {
             }
         }
         
-        // --- START FIX: Robust approval status check ---
-        if (restaurantData.approvalStatus !== 'approved' && restaurantData.approvalStatus !== 'approve') {
-             console.warn(`[DEBUG] Menu API: Business '${restaurantData.name}' is not accepting orders. Status: ${restaurantData.approvalStatus}, isOpen: ${restaurantData.isOpen}`);
+        if (restaurantData.approvalStatus !== 'approved') {
+             console.warn(`[DEBUG] Menu API: Business '${restaurantData.name}' is not accepting orders. Status: ${restaurantData.approvalStatus}`);
             const message = restaurantData.approvalStatus === 'pending' 
                 ? 'This business is currently pending approval and not accepting orders.'
                 : 'This business is currently not accepting orders.';
@@ -88,7 +91,6 @@ export async function GET(request, { params }) {
                 isOpen: restaurantData.isOpen,
             }, { status: 403 });
         }
-        // --- END FIX ---
         
         const couponsRef = restaurantRef.collection('coupons');
         const generalCouponsQuery = couponsRef.where('status', '==', 'Active').where('customerId', '==', null);
