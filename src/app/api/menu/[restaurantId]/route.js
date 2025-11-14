@@ -75,7 +75,7 @@ export async function GET(request, { params }) {
         }
         
         // --- START FIX: Robust approval status check ---
-        if (restaurantData.approvalStatus !== 'approved') {
+        if (restaurantData.approvalStatus !== 'approved' && restaurantData.approvalStatus !== 'approve') {
              console.warn(`[DEBUG] Menu API: Business '${restaurantData.name}' is not accepting orders. Status: ${restaurantData.approvalStatus}, isOpen: ${restaurantData.isOpen}`);
             const message = restaurantData.approvalStatus === 'pending' 
                 ? 'This business is currently pending approval and not accepting orders.'
