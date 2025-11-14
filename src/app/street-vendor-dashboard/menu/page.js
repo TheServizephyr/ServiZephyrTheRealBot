@@ -22,7 +22,7 @@ import { cn } from '@/lib/utils';
 
 const ConfirmationModal = ({ isOpen, onClose, onConfirm, itemName }) => (
     <Dialog open={isOpen} onOpenChange={onClose}>
-        <DialogContent className="bg-slate-900 border-slate-700 text-white">
+        <DialogContent className="bg-card border-border text-foreground">
             <DialogHeader>
                 <DialogTitle>Confirm Deletion</DialogTitle>
                 <DialogDescription>
@@ -30,7 +30,7 @@ const ConfirmationModal = ({ isOpen, onClose, onConfirm, itemName }) => (
                 </DialogDescription>
             </DialogHeader>
             <DialogFooter>
-                <Button variant="ghost" onClick={onClose}>Cancel</Button>
+                <Button variant="secondary" onClick={onClose}>Cancel</Button>
                 <Button variant="destructive" onClick={onConfirm}>Confirm Delete</Button>
             </DialogFooter>
         </DialogContent>
@@ -43,29 +43,30 @@ const MenuItem = ({ item, onEdit, onDelete, onToggle }) => (
     layout
     initial={{ opacity: 0 }}
     animate={{ opacity: 1 }}
-    className="bg-slate-800 rounded-lg p-4 flex justify-between items-center"
+    className="bg-card rounded-lg p-4 flex justify-between items-center border border-border"
   >
      <div className="flex items-center gap-4">
-        <div className="relative w-16 h-16 rounded-md overflow-hidden bg-slate-700 flex-shrink-0">
+        <div className="relative w-16 h-16 rounded-md overflow-hidden bg-muted flex-shrink-0">
             {item.imageUrl ? (
                 <Image src={item.imageUrl} alt={item.name} layout="fill" objectFit="cover" />
             ) : (
-                <ImageIcon size={32} className="text-slate-500 absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2" />
+                <ImageIcon size={32} className="text-muted-foreground absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2" />
             )}
         </div>
         <div>
-            <p className={`font-bold text-lg ${!item.available ? 'text-slate-500 line-through' : 'text-white'}`}>{item.name}</p>
-            <p className="text-slate-400">₹{item.portions?.[0]?.price || 'N/A'}</p>
+            <p className={`font-bold text-lg ${!item.available ? 'text-muted-foreground line-through' : 'text-foreground'}`}>{item.name}</p>
+            <p className="text-primary font-semibold">₹{item.portions?.[0]?.price || 'N/A'}</p>
         </div>
     </div>
     <div className="flex items-center gap-4">
       <div className="flex items-center gap-2">
         <Switch id={`switch-${item.id}`} checked={item.available} onCheckedChange={(checked) => onToggle(item.id, checked)} />
+         <Label htmlFor={`switch-${item.id}`} className="text-sm font-medium text-muted-foreground">{item.available ? 'Available' : 'Out of Stock'}</Label>
       </div>
-      <Button onClick={() => onEdit(item)} size="icon" variant="ghost" className="text-slate-400 hover:bg-slate-700 hover:text-white">
+      <Button onClick={() => onEdit(item)} size="icon" variant="ghost" className="text-muted-foreground hover:bg-muted hover:text-foreground">
         <Edit />
       </Button>
-      <Button onClick={() => onDelete(item.id, item.name)} size="icon" variant="ghost" className="text-red-500 hover:bg-red-500/10">
+      <Button onClick={() => onDelete(item.id, item.name)} size="icon" variant="ghost" className="text-destructive hover:bg-destructive/10">
         <Trash2 />
       </Button>
     </div>
@@ -347,7 +348,7 @@ const AiScanModal = ({ isOpen, onClose, onScan }) => {
 
     return (
         <Dialog open={isOpen} onOpenChange={onClose}>
-            <DialogContent className="bg-slate-900 border-slate-700 text-white">
+            <DialogContent className="bg-card border-border text-foreground">
                 <DialogHeader>
                     <DialogTitle>Scan Menu with AI</DialogTitle>
                     <DialogDescription>Upload an image of your menu, and our AI will automatically add the items for you.</DialogDescription>
@@ -356,7 +357,7 @@ const AiScanModal = ({ isOpen, onClose, onScan }) => {
                     <input type="file" ref={inputRef} onChange={handleFileChange} className="hidden" accept="image/*" />
                     <div
                         onClick={() => inputRef.current?.click()}
-                        className="relative w-full h-48 border-2 border-dashed border-slate-600 rounded-lg flex flex-col items-center justify-center cursor-pointer hover:border-primary hover:bg-slate-800/50 transition-colors"
+                        className="relative w-full h-48 border-2 border-dashed border-border rounded-lg flex flex-col items-center justify-center cursor-pointer hover:border-primary hover:bg-muted transition-colors"
                     >
                         {previewUrl ? (
                              <div className="relative w-full h-full">
@@ -364,15 +365,15 @@ const AiScanModal = ({ isOpen, onClose, onScan }) => {
                              </div>
                         ) : (
                             <>
-                                <Camera size={48} className="text-slate-500" />
-                                <p className="mt-2 text-slate-400">Click to Upload Image</p>
+                                <Camera size={48} className="text-muted-foreground" />
+                                <p className="mt-2 text-muted-foreground">Click to Upload Image</p>
                             </>
                         )}
                     </div>
                 </div>
                 <DialogFooter>
-                    <Button variant="ghost" onClick={onClose} disabled={isScanning}>Cancel</Button>
-                    <Button onClick={handleScan} disabled={!selectedFile || isScanning} className="bg-primary hover:bg-primary/80 text-primary-foreground">
+                    <Button variant="secondary" onClick={onClose} disabled={isScanning}>Cancel</Button>
+                    <Button onClick={handleScan} disabled={!selectedFile || isScanning} className="bg-primary hover:bg-primary/80">
                         {isScanning ? <Loader2 className="animate-spin mr-2"/> : null}
                         {isScanning ? 'Scanning...' : 'Start AI Scan'}
                     </Button>
@@ -696,7 +697,7 @@ export default function StreetVendorMenuPage() {
     }, {});
 
   return (
-    <div className="min-h-screen bg-slate-900 text-white font-body p-4">
+    <div className="min-h-screen bg-background text-foreground font-body p-4">
         <InfoDialog 
             isOpen={infoDialog.isOpen} 
             onClose={() => setInfoDialog({isOpen: false, title: '', message: ''})} 
@@ -715,7 +716,7 @@ export default function StreetVendorMenuPage() {
 
         <header className="flex justify-between items-center mb-6">
             <Link href="/street-vendor-dashboard" passHref>
-                <Button variant="ghost" className="text-slate-400 hover:text-white">
+                <Button variant="ghost" className="text-muted-foreground hover:text-foreground">
                     <ArrowLeft size={28} />
                 </Button>
             </Link>
@@ -749,7 +750,7 @@ export default function StreetVendorMenuPage() {
 
         <main>
             {(loading || isUserLoading || isVendorLoading) ? (
-                 <div className="text-center py-20 text-slate-500">
+                 <div className="text-center py-20 text-muted-foreground">
                     <Loader2 className="mx-auto animate-spin" size={48} />
                     <p className="mt-4">Loading your menu...</p>
                  </div>
@@ -766,7 +767,7 @@ export default function StreetVendorMenuPage() {
                         </div>
                     ))}
                      {Object.keys(groupedMenu).length === 0 && !isScanning && (
-                        <div className="text-center py-20 text-slate-500">
+                        <div className="text-center py-20 text-muted-foreground">
                             <p>Your menu is empty.</p>
                             <p>Click <PlusCircle className="inline" size={16}/> to add an item, or use <Camera className="inline" size={16}/> to scan your menu with AI.</p>
                         </div>
