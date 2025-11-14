@@ -3,10 +3,12 @@
 
 import { useState, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ShoppingCart, Plus, Minus, X, IndianRupee, Loader2, Utensils } from 'lucide-react';
+import { ShoppingCart, Plus, Minus, X, IndianRupee, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import Image from 'next/image';
+import { cn } from '@/lib/utils';
+
 
 const MenuItem = ({ item, cartQuantity, onAdd, onIncrement, onDecrement }) => (
     <motion.div
@@ -27,8 +29,8 @@ const MenuItem = ({ item, cartQuantity, onAdd, onIncrement, onDecrement }) => (
         </div>
         <div className="w-28 flex-shrink-0 relative">
             <div className="relative w-full h-24 rounded-md overflow-hidden bg-muted">
-                {item.imageUrl && item.imageUrl.startsWith('https') ? (
-                     <Image src={item.imageUrl} alt={item.name} layout="fill" objectFit="cover" />
+                {item.imageUrl ? (
+                    <Image src={item.imageUrl} alt={item.name} layout="fill" objectFit="cover" />
                 ) : (
                     <div className="w-full h-full flex items-center justify-center text-muted-foreground"><Utensils/></div>
                 )}
@@ -40,13 +42,13 @@ const MenuItem = ({ item, cartQuantity, onAdd, onIncrement, onDecrement }) => (
                             <Minus size={16}/>
                         </Button>
                         <span className="font-bold text-lg text-primary flex-grow text-center">{cartQuantity}</span>
-                        <Button variant="ghost" size="icon" className="h-full w-10 text-primary rounded-l-none" onClick={() => onIncrement(item, item.portions[0])}>
+                        <Button variant="ghost" size="icon" className="h-full w-10 text-primary rounded-l-none" onClick={() => onIncrement(item)}>
                             <Plus size={16}/>
                         </Button>
                     </div>
                 ) : (
                     <Button
-                        onClick={() => onAdd(item, item.portions[0])}
+                        onClick={() => onAdd(item)}
                         variant="outline"
                         className="w-full bg-background/80 backdrop-blur-sm text-primary font-bold border-2 border-primary hover:bg-primary/10 shadow-lg active:translate-y-px h-10"
                     >
@@ -57,6 +59,74 @@ const MenuItem = ({ item, cartQuantity, onAdd, onIncrement, onDecrement }) => (
         </div>
     </motion.div>
 );
+
+
+const CustomizationDrawer = ({ item, isOpen, onClose, onAddToCart }) => {
+    const [selectedPortion, setSelectedPortion] = useState(null);
+
+    useEffect(() => {
+        if (item) {
+            // Default to the first portion or the one named 'Full'
+            const defaultPortion = item.portions?.find(p => p.name.toLowerCase() === 'full') || item.portions?.[0] || null;
+            setSelectedPortion(defaultPortion);
+        }
+    }, [item]);
+
+    if (!item) return null;
+
+    const handleFinalAddToCart = () => {
+        onAddToCart(item, selectedPortion);
+        onClose();
+    };
+
+    return (
+        <AnimatePresence>
+            {isOpen && (
+                <motion.div 
+                  className="fixed inset-0 bg-black/60 z-40"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  onClick={onClose}
+                >
+                    <motion.div
+                        className="fixed bottom-0 left-0 right-0 bg-background rounded-t-2xl p-6 flex flex-col max-h-[70vh]"
+                        initial={{ y: "100%" }}
+                        animate={{ y: 0 }}
+                        exit={{ y: "100%" }}
+                        transition={{ type: "spring", stiffness: 300, damping: 30 }}
+                        onClick={(e) => e.stopPropagation()}
+                    >
+                        <DialogHeader>
+                            <DialogTitle className="text-2xl">{item.name}</DialogTitle>
+                            <DialogDescription>Select a portion size</DialogDescription>
+                        </DialogHeader>
+                        <div className="py-4 space-y-3 overflow-y-auto">
+                            {(item.portions || []).map(portion => (
+                                <div
+                                    key={portion.name}
+                                    onClick={() => setSelectedPortion(portion)}
+                                    className={cn(
+                                        "flex justify-between items-center p-4 rounded-lg border-2 cursor-pointer transition-all",
+                                        selectedPortion?.name === portion.name ? "border-primary bg-primary/10" : "border-border hover:bg-muted"
+                                    )}
+                                >
+                                    <span className="font-semibold">{portion.name}</span>
+                                    <span className="font-bold text-primary">₹{portion.price}</span>
+                                </div>
+                            ))}
+                        </div>
+                        <DialogFooter>
+                            <Button onClick={handleFinalAddToCart} className="w-full h-14 text-lg bg-primary hover:bg-primary/90 text-primary-foreground" disabled={!selectedPortion}>
+                                Add Item for ₹{selectedPortion?.price || 0}
+                            </Button>
+                        </DialogFooter>
+                    </motion.div>
+                </motion.div>
+            )}
+        </AnimatePresence>
+    );
+};
 
 
 const CartSheet = ({ cart, updateQuantity, onCheckout, grandTotal, onClose }) => (
@@ -151,11 +221,11 @@ export default function PreOrderPage({ params }) {
     const [error, setError] = useState(null);
     const [isCartOpen, setCartOpen] = useState(false);
     const [isCheckoutOpen, setCheckoutOpen] = useState(false);
+    const [customizationItem, setCustomizationItem] = useState(null);
     const [cartQuantities, setCartQuantities] = useState({});
 
     useEffect(() => {
         const fetchVendorAndMenu = async () => {
-            console.log("[Pre-Order Page] Fetching data for vendor:", vendorId);
             if (!vendorId) {
                 setError("Vendor not specified.");
                 setLoading(false);
@@ -165,17 +235,13 @@ export default function PreOrderPage({ params }) {
                 const res = await fetch(`/api/menu/${vendorId}`);
                 if (!res.ok) {
                     const errorData = await res.json();
-                    console.error("[Pre-Order Page] API Error:", errorData.message);
                     throw new Error(errorData.message || "Could not load menu for this vendor.");
                 }
                 const data = await res.json();
-                console.log("[Pre-Order Page] Data received from API:", data);
                 setVendor({ name: data.restaurantName, address: data.businessAddress?.full || '' });
-                const allItems = Object.values(data.menu || {}).flat();
-                console.log(`[Pre-Order Page] Total items fetched and flattened: ${allItems.length}`);
+                const allItems = Object.values(data.menu || {}).flat().filter(item => item.isAvailable);
                 setMenu(allItems);
             } catch (err) {
-                console.error("[Pre-Order Page] Critical fetch error:", err);
                 setError(err.message);
             } finally {
                 setLoading(false);
@@ -188,7 +254,7 @@ export default function PreOrderPage({ params }) {
     useEffect(() => {
         const quantities = {};
         cart.forEach(item => {
-            quantities[item.cartItemId] = item.quantity;
+            quantities[item.id] = (quantities[item.id] || 0) + item.quantity;
         });
         setCartQuantities(quantities);
     }, [cart]);
@@ -208,6 +274,14 @@ export default function PreOrderPage({ params }) {
         });
     };
 
+    const handleAddClick = (item) => {
+        if (item.portions && item.portions.length > 1) {
+            setCustomizationItem(item);
+        } else {
+            addToCart(item, item.portions[0]);
+        }
+    };
+
     const updateQuantity = (cartItemId, change) => {
         setCart(prevCart => {
             const itemIndex = prevCart.findIndex(i => i.cartItemId === cartItemId);
@@ -223,6 +297,24 @@ export default function PreOrderPage({ params }) {
                 return newCart;
             }
         });
+    };
+
+     const handleIncrement = (item) => {
+        // This is simplified. In a real app, you'd need to know which portion to increment.
+        // For this example, we assume we're incrementing the first item of this type in the cart.
+        const cartItem = cart.find(ci => ci.id === item.id);
+        if (cartItem) {
+            updateQuantity(cartItem.cartItemId, 1);
+        } else {
+            handleAddClick(item);
+        }
+    };
+
+    const handleDecrement = (itemId) => {
+        const cartItem = cart.find(ci => ci.id === itemId);
+        if (cartItem) {
+            updateQuantity(cartItem.cartItemId, -1);
+        }
     };
     
     const grandTotal = useMemo(() => {
@@ -260,10 +352,10 @@ export default function PreOrderPage({ params }) {
                             <MenuItem
                                 key={item.id}
                                 item={item}
-                                cartQuantity={cartQuantities[`${item.id}-${item.portions[0].name}`] || 0}
-                                onAdd={addToCart}
-                                onIncrement={addToCart}
-                                onDecrement={(cartItemId) => updateQuantity(`${item.id}-${item.portions[0].name}`, -1)}
+                                cartQuantity={cartQuantities[item.id] || 0}
+                                onAdd={handleAddClick}
+                                onIncrement={handleIncrement}
+                                onDecrement={handleDecrement}
                             />
                         ))
                     ) : (
@@ -273,6 +365,13 @@ export default function PreOrderPage({ params }) {
                     )}
                 </div>
             </main>
+            
+            <CustomizationDrawer 
+                isOpen={!!customizationItem}
+                onClose={() => setCustomizationItem(null)}
+                item={customizationItem}
+                onAddToCart={addToCart}
+            />
 
             {totalItems > 0 && (
                 <motion.footer
@@ -301,3 +400,5 @@ export default function PreOrderPage({ params }) {
         </div>
     );
 }
+
+    
