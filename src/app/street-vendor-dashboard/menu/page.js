@@ -48,7 +48,7 @@ const MenuItem = ({ item, onToggle, onDelete }) => (
   </motion.div>
 );
 
-const AddItemForm = ({ vendorId, onAddItem, onCancel }) => {
+const AddItemForm = ({ onAddItem, onCancel }) => {
     const [name, setName] = useState('');
     const [price, setPrice] = useState('');
     const [category, setCategory] = useState('Snacks');
@@ -59,7 +59,7 @@ const AddItemForm = ({ vendorId, onAddItem, onCancel }) => {
         if(!name || !price || isSaving) return;
         setIsSaving(true);
         try {
-            await onAddItem({ name, price: parseFloat(price), category }, vendorId);
+            await onAddItem({ name, price: parseFloat(price), category });
             onCancel(); 
         } catch (error) {
             // Error is handled by the parent
@@ -187,13 +187,16 @@ export default function StreetVendorMenuPage() {
         }
     };
     
-    const handleAddItem = async (newItem, currentVendorId) => {
-        if (!currentVendorId || !user) {
+    const handleAddItem = async (newItem) => {
+        // --- START FIX: Use vendorData from state instead of a parameter ---
+        if (!vendorData?.id || !user) {
              setInfoDialog({ isOpen: true, title: 'Error', message: 'Vendor or user information not available yet. Please try again.' });
              throw new Error('Vendor or user information not available.');
         }
         
-        const menuCollectionRef = collection(db, 'street_vendors', currentVendorId, 'menu');
+        const menuCollectionRef = collection(db, 'street_vendors', vendorData.id, 'menu');
+        // --- END FIX ---
+        
         const newItemRef = doc(menuCollectionRef);
         const itemData = { 
             ...newItem, 
@@ -243,7 +246,7 @@ export default function StreetVendorMenuPage() {
 
         <main>
             <AnimatePresence>
-                {showAddItem && <AddItemForm vendorId={vendorData?.id} onAddItem={handleAddItem} onCancel={() => setShowAddItem(false)} />}
+                {showAddItem && <AddItemForm onAddItem={handleAddItem} onCancel={() => setShowAddItem(false)} />}
             </AnimatePresence>
             
             {(loading || isUserLoading || isVendorLoading) ? (
