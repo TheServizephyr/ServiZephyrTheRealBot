@@ -135,7 +135,7 @@ const CartSheet = ({ cart, updateQuantity, onCheckout, grandTotal, onClose }) =>
         animate={{ y: 0 }}
         exit={{ y: "100%" }}
         transition={{ type: "spring", stiffness: 300, damping: 30 }}
-        className="fixed bottom-0 left-0 right-0 bg-card border-t border-border rounded-t-2xl p-6 shadow-2xl flex flex-col max-h-[80vh]"
+        className="fixed bottom-0 left-0 right-0 bg-card border-t border-border rounded-t-2xl p-6 shadow-2xl flex flex-col max-h-[80vh] z-40"
     >
         <div className="flex justify-between items-center mb-4 flex-shrink-0">
             <h2 className="text-2xl font-bold">Your Order</h2>
@@ -400,5 +400,3 @@ export default function PreOrderPage({ params }) {
         </div>
     );
 }
-
-    
