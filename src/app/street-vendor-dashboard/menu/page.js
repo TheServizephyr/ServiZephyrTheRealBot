@@ -5,9 +5,9 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { ArrowLeft, PlusCircle, Trash2, IndianRupee, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import Link from 'next/link';
-import { useUser, useDoc, useMemoFirebase } from '@/firebase';
+import { useUser, useCollection, useMemoFirebase } from '@/firebase';
 import { db } from '@/lib/firebase';
-import { collection, query, onSnapshot, doc, updateDoc, deleteDoc, setDoc } from 'firebase/firestore';
+import { collection, query, where, onSnapshot, doc, updateDoc, deleteDoc, setDoc } from 'firebase/firestore';
 import { FirestorePermissionError } from '@/firebase/errors';
 import { errorEmitter } from '@/firebase/error-emitter';
 import InfoDialog from '@/components/InfoDialog';
@@ -48,7 +48,7 @@ const MenuItem = ({ item, onToggle, onDelete }) => (
   </motion.div>
 );
 
-const AddItemForm = ({ onAddItem, onCancel }) => {
+const AddItemForm = ({ onAddItem, onCancel, vendorId }) => {
     const [name, setName] = useState('');
     const [price, setPrice] = useState('');
     const [category, setCategory] = useState('Snacks');
@@ -59,7 +59,7 @@ const AddItemForm = ({ onAddItem, onCancel }) => {
         if(!name || !price || isSaving) return;
         setIsSaving(true);
         try {
-            await onAddItem({ name, price: parseFloat(price), category });
+            await onAddItem({ name, price: parseFloat(price), category }, vendorId);
             onCancel(); 
         } catch (error) {
             // Error is handled by the parent
@@ -109,12 +109,14 @@ export default function StreetVendorMenuPage() {
     const [showAddItem, setShowAddItem] = useState(false);
     const [infoDialog, setInfoDialog] = useState({ isOpen: false, title: '', message: '' });
 
-    const vendorDocRef = useMemoFirebase(() => {
+    const vendorQuery = useMemoFirebase(() => {
         if (!user) return null;
-        return doc(db, 'street_vendors', user.uid);
+        return query(collection(db, 'street_vendors'), where('ownerId', '==', user.uid));
     }, [user]);
 
-    const { data: vendorData, isLoading: isVendorLoading, error: vendorError } = useDoc(vendorDocRef);
+    const { data: vendorData, isLoading: isVendorLoading, error: vendorError } = useCollection(vendorQuery);
+    
+    const vendorId = useMemo(() => vendorData?.[0]?.id, [vendorData]);
 
     useEffect(() => {
         if (vendorError) {
@@ -124,12 +126,12 @@ export default function StreetVendorMenuPage() {
     
     useEffect(() => {
         if (isUserLoading || isVendorLoading) return;
-        if (!user || !vendorData) {
+        if (!user || !vendorId) {
             setLoading(false);
             return;
         }
 
-        const menuCollectionRef = collection(db, 'street_vendors', vendorData.id, 'menu');
+        const menuCollectionRef = collection(db, 'street_vendors', vendorId, 'menu');
         const q = query(menuCollectionRef);
 
         const unsubscribe = onSnapshot(q, (querySnapshot) => {
@@ -148,14 +150,14 @@ export default function StreetVendorMenuPage() {
         });
 
         return () => unsubscribe();
-    }, [user, isUserLoading, vendorData, isVendorLoading]);
+    }, [user, isUserLoading, vendorId, isVendorLoading]);
 
     const handleToggleAvailability = async (itemId, newAvailability) => {
-        if (!vendorData?.id) {
+        if (!vendorId) {
              setInfoDialog({ isOpen: true, title: 'Error', message: 'Vendor ID not loaded yet. Please wait a moment.' });
              return;
         }
-        const itemRef = doc(db, 'street_vendors', vendorData.id, 'menu', itemId);
+        const itemRef = doc(db, 'street_vendors', vendorId, 'menu', itemId);
         const updateData = { available: newAvailability };
         try {
             await updateDoc(itemRef, updateData)
@@ -170,12 +172,12 @@ export default function StreetVendorMenuPage() {
     };
 
     const handleDeleteItem = async (itemId) => {
-        if (!vendorData?.id) {
+        if (!vendorId) {
              setInfoDialog({ isOpen: true, title: 'Error', message: 'Vendor ID not loaded yet. Please wait a moment.' });
              return;
         }
         if (!window.confirm("Are you sure you want to delete this item?")) return;
-        const itemRef = doc(db, 'street_vendors', vendorData.id, 'menu', itemId);
+        const itemRef = doc(db, 'street_vendors', vendorId, 'menu', itemId);
         try {
             await deleteDoc(itemRef);
         } catch(error) {
@@ -187,13 +189,13 @@ export default function StreetVendorMenuPage() {
         }
     };
     
-    const handleAddItem = useCallback(async (newItem) => {
-        if (!vendorData?.id || !user) {
+    const handleAddItem = useCallback(async (newItem, currentVendorId) => {
+        if (!currentVendorId || !user) {
              setInfoDialog({ isOpen: true, title: 'Error', message: 'Vendor or user information not available yet. Please try again.' });
              throw new Error('Vendor or user information not available.');
         }
         
-        const menuCollectionRef = collection(db, 'street_vendors', vendorData.id, 'menu');
+        const menuCollectionRef = collection(db, 'street_vendors', currentVendorId, 'menu');
         const newItemRef = doc(menuCollectionRef);
         const itemData = { 
             ...newItem, 
@@ -214,7 +216,7 @@ export default function StreetVendorMenuPage() {
             setInfoDialog({ isOpen: true, title: 'Error', message: 'Could not save item: ' + err.message });
             throw err;
         }
-    }, [user, vendorData]);
+    }, [user]);
 
     const groupedMenu = menuItems.reduce((acc, item) => {
         (acc[item.category] = acc[item.category] || []).push(item);
@@ -243,7 +245,7 @@ export default function StreetVendorMenuPage() {
 
         <main>
             <AnimatePresence>
-                {showAddItem && <AddItemForm onAddItem={handleAddItem} onCancel={() => setShowAddItem(false)} />}
+                {showAddItem && <AddItemForm onAddItem={(newItem) => handleAddItem(newItem, vendorId)} onCancel={() => setShowAddItem(false)} vendorId={vendorId} />}
             </AnimatePresence>
             
             {(loading || isUserLoading || isVendorLoading) ? (
