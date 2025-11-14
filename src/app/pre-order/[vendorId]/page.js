@@ -2,20 +2,59 @@
 
 import { useState, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ShoppingCart, Plus, Minus, X, IndianRupee, Loader2 } from 'lucide-react';
+import { ShoppingCart, Plus, Minus, X, IndianRupee, Loader2, Utensils } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
+import Image from 'next/image';
 
-const MenuItem = ({ item, addToCart }) => (
-    <div className="flex justify-between items-center p-4 bg-slate-800 rounded-lg">
-        <div>
-            <p className="font-bold text-white">{item.name}</p>
-            {item.portions.map(p => (
-                 <p key={p.name} className="text-slate-400">₹{p.price}</p>
-            ))}
+const MenuItem = ({ item, cartQuantity, onAdd, onIncrement, onDecrement }) => (
+    <motion.div
+        layout
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="flex gap-4 py-4 border-b border-border last:border-b-0"
+    >
+        <div className="flex-grow">
+            <div className="flex items-center gap-2 mb-1">
+                <div className={`w-4 h-4 border ${item.isVeg ? 'border-green-500' : 'border-red-500'} flex items-center justify-center`}>
+                    <div className={`w-2 h-2 ${item.isVeg ? 'bg-green-500' : 'bg-red-500'} rounded-full`}></div>
+                </div>
+                <h4 className="font-semibold text-foreground">{item.name}</h4>
+            </div>
+            <p className="text-sm text-muted-foreground">{item.description}</p>
+            <p className="font-bold text-md text-primary mt-2">₹{item.portions?.[0]?.price || 'N/A'}</p>
         </div>
-        <Button onClick={() => addToCart(item, item.portions[0])} size="sm" className="bg-primary hover:bg-primary/80 text-primary-foreground">Add</Button>
-    </div>
+        <div className="w-28 flex-shrink-0 relative">
+            <div className="relative w-full h-24 rounded-md overflow-hidden bg-muted">
+                {item.imageUrl ? (
+                     <Image src={item.imageUrl} alt={item.name} layout="fill" objectFit="cover" />
+                ) : (
+                    <div className="w-full h-full flex items-center justify-center text-muted-foreground"><Utensils/></div>
+                )}
+            </div>
+            <div className="absolute -bottom-3 left-1/2 -translate-x-1/2 w-[90%]">
+                 {cartQuantity > 0 ? (
+                    <div className="flex items-center justify-center bg-background border-2 border-border rounded-lg shadow-lg h-10">
+                        <Button variant="ghost" size="icon" className="h-full w-10 text-primary rounded-r-none" onClick={() => onDecrement(item.cartItemId || item.id)}>
+                            <Minus size={16}/>
+                        </Button>
+                        <span className="font-bold text-lg text-primary flex-grow text-center">{cartQuantity}</span>
+                        <Button variant="ghost" size="icon" className="h-full w-10 text-primary rounded-l-none" onClick={() => onIncrement(item, item.portions[0])}>
+                            <Plus size={16}/>
+                        </Button>
+                    </div>
+                ) : (
+                    <Button
+                        onClick={() => onAdd(item, item.portions[0])}
+                        variant="outline"
+                        className="w-full bg-background/80 backdrop-blur-sm text-primary font-bold border-2 border-primary hover:bg-primary/10 shadow-lg active:translate-y-px h-10"
+                    >
+                        ADD
+                    </Button>
+                )}
+            </div>
+        </div>
+    </motion.div>
 );
 
 
@@ -25,34 +64,34 @@ const CartSheet = ({ cart, updateQuantity, onCheckout, grandTotal, onClose }) =>
         animate={{ y: 0 }}
         exit={{ y: "100%" }}
         transition={{ type: "spring", stiffness: 300, damping: 30 }}
-        className="fixed bottom-0 left-0 right-0 bg-slate-800 border-t-2 border-primary rounded-t-2xl p-6 shadow-2xl flex flex-col max-h-[80vh]"
+        className="fixed bottom-0 left-0 right-0 bg-card border-t border-border rounded-t-2xl p-6 shadow-2xl flex flex-col max-h-[80vh]"
     >
-        <div className="flex justify-between items-center mb-4">
+        <div className="flex justify-between items-center mb-4 flex-shrink-0">
             <h2 className="text-2xl font-bold">Your Order</h2>
             <Button variant="ghost" size="icon" onClick={onClose}><X/></Button>
         </div>
-        <div className="flex-grow overflow-y-auto space-y-3">
-            {cart.map(item => (
-                <div key={item.cartItemId} className="flex items-center justify-between bg-slate-700 p-3 rounded-md">
+        <div className="flex-grow overflow-y-auto space-y-3 pr-2">
+             {cart.length > 0 ? cart.map(item => (
+                <div key={item.cartItemId} className="flex items-center justify-between bg-muted p-3 rounded-md">
                     <div>
-                        <p className="font-semibold">{item.name} <span className="text-xs text-slate-400">({item.portion.name})</span></p>
-                        <p className="text-sm text-slate-400">₹{item.portion.price}</p>
+                        <p className="font-semibold">{item.name} <span className="text-xs text-muted-foreground">({item.portion.name})</span></p>
+                        <p className="text-sm text-primary">₹{item.portion.price}</p>
                     </div>
                     <div className="flex items-center gap-2">
-                        <Button size="icon" variant="ghost" className="w-8 h-8" onClick={() => updateQuantity(item.cartItemId, -1)}>-</Button>
+                        <Button size="icon" variant="outline" className="w-8 h-8" onClick={() => updateQuantity(item.cartItemId, -1)}>-</Button>
                         <span className="font-bold text-lg w-6 text-center">{item.quantity}</span>
-                        <Button size="icon" variant="ghost" className="w-8 h-8" onClick={() => updateQuantity(item.cartItemId, 1)}>+</Button>
+                        <Button size="icon" variant="outline" className="w-8 h-8" onClick={() => updateQuantity(item.cartItemId, 1)}>+</Button>
                     </div>
                     <p className="font-bold w-16 text-right">₹{item.portion.price * item.quantity}</p>
                 </div>
-            ))}
+            )) : <p className="text-center text-muted-foreground py-8">Your cart is empty.</p>}
         </div>
-        <div className="mt-6 pt-4 border-t border-slate-700">
+        <div className="mt-6 pt-4 border-t border-border flex-shrink-0">
             <div className="flex justify-between text-2xl font-bold mb-4">
                 <span>Total</span>
                 <span>₹{grandTotal}</span>
             </div>
-            <Button onClick={onCheckout} className="w-full h-14 text-lg bg-primary hover:bg-primary/80 text-primary-foreground">Proceed to Pay</Button>
+            <Button onClick={onCheckout} className="w-full h-14 text-lg bg-primary hover:bg-primary/80 text-primary-foreground" disabled={cart.length === 0}>Proceed to Pay</Button>
         </div>
     </motion.div>
 );
@@ -60,29 +99,38 @@ const CartSheet = ({ cart, updateQuantity, onCheckout, grandTotal, onClose }) =>
 const CheckoutModal = ({ isOpen, onClose, onConfirm, total }) => {
     const [name, setName] = useState('');
     const [phone, setPhone] = useState('');
+    const [error, setError] = useState('');
 
     const handleSubmit = () => {
-        if (name && phone) {
-            onConfirm({ name, phone });
+         setError('');
+        if (!name.trim() || !phone.trim()) {
+            setError("Name and phone are required.");
+            return;
         }
+        if (!/^\d{10}$/.test(phone.trim())) {
+            setError("Please enter a valid 10-digit phone number.");
+            return;
+        }
+        onConfirm({ name, phone });
     };
 
     return (
         <Dialog open={isOpen} onOpenChange={onClose}>
-            <DialogContent className="bg-slate-800 border-slate-700 text-white">
+            <DialogContent className="bg-card border-border text-foreground">
                 <DialogHeader>
                     <DialogTitle>Almost there!</DialogTitle>
                     <DialogDescription>Please provide your details to place the order.</DialogDescription>
                 </DialogHeader>
                 <div className="space-y-4 py-4">
                     <div>
-                        <label className="text-slate-400">Name</label>
-                        <input type="text" value={name} onChange={e => setName(e.target.value)} className="w-full p-2 mt-1 bg-slate-700 border border-slate-600 rounded-md" />
+                        <label className="text-muted-foreground">Name</label>
+                        <input type="text" value={name} onChange={e => setName(e.target.value)} className="w-full p-2 mt-1 bg-input border border-border rounded-md" />
                     </div>
                     <div>
-                        <label className="text-slate-400">Phone Number</label>
-                        <input type="tel" value={phone} onChange={e => setPhone(e.target.value)} className="w-full p-2 mt-1 bg-slate-700 border border-slate-600 rounded-md" />
+                        <label className="text-muted-foreground">Phone Number</label>
+                        <input type="tel" value={phone} onChange={e => setPhone(e.target.value)} className="w-full p-2 mt-1 bg-input border border-border rounded-md" />
                     </div>
+                    {error && <p className="text-sm text-destructive">{error}</p>}
                 </div>
                 <DialogFooter>
                     <Button variant="ghost" onClick={onClose}>Cancel</Button>
@@ -96,12 +144,13 @@ const CheckoutModal = ({ isOpen, onClose, onConfirm, total }) => {
 export default function PreOrderPage({ params }) {
     const { vendorId } = params;
     const [vendor, setVendor] = useState(null);
-    const [menu, setMenu] = useState([]); // Default to an empty array
+    const [menu, setMenu] = useState([]);
     const [cart, setCart] = useState([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
     const [isCartOpen, setCartOpen] = useState(false);
     const [isCheckoutOpen, setCheckoutOpen] = useState(false);
+    const [cartQuantities, setCartQuantities] = useState({});
 
     useEffect(() => {
         const fetchVendorAndMenu = async () => {
@@ -110,7 +159,6 @@ export default function PreOrderPage({ params }) {
                 setLoading(false);
                 return;
             }
-
             try {
                 const res = await fetch(`/api/menu/${vendorId}`);
                 if (!res.ok) {
@@ -118,14 +166,9 @@ export default function PreOrderPage({ params }) {
                     throw new Error(errorData.message || "Could not load menu for this vendor.");
                 }
                 const data = await res.json();
-
-                // THE FIX: Do not check approval here, trust the API
                 setVendor({ name: data.restaurantName, address: data.businessAddress?.full || '' });
-
-                // THE FIX: Flatten the menu data from the API into a single list
                 const allItems = Object.values(data.menu || {}).flat();
                 setMenu(allItems);
-
             } catch (err) {
                 setError(err.message);
             } finally {
@@ -135,6 +178,15 @@ export default function PreOrderPage({ params }) {
 
         fetchVendorAndMenu();
     }, [vendorId]);
+
+    useEffect(() => {
+        const quantities = {};
+        cart.forEach(item => {
+            quantities[item.cartItemId] = item.quantity;
+        });
+        setCartQuantities(quantities);
+    }, [cart]);
+
 
     const addToCart = (item, portion) => {
         const cartItemId = `${item.id}-${portion.name}`;
@@ -177,33 +229,39 @@ export default function PreOrderPage({ params }) {
 
     const handleCheckout = async (customerDetails) => {
         setCheckoutOpen(false);
-        // Integrate with Razorpay and Firestore order creation
-        alert(`Placing order for ${customerDetails.name} totalling ₹${grandTotal}. This will be replaced with payment gateway.`);
+        alert(`Placing order for ${customerDetails.name} totalling ₹${grandTotal}. Payment integration is next.`);
     };
     
     if (loading) {
-        return <div className="min-h-screen bg-slate-900 flex items-center justify-center"><Loader2 className="animate-spin text-primary" size={48} /></div>;
+        return <div className="min-h-screen bg-background flex items-center justify-center"><Loader2 className="animate-spin text-primary" size={48} /></div>;
     }
     
     if (error) {
-         return <div className="min-h-screen bg-slate-900 flex items-center justify-center text-red-400 p-4 text-center">{error}</div>;
+         return <div className="min-h-screen bg-background flex items-center justify-center text-red-500 p-4 text-center">{error}</div>;
     }
 
     return (
-        <div className="min-h-screen bg-slate-900 text-white font-body p-4">
-            <header className="text-center mb-6">
+        <div className="min-h-screen bg-background text-foreground font-body">
+            <header className="text-center p-6 border-b border-border bg-card sticky top-0 z-10">
                 <h1 className="text-3xl font-bold font-headline">{vendor?.name}</h1>
-                <p className="text-slate-400">{vendor?.address}</p>
+                <p className="text-muted-foreground">{vendor?.address}</p>
             </header>
 
-            <main className="pb-28">
+            <main className="p-4 pb-28 container mx-auto max-w-2xl">
                  <div className="space-y-4">
                     {menu.length > 0 ? (
                         menu.map(item => (
-                            <MenuItem key={item.id} item={item} addToCart={addToCart} />
+                            <MenuItem
+                                key={item.id}
+                                item={item}
+                                cartQuantity={cartQuantities[`${item.id}-${item.portions[0].name}`] || 0}
+                                onAdd={addToCart}
+                                onIncrement={addToCart}
+                                onDecrement={(cartItemId) => updateQuantity(`${item.id}-${item.portions[0].name}`, -1)}
+                            />
                         ))
                     ) : (
-                         <div className="text-center py-20 text-slate-500">
+                         <div className="text-center py-20 text-muted-foreground">
                             <p>No menu items found for this vendor.</p>
                         </div>
                     )}
@@ -214,16 +272,18 @@ export default function PreOrderPage({ params }) {
                 <motion.footer
                     initial={{ y: 100 }}
                     animate={{ y: 0 }}
-                    className="fixed bottom-0 left-0 right-0 p-4"
+                    className="fixed bottom-0 left-0 right-0 p-4 z-20 bg-background/80 backdrop-blur-sm border-t border-border"
                 >
+                  <div className="container mx-auto max-w-2xl">
                     <Button onClick={() => setCartOpen(true)} className="w-full h-14 bg-primary text-primary-foreground text-lg font-bold flex justify-between items-center shadow-lg">
                         <span>{totalItems} item{totalItems > 1 ? 's' : ''} in cart</span>
                         <span>View Cart <IndianRupee size={16} className="inline"/>{grandTotal}</span>
                     </Button>
+                  </div>
                 </motion.footer>
             )}
 
-            {isCartOpen && <div className="fixed inset-0 bg-black/60 z-10" onClick={() => setCartOpen(false)}></div>}
+            {isCartOpen && <div className="fixed inset-0 bg-black/60 z-30" onClick={() => setCartOpen(false)}></div>}
             
             <AnimatePresence>
               {isCartOpen && (
