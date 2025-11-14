@@ -1,7 +1,6 @@
-
 'use server';
 
-import {NextResponse} from 'next/server';
+import {NextRequest, NextResponse} from 'next/server';
 import {getFirestore, verifyAndGetUid} from '@/lib/firebase-admin';
 import {ai} from '@/ai/genkit';
 import {z} from 'zod';
@@ -70,20 +69,22 @@ const menuScanPrompt = ai.definePrompt({
   `,
 });
 
-async function getVendorId(uid) {
-  const firestore = await getFirestore();
-  const q = firestore
-    .collection('street_vendors')
-    .where('ownerId', '==', uid)
-    .limit(1);
-  const snapshot = await q.get();
-  if (snapshot.empty) {
-    throw new Error('No street vendor profile found for this user.');
-  }
-  return snapshot.docs[0].id;
-}
 
 export async function POST(req) {
+  
+  async function getVendorId(uid) {
+    const firestore = await getFirestore();
+    const q = firestore
+      .collection('street_vendors')
+      .where('ownerId', '==', uid)
+      .limit(1);
+    const snapshot = await q.get();
+    if (snapshot.empty) {
+      throw new Error('No street vendor profile found for this user.');
+    }
+    return snapshot.docs[0].id;
+  }
+
   try {
     const uid = await verifyAndGetUid(req);
     const vendorId = await getVendorId(uid);
@@ -98,7 +99,7 @@ export async function POST(req) {
 
     // Call the Genkit flow to process the image
     const llmResponse = await menuScanPrompt({photoDataUri: imageDataUri});
-    const scannedData = llmResponse.output();
+    const scannedData = llmResponse.output;
 
     if (!scannedData || !scannedData.items || scannedData.items.length === 0) {
       return NextResponse.json(
