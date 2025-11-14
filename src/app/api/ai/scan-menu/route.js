@@ -156,9 +156,10 @@ export async function POST(req) {
             isVeg: item.isVeg,
             portions: item.portions,
             tags: item.tags || [],
-            available: true,
-            imageUrl: `https://picsum.photos/seed/${item.name.replace(/\s/g, '')}/200`, // THE FIX
+            isAvailable: true, // FIX: Use isAvailable
+            order: 999, // FIX: Add default order
         };
+        console.log('[API LOG] Preparing to batch write item:', JSON.stringify(itemData, null, 2));
         batch.set(newItemRef, itemData);
     });
     

@@ -20,7 +20,6 @@ export async function GET(request, { params }) {
         }
         
         let businessDoc;
-        let businessType;
         let collectionName = 'restaurants';
         
         const collectionsToTry = ['restaurants', 'shops', 'street_vendors'];
@@ -44,7 +43,7 @@ export async function GET(request, { params }) {
         const restaurantRef = businessDoc.ref;
         const restaurantData = businessDoc.data();
         
-        businessType = restaurantData.businessType || 'restaurant';
+        const businessType = restaurantData.businessType || 'restaurant';
         
         console.log(`[DEBUG] Menu API: Found business '${restaurantData.name}' in collection '${collectionName}'. BusinessType set to: '${businessType}'`);
 
@@ -74,7 +73,6 @@ export async function GET(request, { params }) {
             }
         }
         
-        // For street vendors, we bypass the main approvalStatus check.
         if (businessType !== 'street-vendor' && restaurantData.approvalStatus !== 'approved' && restaurantData.approvalStatus !== 'approve') {
             console.warn(`[DEBUG] Menu API: Business '${restaurantData.name}' is not accepting orders. Status: ${restaurantData.approvalStatus}`);
             const message = restaurantData.approvalStatus === 'pending' 
@@ -90,6 +88,8 @@ export async function GET(request, { params }) {
         }
 
         const menuSnap = await restaurantRef.collection('menu').orderBy('order', 'asc').get();
+        console.log(`[DEBUG] Menu API: Fetched ${menuSnap.size} raw items from DB.`);
+
         const couponsRef = restaurantRef.collection('coupons');
         const generalCouponsQuery = couponsRef.where('status', '==', 'Active').where('customerId', '==', null);
 
@@ -116,22 +116,21 @@ export async function GET(request, { params }) {
             menuData[key] = [];
         });
 
-        menuSnap.docs.forEach(doc => {
-            const item = doc.data();
-            
-            // --- SERVER-SIDE FILTERING FIX ---
-            if (item.isAvailable !== true) {
-                return; // Skip items that are not available
-            }
+        const allItems = menuSnap.docs.map(doc => doc.data());
+        console.log(`[DEBUG] Menu API: Filtering ${allItems.length} items on server.`);
 
-            if (item.categoryId && menuData.hasOwnProperty(item.categoryId)) {
-                menuData[item.categoryId].push({ id: doc.id, ...item });
-            } else if (item.categoryId) {
-                if (!menuData[item.categoryId]) menuData[item.categoryId] = [];
-                menuData[item.categoryId].push({ id: doc.id, ...item });
+        // SERVER-SIDE FILTERING for available items
+        const availableItems = allItems.filter(item => item.isAvailable === true || item.available === true);
+        console.log(`[DEBUG] Menu API: Found ${availableItems.length} available items after filtering.`);
+
+        availableItems.forEach(item => {
+            const itemWithId = { id: item.id || 'unknown-id', ...item };
+            const categoryKey = item.categoryId || 'general';
+            if (menuData.hasOwnProperty(categoryKey)) {
+                menuData[categoryKey].push(itemWithId);
             } else {
-                 if (!menuData['general']) menuData['general'] = [];
-                 menuData['general'].push({ id: doc.id, ...item });
+                if (!menuData[categoryKey]) menuData[categoryKey] = [];
+                menuData[categoryKey].push(itemWithId);
             }
         });
         
@@ -169,8 +168,8 @@ export async function GET(request, { params }) {
         } else if (feeType === 'free-over') {
              deliveryCharge = restaurantData.deliveryFixedFee !== undefined ? restaurantData.deliveryFixedFee : 30;
         }
-
-        return NextResponse.json({ 
+        
+        const finalPayload = { 
             restaurantName: restaurantData.name,
             deliveryCharge: deliveryCharge,
             deliveryFreeThreshold: restaurantData.deliveryFreeThreshold,
@@ -193,7 +192,11 @@ export async function GET(request, { params }) {
             dineInPayAtCounterEnabled: restaurantData.dineInPayAtCounterEnabled === undefined ? true : restaurantData.dineInPayAtCounterEnabled,
             businessAddress: businessAddress,
             dineInModel: restaurantData.dineInModel || 'post-paid',
-        }, { status: 200 });
+        };
+        
+        console.log(`[DEBUG] Menu API: Sending final payload to client. Total categories with items: ${Object.values(finalPayload.menu).filter(i => i.length > 0).length}`);
+
+        return NextResponse.json(finalPayload, { status: 200 });
 
     } catch (error) {
         console.error("[DEBUG] GET MENU/COUPONS API CRITICAL ERROR:", error);

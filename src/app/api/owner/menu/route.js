@@ -189,9 +189,9 @@ export async function POST(req) {
                 id: newItemId,
                 order: maxOrder + 1,
                 createdAt: FieldValue.serverTimestamp(),
-                isAvailable: item.isAvailable, // --- START FIX: Ensure isAvailable is saved for new items ---
+                isAvailable: item.isAvailable,
             });
-            console.log(`[API LOG] POST /api/owner/menu: New item with ID ${newItemId} added to batch.`);
+            console.log(`[API LOG] POST /api/owner/menu: New item with ID ${newItemId} added to batch:`, JSON.stringify({ ...finalItem, id: newItemId, order: maxOrder + 1 }));
         }
 
         console.log("[API LOG] POST /api/owner/menu: Committing batch...");

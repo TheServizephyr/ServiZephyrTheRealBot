@@ -27,7 +27,7 @@ const MenuItem = ({ item, cartQuantity, onAdd, onIncrement, onDecrement }) => (
         </div>
         <div className="w-28 flex-shrink-0 relative">
             <div className="relative w-full h-24 rounded-md overflow-hidden bg-muted">
-                {item.imageUrl ? (
+                {item.imageUrl && item.imageUrl.startsWith('https') ? (
                      <Image src={item.imageUrl} alt={item.name} layout="fill" objectFit="cover" />
                 ) : (
                     <div className="w-full h-full flex items-center justify-center text-muted-foreground"><Utensils/></div>
@@ -155,6 +155,7 @@ export default function PreOrderPage({ params }) {
 
     useEffect(() => {
         const fetchVendorAndMenu = async () => {
+            console.log("[Pre-Order Page] Fetching data for vendor:", vendorId);
             if (!vendorId) {
                 setError("Vendor not specified.");
                 setLoading(false);
@@ -164,13 +165,17 @@ export default function PreOrderPage({ params }) {
                 const res = await fetch(`/api/menu/${vendorId}`);
                 if (!res.ok) {
                     const errorData = await res.json();
+                    console.error("[Pre-Order Page] API Error:", errorData.message);
                     throw new Error(errorData.message || "Could not load menu for this vendor.");
                 }
                 const data = await res.json();
+                console.log("[Pre-Order Page] Data received from API:", data);
                 setVendor({ name: data.restaurantName, address: data.businessAddress?.full || '' });
                 const allItems = Object.values(data.menu || {}).flat();
+                console.log(`[Pre-Order Page] Total items fetched and flattened: ${allItems.length}`);
                 setMenu(allItems);
             } catch (err) {
+                console.error("[Pre-Order Page] Critical fetch error:", err);
                 setError(err.message);
             } finally {
                 setLoading(false);
