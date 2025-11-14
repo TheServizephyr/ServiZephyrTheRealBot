@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { PlusCircle, Trash2, IndianRupee, Loader2, Camera, FileJson, Edit, Upload, X, Plus, Image as ImageIcon, Utensils } from 'lucide-react';
+import { ArrowLeft, PlusCircle, Trash2, IndianRupee, Loader2, Camera, FileJson, Edit, Upload, X, Plus, Image as ImageIcon, Utensils } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import Link from 'next/link';
 import { useUser, useCollection, useMemoFirebase } from '@/firebase';
@@ -74,7 +74,9 @@ const AddItemModal = ({ isOpen, setIsOpen, onSave, editingItem, allCategories, s
                 });
             } else {
                 setItem({
-                    name: "", description: "", portions: [{ name: 'Full', price: '' }],
+                    name: "",
+                    description: "",
+                    portions: [{ name: 'Full', price: '' }],
                     categoryId: "Snacks", isVeg: true, isAvailable: true,
                     imageUrl: "", tags: ""
                 });
@@ -215,6 +217,72 @@ const AddItemModal = ({ isOpen, setIsOpen, onSave, editingItem, allCategories, s
     );
 };
 
+const AiScanModal = ({ isOpen, onClose, onScan }) => {
+    const [selectedFile, setSelectedFile] = useState(null);
+    const [previewUrl, setPreviewUrl] = useState(null);
+    const [isScanning, setIsScanning] = useState(false);
+    const inputRef = useRef(null);
+
+    useEffect(() => {
+        if (!isOpen) {
+            setSelectedFile(null);
+            setPreviewUrl(null);
+            setIsScanning(false);
+        }
+    }, [isOpen]);
+
+    const handleFileChange = (e) => {
+        const file = e.target.files[0];
+        if (file) {
+            setSelectedFile(file);
+            setPreviewUrl(URL.createObjectURL(file));
+        }
+    };
+
+    const handleScan = async () => {
+        if (selectedFile) {
+            setIsScanning(true);
+            await onScan(selectedFile);
+            setIsScanning(false);
+            onClose();
+        }
+    };
+
+    return (
+        <Dialog open={isOpen} onOpenChange={onClose}>
+            <DialogContent className="bg-slate-900 border-slate-700 text-white">
+                <DialogHeader>
+                    <DialogTitle>Scan Menu with AI</DialogTitle>
+                    <DialogDescription>Upload an image of your menu, and our AI will automatically add the items for you.</DialogDescription>
+                </DialogHeader>
+                <div className="py-4 space-y-4">
+                    <input type="file" ref={inputRef} onChange={handleFileChange} className="hidden" accept="image/*" />
+                    <div
+                        onClick={() => inputRef.current?.click()}
+                        className="w-full h-48 border-2 border-dashed border-slate-600 rounded-lg flex flex-col items-center justify-center cursor-pointer hover:border-primary hover:bg-slate-800/50 transition-colors"
+                    >
+                        {previewUrl ? (
+                            <Image src={previewUrl} alt="Menu preview" layout="fill" objectFit="contain" className="p-2"/>
+                        ) : (
+                            <>
+                                <Camera size={48} className="text-slate-500" />
+                                <p className="mt-2 text-slate-400">Click to Upload Image</p>
+                            </>
+                        )}
+                    </div>
+                </div>
+                <DialogFooter>
+                    <Button variant="ghost" onClick={onClose} disabled={isScanning}>Cancel</Button>
+                    <Button onClick={handleScan} disabled={!selectedFile || isScanning} className="bg-primary hover:bg-primary/80 text-primary-foreground">
+                        {isScanning ? <Loader2 className="animate-spin mr-2"/> : null}
+                        {isScanning ? 'Scanning...' : 'Start AI Scan'}
+                    </Button>
+                </DialogFooter>
+            </DialogContent>
+        </Dialog>
+    );
+};
+
 const BulkAddModal = ({ isOpen, setIsOpen, onSave, businessType, showInfoDialog }) => {
     const [jsonText, setJsonText] = useState('');
     const [isSaving, setIsSaving] = useState(false);
@@ -325,67 +393,6 @@ ${placeholderText}
                     <DialogClose asChild><Button type="button" variant="ghost" disabled={isSaving}>Cancel</Button></DialogClose>
                     <Button onClick={handleSubmit} disabled={isSaving || !jsonText} className="bg-primary hover:bg-primary/90 text-primary-foreground">
                         {isSaving ? 'Uploading...' : 'Upload & Save Items'}
-                    </Button>
-                </DialogFooter>
-            </DialogContent>
-        </Dialog>
-    );
-};
-
-const AiScanModal = ({ isOpen, onClose, onScan }) => {
-    const [selectedFile, setSelectedFile] = useState(null);
-    const [previewUrl, setPreviewUrl] = useState(null);
-    const inputRef = useRef(null);
-
-    useEffect(() => {
-        if (!isOpen) {
-            setSelectedFile(null);
-            setPreviewUrl(null);
-        }
-    }, [isOpen]);
-
-    const handleFileChange = (e) => {
-        const file = e.target.files[0];
-        if (file) {
-            setSelectedFile(file);
-            setPreviewUrl(URL.createObjectURL(file));
-        }
-    };
-
-    const handleScan = async () => {
-        if (selectedFile) {
-            await onScan(selectedFile);
-            onClose();
-        }
-    };
-
-    return (
-        <Dialog open={isOpen} onOpenChange={onClose}>
-            <DialogContent className="bg-slate-900 border-slate-700 text-white">
-                <DialogHeader>
-                    <DialogTitle>Scan Menu with AI</DialogTitle>
-                    <DialogDescription>Upload an image of your menu, and our AI will automatically add the items for you.</DialogDescription>
-                </DialogHeader>
-                <div className="py-4 space-y-4">
-                    <input type="file" ref={inputRef} onChange={handleFileChange} className="hidden" accept="image/*" />
-                    <div
-                        onClick={() => inputRef.current?.click()}
-                        className="w-full h-48 border-2 border-dashed border-slate-600 rounded-lg flex flex-col items-center justify-center cursor-pointer hover:border-primary hover:bg-slate-800/50 transition-colors"
-                    >
-                        {previewUrl ? (
-                            <Image src={previewUrl} alt="Menu preview" layout="fill" objectFit="contain" className="p-2"/>
-                        ) : (
-                            <>
-                                <Camera size={48} className="text-slate-500" />
-                                <p className="mt-2 text-slate-400">Click to Upload Image</p>
-                            </>
-                        )}
-                    </div>
-                </div>
-                <DialogFooter>
-                    <Button variant="ghost" onClick={onClose}>Cancel</Button>
-                    <Button onClick={handleScan} disabled={!selectedFile} className="bg-primary hover:bg-primary/80 text-primary-foreground">
-                        Start AI Scan
                     </Button>
                 </DialogFooter>
             </DialogContent>
@@ -600,7 +607,7 @@ export default function StreetVendorMenuPage() {
 
         <AnimatePresence>
             {isScanning && (
-                <motion.div
+                 <motion.div
                     initial={{ height: 0, opacity: 0 }}
                     animate={{ height: 'auto', opacity: 1 }}
                     exit={{ height: 0, opacity: 0 }}
