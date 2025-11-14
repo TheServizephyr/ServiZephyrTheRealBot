@@ -1,13 +1,13 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ArrowLeft, PlusCircle, Trash2, IndianRupee, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import Link from 'next/link';
-import { useUser, useDoc } from '@/firebase';
+import { useUser, useDoc, useMemoFirebase } from '@/firebase';
 import { db } from '@/lib/firebase';
-import { collection, query, onSnapshot, doc, updateDoc, deleteDoc, setDoc, getDocs } from 'firebase/firestore';
+import { collection, query, onSnapshot, doc, updateDoc, deleteDoc, setDoc } from 'firebase/firestore';
 import { FirestorePermissionError } from '@/firebase/errors';
 import { errorEmitter } from '@/firebase/error-emitter';
 import InfoDialog from '@/components/InfoDialog';
@@ -109,7 +109,7 @@ export default function StreetVendorMenuPage() {
     const [showAddItem, setShowAddItem] = useState(false);
     const [infoDialog, setInfoDialog] = useState({ isOpen: false, title: '', message: '' });
 
-    const vendorDocRef = useMemo(() => {
+    const vendorDocRef = useMemoFirebase(() => {
         if (!user) return null;
         return doc(db, 'street_vendors', user.uid);
     }, [user]);
@@ -187,16 +187,13 @@ export default function StreetVendorMenuPage() {
         }
     };
     
-    const handleAddItem = async (newItem) => {
-        // --- START FIX: Use vendorData from state instead of a parameter ---
+    const handleAddItem = useCallback(async (newItem) => {
         if (!vendorData?.id || !user) {
              setInfoDialog({ isOpen: true, title: 'Error', message: 'Vendor or user information not available yet. Please try again.' });
              throw new Error('Vendor or user information not available.');
         }
         
         const menuCollectionRef = collection(db, 'street_vendors', vendorData.id, 'menu');
-        // --- END FIX ---
-        
         const newItemRef = doc(menuCollectionRef);
         const itemData = { 
             ...newItem, 
@@ -217,7 +214,7 @@ export default function StreetVendorMenuPage() {
             setInfoDialog({ isOpen: true, title: 'Error', message: 'Could not save item: ' + err.message });
             throw err;
         }
-    };
+    }, [user, vendorData]);
 
     const groupedMenu = menuItems.reduce((acc, item) => {
         (acc[item.category] = acc[item.category] || []).push(item);
