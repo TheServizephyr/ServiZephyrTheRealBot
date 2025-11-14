@@ -1,9 +1,8 @@
-
 'use client';
 
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ArrowLeft, PlusCircle, Trash2, IndianRupee, Loader2, Camera, FileJson, Edit, Upload, X, Plus, Image as ImageIcon, Utensils, ChevronsUpDown, Check } from 'lucide-react';
+import { ArrowLeft, PlusCircle, Trash2, IndianRupee, Loader2, Camera, FileJson, Edit, Upload, X, Plus, Image as ImageIcon, Utensils } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import Link from 'next/link';
 import { useUser, useCollection, useMemoFirebase } from '@/firebase';
@@ -17,8 +16,6 @@ import { Progress } from '@/components/ui/progress';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import Image from 'next/image';
-import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
-import { Command, CommandInput, CommandEmpty, CommandGroup, CommandItem } from '@/components/ui/command';
 import { cn } from '@/lib/utils';
 
 
@@ -94,8 +91,11 @@ const AddItemModal = ({ isOpen, setIsOpen, onSave, editingItem, allCategories, s
                     name: "",
                     description: "",
                     portions: [{ name: 'Full', price: '' }],
-                    categoryId: "Snacks", isVeg: true, isAvailable: true,
-                    imageUrl: "", tags: ""
+                    categoryId: sortedCategories[0]?.id || "snacks",
+                    isVeg: true,
+                    isAvailable: true,
+                    imageUrl: "",
+                    tags: "",
                 });
             }
         } else {
@@ -329,7 +329,7 @@ const AiScanModal = ({ isOpen, onClose, onScan }) => {
 
     return (
         <Dialog open={isOpen} onOpenChange={onClose}>
-            <DialogContent className="bg-card border-border text-foreground">
+            <DialogContent className="bg-slate-900 border-slate-700 text-white">
                 <DialogHeader>
                     <DialogTitle>Scan Menu with AI</DialogTitle>
                     <DialogDescription>Upload an image of your menu, and our AI will automatically add the items for you.</DialogDescription>
@@ -338,20 +338,20 @@ const AiScanModal = ({ isOpen, onClose, onScan }) => {
                     <input type="file" ref={inputRef} onChange={handleFileChange} className="hidden" accept="image/*" />
                     <div
                         onClick={() => inputRef.current?.click()}
-                        className="w-full h-48 border-2 border-dashed border-border rounded-lg flex flex-col items-center justify-center cursor-pointer hover:border-primary hover:bg-muted/50 transition-colors"
+                        className="w-full h-48 border-2 border-dashed border-slate-600 rounded-lg flex flex-col items-center justify-center cursor-pointer hover:border-primary hover:bg-slate-800/50 transition-colors"
                     >
                         {previewUrl ? (
                             <Image src={previewUrl} alt="Menu preview" layout="fill" objectFit="contain" className="p-2"/>
                         ) : (
                             <>
-                                <Camera size={48} className="text-muted-foreground" />
-                                <p className="mt-2 text-muted-foreground">Click to Upload Image</p>
+                                <Camera size={48} className="text-slate-500" />
+                                <p className="mt-2 text-slate-400">Click to Upload Image</p>
                             </>
                         )}
                     </div>
                 </div>
                 <DialogFooter>
-                    <Button variant="secondary" onClick={onClose} disabled={isScanning}>Cancel</Button>
+                    <Button variant="ghost" onClick={onClose} disabled={isScanning}>Cancel</Button>
                     <Button onClick={handleScan} disabled={!selectedFile || isScanning} className="bg-primary hover:bg-primary/80 text-primary-foreground">
                         {isScanning ? <Loader2 className="animate-spin mr-2"/> : null}
                         {isScanning ? 'Scanning...' : 'Start AI Scan'}
@@ -490,6 +490,7 @@ export default function StreetVendorMenuPage() {
     const [editingItem, setEditingItem] = useState(null);
     const [infoDialog, setInfoDialog] = useState({ isOpen: false, title: '', message: '' });
     const [isScanning, setIsScanning] = useState(false);
+    const [customCategories, setCustomCategories] = useState([]);
 
     const vendorQuery = useMemoFirebase(() => {
         if (!user) return null;
@@ -645,10 +646,25 @@ export default function StreetVendorMenuPage() {
         setEditingItem(item);
         setIsAddItemModalOpen(true);
     };
+    
+    const allCategories = {
+        'snacks': { title: 'Snacks' },
+        'chaat': { title: 'Chaat' },
+        'rolls': { title: 'Rolls' },
+        'beverages': { title: 'Beverages' },
+        'main-course': { title: 'Main Course' },
+        'sweets': { title: 'Sweets' },
+        ...customCategories.reduce((acc, cat) => {
+            acc[cat.id] = { title: cat.title };
+            return acc;
+        }, {}),
+    };
+
 
     const groupedMenu = menuItems.reduce((acc, item) => {
-        const category = item.categoryId || 'General';
-        (acc[category] = acc[category] || []).push(item);
+        const categoryKey = item.categoryId || 'general';
+        const categoryTitle = allCategories[categoryKey]?.title || categoryKey;
+        (acc[categoryTitle] = acc[categoryTitle] || []).push(item);
         return acc;
     }, {});
 
@@ -662,7 +678,7 @@ export default function StreetVendorMenuPage() {
         />
         <AiScanModal isOpen={isAiModalOpen} onClose={() => setIsAiModalOpen(false)} onScan={handleAiScan} />
         <BulkAddModal isOpen={isBulkModalOpen} setIsOpen={setIsBulkModalOpen} onSave={handleBulkSave} businessType="street-vendor" showInfoDialog={setInfoDialog} />
-        <AddItemModal isOpen={isAddItemModalOpen} setIsOpen={setIsAddItemModalOpen} onSave={handleSaveItem} editingItem={editingItem} allCategories={{}} showInfoDialog={setInfoDialog} />
+        <AddItemModal isOpen={isAddItemModalOpen} setIsOpen={setIsAddItemModalOpen} onSave={handleSaveItem} editingItem={editingItem} allCategories={allCategories} showInfoDialog={setInfoDialog} />
 
         <header className="flex justify-between items-center mb-6">
             <Link href="/street-vendor-dashboard" passHref>

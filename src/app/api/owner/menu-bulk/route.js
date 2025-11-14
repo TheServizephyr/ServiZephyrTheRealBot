@@ -1,19 +1,13 @@
 
 import { NextResponse } from 'next/server';
-import { getAuth, getFirestore, FieldValue } from '@/lib/firebase-admin';
+import { getAuth, getFirestore, FieldValue, verifyAndGetUid } from '@/lib/firebase-admin';
 
 // Helper to verify owner and get their first restaurant ID
-async function verifyOwnerAndGetRestaurant(req, auth, firestore) {
-    const authHeader = req.headers.get('authorization');
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-        throw { message: 'Authorization token not found or invalid.', status: 401 };
-    }
-    const token = authHeader.split('Bearer ')[1];
-    const decodedToken = await auth.verifyIdToken(token);
-    const uid = decodedToken.uid;
+async function verifyOwnerAndGetBusiness(req, auth, firestore) {
+    const uid = await verifyAndGetUid(req);
     
     const userDoc = await firestore.collection('users').doc(uid).get();
-    if (!userDoc.exists || (userDoc.data().role !== 'owner' && userDoc.data().role !== 'restaurant-owner' && userDoc.data().role !== 'shop-owner' && userDoc.data().role !== 'street-vendor')) {
+    if (!userDoc.exists || !['owner', 'restaurant-owner', 'shop-owner', 'street-vendor'].includes(userDoc.data().role)) {
         throw { message: 'Access Denied: You do not have owner privileges.', status: 403 };
     }
     
@@ -35,7 +29,6 @@ function validateMenuItem(item) {
     if (!item.categoryId || typeof item.categoryId !== 'string') return `Missing 'categoryId' for item: ${item.name}`;
     
     if (typeof item.isVeg !== 'boolean') {
-        // For non-restaurant types, this might not be relevant, but we can default it.
         item.isVeg = true; 
     }
 
@@ -53,7 +46,7 @@ export async function POST(req) {
     try {
         const auth = await getAuth();
         const firestore = await getFirestore();
-        const { restaurantId, collectionName } = await verifyOwnerAndGetRestaurant(req, auth, firestore);
+        const { restaurantId, collectionName } = await verifyOwnerAndGetBusiness(req, auth, firestore);
         
         const { items } = await req.json();
 
@@ -78,10 +71,8 @@ export async function POST(req) {
                 isAvailable: true, // Default to available
                 order: 999, // Default order, can be managed later
                 ...item,
-                // Ensure array fields exist
                 tags: item.tags || [],
-                addOnGroups: item.addOnGroups || [],
-                imageUrl: item.imageUrl || '', // Default to empty string as requested
+                imageUrl: item.imageUrl || '',
             };
             batch.set(docRef, newItem);
             allItems.push(newItem);
@@ -96,7 +87,6 @@ export async function POST(req) {
         if (error.status) {
             return NextResponse.json({ message: error.message }, { status: error.status });
         }
-        // Check for JSON parsing error
         if (error instanceof SyntaxError) {
             return NextResponse.json({ message: `Invalid JSON format: ${error.message}` }, { status: 400 });
         }

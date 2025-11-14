@@ -58,7 +58,8 @@ export async function GET(req) {
           "desserts": { title: "Desserts" }, "soup": { title: "Soup" }, "tandoori-item": { title: "Tandoori Items" },
           "momos": { title: "Momos" }, "burgers": { title: "Burgers" }, "rolls": { title: "Rolls" },
           "tandoori-khajana": { title: "Tandoori Khajana" }, "rice": { title: "Rice" }, "noodles": { title: "Noodles" },
-          "pasta": { title: "Pasta" }, "raita": { title: "Raita" }
+          "pasta": { title: "Pasta" }, "raita": { title: "Raita" },
+          'snacks': { title: 'Snacks' }, 'chaat': { title: 'Chaat' }, 'sweets': { title: 'Sweets' },
         };
         const shopCategoryConfig = {
           "electronics": { title: "Electronics" }, "groceries": { title: "Groceries" }, "clothing": { title: "Clothing" },
@@ -66,7 +67,7 @@ export async function GET(req) {
           "beauty-personal-care": { title: "Beauty & Personal Care" }, "sports-outdoors": { title: "Sports & Outdoors" },
         };
         
-        const allCategories = { ...(businessType === 'restaurant' ? restaurantCategoryConfig : shopCategoryConfig) };
+        const allCategories = { ...(businessType === 'restaurant' || businessType === 'street-vendor' ? restaurantCategoryConfig : shopCategoryConfig) };
         customCategories.forEach(cat => {
             if (!allCategories[cat.id]) {
               allCategories[cat.id] = { title: cat.title };
