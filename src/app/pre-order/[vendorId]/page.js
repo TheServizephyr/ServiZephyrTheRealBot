@@ -3,7 +3,7 @@
 
 import { useState, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ShoppingCart, Plus, Minus, X, IndianRupee, Loader2 } from 'lucide-react';
+import { ShoppingCart, Plus, Minus, X, IndianRupee, Loader2, Utensils } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import Image from 'next/image';
@@ -400,5 +400,3 @@ export default function PreOrderPage({ params }) {
         </div>
     );
 }
-
-    
