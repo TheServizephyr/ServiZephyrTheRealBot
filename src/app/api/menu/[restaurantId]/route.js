@@ -74,11 +74,7 @@ export async function GET(request, { params }) {
             }
         }
         
-        // --- START: TRUMP CARD FIX V2 ---
-        // For all business types, the menu should only show available items.
-        // For street vendors specifically, we bypass the business's main approvalStatus check.
-        let menuQuery = restaurantRef.collection('menu').where('isAvailable', '==', true).orderBy('order', 'asc');
-
+        // For street vendors, we bypass the main approvalStatus check.
         if (businessType !== 'street-vendor' && restaurantData.approvalStatus !== 'approved' && restaurantData.approvalStatus !== 'approve') {
             console.warn(`[DEBUG] Menu API: Business '${restaurantData.name}' is not accepting orders. Status: ${restaurantData.approvalStatus}`);
             const message = restaurantData.approvalStatus === 'pending' 
@@ -92,13 +88,12 @@ export async function GET(request, { params }) {
                 isOpen: restaurantData.isOpen,
             }, { status: 403 });
         }
-        // --- END: TRUMP CARD FIX V2 ---
-        
+
+        const menuSnap = await restaurantRef.collection('menu').orderBy('order', 'asc').get();
         const couponsRef = restaurantRef.collection('coupons');
         const generalCouponsQuery = couponsRef.where('status', '==', 'Active').where('customerId', '==', null);
 
         const promises = [
-            menuQuery.get(), // Use the constructed query
             generalCouponsQuery.get()
         ];
         
@@ -107,7 +102,7 @@ export async function GET(request, { params }) {
             promises.push(customerCouponsQuery.get());
         }
 
-        const [menuSnap, generalCouponsSnap, customerCouponsSnap] = await Promise.all(promises);
+        const [generalCouponsSnap, customerCouponsSnap] = await Promise.all(promises);
 
         const menuData = {};
         const defaultRestaurantCategories = ["momos", "burgers", "rolls", "soup", "tandoori-item", "starters", "main-course", "tandoori-khajana", "rice", "noodles", "pasta", "raita", "desserts", "beverages"];
@@ -123,6 +118,12 @@ export async function GET(request, { params }) {
 
         menuSnap.docs.forEach(doc => {
             const item = doc.data();
+            
+            // --- SERVER-SIDE FILTERING FIX ---
+            if (item.isAvailable !== true) {
+                return; // Skip items that are not available
+            }
+
             if (item.categoryId && menuData.hasOwnProperty(item.categoryId)) {
                 menuData[item.categoryId].push({ id: doc.id, ...item });
             } else if (item.categoryId) {
