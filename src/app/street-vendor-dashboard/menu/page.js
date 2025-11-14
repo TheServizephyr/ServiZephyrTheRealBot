@@ -1,8 +1,9 @@
+
 'use client';
 
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ArrowLeft, PlusCircle, Trash2, IndianRupee, Loader2, Camera, FileJson, Edit, Upload, X, Plus, Image as ImageIcon, Utensils } from 'lucide-react';
+import { ArrowLeft, PlusCircle, Trash2, IndianRupee, Loader2, Camera, FileJson, Edit, Upload, X, Plus, Image as ImageIcon, Utensils, ChevronsUpDown, Check } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import Link from 'next/link';
 import { useUser, useCollection, useMemoFirebase } from '@/firebase';
@@ -16,6 +17,10 @@ import { Progress } from '@/components/ui/progress';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import Image from 'next/image';
+import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
+import { Command, CommandInput, CommandEmpty, CommandGroup, CommandItem } from '@/components/ui/command';
+import { cn } from '@/lib/utils';
+
 
 const MenuItem = ({ item, onEdit, onDelete, onToggle }) => (
   <motion.div
@@ -81,8 +86,6 @@ const AddItemModal = ({ isOpen, setIsOpen, onSave, editingItem, allCategories, s
                 setItem({
                     ...editingItem,
                     tags: Array.isArray(editingItem.tags) ? editingItem.tags.join(', ') : '',
-                    addOnGroups: editingItem.addOnGroups || [],
-                    // --- FIX: Ensure portions is always an array ---
                     portions: Array.isArray(editingItem.portions) && editingItem.portions.length > 0 ? editingItem.portions : [{ name: 'Full', price: '' }],
                 });
             } else {
@@ -204,62 +207,86 @@ const AddItemModal = ({ isOpen, setIsOpen, onSave, editingItem, allCategories, s
 
     return (
         <Dialog open={isOpen} onOpenChange={setIsOpen}>
-            <DialogContent className="sm:max-w-3xl bg-slate-900 border-slate-700 text-white">
+            <DialogContent className="sm:max-w-4xl bg-card border-border text-foreground">
                 <form onSubmit={handleSubmit}>
                     <DialogHeader>
                         <DialogTitle>{editingItem ? 'Edit Item' : 'Add New Item'}</DialogTitle>
+                        <DialogDescription>
+                            {editingItem ? 'Update the details for this item.' : "Fill in the details for the new item. Click save when you're done."}
+                        </DialogDescription>
                     </DialogHeader>
                     <div className="grid md:grid-cols-2 gap-x-8 gap-y-4 py-4 max-h-[70vh] overflow-y-auto pr-4">
+                        {/* Left Column: Basic Details */}
                         <div className="space-y-4">
-                             <div><Label>Name</Label><input value={item.name} onChange={e => handleChange('name', e.target.value)} required className="w-full p-2 bg-slate-800 border border-slate-700 rounded-md" /></div>
-                             <div><Label>Description</Label><input value={item.description} onChange={e => handleChange('description', e.target.value)} className="w-full p-2 bg-slate-800 border border-slate-700 rounded-md" /></div>
-                             <div>
+                            <div><Label>Name</Label><input value={item.name} onChange={e => handleChange('name', e.target.value)} required placeholder="e.g., Veg Pulao" className="w-full p-2 bg-input border border-border rounded-md" /></div>
+                            <div><Label>Description</Label><input value={item.description} onChange={e => handleChange('description', e.target.value)} placeholder="e.g., 10 Pcs." className="w-full p-2 bg-input border border-border rounded-md" /></div>
+                            <div>
                                 <Label>Category</Label>
-                                <select value={item.categoryId} onChange={handleCategoryChange} className="w-full p-2 bg-slate-800 border border-slate-700 rounded-md">
+                                <select value={item.categoryId} onChange={handleCategoryChange} className="w-full p-2 bg-input border border-border rounded-md">
                                     {sortedCategories.map(({id, title}) => <option key={id} value={id}>{title}</option>)}
                                     <option value="add_new">+ Add New Category...</option>
                                 </select>
                             </div>
-                            {showNewCategory && (<div><Label>New Category Name</Label><input value={newCategory} onChange={e => setNewCategory(e.target.value)} className="w-full p-2 bg-slate-800 border border-slate-700 rounded-md" /></div>)}
-                             <div><Label>Tags (comma-separated)</Label><input value={item.tags} onChange={e => handleChange('tags', e.target.value)} className="w-full p-2 bg-slate-800 border border-slate-700 rounded-md" /></div>
-                             <div className="flex items-center justify-between">
-                                <div className="flex items-center gap-2"><Switch id="is-veg" checked={item.isVeg} onCheckedChange={checked => handleChange('isVeg', checked)} /><Label htmlFor="is-veg">Vegetarian</Label></div>
-                                <div className="flex items-center gap-2"><Switch id="is-available" checked={item.isAvailable} onCheckedChange={checked => handleChange('isAvailable', checked)} /><Label htmlFor="is-available">Available</Label></div>
-                            </div>
-                        </div>
-                        <div className="space-y-4">
-                             <div>
+                            {showNewCategory && (<div><Label>New Category Name</Label><input value={newCategory} onChange={e => setNewCategory(e.target.value)} className="w-full p-2 bg-input border border-border rounded-md" /></div>)}
+                            <div><Label>Tags (comma-separated)</Label><input value={item.tags} onChange={e => handleChange('tags', e.target.value)} placeholder="e.g., Spicy, Chef's Special" className="w-full p-2 bg-input border border-border rounded-md" /></div>
+                            <div>
                                 <Label>Image</Label>
                                 <div className="mt-2 flex items-center gap-4">
-                                    <div className="relative w-20 h-20 rounded-md border-2 border-dashed border-slate-600 flex items-center justify-center bg-slate-800 overflow-hidden">
-                                        {item.imageUrl ? <Image src={item.imageUrl} alt={item.name} layout="fill" objectFit="cover" /> : <ImageIcon size={24} className="text-slate-500" />}
+                                    <div className="relative w-20 h-20 rounded-md border-2 border-dashed border-border flex items-center justify-center bg-muted overflow-hidden">
+                                        {item.imageUrl ? <Image src={item.imageUrl} alt={item.name} layout="fill" objectFit="cover" /> : <ImageIcon size={24} className="text-muted-foreground" />}
                                     </div>
                                     <input type="file" ref={fileInputRef} onChange={handleImageUpload} accept="image/*" className="hidden" />
-                                    <Button type="button" variant="outline" onClick={() => fileInputRef.current?.click()} className="text-white border-slate-700 hover:bg-slate-800">
+                                    <Button type="button" variant="outline" onClick={() => fileInputRef.current?.click()}>
                                         <Upload size={16} className="mr-2"/>Upload
                                     </Button>
                                 </div>
                             </div>
-                            <div>
+                             <div className="flex items-center justify-end gap-4 pt-4">
+                                <div className="flex items-center space-x-2"><Switch id="is-veg" checked={item.isVeg} onCheckedChange={checked => handleChange('isVeg', checked)} /><Label htmlFor="is-veg">Vegetarian</Label></div>
+                                <div className="flex items-center space-x-2"><Switch id="is-available" checked={item.isAvailable} onCheckedChange={checked => handleChange('isAvailable', checked)} /><Label htmlFor="is-available">Available</Label></div>
+                            </div>
+                        </div>
+
+                        {/* Right Column: Portions */}
+                        <div className="space-y-4">
+                           <div>
                                 <Label>Pricing</Label>
-                                <div className="mt-2 space-y-3">
-                                    {item.portions.map((portion, index) => (
-                                        <div key={index} className="flex items-center gap-2">
-                                            <input value={portion.name} onChange={(e) => handlePortionChange(index, 'name', e.target.value)} placeholder="e.g., Half" className="flex-1 p-2 bg-slate-800 border border-slate-700 rounded-md" required/>
-                                            <IndianRupee className="text-slate-400" size={16}/>
-                                            <input type="number" value={portion.price} onChange={(e) => handlePortionChange(index, 'price', e.target.value)} placeholder="Price" className="w-24 p-2 bg-slate-800 border border-slate-700 rounded-md" required/>
-                                            <Button type="button" variant="ghost" size="icon" className="text-red-500" onClick={() => removePortion(index)} disabled={item.portions.length <= 1}><Trash2 size={16}/></Button>
+                                <div className="flex items-center gap-2 mt-2 bg-muted p-1 rounded-lg">
+                                    <Button type="button" onClick={() => setPricingType('single')} variant={pricingType === 'single' ? 'default' : 'ghost'} className={cn("flex-1", pricingType === 'single' && 'bg-background text-foreground shadow-sm')}>Single Price</Button>
+                                    <Button type="button" onClick={() => setPricingType('portions')} variant={pricingType === 'portions' ? 'default' : 'ghost'} className={cn("flex-1", pricingType === 'portions' && 'bg-background text-foreground shadow-sm')}>Variable Portions</Button>
+                                </div>
+                                <div className="mt-3 space-y-3">
+                                    {pricingType === 'single' ? (
+                                        <div className="flex items-center gap-2">
+                                            <Label className="w-24">Base Price</Label>
+                                            <IndianRupee className="text-muted-foreground" size={16}/>
+                                            <input type="number" value={item.portions?.[0]?.price || ''} onChange={(e) => handleBasePriceChange(e.target.value)} placeholder="e.g., 150" className="flex-1 p-2 border rounded-md bg-input border-border" required/>
                                         </div>
-                                    ))}
-                                    <Button type="button" variant="outline" size="sm" onClick={addPortion} className="text-white border-slate-700 hover:bg-slate-800"><PlusCircle size={16} className="mr-2"/> Add Portion</Button>
+                                    ) : (
+                                        <>
+                                            {item.portions.map((portion, index) => (
+                                                <div key={index} className="flex items-center gap-2">
+                                                    <input value={portion.name} onChange={(e) => handlePortionChange(index, 'name', e.target.value)} placeholder="e.g., Half" className="flex-1 p-2 border rounded-md bg-input border-border" required/>
+                                                    <IndianRupee className="text-muted-foreground" size={16}/>
+                                                    <input type="number" value={portion.price} onChange={(e) => handlePortionChange(index, 'price', e.target.value)} placeholder="Price" className="w-24 p-2 border rounded-md bg-input border-border" required/>
+                                                    <Button type="button" variant="ghost" size="icon" className="text-destructive" onClick={() => removePortion(index)} disabled={item.portions.length <= 1}>
+                                                        <Trash2 size={16}/>
+                                                    </Button>
+                                                </div>
+                                            ))}
+                                            <Button type="button" variant="outline" size="sm" onClick={addPortion}>
+                                                <PlusCircle size={16} className="mr-2"/> Add Portion
+                                            </Button>
+                                        </>
+                                    )}
                                 </div>
                             </div>
                         </div>
                     </div>
                     <DialogFooter>
-                        <DialogClose asChild><Button type="button" variant="ghost" disabled={isSaving}>Cancel</Button></DialogClose>
+                        <DialogClose asChild><Button type="button" variant="secondary" disabled={isSaving}>Cancel</Button></DialogClose>
                         <Button type="submit" disabled={isSaving} className="bg-primary hover:bg-primary/90 text-primary-foreground">
-                             {isSaving ? <Loader2 className="animate-spin mr-2"/> : null} {editingItem ? 'Save Changes' : 'Save Item'}
+                            {isSaving ? <Loader2 className="animate-spin mr-2"/> : null} {editingItem ? 'Save Changes' : 'Save Item'}
                         </Button>
                     </DialogFooter>
                 </form>
@@ -267,6 +294,7 @@ const AddItemModal = ({ isOpen, setIsOpen, onSave, editingItem, allCategories, s
         </Dialog>
     );
 };
+
 
 const AiScanModal = ({ isOpen, onClose, onScan }) => {
     const [selectedFile, setSelectedFile] = useState(null);
@@ -301,7 +329,7 @@ const AiScanModal = ({ isOpen, onClose, onScan }) => {
 
     return (
         <Dialog open={isOpen} onOpenChange={onClose}>
-            <DialogContent className="bg-slate-900 border-slate-700 text-white">
+            <DialogContent className="bg-card border-border text-foreground">
                 <DialogHeader>
                     <DialogTitle>Scan Menu with AI</DialogTitle>
                     <DialogDescription>Upload an image of your menu, and our AI will automatically add the items for you.</DialogDescription>
@@ -310,20 +338,20 @@ const AiScanModal = ({ isOpen, onClose, onScan }) => {
                     <input type="file" ref={inputRef} onChange={handleFileChange} className="hidden" accept="image/*" />
                     <div
                         onClick={() => inputRef.current?.click()}
-                        className="w-full h-48 border-2 border-dashed border-slate-600 rounded-lg flex flex-col items-center justify-center cursor-pointer hover:border-primary hover:bg-slate-800/50 transition-colors"
+                        className="w-full h-48 border-2 border-dashed border-border rounded-lg flex flex-col items-center justify-center cursor-pointer hover:border-primary hover:bg-muted/50 transition-colors"
                     >
                         {previewUrl ? (
                             <Image src={previewUrl} alt="Menu preview" layout="fill" objectFit="contain" className="p-2"/>
                         ) : (
                             <>
-                                <Camera size={48} className="text-slate-500" />
-                                <p className="mt-2 text-slate-400">Click to Upload Image</p>
+                                <Camera size={48} className="text-muted-foreground" />
+                                <p className="mt-2 text-muted-foreground">Click to Upload Image</p>
                             </>
                         )}
                     </div>
                 </div>
                 <DialogFooter>
-                    <Button variant="ghost" onClick={onClose} disabled={isScanning}>Cancel</Button>
+                    <Button variant="secondary" onClick={onClose} disabled={isScanning}>Cancel</Button>
                     <Button onClick={handleScan} disabled={!selectedFile || isScanning} className="bg-primary hover:bg-primary/80 text-primary-foreground">
                         {isScanning ? <Loader2 className="animate-spin mr-2"/> : null}
                         {isScanning ? 'Scanning...' : 'Start AI Scan'}
@@ -403,7 +431,7 @@ ${placeholderText}
 
     return (
         <Dialog open={isOpen} onOpenChange={setIsOpen}>
-            <DialogContent className="sm:max-w-4xl bg-slate-900 border-slate-700 text-white">
+            <DialogContent className="sm:max-w-4xl bg-card border-border text-foreground">
                 <DialogHeader>
                     <DialogTitle className="flex items-center gap-2 text-2xl"><FileJson /> Bulk Add Items via JSON</DialogTitle>
                     <DialogDescription>Quickly add multiple items by pasting a structured JSON array.</DialogDescription>
@@ -411,7 +439,7 @@ ${placeholderText}
                 <div className="grid md:grid-cols-2 gap-x-8 max-h-[70vh] overflow-y-auto pr-4">
                     <div className="space-y-4 py-4">
                         <h3 className="font-semibold text-lg">How to use:</h3>
-                        <ol className="list-decimal list-inside space-y-2 text-sm text-slate-400">
+                        <ol className="list-decimal list-inside space-y-2 text-sm text-muted-foreground">
                             <li>Copy the AI prompt provided.</li>
                             <li>Go to an AI tool like ChatGPT or Gemini.</li>
                             <li>Paste the prompt, and then paste ${instructionsText} where it says \`${placeholderText}\`.</li>
@@ -419,14 +447,14 @@ ${placeholderText}
                             <li>Paste the copied JSON code into the text area on this page.</li>
                             <li>Click "Upload & Save Items".</li>
                         </ol>
-                        <div className="p-4 bg-slate-800 rounded-lg">
+                        <div className="p-4 bg-muted rounded-lg">
                             <div className="flex justify-between items-center mb-2">
                                 <Label className="font-semibold">AI Prompt for JSON Generation</Label>
                                 <Button size="sm" variant="ghost" onClick={handleCopy}>
                                     {copySuccess || 'Copy'}
                                 </Button>
                             </div>
-                            <p className="text-xs bg-slate-900 p-3 rounded-md font-mono whitespace-pre-wrap overflow-auto">{aiPrompt}</p>
+                            <p className="text-xs bg-background p-3 rounded-md font-mono whitespace-pre-wrap overflow-auto">{aiPrompt}</p>
                         </div>
                     </div>
                     <div className="py-4">
@@ -436,12 +464,12 @@ ${placeholderText}
                             value={jsonText}
                             onChange={(e) => setJsonText(e.target.value)}
                             placeholder='[ ... ]'
-                            className="w-full h-96 mt-2 p-3 font-mono text-sm border rounded-md bg-slate-800 border-slate-700 focus:ring-primary focus:border-primary"
+                            className="w-full h-96 mt-2 p-3 font-mono text-sm border rounded-md bg-input border-border focus:ring-primary focus:border-primary"
                         />
                     </div>
                 </div>
                 <DialogFooter>
-                    <DialogClose asChild><Button type="button" variant="ghost" disabled={isSaving}>Cancel</Button></DialogClose>
+                    <DialogClose asChild><Button type="button" variant="secondary" disabled={isSaving}>Cancel</Button></DialogClose>
                     <Button onClick={handleSubmit} disabled={isSaving || !jsonText} className="bg-primary hover:bg-primary/90 text-primary-foreground">
                         {isSaving ? 'Uploading...' : 'Upload & Save Items'}
                     </Button>
