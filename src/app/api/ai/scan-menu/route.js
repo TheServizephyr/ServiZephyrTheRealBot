@@ -1,6 +1,6 @@
 'use server';
 
-import {NextRequest, NextResponse} from 'next/server';
+import {NextResponse} from 'next/server';
 import {getFirestore, verifyAndGetUid} from '@/lib/firebase-admin';
 import {ai} from '@/ai/genkit';
 import {z} from 'zod';
@@ -12,7 +12,12 @@ const MenuItemSchema = z.object({
     .string()
     .optional()
     .describe('A brief description if available (e.g., number of pieces).'),
-  categoryId: z.string().default('general').describe("The category of the item (e.g., 'snacks', 'main-course'). Default to 'general' if unsure."),
+  categoryId: z
+    .string()
+    .default('general')
+    .describe(
+      "The category of the item (e.g., 'snacks', 'main-course'). Default to 'general' if unsure."
+    ),
   isVeg: z
     .boolean()
     .default(true)
@@ -71,9 +76,9 @@ const menuScanPrompt = ai.definePrompt({
 });
 
 
-export async function POST(req: NextRequest) {
+export async function POST(req) {
   
-  async function getVendorId(uid: string) {
+  async function getVendorId(uid) {
     const firestore = await getFirestore();
     const q = firestore
       .collection('street_vendors')
