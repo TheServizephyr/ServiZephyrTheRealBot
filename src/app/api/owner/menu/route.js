@@ -22,20 +22,17 @@ async function verifyOwnerAndGetBusiness(req, auth, firestore) {
     if (userRole === 'admin' && impersonatedOwnerId) {
         console.log(`[API Impersonation] Admin ${uid} is managing data for owner ${impersonatedOwnerId}.`);
         targetOwnerId = impersonatedOwnerId;
-    } else if (userRole !== 'owner' && userRole !== 'restaurant-owner' && userRole !== 'shop-owner') {
+    } else if (!['owner', 'restaurant-owner', 'shop-owner', 'street-vendor'].includes(userRole)) {
         throw { message: 'Access Denied: You do not have sufficient privileges.', status: 403 };
     }
 
-    const restaurantsQuery = await firestore.collection('restaurants').where('ownerId', '==', targetOwnerId).limit(1).get();
-    if (!restaurantsQuery.empty) {
-        const doc = restaurantsQuery.docs[0];
-        return { uid: targetOwnerId, businessId: doc.id, businessSnap: doc, collectionName: 'restaurants', isAdmin: userRole === 'admin' };
-    }
-
-    const shopsQuery = await firestore.collection('shops').where('ownerId', '==', targetOwnerId).limit(1).get();
-    if (!shopsQuery.empty) {
-        const doc = shopsQuery.docs[0];
-        return { uid: targetOwnerId, businessId: doc.id, businessSnap: doc, collectionName: 'shops', isAdmin: userRole === 'admin' };
+    const collectionsToTry = ['restaurants', 'shops', 'street_vendors'];
+    for (const collectionName of collectionsToTry) {
+        const querySnapshot = await firestore.collection(collectionName).where('ownerId', '==', targetOwnerId).limit(1).get();
+        if (!querySnapshot.empty) {
+            const doc = querySnapshot.docs[0];
+            return { uid: targetOwnerId, businessId: doc.id, businessSnap: doc, collectionName, isAdmin: userRole === 'admin' };
+        }
     }
     
     throw { message: 'No business associated with this owner.', status: 404 };
@@ -56,12 +53,27 @@ export async function GET(req) {
 
         const businessType = businessData.businessType || (collectionName === 'restaurants' ? 'restaurant' : 'shop');
         
-        const defaultRestaurantCategories = ["momos", "burgers", "rolls", "soup", "tandoori-item", "starters", "main-course", "tandoori-khajana", "rice", "noodles", "pasta", "raita", "desserts", "beverages"];
-        const defaultShopCategories = ["electronics", "groceries", "clothing", "books", "home-appliances", "toys-games", "beauty-personal-care", "sports-outdoors"];
+        const restaurantCategoryConfig = {
+          "starters": { title: "Starters" }, "main-course": { title: "Main Course" }, "beverages": { title: "Beverages" },
+          "desserts": { title: "Desserts" }, "soup": { title: "Soup" }, "tandoori-item": { title: "Tandoori Items" },
+          "momos": { title: "Momos" }, "burgers": { title: "Burgers" }, "rolls": { title: "Rolls" },
+          "tandoori-khajana": { title: "Tandoori Khajana" }, "rice": { title: "Rice" }, "noodles": { title: "Noodles" },
+          "pasta": { title: "Pasta" }, "raita": { title: "Raita" }
+        };
+        const shopCategoryConfig = {
+          "electronics": { title: "Electronics" }, "groceries": { title: "Groceries" }, "clothing": { title: "Clothing" },
+          "books": { title: "Books" }, "home-appliances": { title: "Home Appliances" }, "toys-games": { title: "Toys & Games" },
+          "beauty-personal-care": { title: "Beauty & Personal Care" }, "sports-outdoors": { title: "Sports & Outdoors" },
+        };
         
-        const defaultCategoryKeys = businessType === 'restaurant' ? defaultRestaurantCategories : defaultShopCategories;
+        const allCategories = { ...(businessType === 'restaurant' ? restaurantCategoryConfig : shopCategoryConfig) };
+        customCategories.forEach(cat => {
+            if (!allCategories[cat.id]) {
+              allCategories[cat.id] = { title: cat.title };
+            }
+        });
         
-        const allCategoryKeys = [...new Set([...defaultCategoryKeys, ...customCategories.map(c => c.id)])];
+        const allCategoryKeys = Object.keys(allCategories);
 
         allCategoryKeys.forEach(key => {
             menuData[key] = [];
@@ -69,11 +81,11 @@ export async function GET(req) {
 
         menuSnap.docs.forEach(doc => {
             const item = doc.data();
-            if (item.categoryId && menuData.hasOwnProperty(item.categoryId)) {
-                menuData[item.categoryId].push({ id: doc.id, ...item });
-            } else if (item.categoryId) {
-                menuData[item.categoryId] = [{ id: doc.id, ...item }];
+            const categoryKey = item.categoryId || 'general';
+            if (!menuData[categoryKey]) {
+                menuData[categoryKey] = [];
             }
+            menuData[categoryKey].push({ id: doc.id, ...item });
         });
 
         Object.keys(menuData).forEach(key => {
@@ -135,7 +147,6 @@ export async function POST(req) {
             ...item,
             categoryId: finalCategoryId,
             portions: item.portions || [],
-            addOnGroups: item.addOnGroups || [],
         };
 
         let newItemId = item.id;

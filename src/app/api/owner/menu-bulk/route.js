@@ -81,7 +81,7 @@ export async function POST(req) {
                 // Ensure array fields exist
                 tags: item.tags || [],
                 addOnGroups: item.addOnGroups || [],
-                imageUrl: item.imageUrl || `https://picsum.photos/seed/${item.name.replace(/\s/g, '')}/100/100`,
+                imageUrl: item.imageUrl || '', // Default to empty string as requested
             };
             batch.set(docRef, newItem);
             allItems.push(newItem);
