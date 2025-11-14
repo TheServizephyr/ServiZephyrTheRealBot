@@ -1,7 +1,7 @@
 
 'use client'; // This is a client-only file
-import {genkit, type Genkit} from 'genkit';
-import {googleAI, type GoogleAI} from '@genkit-ai/google-genai';
+import {genkit} from 'genkit';
+import {googleAI} from '@genkit-ai/google-genai';
 
 // Initialize the AI plugin.
 // This is a client-side only file so we can lazy load the Genkit dependency.
@@ -25,7 +25,7 @@ genkit({
  *
  * // Define a flow
  * const myFlow = ai.defineFlow(...)
+ *
+ * @type {import('genkit').Genkit & { googleAI: import('@genkit-ai/google-genai').GoogleAI }}
  */
-export const ai: Genkit & {
-  googleAI: GoogleAI;
-} = genkit as any;
+export const ai = genkit;

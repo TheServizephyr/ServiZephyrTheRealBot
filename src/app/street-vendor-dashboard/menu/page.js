@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
@@ -185,6 +186,7 @@ export default function StreetVendorMenuPage() {
     const [showAddItem, setShowAddItem] = useState(false);
     const [isAiModalOpen, setIsAiModalOpen] = useState(false);
     const [infoDialog, setInfoDialog] = useState({ isOpen: false, title: '', message: '' });
+    const [isScanning, setIsScanning] = useState(false); // New state for main page loading
 
     const vendorQuery = useMemoFirebase(() => {
         if (!user) return null;
@@ -305,24 +307,35 @@ export default function StreetVendorMenuPage() {
     }, [user]);
 
     const handleAiScan = async (file) => {
+        setIsScanning(true); // Start loading on main page
         try {
             const reader = new FileReader();
             reader.readAsDataURL(file);
-            reader.onload = async () => {
-                const imageDataUri = reader.result;
-                const response = await fetch('/api/ai/scan-menu', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${await user.getIdToken()}` },
-                    body: JSON.stringify({ imageDataUri }),
-                });
-                const result = await response.json();
-                if (!response.ok) throw new Error(result.message);
-                setInfoDialog({ isOpen: true, title: 'Success!', message: result.message });
-                fetchMenu();
-            };
+            await new Promise((resolve, reject) => {
+                reader.onload = async () => {
+                    try {
+                        const imageDataUri = reader.result;
+                        const response = await fetch('/api/ai/scan-menu', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${await user.getIdToken()}` },
+                            body: JSON.stringify({ imageDataUri }),
+                        });
+                        const result = await response.json();
+                        if (!response.ok) throw new Error(result.message);
+                        setInfoDialog({ isOpen: true, title: 'Success!', message: result.message });
+                        fetchMenu();
+                        resolve();
+                    } catch (error) {
+                        reject(error);
+                    }
+                };
+                reader.onerror = (error) => reject(error);
+            });
         } catch (error) {
             setInfoDialog({ isOpen: true, title: 'AI Scan Failed', message: error.message });
-            throw error;
+            throw error; // Re-throw to show error in modal if needed
+        } finally {
+            setIsScanning(false); // Stop loading on main page
         }
     };
 
@@ -359,6 +372,21 @@ export default function StreetVendorMenuPage() {
             </div>
         </header>
 
+        <AnimatePresence>
+            {isScanning && (
+                <motion.div
+                    initial={{ height: 0, opacity: 0 }}
+                    animate={{ height: 'auto', opacity: 1 }}
+                    exit={{ height: 0, opacity: 0 }}
+                    className="bg-primary/10 text-primary font-semibold p-3 rounded-lg flex items-center justify-center gap-3 mb-4 text-center"
+                >
+                    <Loader2 className="animate-spin" />
+                    AI is scanning your menu... Your new items will appear here shortly.
+                </motion.div>
+            )}
+        </AnimatePresence>
+
+
         <main>
             <AnimatePresence>
                 {showAddItem && <AddItemForm onAddItem={(newItem) => handleAddItem(newItem, vendorId)} onCancel={() => setShowAddItem(false)} vendorId={vendorId} />}
@@ -381,7 +409,7 @@ export default function StreetVendorMenuPage() {
                             </div>
                         </div>
                     ))}
-                     {Object.keys(groupedMenu).length === 0 && !showAddItem && (
+                     {Object.keys(groupedMenu).length === 0 && !showAddItem && !isScanning && (
                         <div className="text-center py-20 text-slate-500">
                             <p>Your menu is empty.</p>
                             <p>Click the <PlusCircle className="inline" size={16}/> button to add an item, or use the <Camera className="inline" size={16}/> to scan your menu with AI.</p>
