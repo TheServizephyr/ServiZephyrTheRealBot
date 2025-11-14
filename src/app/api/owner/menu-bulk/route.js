@@ -13,24 +13,32 @@ async function verifyOwnerAndGetRestaurant(req, auth, firestore) {
     const uid = decodedToken.uid;
     
     const userDoc = await firestore.collection('users').doc(uid).get();
-    if (!userDoc.exists || userDoc.data().role !== 'owner') {
+    if (!userDoc.exists || (userDoc.data().role !== 'owner' && userDoc.data().role !== 'restaurant-owner' && userDoc.data().role !== 'shop-owner' && userDoc.data().role !== 'street-vendor')) {
         throw { message: 'Access Denied: You do not have owner privileges.', status: 403 };
     }
     
-    const restaurantsQuery = await firestore.collection('restaurants').where('ownerId', '==', uid).limit(1).get();
-    if (restaurantsQuery.empty) {
-        throw { message: 'No restaurant associated with this owner.', status: 404 };
+    const collectionsToTry = ['restaurants', 'shops', 'street_vendors'];
+    for (const collectionName of collectionsToTry) {
+        const querySnapshot = await firestore.collection(collectionName).where('ownerId', '==', uid).limit(1).get();
+        if (!querySnapshot.empty) {
+            const restaurantId = querySnapshot.docs[0].id;
+            return { uid, restaurantId, collectionName };
+        }
     }
-    const restaurantId = restaurantsQuery.docs[0].id;
     
-    return { uid, restaurantId };
+    throw { message: 'No business associated with this owner.', status: 404 };
 }
 
 // Basic validation for a single menu item
 function validateMenuItem(item) {
     if (!item.name || typeof item.name !== 'string') return "Missing or invalid 'name'";
     if (!item.categoryId || typeof item.categoryId !== 'string') return `Missing 'categoryId' for item: ${item.name}`;
-    if (typeof item.isVeg !== 'boolean') return `Missing 'isVeg' flag for item: ${item.name}`;
+    
+    if (typeof item.isVeg !== 'boolean') {
+        // For non-restaurant types, this might not be relevant, but we can default it.
+        item.isVeg = true; 
+    }
+
     if (!Array.isArray(item.portions) || item.portions.length === 0) return `Missing or empty 'portions' array for item: ${item.name}`;
 
     for (const portion of item.portions) {
@@ -45,7 +53,7 @@ export async function POST(req) {
     try {
         const auth = await getAuth();
         const firestore = await getFirestore();
-        const { restaurantId } = await verifyOwnerAndGetRestaurant(req, auth, firestore);
+        const { restaurantId, collectionName } = await verifyOwnerAndGetRestaurant(req, auth, firestore);
         
         const { items } = await req.json();
 
@@ -54,7 +62,7 @@ export async function POST(req) {
         }
         
         const batch = firestore.batch();
-        const menuRef = firestore.collection('restaurants').doc(restaurantId).collection('menu');
+        const menuRef = firestore.collection(collectionName).doc(restaurantId).collection('menu');
         const allItems = [];
 
         for (const item of items) {
