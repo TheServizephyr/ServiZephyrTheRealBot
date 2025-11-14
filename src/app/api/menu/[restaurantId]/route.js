@@ -20,7 +20,7 @@ export async function GET(request, { params }) {
         }
         
         let businessDoc;
-        let businessType = 'restaurant'; // Default
+        let businessType;
         let collectionName = 'restaurants';
         
         const collectionsToTry = ['restaurants', 'shops', 'street_vendors'];
@@ -32,13 +32,6 @@ export async function GET(request, { params }) {
             if (docSnap.exists) {
                 businessDoc = docSnap;
                 collectionName = name;
-                // --- START FIX: Correctly handle businessType for all cases ---
-                if (name === 'street_vendors') {
-                    businessType = 'street-vendor';
-                } else {
-                    businessType = name.slice(0, -1);
-                }
-                // --- END FIX ---
                 break; // Found it, stop searching
             }
         }
@@ -48,10 +41,15 @@ export async function GET(request, { params }) {
             return NextResponse.json({ message: `Business with ID ${restaurantId} not found.` }, { status: 404 });
         }
         
-        console.log(`[DEBUG] Menu API: Found business '${businessDoc.data().name}' in collection '${collectionName}'. BusinessType set to: '${businessType}'`);
-
         const restaurantRef = businessDoc.ref;
         const restaurantData = businessDoc.data();
+        
+        // --- START FIX: Directly use businessType from data ---
+        businessType = restaurantData.businessType || (collectionName === 'restaurants' ? 'restaurant' : (collectionName === 'shops' ? 'shop' : 'street-vendor'));
+        // --- END FIX ---
+        
+        console.log(`[DEBUG] Menu API: Found business '${restaurantData.name}' in collection '${collectionName}'. BusinessType set to: '${businessType}'`);
+
         
         let loyaltyPoints = 0;
         let customerData = null;
@@ -78,7 +76,7 @@ export async function GET(request, { params }) {
             }
         }
         
-        if (restaurantData.approvalStatus !== 'approved') {
+        if (restaurantData.approvalStatus !== 'approved' && restaurantData.approvalStatus !== 'approve') {
              console.warn(`[DEBUG] Menu API: Business '${restaurantData.name}' is not accepting orders. Status: ${restaurantData.approvalStatus}`);
             const message = restaurantData.approvalStatus === 'pending' 
                 ? 'This business is currently pending approval and not accepting orders.'
