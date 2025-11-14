@@ -8,9 +8,7 @@ import {googleAI, type GoogleAI} from '@genkit-ai/google-genai';
 // It also needs to be a .js file and not a .ts file.
 genkit({
   plugins: [
-    googleAI({
-      apiVersion: 'v1beta',
-    }),
+    googleAI(),
   ],
 });
 

@@ -10,6 +10,7 @@ if (process.env.NODE_ENV !== 'production') {
 const nextConfig = {
   env: {
     NEXT_PUBLIC_GOOGLE_MAPS_API_KEY: process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY,
+    GEMINI_API_KEY: process.env.GEMINI_API_KEY,
   },
   output: 'standalone',
   images: {

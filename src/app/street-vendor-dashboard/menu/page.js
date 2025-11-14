@@ -1,4 +1,3 @@
-
 'use client';
 
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
@@ -146,14 +145,14 @@ const AiScanModal = ({ isOpen, onClose, onScan }) => {
 
     return (
         <Dialog open={isOpen} onOpenChange={onClose}>
-            <DialogContent className="bg-slate-800 border-slate-700 text-white">
+            <DialogContent className="bg-slate-900 border-slate-700 text-white">
                 <DialogHeader>
                     <DialogTitle className="flex items-center gap-3 text-2xl"><Camera className="text-primary"/> Scan Menu with AI</DialogTitle>
                     <DialogDescription>Upload an image of your menu, and our AI will automatically add the items for you.</DialogDescription>
                 </DialogHeader>
                 <div className="py-6 text-center">
                     <input type="file" accept="image/*" ref={inputRef} onChange={handleFileChange} className="hidden" />
-                    <Button onClick={() => inputRef.current?.click()} variant="outline" className="w-full h-32 border-dashed border-2 border-slate-600 hover:border-primary hover:bg-slate-700/50 flex flex-col items-center justify-center">
+                    <Button onClick={() => inputRef.current?.click()} variant="outline" className="w-full h-32 border-dashed border-2 border-slate-600 hover:border-primary hover:bg-slate-800 flex flex-col items-center justify-center text-slate-400">
                         <Camera size={32} className="mb-2"/>
                         {file ? 'Change Image' : 'Click to Upload Image'}
                     </Button>
