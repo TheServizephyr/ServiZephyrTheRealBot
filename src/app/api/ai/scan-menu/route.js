@@ -2,10 +2,19 @@
 
 import {NextResponse} from 'next/server';
 import {getFirestore, verifyAndGetUid} from '@/lib/firebase-admin';
-import {ai} from '@/ai/genkit';
+import {genkit} from 'genkit';
+import {googleAI} from '@genkit-ai/google-genai';
 import {z} from 'zod';
 
 console.log('[API LOG] /api/ai/scan-menu/route.js file loaded.');
+
+// Initialize Genkit and AI plugins right here in the server-side route.
+const ai = genkit({
+  plugins: [
+    googleAI(),
+  ],
+});
+
 
 // Define the structure for a single menu item that the AI should return
 const MenuItemSchema = z.object({
