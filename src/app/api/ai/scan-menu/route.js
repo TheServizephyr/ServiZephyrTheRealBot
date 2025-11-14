@@ -12,7 +12,7 @@ const MenuItemSchema = z.object({
     .string()
     .optional()
     .describe('A brief description if available (e.g., number of pieces).'),
-  categoryId: z.string().describe("The category of the item (e.g., 'snacks', 'main-course'). Default to 'general' if unsure."),
+  categoryId: z.string().default('general').describe("The category of the item (e.g., 'snacks', 'main-course'). Default to 'general' if unsure."),
   isVeg: z
     .boolean()
     .default(true)
@@ -71,9 +71,9 @@ const menuScanPrompt = ai.definePrompt({
 });
 
 
-export async function POST(req) {
+export async function POST(req: NextRequest) {
   
-  async function getVendorId(uid) {
+  async function getVendorId(uid: string) {
     const firestore = await getFirestore();
     const q = firestore
       .collection('street_vendors')
@@ -124,9 +124,8 @@ export async function POST(req) {
             isVeg: item.isVeg,
             portions: item.portions,
             tags: item.tags || [],
-            imageUrl: '', // Explicitly set to empty string as requested
+            imageUrl: '', // Explicitly set to empty string
             available: true,
-            ownerId: uid,
         };
         batch.set(newItemRef, itemData);
     });
