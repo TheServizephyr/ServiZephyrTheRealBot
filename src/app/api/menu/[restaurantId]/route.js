@@ -74,10 +74,13 @@ export async function GET(request, { params }) {
             }
         }
         
-        // --- START: TRUMP CARD FIX ---
-        // Bypass approval check specifically for street vendors
+        // --- START: TRUMP CARD FIX V2 ---
+        // For all business types, the menu should only show available items.
+        // For street vendors specifically, we bypass the business's main approvalStatus check.
+        let menuQuery = restaurantRef.collection('menu').where('isAvailable', '==', true).orderBy('order', 'asc');
+
         if (businessType !== 'street-vendor' && restaurantData.approvalStatus !== 'approved' && restaurantData.approvalStatus !== 'approve') {
-             console.warn(`[DEBUG] Menu API: Business '${restaurantData.name}' is not accepting orders. Status: ${restaurantData.approvalStatus}`);
+            console.warn(`[DEBUG] Menu API: Business '${restaurantData.name}' is not accepting orders. Status: ${restaurantData.approvalStatus}`);
             const message = restaurantData.approvalStatus === 'pending' 
                 ? 'This business is currently pending approval and not accepting orders.'
                 : 'This business is currently not accepting orders.';
@@ -89,13 +92,13 @@ export async function GET(request, { params }) {
                 isOpen: restaurantData.isOpen,
             }, { status: 403 });
         }
-        // --- END: TRUMP CARD FIX ---
+        // --- END: TRUMP CARD FIX V2 ---
         
         const couponsRef = restaurantRef.collection('coupons');
         const generalCouponsQuery = couponsRef.where('status', '==', 'Active').where('customerId', '==', null);
 
         const promises = [
-            restaurantRef.collection('menu').where('isAvailable', '==', true).orderBy('order', 'asc').get(),
+            menuQuery.get(), // Use the constructed query
             generalCouponsQuery.get()
         ];
         
@@ -125,6 +128,9 @@ export async function GET(request, { params }) {
             } else if (item.categoryId) {
                 if (!menuData[item.categoryId]) menuData[item.categoryId] = [];
                 menuData[item.categoryId].push({ id: doc.id, ...item });
+            } else {
+                 if (!menuData['general']) menuData['general'] = [];
+                 menuData['general'].push({ id: doc.id, ...item });
             }
         });
         

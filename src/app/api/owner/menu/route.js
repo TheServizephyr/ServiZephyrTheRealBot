@@ -1,4 +1,5 @@
 
+
 import { NextResponse } from 'next/server';
 import { getAuth, getFirestore, FieldValue, verifyAndGetUid } from '@/lib/firebase-admin';
 
@@ -188,6 +189,7 @@ export async function POST(req) {
                 id: newItemId,
                 order: maxOrder + 1,
                 createdAt: FieldValue.serverTimestamp(),
+                isAvailable: item.isAvailable, // --- START FIX: Ensure isAvailable is saved for new items ---
             });
             console.log(`[API LOG] POST /api/owner/menu: New item with ID ${newItemId} added to batch.`);
         }
