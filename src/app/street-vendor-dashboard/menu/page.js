@@ -1,8 +1,9 @@
+
 'use client';
 
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ArrowLeft, PlusCircle, Trash2, IndianRupee, Loader2 } from 'lucide-react';
+import { ArrowLeft, PlusCircle, Trash2, IndianRupee, Loader2, Camera, FileJson } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import Link from 'next/link';
 import { useUser, useCollection, useMemoFirebase } from '@/firebase';
@@ -11,7 +12,8 @@ import { collection, query, where, onSnapshot, doc, updateDoc, deleteDoc, setDoc
 import { FirestorePermissionError } from '@/firebase/errors';
 import { errorEmitter } from '@/firebase/error-emitter';
 import InfoDialog from '@/components/InfoDialog';
-
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
+import { Progress } from '@/components/ui/progress';
 
 const MenuItem = ({ item, onToggle, onDelete }) => (
   <motion.div
@@ -22,7 +24,7 @@ const MenuItem = ({ item, onToggle, onDelete }) => (
   >
     <div>
       <p className={`font-bold text-lg ${!item.available ? 'text-slate-500 line-through' : 'text-white'}`}>{item.name}</p>
-      <p className="text-slate-400">₹{item.price}</p>
+      <p className="text-slate-400">₹{item.price || item.portions?.[0]?.price || 'N/A'}</p>
     </div>
     <div className="flex items-center gap-4">
       <div className="flex items-center gap-2">
@@ -102,11 +104,87 @@ const AddItemForm = ({ onAddItem, onCancel, vendorId }) => {
     )
 }
 
+const AiScanModal = ({ isOpen, onClose, onScan }) => {
+    const [file, setFile] = useState(null);
+    const [isScanning, setIsScanning] = useState(false);
+    const [error, setError] = useState('');
+    const inputRef = useRef(null);
+
+    const handleFileChange = (e) => {
+        const selectedFile = e.target.files[0];
+        if (selectedFile) {
+            setFile(selectedFile);
+            setError('');
+        }
+    };
+
+    const handleScan = async () => {
+        if (!file) {
+            setError('Please select an image file first.');
+            return;
+        }
+        setIsScanning(true);
+        setError('');
+
+        try {
+            await onScan(file);
+            onClose();
+        } catch (err) {
+            setError(err.message || "An unknown error occurred.");
+        } finally {
+            setIsScanning(false);
+        }
+    };
+    
+    useEffect(() => {
+        if (!isOpen) {
+            setFile(null);
+            setError('');
+            setIsScanning(false);
+        }
+    }, [isOpen]);
+
+    return (
+        <Dialog open={isOpen} onOpenChange={onClose}>
+            <DialogContent className="bg-slate-800 border-slate-700 text-white">
+                <DialogHeader>
+                    <DialogTitle className="flex items-center gap-3 text-2xl"><Camera className="text-primary"/> Scan Menu with AI</DialogTitle>
+                    <DialogDescription>Upload an image of your menu, and our AI will automatically add the items for you.</DialogDescription>
+                </DialogHeader>
+                <div className="py-6 text-center">
+                    <input type="file" accept="image/*" ref={inputRef} onChange={handleFileChange} className="hidden" />
+                    <Button onClick={() => inputRef.current?.click()} variant="outline" className="w-full h-32 border-dashed border-2 border-slate-600 hover:border-primary hover:bg-slate-700/50 flex flex-col items-center justify-center">
+                        <Camera size={32} className="mb-2"/>
+                        {file ? 'Change Image' : 'Click to Upload Image'}
+                    </Button>
+                    {file && <p className="text-sm text-slate-400 mt-2">Selected: {file.name}</p>}
+                    {error && <p className="text-sm text-red-400 mt-2">{error}</p>}
+                </div>
+                 {isScanning && (
+                    <div className="space-y-2">
+                        <p className="text-sm text-center text-primary">AI is reading your menu... this may take a moment.</p>
+                        <Progress value={50} className="w-full animate-pulse" />
+                    </div>
+                )}
+                <DialogFooter>
+                    <Button variant="ghost" onClick={onClose} disabled={isScanning}>Cancel</Button>
+                    <Button onClick={handleScan} className="bg-primary hover:bg-primary/90 text-primary-foreground" disabled={!file || isScanning}>
+                        {isScanning ? <Loader2 className="animate-spin mr-2"/> : null}
+                        {isScanning ? 'Scanning...' : 'Start AI Scan'}
+                    </Button>
+                </DialogFooter>
+            </DialogContent>
+        </Dialog>
+    );
+};
+
+
 export default function StreetVendorMenuPage() {
     const { user, isUserLoading } = useUser();
     const [menuItems, setMenuItems] = useState([]);
     const [loading, setLoading] = useState(true);
     const [showAddItem, setShowAddItem] = useState(false);
+    const [isAiModalOpen, setIsAiModalOpen] = useState(false);
     const [infoDialog, setInfoDialog] = useState({ isOpen: false, title: '', message: '' });
 
     const vendorQuery = useMemoFirebase(() => {
@@ -124,11 +202,10 @@ export default function StreetVendorMenuPage() {
         }
     }, [vendorError]);
     
-    useEffect(() => {
-        if (isUserLoading || isVendorLoading) return;
+    const fetchMenu = useCallback(() => {
         if (!user || !vendorId) {
             setLoading(false);
-            return;
+            return () => {};
         }
 
         const menuCollectionRef = collection(db, 'street_vendors', vendorId, 'menu');
@@ -149,8 +226,15 @@ export default function StreetVendorMenuPage() {
             setLoading(false);
         });
 
-        return () => unsubscribe();
-    }, [user, isUserLoading, vendorId, isVendorLoading]);
+        return unsubscribe;
+    }, [user, vendorId]);
+
+
+    useEffect(() => {
+        if (isUserLoading || isVendorLoading) return;
+        const unsubscribe = fetchMenu();
+        return () => unsubscribe && unsubscribe();
+    }, [user, isUserLoading, vendorId, isVendorLoading, fetchMenu]);
 
     const handleToggleAvailability = async (itemId, newAvailability) => {
         if (!vendorId) {
@@ -198,7 +282,10 @@ export default function StreetVendorMenuPage() {
         const menuCollectionRef = collection(db, 'street_vendors', currentVendorId, 'menu');
         const newItemRef = doc(menuCollectionRef);
         const itemData = { 
-            ...newItem, 
+            name: newItem.name,
+            price: newItem.price,
+            category: newItem.category,
+            portions: [{ name: 'Full', price: newItem.price }],
             id: newItemRef.id,
             ownerId: user.uid,
             available: true 
@@ -218,8 +305,31 @@ export default function StreetVendorMenuPage() {
         }
     }, [user]);
 
+    const handleAiScan = async (file) => {
+        try {
+            const reader = new FileReader();
+            reader.readAsDataURL(file);
+            reader.onload = async () => {
+                const imageDataUri = reader.result;
+                const response = await fetch('/api/ai/scan-menu', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${await user.getIdToken()}` },
+                    body: JSON.stringify({ imageDataUri }),
+                });
+                const result = await response.json();
+                if (!response.ok) throw new Error(result.message);
+                setInfoDialog({ isOpen: true, title: 'Success!', message: result.message });
+                fetchMenu();
+            };
+        } catch (error) {
+            setInfoDialog({ isOpen: true, title: 'AI Scan Failed', message: error.message });
+            throw error;
+        }
+    };
+
     const groupedMenu = menuItems.reduce((acc, item) => {
-        (acc[item.category] = acc[item.category] || []).push(item);
+        const category = item.category || 'General';
+        (acc[category] = acc[category] || []).push(item);
         return acc;
     }, {});
 
@@ -231,6 +341,8 @@ export default function StreetVendorMenuPage() {
             title={infoDialog.title} 
             message={infoDialog.message}
         />
+        <AiScanModal isOpen={isAiModalOpen} onClose={() => setIsAiModalOpen(false)} onScan={handleAiScan} />
+
         <header className="flex justify-between items-center mb-6">
             <Link href="/street-vendor-dashboard" passHref>
                 <Button variant="ghost" className="text-slate-400 hover:text-white">
@@ -238,9 +350,14 @@ export default function StreetVendorMenuPage() {
                 </Button>
             </Link>
             <h1 className="text-2xl font-bold font-headline">My Menu</h1>
-            <Button onClick={() => setShowAddItem(true)} variant="ghost" className="text-primary hover:text-primary">
-                <PlusCircle size={28} />
-            </Button>
+            <div className="flex gap-2">
+                <Button onClick={() => setIsAiModalOpen(true)} variant="ghost" className="text-primary hover:text-primary">
+                    <Camera size={28} />
+                </Button>
+                <Button onClick={() => setShowAddItem(true)} variant="ghost" className="text-primary hover:text-primary">
+                    <PlusCircle size={28} />
+                </Button>
+            </div>
         </header>
 
         <main>
@@ -267,7 +384,8 @@ export default function StreetVendorMenuPage() {
                     ))}
                      {Object.keys(groupedMenu).length === 0 && !showAddItem && (
                         <div className="text-center py-20 text-slate-500">
-                            <p>Your menu is empty. Click the '+' button to add your first item!</p>
+                            <p>Your menu is empty.</p>
+                            <p>Click the <PlusCircle className="inline" size={16}/> button to add an item, or use the <Camera className="inline" size={16}/> to scan your menu with AI.</p>
                         </div>
                     )}
                 </div>
