@@ -87,7 +87,7 @@ export async function GET(request, { params }) {
             }, { status: 403 });
         }
 
-        const menuSnap = await restaurantRef.collection('menu').orderBy('order', 'asc').get();
+        const menuSnap = await restaurantRef.collection('menu').get();
         console.log(`[DEBUG] Menu API: Fetched ${menuSnap.size} raw items from DB.`);
 
         const couponsRef = restaurantRef.collection('coupons');
@@ -122,6 +122,9 @@ export async function GET(request, { params }) {
         // SERVER-SIDE FILTERING for available items
         const availableItems = allItems.filter(item => item.isAvailable === true || item.available === true);
         console.log(`[DEBUG] Menu API: Found ${availableItems.length} available items after filtering.`);
+        
+        // SERVER-SIDE SORTING
+        availableItems.sort((a, b) => (a.order || 999) - (b.order || 999));
 
         availableItems.forEach(item => {
             const itemWithId = { id: item.id || 'unknown-id', ...item };
