@@ -1,11 +1,8 @@
-
-'use client'; // This is a client-only file
 import {genkit} from 'genkit';
 import {googleAI} from '@genkit-ai/google-genai';
 
-// Initialize the AI plugin.
-// This is a client-side only file so we can lazy load the Genkit dependency.
-// It also needs to be a .js file and not a .ts file.
+// Initialize the AI plugin for the SERVER.
+// This file is now primarily for server-side usage.
 genkit({
   plugins: [
     googleAI(),

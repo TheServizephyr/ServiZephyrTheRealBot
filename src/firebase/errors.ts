@@ -1,5 +1,6 @@
 'use client';
 import { getAuth, type User } from 'firebase/auth';
+import { errorEmitter } from './error-emitter';
 
 type SecurityRuleContext = {
   path: string;
@@ -121,3 +122,5 @@ export class FirestorePermissionError extends Error {
     this.request = requestObject;
   }
 }
+
+export { errorEmitter };

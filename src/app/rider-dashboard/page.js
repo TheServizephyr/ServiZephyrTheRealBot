@@ -12,7 +12,8 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import InfoDialog from '@/components/InfoDialog';
 import { cn } from '@/lib/utils';
-import { FirestorePermissionError, errorEmitter } from '@/firebase/errors';
+import { FirestorePermissionError } from '@/firebase/errors';
+import { errorEmitter } from '@/firebase/error-emitter';
 
 const InvitationCard = ({ invite, onAccept, onDecline }) => {
     return (
