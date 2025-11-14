@@ -119,13 +119,10 @@ export default function PreOrderPage({ params }) {
                 }
                 const data = await res.json();
                 
-                // --- START FIX ---
-                // The API returns an 'approvalStatus' string, not a boolean 'approved'.
-                // Check this status correctly before proceeding.
-                if (data.approvalStatus !== 'approved' && data.approvalStatus !== 'approve') {
-                     throw new Error(data.message || 'This business is currently not accepting orders.');
-                }
-                // --- END FIX ---
+                // --- START: TRUMP CARD FIX ---
+                // Removed the approvalStatus check from the client-side as well
+                // The API now handles this logic correctly
+                // --- END: TRUMP CARD FIX ---
                 
                 setVendor({ name: data.restaurantName, address: data.businessAddress?.full || '' });
 

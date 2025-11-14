@@ -74,7 +74,9 @@ export async function GET(request, { params }) {
             }
         }
         
-        if (restaurantData.approvalStatus !== 'approved' && restaurantData.approvalStatus !== 'approve') {
+        // --- START: TRUMP CARD FIX ---
+        // Bypass approval check specifically for street vendors
+        if (businessType !== 'street-vendor' && restaurantData.approvalStatus !== 'approved' && restaurantData.approvalStatus !== 'approve') {
              console.warn(`[DEBUG] Menu API: Business '${restaurantData.name}' is not accepting orders. Status: ${restaurantData.approvalStatus}`);
             const message = restaurantData.approvalStatus === 'pending' 
                 ? 'This business is currently pending approval and not accepting orders.'
@@ -87,6 +89,7 @@ export async function GET(request, { params }) {
                 isOpen: restaurantData.isOpen,
             }, { status: 403 });
         }
+        // --- END: TRUMP CARD FIX ---
         
         const couponsRef = restaurantRef.collection('coupons');
         const generalCouponsQuery = couponsRef.where('status', '==', 'Active').where('customerId', '==', null);
