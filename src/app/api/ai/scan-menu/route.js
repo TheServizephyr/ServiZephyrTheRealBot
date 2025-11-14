@@ -61,7 +61,7 @@ const MenuScanOutputSchema = z.object({
 // Define the Genkit prompt for the AI
 const menuScanPrompt = ai.definePrompt({
   name: 'menuScanPrompt',
-  model: 'googleai/gemini-2.5-flash-preview',
+  model: 'googleai/gemini-pro-vision',
   input: {
     schema: z.object({
       photoDataUri: z.string(),
