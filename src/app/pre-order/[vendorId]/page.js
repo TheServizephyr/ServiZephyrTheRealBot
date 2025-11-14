@@ -112,13 +112,20 @@ export default function PreOrderPage({ params }) {
             }
 
             try {
-                // Use the public API endpoint instead of direct Firestore access
                 const res = await fetch(`/api/menu/${vendorId}`);
                 if (!res.ok) {
                     const errorData = await res.json();
                     throw new Error(errorData.message || "Could not load menu for this vendor.");
                 }
                 const data = await res.json();
+                
+                // --- START FIX ---
+                // The API returns an 'approvalStatus' string, not a boolean 'approved'.
+                // Check this status correctly before proceeding.
+                if (data.approvalStatus !== 'approved' && data.approvalStatus !== 'approve') {
+                     throw new Error(data.message || 'This business is currently not accepting orders.');
+                }
+                // --- END FIX ---
                 
                 setVendor({ name: data.restaurantName, address: data.businessAddress?.full || '' });
 
