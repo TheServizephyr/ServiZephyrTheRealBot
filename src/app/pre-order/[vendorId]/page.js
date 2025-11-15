@@ -1,8 +1,9 @@
+
 'use client';
 
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ShoppingCart, Plus, Minus, X, IndianRupee, Loader2, Utensils, Wallet, User, Phone, Split } from 'lucide-react';
+import { ShoppingCart, Plus, Minus, X, IndianRupee, Loader2, Utensils, Wallet, User, Phone, Split, ArrowLeft } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import Image from 'next/image';
@@ -164,14 +165,12 @@ const CartSheet = ({ cart, updateQuantity, onCheckout, grandTotal, onClose }) =>
 );
 
 const CheckoutModal = ({ isOpen, onClose, cart, vendorId, onSuccessfulOrder }) => {
-    const [step, setStep] = useState(1);
     const [name, setName] = useState('');
     const [phone, setPhone] = useState('');
     const [isProcessing, setIsProcessing] = useState(false);
     const [isOnlinePaymentFlow, setIsOnlinePaymentFlow] = useState(false);
-    const [isSplitBillActive, setIsSplitBillActive] = useState(false);
     const router = useRouter();
-    
+
     useEffect(() => {
         console.log(`[CheckoutModal] Name updated: "${name}"`);
     }, [name]);
@@ -183,16 +182,6 @@ const CheckoutModal = ({ isOpen, onClose, cart, vendorId, onSuccessfulOrder }) =
     const grandTotal = useMemo(() => {
         return cart.reduce((sum, item) => sum + (item.portion.price * item.quantity), 0);
     }, [cart]);
-
-    const handleProceedToPayment = (e) => {
-        e.preventDefault();
-        console.log('[CheckoutModal] handleProceedToPayment called.');
-        if (!name.trim()) {
-            alert("Please enter your name.");
-            return;
-        }
-        setStep(2);
-    };
 
     const handlePayOnlineClick = () => {
         console.log('[CheckoutModal] handlePayOnlineClick called.');
@@ -264,7 +253,7 @@ const CheckoutModal = ({ isOpen, onClose, cart, vendorId, onSuccessfulOrder }) =
     };
 
 
-    const renderStep = () => {
+    const renderContent = () => {
         if (isOnlinePaymentFlow) {
             return (
                 <div>
@@ -310,9 +299,9 @@ const CheckoutModal = ({ isOpen, onClose, cart, vendorId, onSuccessfulOrder }) =
     };
     
     return (
-        <Dialog open={isOpen} onOpenChange={(open) => { if (!open) { onClose(); setStep(1); setIsOnlinePaymentFlow(false); setIsSplitBillActive(false); }}}>
+        <Dialog open={isOpen} onOpenChange={(open) => { if (!open) { onClose(); setIsOnlinePaymentFlow(false); }}}>
             <DialogContent className="bg-card border-border">
-                {renderStep()}
+                {renderContent()}
             </DialogContent>
         </Dialog>
     );
