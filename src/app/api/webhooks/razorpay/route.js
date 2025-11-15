@@ -207,18 +207,21 @@ export async function POST(req) {
 
             console.log(`[DEBUG] /api/webhooks/razorpay: Creating order document ${newOrderRef.id}`);
             batch.set(newOrderRef, {
-                customerName: customerDetails.name, customerId: userId, customerAddress: customerDetails.address.full, customerPhone: customerDetails.phone,
+                customerName: customerDetails.name,
+                customerId: userId,
+                customerAddress: customerDetails.address.full,
+                customerPhone: customerDetails.phone,
                 restaurantId: restaurantId,
                 businessType: businessType,
                 deliveryType: billDetails.deliveryType || 'delivery',
-                pickupTime: billDetails.pickupTime || '',
+                pickupTime: billDetails.pickupTime || null,
                 tipAmount: billDetails.tipAmount || 0,
-                tableId: billDetails.tableId,
-                dineInTabId: finalDineInTabId,
+                tableId: billDetails.tableId || null,
+                dineInTabId: finalDineInTabId || null,
                 items: orderItems,
                 subtotal: billDetails.subtotal, 
                 coupon: billDetails.coupon, 
-                loyaltyDiscount: billDetails.loyaltyDiscount, 
+                loyaltyDiscount: billDetails.loyaltyDiscount || 0, 
                 discount: (billDetails.coupon?.discount || 0) + (billDetails.loyaltyDiscount || 0), 
                 cgst: billDetails.cgst, 
                 sgst: billDetails.sgst, 
@@ -290,5 +293,3 @@ export async function POST(req) {
         return NextResponse.json({ status: 'error', message: 'Internal server error' }, { status: 200 });
     }
 }
-    
-    

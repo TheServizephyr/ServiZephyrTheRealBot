@@ -259,11 +259,15 @@ export async function POST(req) {
              console.log("[DEBUG] /api/customer/register: Creating Razorpay order with options:", razorpayOrderOptions);
             const razorpayOrder = await razorpay.orders.create(razorpayOrderOptions);
             
+            // --- START FIX: Return token for online payments too ---
+            const trackingToken = await generateSecureToken(firestore, normalizedPhone || firestoreOrderId);
             return NextResponse.json({ 
                 message: 'Razorpay order created. Awaiting payment confirmation.',
                 razorpay_order_id: razorpayOrder.id,
                 firestore_order_id: firestoreOrderId,
+                token: trackingToken,
             }, { status: 200 });
+            // --- END FIX ---
         }
 
 

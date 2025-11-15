@@ -84,11 +84,13 @@ export default function StreetVendorDashboard() {
     useEffect(() => {
         if (!vendorId) return;
 
+        // --- START FIX: Added 'pending' to the status array ---
         const q = query(
             collection(db, "orders"), 
             where("restaurantId", "==", vendorId),
             where("status", "in", ["pending", "Preparing", "Ready"])
         );
+        // --- END FIX ---
         
         const unsubscribe = onSnapshot(q, (querySnapshot) => {
             const liveOrders = [];
