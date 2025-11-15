@@ -58,14 +58,15 @@ export async function POST(req) {
             }
 
             const firestorePayload = {
-                id: splitId, // FIX: Ensure the ID is always written to the document
+                id: splitId,
                 baseOrderId,
                 restaurantId,
                 totalAmount: finalAmount,
                 splitCount,
                 shares,
                 status: 'pending',
-                createdAt: FieldValue.serverTimestamp()
+                createdAt: FieldValue.serverTimestamp(),
+                isPublic: true // THE FIX: Add a public flag
             };
             console.log("[DEBUG] /api/payment/create-order: Writing to Firestore:", JSON.stringify(firestorePayload, null, 2));
             await splitRef.set(firestorePayload);
@@ -77,7 +78,6 @@ export async function POST(req) {
         // --- Fallback for simple order creation (as it was before) ---
         console.log(`[DEBUG] /api/payment/create-order: Initiating SIMPLE order flow.`);
         
-        // FIX: Ensure amount is taken from the correct field
         const amountForSimpleOrder = subtotal !== undefined ? subtotal : finalAmount;
 
         if (!amountForSimpleOrder || amountForSimpleOrder < 1) {
