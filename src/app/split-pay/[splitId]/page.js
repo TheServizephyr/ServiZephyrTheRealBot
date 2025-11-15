@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { db } from '@/lib/firebase';
+import { useFirestore } from '@/firebase'; // THE FIX: Use the hook to get the correct db instance
 import { doc, onSnapshot } from 'firebase/firestore';
 import { motion } from 'framer-motion';
 import { Loader2, CheckCircle, Clock, Users, IndianRupee, Share2, Copy } from 'lucide-react';
@@ -44,6 +44,7 @@ export default function SplitPayPage() {
     const [splitData, setSplitData] = useState(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
+    const firestore = useFirestore(); // THE FIX: Get the correct db instance from the context
 
     useEffect(() => {
         console.log(`[DEBUG] SplitPay Page Mounted. splitId: ${splitId}`);
@@ -56,7 +57,7 @@ export default function SplitPayPage() {
         }
 
         console.log(`[DEBUG] Setting up Firestore listener for split_payments/${splitId}`);
-        const splitDocRef = doc(db, 'split_payments', splitId);
+        const splitDocRef = doc(firestore, 'split_payments', splitId);
         
         const unsubscribe = onSnapshot(splitDocRef, (docSnap) => {
             console.log("[DEBUG] onSnapshot callback triggered.");
@@ -64,11 +65,12 @@ export default function SplitPayPage() {
                 const data = docSnap.data();
                 console.log("[DEBUG] Document exists. Data received:", JSON.stringify(data, null, 2));
                 setSplitData(data);
-                setError(null); // Clear previous errors if any
+                setError(null);
 
                 if (data.status === 'completed') {
                     console.log("[DEBUG] Split is complete. Redirecting to tracking page for base order:", data.baseOrderId);
-                    router.push(`/track/${data.baseOrderId}`);
+                    // Use a small delay before redirecting to allow user to see the completed state
+                    setTimeout(() => router.push(`/track/${data.baseOrderId}`), 2000);
                 }
             } else {
                 console.error("[DEBUG] Document does not exist in Firestore.");
@@ -83,12 +85,11 @@ export default function SplitPayPage() {
             console.log("[DEBUG] Error state updated. Loading: false");
         });
 
-        // Cleanup function for when the component unmounts
         return () => {
             console.log("[DEBUG] Unsubscribing from Firestore listener.");
             unsubscribe();
         };
-    }, [splitId, router]);
+    }, [splitId, router, firestore]);
     
     const handlePayShare = (share) => {
         console.log("[DEBUG] handlePayShare triggered for share:", share);
@@ -100,7 +101,7 @@ export default function SplitPayPage() {
         
         const options = {
             key: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID,
-            amount: share.amount * 100, // Amount in paise
+            amount: share.amount * 100,
             currency: "INR",
             name: "Group Order Payment",
             description: `Your share for order #${splitData?.baseOrderId?.substring(0,8)}`,
@@ -110,7 +111,6 @@ export default function SplitPayPage() {
             },
             handler: function (response) {
                console.log("[DEBUG] Razorpay payment successful:", response);
-               // Webhook will handle the Firestore update. Page will auto-update via onSnapshot.
             },
             modal: {
                 ondismiss: function() {
