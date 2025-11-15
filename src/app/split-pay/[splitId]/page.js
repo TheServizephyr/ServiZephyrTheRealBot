@@ -3,17 +3,18 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { db } from '@/lib/firebase';
-import { doc, onSnapshot, updateDoc, getFirestore } from 'firebase/firestore';
-import { motion, AnimatePresence } from 'framer-motion';
+import { doc, onSnapshot } from 'firebase/firestore';
+import { motion } from 'framer-motion';
 import { Loader2, CheckCircle, Clock, Users, IndianRupee, Share2, Copy } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 import QRCode from 'qrcode.react';
+import Script from 'next/script';
+
 
 const formatCurrency = (value) => `₹${Number(value || 0).toLocaleString('en-IN', { maximumFractionDigits: 2 })}`;
 
-const ShareButton = ({ link }) => {
-    const text = `Hi! Please pay your share for our group order using this link: ${link}`;
+const ShareButton = ({ text }) => {
     const whatsappUrl = `https://api.whatsapp.com/send?text=${encodeURIComponent(text)}`;
     return (
         <a href={whatsappUrl} target="_blank" rel="noopener noreferrer">
@@ -74,11 +75,29 @@ export default function SplitPayPage() {
         return () => unsubscribe();
     }, [splitId, router]);
     
-    const handlePayRemaining = async () => {
-        // This is a complex feature for a future iteration.
-        // It would involve creating a new Razorpay order for the remaining amount
-        // and updating the Firestore document.
-        alert("Pay Remaining feature coming soon!");
+    const handlePayShare = (share) => {
+        const options = {
+            key: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID,
+            amount: share.amount * 100,
+            currency: "INR",
+            name: "Group Order Payment",
+            description: `Your share for order #${splitData.baseOrderId.substring(0,8)}`,
+            order_id: share.razorpay_order_id,
+            notes: {
+                split_session_id: splitId,
+            },
+            handler: function (response) {
+               // RZP webhook will handle the Firestore update.
+               // Page will update via onSnapshot.
+            },
+            modal: {
+                ondismiss: function() {
+                    alert('Payment was not completed.');
+                }
+            }
+        };
+        const rzp = new window.Razorpay(options);
+        rzp.open();
     };
 
 
@@ -92,11 +111,12 @@ export default function SplitPayPage() {
     
     const paidShares = (splitData?.shares || []).filter(s => s.status === 'paid').length;
     const progress = splitData ? (paidShares / splitData.splitCount) * 100 : 0;
-    const remainingAmount = splitData ? splitData.totalAmount - (paidShares * splitData.shares[0].amount) : 0;
+    const remainingAmount = splitData ? splitData.totalAmount - (paidShares * (splitData.shares?.[0]?.amount || 0)) : 0;
 
 
     return (
         <div className="min-h-screen bg-background text-foreground p-4 md:p-8">
+            <Script src="https://checkout.razorpay.com/v1/checkout.js" />
             <div className="max-w-4xl mx-auto">
                 <header className="text-center mb-8">
                     <h1 className="text-3xl md:text-4xl font-bold tracking-tight">Split Payment Tracker</h1>
@@ -126,14 +146,10 @@ export default function SplitPayPage() {
                 <div className="mt-8">
                     <h2 className="text-xl font-bold mb-4">Your Friends' Shares</h2>
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                        {splitData.shares.map((share, index) => {
+                        {(splitData?.shares || []).map((share, index) => {
                             const isPaid = share.status === 'paid';
-                            const qrValue = JSON.stringify({
-                                order_id: share.razorpay_order_id,
-                                amount: share.amount,
-                                split_session_id: splitId,
-                            });
-                             const paymentLink = `https://rzp.io/i/${share.razorpay_order_id}`; // Simplified link
+                             const paymentLink = `${window.location.origin}/split-pay/${splitId}?pay_share=${share.shareId}`;
+                             const shareText = `Hi! Please pay your share of ${formatCurrency(share.amount)} for our group order using this link: ${paymentLink}`;
 
                             return (
                                 <motion.div 
@@ -154,13 +170,14 @@ export default function SplitPayPage() {
                                     <p className="text-2xl font-bold text-center my-3">{formatCurrency(share.amount)}</p>
                                     
                                     {!isPaid && (
-                                        <div className="space-y-3">
-                                            <div className="bg-white p-2 rounded-lg inline-block">
-                                                <QRCode value={qrValue} size={128} />
+                                        <div className="space-y-3 flex flex-col items-center">
+                                             <Button onClick={() => handlePayShare(share)} className="w-full bg-primary hover:bg-primary/80">Pay Now</Button>
+                                             <div className="bg-white p-2 rounded-lg inline-block">
+                                                <QRCode value={paymentLink} size={128} />
                                             </div>
                                             <p className="text-xs text-muted-foreground">Ask your friend to scan or use the links below.</p>
                                             <div className="flex gap-2 justify-center">
-                                                <ShareButton link={paymentLink}/>
+                                                <ShareButton text={shareText}/>
                                                 <CopyButton text={paymentLink}/>
                                             </div>
                                         </div>
@@ -170,14 +187,16 @@ export default function SplitPayPage() {
                         })}
                     </div>
                 </div>
-
-                <div className="mt-12 text-center p-6 bg-card border border-dashed rounded-xl">
-                    <h3 className="text-lg font-semibold">Someone not paying?</h3>
-                    <p className="text-muted-foreground text-sm mt-1">You can pay the remaining amount to complete the order now.</p>
-                    <Button onClick={handlePayRemaining} className="mt-4 bg-primary hover:bg-primary/90 text-primary-foreground">
-                        Pay Remaining {formatCurrency(remainingAmount)}
-                    </Button>
-                </div>
+                
+                 {remainingAmount > 0 && paidShares > 0 && (
+                    <div className="mt-12 text-center p-6 bg-card border border-dashed rounded-xl">
+                        <h3 className="text-lg font-semibold">Someone not paying?</h3>
+                        <p className="text-muted-foreground text-sm mt-1">You can pay the remaining amount to complete the order now.</p>
+                        <Button onClick={() => alert("This feature is coming soon!")} className="mt-4 bg-primary hover:bg-primary/90 text-primary-foreground">
+                            Pay Remaining {formatCurrency(remainingAmount)}
+                        </Button>
+                    </div>
+                )}
             </div>
         </div>
     );
