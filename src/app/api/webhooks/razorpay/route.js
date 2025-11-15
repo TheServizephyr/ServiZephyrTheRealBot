@@ -47,6 +47,51 @@ async function makeRazorpayRequest(options, payload) {
     });
 }
 
+// --- NEW HELPER FOR SPLIT PAYMENTS ---
+const handleSplitPayment = async (firestore, paymentEntity) => {
+    const { order_id: razorpayOrderId, amount, notes } = paymentEntity;
+    const splitId = notes?.split_session_id;
+
+    if (!splitId) return false;
+
+    console.log(`[Webhook RZP] Detected split payment for session: ${splitId}`);
+    const splitRef = firestore.collection('split_payments').doc(splitId);
+    
+    await firestore.runTransaction(async (transaction) => {
+        const splitDoc = await transaction.get(splitRef);
+        if (!splitDoc.exists) {
+            console.error(`[Webhook RZP] Split session ${splitId} not found in Firestore.`);
+            return;
+        }
+
+        const splitData = splitDoc.data();
+        const shares = splitData.shares;
+        const shareIndex = shares.findIndex(s => s.razorpay_order_id === razorpayOrderId);
+
+        if (shareIndex === -1) {
+            console.error(`[Webhook RZP] Razorpay order ${razorpayOrderId} not found in shares for split ${splitId}.`);
+            return;
+        }
+
+        // Update the specific share that was paid
+        shares[shareIndex].status = 'paid';
+        shares[shareIndex].razorpay_payment_id = paymentEntity.id;
+
+        const paidShares = shares.filter(s => s.status === 'paid');
+        const isFullyPaid = paidShares.length === splitData.splitCount;
+
+        const updateData = { shares };
+        if (isFullyPaid) {
+            updateData.status = 'completed';
+        }
+        
+        transaction.update(splitRef, updateData);
+        console.log(`[Webhook RZP] Updated split session ${splitId}. Share ${shareIndex} marked as paid. Fully paid: ${isFullyPaid}`);
+    });
+
+    return true; // Indicates this was a split payment and was handled
+};
+
 
 export async function POST(req) {
     const secret = process.env.RAZORPAY_WEBHOOK_SECRET;
@@ -84,6 +129,14 @@ export async function POST(req) {
             
             const firestore = await getFirestore();
             
+            // --- NEW: Check if this is a split payment ---
+            const isSplitPayment = await handleSplitPayment(firestore, paymentEntity);
+            if (isSplitPayment) {
+                return NextResponse.json({ status: 'ok', message: 'Split payment processed.' });
+            }
+
+            // --- Regular Order Processing Continues Below ---
+
             const key_id = process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID;
             const key_secret = process.env.RAZORPAY_KEY_SECRET;
             const credentials = Buffer.from(`${key_id}:${key_secret}`).toString('base64');
@@ -117,11 +170,6 @@ export async function POST(req) {
             if (!firestoreOrderId || !userId || !restaurantId || !businessType) {
                 console.error(`CRITICAL: Missing key identifiers in payload for RZP Order ${razorpayOrderId}`);
                 return NextResponse.json({ status: 'error', message: 'Order identifier notes missing.' });
-            }
-
-            const existingOrderQuery = await firestore.collection('orders').where('paymentDetails.razorpay_order_id', '==', razorpayOrderId).limit(1).get();
-            if (!existingOrderQuery.empty) {
-                return NextResponse.json({ status: 'ok', message: 'Order already exists.'});
             }
 
             const customerDetails = JSON.parse(customerDetailsString);

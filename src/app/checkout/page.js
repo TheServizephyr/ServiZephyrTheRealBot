@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useMemo, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { motion } from 'framer-motion';
-import { ArrowLeft, Wallet, IndianRupee, CreditCard, Landmark, Split, Users as UsersIcon, QrCode, PlusCircle, Trash2, Home, Building, MapPin, Lock, Loader2, CheckCircle } from 'lucide-react';
+import { ArrowLeft, Wallet, IndianRupee, CreditCard, Landmark, Split, Users as UsersIcon, QrCode, PlusCircle, Trash2, Home, Building, MapPin, Lock, Loader2, CheckCircle, Share2, Copy } from 'lucide-react';
 import Script from 'next/script';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose } from "@/components/ui/dialog";
@@ -25,11 +25,10 @@ const TokenVerificationLock = ({ message }) => (
 );
 
 const SplitBillInterface = ({ totalAmount, onBack, orderDetails }) => {
-    const [mode, setMode] = useState(null);
     const [splitCount, setSplitCount] = useState(2);
-    const [shares, setShares] = useState([]);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
+    const router = useRouter();
 
     const handleGenerateSplitLinks = async () => {
         if (splitCount < 2) {
@@ -38,25 +37,26 @@ const SplitBillInterface = ({ totalAmount, onBack, orderDetails }) => {
         }
         setLoading(true);
         setError('');
-        setShares([]);
-        const amountPerShare = totalAmount / splitCount;
 
         try {
-            const newShares = [];
-            for (let i = 0; i < splitCount - 1; i++) { // Generate n-1 QR codes for friends
-                const res = await fetch('/api/payment/create-order', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ amount: amountPerShare }),
-                });
-                if (!res.ok) throw new Error("Failed to create a payment link.");
-                const order = await res.json();
-                newShares.push({ id: order.id, amount: amountPerShare, status: 'pending' });
-            }
-            setShares(newShares);
+            const res = await fetch('/api/payment/create-order', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ 
+                    totalAmount: orderDetails.grandTotal, 
+                    splitCount, 
+                    baseOrderId: orderDetails.firestore_order_id,
+                    restaurantId: orderDetails.restaurantId,
+                }),
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.message || 'Failed to create split payment session.');
+            
+            // Redirect to the new split payment tracking page
+            router.push(`/split-pay/${data.splitId}`);
+
         } catch (err) {
             setError(err.message);
-        } finally {
             setLoading(false);
         }
     };
@@ -70,36 +70,9 @@ const SplitBillInterface = ({ totalAmount, onBack, orderDetails }) => {
                 <input id="split-count" type="number" min="2" value={splitCount} onChange={e => setSplitCount(parseInt(e.target.value))} className="w-24 p-2 rounded-md bg-input border border-border" />
             </div>
             <Button onClick={handleGenerateSplitLinks} disabled={loading || splitCount < 2} className="w-full h-12 text-lg">
-                {loading ? <Loader2 className="animate-spin"/> : 'Generate Payment Links'}
+                {loading ? <Loader2 className="animate-spin"/> : 'Create Split Session'}
             </Button>
             {error && <p className="text-red-500 text-sm text-center">{error}</p>}
-
-            <AnimatePresence>
-            {shares.length > 0 && (
-                <motion.div 
-                    initial={{opacity: 0}}
-                    animate={{opacity: 1}}
-                    className="space-y-6 mt-6 pt-6 border-t border-dashed"
-                >
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                        {shares.map((share, index) => (
-                            <div key={share.id} className="bg-muted p-4 rounded-lg text-center">
-                                <p className="font-bold">Friend {index + 1}'s Share: ₹{share.amount.toFixed(2)}</p>
-                                <div className="p-2 bg-white inline-block mt-2 rounded-lg">
-                                    <QRCode value={JSON.stringify({order_id: share.id, amount: share.amount})} size={128} />
-                                </div>
-                                <p className="text-xs mt-2 text-muted-foreground">Ask your friend to scan this</p>
-                            </div>
-                        ))}
-                    </div>
-                     <div className="p-4 bg-primary/10 border-2 border-dashed border-primary rounded-lg text-center">
-                        <h4 className="font-bold text-primary">Your Share</h4>
-                        <p className="text-3xl font-bold my-2">₹{(totalAmount / splitCount).toFixed(2)}</p>
-                        <Button className="w-full bg-primary hover:bg-primary/90 text-primary-foreground">Pay My Share</Button>
-                    </div>
-                </motion.div>
-            )}
-            </AnimatePresence>
         </div>
     );
 };
@@ -140,7 +113,7 @@ const CheckoutPageInternal = () => {
         if (isPaymentConfirmed) {
             setInfoDialog({ isOpen: true, title: 'Payment Confirmed', message: 'Your payment was successful. Thank you for dining with us!' });
             const cleanUrl = `/order/${restaurantId}?table=${tableId}&tabId=${tabId}`;
-            router.replace(cleanUrl); // Use replace to avoid back-button issues
+            router.replace(cleanUrl);
         }
     }, [isPaymentConfirmed, restaurantId, tableId, tabId, router]);
     
@@ -356,7 +329,7 @@ const CheckoutPageInternal = () => {
                         router.replace(newUrl);
                     }, 2000);
                 } else {
-                    router.push(`/order/placed?orderId=${data.firestore_order_id}`);
+                    router.push(`/order/placed?orderId=${data.firestore_order_id}&token=${data.token}`);
                 }
             }
         } catch (err) {
@@ -408,6 +381,11 @@ const CheckoutPageInternal = () => {
         )
     }
 
+    const fullOrderDetailsForSplit = {
+        grandTotal,
+        firestore_order_id: cartData.id, 
+        restaurantId
+    };
 
     return (
         <>
@@ -489,7 +467,7 @@ const CheckoutPageInternal = () => {
                         </div>
 
                         {isSplitBillActive ? (
-                            <SplitBillInterface totalAmount={grandTotal} onBack={() => setIsSplitBillActive(false)} orderDetails={{cart, subtotal, ...cartData}}/>
+                            <SplitBillInterface totalAmount={grandTotal} onBack={() => setIsSplitBillActive(false)} orderDetails={fullOrderDetailsForSplit}/>
                         ) : (
                              <div className="space-y-4">
                                  <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} onClick={() => handlePaymentMethodSelect('razorpay')} className="w-full text-left p-6 bg-card border-2 border-border rounded-lg flex items-center gap-6 hover:border-primary transition-all">
@@ -544,5 +522,3 @@ const CheckoutPage = () => (
 );
 
 export default CheckoutPage;
-
-    
