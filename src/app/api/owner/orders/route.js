@@ -23,20 +23,17 @@ async function verifyOwnerAndGetBusiness(req, auth, firestore) {
     if (userRole === 'admin' && impersonatedOwnerId) {
         console.log(`[API Impersonation] Admin ${uid} is viewing data for owner ${impersonatedOwnerId}.`);
         targetOwnerId = impersonatedOwnerId;
-    } else if (userRole !== 'owner' && userRole !== 'restaurant-owner' && userRole !== 'shop-owner') {
+    } else if (!['owner', 'restaurant-owner', 'shop-owner', 'street-vendor'].includes(userRole)) {
         throw { message: 'Access Denied: You do not have sufficient privileges.', status: 403 };
     }
 
-    const restaurantsQuery = await firestore.collection('restaurants').where('ownerId', '==', targetOwnerId).limit(1).get();
-    if (!restaurantsQuery.empty) {
-        const doc = restaurantsQuery.docs[0];
-        return { uid: targetOwnerId, businessId: doc.id, businessSnap: doc, isAdmin: userRole === 'admin' };
-    }
-
-    const shopsQuery = await firestore.collection('shops').where('ownerId', '==', targetOwnerId).limit(1).get();
-    if (!shopsQuery.empty) {
-        const doc = shopsQuery.docs[0];
-        return { uid: targetOwnerId, businessId: doc.id, businessSnap: doc, isAdmin: userRole === 'admin' };
+    const collectionsToTry = ['restaurants', 'shops', 'street_vendors'];
+    for (const collectionName of collectionsToTry) {
+        const query = await firestore.collection(collectionName).where('ownerId', '==', targetOwnerId).limit(1).get();
+        if (!query.empty) {
+            const doc = query.docs[0];
+            return { uid: targetOwnerId, businessId: doc.id, businessSnap: doc, isAdmin: userRole === 'admin' };
+        }
     }
     
     throw { message: 'No business associated with this owner.', status: 404 };
@@ -144,7 +141,7 @@ export async function PATCH(req) {
             return NextResponse.json({ message: 'Order ID(s) and new status are required.' }, { status: 400 });
         }
         
-        const validStatuses = ["pending", "confirmed", "preparing", "dispatched", "delivered", "rejected", "ready_for_pickup", "picked_up"];
+        const validStatuses = ["pending", "confirmed", "preparing", "dispatched", "delivered", "rejected", "ready_for_pickup", "picked_up", "Ready", "Cancelled"];
         if(!validStatuses.includes(newStatus)) {
             return NextResponse.json({ message: 'Invalid status provided.' }, { status: 400 });
         }
@@ -197,7 +194,6 @@ export async function PATCH(req) {
 
             const businessData = businessSnap.data();
             
-            // --- THE FIX: Send notification for all relevant statuses ---
             if (orderData.customerPhone) {
                 console.log(`[API LOG] Preparing to send notification for status '${newStatus}' for order ${id}.`);
                 const notificationPayload = {
