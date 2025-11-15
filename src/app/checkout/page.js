@@ -139,7 +139,9 @@ const CheckoutPageInternal = () => {
             } else if (user) {
                 setIsTokenValid(true);
             } else {
-                setTokenError("No session information found."); setLoading(false); return;
+                if(!isUserLoading) {
+                    setTokenError("No session information found."); setLoading(false); return;
+                }
             }
 
             setOrderPhone(phoneToLookup);
@@ -300,9 +302,14 @@ const CheckoutPageInternal = () => {
     };
     
     const handlePaymentMethodSelect = (method) => {
-        if (!orderName.trim() || !orderPhone.trim() || (deliveryType === 'delivery' && !selectedAddress)) {
-            setError("Please confirm your name, phone, and address before proceeding.");
+        const deliveryType = cartData.tableId ? 'dine-in' : (cartData.deliveryType || 'delivery');
+        if (deliveryType === 'delivery' && !selectedAddress) {
+            setError("Please select or add a delivery address.");
             return;
+        }
+        if (!orderName || orderName.trim().length === 0) {
+             setError("Please provide a name for the order.");
+             return;
         }
         setError('');
         placeOrder(method);

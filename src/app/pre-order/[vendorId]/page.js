@@ -1,4 +1,3 @@
-
 'use client';
 
 import { useState, useEffect, useMemo } from 'react';
@@ -159,134 +158,11 @@ const CartSheet = ({ cart, updateQuantity, onCheckout, grandTotal, onClose }) =>
                 <span>Total</span>
                 <span>₹{grandTotal}</span>
             </div>
-            <Button onClick={onCheckout} className="w-full h-14 text-lg bg-primary hover:bg-primary/80 text-primary-foreground" disabled={cart.length === 0}>Proceed to Pay</Button>
+            <Button onClick={onCheckout} className="w-full h-14 text-lg bg-primary hover:bg-primary/80 text-primary-foreground" disabled={cart.length === 0}>Proceed to Checkout</Button>
         </div>
     </motion.div>
 );
 
-const CheckoutModal = ({ isOpen, onClose, onConfirm, total, vendorName, cart, vendorId }) => {
-    const [name, setName] = useState('');
-    const [phone, setPhone] = useState('');
-    const [error, setError] = useState('');
-    const [isProcessing, setIsProcessing] = useState(false);
-    const router = useRouter();
-
-    const handlePayment = async (paymentMethod) => {
-        if (!name.trim()) {
-            setError("Name is required.");
-            return;
-        }
-        if (phone.trim() && !/^\d{10}$/.test(phone.trim())) {
-            setError("If providing a phone number, it must be a valid 10-digit number.");
-            return;
-        }
-
-        setIsProcessing(true);
-        setError('');
-
-        const orderData = {
-            name: name,
-            phone: phone.trim() || '',
-            restaurantId: vendorId,
-            businessType: 'street-vendor',
-            items: cart.map(item => ({
-                id: item.id,
-                name: item.name,
-                quantity: item.quantity,
-                price: item.portion.price,
-                totalPrice: item.portion.price * item.quantity,
-            })),
-            notes: 'Pre-order from QR',
-            grandTotal: total,
-            subtotal: total,
-            cgst: 0,
-            sgst: 0,
-            deliveryCharge: 0,
-            paymentMethod,
-            deliveryType: 'street-vendor-pre-order',
-            address: { full: 'Street Vendor Pre-Order' }
-        };
-
-        try {
-            const res = await fetch('/api/customer/register', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(orderData)
-            });
-            
-            const data = await res.json();
-            
-            if (!res.ok) {
-                throw new Error(data.message || "Failed to process order.");
-            }
-            
-            if (data.razorpay_order_id) {
-                const options = {
-                    key: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID,
-                    amount: total * 100,
-                    currency: "INR",
-                    name: vendorName || "Street Vendor",
-                    description: `Order from ${vendorName}`,
-                    order_id: data.razorpay_order_id,
-                    handler: function (response){
-                        onConfirm({ 
-                            name, phone, 
-                            paymentDetails: response, 
-                            method: 'online', 
-                            firestore_order_id: data.firestore_order_id, 
-                            token: data.token 
-                        });
-                    },
-                    prefill: { name: name, contact: phone },
-                    theme: { color: "#FBBF24" }
-                };
-                const rzp1 = new window.Razorpay(options);
-                rzp1.on('payment.failed', function (response){
-                    setError(`Payment failed: ${response.error.description}`);
-                    setIsProcessing(false);
-                });
-                rzp1.open();
-            } else {
-                onConfirm({ name, phone, method: 'counter', firestore_order_id: data.firestore_order_id, token: data.token });
-            }
-
-        } catch (err) {
-            setError(err.message);
-            setIsProcessing(false);
-        }
-    };
-
-    return (
-        <Dialog open={isOpen} onOpenChange={onClose}>
-            <DialogContent className="bg-card border-border text-foreground">
-                <DialogHeader>
-                    <DialogTitle>Almost there!</DialogTitle>
-                    <DialogDescription>Please provide your name to place the order.</DialogDescription>
-                </DialogHeader>
-                <div className="space-y-4 py-4">
-                    <div>
-                        <label className="text-muted-foreground">Name *</label>
-                        <input type="text" value={name} onChange={e => setName(e.target.value)} className="w-full p-2 mt-1 bg-input border border-border rounded-md" />
-                    </div>
-                    <div>
-                        <label className="text-muted-foreground">Phone Number (Optional)</label>
-                        <input type="tel" value={phone} onChange={e => setPhone(e.target.value)} className="w-full p-2 mt-1 bg-input border border-border rounded-md" />
-                    </div>
-                    {error && <p className="text-sm text-destructive">{error}</p>}
-                </div>
-                <DialogFooter className="grid grid-cols-2 gap-4">
-                    <Button onClick={() => handlePayment('counter')} variant="outline" className="h-12 text-base">
-                        <Wallet className="mr-2 h-5 w-5"/> Pay at Counter
-                    </Button>
-                    <Button onClick={() => handlePayment('razorpay')} disabled={isProcessing} className="bg-primary hover:bg-primary/80 text-primary-foreground h-12 text-base">
-                        {isProcessing ? <Loader2 className="animate-spin mr-2"/> : null}
-                        Pay ₹{total} Online
-                    </Button>
-                </DialogFooter>
-            </DialogContent>
-        </Dialog>
-    );
-};
 
 export default function PreOrderPage({ params }) {
     const { vendorId } = params;
@@ -296,7 +172,6 @@ export default function PreOrderPage({ params }) {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
     const [isCartOpen, setCartOpen] = useState(false);
-    const [isCheckoutOpen, setCheckoutOpen] = useState(false);
     const [customizationItem, setCustomizationItem] = useState(null);
     const [cartQuantities, setCartQuantities] = useState({});
     const router = useRouter();
@@ -319,6 +194,12 @@ export default function PreOrderPage({ params }) {
                 setVendor({ name: data.restaurantName, address: data.businessAddress?.full || '' });
                 const allItems = Object.values(data.menu || {}).flat().filter(item => item.isAvailable === true);
                 setMenu(allItems);
+
+                 // Load cart from localStorage after menu is fetched
+                const savedCartData = localStorage.getItem(`cart_${vendorId}`);
+                if (savedCartData) {
+                    setCart(JSON.parse(savedCartData).cart || []);
+                }
             } catch (err) {
                 setError(err.message);
             } finally {
@@ -330,12 +211,16 @@ export default function PreOrderPage({ params }) {
     }, [vendorId]);
 
     useEffect(() => {
+        // Save cart to localStorage whenever it changes
+        const cartDataToSave = { cart };
+        localStorage.setItem(`cart_${vendorId}`, JSON.stringify(cartDataToSave));
+
         const quantities = {};
         cart.forEach(item => {
             quantities[item.id] = (quantities[item.id] || 0) + item.quantity;
         });
         setCartQuantities(quantities);
-    }, [cart]);
+    }, [cart, vendorId]);
 
 
     const addToCart = (item, portion) => {
@@ -400,28 +285,14 @@ export default function PreOrderPage({ params }) {
     const totalItems = useMemo(() => {
         return cart.reduce((sum, item) => sum + item.quantity, 0);
     }, [cart]);
+    
+    const handleProceedToCheckout = () => {
+        const params = new URLSearchParams();
+        params.set('restaurantId', vendorId);
+        // We don't need phone/token here as it's a pre-order flow that will collect details
+        router.push(`/checkout?${params.toString()}`);
+    }
 
-    const handleCheckout = (details) => {
-        setCheckoutOpen(false);
-        setCartOpen(false);
-        
-        const orderId = details.firestore_order_id;
-        
-        sessionStorage.setItem(orderId, JSON.stringify({
-            vendorName: vendor.name,
-            total: grandTotal,
-            items: cart,
-            customer: details
-        }));
-        
-        const urlParams = new URLSearchParams({
-            orderId: orderId,
-            token: details.token || '',
-            restaurantId: vendorId // Pass restaurantId to placed page
-        });
-        
-        router.push(`/order/placed?${urlParams.toString()}`);
-    };
     
     if (loading) {
         return <div className="min-h-screen bg-background flex items-center justify-center"><Loader2 className="animate-spin text-primary" size={48} /></div>;
@@ -433,7 +304,6 @@ export default function PreOrderPage({ params }) {
 
     return (
         <div className="min-h-screen bg-background text-foreground font-body">
-            <Script src="https://checkout.razorpay.com/v1/checkout.js" />
             <header className="text-center p-6 border-b border-border bg-card sticky top-0 z-10">
                 <h1 className="text-3xl font-bold font-headline">{vendor?.name}</h1>
                 <p className="text-muted-foreground">{vendor?.address}</p>
@@ -486,19 +356,9 @@ export default function PreOrderPage({ params }) {
             
             <AnimatePresence>
               {isCartOpen && (
-                 <CartSheet cart={cart} updateQuantity={updateQuantity} grandTotal={grandTotal} onCheckout={() => setCheckoutOpen(true)} onClose={() => setCartOpen(false)} />
+                 <CartSheet cart={cart} updateQuantity={updateQuantity} grandTotal={grandTotal} onCheckout={handleProceedToCheckout} onClose={() => setCartOpen(false)} />
               )}
             </AnimatePresence>
-
-            <CheckoutModal 
-                isOpen={isCheckoutOpen} 
-                onClose={() => setCheckoutOpen(false)} 
-                total={grandTotal} 
-                onConfirm={handleCheckout} 
-                vendorName={vendor?.name}
-                cart={cart}
-                vendorId={vendorId}
-            />
         </div>
     );
 }
