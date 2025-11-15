@@ -170,11 +170,10 @@ const CheckoutModal = ({ isOpen, onClose, cart, vendorId, onSuccessfulOrder, rou
     const [paymentStep, setPaymentStep] = useState('initial');
     const [splitCount, setSplitCount] = useState(2);
 
-    const subtotal = useMemo(() => {
-        return cart.reduce((sum, item) => sum + (item.portion.price * item.quantity), 0);
+    const { subtotal, grandTotal } = useMemo(() => {
+        const sub = cart.reduce((sum, item) => sum + (item.portion.price * item.quantity), 0);
+        return { subtotal: sub, grandTotal: sub };
     }, [cart]);
-
-    const grandTotal = subtotal;
 
     useEffect(() => {
         if (!isOpen) {
@@ -207,7 +206,7 @@ const CheckoutModal = ({ isOpen, onClose, cart, vendorId, onSuccessfulOrder, rou
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ 
-                    grandTotal, 
+                    totalAmount: grandTotal, 
                     splitCount, 
                     baseOrderId: `preorder_${Date.now()}`,
                     restaurantId: vendorId,
