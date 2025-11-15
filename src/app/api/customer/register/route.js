@@ -236,9 +236,22 @@ export async function POST(req) {
                 business_type: businessType,
                 customer_details: JSON.stringify(customerDetailsForPayload),
                 items: JSON.stringify(items),
-                bill_details: JSON.stringify({ subtotal, coupon, loyaltyDiscount, grandTotal, deliveryType, tipAmount, pickupTime, cgst, sgst, deliveryCharge }),
+                bill_details: JSON.stringify({ 
+                    subtotal: subtotal || 0,
+                    coupon: coupon || null,
+                    loyaltyDiscount: loyaltyDiscount || 0,
+                    grandTotal: grandTotal || 0,
+                    deliveryType,
+                    tipAmount: tipAmount || 0,
+                    pickupTime: pickupTime || '',
+                    cgst: cgst || 0,
+                    sgst: sgst || 0,
+                    deliveryCharge: deliveryCharge || 0
+                }),
                 notes: notes || null
             };
+
+            console.log("[DEBUG] /api/customer/register: Full payload being sent to Razorpay notes:", JSON.stringify(servizephyrOrderPayload, null, 2));
 
             const razorpayOrderOptions = {
                 amount: Math.round(grandTotal * 100), 
@@ -248,8 +261,8 @@ export async function POST(req) {
                     servizephyr_payload: JSON.stringify(servizephyrOrderPayload)
                 }
             };
-
-            console.log("[DEBUG] /api/customer/register: Razorpay order options:", razorpayOrderOptions);
+            
+            console.log("[DEBUG] /api/customer/register: Creating Razorpay order with options:", razorpayOrderOptions);
             const razorpayOrder = await razorpay.orders.create(razorpayOrderOptions);
             razorpayOrderId = razorpayOrder.id;
             console.log(`[DEBUG] /api/customer/register: Razorpay Order ${razorpayOrderId} created for amount ${grandTotal}. Responding to client.`);
@@ -323,21 +336,30 @@ export async function POST(req) {
         console.log("[DEBUG] /api/customer/register: Creating main order document.");
         const newOrderRef = firestore.collection('orders').doc();
         const trackingToken = await generateSecureToken(firestore, normalizedPhone || newOrderRef.id);
-
-        batch.set(newOrderRef, {
+        
+        const finalOrderData = {
             customerName: name, customerId: userId, customerAddress: address?.full || null, customerPhone: normalizedPhone,
             customerLocation: customerLocation,
             restaurantId: restaurantId, restaurantName: businessData.name,
             businessType, deliveryType, pickupTime, tipAmount,
             items: items,
-            subtotal, coupon, loyaltyDiscount, discount: finalDiscount, cgst, sgst, deliveryCharge,
+            subtotal: subtotal || 0,
+            coupon: coupon || null,
+            loyaltyDiscount: loyaltyDiscount || 0,
+            discount: finalDiscount || 0,
+            cgst: cgst || 0,
+            sgst: sgst || 0,
+            deliveryCharge: deliveryCharge || 0,
             totalAmount: grandTotal,
             status: 'pending', // Always start as pending
             orderDate: FieldValue.serverTimestamp(),
             notes: notes || null,
             trackingToken: trackingToken,
             paymentDetails: { method: paymentMethod }
-        });
+        };
+        
+        console.log("[DEBUG] /api/customer/register: Final order object for Firestore:", finalOrderData);
+        batch.set(newOrderRef, finalOrderData);
         
         await batch.commit();
         console.log(`[DEBUG] /api/customer/register: Batch committed successfully. New order ID: ${newOrderRef.id}.`);
@@ -352,7 +374,7 @@ export async function POST(req) {
              console.warn(`[DEBUG] /api/customer/register: Cannot send notification. Owner phone or Bot ID is missing for business ${restaurantId}.`);
         }
         
-        console.log("[DEBUG] /api/customer/register: Responding to client.");
+        console.log(`[DEBUG] /api/customer/register: Responding to client with token: ${trackingToken}`);
         return NextResponse.json({ 
             message: 'Order created successfully.',
             firestore_order_id: newOrderRef.id,
@@ -367,7 +389,3 @@ export async function POST(req) {
         return NextResponse.json({ message: `Backend Error: ${error.message}` }, { status: 500 });
     }
 }
-
-    
-
-    

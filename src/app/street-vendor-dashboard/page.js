@@ -61,17 +61,19 @@ export default function StreetVendorDashboard() {
 
         const fetchVendorData = async () => {
             try {
-                const vendorRef = doc(db, 'street_vendors', user.uid);
-                const vendorSnap = await getDoc(vendorRef);
+                // Correctly reference the document by user's UID in the 'street_vendors' collection
+                const q = query(collection(db, 'street_vendors'), where('ownerId', '==', user.uid));
+                const querySnapshot = await getDocs(q);
 
-                if (vendorSnap.exists()) {
-                    setVendorId(vendorSnap.id);
+                if (!querySnapshot.empty) {
+                     const vendorDoc = querySnapshot.docs[0];
+                    setVendorId(vendorDoc.id);
                 } else {
                     console.log("No street vendor profile found for this user.");
                     setLoading(false);
                 }
             } catch (err) {
-                const contextualError = new FirestorePermissionError({ path: `street_vendors/${user.uid}`, operation: 'get' });
+                const contextualError = new FirestorePermissionError({ path: `street_vendors`, operation: 'list' });
                 errorEmitter.emit('permission-error', contextualError);
                 console.error("Error fetching vendor ID:", err);
                 setLoading(false);
@@ -162,5 +164,3 @@ export default function StreetVendorDashboard() {
         </div>
     );
 }
-
-    

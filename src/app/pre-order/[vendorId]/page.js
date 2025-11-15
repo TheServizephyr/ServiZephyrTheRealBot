@@ -172,7 +172,6 @@ const CheckoutModal = ({ isOpen, onClose, onConfirm, total, vendorName, cart, ve
     const router = useRouter();
 
     const handlePayment = async (paymentMethod) => {
-        // --- START FIX: Validation logic updated ---
         if (!name.trim()) {
             setError("Name is required.");
             return;
@@ -181,14 +180,13 @@ const CheckoutModal = ({ isOpen, onClose, onConfirm, total, vendorName, cart, ve
             setError("If providing a phone number, it must be a valid 10-digit number.");
             return;
         }
-        // --- END FIX ---
 
         setIsProcessing(true);
         setError('');
 
         const orderData = {
             name: name,
-            phone: phone.trim() || null, // Send null if empty
+            phone: phone.trim() || null,
             restaurantId: vendorId,
             businessType: 'street-vendor',
             items: cart.map(item => ({
@@ -208,6 +206,8 @@ const CheckoutModal = ({ isOpen, onClose, onConfirm, total, vendorName, cart, ve
             deliveryType: 'street-vendor-pre-order',
             address: { full: 'Street Vendor Pre-Order' }
         };
+        
+        console.log("[DEBUG] pre-order page: Preparing to call /api/customer/register with payload:", orderData);
 
         try {
             const res = await fetch('/api/customer/register', {
@@ -216,12 +216,12 @@ const CheckoutModal = ({ isOpen, onClose, onConfirm, total, vendorName, cart, ve
                 body: JSON.stringify(orderData)
             });
 
-            if (!res.ok) {
-                const errData = await res.json();
-                throw new Error(errData.message || "Failed to process order.");
-            }
-            
             const data = await res.json();
+            console.log("[DEBUG] pre-order page: Received response from /api/customer/register:", data);
+            
+            if (!res.ok) {
+                throw new Error(data.message || "Failed to process order.");
+            }
             
             if (data.razorpay_order_id) {
                 const options = {
@@ -232,11 +232,12 @@ const CheckoutModal = ({ isOpen, onClose, onConfirm, total, vendorName, cart, ve
                     description: `Order from ${vendorName}`,
                     order_id: data.razorpay_order_id,
                     handler: function (response){
-                        onConfirm({ name, phone, paymentDetails: response, method: 'online' });
+                        onConfirm({ name, phone, paymentDetails: response, method: 'online', firestore_order_id: data.firestore_order_id });
                     },
                     prefill: { name: name, contact: phone },
                     theme: { color: "#FBBF24" }
                 };
+                console.log("[DEBUG] pre-order page: Opening Razorpay with options:", options);
                 const rzp1 = new window.Razorpay(options);
                 rzp1.on('payment.failed', function (response){
                     setError(`Payment failed: ${response.error.description}`);
@@ -244,7 +245,7 @@ const CheckoutModal = ({ isOpen, onClose, onConfirm, total, vendorName, cart, ve
                 });
                 rzp1.open();
             } else {
-                onConfirm({ name, phone, method: 'counter', firestore_order_id: data.firestore_order_id });
+                onConfirm({ name, phone, method: 'counter', firestore_order_id: data.firestore_order_id, token: data.token });
             }
 
         } catch (err) {
@@ -398,16 +399,29 @@ export default function PreOrderPage({ params }) {
         return cart.reduce((sum, item) => sum + item.quantity, 0);
     }, [cart]);
 
-    const handleCheckout = (customerDetails) => {
+    const handleCheckout = (details) => {
+        console.log("[DEBUG] pre-order page: handleCheckout called with details:", details);
         setCheckoutOpen(false);
-        const orderId = customerDetails.paymentDetails?.razorpay_order_id || customerDetails.firestore_order_id || "temp_" + Date.now();
+        setCartOpen(false);
+        
+        const orderId = details.paymentDetails?.razorpay_order_id || details.firestore_order_id;
+        
+        console.log("[DEBUG] pre-order page: Final Order ID for session storage:", orderId);
         sessionStorage.setItem(orderId, JSON.stringify({
             vendorName: vendor.name,
             total: grandTotal,
             items: cart,
-            customer: customerDetails
+            customer: details
         }));
-        router.push(`/order/placed?orderId=${orderId}`);
+        
+        const urlParams = new URLSearchParams({
+            orderId: orderId,
+            token: details.token || '',
+            restaurantId: vendorId // Pass restaurantId for "Back to menu" button
+        });
+        
+        console.log("[DEBUG] pre-order page: Redirecting to /order/placed with params:", urlParams.toString());
+        router.push(`/order/placed?${urlParams.toString()}`);
     };
     
     if (loading) {
