@@ -1,4 +1,3 @@
-
 'use client';
 
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
@@ -169,7 +168,17 @@ const CheckoutModal = ({ isOpen, onClose, cart, vendorId, onSuccessfulOrder }) =
     const [name, setName] = useState('');
     const [phone, setPhone] = useState('');
     const [isProcessing, setIsProcessing] = useState(false);
+    const [isOnlinePaymentFlow, setIsOnlinePaymentFlow] = useState(false);
+    const [isSplitBillActive, setIsSplitBillActive] = useState(false);
     const router = useRouter();
+    
+    useEffect(() => {
+        console.log(`[CheckoutModal] Name updated: "${name}"`);
+    }, [name]);
+    
+    useEffect(() => {
+        console.log(`[CheckoutModal] Phone updated: "${phone}"`);
+    }, [phone]);
 
     const grandTotal = useMemo(() => {
         return cart.reduce((sum, item) => sum + (item.portion.price * item.quantity), 0);
@@ -177,6 +186,7 @@ const CheckoutModal = ({ isOpen, onClose, cart, vendorId, onSuccessfulOrder }) =
 
     const handleProceedToPayment = (e) => {
         e.preventDefault();
+        console.log('[CheckoutModal] handleProceedToPayment called.');
         if (!name.trim()) {
             alert("Please enter your name.");
             return;
@@ -184,19 +194,40 @@ const CheckoutModal = ({ isOpen, onClose, cart, vendorId, onSuccessfulOrder }) =
         setStep(2);
     };
 
+    const handlePayOnlineClick = () => {
+        console.log('[CheckoutModal] handlePayOnlineClick called.');
+        if (!name.trim()) {
+            alert("Please enter your name before proceeding.");
+            return;
+        }
+        setIsOnlinePaymentFlow(true);
+    }
+    
+    const handlePayAtCounter = () => {
+        console.log('[CheckoutModal] handlePayAtCounter called.');
+        if (!name.trim()) {
+            alert("Please enter your name before proceeding.");
+            return;
+        }
+        handlePayment('cod');
+    }
+
     const handlePayment = async (paymentMethod) => {
+        console.log(`[CheckoutModal] handlePayment called with method: ${paymentMethod}`);
         setIsProcessing(true);
         try {
             const orderPayload = {
                 restaurantId: vendorId,
                 items: cart,
                 grandTotal,
-                customerName: name,
-                customerPhone: phone,
+                name: name,
+                phone: phone,
                 paymentMethod,
                 deliveryType: 'street-vendor-pre-order',
                 businessType: 'street-vendor',
             };
+            
+            console.log("[CheckoutModal] Submitting Order Payload:", orderPayload);
 
             const response = await fetch('/api/customer/register', {
                 method: 'POST',
@@ -234,56 +265,52 @@ const CheckoutModal = ({ isOpen, onClose, cart, vendorId, onSuccessfulOrder }) =
 
 
     const renderStep = () => {
-        switch (step) {
-            case 1:
-                return (
-                    <form onSubmit={handleProceedToPayment}>
-                        <DialogHeader>
-                            <DialogTitle>Your Details</DialogTitle>
-                            <DialogDescription>A name is required to identify your order.</DialogDescription>
-                        </DialogHeader>
-                        <div className="py-4 space-y-4">
-                            <div className="space-y-2">
-                                <label htmlFor="name" className="flex items-center gap-2"><User size={16}/>Your Name *</label>
-                                <input id="name" value={name} onChange={(e) => setName(e.target.value)} required className="w-full p-2 border rounded-md bg-input border-border" />
-                            </div>
-                            <div className="space-y-2">
-                                <label htmlFor="phone" className="flex items-center gap-2"><Phone size={16}/>Mobile Number (Optional)</label>
-                                <input id="phone" type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} className="w-full p-2 border rounded-md bg-input border-border" />
-                            </div>
-                        </div>
-                        <DialogFooter>
-                            <Button type="submit" className="w-full h-12">Proceed to Payment</Button>
-                        </DialogFooter>
-                    </form>
-                );
-            case 2:
-                return (
-                     <div>
-                        <DialogHeader>
-                            <DialogTitle>Choose Payment</DialogTitle>
-                             <div className="flex justify-between items-center text-lg pt-4 border-t border-border">
-                                <span>Total:</span>
-                                <span className="font-bold">₹{grandTotal}</span>
-                            </div>
-                        </DialogHeader>
-                        <div className="py-4 grid grid-cols-1 gap-4">
-                           <Button onClick={() => handlePayment('razorpay')} className="h-16 text-lg" disabled={isProcessing}>
-                                {isProcessing ? <Loader2 className="animate-spin" /> : 'Pay Online Now'}
-                           </Button>
-                           <Button onClick={() => handlePayment('cod')} variant="secondary" className="h-16 text-lg" disabled={isProcessing}>
-                                {isProcessing ? <Loader2 className="animate-spin" /> : 'Pay at Counter'}
-                           </Button>
-                        </div>
-                     </div>
-                );
-            default:
-                return null;
+        if (isOnlinePaymentFlow) {
+            return (
+                <div>
+                     <Button variant="ghost" onClick={() => setIsOnlinePaymentFlow(false)} className="mb-4"><ArrowLeft className="mr-2"/>Back</Button>
+                    <div className="space-y-4">
+                        <Button onClick={() => handlePayment('razorpay')} className="w-full h-16 text-lg" disabled={isProcessing}>
+                            {isProcessing ? <Loader2 className="animate-spin" /> : 'Pay Full Bill'}
+                        </Button>
+                        <Button onClick={() => alert('Split bill coming soon!')} variant="secondary" className="w-full h-16 text-lg" disabled={isProcessing}>
+                            <Split className="mr-2"/> Split The Bill
+                        </Button>
+                    </div>
+                </div>
+            )
         }
+
+        return (
+             <div>
+                <DialogHeader>
+                    <DialogTitle>Your Details & Payment</DialogTitle>
+                    <DialogDescription>Enter your name to place the order.</DialogDescription>
+                </DialogHeader>
+                <div className="py-4 space-y-4">
+                    <div className="space-y-2">
+                        <label htmlFor="name" className="flex items-center gap-2"><User size={16}/>Your Name *</label>
+                        <input id="name" value={name} onChange={(e) => setName(e.target.value)} required className="w-full p-2 border rounded-md bg-input border-border" />
+                    </div>
+                    <div className="space-y-2">
+                        <label htmlFor="phone" className="flex items-center gap-2"><Phone size={16}/>Mobile Number (Optional)</label>
+                        <input id="phone" type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} className="w-full p-2 border rounded-md bg-input border-border" />
+                    </div>
+                    <div className="flex justify-between items-center text-xl pt-4 border-t border-border">
+                        <span className="font-semibold">Total:</span>
+                        <span className="font-bold text-primary">₹{grandTotal}</span>
+                    </div>
+                </div>
+                <DialogFooter className="grid grid-cols-2 gap-4">
+                    <Button onClick={handlePayAtCounter} variant="secondary" className="h-12 text-base" disabled={isProcessing}>Pay at Counter</Button>
+                    <Button onClick={handlePayOnlineClick} className="h-12 text-base" disabled={isProcessing}>Pay Online</Button>
+                </DialogFooter>
+            </div>
+        );
     };
     
     return (
-        <Dialog open={isOpen} onOpenChange={(open) => { if (!open) { onClose(); setStep(1); }}}>
+        <Dialog open={isOpen} onOpenChange={(open) => { if (!open) { onClose(); setStep(1); setIsOnlinePaymentFlow(false); setIsSplitBillActive(false); }}}>
             <DialogContent className="bg-card border-border">
                 {renderStep()}
             </DialogContent>
