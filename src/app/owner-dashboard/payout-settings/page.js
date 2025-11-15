@@ -22,6 +22,7 @@ function PayoutSettingsPageContent() {
     // Form state for bank details
     const [beneficiaryName, setBeneficiaryName] = useState('');
     const [accountNumber, setAccountNumber] = useState('');
+    const [confirmAccountNumber, setConfirmAccountNumber] = useState('');
     const [ifsc, setIfsc] = useState('');
 
 
@@ -60,6 +61,11 @@ function PayoutSettingsPageContent() {
     const handleLinkAccount = async (e) => {
         e.preventDefault();
         
+        if (accountNumber !== confirmAccountNumber) {
+            setError("Account numbers do not match. Please re-enter.");
+            return;
+        }
+
         if (!beneficiaryName || !accountNumber || !ifsc) {
             setError("Please fill all bank details correctly.");
             return;
@@ -162,6 +168,10 @@ function PayoutSettingsPageContent() {
                              <div>
                                 <Label htmlFor="accountNumber">Bank Account Number</Label>
                                 <Input id="accountNumber" type="text" value={accountNumber} onChange={(e) => setAccountNumber(e.target.value)} required placeholder="Enter your account number" />
+                             </div>
+                             <div>
+                                <Label htmlFor="confirmAccountNumber">Confirm Bank Account Number</Label>
+                                <Input id="confirmAccountNumber" type="text" value={confirmAccountNumber} onChange={(e) => setConfirmAccountNumber(e.target.value)} required placeholder="Re-enter your account number" />
                              </div>
                              <div>
                                 <Label htmlFor="ifsc">IFSC Code</Label>
