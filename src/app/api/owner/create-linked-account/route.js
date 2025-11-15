@@ -37,7 +37,7 @@ async function makeRazorpayRequest(options, payload = null) {
 }
 
 
-// Helper to verify owner and get their restaurant details
+// Helper to verify owner and get their business details
 async function verifyOwnerAndGetBusiness(req, auth) {
     const uid = await verifyAndGetUid(req); 
     
@@ -96,49 +96,63 @@ export async function POST(req) {
             }
         };
 
-        const accountPayload = JSON.stringify({
-            type: "route", 
-            email: userData.email,
-            legal_business_name: businessData.name,
-            business_type: "proprietorship", 
-            contact_name: userData.name,
-            phone: userData.phone,
-            profile: {
-                category: "food",
-                subcategory: "restaurant",
-                addresses: {
-                    registered: {
-                        street1: businessData.address.street,
-                        street2: businessData.address.street,
-                        city: businessData.address.city,
-                        state: businessData.address.state,
-                        postal_code: businessData.address.postalCode,
-                        country: businessData.address.country || "IN"
+        // --- START FIX: Check for existing account by email first ---
+        let accountId;
+        const searchAccountOptions = { ...baseOptions, path: `/v2/accounts?email=${encodeURIComponent(userData.email)}`, method: 'GET' };
+        const existingAccounts = await makeRazorpayRequest(searchAccountOptions);
+        
+        if (existingAccounts && existingAccounts.items && existingAccounts.items.length > 0) {
+            // Account with this email already exists, use it.
+            accountId = existingAccounts.items[0].id;
+            console.log(`[RAZORPAY] Found existing Linked Account for email ${userData.email}. ID: ${accountId}`);
+        } else {
+            // No account found, create a new one.
+            console.log(`[RAZORPAY] No existing Linked Account found for email ${userData.email}. Creating a new one.`);
+            const accountPayload = JSON.stringify({
+                type: "route", 
+                email: userData.email,
+                legal_business_name: businessData.name,
+                business_type: "proprietorship", 
+                contact_name: userData.name,
+                phone: userData.phone,
+                profile: {
+                    category: "food_and_beverage",
+                    subcategory: "food_and_beverage", // General subcategory
+                    addresses: {
+                        registered: {
+                            street1: businessData.address.street,
+                            street2: businessData.address.street,
+                            city: businessData.address.city,
+                            state: businessData.address.state,
+                            postal_code: businessData.address.postalCode,
+                            country: businessData.address.country || "IN"
+                        }
                     }
                 }
-            }
-        });
-        
-        const createAccountOptions = { ...baseOptions, path: '/v2/accounts', method: 'POST' };
-        const linkedAccount = await makeRazorpayRequest(createAccountOptions, accountPayload);
-        const accountId = linkedAccount.id;
+            });
+            
+            const createAccountOptions = { ...baseOptions, path: '/v2/accounts', method: 'POST' };
+            const linkedAccount = await makeRazorpayRequest(createAccountOptions, accountPayload);
+            accountId = linkedAccount.id;
 
-        const stakeholderPayload = JSON.stringify({ name: userData.name, email: userData.email, phone: { primary: userData.phone } });
-        const createStakeholderOptions = { ...baseOptions, path: `/v2/accounts/${accountId}/stakeholders`, method: 'POST' };
-        const stakeholder = await makeRazorpayRequest(createStakeholderOptions, stakeholderPayload);
+            const stakeholderPayload = JSON.stringify({ name: userData.name, email: userData.email });
+            const createStakeholderOptions = { ...baseOptions, path: `/v2/accounts/${accountId}/stakeholders`, method: 'POST' };
+            await makeRazorpayRequest(createStakeholderOptions, stakeholderPayload);
 
-        const productRequestPayload = JSON.stringify({ product_name: "route", tnc_accepted: true });
-        const requestProductOptions = { ...baseOptions, path: `/v2/accounts/${accountId}/products`, method: 'POST' };
-        const product = await makeRazorpayRequest(requestProductOptions, productRequestPayload);
-        const productId = product.id;
+            const productRequestPayload = JSON.stringify({ product_name: "route", tnc_accepted: true });
+            const requestProductOptions = { ...baseOptions, path: `/v2/accounts/${accountId}/products`, method: 'POST' };
+            const product = await makeRazorpayRequest(requestProductOptions, productRequestPayload);
+            const productId = product.id;
 
-        const updateProductPayload = JSON.stringify({ tnc_accepted: true, settlements: { account_number: accountNumber, ifsc_code: ifsc, beneficiary_name: beneficiaryName } });
-        const updateProductOptions = { ...baseOptions, path: `/v2/accounts/${accountId}/products/${productId}`, method: 'PATCH' };
-        await makeRazorpayRequest(updateProductOptions, updateProductPayload);
+            const updateProductPayload = JSON.stringify({ tnc_accepted: true, settlements: { account_number: accountNumber, ifsc_code: ifsc, beneficiary_name: beneficiaryName } });
+            const updateProductOptions = { ...baseOptions, path: `/v2/accounts/${accountId}/products/${productId}`, method: 'PATCH' };
+            await makeRazorpayRequest(updateProductOptions, updateProductPayload);
+        }
+        // --- END FIX ---
 
         await businessRef.update({ razorpayAccountId: accountId });
 
-        return NextResponse.json({ message: 'Linked account created and activated successfully!', accountId: accountId }, { status: 200 });
+        return NextResponse.json({ message: 'Linked account created/retrieved successfully!', accountId: accountId }, { status: 200 });
 
     } catch (error) {
         const errorDetail = error.error ? JSON.stringify(error.error, null, 2) : error.message;
