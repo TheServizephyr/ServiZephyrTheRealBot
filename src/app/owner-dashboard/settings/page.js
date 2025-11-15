@@ -361,7 +361,8 @@ function SettingsPageContent() {
                 gstin: editedUser.gstin,
                 fssai: editedUser.fssai,
                 botPhoneNumberId: editedUser.botPhoneNumberId,
-                botDisplayNumber: editedUser.botDisplayNumber, // The new field
+                botDisplayNumber: editedUser.botDisplayNumber,
+                razorpayAccountId: editedUser.razorpayAccountId,
                 address: editedUser.address, // Pass the structured address
             };
         } else if (section === 'media') {
@@ -469,7 +470,7 @@ function SettingsPageContent() {
         );
     }
 
-    const isBusinessOwner = user.role === 'owner' || user.role === 'restaurant-owner' || user.role === 'shop-owner';
+    const isBusinessOwner = user.role === 'owner' || user.role === 'restaurant-owner' || user.role === 'shop-owner' || user.role === 'street-vendor';
 
     return (
         <div className="p-4 md:p-6 text-foreground min-h-screen bg-background space-y-8">
@@ -581,7 +582,6 @@ function SettingsPageContent() {
                                     <Label htmlFor="botPhoneNumberId" className="flex items-center gap-2"><Bot size={14}/> WhatsApp Bot Phone Number ID</Label>
                                     <input id="botPhoneNumberId" value={editedUser.botPhoneNumberId} onChange={e => setEditedUser({...editedUser, botPhoneNumberId: e.target.value})} disabled={!isEditingProfile || !!user.botPhoneNumberId} className="mt-1 w-full p-2 border rounded-md bg-input border-border disabled:opacity-70 disabled:cursor-not-allowed" placeholder="Auto-filled on connection"/>
                                 </div>
-                                {/* --- START FIX: Smart input for bot display number --- */}
                                 <div>
                                     <Label htmlFor="botDisplayNumber" className="flex items-center gap-2"><Phone size={14}/> WhatsApp Bot Display Number</Label>
                                     <input
@@ -596,7 +596,10 @@ function SettingsPageContent() {
                                         <p className="text-xs text-muted-foreground mt-1">If this field is empty, please enter your bot's display number (e.g., 919876543210) once and save.</p>
                                     )}
                                 </div>
-                                {/* --- END FIX --- */}
+                                 <div>
+                                    <Label htmlFor="razorpayAccountId" className="flex items-center gap-2"><Wallet size={14}/> Razorpay Account ID</Label>
+                                    <input id="razorpayAccountId" value={editedUser.razorpayAccountId} onChange={e => setEditedUser({...editedUser, razorpayAccountId: e.target.value})} disabled={!isEditingProfile} className="mt-1 w-full p-2 border rounded-md bg-input border-border disabled:opacity-70 disabled:cursor-not-allowed" placeholder="e.g., acc_xxxxxxxxxxxxxx"/>
+                                </div>
                             </div>
                         </>
                     )}
@@ -622,7 +625,6 @@ function SettingsPageContent() {
                     }
                 >
                     <div className="space-y-6">
-                         {/* --- START: DINE-IN MASTER SWITCH --- */}
                         {editedUser.dineInEnabled && (
                         <div className="border-t border-border pt-6">
                             <Label className="font-semibold text-lg">Dine-In Model (Master Switch)</Label>
@@ -649,7 +651,6 @@ function SettingsPageContent() {
                             </div>
                         </div>
                         )}
-                        {/* --- END: DINE-IN MASTER SWITCH --- */}
                         <div>
                              <Label className="font-semibold text-lg">Order Types</Label>
                              <p className="text-sm text-muted-foreground mb-4">Choose which types of orders your business will accept.</p>

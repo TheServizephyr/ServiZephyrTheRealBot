@@ -151,6 +151,7 @@ export async function PATCH(req) {
             if (updates.fssai !== undefined) businessUpdateData.fssai = updates.fssai;
             if (updates.botPhoneNumberId !== undefined) businessUpdateData.botPhoneNumberId = updates.botPhoneNumberId;
             if (updates.botDisplayNumber !== undefined) businessUpdateData.botDisplayNumber = updates.botDisplayNumber;
+            if (updates.razorpayAccountId !== undefined) businessUpdateData.razorpayAccountId = updates.razorpayAccountId;
             if (updates.logoUrl !== undefined) businessUpdateData.logoUrl = updates.logoUrl;
             if (updates.bannerUrls !== undefined) businessUpdateData.bannerUrls = updates.bannerUrls;
             if (updates.address !== undefined) businessUpdateData.address = updates.address; 
