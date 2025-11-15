@@ -50,7 +50,6 @@ async function makeRazorpayRequest(options, payload) {
 
 
 export async function POST(req) {
-    console.log("[Webhook RZP] Received POST request.");
     const secret = process.env.RAZORPAY_WEBHOOK_SECRET;
 
     if (!secret) {
@@ -72,7 +71,6 @@ export async function POST(req) {
         }
 
         const eventData = JSON.parse(body);
-        console.log(`[Webhook RZP] Event received: ${eventData.event}`);
         
         if (eventData.event === 'payment.captured') {
             const paymentEntity = eventData.payload.payment.entity;
@@ -87,7 +85,6 @@ export async function POST(req) {
             
             const firestore = await getFirestore();
             
-            console.log(`[Webhook RZP] Fetching Razorpay order details for ${razorpayOrderId}`);
             const key_id = process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID;
             const key_secret = process.env.RAZORPAY_KEY_SECRET;
             const credentials = Buffer.from(`${key_id}:${key_secret}`).toString('base64');
@@ -135,7 +132,6 @@ export async function POST(req) {
             const isStreetVendorOrder = billDetails.deliveryType === 'street-vendor-pre-order';
             
             const trackingToken = await generateSecureToken(firestore, customerDetails.phone || firestoreOrderId);
-            console.log(`[Webhook RZP] Generated tracking token: ${trackingToken}`);
 
             const batch = firestore.batch();
 
@@ -145,7 +141,6 @@ export async function POST(req) {
                 const isNewUser = existingUserQuery.empty;
 
                 if (isNewUser) {
-                    console.log(`[Webhook RZP] New user detected: ${customerDetails.phone}. Creating unclaimed profile.`);
                     const unclaimedUserRef = firestore.collection('unclaimed_profiles').doc(customerDetails.phone);
                     batch.set(unclaimedUserRef, {
                         name: customerDetails.name, 
@@ -182,7 +177,6 @@ export async function POST(req) {
             
             let finalDineInTabId = billDetails.dineInTabId;
             if (billDetails.deliveryType === 'dine-in' && billDetails.tableId && !finalDineInTabId) {
-                console.log(`[Webhook RZP] Pre-paid dine-in order for table ${billDetails.tableId}. Creating new tab.`);
                  const businessCollectionName = businessType === 'shop' ? 'shops' : 'restaurants';
                 const newTabRef = firestore.collection(businessCollectionName).doc(restaurantId).collection('dineInTabs').doc();
                 finalDineInTabId = newTabRef.id;
@@ -203,7 +197,6 @@ export async function POST(req) {
                 });
             }
 
-            console.log(`[Webhook RZP] Creating order document ${newOrderRef.id}`);
             batch.set(newOrderRef, {
                 customerName: customerDetails.name, customerId: userId, customerAddress: customerDetails.address.full, customerPhone: customerDetails.phone,
                 restaurantId: restaurantId,
@@ -234,7 +227,6 @@ export async function POST(req) {
             });
             
             await batch.commit();
-            console.log(`[Webhook RZP] Successfully created Firestore order ${newOrderRef.id} from Razorpay Order ${razorpayOrderId}.`);
 
             const collectionForBusinessLookup = businessType === 'street-vendor' ? 'street_vendors' : (businessType === 'shop' ? 'shops' : 'restaurants');
             const businessDoc = await firestore.collection(collectionForBusinessLookup).doc(restaurantId).get();

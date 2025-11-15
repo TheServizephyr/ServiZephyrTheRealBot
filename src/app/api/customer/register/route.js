@@ -21,7 +21,6 @@ const generateSecureToken = async (firestore, customerPhone) => {
 
 
 export async function POST(req) {
-    console.log("[DEBUG] /api/customer/register: Received new order request.");
     try {
         const firestore = await getFirestore();
         const { 
@@ -45,31 +44,25 @@ export async function POST(req) {
         } = await req.json();
 
         // --- VALIDATION ---
-        console.log("[DEBUG] /api/customer/register: Validating request data...");
         if (deliveryType !== 'dine-in' && !name) {
-             console.error(`[DEBUG] /api/customer/register: Validation failed: Name is required for non-dine-in orders.`);
             return NextResponse.json({ message: 'Name is required.' }, { status: 400 });
         }
         if (!restaurantId || !items || grandTotal === undefined || subtotal === undefined) {
              const missingFields = `Missing fields: restaurantId=${!!restaurantId}, items=${!!items}, grandTotal=${grandTotal !== undefined}, subtotal=${subtotal !== undefined}`;
-             console.error(`[DEBUG] /api/customer/register: Validation failed: Missing required fields for order creation. Details: ${missingFields}`);
              return NextResponse.json({ message: 'Missing required fields for order creation.' }, { status: 400 });
         }
         if (deliveryType === 'delivery' && (!address || !address.full)) {
-            console.error("[DEBUG] /api/customer/register: Validation failed: A full, structured address is required for delivery orders.");
             return NextResponse.json({ message: 'A full, structured address is required for delivery orders.' }, { status: 400 });
         }
         
         const normalizedPhone = phone ? (phone.length > 10 ? phone.slice(-10) : phone) : null;
         if (normalizedPhone && !/^\d{10}$/.test(normalizedPhone)) {
-            console.error("[DEBUG] /api/customer/register: Validation failed: Invalid phone number format.");
             return NextResponse.json({ message: 'Invalid phone number format. Must be 10 digits.' }, { status: 400 });
         }
         
         let businessRef;
         let collectionName;
         
-        // --- START FIX: Check multiple collections for the business ---
         const collectionsToTry = ['restaurants', 'shops', 'street_vendors'];
         for (const name of collectionsToTry) {
             const docRef = firestore.collection(name).doc(restaurantId);
@@ -80,23 +73,17 @@ export async function POST(req) {
                 break; 
             }
         }
-        // --- END FIX ---
         
         if (!businessRef) {
-            console.error(`[DEBUG] /api/customer/register: Business with ID ${restaurantId} not found in any collection.`);
             return NextResponse.json({ message: 'This business does not exist.' }, { status: 404 });
         }
         
-        console.log(`[DEBUG] /api/customer/register: Looking for business ${restaurantId} in collection '${collectionName}'.`);
         const businessDoc = await businessRef.get();
-        console.log("[DEBUG] /api/customer/register: Business found.");
         const businessData = businessDoc.data();
 
-        // --- START: MODIFIED WhatsApp Checkmate Dine-In Logic ---
+        // --- Post-paid Dine-In ---
         if (deliveryType === 'dine-in' && businessData.dineInModel === 'post-paid') {
-            console.log("[DEBUG] Post-paid dine-in flow initiated. Creating pending order.");
             const newOrderRef = firestore.collection('orders').doc();
-            
             const trackingToken = await generateSecureToken(firestore, `dine-in-${newOrderRef.id}`);
 
             await newOrderRef.set({
@@ -108,11 +95,9 @@ export async function POST(req) {
                 status: 'pending', 
                 dineInTabId: dineInTabId || null,
                 orderDate: FieldValue.serverTimestamp(),
-                trackingToken: trackingToken, // Save the token
+                trackingToken: trackingToken,
             });
             
-            console.log(`[DEBUG] Pending order created with ID: ${newOrderRef.id}`);
-
             return NextResponse.json({ 
                 message: "Order placed. Awaiting WhatsApp confirmation.",
                 order_id: newOrderRef.id,
@@ -121,9 +106,8 @@ export async function POST(req) {
             }, { status: 200 });
         }
         
-        // --- START: PRE-PAID DINE-IN ORDER PLACEMENT LOGIC ---
+        // --- Pre-paid Dine-In ---
         if (deliveryType === 'dine-in') {
-            console.log(`[DEBUG] Pre-paid Dine-in order for tab ${dineInTabId}.`);
             const firestoreOrderId = firestore.collection('orders').doc().id;
 
              const servizephyrOrderPayload = {
@@ -138,7 +122,6 @@ export async function POST(req) {
             };
 
             if (paymentMethod === 'razorpay') {
-                console.log("[DEBUG] Dine-in Razorpay flow...");
                 if (!process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID || !process.env.RAZORPAY_KEY_SECRET) {
                     return NextResponse.json({ message: 'Payment gateway is not configured.' }, { status: 500 });
                 }
@@ -157,10 +140,8 @@ export async function POST(req) {
                     dine_in_tab_id: dineInTabId
                 }, { status: 200 });
             } else { // Pay at Counter for dine-in
-                console.log("[DEBUG] Dine-in 'Pay at Counter' flow...");
                 const newOrderRef = firestore.collection('orders').doc(firestoreOrderId);
                 const trackingToken = await generateSecureToken(firestore, `dine-in-${firestoreOrderId}`);
-
                 const batch = firestore.batch();
                 
                 batch.set(newOrderRef, {
@@ -174,7 +155,6 @@ export async function POST(req) {
                 
                 await batch.commit();
 
-                 console.log(`[DEBUG] Dine-in order ${newOrderRef.id} created successfully for tab ${dineInTabId}.`);
                 return NextResponse.json({
                     message: 'Order added to tab successfully.',
                     firestore_order_id: newOrderRef.id,
@@ -185,13 +165,10 @@ export async function POST(req) {
         }
         
         // --- Regular Delivery/Pickup/StreetVendor Flow ---
-        let razorpayOrderId = null;
-        
         let userId = normalizedPhone || `anon_${nanoid(10)}`;
         let isNewUser = true;
 
         if (normalizedPhone) {
-            console.log("[DEBUG] /api/customer/register: Checking for existing user with phone:", normalizedPhone);
             const usersRef = firestore.collection('users');
             const existingUserQuery = await usersRef.where('phone', '==', normalizedPhone).limit(1).get();
             if (!existingUserQuery.empty) {
@@ -200,18 +177,12 @@ export async function POST(req) {
             }
         }
         
-        console.log(`[DEBUG] /api/customer/register: User status: ${isNewUser ? 'New/Unclaimed' : 'Existing'}. User ID: ${userId}`);
-
         const customerLocation = (deliveryType === 'delivery' && address && typeof address.latitude === 'number' && typeof address.longitude === 'number')
             ? new GeoPoint(address.latitude, address.longitude)
             : null;
-        console.log(`[DEBUG] /api/customer/register: Customer location extracted:`, customerLocation);
-
 
         if (paymentMethod === 'razorpay') {
-            console.log("[DEBUG] /api/customer/register: Payment method is Razorpay. Creating Razorpay order...");
             if (!process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID || !process.env.RAZORPAY_KEY_SECRET) {
-                console.error("[DEBUG] /api/customer/register: CRITICAL: Razorpay keys are not configured in environment variables.");
                 return NextResponse.json({ message: 'Payment gateway is not configured on the server.' }, { status: 500 });
             }
 
@@ -221,7 +192,6 @@ export async function POST(req) {
             });
             
             const firestoreOrderId = firestore.collection('orders').doc().id;
-            console.log(`[DEBUG] /api/customer/register: Generated Firestore Order ID: ${firestoreOrderId}`);
 
             const customerDetailsForPayload = {
                 name,
@@ -251,8 +221,6 @@ export async function POST(req) {
                 notes: notes || null
             };
 
-            console.log("[DEBUG] /api/customer/register: Full payload being sent to Razorpay notes:", JSON.stringify(servizephyrOrderPayload, null, 2));
-
             const razorpayOrderOptions = {
                 amount: Math.round(grandTotal * 100), 
                 currency: 'INR',
@@ -262,24 +230,19 @@ export async function POST(req) {
                 }
             };
             
-            console.log("[DEBUG] /api/customer/register: Creating Razorpay order with options:", razorpayOrderOptions);
             const razorpayOrder = await razorpay.orders.create(razorpayOrderOptions);
-            razorpayOrderId = razorpayOrder.id;
-            console.log(`[DEBUG] /api/customer/register: Razorpay Order ${razorpayOrderId} created for amount ${grandTotal}. Responding to client.`);
             
             return NextResponse.json({ 
                 message: 'Razorpay order created. Awaiting payment confirmation.',
-                razorpay_order_id: razorpayOrderId,
+                razorpay_order_id: razorpayOrder.id,
                 firestore_order_id: firestoreOrderId,
             }, { status: 200 });
         }
 
 
-        console.log(`[DEBUG] /api/customer/register: Payment method is ${paymentMethod}. Starting Firestore batch write.`);
         const batch = firestore.batch();
         
         if (isNewUser && normalizedPhone && businessType !== 'street-vendor') {
-            console.log(`[DEBUG] /api/customer/register: Creating unclaimed profile for new user ${normalizedPhone}.`);
             const unclaimedUserRef = firestore.collection('unclaimed_profiles').doc(normalizedPhone);
             const newOrderedFrom = { restaurantId, restaurantName: businessData.name, businessType };
             const addressesToSave = (deliveryType === 'delivery' && address) ? [{ ...address, full: address.full }] : []; 
@@ -298,7 +261,6 @@ export async function POST(req) {
         const pointsSpent = finalLoyaltyDiscount > 0 ? finalLoyaltyDiscount / 0.5 : 0;
         
         if (normalizedPhone && businessType !== 'street-vendor') {
-            console.log(`[DEBUG] /api/customer/register: Updating customer record for ${userId} in ${collectionName}/${restaurantId}/customers.`);
             const restaurantCustomerRef = businessRef.collection('customers').doc(userId);
             batch.set(restaurantCustomerRef, {
                 name: name, phone: normalizedPhone, status: isNewUser ? 'unclaimed' : 'verified',
@@ -309,7 +271,6 @@ export async function POST(req) {
             }, { merge: true });
         
             if (!isNewUser) {
-                console.log(`[DEBUG] /api/customer/register: Updating joined_restaurants for existing user ${userId}.`);
                  const usersRef = firestore.collection('users');
                 const userRestaurantLinkRef = usersRef.doc(userId).collection('joined_restaurants').doc(restaurantId);
                 
@@ -328,12 +289,10 @@ export async function POST(req) {
         }
         
         if (coupon && coupon.id) {
-            console.log(`[DEBUG] /api/customer/register: Incrementing usage count for coupon ${coupon.id}.`);
             const couponRef = businessRef.collection('coupons').doc(coupon.id);
             batch.update(couponRef, { timesUsed: FieldValue.increment(1) });
         }
         
-        console.log("[DEBUG] /api/customer/register: Creating main order document.");
         const newOrderRef = firestore.collection('orders').doc();
         const trackingToken = await generateSecureToken(firestore, normalizedPhone || newOrderRef.id);
         
@@ -341,7 +300,7 @@ export async function POST(req) {
             customerName: name, customerId: userId, customerAddress: address?.full || null, customerPhone: normalizedPhone,
             customerLocation: customerLocation,
             restaurantId: restaurantId, restaurantName: businessData.name,
-            businessType, deliveryType, pickupTime, tipAmount,
+            businessType, deliveryType, pickupTime: pickupTime || '', tipAmount: tipAmount || 0,
             items: items,
             subtotal: subtotal || 0,
             coupon: coupon || null,
@@ -358,23 +317,17 @@ export async function POST(req) {
             paymentDetails: { method: paymentMethod }
         };
         
-        console.log("[DEBUG] /api/customer/register: Final order object for Firestore:", finalOrderData);
         batch.set(newOrderRef, finalOrderData);
         
         await batch.commit();
-        console.log(`[DEBUG] /api/customer/register: Batch committed successfully. New order ID: ${newOrderRef.id}.`);
 
         if (businessData.ownerPhone && businessData.botPhoneNumberId) {
-            console.log(`[DEBUG] /api/customer/register: Sending new order notification to owner ${businessData.ownerPhone}.`);
             await sendNewOrderToOwner({
                 ownerPhone: businessData.ownerPhone, botPhoneNumberId: businessData.botPhoneNumberId,
                 customerName: name, totalAmount: grandTotal, orderId: newOrderRef.id, restaurantName: businessData.name
             });
-        } else {
-             console.warn(`[DEBUG] /api/customer/register: Cannot send notification. Owner phone or Bot ID is missing for business ${restaurantId}.`);
         }
         
-        console.log(`[DEBUG] /api/customer/register: Responding to client with token: ${trackingToken}`);
         return NextResponse.json({ 
             message: 'Order created successfully.',
             firestore_order_id: newOrderRef.id,
@@ -382,7 +335,6 @@ export async function POST(req) {
         }, { status: 200 });
 
     } catch (error) {
-        console.error('[DEBUG] /api/customer/register: CRITICAL ERROR:', error);
         if(error.error && error.error.code === 'BAD_REQUEST_ERROR') {
              return NextResponse.json({ message: `Payment Gateway Error: ${error.error.description}` }, { status: 400 });
         }

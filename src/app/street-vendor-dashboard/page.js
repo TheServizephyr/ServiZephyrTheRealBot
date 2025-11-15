@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button';
 import Link from 'next/link';
 import { useUser } from '@/firebase';
 import { db } from '@/lib/firebase';
-import { collection, query, where, onSnapshot, doc, getDoc, updateDoc } from 'firebase/firestore';
+import { collection, query, where, onSnapshot, doc, updateDoc, getDocs } from 'firebase/firestore';
 import { FirestorePermissionError } from '@/firebase/errors';
 import { errorEmitter } from '@/firebase/error-emitter';
 
@@ -61,7 +61,6 @@ export default function StreetVendorDashboard() {
 
         const fetchVendorData = async () => {
             try {
-                // Correctly reference the document by user's UID in the 'street_vendors' collection
                 const q = query(collection(db, 'street_vendors'), where('ownerId', '==', user.uid));
                 const querySnapshot = await getDocs(q);
 
@@ -69,7 +68,6 @@ export default function StreetVendorDashboard() {
                      const vendorDoc = querySnapshot.docs[0];
                     setVendorId(vendorDoc.id);
                 } else {
-                    console.log("No street vendor profile found for this user.");
                     setLoading(false);
                 }
             } catch (err) {
@@ -97,7 +95,7 @@ export default function StreetVendorDashboard() {
             querySnapshot.forEach((doc) => {
                 liveOrders.push({ id: doc.id, ...doc.data() });
             });
-            liveOrders.sort((a,b) => a.token - b.token);
+            liveOrders.sort((a,b) => (a.token || 0) - (b.token || 0));
             setOrders(liveOrders);
             setLoading(false);
         }, (err) => {
