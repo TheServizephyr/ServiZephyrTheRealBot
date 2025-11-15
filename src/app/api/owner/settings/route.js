@@ -34,14 +34,17 @@ async function verifyUserAndGetData(req) {
     let businessRef = null;
     let businessId = null;
 
-    if (userData.role === 'owner' || userData.role === 'restaurant-owner' || userData.role === 'shop-owner' || (adminUserDoc.exists && adminUserDoc.data().role === 'admin' && impersonatedOwnerId)) {
-        const collectionName = userData.businessType === 'shop' ? 'shops' : 'restaurants';
-        const businessesQuery = await firestore.collection(collectionName).where('ownerId', '==', finalUserId).limit(1).get();
-        if (!businessesQuery.empty) {
-            const businessDoc = businessesQuery.docs[0];
-            businessRef = businessDoc.ref;
-            businessData = businessDoc.data();
-            businessId = businessDoc.id;
+    if (userData.role === 'owner' || userData.role === 'restaurant-owner' || userData.role === 'shop-owner' || userData.role === 'street-vendor' || (adminUserDoc.exists && adminUserDoc.data().role === 'admin' && impersonatedOwnerId)) {
+        const collectionsToTry = ['restaurants', 'shops', 'street_vendors'];
+        for (const collectionName of collectionsToTry) {
+            const businessesQuery = await firestore.collection(collectionName).where('ownerId', '==', finalUserId).limit(1).get();
+            if (!businessesQuery.empty) {
+                const businessDoc = businessesQuery.docs[0];
+                businessRef = businessDoc.ref;
+                businessData = businessDoc.data();
+                businessId = businessDoc.id;
+                break; // Found the business, stop searching
+            }
         }
     }
     
@@ -56,11 +59,15 @@ export async function GET(req) {
         // This block is for public-facing queries that only need payment settings.
         if (businessIdFromQuery) {
             const firestore = await getFirestore();
-            let businessDoc = await firestore.collection('restaurants').doc(businessIdFromQuery).get();
-            if (!businessDoc.exists) {
-                businessDoc = await firestore.collection('shops').doc(businessIdFromQuery).get();
+            let businessDoc;
+            const collectionsToTry = ['restaurants', 'shops', 'street_vendors'];
+            for (const collectionName of collectionsToTry) {
+                const docRef = firestore.collection(collectionName).doc(businessIdFromQuery);
+                businessDoc = await docRef.get();
+                if (businessDoc.exists) break;
             }
-            if (!businessDoc.exists) {
+
+            if (!businessDoc || !businessDoc.exists) {
                 return NextResponse.json({ message: "Business not found." }, { status: 404 });
             }
             const businessData = businessDoc.data();
