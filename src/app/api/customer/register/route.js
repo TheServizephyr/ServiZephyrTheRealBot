@@ -46,7 +46,7 @@ export async function POST(req) {
 
         // --- VALIDATION ---
         console.log("[DEBUG] /api/customer/register: Validating request data...");
-        if (!name && deliveryType !== 'dine-in') {
+        if (deliveryType !== 'dine-in' && !name) {
              console.error(`[DEBUG] /api/customer/register: Validation failed: Name is required for non-dine-in orders.`);
             return NextResponse.json({ message: 'Name is required.' }, { status: 400 });
         }
@@ -367,5 +367,7 @@ export async function POST(req) {
         return NextResponse.json({ message: `Backend Error: ${error.message}` }, { status: 500 });
     }
 }
+
+    
 
     

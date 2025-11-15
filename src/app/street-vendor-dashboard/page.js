@@ -87,7 +87,7 @@ export default function StreetVendorDashboard() {
         const q = query(
             collection(db, "orders"), 
             where("restaurantId", "==", vendorId),
-            where("status", "in", ["Preparing", "Ready"])
+            where("status", "in", ["pending", "Preparing", "Ready"])
         );
         
         const unsubscribe = onSnapshot(q, (querySnapshot) => {
@@ -162,3 +162,5 @@ export default function StreetVendorDashboard() {
         </div>
     );
 }
+
+    
