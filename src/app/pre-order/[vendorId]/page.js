@@ -1,4 +1,3 @@
-
 'use client';
 
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
@@ -164,24 +163,23 @@ const CartSheet = ({ cart, updateQuantity, onCheckout, grandTotal, onClose }) =>
     </motion.div>
 );
 
-const CheckoutModal = ({ isOpen, onClose, cart, vendorId, onSuccessfulOrder }) => {
+const CheckoutModal = ({ isOpen, onClose, cart, vendorId, onSuccessfulOrder, router }) => {
     const [name, setName] = useState('');
     const [phone, setPhone] = useState('');
     const [isProcessing, setIsProcessing] = useState(false);
     const [paymentStep, setPaymentStep] = useState('initial');
     const [splitCount, setSplitCount] = useState(2);
-    const router = useRouter();
 
     const subtotal = useMemo(() => {
         return cart.reduce((sum, item) => sum + (item.portion.price * item.quantity), 0);
     }, [cart]);
 
-    const grandTotal = subtotal; // For pre-orders, we assume no extra charges like tax for simplicity.
+    const grandTotal = subtotal;
 
     useEffect(() => {
         if (!isOpen) {
             setPaymentStep('initial');
-            setIsProcessing(false); // Reset processing state when modal closes
+            setIsProcessing(false);
         }
     }, [isOpen]);
 
@@ -229,7 +227,7 @@ const CheckoutModal = ({ isOpen, onClose, cart, vendorId, onSuccessfulOrder }) =
         try {
             const orderPayload = {
                 restaurantId: vendorId,
-                items: cart.map(item => ({ ...item, cartItemId: undefined })), // Clean up internal cart-specific fields
+                items: cart.map(item => ({ ...item, cartItemId: undefined })),
                 subtotal,
                 grandTotal,
                 name,
@@ -280,7 +278,7 @@ const CheckoutModal = ({ isOpen, onClose, cart, vendorId, onSuccessfulOrder }) =
                     <Button variant="ghost" onClick={() => setPaymentStep('initial')} className="mb-4"><ArrowLeft className="mr-2"/>Back</Button>
                     <div className="space-y-4">
                         <Button onClick={() => handlePayment('razorpay')} className="w-full h-16 text-lg" disabled={isProcessing}>
-                            {isProcessing ? <Loader2 className="animate-spin" /> : `Pay Full Bill (${formatCurrency(grandTotal)})`}
+                            {isProcessing ? <Loader2 className="animate-spin" /> : `Pay Full Bill (₹${grandTotal})`}
                         </Button>
                         <Button onClick={() => setPaymentStep('split')} variant="secondary" className="w-full h-16 text-lg" disabled={isProcessing}>
                             <Split className="mr-2"/> Split The Bill
@@ -323,7 +321,7 @@ const CheckoutModal = ({ isOpen, onClose, cart, vendorId, onSuccessfulOrder }) =
                     </div>
                     <div className="flex justify-between items-center text-xl pt-4 border-t border-border">
                         <span className="font-semibold">Total:</span>
-                        <span className="font-bold text-primary">{formatCurrency(grandTotal)}</span>
+                        <span className="font-bold text-primary">₹{grandTotal}</span>
                     </div>
                 </div>
                 <DialogFooter className="grid grid-cols-2 gap-4">
@@ -346,6 +344,7 @@ const CheckoutModal = ({ isOpen, onClose, cart, vendorId, onSuccessfulOrder }) =
 
 export default function PreOrderPage({ params }) {
     const { vendorId } = params;
+    const router = useRouter();
     const [vendor, setVendor] = useState(null);
     const [menu, setMenu] = useState([]);
     const [cart, setCart] = useState([]);
@@ -355,9 +354,7 @@ export default function PreOrderPage({ params }) {
     const [isCheckoutModalOpen, setCheckoutModalOpen] = useState(false);
     const [customizationItem, setCustomizationItem] = useState(null);
     const [cartQuantities, setCartQuantities] = useState({});
-    const router = useRouter();
-
-
+    
     useEffect(() => {
         const fetchVendorAndMenu = async () => {
             if (!vendorId) {
@@ -520,6 +517,7 @@ export default function PreOrderPage({ params }) {
                 cart={cart}
                 vendorId={vendorId}
                 onSuccessfulOrder={handleSuccessfulOrder}
+                router={router}
             />
 
             <CustomizationDrawer 
@@ -554,4 +552,3 @@ export default function PreOrderPage({ params }) {
         </div>
     );
 }
-
