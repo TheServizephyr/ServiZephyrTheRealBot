@@ -55,6 +55,11 @@
           "order": "ASCENDING"
         }
       ]
+    },
+    {
+      "collectionGroup": "split_payments",
+      "queryScope": "COLLECTION",
+      "fields": []
     }
   ],
   "fieldOverrides": []
