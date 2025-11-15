@@ -220,7 +220,7 @@ export async function POST(req) {
             const customerDetailsForPayload = {
                 name,
                 address: address || { full: "Street Vendor Pre-Order" }, // Default for street vendors
-                phone: normalizedPhone
+                phone: normalizedPhone || ''
             };
 
             const servizephyrOrderPayload = {
@@ -259,7 +259,6 @@ export async function POST(req) {
              console.log("[DEBUG] /api/customer/register: Creating Razorpay order with options:", razorpayOrderOptions);
             const razorpayOrder = await razorpay.orders.create(razorpayOrderOptions);
             
-            // --- START FIX: Return token for online payments too ---
             const trackingToken = await generateSecureToken(firestore, normalizedPhone || firestoreOrderId);
             return NextResponse.json({ 
                 message: 'Razorpay order created. Awaiting payment confirmation.',
@@ -267,7 +266,6 @@ export async function POST(req) {
                 firestore_order_id: firestoreOrderId,
                 token: trackingToken,
             }, { status: 200 });
-            // --- END FIX ---
         }
 
 

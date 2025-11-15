@@ -82,13 +82,9 @@ const OrderPlacedContent = () => {
 
 
     const handleBackToMenu = () => {
-        if (restaurantId) {
-            const params = new URLSearchParams();
-            if (phone) params.set('phone', phone);
-            const sessionToken = searchParams.get('token') || trackingToken;
-            if (sessionToken) params.set('token', sessionToken);
-            
-            const backUrl = `/order/${restaurantId}?${params.toString()}`;
+        const vendorId = searchParams.get('restaurantId') || localStorage.getItem('lastOrderedFrom');
+        if (vendorId) {
+            const backUrl = `/pre-order/${vendorId}`;
             router.push(backUrl);
         } else {
             router.push('/'); 

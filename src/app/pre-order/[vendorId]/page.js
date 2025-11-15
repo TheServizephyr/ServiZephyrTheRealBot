@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useState, useEffect, useMemo } from 'react';
@@ -235,7 +236,6 @@ const CheckoutModal = ({ isOpen, onClose, onConfirm, total, vendorName, cart, ve
                     order_id: data.razorpay_order_id,
                     handler: function (response){
                         console.log("[DEBUG] Razorpay success response:", response);
-                        // --- START FIX: Pass both firestore_order_id and token ---
                         onConfirm({ 
                             name, phone, 
                             paymentDetails: response, 
@@ -243,7 +243,6 @@ const CheckoutModal = ({ isOpen, onClose, onConfirm, total, vendorName, cart, ve
                             firestore_order_id: data.firestore_order_id, 
                             token: data.token 
                         });
-                        // --- END FIX ---
                     },
                     prefill: { name: name, contact: phone },
                     theme: { color: "#FBBF24" }
@@ -417,7 +416,6 @@ export default function PreOrderPage({ params }) {
         setCheckoutOpen(false);
         setCartOpen(false);
         
-        // --- START FIX: Use firestore_order_id, not razorpay_order_id for internal tracking ---
         const orderId = details.firestore_order_id;
         
         sessionStorage.setItem(orderId, JSON.stringify({

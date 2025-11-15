@@ -42,12 +42,19 @@ export async function GET(request, { params }) {
         }
         
         const businessType = orderData.businessType || 'restaurant';
-        const collectionName = businessType === 'shop' ? 'shops' : 'restaurants';
+        const collectionsToTry = ['restaurants', 'shops', 'street_vendors'];
+        let businessDoc;
 
-        console.log(`[API][Order Status] Fetching business: ${orderData.restaurantId} from collection: ${collectionName}`);
-        const businessDoc = await firestore.collection(collectionName).doc(orderData.restaurantId).get();
+        for (const collectionName of collectionsToTry) {
+            const docRef = firestore.collection(collectionName).doc(orderData.restaurantId);
+            const docSnap = await docRef.get();
+            if (docSnap.exists) {
+                businessDoc = docSnap;
+                break;
+            }
+        }
         
-        if(!businessDoc.exists){
+        if(!businessDoc || !businessDoc.exists){
              console.log(`[API][Order Status] Error: Business ${orderData.restaurantId} not found.`);
              return NextResponse.json({ message: 'Business associated with order not found.' }, { status: 404 });
         }
