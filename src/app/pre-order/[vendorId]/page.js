@@ -1,9 +1,9 @@
 
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ShoppingCart, Plus, Minus, X, IndianRupee, Loader2, Utensils, Wallet, User, Phone } from 'lucide-react';
+import { ShoppingCart, Plus, Minus, X, IndianRupee, Loader2, Utensils, Wallet, User, Phone, Split } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import Image from 'next/image';
@@ -165,7 +165,7 @@ const CartSheet = ({ cart, updateQuantity, onCheckout, grandTotal, onClose }) =>
 );
 
 const CheckoutModal = ({ isOpen, onClose, cart, vendorId, onSuccessfulOrder }) => {
-    const [step, setStep] = useState(1); // 1: Details, 2: Payment options, 3: Split bill
+    const [step, setStep] = useState(1);
     const [name, setName] = useState('');
     const [phone, setPhone] = useState('');
     const [isProcessing, setIsProcessing] = useState(false);
@@ -183,17 +183,17 @@ const CheckoutModal = ({ isOpen, onClose, cart, vendorId, onSuccessfulOrder }) =
         }
         setStep(2);
     };
-    
-    const handlePayOnline = async () => {
+
+    const handlePayment = async (paymentMethod) => {
         setIsProcessing(true);
         try {
             const orderPayload = {
                 restaurantId: vendorId,
                 items: cart,
-                grandTotal: grandTotal,
+                grandTotal,
                 customerName: name,
                 customerPhone: phone,
-                paymentMethod: 'razorpay',
+                paymentMethod,
                 deliveryType: 'street-vendor-pre-order',
                 businessType: 'street-vendor',
             };
@@ -207,58 +207,30 @@ const CheckoutModal = ({ isOpen, onClose, cart, vendorId, onSuccessfulOrder }) =
             const data = await response.json();
             if (!response.ok) throw new Error(data.message);
 
-            const options = {
-                key: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID,
-                amount: grandTotal * 100,
-                currency: "INR",
-                name: "ServiZephyr Pre-Order",
-                order_id: data.razorpay_order_id,
-                handler: function(response) {
-                    onSuccessfulOrder(data.firestore_order_id, data.token);
-                },
-                prefill: { name, contact: phone },
-                modal: { ondismiss: () => setIsProcessing(false) }
-            };
-            const rzp = new window.Razorpay(options);
-            rzp.on('payment.failed', () => setIsProcessing(false));
-            rzp.open();
+            if (paymentMethod === 'razorpay') {
+                const options = {
+                    key: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID,
+                    amount: grandTotal * 100,
+                    currency: "INR",
+                    name: "ServiZephyr Pre-Order",
+                    order_id: data.razorpay_order_id,
+                    handler: (response) => {
+                        onSuccessfulOrder(data.firestore_order_id, data.token);
+                    },
+                    prefill: { name, contact: phone },
+                    modal: { ondismiss: () => setIsProcessing(false) }
+                };
+                const rzp = new window.Razorpay(options);
+                rzp.on('payment.failed', () => setIsProcessing(false));
+                rzp.open();
+            } else {
+                onSuccessfulOrder(data.firestore_order_id, data.token);
+            }
         } catch (error) {
-            alert('Payment Error: ' + error.message);
+            alert('Error: ' + error.message);
             setIsProcessing(false);
         }
     };
-    
-    const handlePayAtCounter = async () => {
-        setIsProcessing(true);
-        try {
-            const orderPayload = {
-                restaurantId: vendorId,
-                items: cart,
-                grandTotal: grandTotal,
-                customerName: name,
-                customerPhone: phone,
-                paymentMethod: 'cod', // Cash on delivery
-                deliveryType: 'street-vendor-pre-order',
-                businessType: 'street-vendor',
-            };
-
-            const response = await fetch('/api/customer/register', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(orderPayload)
-            });
-
-            const data = await response.json();
-            if (!response.ok) throw new Error(data.message);
-            
-            onSuccessfulOrder(data.firestore_order_id, data.token);
-            
-        } catch (error) {
-             alert('Error: ' + error.message);
-        } finally {
-            setIsProcessing(false);
-        }
-    }
 
 
     const renderStep = () => {
@@ -290,12 +262,16 @@ const CheckoutModal = ({ isOpen, onClose, cart, vendorId, onSuccessfulOrder }) =
                      <div>
                         <DialogHeader>
                             <DialogTitle>Choose Payment</DialogTitle>
+                             <div className="flex justify-between items-center text-lg pt-4 border-t border-border">
+                                <span>Total:</span>
+                                <span className="font-bold">₹{grandTotal}</span>
+                            </div>
                         </DialogHeader>
                         <div className="py-4 grid grid-cols-1 gap-4">
-                           <Button onClick={handlePayOnline} className="h-16 text-lg" disabled={isProcessing}>
+                           <Button onClick={() => handlePayment('razorpay')} className="h-16 text-lg" disabled={isProcessing}>
                                 {isProcessing ? <Loader2 className="animate-spin" /> : 'Pay Online Now'}
                            </Button>
-                           <Button onClick={handlePayAtCounter} variant="secondary" className="h-16 text-lg" disabled={isProcessing}>
+                           <Button onClick={() => handlePayment('cod')} variant="secondary" className="h-16 text-lg" disabled={isProcessing}>
                                 {isProcessing ? <Loader2 className="animate-spin" /> : 'Pay at Counter'}
                            </Button>
                         </div>
@@ -443,7 +419,7 @@ export default function PreOrderPage({ params }) {
     };
 
     const handleSuccessfulOrder = (orderId, token) => {
-        setCart([]); // Clear the cart
+        setCart([]);
         localStorage.removeItem(`cart_${vendorId}`);
         router.push(`/order/placed?orderId=${orderId}&token=${token}&restaurantId=${vendorId}`);
     };
