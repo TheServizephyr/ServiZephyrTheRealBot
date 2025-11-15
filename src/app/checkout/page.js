@@ -1,4 +1,3 @@
-
 'use client';
 
 import React, { useState, useEffect, useMemo, Suspense } from 'react';
@@ -102,13 +101,12 @@ const CheckoutPageInternal = () => {
     const [userAddresses, setUserAddresses] = useState([]);
     const [codEnabled, setCodEnabled] = useState(false);
     
-    // --- START FIX: State Management for Payment Flow ---
-    const [selectedPaymentMethod, setSelectedPaymentMethod] = useState(null); // 'razorpay' or 'cod'
-    const [isOnlinePaymentFlow, setIsOnlinePaymentFlow] = useState(false); // New state to show online options
+    const [selectedPaymentMethod, setSelectedPaymentMethod] = useState(null); 
+    const [isOnlinePaymentFlow, setIsOnlinePaymentFlow] = useState(false); 
     const [isSplitBillActive, setIsSplitBillActive] = useState(false);
-    // --- END FIX ---
     
     const [loading, setLoading] = useState(true);
+    const [isProcessingPayment, setIsProcessingPayment] = useState(false); // New state for payment processing
     const [error, setError] = useState('');
     const [isDineInModalOpen, setDineInModalOpen] = useState(false);
     
@@ -124,32 +122,24 @@ const CheckoutPageInternal = () => {
     
 
     useEffect(() => {
-        console.log("[Checkout Page] Component mounting. User loading:", isUserLoading);
         const verifyAndFetch = async () => {
             setLoading(true);
-            console.log("[Checkout Page] verifyAndFetch started.");
             
             const phoneToLookup = phoneFromUrl || user?.phoneNumber || '';
             
             if (tableId) {
-                console.log("[Checkout Page] Dine-in session valid.");
                 setIsTokenValid(true);
             } else if (!user && phoneFromUrl && token) {
                 try {
-                    console.log("[Checkout Page] Verifying token via API for phone:", phoneToLookup);
                     const res = await fetch('/api/auth/verify-token', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ phone: phoneToLookup, token }) });
                     if (!res.ok) throw new Error((await res.json()).message || "Session validation failed.");
-                    console.log("[Checkout Page] Token valid.");
                     setIsTokenValid(true);
                 } catch (err) {
-                    console.error("[Checkout Page] Token verification failed:", err.message);
                     setTokenError(err.message); setLoading(false); return;
                 }
             } else if (user) {
-                console.log("[Checkout Page] User is logged in. Session valid.");
                 setIsTokenValid(true);
             } else {
-                console.log("[Checkout Page] No session info found.");
                 setTokenError("No session information found."); setLoading(false); return;
             }
 
@@ -159,13 +149,11 @@ const CheckoutPageInternal = () => {
             setError('');
 
             const savedCartData = localStorage.getItem(`cart_${restaurantId}`);
-            console.log("[Checkout Page] Fetched cart data from localStorage:", savedCartData ? 'Found' : 'Not Found');
             const parsedData = savedCartData ? JSON.parse(savedCartData) : {};
             
             const deliveryType = tableId ? 'dine-in' : (parsedData.deliveryType || 'delivery');
             const updatedData = { ...parsedData, phone: phoneToLookup, token, tableId, dineInTabId: tabId, deliveryType };
             
-            console.log("[Checkout Page] Parsed and updated cart data:", updatedData);
             setCart(updatedData.cart || []);
             setAppliedCoupons(updatedData.appliedCoupons || []);
             setCartData(updatedData);
@@ -173,34 +161,25 @@ const CheckoutPageInternal = () => {
             try {
                 setOrderName(user?.displayName || '');
                 if (phoneToLookup) {
-                    console.log("[Checkout Page] Looking up customer details for phone:", phoneToLookup);
                     const lookupRes = await fetch('/api/customer/lookup', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ phone: phoneToLookup }) });
                     if (lookupRes.ok) {
                         const data = await lookupRes.json();
-                        console.log("[Checkout Page] Customer lookup successful:", data);
                         setOrderName(prev => prev || data.name || '');
                         if (deliveryType === 'delivery') {
                             setUserAddresses(data.addresses || []);
                             setSelectedAddress(prev => prev || data.addresses?.[0] || null);
                         }
-                    } else {
-                         console.warn("[Checkout Page] Customer lookup failed with status:", lookupRes.status);
                     }
                 }
 
-                console.log("[Checkout Page] Fetching payment settings for restaurant:", restaurantId);
                 const paymentSettingsRes = await fetch(`/api/owner/settings?restaurantId=${restaurantId}`);
                 if (paymentSettingsRes.ok) {
                     const paymentData = await paymentSettingsRes.json();
-                    console.log("[Checkout Page] Payment settings fetched:", paymentData);
                     if (deliveryType === 'delivery') setCodEnabled(paymentData.deliveryCodEnabled);
                     else if (deliveryType === 'pickup') setCodEnabled(paymentData.pickupPodEnabled);
                     else if (deliveryType === 'dine-in') setCodEnabled(paymentData.dineInPayAtCounterEnabled);
-                } else {
-                     console.warn("[Checkout Page] Failed to fetch payment settings.");
                 }
             } catch (err) {
-                console.error("[Checkout Page] Error in data fetching block:", err.message);
                 setError('Failed to load checkout details. Please try again.');
             } finally {
                 setLoading(false);
@@ -214,7 +193,6 @@ const CheckoutPageInternal = () => {
         }
     }, [restaurantId, phoneFromUrl, token, tableId, tabId, user, isUserLoading, router, isPaymentConfirmed]);
     
-
 
     const handleAddNewAddress = () => {
         const params = new URLSearchParams({
@@ -247,21 +225,6 @@ const CheckoutPageInternal = () => {
         return { totalDiscount: couponDiscountValue, finalDeliveryCharge: deliveryCharge, cgst: tax, sgst: tax, grandTotal: finalGrandTotal };
     }, [cartData, cart, appliedCoupons, subtotal]);
 
-    const handlePaymentMethodSelect = (method) => {
-        console.log(`[Checkout Page] Payment method selected: ${method}`);
-        setError('');
-        const deliveryType = cartData.tableId ? 'dine-in' : (cartData.deliveryType || 'delivery');
-        if (deliveryType === 'delivery' && !selectedAddress) {
-            setError("Please select or add a delivery address.");
-            return;
-        }
-        if (!orderName || orderName.trim().length === 0) {
-             setError("Please provide a name for the order.");
-             return;
-        }
-        setSelectedPaymentMethod(method);
-    };
-    
     const handleAddMoreToTab = () => {
         const params = new URLSearchParams({
             restaurantId, phone: phoneFromUrl || '', token: token || '',
@@ -274,16 +237,23 @@ const CheckoutPageInternal = () => {
         setDineInModalOpen(false);
         setIsOnlinePaymentFlow(true);
     };
-
+    
     const handleConfirmOrder = async (paymentMethod) => {
         const finalPaymentMethod = paymentMethod || selectedPaymentMethod;
         const deliveryType = cartData.tableId ? 'dine-in' : (cartData.deliveryType || 'delivery');
-        console.log(`[Checkout Page] handleConfirmOrder called. Method: ${finalPaymentMethod}`);
 
-        if (!orderName || orderName.trim().length === 0) { setError("Please provide a name for the order."); return; }
-        if (!orderPhone || orderPhone.trim().length === 0) { setError("A valid phone number is required to place an order."); return; }
-        
-        if (deliveryType === 'delivery' && !selectedAddress) { setError("Please select or add a delivery address."); return; }
+        if (!orderName || orderName.trim().length === 0) {
+            setInfoDialog({isOpen: true, title: "Error", message: "Please provide a name for the order."});
+            return;
+        }
+        if (!orderPhone || orderPhone.trim().length === 0) {
+            setInfoDialog({isOpen: true, title: "Error", message: "A valid phone number is required to place an order."});
+            return;
+        }
+        if (deliveryType === 'delivery' && !selectedAddress) {
+            setInfoDialog({isOpen: true, title: "Error", message: "Please select or add a delivery address."});
+            return;
+        }
 
         const orderData = {
             name: orderName, phone: orderPhone, restaurantId, items: cart, notes: cartData.notes, coupon: appliedCoupons.find(c => !c.customerId) || null,
@@ -292,42 +262,41 @@ const CheckoutPageInternal = () => {
             businessType: cartData.businessType || 'restaurant', tableId: cartData.tableId || null, dineInTabId: cartData.dineInTabId || null,
             pax_count: cartData.pax_count || null, tab_name: cartData.tab_name || null, address: selectedAddress 
         };
-        console.log("[Checkout Page] Final order payload:", orderData);
 
-        setLoading(true); setError('');
+        setIsProcessingPayment(true); 
+        setError('');
 
         try {
             const res = await fetch('/api/customer/register', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(orderData) });
             const data = await res.json();
             if (!res.ok) throw new Error(data.message || "Failed to place order.");
 
-            console.log("[Checkout Page] Order registration response:", data);
-
             if (data.razorpay_order_id) {
-                 const redirectUrl = `${window.location.origin}/checkout?restaurantId=${restaurantId}&table=${tableId}&tabId=${data.dine_in_tab_id || tabId}&payment_confirmed=true`;
+                const redirectUrl = `${window.location.origin}/checkout?restaurantId=${restaurantId}&table=${tableId}&tabId=${data.dine_in_tab_id || tabId}&payment_confirmed=true`;
                 const options = {
                     key: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID, amount: grandTotal * 100, currency: "INR", name: cartData.restaurantName,
                     description: `Order from ${cartData.restaurantName}`, order_id: data.razorpay_order_id,
                     handler: function (response) {
-                        console.log("[Checkout Page] Razorpay success response:", response);
                         localStorage.removeItem(`cart_${restaurantId}`);
                         if (orderData.deliveryType === 'dine-in') router.push(redirectUrl);
                         else router.push(`/order/placed?orderId=${data.firestore_order_id}`);
                     },
                     prefill: { name: orderName, email: user?.email || "customer@servizephyr.com", contact: orderPhone },
                     redirect: orderData.deliveryType === 'dine-in' ? true : false,
+                    modal: {
+                        ondismiss: function() {
+                            setInfoDialog({ isOpen: true, title: 'Payment Cancelled', message: 'You can try paying again.' });
+                            setIsProcessingPayment(false); 
+                        }
+                    }
                 };
-                console.log("[Checkout Page] Opening Razorpay checkout with options:", options);
                 const rzp = new window.Razorpay(options);
-                 rzp.on('payment.failed', function (response){
-                    console.error("[Checkout Page] Razorpay payment failed:", response.error);
+                rzp.on('payment.failed', function (response){
                     setInfoDialog({ isOpen: true, title: 'Payment Failed', message: response.error.description });
-                    setLoading(false);
-                    setSelectedPaymentMethod(null);
-                 });
+                    setIsProcessingPayment(false);
+                });
                 rzp.open();
             } else {
-                console.log("[Checkout Page] COD/Pay at Counter order placed successfully.");
                 localStorage.removeItem(`cart_${restaurantId}`);
                 if (orderData.deliveryType === 'dine-in') {
                     setInfoDialog({ isOpen: true, title: 'Success', message: 'Tab settled at counter. Thank you!' });
@@ -340,11 +309,11 @@ const CheckoutPageInternal = () => {
                 }
             }
         } catch (err) {
-            console.error("[Checkout Page] Error confirming order:", err.message);
             setError(err.message);
-            setLoading(false); // Reset loading on error
+            setIsProcessingPayment(false);
         }
     };
+    
     
     if (loading && !cartData) {
         return <div className="min-h-screen bg-background flex items-center justify-center"><div className="animate-spin rounded-full h-16 w-16 border-b-2 border-primary"></div></div>;
@@ -393,7 +362,20 @@ const CheckoutPageInternal = () => {
         restaurantId
     };
     
-    // --- START FIX: Conditional Rendering Logic for Payment Flow ---
+    const handleOnlinePayClick = () => {
+        const deliveryType = cartData.tableId ? 'dine-in' : (cartData.deliveryType || 'delivery');
+        if (deliveryType === 'delivery' && !selectedAddress) {
+            setError("Please select or add a delivery address.");
+            return;
+        }
+        if (!orderName || orderName.trim().length === 0) {
+             setError("Please provide a name for the order.");
+             return;
+        }
+        setError('');
+        setIsOnlinePaymentFlow(true);
+    }
+    
     const renderPaymentOptions = () => {
         if (isSplitBillActive) {
             return <SplitBillInterface totalAmount={grandTotal} onBack={() => setIsSplitBillActive(false)} orderDetails={fullOrderDetailsForSplit}/>
@@ -403,8 +385,9 @@ const CheckoutPageInternal = () => {
             return (
                 <div className="space-y-4">
                     <Button onClick={() => setIsOnlinePaymentFlow(false)} variant="ghost" size="sm" className="mb-4"><ArrowLeft className="mr-2 h-4 w-4"/> Back</Button>
-                    <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} onClick={() => handlePaymentMethodSelect('razorpay')} className="w-full text-left p-6 bg-card border-2 border-border rounded-lg flex items-center gap-6 hover:border-primary transition-all">
-                        <CreditCard size={40} className="text-primary flex-shrink-0"/>
+                    <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} onClick={() => handleConfirmOrder('razorpay')} disabled={isProcessingPayment} className="w-full text-left p-6 bg-card border-2 border-border rounded-lg flex items-center gap-6 hover:border-primary transition-all disabled:opacity-50">
+                        {isProcessingPayment && <Loader2 className="animate-spin h-5 w-5"/>}
+                        {!isProcessingPayment && <CreditCard size={40} className="text-primary flex-shrink-0"/>}
                         <div>
                             <h3 className="text-xl font-bold">Pay Full Bill</h3>
                             <p className="text-muted-foreground">Use UPI, Card, or Netbanking</p>
@@ -423,11 +406,10 @@ const CheckoutPageInternal = () => {
             );
         }
 
-        // Default view: Show "Pay Online" and "Pay at Counter"
         return (
              <div className="space-y-4">
-                <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} onClick={() => setIsOnlinePaymentFlow(true)} className="w-full text-left p-6 bg-card border-2 border-border rounded-lg flex items-center gap-6 hover:border-primary transition-all">
-                    <Landmark size={40} className="text-primary flex-shrink-0"/>
+                <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} onClick={handleOnlinePayClick} disabled={isProcessingPayment} className="w-full text-left p-6 bg-card border-2 border-border rounded-lg flex items-center gap-6 hover:border-primary transition-all disabled:opacity-50">
+                     {isProcessingPayment ? <Loader2 className="animate-spin h-10 w-10 text-primary flex-shrink-0"/> : <Landmark size={40} className="text-primary flex-shrink-0"/>}
                     <div>
                         <h3 className="text-xl font-bold">Pay Online</h3>
                         <p className="text-muted-foreground">UPI, Credit/Debit Card, Netbanking</p>
@@ -436,8 +418,8 @@ const CheckoutPageInternal = () => {
                 {loading ? (
                     <div className="w-full p-6 bg-card border-2 border-border rounded-lg animate-pulse h-[116px]"><div className="h-6 bg-muted rounded w-3/4"></div></div>
                 ) : codEnabled ? (
-                    <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} onClick={() => handleConfirmOrder('cod')} className="w-full text-left p-6 bg-card border-2 border-border rounded-lg flex items-center gap-6 hover:border-primary transition-all">
-                        <IndianRupee size={40} className="text-primary flex-shrink-0"/>
+                    <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} onClick={() => handleConfirmOrder('cod')} disabled={isProcessingPayment} className="w-full text-left p-6 bg-card border-2 border-border rounded-lg flex items-center gap-6 hover:border-primary transition-all disabled:opacity-50">
+                        {isProcessingPayment ? <Loader2 className="animate-spin h-10 w-10 text-primary flex-shrink-0"/> : <IndianRupee size={40} className="text-primary flex-shrink-0"/>}
                         <div>
                             <h3 className="text-xl font-bold">{deliveryType === 'pickup' ? 'Pay at Store' : (deliveryType === 'dine-in' ? 'Pay at Counter' : 'Pay on Delivery')}</h3>
                             <p className="text-muted-foreground">Pay with cash or UPI when you receive your order</p>
@@ -455,8 +437,6 @@ const CheckoutPageInternal = () => {
             </div>
         );
     }
-    // --- END FIX ---
-
 
     return (
         <>
@@ -467,52 +447,6 @@ const CheckoutPageInternal = () => {
                 message={infoDialog.message}
             />
             <Script src="https://checkout.razorpay.com/v1/checkout.js" />
-            <Dialog open={!!selectedPaymentMethod} onOpenChange={(isOpen) => {
-                if (!isOpen) {
-                    setSelectedPaymentMethod(null);
-                    setLoading(false);
-                }
-            }}>
-                 <DialogContent className="bg-background border-border text-foreground">
-                    <DialogHeader>
-                        <DialogTitle>Confirm Your Details</DialogTitle>
-                        {error && <p className="text-destructive text-sm bg-destructive/10 p-2 rounded-md mt-2">{error}</p>}
-                    </DialogHeader>
-                    <div className="py-4 space-y-4 max-h-[70vh] overflow-y-auto">
-                        {deliveryType === 'delivery' ? (
-                             <div>
-                                <Label htmlFor="address">Select an address</Label>
-                                <div className="space-y-2 mt-2">
-                                    {userAddresses.map(addr => (
-                                        <div key={addr.id} className="flex items-start gap-2 p-3 rounded-md bg-muted has-[:checked]:bg-primary/10 has-[:checked]:border-primary border border-transparent">
-                                            <input type="radio" id={addr.id} name="address" value={addr.id} checked={selectedAddress?.id === addr.id} onChange={() => setSelectedAddress(addr)} className="h-4 w-4 mt-1 text-primary border-gray-300 focus:ring-primary" />
-                                            <Label htmlFor={addr.id} className="flex-1 cursor-pointer">
-                                                <p className="font-semibold">{addr.name}{addr.label && <span className="font-normal text-muted-foreground"> ({addr.label})</span>}</p>
-                                                <p className="text-xs text-muted-foreground">{addr.full}</p>
-                                                <p className="text-xs text-muted-foreground">Ph: {addr.phone}</p>
-                                            </Label>
-                                        </div>
-                                    ))}
-                                    <Button variant="outline" className="w-full" onClick={handleAddNewAddress}><PlusCircle className="mr-2 h-4 w-4" /> Add New Address</Button>
-                                </div>
-                            </div>
-                        ) : (
-                             <div>
-                                <Label htmlFor="name">Your Name</Label>
-                                <Input id="name" value={orderName} onChange={(e) => setOrderName(e.target.value)} disabled={loading} />
-                            </div>
-                        )}
-                         <div>
-                            <Label htmlFor="phone">Phone Number</Label>
-                            <Input id="phone" value={orderPhone} onChange={(e) => setOrderPhone(e.target.value)} disabled={loading} />
-                        </div>
-                    </div>
-                    <DialogFooter>
-                        <DialogClose asChild><Button variant="secondary" disabled={loading}>Cancel</Button></DialogClose>
-                        <Button onClick={() => handleConfirmOrder()} disabled={loading} className="bg-primary hover:bg-primary/90 text-primary-foreground">{loading ? 'Processing...' : 'Confirm Order'}</Button>
-                    </DialogFooter>
-                </DialogContent>
-            </Dialog>
             <Dialog open={isDineInModalOpen} onOpenChange={setDineInModalOpen}>
                 <DialogContent>
                     <DialogHeader><DialogTitle>What would you like to do?</DialogTitle></DialogHeader>
@@ -535,6 +469,43 @@ const CheckoutPageInternal = () => {
 
                 <main className="flex-grow p-4 container mx-auto">
                     <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5 }}>
+                        {error && <p className="text-destructive text-sm bg-destructive/10 p-2 rounded-md mb-4">{error}</p>}
+                        
+                        {(deliveryType === 'delivery' || cameToPay) && (
+                         <div className="mb-6 bg-card p-4 rounded-lg border">
+                             <h3 className="font-bold text-lg mb-2">Confirm Your Details</h3>
+                             <div className="space-y-4">
+                                {deliveryType === 'delivery' ? (
+                                    <div>
+                                        <Label htmlFor="address">Select an address</Label>
+                                        <div className="space-y-2 mt-2">
+                                            {userAddresses.map(addr => (
+                                                <div key={addr.id} className="flex items-start gap-2 p-3 rounded-md bg-muted has-[:checked]:bg-primary/10 has-[:checked]:border-primary border border-transparent">
+                                                    <input type="radio" id={addr.id} name="address" value={addr.id} checked={selectedAddress?.id === addr.id} onChange={() => setSelectedAddress(addr)} className="h-4 w-4 mt-1 text-primary border-gray-300 focus:ring-primary" />
+                                                    <Label htmlFor={addr.id} className="flex-1 cursor-pointer">
+                                                        <p className="font-semibold">{addr.name}{addr.label && <span className="font-normal text-muted-foreground"> ({addr.label})</span>}</p>
+                                                        <p className="text-xs text-muted-foreground">{addr.full}</p>
+                                                        <p className="text-xs text-muted-foreground">Ph: {addr.phone}</p>
+                                                    </Label>
+                                                </div>
+                                            ))}
+                                            <Button variant="outline" className="w-full" onClick={handleAddNewAddress}><PlusCircle className="mr-2 h-4 w-4" /> Add New Address</Button>
+                                        </div>
+                                    </div>
+                                ) : (
+                                    <div>
+                                        <Label htmlFor="name">Your Name</Label>
+                                        <Input id="name" value={orderName} onChange={(e) => setOrderName(e.target.value)} disabled={loading} />
+                                    </div>
+                                )}
+                                <div>
+                                    <Label htmlFor="phone">Phone Number</Label>
+                                    <Input id="phone" value={orderPhone} onChange={(e) => setOrderPhone(e.target.value)} disabled={loading} />
+                                </div>
+                             </div>
+                         </div>
+                        )}
+
                          <div className="bg-card p-4 rounded-lg border border-border mb-6">
                             <div className="flex justify-between items-center text-lg font-bold">
                                 <span>Total Amount Payable</span>
