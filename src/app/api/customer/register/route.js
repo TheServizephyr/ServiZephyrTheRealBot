@@ -21,7 +21,6 @@ const generateSecureToken = async (firestore, customerPhone) => {
 
 
 export async function POST(req) {
-    console.log("[DEBUG] /api/customer/register: POST request received.");
     try {
         const firestore = await getFirestore();
         const { 
@@ -44,26 +43,20 @@ export async function POST(req) {
             dineInTabId 
         } = await req.json();
 
-        console.log("[DEBUG] /api/customer/register: Parsed request body:", { name, phone, restaurantId, deliveryType, paymentMethod, grandTotal });
-
         // --- VALIDATION ---
         if (deliveryType !== 'dine-in' && !name) {
-             console.error("[DEBUG] /api/customer/register: Validation failed - Name is required for non-dine-in.");
             return NextResponse.json({ message: 'Name is required.' }, { status: 400 });
         }
         if (!restaurantId || !items || grandTotal === undefined || subtotal === undefined) {
-             console.error(`[DEBUG] /api/customer/register: Validation failed - Missing required fields.`);
              const missingFields = `Missing fields: restaurantId=${!!restaurantId}, items=${!!items}, grandTotal=${grandTotal !== undefined}, subtotal=${subtotal !== undefined}`;
              return NextResponse.json({ message: 'Missing required fields for order creation.' }, { status: 400 });
         }
         if (deliveryType === 'delivery' && (!address || !address.full)) {
-            console.error("[DEBUG] /api/customer/register: Validation failed - Full address required for delivery.");
             return NextResponse.json({ message: 'A full, structured address is required for delivery orders.' }, { status: 400 });
         }
         
         const normalizedPhone = phone ? (phone.length > 10 ? phone.slice(-10) : phone) : null;
         if (normalizedPhone && !/^\d{10}$/.test(normalizedPhone)) {
-            console.error("[DEBUG] /api/customer/register: Validation failed - Invalid phone number format.");
             return NextResponse.json({ message: 'Invalid phone number format. Must be 10 digits.' }, { status: 400 });
         }
         
@@ -72,19 +65,16 @@ export async function POST(req) {
         
         const collectionsToTry = ['restaurants', 'shops', 'street_vendors'];
         for (const name of collectionsToTry) {
-            console.log(`[DEBUG] /api/customer/register: Checking collection '${name}' for business ID: ${restaurantId}`);
             const docRef = firestore.collection(name).doc(restaurantId);
             const docSnap = await docRef.get();
             if (docSnap.exists) {
                 businessRef = docRef;
                 collectionName = name;
-                console.log(`[DEBUG] /api/customer/register: Found business in '${name}'.`);
                 break; 
             }
         }
         
         if (!businessRef) {
-            console.error(`[DEBUG] /api/customer/register: Business not found with ID ${restaurantId} in any collection.`);
             return NextResponse.json({ message: 'This business does not exist.' }, { status: 404 });
         }
         
@@ -93,7 +83,6 @@ export async function POST(req) {
 
         // --- Post-paid Dine-In ---
         if (deliveryType === 'dine-in' && businessData.dineInModel === 'post-paid') {
-            console.log("[DEBUG] /api/customer/register: Handling post-paid dine-in order.");
             const newOrderRef = firestore.collection('orders').doc();
             const trackingToken = await generateSecureToken(firestore, `dine-in-${newOrderRef.id}`);
 
@@ -109,7 +98,6 @@ export async function POST(req) {
                 trackingToken: trackingToken,
             });
             
-            console.log(`[DEBUG] /api/customer/register: Post-paid order ${newOrderRef.id} created. Responding with token.`);
             return NextResponse.json({ 
                 message: "Order placed. Awaiting WhatsApp confirmation.",
                 order_id: newOrderRef.id,
@@ -120,7 +108,6 @@ export async function POST(req) {
         
         // --- Pre-paid Dine-In ---
         if (deliveryType === 'dine-in') {
-             console.log("[DEBUG] /api/customer/register: Handling pre-paid dine-in order.");
             const firestoreOrderId = firestore.collection('orders').doc().id;
 
              const servizephyrOrderPayload = {
@@ -135,9 +122,7 @@ export async function POST(req) {
             };
 
             if (paymentMethod === 'razorpay') {
-                console.log("[DEBUG] /api/customer/register: Using Razorpay for pre-paid dine-in.");
                 if (!process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID || !process.env.RAZORPAY_KEY_SECRET) {
-                    console.error("[DEBUG] /api/customer/register: Razorpay keys are not configured.");
                     return NextResponse.json({ message: 'Payment gateway is not configured.' }, { status: 500 });
                 }
                 const razorpay = new Razorpay({ key_id: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID, key_secret: process.env.RAZORPAY_KEY_SECRET });
@@ -147,7 +132,6 @@ export async function POST(req) {
                     receipt: firestoreOrderId,
                     notes: { servizephyr_payload: JSON.stringify(servizephyrOrderPayload) }
                 };
-                console.log("[DEBUG] /api/customer/register: Creating Razorpay order with options:", razorpayOrderOptions);
                 const razorpayOrder = await razorpay.orders.create(razorpayOrderOptions);
                 return NextResponse.json({ 
                     message: 'Razorpay order created for dine-in.',
@@ -156,7 +140,6 @@ export async function POST(req) {
                     dine_in_tab_id: dineInTabId
                 }, { status: 200 });
             } else { // Pay at Counter for dine-in
-                console.log("[DEBUG] /api/customer/register: Handling 'Pay at Counter' for dine-in.");
                 const newOrderRef = firestore.collection('orders').doc(firestoreOrderId);
                 const trackingToken = await generateSecureToken(firestore, `dine-in-${firestoreOrderId}`);
                 const batch = firestore.batch();
@@ -172,7 +155,6 @@ export async function POST(req) {
                 
                 await batch.commit();
 
-                 console.log(`[DEBUG] /api/customer/register: Pay at counter order ${newOrderRef.id} created. Responding with token.`);
                 return NextResponse.json({
                     message: 'Order added to tab successfully.',
                     firestore_order_id: newOrderRef.id,
@@ -183,7 +165,6 @@ export async function POST(req) {
         }
         
         // --- Regular Delivery/Pickup/StreetVendor Flow ---
-        console.log("[DEBUG] /api/customer/register: Handling regular delivery/pickup/street-vendor flow.");
         let userId = normalizedPhone || `anon_${nanoid(10)}`;
         let isNewUser = true;
 
@@ -193,9 +174,6 @@ export async function POST(req) {
             if (!existingUserQuery.empty) {
                 isNewUser = false;
                 userId = existingUserQuery.docs[0].id;
-                console.log(`[DEBUG] /api/customer/register: Found existing user: ${userId}`);
-            } else {
-                 console.log(`[DEBUG] /api/customer/register: New user detected for phone: ${normalizedPhone}`);
             }
         }
         
@@ -204,9 +182,7 @@ export async function POST(req) {
             : null;
 
         if (paymentMethod === 'razorpay') {
-            console.log(`[DEBUG] /api/customer/register: Using Razorpay for ${deliveryType} order.`);
             if (!process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID || !process.env.RAZORPAY_KEY_SECRET) {
-                console.error("[DEBUG] /api/customer/register: Razorpay keys are not configured.");
                 return NextResponse.json({ message: 'Payment gateway is not configured on the server.' }, { status: 500 });
             }
 
@@ -219,7 +195,7 @@ export async function POST(req) {
 
             const customerDetailsForPayload = {
                 name,
-                address: address || { full: "Street Vendor Pre-Order" }, // Default for street vendors
+                address: address || { full: "Street Vendor Pre-Order" },
                 phone: normalizedPhone || ''
             };
 
@@ -245,8 +221,6 @@ export async function POST(req) {
                 notes: notes || null
             };
             
-            console.log("[DEBUG] /api/customer/register: servizephyr_payload for Razorpay:", JSON.stringify(servizephyrOrderPayload, null, 2));
-
             const razorpayOrderOptions = {
                 amount: Math.round(grandTotal * 100), 
                 currency: 'INR',
@@ -256,7 +230,6 @@ export async function POST(req) {
                 }
             };
             
-             console.log("[DEBUG] /api/customer/register: Creating Razorpay order with options:", razorpayOrderOptions);
             const razorpayOrder = await razorpay.orders.create(razorpayOrderOptions);
             
             const trackingToken = await generateSecureToken(firestore, normalizedPhone || firestoreOrderId);
@@ -270,7 +243,6 @@ export async function POST(req) {
 
 
         // --- "Pay at Counter" logic for Street Vendor ---
-        console.log(`[DEBUG] /api/customer/register: Handling 'Pay at Counter' for ${deliveryType}.`);
         const batch = firestore.batch();
         
         if (isNewUser && normalizedPhone && businessType !== 'street-vendor') {
@@ -348,8 +320,6 @@ export async function POST(req) {
             paymentDetails: { method: paymentMethod }
         };
         
-        console.log("[DEBUG] /api/customer/register: Final order data for Firestore:", JSON.stringify(finalOrderData, null, 2));
-
         batch.set(newOrderRef, finalOrderData);
         
         await batch.commit();
@@ -361,7 +331,6 @@ export async function POST(req) {
             });
         }
         
-        console.log(`[DEBUG] /api/customer/register: Pay at Counter order ${newOrderRef.id} created. Responding with token.`);
         return NextResponse.json({ 
             message: 'Order created successfully.',
             firestore_order_id: newOrderRef.id,
@@ -369,7 +338,6 @@ export async function POST(req) {
         }, { status: 200 });
 
     } catch (error) {
-        console.error('[DEBUG] /api/customer/register: CRITICAL ERROR:', error);
         if(error.error && error.error.code === 'BAD_REQUEST_ERROR') {
              return NextResponse.json({ message: `Payment Gateway Error: ${error.error.description}` }, { status: 400 });
         }

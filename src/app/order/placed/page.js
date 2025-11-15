@@ -14,17 +14,13 @@ const OrderPlacedContent = () => {
     
     const orderId = searchParams.get('orderId');
     const whatsappNumber = searchParams.get('whatsappNumber');
-    const phone = searchParams.get('phone');
     
     const [trackingToken, setTrackingToken] = useState(searchParams.get('token'));
     const [restaurantId, setRestaurantId] = useState(searchParams.get('restaurantId'));
 
     useEffect(() => {
-        console.log("[DEBUG] Placed Page: Component mounted. URL Params:", { orderId, whatsappNumber, phone, token: searchParams.get('token'), restaurantId });
-        
         const currentRestaurantId = searchParams.get('restaurantId');
         if (currentRestaurantId) {
-            console.log(`[DEBUG] Placed Page: Saving restaurantId from URL to localStorage: ${currentRestaurantId}`);
             localStorage.setItem('lastOrderedFrom', currentRestaurantId);
             if (!restaurantId) {
                 setRestaurantId(currentRestaurantId);
@@ -32,45 +28,31 @@ const OrderPlacedContent = () => {
         } else {
             const storedId = localStorage.getItem('lastOrderedFrom');
             if (storedId && !restaurantId) {
-                console.log(`[DEBUG] Placed Page: Using stored restaurantId from localStorage: ${storedId}`);
                 setRestaurantId(storedId);
             }
         }
         
         const fetchTokenIfNeeded = async () => {
-            console.log("[DEBUG] Placed Page: fetchTokenIfNeeded started.");
             const tokenInUrl = searchParams.get('token');
 
             if (!tokenInUrl && orderId) {
-                 console.log("[DEBUG] Placed Page: Token not in URL, attempting to fetch from status API...");
                 try {
-                    // Small delay to allow backend to process the order
                     await new Promise(resolve => setTimeout(resolve, 1500)); 
                     
                     const res = await fetch(`/api/order/status/${orderId}`);
-                    console.log(`[DEBUG] Placed Page: /api/order/status response status: ${res.status}`);
                     if (res.ok) {
                         const data = await res.json();
-                        console.log("[DEBUG] Placed Page: Fetched order status data:", data);
                         if (data.order?.trackingToken) {
-                            console.log(`[DEBUG] Placed Page: Found tracking token in API response: ${data.order.trackingToken}`);
                             setTrackingToken(data.order.trackingToken);
-                        } else {
-                             console.warn("[DEBUG] Placed Page: API response OK, but tracking token is missing.");
                         }
-                    } else {
-                         console.error("[DEBUG] Placed Page: Failed to fetch order status.");
                     }
                 } catch (error) {
-                    console.error("[DEBUG] Placed Page: Error fetching tracking token:", error);
+                    console.error("Error fetching tracking token:", error);
                 }
             } else if (tokenInUrl) {
-                console.log(`[DEBUG] Placed Page: Token found in URL: ${tokenInUrl}`);
                 if (tokenInUrl !== trackingToken) {
                     setTrackingToken(tokenInUrl);
                 }
-            } else {
-                 console.warn("[DEBUG] Placed Page: No token in URL and no orderId to fetch it.");
             }
         };
 
@@ -102,12 +84,10 @@ const OrderPlacedContent = () => {
     };
     
     const handleTrackOrder = () => {
-        console.log("[DEBUG] Placed Page: handleTrackOrder clicked. Token:", trackingToken);
         const isDineIn = !!whatsappNumber;
         const trackingPath = isDineIn ? 'dine-in/' : '';
         if (orderId && trackingToken) {
             const trackUrl = `/track/${trackingPath}${orderId}?token=${trackingToken}`;
-            console.log(`[DEBUG] Placed Page: Navigating to tracking URL: ${trackUrl}`);
             router.push(trackUrl);
         } else {
             alert("Tracking information is not yet available. This can happen with online payments. Please wait a moment and try again.");
