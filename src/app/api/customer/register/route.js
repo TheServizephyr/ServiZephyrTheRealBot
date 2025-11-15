@@ -28,9 +28,9 @@ export async function POST(req) {
 
         // --- VALIDATION ---
         console.log("[DEBUG] /api/customer/register: Validating request data...");
-        if ((!name || !phone) && deliveryType !== 'dine-in') {
-             console.error(`[DEBUG] /api/customer/register: Validation failed: Name and phone are required for non-dine-in orders.`);
-            return NextResponse.json({ message: 'Name and phone are required.' }, { status: 400 });
+        if (!name && deliveryType !== 'dine-in') {
+             console.error(`[DEBUG] /api/customer/register: Validation failed: Name is required for non-dine-in orders.`);
+            return NextResponse.json({ message: 'Name is required.' }, { status: 400 });
         }
         if (!restaurantId || !items || grandTotal === undefined || subtotal === undefined) {
              const missingFields = `Missing fields: restaurantId=${!!restaurantId}, items=${!!items}, grandTotal=${grandTotal !== undefined}, subtotal=${subtotal !== undefined}`;
@@ -166,23 +166,23 @@ export async function POST(req) {
             }
         }
         
-        // --- Regular Delivery/Pickup Flow ---
+        // --- Regular Delivery/Pickup/StreetVendor Flow ---
         let razorpayOrderId = null;
         
-        console.log("[DEBUG] /api/customer/register: Checking for existing user with phone:", normalizedPhone);
-        const usersRef = firestore.collection('users');
-        const existingUserQuery = await usersRef.where('phone', '==', normalizedPhone).limit(1).get();
-        
+        let userId = normalizedPhone || `anon_${nanoid(10)}`;
         let isNewUser = true;
-        let userId = normalizedPhone; 
 
-        if (!existingUserQuery.empty) {
-            const userDoc = existingUserQuery.docs[0];
-            isNewUser = false;
-            userId = userDoc.id;
+        if (normalizedPhone) {
+            console.log("[DEBUG] /api/customer/register: Checking for existing user with phone:", normalizedPhone);
+            const usersRef = firestore.collection('users');
+            const existingUserQuery = await usersRef.where('phone', '==', normalizedPhone).limit(1).get();
+            if (!existingUserQuery.empty) {
+                isNewUser = false;
+                userId = existingUserQuery.docs[0].id;
+            }
         }
         
-        console.log(`[DEBUG] /api/customer/register: User status: ${isNewUser ? 'New/Unclaimed User' : 'Existing Customer'}. User ID will be: ${userId}`);
+        console.log(`[DEBUG] /api/customer/register: User status: ${isNewUser ? 'New/Unclaimed' : 'Existing'}. User ID: ${userId}`);
 
         const customerLocation = (deliveryType === 'delivery' && address && typeof address.latitude === 'number' && typeof address.longitude === 'number')
             ? new GeoPoint(address.latitude, address.longitude)
@@ -205,12 +205,18 @@ export async function POST(req) {
             const firestoreOrderId = firestore.collection('orders').doc().id;
             console.log(`[DEBUG] /api/customer/register: Generated Firestore Order ID: ${firestoreOrderId}`);
 
+            const customerDetailsForPayload = {
+                name,
+                address: address || { full: "Street Vendor Pre-Order" }, // Default for street vendors
+                phone: normalizedPhone
+            };
+
             const servizephyrOrderPayload = {
                 order_id: firestoreOrderId,
                 user_id: userId,
                 restaurant_id: restaurantId,
                 business_type: businessType,
-                customer_details: JSON.stringify({ name, address, phone: normalizedPhone }),
+                customer_details: JSON.stringify(customerDetailsForPayload),
                 items: JSON.stringify(items),
                 bill_details: JSON.stringify({ subtotal, coupon, loyaltyDiscount, grandTotal, deliveryType, tipAmount, pickupTime, cgst, sgst, deliveryCharge }),
                 notes: notes || null
@@ -241,7 +247,7 @@ export async function POST(req) {
         console.log(`[DEBUG] /api/customer/register: Payment method is ${paymentMethod}. Starting Firestore batch write.`);
         const batch = firestore.batch();
         
-        if (isNewUser) {
+        if (isNewUser && normalizedPhone && businessType !== 'street-vendor') {
             console.log(`[DEBUG] /api/customer/register: Creating unclaimed profile for new user ${normalizedPhone}.`);
             const unclaimedUserRef = firestore.collection('unclaimed_profiles').doc(normalizedPhone);
             const newOrderedFrom = { restaurantId, restaurantName: businessData.name, businessType };
@@ -259,32 +265,35 @@ export async function POST(req) {
         
         const pointsEarned = Math.floor(subtotal / 100) * 10;
         const pointsSpent = finalLoyaltyDiscount > 0 ? finalLoyaltyDiscount / 0.5 : 0;
-
-        console.log(`[DEBUG] /api/customer/register: Updating customer record for ${userId} in ${collectionName}/${restaurantId}/customers.`);
-        const restaurantCustomerRef = businessRef.collection('customers').doc(userId);
-        batch.set(restaurantCustomerRef, {
-            name: name, phone: normalizedPhone, status: isNewUser ? 'unclaimed' : 'verified',
-            totalSpend: FieldValue.increment(subtotal),
-            loyaltyPoints: FieldValue.increment(pointsEarned - pointsSpent),
-            lastOrderDate: FieldValue.serverTimestamp(),
-            totalOrders: FieldValue.increment(1),
-        }, { merge: true });
         
-        if (!isNewUser) {
-            console.log(`[DEBUG] /api/customer/register: Updating joined_restaurants for existing user ${userId}.`);
-            const userRestaurantLinkRef = usersRef.doc(userId).collection('joined_restaurants').doc(restaurantId);
-            
-            batch.set(userRestaurantLinkRef, {
-                restaurantName: businessData.name, 
-                joinedAt: FieldValue.serverTimestamp() 
-            }, { merge: true });
-
-            batch.update(userRestaurantLinkRef, {
+        if (normalizedPhone && businessType !== 'street-vendor') {
+            console.log(`[DEBUG] /api/customer/register: Updating customer record for ${userId} in ${collectionName}/${restaurantId}/customers.`);
+            const restaurantCustomerRef = businessRef.collection('customers').doc(userId);
+            batch.set(restaurantCustomerRef, {
+                name: name, phone: normalizedPhone, status: isNewUser ? 'unclaimed' : 'verified',
                 totalSpend: FieldValue.increment(subtotal),
                 loyaltyPoints: FieldValue.increment(pointsEarned - pointsSpent),
                 lastOrderDate: FieldValue.serverTimestamp(),
                 totalOrders: FieldValue.increment(1),
-            });
+            }, { merge: true });
+        
+            if (!isNewUser) {
+                console.log(`[DEBUG] /api/customer/register: Updating joined_restaurants for existing user ${userId}.`);
+                 const usersRef = firestore.collection('users');
+                const userRestaurantLinkRef = usersRef.doc(userId).collection('joined_restaurants').doc(restaurantId);
+                
+                batch.set(userRestaurantLinkRef, {
+                    restaurantName: businessData.name, 
+                    joinedAt: FieldValue.serverTimestamp() 
+                }, { merge: true });
+
+                batch.update(userRestaurantLinkRef, {
+                    totalSpend: FieldValue.increment(subtotal),
+                    loyaltyPoints: FieldValue.increment(pointsEarned - pointsSpent),
+                    lastOrderDate: FieldValue.serverTimestamp(),
+                    totalOrders: FieldValue.increment(1),
+                });
+            }
         }
         
         if (coupon && coupon.id) {
@@ -295,7 +304,7 @@ export async function POST(req) {
         
         console.log("[DEBUG] /api/customer/register: Creating main order document.");
         const newOrderRef = firestore.collection('orders').doc();
-        const trackingToken = await generateSecureToken(firestore, normalizedPhone);
+        const trackingToken = await generateSecureToken(firestore, normalizedPhone || newOrderRef.id);
 
         batch.set(newOrderRef, {
             customerName: name, customerId: userId, customerAddress: address?.full || null, customerPhone: normalizedPhone,
@@ -340,3 +349,5 @@ export async function POST(req) {
         return NextResponse.json({ message: `Backend Error: ${error.message}` }, { status: 500 });
     }
 }
+
+    

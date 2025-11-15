@@ -132,54 +132,58 @@ export async function POST(req) {
             const customerDetails = JSON.parse(customerDetailsString);
             const orderItems = JSON.parse(itemsString);
             const billDetails = JSON.parse(billDetailsString);
+            const isStreetVendorOrder = billDetails.deliveryType === 'street-vendor-pre-order';
             
-            const trackingToken = await generateSecureToken(firestore, customerDetails.phone);
+            const trackingToken = await generateSecureToken(firestore, customerDetails.phone || firestoreOrderId);
             console.log(`[Webhook RZP] Generated tracking token: ${trackingToken}`);
 
             const batch = firestore.batch();
-            const usersRef = firestore.collection('users');
-            const existingUserQuery = await usersRef.where('phone', '==', customerDetails.phone).limit(1).get();
 
-            const isNewUser = existingUserQuery.empty;
+            if (!isStreetVendorOrder && customerDetails.phone) {
+                const usersRef = firestore.collection('users');
+                const existingUserQuery = await usersRef.where('phone', '==', customerDetails.phone).limit(1).get();
+                const isNewUser = existingUserQuery.empty;
 
-            if (isNewUser) {
-                console.log(`[Webhook RZP] New user detected: ${customerDetails.phone}. Creating unclaimed profile.`);
-                const unclaimedUserRef = firestore.collection('unclaimed_profiles').doc(customerDetails.phone);
-                 batch.set(unclaimedUserRef, {
-                    name: customerDetails.name, 
-                    phone: customerDetails.phone, 
-                    addresses: [customerDetails.address],
-                    createdAt: FieldValue.serverTimestamp(),
-                    orderedFrom: FieldValue.arrayUnion({
-                        restaurantId: restaurantId,
-                        restaurantName: rzpOrder.notes?.restaurantName || 'Unknown',
-                        businessType: businessType,
-                    })
+                if (isNewUser) {
+                    console.log(`[Webhook RZP] New user detected: ${customerDetails.phone}. Creating unclaimed profile.`);
+                    const unclaimedUserRef = firestore.collection('unclaimed_profiles').doc(customerDetails.phone);
+                    batch.set(unclaimedUserRef, {
+                        name: customerDetails.name, 
+                        phone: customerDetails.phone, 
+                        addresses: [customerDetails.address],
+                        createdAt: FieldValue.serverTimestamp(),
+                        orderedFrom: FieldValue.arrayUnion({
+                            restaurantId: restaurantId,
+                            restaurantName: rzpOrder.notes?.restaurantName || 'Unknown',
+                            businessType: businessType,
+                        })
+                    }, { merge: true });
+                }
+            
+                const subtotal = billDetails.subtotal || 0;
+                const loyaltyDiscount = billDetails.loyaltyDiscount || 0;
+                const pointsEarned = Math.floor(subtotal / 100) * 10;
+                const pointsSpent = loyaltyDiscount > 0 ? loyaltyDiscount / 0.5 : 0;
+            
+                const businessCollectionNameForCustomer = businessType === 'shop' ? 'shops' : 'restaurants';
+                const restaurantCustomerRef = firestore.collection(businessCollectionNameForCustomer).doc(restaurantId).collection('customers').doc(userId);
+            
+                batch.set(restaurantCustomerRef, {
+                    name: customerDetails.name, phone: customerDetails.phone, 
+                    status: isNewUser ? 'unclaimed' : 'verified',
+                    totalSpend: FieldValue.increment(subtotal),
+                    loyaltyPoints: FieldValue.increment(pointsEarned - pointsSpent),
+                    lastOrderDate: FieldValue.serverTimestamp(),
+                    totalOrders: FieldValue.increment(1),
                 }, { merge: true });
             }
-            
-            const subtotal = billDetails.subtotal || 0;
-            const loyaltyDiscount = billDetails.loyaltyDiscount || 0;
-            const pointsEarned = Math.floor(subtotal / 100) * 10;
-            const pointsSpent = loyaltyDiscount > 0 ? loyaltyDiscount / 0.5 : 0;
-            
-            const businessCollectionName = businessType === 'shop' ? 'shops' : 'restaurants';
-            const restaurantCustomerRef = firestore.collection(businessCollectionName).doc(restaurantId).collection('customers').doc(userId);
-            
-            batch.set(restaurantCustomerRef, {
-                name: customerDetails.name, phone: customerDetails.phone, 
-                status: isNewUser ? 'unclaimed' : 'verified',
-                totalSpend: FieldValue.increment(subtotal),
-                loyaltyPoints: FieldValue.increment(pointsEarned - pointsSpent),
-                lastOrderDate: FieldValue.serverTimestamp(),
-                totalOrders: FieldValue.increment(1),
-            }, { merge: true });
             
             const newOrderRef = firestore.collection('orders').doc(firestoreOrderId);
             
             let finalDineInTabId = billDetails.dineInTabId;
             if (billDetails.deliveryType === 'dine-in' && billDetails.tableId && !finalDineInTabId) {
                 console.log(`[Webhook RZP] Pre-paid dine-in order for table ${billDetails.tableId}. Creating new tab.`);
+                 const businessCollectionName = businessType === 'shop' ? 'shops' : 'restaurants';
                 const newTabRef = firestore.collection(businessCollectionName).doc(restaurantId).collection('dineInTabs').doc();
                 finalDineInTabId = newTabRef.id;
 
@@ -232,7 +236,8 @@ export async function POST(req) {
             await batch.commit();
             console.log(`[Webhook RZP] Successfully created Firestore order ${newOrderRef.id} from Razorpay Order ${razorpayOrderId}.`);
 
-            const businessDoc = await firestore.collection(businessCollectionName).doc(restaurantId).get();
+            const collectionForBusinessLookup = businessType === 'street-vendor' ? 'street_vendors' : (businessType === 'shop' ? 'shops' : 'restaurants');
+            const businessDoc = await firestore.collection(collectionForBusinessLookup).doc(restaurantId).get();
             if (businessDoc.exists) {
                 const businessData = businessDoc.data();
                 if(!businessData.name) {
@@ -282,4 +287,5 @@ export async function POST(req) {
         return NextResponse.json({ status: 'error', message: 'Internal server error' }, { status: 200 });
     }
 }
+    
     
