@@ -101,12 +101,11 @@ const CheckoutPageInternal = () => {
     const [userAddresses, setUserAddresses] = useState([]);
     const [codEnabled, setCodEnabled] = useState(false);
     
-    const [selectedPaymentMethod, setSelectedPaymentMethod] = useState(null); 
     const [isOnlinePaymentFlow, setIsOnlinePaymentFlow] = useState(false); 
     const [isSplitBillActive, setIsSplitBillActive] = useState(false);
     
     const [loading, setLoading] = useState(true);
-    const [isProcessingPayment, setIsProcessingPayment] = useState(false); // New state for payment processing
+    const [isProcessingPayment, setIsProcessingPayment] = useState(false);
     const [error, setError] = useState('');
     const [isDineInModalOpen, setDineInModalOpen] = useState(false);
     
@@ -238,26 +237,12 @@ const CheckoutPageInternal = () => {
         setIsOnlinePaymentFlow(true);
     };
     
-    const handleConfirmOrder = async (paymentMethod) => {
-        const finalPaymentMethod = paymentMethod || selectedPaymentMethod;
+    const placeOrder = async (paymentMethod) => {
         const deliveryType = cartData.tableId ? 'dine-in' : (cartData.deliveryType || 'delivery');
-
-        if (!orderName || orderName.trim().length === 0) {
-            setInfoDialog({isOpen: true, title: "Error", message: "Please provide a name for the order."});
-            return;
-        }
-        if (!orderPhone || orderPhone.trim().length === 0) {
-            setInfoDialog({isOpen: true, title: "Error", message: "A valid phone number is required to place an order."});
-            return;
-        }
-        if (deliveryType === 'delivery' && !selectedAddress) {
-            setInfoDialog({isOpen: true, title: "Error", message: "Please select or add a delivery address."});
-            return;
-        }
 
         const orderData = {
             name: orderName, phone: orderPhone, restaurantId, items: cart, notes: cartData.notes, coupon: appliedCoupons.find(c => !c.customerId) || null,
-            loyaltyDiscount: 0, subtotal, cgst, sgst, deliveryCharge: finalDeliveryCharge, grandTotal, paymentMethod: finalPaymentMethod,
+            loyaltyDiscount: 0, subtotal, cgst, sgst, deliveryCharge: finalDeliveryCharge, grandTotal, paymentMethod: paymentMethod,
             deliveryType: cartData.deliveryType, pickupTime: cartData.pickupTime || '', tipAmount: cartData.tipAmount || 0,
             businessType: cartData.businessType || 'restaurant', tableId: cartData.tableId || null, dineInTabId: cartData.dineInTabId || null,
             pax_count: cartData.pax_count || null, tab_name: cartData.tab_name || null, address: selectedAddress 
@@ -279,7 +264,7 @@ const CheckoutPageInternal = () => {
                     handler: function (response) {
                         localStorage.removeItem(`cart_${restaurantId}`);
                         if (orderData.deliveryType === 'dine-in') router.push(redirectUrl);
-                        else router.push(`/order/placed?orderId=${data.firestore_order_id}`);
+                        else router.push(`/order/placed?orderId=${data.firestore_order_id}&token=${data.token}`);
                     },
                     prefill: { name: orderName, email: user?.email || "customer@servizephyr.com", contact: orderPhone },
                     redirect: orderData.deliveryType === 'dine-in' ? true : false,
@@ -312,6 +297,29 @@ const CheckoutPageInternal = () => {
             setError(err.message);
             setIsProcessingPayment(false);
         }
+    };
+    
+    const handlePaymentMethodSelect = (method) => {
+        if (!orderName.trim() || !orderPhone.trim() || (deliveryType === 'delivery' && !selectedAddress)) {
+            setError("Please confirm your name, phone, and address before proceeding.");
+            return;
+        }
+        setError('');
+        placeOrder(method);
+    };
+
+    const handleOnlinePayClick = () => {
+        const deliveryType = cartData.tableId ? 'dine-in' : (cartData.deliveryType || 'delivery');
+        if (deliveryType === 'delivery' && !selectedAddress) {
+            setError("Please select or add a delivery address.");
+            return;
+        }
+        if (!orderName || orderName.trim().length === 0) {
+             setError("Please provide a name for the order.");
+             return;
+        }
+        setError('');
+        setIsOnlinePaymentFlow(true);
     };
     
     
@@ -361,20 +369,7 @@ const CheckoutPageInternal = () => {
         firestore_order_id: cartData.id, 
         restaurantId
     };
-    
-    const handleOnlinePayClick = () => {
-        const deliveryType = cartData.tableId ? 'dine-in' : (cartData.deliveryType || 'delivery');
-        if (deliveryType === 'delivery' && !selectedAddress) {
-            setError("Please select or add a delivery address.");
-            return;
-        }
-        if (!orderName || orderName.trim().length === 0) {
-             setError("Please provide a name for the order.");
-             return;
-        }
-        setError('');
-        setIsOnlinePaymentFlow(true);
-    }
+
     
     const renderPaymentOptions = () => {
         if (isSplitBillActive) {
@@ -385,7 +380,7 @@ const CheckoutPageInternal = () => {
             return (
                 <div className="space-y-4">
                     <Button onClick={() => setIsOnlinePaymentFlow(false)} variant="ghost" size="sm" className="mb-4"><ArrowLeft className="mr-2 h-4 w-4"/> Back</Button>
-                    <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} onClick={() => handleConfirmOrder('razorpay')} disabled={isProcessingPayment} className="w-full text-left p-6 bg-card border-2 border-border rounded-lg flex items-center gap-6 hover:border-primary transition-all disabled:opacity-50">
+                    <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} onClick={() => handlePaymentMethodSelect('razorpay')} disabled={isProcessingPayment} className="w-full text-left p-6 bg-card border-2 border-border rounded-lg flex items-center gap-6 hover:border-primary transition-all disabled:opacity-50">
                         {isProcessingPayment && <Loader2 className="animate-spin h-5 w-5"/>}
                         {!isProcessingPayment && <CreditCard size={40} className="text-primary flex-shrink-0"/>}
                         <div>
@@ -418,7 +413,7 @@ const CheckoutPageInternal = () => {
                 {loading ? (
                     <div className="w-full p-6 bg-card border-2 border-border rounded-lg animate-pulse h-[116px]"><div className="h-6 bg-muted rounded w-3/4"></div></div>
                 ) : codEnabled ? (
-                    <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} onClick={() => handleConfirmOrder('cod')} disabled={isProcessingPayment} className="w-full text-left p-6 bg-card border-2 border-border rounded-lg flex items-center gap-6 hover:border-primary transition-all disabled:opacity-50">
+                    <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} onClick={() => handlePaymentMethodSelect('cod')} disabled={isProcessingPayment} className="w-full text-left p-6 bg-card border-2 border-border rounded-lg flex items-center gap-6 hover:border-primary transition-all disabled:opacity-50">
                         {isProcessingPayment ? <Loader2 className="animate-spin h-10 w-10 text-primary flex-shrink-0"/> : <IndianRupee size={40} className="text-primary flex-shrink-0"/>}
                         <div>
                             <h3 className="text-xl font-bold">{deliveryType === 'pickup' ? 'Pay at Store' : (deliveryType === 'dine-in' ? 'Pay at Counter' : 'Pay on Delivery')}</h3>
@@ -471,7 +466,7 @@ const CheckoutPageInternal = () => {
                     <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5 }}>
                         {error && <p className="text-destructive text-sm bg-destructive/10 p-2 rounded-md mb-4">{error}</p>}
                         
-                        {(deliveryType === 'delivery' || cameToPay) && (
+                        {(deliveryType === 'delivery' || !cameToPay) && (
                          <div className="mb-6 bg-card p-4 rounded-lg border">
                              <h3 className="font-bold text-lg mb-2">Confirm Your Details</h3>
                              <div className="space-y-4">
