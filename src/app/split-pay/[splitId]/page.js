@@ -46,58 +46,91 @@ export default function SplitPayPage() {
     const [error, setError] = useState(null);
 
     useEffect(() => {
+        console.log(`[DEBUG] SplitPay Page Mounted. splitId: ${splitId}`);
+
         if (!splitId) {
+            console.error("[DEBUG] No splitId found in URL.");
             setError("Split session ID is missing.");
             setLoading(false);
             return;
         }
 
+        console.log(`[DEBUG] Setting up Firestore listener for split_payments/${splitId}`);
         const splitDocRef = doc(db, 'split_payments', splitId);
+        
         const unsubscribe = onSnapshot(splitDocRef, (docSnap) => {
+            console.log("[DEBUG] onSnapshot callback triggered.");
             if (docSnap.exists()) {
                 const data = docSnap.data();
+                console.log("[DEBUG] Document exists. Data received:", JSON.stringify(data, null, 2));
                 setSplitData(data);
+                setError(null); // Clear previous errors if any
 
                 if (data.status === 'completed') {
-                    // Redirect to the main order tracking page
+                    console.log("[DEBUG] Split is complete. Redirecting to tracking page for base order:", data.baseOrderId);
                     router.push(`/track/${data.baseOrderId}`);
                 }
             } else {
+                console.error("[DEBUG] Document does not exist in Firestore.");
                 setError("This split payment session was not found or has expired.");
             }
             setLoading(false);
+            console.log("[DEBUG] State updated. Loading: false");
         }, (err) => {
-            console.error("Error fetching split payment session:", err);
+            console.error("[DEBUG] CRITICAL: Firestore onSnapshot error:", err);
             setError("Could not load the payment session. Please try again.");
             setLoading(false);
+            console.log("[DEBUG] Error state updated. Loading: false");
         });
 
-        return () => unsubscribe();
+        // Cleanup function for when the component unmounts
+        return () => {
+            console.log("[DEBUG] Unsubscribing from Firestore listener.");
+            unsubscribe();
+        };
     }, [splitId, router]);
     
     const handlePayShare = (share) => {
+        console.log("[DEBUG] handlePayShare triggered for share:", share);
+        if (!process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID) {
+            alert("Payment gateway is not configured.");
+            console.error("[DEBUG] Razorpay Key ID is missing.");
+            return;
+        }
+        
         const options = {
             key: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID,
-            amount: share.amount * 100,
+            amount: share.amount * 100, // Amount in paise
             currency: "INR",
             name: "Group Order Payment",
-            description: `Your share for order #${splitData.baseOrderId.substring(0,8)}`,
+            description: `Your share for order #${splitData?.baseOrderId?.substring(0,8)}`,
             order_id: share.razorpay_order_id,
             notes: {
                 split_session_id: splitId,
             },
             handler: function (response) {
-               // RZP webhook will handle the Firestore update.
-               // Page will update via onSnapshot.
+               console.log("[DEBUG] Razorpay payment successful:", response);
+               // Webhook will handle the Firestore update. Page will auto-update via onSnapshot.
             },
             modal: {
                 ondismiss: function() {
+                    console.log("[DEBUG] Razorpay modal dismissed.");
                     alert('Payment was not completed.');
                 }
             }
         };
-        const rzp = new window.Razorpay(options);
-        rzp.open();
+        console.log("[DEBUG] Opening Razorpay with options:", options);
+        try {
+            const rzp = new window.Razorpay(options);
+            rzp.on('payment.failed', function (response){
+                console.error("[DEBUG] Razorpay payment failed:", response.error);
+                alert("Payment Failed: " + response.error.description);
+            });
+            rzp.open();
+        } catch (e) {
+            console.error("[DEBUG] Error initializing Razorpay:", e);
+            alert("Could not open payment window. Please try again.");
+        }
     };
 
 
@@ -109,7 +142,7 @@ export default function SplitPayPage() {
         return <div className="min-h-screen bg-background flex items-center justify-center text-red-500 p-4 text-center">{error}</div>;
     }
     
-    const paidShares = (splitData?.shares || []).filter(s => s.status === 'paid').length;
+    const paidShares = splitData ? (splitData.shares || []).filter(s => s.status === 'paid').length : 0;
     const progress = splitData ? (paidShares / splitData.splitCount) * 100 : 0;
     const remainingAmount = splitData ? splitData.totalAmount - (paidShares * (splitData.shares?.[0]?.amount || 0)) : 0;
 
