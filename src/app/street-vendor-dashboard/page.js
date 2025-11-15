@@ -200,9 +200,11 @@ export default function StreetVendorDashboard() {
                  </Link>
                  <h1 className="text-2xl font-bold font-headline">Live Orders</h1>
                  <div className="flex gap-2">
-                     <Button variant="ghost" className="text-muted-foreground hover:text-foreground">
-                        <History size={28} />
-                    </Button>
+                     <Link href="/owner-dashboard/payout-settings" passHref>
+                        <Button variant="ghost" className="text-muted-foreground hover:text-foreground">
+                            <Wallet size={28} />
+                        </Button>
+                     </Link>
                      <Link href="/street-vendor-dashboard/menu" passHref>
                         <Button variant="ghost" className="text-muted-foreground hover:text-foreground">
                             <ClipboardList size={28} />
