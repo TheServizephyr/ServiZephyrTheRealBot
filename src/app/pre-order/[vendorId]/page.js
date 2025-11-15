@@ -1,4 +1,3 @@
-
 'use client';
 
 import { useState, useEffect, useMemo } from 'react';
@@ -40,13 +39,9 @@ const MenuItem = ({ item, cartQuantity, onAdd, onIncrement, onDecrement }) => (
             <div className="absolute -bottom-3 left-1/2 -translate-x-1/2 w-[90%]">
                  {cartQuantity > 0 ? (
                     <div className="flex items-center justify-center bg-background border-2 border-border rounded-lg shadow-lg h-10">
-                        <Button variant="ghost" size="icon" className="h-full w-10 text-primary rounded-r-none" onClick={() => onDecrement(item.cartItemId || item.id)}>
-                            <Minus size={16}/>
-                        </Button>
+                        <Button variant="ghost" size="icon" className="h-full w-10 text-primary rounded-r-none" onClick={() => onDecrement(item.cartItemId || item.id)}>-</Button>
                         <span className="font-bold text-lg text-primary flex-grow text-center">{cartQuantity}</span>
-                        <Button variant="ghost" size="icon" className="h-full w-10 text-primary rounded-l-none" onClick={() => onIncrement(item)}>
-                            <Plus size={16}/>
-                        </Button>
+                        <Button variant="ghost" size="icon" className="h-full w-10 text-primary rounded-l-none" onClick={() => onIncrement(item)}>+</Button>
                     </div>
                 ) : (
                     <Button
@@ -168,15 +163,14 @@ const CartSheet = ({ cart, updateQuantity, onCheckout, grandTotal, onClose }) =>
     </motion.div>
 );
 
-const CheckoutModal = ({ isOpen, onClose, onConfirm, total, vendorName }) => {
+const CheckoutModal = ({ isOpen, onClose, onConfirm, total, vendorName, cart, vendorId }) => {
     const [name, setName] = useState('');
     const [phone, setPhone] = useState('');
     const [error, setError] = useState('');
     const [isProcessing, setIsProcessing] = useState(false);
     const router = useRouter();
 
-
-    const handleOnlinePayment = async () => {
+    const handlePayment = async (paymentMethod) => {
         if (!name.trim()) {
             setError("Name is required.");
             return;
@@ -185,65 +179,76 @@ const CheckoutModal = ({ isOpen, onClose, onConfirm, total, vendorName }) => {
             setError("If providing a phone number, it must be a valid 10-digit number.");
             return;
         }
-        
+
         setIsProcessing(true);
         setError('');
 
+        const orderData = {
+            name: name,
+            phone: phone,
+            restaurantId: vendorId,
+            businessType: 'street-vendor',
+            items: cart.map(item => ({
+                id: item.id,
+                name: item.name,
+                quantity: item.quantity,
+                price: item.portion.price,
+                totalPrice: item.portion.price * item.quantity,
+            })),
+            notes: 'Pre-order from QR',
+            grandTotal: total,
+            subtotal: total,
+            cgst: 0,
+            sgst: 0,
+            deliveryCharge: 0,
+            paymentMethod,
+            deliveryType: 'street-vendor-pre-order',
+            address: { full: 'Street Vendor Pre-Order' }
+        };
+
         try {
-            const orderRes = await fetch('/api/payment/create-order', {
+            const res = await fetch('/api/customer/register', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ amount: total }),
+                body: JSON.stringify(orderData)
             });
-            if (!orderRes.ok) {
-                throw new Error("Failed to create payment order.");
+
+            if (!res.ok) {
+                const errData = await res.json();
+                throw new Error(errData.message || "Failed to process order.");
             }
-            const orderData = await orderRes.json();
             
-            const options = {
-                key: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID,
-                amount: orderData.amount,
-                currency: "INR",
-                name: vendorName || "Street Vendor",
-                description: `Order from ${vendorName}`,
-                order_id: orderData.id,
-                handler: function (response){
-                    // Here you would save the order to your DB and then redirect
-                    onConfirm({ name, phone, paymentDetails: response, method: 'online' });
-                },
-                prefill: {
-                    name: name,
-                    contact: phone
-                },
-                theme: {
-                    color: "#FBBF24"
-                }
-            };
-            const rzp1 = new window.Razorpay(options);
-            rzp1.on('payment.failed', function (response){
-                setError(`Payment failed: ${response.error.description}`);
-                setIsProcessing(false);
-            });
-            rzp1.open();
+            const data = await res.json();
+            
+            if (data.razorpay_order_id) {
+                const options = {
+                    key: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID,
+                    amount: total * 100,
+                    currency: "INR",
+                    name: vendorName || "Street Vendor",
+                    description: `Order from ${vendorName}`,
+                    order_id: data.razorpay_order_id,
+                    handler: function (response){
+                        onConfirm({ name, phone, paymentDetails: response, method: 'online' });
+                    },
+                    prefill: { name: name, contact: phone },
+                    theme: { color: "#FBBF24" }
+                };
+                const rzp1 = new window.Razorpay(options);
+                rzp1.on('payment.failed', function (response){
+                    setError(`Payment failed: ${response.error.description}`);
+                    setIsProcessing(false);
+                });
+                rzp1.open();
+            } else {
+                onConfirm({ name, phone, method: 'counter', firestore_order_id: data.firestore_order_id });
+            }
 
         } catch (err) {
             setError(err.message);
             setIsProcessing(false);
         }
     };
-    
-    const handlePayAtCounter = () => {
-        if (!name.trim()) {
-            setError("Name is required.");
-            return;
-        }
-        if (phone.trim() && !/^\d{10}$/.test(phone.trim())) {
-            setError("If providing a phone number, it must be a valid 10-digit number.");
-            return;
-        }
-        // Immediately confirm, assuming physical payment will be handled.
-        onConfirm({ name, phone, method: 'counter' });
-    }
 
     return (
         <Dialog open={isOpen} onOpenChange={onClose}>
@@ -264,10 +269,10 @@ const CheckoutModal = ({ isOpen, onClose, onConfirm, total, vendorName }) => {
                     {error && <p className="text-sm text-destructive">{error}</p>}
                 </div>
                 <DialogFooter className="grid grid-cols-2 gap-4">
-                    <Button onClick={handlePayAtCounter} variant="outline" className="h-12 text-base">
+                    <Button onClick={() => handlePayment('counter')} variant="outline" className="h-12 text-base">
                         <Wallet className="mr-2 h-5 w-5"/> Pay at Counter
                     </Button>
-                    <Button onClick={handleOnlinePayment} disabled={isProcessing} className="bg-primary hover:bg-primary/80 text-primary-foreground h-12 text-base">
+                    <Button onClick={() => handlePayment('razorpay')} disabled={isProcessing} className="bg-primary hover:bg-primary/80 text-primary-foreground h-12 text-base">
                         {isProcessing ? <Loader2 className="animate-spin mr-2"/> : null}
                         Pay ₹{total} Online
                     </Button>
@@ -390,11 +395,9 @@ export default function PreOrderPage({ params }) {
         return cart.reduce((sum, item) => sum + item.quantity, 0);
     }, [cart]);
 
-    const handleCheckout = async (customerDetails) => {
+    const handleCheckout = (customerDetails) => {
         setCheckoutOpen(false);
-        // This is where you would call the final order placement API
-        // For now, we'll just show the order placed page
-        const orderId = "temp_" + Date.now(); // Temporary order ID
+        const orderId = customerDetails.paymentDetails?.razorpay_order_id || customerDetails.firestore_order_id || "temp_" + Date.now();
         sessionStorage.setItem(orderId, JSON.stringify({
             vendorName: vendor.name,
             total: grandTotal,
@@ -477,8 +480,9 @@ export default function PreOrderPage({ params }) {
                 total={grandTotal} 
                 onConfirm={handleCheckout} 
                 vendorName={vendor?.name}
+                cart={cart}
+                vendorId={vendorId}
             />
         </div>
     );
 }
-    
