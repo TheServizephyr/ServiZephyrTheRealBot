@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useState, useEffect, useMemo, Suspense } from 'react';
@@ -123,14 +124,18 @@ const CheckoutPageInternal = () => {
     useEffect(() => {
         const verifyAndFetch = async () => {
             setLoading(true);
-            
-            const phoneToLookup = phoneFromUrl || user?.phoneNumber || '';
-            
-            if (tableId) {
+
+            // --- START FIX: Handle anonymous pre-order flow ---
+            const isAnonymousPreOrder = !phoneFromUrl && !token && !user && !tableId;
+
+            if (isAnonymousPreOrder) {
+                console.log("[DEBUG] Anonymous pre-order flow detected.");
+                setIsTokenValid(true); // Bypass token validation for this flow
+            } else if (tableId) {
                 setIsTokenValid(true);
             } else if (!user && phoneFromUrl && token) {
                 try {
-                    const res = await fetch('/api/auth/verify-token', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ phone: phoneToLookup, token }) });
+                    const res = await fetch('/api/auth/verify-token', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ phone: phoneFromUrl, token }) });
                     if (!res.ok) throw new Error((await res.json()).message || "Session validation failed.");
                     setIsTokenValid(true);
                 } catch (err) {
@@ -143,7 +148,9 @@ const CheckoutPageInternal = () => {
                     setTokenError("No session information found."); setLoading(false); return;
                 }
             }
+            // --- END FIX ---
 
+            const phoneToLookup = phoneFromUrl || user?.phoneNumber || '';
             setOrderPhone(phoneToLookup);
             
             if (!restaurantId) { router.push('/'); return; }
@@ -240,6 +247,9 @@ const CheckoutPageInternal = () => {
     };
     
     const placeOrder = async (paymentMethod) => {
+        // Validation check before proceeding
+        if (!validateOrderDetails()) return;
+        
         const deliveryType = cartData.tableId ? 'dine-in' : (cartData.deliveryType || 'delivery');
 
         const orderData = {
@@ -265,8 +275,11 @@ const CheckoutPageInternal = () => {
                     description: `Order from ${cartData.restaurantName}`, order_id: data.razorpay_order_id,
                     handler: function (response) {
                         localStorage.removeItem(`cart_${restaurantId}`);
-                        if (orderData.deliveryType === 'dine-in') router.push(redirectUrl);
-                        else router.push(`/order/placed?orderId=${data.firestore_order_id}&token=${data.token}`);
+                        // FIX: Use firestore_order_id for non-dine-in tracking
+                        const trackingUrl = (orderData.deliveryType === 'dine-in' || orderData.businessType === 'street-vendor') 
+                            ? `/track/dine-in/${data.firestore_order_id}?token=${data.token}`
+                            : `/order/placed?orderId=${data.firestore_order_id}&token=${data.token}`;
+                        router.push(trackingUrl);
                     },
                     prefill: { name: orderName, email: user?.email || "customer@servizephyr.com", contact: orderPhone },
                     redirect: orderData.deliveryType === 'dine-in' ? true : false,
@@ -301,34 +314,31 @@ const CheckoutPageInternal = () => {
         }
     };
     
-    const handlePaymentMethodSelect = (method) => {
+    const validateOrderDetails = () => {
         const deliveryType = cartData.tableId ? 'dine-in' : (cartData.deliveryType || 'delivery');
         if (deliveryType === 'delivery' && !selectedAddress) {
             setError("Please select or add a delivery address.");
-            return;
+            return false;
         }
         if (!orderName || orderName.trim().length === 0) {
              setError("Please provide a name for the order.");
-             return;
+             return false;
         }
         setError('');
-        placeOrder(method);
-    };
+        return true;
+    }
 
     const handleOnlinePayClick = () => {
-        const deliveryType = cartData.tableId ? 'dine-in' : (cartData.deliveryType || 'delivery');
-        if (deliveryType === 'delivery' && !selectedAddress) {
-            setError("Please select or add a delivery address.");
-            return;
+        if (validateOrderDetails()) {
+            setIsOnlinePaymentFlow(true);
         }
-        if (!orderName || orderName.trim().length === 0) {
-             setError("Please provide a name for the order.");
-             return;
-        }
-        setError('');
-        setIsOnlinePaymentFlow(true);
     };
     
+    const handlePayAtCounter = () => {
+        if(validateOrderDetails()){
+            placeOrder('cod');
+        }
+    }
     
     if (loading && !cartData) {
         return <div className="min-h-screen bg-background flex items-center justify-center"><div className="animate-spin rounded-full h-16 w-16 border-b-2 border-primary"></div></div>;
@@ -383,58 +393,26 @@ const CheckoutPageInternal = () => {
             return <SplitBillInterface totalAmount={grandTotal} onBack={() => setIsSplitBillActive(false)} orderDetails={fullOrderDetailsForSplit}/>
         }
 
-        if (isOnlinePaymentFlow) {
-            return (
-                <div className="space-y-4">
-                    <Button onClick={() => setIsOnlinePaymentFlow(false)} variant="ghost" size="sm" className="mb-4"><ArrowLeft className="mr-2 h-4 w-4"/> Back</Button>
-                    <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} onClick={() => handlePaymentMethodSelect('razorpay')} disabled={isProcessingPayment} className="w-full text-left p-6 bg-card border-2 border-border rounded-lg flex items-center gap-6 hover:border-primary transition-all disabled:opacity-50">
-                        {isProcessingPayment && <Loader2 className="animate-spin h-5 w-5"/>}
-                        {!isProcessingPayment && <CreditCard size={40} className="text-primary flex-shrink-0"/>}
-                        <div>
-                            <h3 className="text-xl font-bold">Pay Full Bill</h3>
-                            <p className="text-muted-foreground">Use UPI, Card, or Netbanking</p>
-                        </div>
-                    </motion.button>
-                     {deliveryType === 'dine-in' && (
-                         <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} onClick={() => setIsSplitBillActive(true)} className="w-full text-left p-6 bg-card border-2 border-border rounded-lg flex items-center gap-6 hover:border-primary transition-all">
-                            <Split size={40} className="text-primary flex-shrink-0"/>
-                            <div>
-                                <h3 className="text-xl font-bold">Split The Bill</h3>
-                                <p className="text-muted-foreground">Split equally with your friends.</p>
-                            </div>
-                        </motion.button>
-                    )}
-                </div>
-            );
-        }
-
         return (
              <div className="space-y-4">
-                <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} onClick={handleOnlinePayClick} disabled={isProcessingPayment} className="w-full text-left p-6 bg-card border-2 border-border rounded-lg flex items-center gap-6 hover:border-primary transition-all disabled:opacity-50">
-                     {isProcessingPayment ? <Loader2 className="animate-spin h-10 w-10 text-primary flex-shrink-0"/> : <Landmark size={40} className="text-primary flex-shrink-0"/>}
+                {isOnlinePaymentFlow && <Button onClick={() => setIsOnlinePaymentFlow(false)} variant="ghost" size="sm" className="mb-4"><ArrowLeft className="mr-2 h-4 w-4"/> Back</Button>}
+                
+                <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} onClick={() => placeOrder('razorpay')} disabled={isProcessingPayment} className="w-full text-left p-6 bg-card border-2 border-border rounded-lg flex items-center gap-6 hover:border-primary transition-all disabled:opacity-50">
+                    {isProcessingPayment && <Loader2 className="animate-spin h-5 w-5"/>}
+                    {!isProcessingPayment && <CreditCard size={40} className="text-primary flex-shrink-0"/>}
                     <div>
-                        <h3 className="text-xl font-bold">Pay Online</h3>
-                        <p className="text-muted-foreground">UPI, Credit/Debit Card, Netbanking</p>
+                        <h3 className="text-xl font-bold">Pay Full Bill</h3>
+                        <p className="text-muted-foreground">Use UPI, Card, or Netbanking</p>
                     </div>
                 </motion.button>
-                {loading ? (
-                    <div className="w-full p-6 bg-card border-2 border-border rounded-lg animate-pulse h-[116px]"><div className="h-6 bg-muted rounded w-3/4"></div></div>
-                ) : codEnabled ? (
-                    <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} onClick={() => handlePaymentMethodSelect('cod')} disabled={isProcessingPayment} className="w-full text-left p-6 bg-card border-2 border-border rounded-lg flex items-center gap-6 hover:border-primary transition-all disabled:opacity-50">
-                        {isProcessingPayment ? <Loader2 className="animate-spin h-10 w-10 text-primary flex-shrink-0"/> : <IndianRupee size={40} className="text-primary flex-shrink-0"/>}
+                 {deliveryType === 'dine-in' && (
+                     <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} onClick={() => setIsSplitBillActive(true)} className="w-full text-left p-6 bg-card border-2 border-border rounded-lg flex items-center gap-6 hover:border-primary transition-all">
+                        <Split size={40} className="text-primary flex-shrink-0"/>
                         <div>
-                            <h3 className="text-xl font-bold">{deliveryType === 'pickup' ? 'Pay at Store' : (deliveryType === 'dine-in' ? 'Pay at Counter' : 'Pay on Delivery')}</h3>
-                            <p className="text-muted-foreground">Pay with cash or UPI when you receive your order</p>
+                            <h3 className="text-xl font-bold">Split The Bill</h3>
+                            <p className="text-muted-foreground">Split equally with your friends.</p>
                         </div>
                     </motion.button>
-                ) : (
-                    <div className="w-full text-left p-6 bg-muted/50 border-2 border-dashed border-border rounded-lg flex items-center gap-6 opacity-60">
-                        <IndianRupee size={40} className="text-muted-foreground flex-shrink-0"/>
-                        <div>
-                            <h3 className="text-xl font-bold text-muted-foreground">{deliveryType === 'pickup' ? 'Pay at Store' : (deliveryType === 'dine-in' ? 'Pay at Counter' : 'Pay on Delivery')}</h3>
-                            <p className="text-muted-foreground">This payment method is not available right now.</p>
-                        </div>
-                    </div>
                 )}
             </div>
         );
@@ -502,7 +480,7 @@ const CheckoutPageInternal = () => {
                                 )}
                                 <div>
                                     <Label htmlFor="phone">Phone Number</Label>
-                                    <Input id="phone" value={orderPhone} onChange={(e) => setOrderPhone(e.target.value)} disabled={loading} />
+                                    <Input id="phone" value={orderPhone} onChange={(e) => setOrderPhone(e.target.value)} disabled={loading || !!phoneFromUrl} />
                                 </div>
                              </div>
                          </div>
@@ -514,8 +492,37 @@ const CheckoutPageInternal = () => {
                                 <span>₹{grandTotal > 0 ? grandTotal.toFixed(2) : '0.00'}</span>
                             </div>
                         </div>
-
-                        {renderPaymentOptions()}
+                        
+                        {isOnlinePaymentFlow ? renderPaymentOptions() : (
+                             <div className="space-y-4">
+                                <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} onClick={handleOnlinePayClick} disabled={isProcessingPayment} className="w-full text-left p-6 bg-card border-2 border-border rounded-lg flex items-center gap-6 hover:border-primary transition-all disabled:opacity-50">
+                                     {isProcessingPayment ? <Loader2 className="animate-spin h-10 w-10 text-primary flex-shrink-0"/> : <Landmark size={40} className="text-primary flex-shrink-0"/>}
+                                    <div>
+                                        <h3 className="text-xl font-bold">Pay Online</h3>
+                                        <p className="text-muted-foreground">UPI, Credit/Debit Card, Netbanking</p>
+                                    </div>
+                                </motion.button>
+                                {loading ? (
+                                    <div className="w-full p-6 bg-card border-2 border-border rounded-lg animate-pulse h-[116px]"><div className="h-6 bg-muted rounded w-3/4"></div></div>
+                                ) : codEnabled ? (
+                                    <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} onClick={handlePayAtCounter} disabled={isProcessingPayment} className="w-full text-left p-6 bg-card border-2 border-border rounded-lg flex items-center gap-6 hover:border-primary transition-all disabled:opacity-50">
+                                        {isProcessingPayment ? <Loader2 className="animate-spin h-10 w-10 text-primary flex-shrink-0"/> : <IndianRupee size={40} className="text-primary flex-shrink-0"/>}
+                                        <div>
+                                            <h3 className="text-xl font-bold">{deliveryType === 'pickup' ? 'Pay at Store' : (deliveryType === 'dine-in' ? 'Pay at Counter' : 'Pay on Delivery')}</h3>
+                                            <p className="text-muted-foreground">Pay with cash or UPI when you receive your order</p>
+                                        </div>
+                                    </motion.button>
+                                ) : (
+                                    <div className="w-full text-left p-6 bg-muted/50 border-2 border-dashed border-border rounded-lg flex items-center gap-6 opacity-60">
+                                        <IndianRupee size={40} className="text-muted-foreground flex-shrink-0"/>
+                                        <div>
+                                            <h3 className="text-xl font-bold text-muted-foreground">{deliveryType === 'pickup' ? 'Pay at Store' : (deliveryType === 'dine-in' ? 'Pay at Counter' : 'Pay on Delivery')}</h3>
+                                            <p className="text-muted-foreground">This payment method is not available right now.</p>
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        )}
                         
                     </motion.div>
                 </main>
