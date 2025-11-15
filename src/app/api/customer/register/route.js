@@ -24,7 +24,25 @@ export async function POST(req) {
     console.log("[DEBUG] /api/customer/register: Received new order request.");
     try {
         const firestore = await getFirestore();
-        const { name, address, phone, restaurantId, items, notes, coupon, loyaltyDiscount, grandTotal, paymentMethod, businessType = 'restaurant', deliveryType = 'delivery', pickupTime = '', tipAmount = 0, subtotal, cgst, sgst, deliveryCharge, tableId = null, pax_count, tab_name, dineInTabId } = await req.json();
+        const { 
+            name, address, phone, restaurantId, items, notes, 
+            coupon = null, 
+            loyaltyDiscount = 0, 
+            grandTotal, 
+            paymentMethod, 
+            businessType = 'restaurant', 
+            deliveryType = 'delivery', 
+            pickupTime = '', 
+            tipAmount = 0, 
+            subtotal, 
+            cgst, 
+            sgst, 
+            deliveryCharge = 0, 
+            tableId = null, 
+            pax_count, 
+            tab_name, 
+            dineInTabId 
+        } = await req.json();
 
         // --- VALIDATION ---
         console.log("[DEBUG] /api/customer/register: Validating request data...");
@@ -88,7 +106,7 @@ export async function POST(req) {
                 deliveryType,
                 pax_count: pax_count, tab_name: tab_name,
                 status: 'pending', 
-                dineInTabId: dineInTabId || null, // FIX: Use null if dineInTabId is undefined
+                dineInTabId: dineInTabId || null,
                 orderDate: FieldValue.serverTimestamp(),
                 trackingToken: trackingToken, // Save the token
             });
