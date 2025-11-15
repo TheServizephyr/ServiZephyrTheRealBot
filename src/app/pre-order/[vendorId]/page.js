@@ -172,6 +172,7 @@ const CheckoutModal = ({ isOpen, onClose, onConfirm, total, vendorName, cart, ve
     const router = useRouter();
 
     const handlePayment = async (paymentMethod) => {
+        console.log(`[DEBUG] handlePayment started. Method: ${paymentMethod}`);
         if (!name.trim()) {
             setError("Name is required.");
             return;
@@ -186,7 +187,7 @@ const CheckoutModal = ({ isOpen, onClose, onConfirm, total, vendorName, cart, ve
 
         const orderData = {
             name: name,
-            phone: phone.trim() || null,
+            phone: phone.trim(),
             restaurantId: vendorId,
             businessType: 'street-vendor',
             items: cart.map(item => ({
@@ -207,20 +208,25 @@ const CheckoutModal = ({ isOpen, onClose, onConfirm, total, vendorName, cart, ve
             address: { full: 'Street Vendor Pre-Order' }
         };
 
+        console.log("[DEBUG] Submitting order data to /api/customer/register:", JSON.stringify(orderData, null, 2));
+
         try {
             const res = await fetch('/api/customer/register', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(orderData)
             });
-
+            
+            console.log(`[DEBUG] /api/customer/register response status: ${res.status}`);
             const data = await res.json();
+            console.log("[DEBUG] /api/customer/register response data:", data);
             
             if (!res.ok) {
                 throw new Error(data.message || "Failed to process order.");
             }
             
             if (data.razorpay_order_id) {
+                console.log(`[DEBUG] Razorpay Order ID received: ${data.razorpay_order_id}. Opening Razorpay checkout.`);
                 const options = {
                     key: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID,
                     amount: total * 100,
@@ -229,6 +235,7 @@ const CheckoutModal = ({ isOpen, onClose, onConfirm, total, vendorName, cart, ve
                     description: `Order from ${vendorName}`,
                     order_id: data.razorpay_order_id,
                     handler: function (response){
+                        console.log("[DEBUG] Razorpay success response:", response);
                         onConfirm({ name, phone, paymentDetails: response, method: 'online', firestore_order_id: data.firestore_order_id, token: data.token });
                     },
                     prefill: { name: name, contact: phone },
@@ -236,15 +243,18 @@ const CheckoutModal = ({ isOpen, onClose, onConfirm, total, vendorName, cart, ve
                 };
                 const rzp1 = new window.Razorpay(options);
                 rzp1.on('payment.failed', function (response){
+                    console.error("[DEBUG] Razorpay payment failed:", response.error);
                     setError(`Payment failed: ${response.error.description}`);
                     setIsProcessing(false);
                 });
                 rzp1.open();
             } else {
+                console.log("[DEBUG] Pay at counter successful. Firestore Order ID:", data.firestore_order_id);
                 onConfirm({ name, phone, method: 'counter', firestore_order_id: data.firestore_order_id, token: data.token });
             }
 
         } catch (err) {
+            console.error("[DEBUG] handlePayment error:", err);
             setError(err.message);
             setIsProcessing(false);
         }
@@ -396,6 +406,7 @@ export default function PreOrderPage({ params }) {
     }, [cart]);
 
     const handleCheckout = (details) => {
+        console.log('[DEBUG] handleCheckout called with details:', details);
         setCheckoutOpen(false);
         setCartOpen(false);
         
@@ -414,6 +425,7 @@ export default function PreOrderPage({ params }) {
             restaurantId: vendorId
         });
         
+        console.log(`[DEBUG] Navigating to /order/placed with params: ${urlParams.toString()}`);
         router.push(`/order/placed?${urlParams.toString()}`);
     };
     
