@@ -57,11 +57,5 @@
       ]
     }
   ],
-  "fieldOverrides": [
-    {
-      "collectionGroup": "split_payments",
-      "fieldPath": "id",
-      "indexes": []
-    }
-  ]
+  "fieldOverrides": []
 }

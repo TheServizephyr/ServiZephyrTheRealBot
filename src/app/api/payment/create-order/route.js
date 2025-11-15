@@ -11,7 +11,7 @@ export async function POST(req) {
         const body = await req.json();
         console.log("[DEBUG] /api/payment/create-order: Full request body:", JSON.stringify(body, null, 2));
         
-        const { grandTotal, totalAmount, splitCount, baseOrderId, restaurantId } = body;
+        const { grandTotal, totalAmount, subtotal, splitCount, baseOrderId, restaurantId } = body;
         
         console.log(`[DEBUG] /api/payment/create-order: Destructured values - grandTotal: ${grandTotal}, totalAmount: ${totalAmount}, splitCount: ${splitCount}`);
 
@@ -58,7 +58,7 @@ export async function POST(req) {
             }
 
             const firestorePayload = {
-                id: splitId,
+                id: splitId, // FIX: Ensure the ID is always written to the document
                 baseOrderId,
                 restaurantId,
                 totalAmount: finalAmount,
@@ -76,13 +76,16 @@ export async function POST(req) {
 
         // --- Fallback for simple order creation (as it was before) ---
         console.log(`[DEBUG] /api/payment/create-order: Initiating SIMPLE order flow.`);
-        const { amount } = body;
-        if (!amount || amount < 1) {
+        
+        // FIX: Ensure amount is taken from the correct field
+        const amountForSimpleOrder = subtotal !== undefined ? subtotal : finalAmount;
+
+        if (!amountForSimpleOrder || amountForSimpleOrder < 1) {
             console.error("[DEBUG] /api/payment/create-order: Simple order failed - amount is missing or invalid.");
             return NextResponse.json({ message: 'A valid amount is required for a simple order.' }, { status: 400 });
         }
         const options = {
-            amount: Math.round(amount * 100),
+            amount: Math.round(amountForSimpleOrder * 100),
             currency: "INR",
             receipt: `receipt_${nanoid(10)}`,
         };
