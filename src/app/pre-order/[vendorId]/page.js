@@ -1,8 +1,9 @@
+
 'use client';
 
 import { useState, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ShoppingCart, Plus, Minus, X, IndianRupee, Loader2, Utensils, Wallet } from 'lucide-react';
+import { ShoppingCart, Plus, Minus, X, IndianRupee, Loader2, Utensils, Wallet, User, Phone } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import Image from 'next/image';
@@ -163,6 +164,157 @@ const CartSheet = ({ cart, updateQuantity, onCheckout, grandTotal, onClose }) =>
     </motion.div>
 );
 
+const CheckoutModal = ({ isOpen, onClose, cart, vendorId, onSuccessfulOrder }) => {
+    const [step, setStep] = useState(1); // 1: Details, 2: Payment options, 3: Split bill
+    const [name, setName] = useState('');
+    const [phone, setPhone] = useState('');
+    const [isProcessing, setIsProcessing] = useState(false);
+    const router = useRouter();
+
+    const grandTotal = useMemo(() => {
+        return cart.reduce((sum, item) => sum + (item.portion.price * item.quantity), 0);
+    }, [cart]);
+
+    const handleProceedToPayment = (e) => {
+        e.preventDefault();
+        if (!name.trim()) {
+            alert("Please enter your name.");
+            return;
+        }
+        setStep(2);
+    };
+    
+    const handlePayOnline = async () => {
+        setIsProcessing(true);
+        try {
+            const orderPayload = {
+                restaurantId: vendorId,
+                items: cart,
+                grandTotal: grandTotal,
+                customerName: name,
+                customerPhone: phone,
+                paymentMethod: 'razorpay',
+                deliveryType: 'street-vendor-pre-order',
+                businessType: 'street-vendor',
+            };
+
+            const response = await fetch('/api/customer/register', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(orderPayload)
+            });
+
+            const data = await response.json();
+            if (!response.ok) throw new Error(data.message);
+
+            const options = {
+                key: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID,
+                amount: grandTotal * 100,
+                currency: "INR",
+                name: "ServiZephyr Pre-Order",
+                order_id: data.razorpay_order_id,
+                handler: function(response) {
+                    onSuccessfulOrder(data.firestore_order_id, data.token);
+                },
+                prefill: { name, contact: phone },
+                modal: { ondismiss: () => setIsProcessing(false) }
+            };
+            const rzp = new window.Razorpay(options);
+            rzp.on('payment.failed', () => setIsProcessing(false));
+            rzp.open();
+        } catch (error) {
+            alert('Payment Error: ' + error.message);
+            setIsProcessing(false);
+        }
+    };
+    
+    const handlePayAtCounter = async () => {
+        setIsProcessing(true);
+        try {
+            const orderPayload = {
+                restaurantId: vendorId,
+                items: cart,
+                grandTotal: grandTotal,
+                customerName: name,
+                customerPhone: phone,
+                paymentMethod: 'cod', // Cash on delivery
+                deliveryType: 'street-vendor-pre-order',
+                businessType: 'street-vendor',
+            };
+
+            const response = await fetch('/api/customer/register', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(orderPayload)
+            });
+
+            const data = await response.json();
+            if (!response.ok) throw new Error(data.message);
+            
+            onSuccessfulOrder(data.firestore_order_id, data.token);
+            
+        } catch (error) {
+             alert('Error: ' + error.message);
+        } finally {
+            setIsProcessing(false);
+        }
+    }
+
+
+    const renderStep = () => {
+        switch (step) {
+            case 1:
+                return (
+                    <form onSubmit={handleProceedToPayment}>
+                        <DialogHeader>
+                            <DialogTitle>Your Details</DialogTitle>
+                            <DialogDescription>A name is required to identify your order.</DialogDescription>
+                        </DialogHeader>
+                        <div className="py-4 space-y-4">
+                            <div className="space-y-2">
+                                <label htmlFor="name" className="flex items-center gap-2"><User size={16}/>Your Name *</label>
+                                <input id="name" value={name} onChange={(e) => setName(e.target.value)} required className="w-full p-2 border rounded-md bg-input border-border" />
+                            </div>
+                            <div className="space-y-2">
+                                <label htmlFor="phone" className="flex items-center gap-2"><Phone size={16}/>Mobile Number (Optional)</label>
+                                <input id="phone" type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} className="w-full p-2 border rounded-md bg-input border-border" />
+                            </div>
+                        </div>
+                        <DialogFooter>
+                            <Button type="submit" className="w-full h-12">Proceed to Payment</Button>
+                        </DialogFooter>
+                    </form>
+                );
+            case 2:
+                return (
+                     <div>
+                        <DialogHeader>
+                            <DialogTitle>Choose Payment</DialogTitle>
+                        </DialogHeader>
+                        <div className="py-4 grid grid-cols-1 gap-4">
+                           <Button onClick={handlePayOnline} className="h-16 text-lg" disabled={isProcessing}>
+                                {isProcessing ? <Loader2 className="animate-spin" /> : 'Pay Online Now'}
+                           </Button>
+                           <Button onClick={handlePayAtCounter} variant="secondary" className="h-16 text-lg" disabled={isProcessing}>
+                                {isProcessing ? <Loader2 className="animate-spin" /> : 'Pay at Counter'}
+                           </Button>
+                        </div>
+                     </div>
+                );
+            default:
+                return null;
+        }
+    };
+    
+    return (
+        <Dialog open={isOpen} onOpenChange={(open) => { if (!open) { onClose(); setStep(1); }}}>
+            <DialogContent className="bg-card border-border">
+                {renderStep()}
+            </DialogContent>
+        </Dialog>
+    );
+};
+
 
 export default function PreOrderPage({ params }) {
     const { vendorId } = params;
@@ -172,6 +324,7 @@ export default function PreOrderPage({ params }) {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
     const [isCartOpen, setCartOpen] = useState(false);
+    const [isCheckoutModalOpen, setCheckoutModalOpen] = useState(false);
     const [customizationItem, setCustomizationItem] = useState(null);
     const [cartQuantities, setCartQuantities] = useState({});
     const router = useRouter();
@@ -195,7 +348,6 @@ export default function PreOrderPage({ params }) {
                 const allItems = Object.values(data.menu || {}).flat().filter(item => item.isAvailable === true);
                 setMenu(allItems);
 
-                 // Load cart from localStorage after menu is fetched
                 const savedCartData = localStorage.getItem(`cart_${vendorId}`);
                 if (savedCartData) {
                     setCart(JSON.parse(savedCartData).cart || []);
@@ -211,7 +363,6 @@ export default function PreOrderPage({ params }) {
     }, [vendorId]);
 
     useEffect(() => {
-        // Save cart to localStorage whenever it changes
         const cartDataToSave = { cart };
         localStorage.setItem(`cart_${vendorId}`, JSON.stringify(cartDataToSave));
 
@@ -287,11 +438,15 @@ export default function PreOrderPage({ params }) {
     }, [cart]);
     
     const handleProceedToCheckout = () => {
-        const params = new URLSearchParams();
-        params.set('restaurantId', vendorId);
-        // We don't need phone/token here as it's a pre-order flow that will collect details
-        router.push(`/checkout?${params.toString()}`);
-    }
+        setCartOpen(false);
+        setCheckoutModalOpen(true);
+    };
+
+    const handleSuccessfulOrder = (orderId, token) => {
+        setCart([]); // Clear the cart
+        localStorage.removeItem(`cart_${vendorId}`);
+        router.push(`/order/placed?orderId=${orderId}&token=${token}&restaurantId=${vendorId}`);
+    };
 
     
     if (loading) {
@@ -304,6 +459,7 @@ export default function PreOrderPage({ params }) {
 
     return (
         <div className="min-h-screen bg-background text-foreground font-body">
+            <Script src="https://checkout.razorpay.com/v1/checkout.js" />
             <header className="text-center p-6 border-b border-border bg-card sticky top-0 z-10">
                 <h1 className="text-3xl font-bold font-headline">{vendor?.name}</h1>
                 <p className="text-muted-foreground">{vendor?.address}</p>
@@ -330,6 +486,14 @@ export default function PreOrderPage({ params }) {
                 </div>
             </main>
             
+            <CheckoutModal 
+                isOpen={isCheckoutModalOpen}
+                onClose={() => setCheckoutModalOpen(false)}
+                cart={cart}
+                vendorId={vendorId}
+                onSuccessfulOrder={handleSuccessfulOrder}
+            />
+
             <CustomizationDrawer 
                 isOpen={!!customizationItem}
                 onClose={() => setCustomizationItem(null)}
