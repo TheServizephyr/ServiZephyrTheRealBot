@@ -3,11 +3,13 @@
 
 import { useState, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ShoppingCart, Plus, Minus, X, IndianRupee, Loader2, Utensils } from 'lucide-react';
+import { ShoppingCart, Plus, Minus, X, IndianRupee, Loader2, Utensils, Wallet } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import Image from 'next/image';
+import Script from 'next/script';
 import { cn } from '@/lib/utils';
+import { useRouter } from 'next/navigation';
 
 
 const MenuItem = ({ item, cartQuantity, onAdd, onIncrement, onDecrement }) => (
@@ -66,7 +68,6 @@ const CustomizationDrawer = ({ item, isOpen, onClose, onAddToCart }) => {
 
     useEffect(() => {
         if (item) {
-            // Default to the first portion or the one named 'Full'
             const defaultPortion = item.portions?.find(p => p.name.toLowerCase() === 'full') || item.portions?.[0] || null;
             setSelectedPortion(defaultPortion);
         }
@@ -83,7 +84,7 @@ const CustomizationDrawer = ({ item, isOpen, onClose, onAddToCart }) => {
         <AnimatePresence>
             {isOpen && (
                 <motion.div 
-                  className="fixed inset-0 bg-black/60 z-40"
+                  className="fixed inset-0 bg-black/60 z-50"
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
                   exit={{ opacity: 0 }}
@@ -167,13 +168,15 @@ const CartSheet = ({ cart, updateQuantity, onCheckout, grandTotal, onClose }) =>
     </motion.div>
 );
 
-const CheckoutModal = ({ isOpen, onClose, onConfirm, total }) => {
+const CheckoutModal = ({ isOpen, onClose, onConfirm, total, vendorName }) => {
     const [name, setName] = useState('');
     const [phone, setPhone] = useState('');
     const [error, setError] = useState('');
+    const [isProcessing, setIsProcessing] = useState(false);
+    const router = useRouter();
 
-    const handleSubmit = () => {
-        setError('');
+
+    const handleOnlinePayment = async () => {
         if (!name.trim()) {
             setError("Name is required.");
             return;
@@ -182,15 +185,72 @@ const CheckoutModal = ({ isOpen, onClose, onConfirm, total }) => {
             setError("If providing a phone number, it must be a valid 10-digit number.");
             return;
         }
-        onConfirm({ name, phone });
+        
+        setIsProcessing(true);
+        setError('');
+
+        try {
+            const orderRes = await fetch('/api/payment/create-order', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ amount: total }),
+            });
+            if (!orderRes.ok) {
+                throw new Error("Failed to create payment order.");
+            }
+            const orderData = await orderRes.json();
+            
+            const options = {
+                key: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID,
+                amount: orderData.amount,
+                currency: "INR",
+                name: vendorName || "Street Vendor",
+                description: `Order from ${vendorName}`,
+                order_id: orderData.id,
+                handler: function (response){
+                    // Here you would save the order to your DB and then redirect
+                    onConfirm({ name, phone, paymentDetails: response, method: 'online' });
+                },
+                prefill: {
+                    name: name,
+                    contact: phone
+                },
+                theme: {
+                    color: "#FBBF24"
+                }
+            };
+            const rzp1 = new window.Razorpay(options);
+            rzp1.on('payment.failed', function (response){
+                setError(`Payment failed: ${response.error.description}`);
+                setIsProcessing(false);
+            });
+            rzp1.open();
+
+        } catch (err) {
+            setError(err.message);
+            setIsProcessing(false);
+        }
     };
+    
+    const handlePayAtCounter = () => {
+        if (!name.trim()) {
+            setError("Name is required.");
+            return;
+        }
+        if (phone.trim() && !/^\d{10}$/.test(phone.trim())) {
+            setError("If providing a phone number, it must be a valid 10-digit number.");
+            return;
+        }
+        // Immediately confirm, assuming physical payment will be handled.
+        onConfirm({ name, phone, method: 'counter' });
+    }
 
     return (
         <Dialog open={isOpen} onOpenChange={onClose}>
             <DialogContent className="bg-card border-border text-foreground">
                 <DialogHeader>
                     <DialogTitle>Almost there!</DialogTitle>
-                    <DialogDescription>Please provide your details to place the order.</DialogDescription>
+                    <DialogDescription>Please provide your name to place the order.</DialogDescription>
                 </DialogHeader>
                 <div className="space-y-4 py-4">
                     <div>
@@ -203,9 +263,14 @@ const CheckoutModal = ({ isOpen, onClose, onConfirm, total }) => {
                     </div>
                     {error && <p className="text-sm text-destructive">{error}</p>}
                 </div>
-                <DialogFooter>
-                    <Button variant="ghost" onClick={onClose}>Cancel</Button>
-                    <Button onClick={handleSubmit} className="bg-primary hover:bg-primary/80 text-primary-foreground">Pay ₹{total}</Button>
+                <DialogFooter className="grid grid-cols-2 gap-4">
+                    <Button onClick={handlePayAtCounter} variant="outline" className="h-12 text-base">
+                        <Wallet className="mr-2 h-5 w-5"/> Pay at Counter
+                    </Button>
+                    <Button onClick={handleOnlinePayment} disabled={isProcessing} className="bg-primary hover:bg-primary/80 text-primary-foreground h-12 text-base">
+                        {isProcessing ? <Loader2 className="animate-spin mr-2"/> : null}
+                        Pay ₹{total} Online
+                    </Button>
                 </DialogFooter>
             </DialogContent>
         </Dialog>
@@ -223,6 +288,8 @@ export default function PreOrderPage({ params }) {
     const [isCheckoutOpen, setCheckoutOpen] = useState(false);
     const [customizationItem, setCustomizationItem] = useState(null);
     const [cartQuantities, setCartQuantities] = useState({});
+    const router = useRouter();
+
 
     useEffect(() => {
         const fetchVendorAndMenu = async () => {
@@ -239,7 +306,7 @@ export default function PreOrderPage({ params }) {
                 }
                 const data = await res.json();
                 setVendor({ name: data.restaurantName, address: data.businessAddress?.full || '' });
-                const allItems = Object.values(data.menu || {}).flat().filter(item => item.isAvailable === true || item.available === true);
+                const allItems = Object.values(data.menu || {}).flat().filter(item => item.isAvailable === true);
                 setMenu(allItems);
             } catch (err) {
                 setError(err.message);
@@ -300,8 +367,6 @@ export default function PreOrderPage({ params }) {
     };
 
      const handleIncrement = (item) => {
-        // This is simplified. In a real app, you'd need to know which portion to increment.
-        // For this example, we assume we're incrementing the first item of this type in the cart.
         const cartItem = cart.find(ci => ci.id === item.id);
         if (cartItem) {
             updateQuantity(cartItem.cartItemId, 1);
@@ -327,7 +392,16 @@ export default function PreOrderPage({ params }) {
 
     const handleCheckout = async (customerDetails) => {
         setCheckoutOpen(false);
-        alert(`Placing order for ${customerDetails.name} totalling ₹${grandTotal}. Payment integration is next.`);
+        // This is where you would call the final order placement API
+        // For now, we'll just show the order placed page
+        const orderId = "temp_" + Date.now(); // Temporary order ID
+        sessionStorage.setItem(orderId, JSON.stringify({
+            vendorName: vendor.name,
+            total: grandTotal,
+            items: cart,
+            customer: customerDetails
+        }));
+        router.push(`/order/placed?orderId=${orderId}`);
     };
     
     if (loading) {
@@ -340,6 +414,7 @@ export default function PreOrderPage({ params }) {
 
     return (
         <div className="min-h-screen bg-background text-foreground font-body">
+            <Script src="https://checkout.razorpay.com/v1/checkout.js" />
             <header className="text-center p-6 border-b border-border bg-card sticky top-0 z-10">
                 <h1 className="text-3xl font-bold font-headline">{vendor?.name}</h1>
                 <p className="text-muted-foreground">{vendor?.address}</p>
@@ -396,7 +471,14 @@ export default function PreOrderPage({ params }) {
               )}
             </AnimatePresence>
 
-            <CheckoutModal isOpen={isCheckoutOpen} onClose={() => setCheckoutOpen(false)} total={grandTotal} onConfirm={handleCheckout} />
+            <CheckoutModal 
+                isOpen={isCheckoutOpen} 
+                onClose={() => setCheckoutOpen(false)} 
+                total={grandTotal} 
+                onConfirm={handleCheckout} 
+                vendorName={vendor?.name}
+            />
         </div>
     );
 }
+    
