@@ -1,8 +1,8 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ClipboardList, QrCode, CookingPot, PackageCheck, Check, X, Loader2, User, Phone, History } from 'lucide-react';
+import { ClipboardList, QrCode, CookingPot, PackageCheck, Check, X, Loader2, User, Phone, History, Wallet, IndianRupee } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import Link from 'next/link';
 import { useUser } from '@/firebase';
@@ -24,6 +24,8 @@ const OrderCard = ({ order, onMarkReady, onCancel, onMarkCollected }) => {
         cardClass = 'border-green-500 bg-green-500/10';
         statusClass = 'text-green-400';
     }
+    
+    const isPaidOnline = order.paymentDetails?.method === 'razorpay';
 
     return (
         <motion.div
@@ -39,7 +41,21 @@ const OrderCard = ({ order, onMarkReady, onCancel, onMarkCollected }) => {
                     <p className="text-4xl font-bold text-foreground">#{token}</p>
                     <div className={`px-2 py-1 text-xs font-semibold rounded-full ${statusClass} bg-opacity-20`}>{order.status}</div>
                 </div>
-                <div className="mt-4 text-muted-foreground space-y-1">
+                
+                <div className="flex justify-between items-center mt-2 border-b border-dashed border-border/50 pb-3 mb-3">
+                    <p className="text-3xl font-bold text-primary">₹{order.totalAmount.toFixed(2)}</p>
+                    {isPaidOnline ? (
+                         <div className="flex items-center gap-1 text-xs font-semibold px-2 py-1 rounded-full bg-green-500/10 text-green-400 border border-green-500/20">
+                            <Wallet size={14}/> PAID ONLINE
+                        </div>
+                    ) : (
+                         <div className="flex items-center gap-1 text-xs font-semibold px-2 py-1 rounded-full bg-yellow-500/10 text-yellow-400 border border-yellow-500/20">
+                            <IndianRupee size={14}/> PAY AT COUNTER
+                        </div>
+                    )}
+                </div>
+
+                <div className="mt-2 text-muted-foreground space-y-1">
                     <div className="flex items-center gap-2">
                         <User size={16}/>
                         <span className="font-semibold text-foreground text-lg">{order.customerName}</span>
@@ -150,7 +166,7 @@ export default function StreetVendorDashboard() {
                     'Content-Type': 'application/json',
                     'Authorization': `Bearer ${idToken}`
                  },
-                body: JSON.stringify({ orderId, newStatus }),
+                body: JSON.stringify({ orderIds: [orderId], newStatus }),
             });
             if (!response.ok) {
                 const errorData = await response.json();
@@ -162,7 +178,7 @@ export default function StreetVendorDashboard() {
     };
 
     const handleMarkReady = (orderId) => handleUpdateStatus(orderId, 'Ready');
-    const handleCancelOrder = (orderId) => handleUpdateStatus(orderId, 'Cancelled');
+    const handleCancelOrder = (orderId) => handleUpdateStatus(orderId, 'rejected');
     const handleMarkCollected = (orderId) => handleUpdateStatus(orderId, 'delivered');
     
     const pendingOrders = useMemo(() => orders.filter(o => o.status === 'pending'), [orders]);
