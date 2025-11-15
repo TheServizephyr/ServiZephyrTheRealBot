@@ -38,10 +38,6 @@ function PayoutSettingsPageContent() {
                      if (data.razorpayAccountId) {
                          setAccountId(data.razorpayAccountId);
                      }
-                     // Pre-fill beneficiary name from user's profile name
-                     if (data.name) {
-                         setBeneficiaryName(data.name);
-                     }
                  }
              }
              setLoading(false);

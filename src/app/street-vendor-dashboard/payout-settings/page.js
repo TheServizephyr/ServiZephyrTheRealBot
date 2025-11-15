@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useState, useEffect, Suspense } from 'react';
@@ -36,9 +37,6 @@ function PayoutSettingsPageContent() {
                      const data = await res.json();
                      if (data.razorpayAccountId) {
                          setAccountId(data.razorpayAccountId);
-                     }
-                     if (data.name) {
-                         setBeneficiaryName(data.name);
                      }
                  }
              }
