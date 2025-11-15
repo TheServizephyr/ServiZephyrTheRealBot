@@ -53,7 +53,6 @@ const SplitBillInterface = ({ totalAmount, onBack, orderDetails }) => {
             const data = await res.json();
             if (!res.ok) throw new Error(data.message || 'Failed to create split payment session.');
             
-            // Redirect to the new split payment tracking page
             router.push(`/split-pay/${data.splitId}`);
 
         } catch (err) {
@@ -102,11 +101,16 @@ const CheckoutPageInternal = () => {
     
     const [userAddresses, setUserAddresses] = useState([]);
     const [codEnabled, setCodEnabled] = useState(false);
-    const [selectedPaymentMethod, setSelectedPaymentMethod] = useState(null);
+    
+    // --- START FIX: State Management for Payment Flow ---
+    const [selectedPaymentMethod, setSelectedPaymentMethod] = useState(null); // 'razorpay' or 'cod'
+    const [isOnlinePaymentFlow, setIsOnlinePaymentFlow] = useState(false); // New state to show online options
+    const [isSplitBillActive, setIsSplitBillActive] = useState(false);
+    // --- END FIX ---
+    
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
     const [isDineInModalOpen, setDineInModalOpen] = useState(false);
-    const [isSplitBillActive, setIsSplitBillActive] = useState(false);
     
     const [infoDialog, setInfoDialog] = useState({ isOpen: false, title: '', message: '' });
 
@@ -268,7 +272,7 @@ const CheckoutPageInternal = () => {
 
     const handleViewBill = () => {
         setDineInModalOpen(false);
-        setIsSplitBillActive(true);
+        setIsOnlinePaymentFlow(true);
     };
 
     const handleConfirmOrder = async (paymentMethod) => {
@@ -318,8 +322,8 @@ const CheckoutPageInternal = () => {
                  rzp.on('payment.failed', function (response){
                     console.error("[Checkout Page] Razorpay payment failed:", response.error);
                     setInfoDialog({ isOpen: true, title: 'Payment Failed', message: response.error.description });
-                    setLoading(false); // ** THE FIX **
-                    setSelectedPaymentMethod(null); // ** THE FIX **
+                    setLoading(false);
+                    setSelectedPaymentMethod(null);
                  });
                 rzp.open();
             } else {
@@ -338,12 +342,7 @@ const CheckoutPageInternal = () => {
         } catch (err) {
             console.error("[Checkout Page] Error confirming order:", err.message);
             setError(err.message);
-        } finally {
-            // Do not set loading to false here for Razorpay flow, as it will handle the redirect.
-            // Only set it to false if it's NOT a razorpay flow or if there's an error.
-            if (!orderData.paymentMethod === 'razorpay') {
-                setLoading(false);
-            }
+            setLoading(false); // Reset loading on error
         }
     };
     
@@ -393,6 +392,71 @@ const CheckoutPageInternal = () => {
         firestore_order_id: cartData.id, 
         restaurantId
     };
+    
+    // --- START FIX: Conditional Rendering Logic for Payment Flow ---
+    const renderPaymentOptions = () => {
+        if (isSplitBillActive) {
+            return <SplitBillInterface totalAmount={grandTotal} onBack={() => setIsSplitBillActive(false)} orderDetails={fullOrderDetailsForSplit}/>
+        }
+
+        if (isOnlinePaymentFlow) {
+            return (
+                <div className="space-y-4">
+                    <Button onClick={() => setIsOnlinePaymentFlow(false)} variant="ghost" size="sm" className="mb-4"><ArrowLeft className="mr-2 h-4 w-4"/> Back</Button>
+                    <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} onClick={() => handlePaymentMethodSelect('razorpay')} className="w-full text-left p-6 bg-card border-2 border-border rounded-lg flex items-center gap-6 hover:border-primary transition-all">
+                        <CreditCard size={40} className="text-primary flex-shrink-0"/>
+                        <div>
+                            <h3 className="text-xl font-bold">Pay Full Bill</h3>
+                            <p className="text-muted-foreground">Use UPI, Card, or Netbanking</p>
+                        </div>
+                    </motion.button>
+                     {deliveryType === 'dine-in' && (
+                         <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} onClick={() => setIsSplitBillActive(true)} className="w-full text-left p-6 bg-card border-2 border-border rounded-lg flex items-center gap-6 hover:border-primary transition-all">
+                            <Split size={40} className="text-primary flex-shrink-0"/>
+                            <div>
+                                <h3 className="text-xl font-bold">Split The Bill</h3>
+                                <p className="text-muted-foreground">Split equally with your friends.</p>
+                            </div>
+                        </motion.button>
+                    )}
+                </div>
+            );
+        }
+
+        // Default view: Show "Pay Online" and "Pay at Counter"
+        return (
+             <div className="space-y-4">
+                <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} onClick={() => setIsOnlinePaymentFlow(true)} className="w-full text-left p-6 bg-card border-2 border-border rounded-lg flex items-center gap-6 hover:border-primary transition-all">
+                    <Landmark size={40} className="text-primary flex-shrink-0"/>
+                    <div>
+                        <h3 className="text-xl font-bold">Pay Online</h3>
+                        <p className="text-muted-foreground">UPI, Credit/Debit Card, Netbanking</p>
+                    </div>
+                </motion.button>
+                {loading ? (
+                    <div className="w-full p-6 bg-card border-2 border-border rounded-lg animate-pulse h-[116px]"><div className="h-6 bg-muted rounded w-3/4"></div></div>
+                ) : codEnabled ? (
+                    <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} onClick={() => handleConfirmOrder('cod')} className="w-full text-left p-6 bg-card border-2 border-border rounded-lg flex items-center gap-6 hover:border-primary transition-all">
+                        <IndianRupee size={40} className="text-primary flex-shrink-0"/>
+                        <div>
+                            <h3 className="text-xl font-bold">{deliveryType === 'pickup' ? 'Pay at Store' : (deliveryType === 'dine-in' ? 'Pay at Counter' : 'Pay on Delivery')}</h3>
+                            <p className="text-muted-foreground">Pay with cash or UPI when you receive your order</p>
+                        </div>
+                    </motion.button>
+                ) : (
+                    <div className="w-full text-left p-6 bg-muted/50 border-2 border-dashed border-border rounded-lg flex items-center gap-6 opacity-60">
+                        <IndianRupee size={40} className="text-muted-foreground flex-shrink-0"/>
+                        <div>
+                            <h3 className="text-xl font-bold text-muted-foreground">{deliveryType === 'pickup' ? 'Pay at Store' : (deliveryType === 'dine-in' ? 'Pay at Counter' : 'Pay on Delivery')}</h3>
+                            <p className="text-muted-foreground">This payment method is not available right now.</p>
+                        </div>
+                    </div>
+                )}
+            </div>
+        );
+    }
+    // --- END FIX ---
+
 
     return (
         <>
@@ -406,7 +470,7 @@ const CheckoutPageInternal = () => {
             <Dialog open={!!selectedPaymentMethod} onOpenChange={(isOpen) => {
                 if (!isOpen) {
                     setSelectedPaymentMethod(null);
-                    setLoading(false); // ** THE FIX **
+                    setLoading(false);
                 }
             }}>
                  <DialogContent className="bg-background border-border text-foreground">
@@ -478,47 +542,8 @@ const CheckoutPageInternal = () => {
                             </div>
                         </div>
 
-                        {isSplitBillActive ? (
-                            <SplitBillInterface totalAmount={grandTotal} onBack={() => setIsSplitBillActive(false)} orderDetails={fullOrderDetailsForSplit}/>
-                        ) : (
-                             <div className="space-y-4">
-                                 <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} onClick={() => handlePaymentMethodSelect('razorpay')} className="w-full text-left p-6 bg-card border-2 border-border rounded-lg flex items-center gap-6 hover:border-primary transition-all">
-                                    <div className="flex items-center gap-2"><CreditCard size={24} className="text-primary"/><Landmark size={24} className="text-primary"/></div>
-                                    <div>
-                                        <h3 className="text-xl font-bold">Pay Full Bill Online</h3>
-                                        <p className="text-muted-foreground">UPI, Credit/Debit Card, Netbanking</p>
-                                    </div>
-                                </motion.button>
-                                {deliveryType === 'dine-in' && (
-                                     <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} onClick={() => setIsSplitBillActive(true)} className="w-full text-left p-6 bg-card border-2 border-border rounded-lg flex items-center gap-6 hover:border-primary transition-all">
-                                        <Split size={40} className="text-primary flex-shrink-0"/>
-                                        <div>
-                                            <h3 className="text-xl font-bold">Split The Bill</h3>
-                                            <p className="text-muted-foreground">Split equally or by items with your friends.</p>
-                                        </div>
-                                    </motion.button>
-                                )}
-                                {loading ? (
-                                    <div className="w-full p-6 bg-card border-2 border-border rounded-lg animate-pulse h-[116px]"><div className="h-6 bg-muted rounded w-3/4"></div></div>
-                                ) : codEnabled ? (
-                                    <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} onClick={() => handleConfirmOrder('cod')} className="w-full text-left p-6 bg-card border-2 border-border rounded-lg flex items-center gap-6 hover:border-primary transition-all">
-                                        <IndianRupee size={40} className="text-primary flex-shrink-0"/>
-                                        <div>
-                                            <h3 className="text-xl font-bold">{deliveryType === 'pickup' ? 'Pay at Store' : (deliveryType === 'dine-in' ? 'Pay at Counter' : 'Pay on Delivery')}</h3>
-                                            <p className="text-muted-foreground">Pay with cash or UPI when you receive your order</p>
-                                        </div>
-                                    </motion.button>
-                                ) : (
-                                    !isSplitBillActive && <div className="w-full text-left p-6 bg-muted/50 border-2 border-dashed border-border rounded-lg flex items-center gap-6 opacity-60">
-                                        <IndianRupee size={40} className="text-muted-foreground flex-shrink-0"/>
-                                        <div>
-                                            <h3 className="text-xl font-bold text-muted-foreground">{deliveryType === 'pickup' ? 'Pay at Store' : (deliveryType === 'dine-in' ? 'Pay at Counter' : 'Pay on Delivery')}</h3>
-                                            <p className="text-muted-foreground">This payment method is not available right now.</p>
-                                        </div>
-                                    </div>
-                                )}
-                            </div>
-                        )}
+                        {renderPaymentOptions()}
+                        
                     </motion.div>
                 </main>
             </div>
@@ -534,5 +559,3 @@ const CheckoutPage = () => (
 );
 
 export default CheckoutPage;
-
-    
