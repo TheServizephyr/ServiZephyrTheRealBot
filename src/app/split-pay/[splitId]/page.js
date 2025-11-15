@@ -90,9 +90,9 @@ export default function SplitPayPage() {
         return <div className="min-h-screen bg-background flex items-center justify-center text-red-500 p-4 text-center">{error}</div>;
     }
     
-    const paidShares = splitData.shares.filter(s => s.status === 'paid').length;
-    const progress = (paidShares / splitData.splitCount) * 100;
-    const remainingAmount = splitData.totalAmount - (paidShares * splitData.shares[0].amount);
+    const paidShares = (splitData?.shares || []).filter(s => s.status === 'paid').length;
+    const progress = splitData ? (paidShares / splitData.splitCount) * 100 : 0;
+    const remainingAmount = splitData ? splitData.totalAmount - (paidShares * splitData.shares[0].amount) : 0;
 
 
     return (
