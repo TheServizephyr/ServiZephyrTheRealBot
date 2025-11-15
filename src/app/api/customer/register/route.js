@@ -49,7 +49,7 @@ export async function POST(req) {
         }
         if (!restaurantId || !items || grandTotal === undefined || subtotal === undefined) {
              const missingFields = `Missing fields: restaurantId=${!!restaurantId}, items=${!!items}, grandTotal=${grandTotal !== undefined}, subtotal=${subtotal !== undefined}`;
-             return NextResponse.json({ message: 'Missing required fields for order creation.' }, { status: 400 });
+             return NextResponse.json({ message: `Missing required fields for order creation. Details: ${missingFields}` }, { status: 400 });
         }
         if (deliveryType === 'delivery' && (!address || !address.full)) {
             return NextResponse.json({ message: 'A full, structured address is required for delivery orders.' }, { status: 400 });

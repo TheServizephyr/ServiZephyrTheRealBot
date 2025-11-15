@@ -168,32 +168,29 @@ const CheckoutModal = ({ isOpen, onClose, cart, vendorId, onSuccessfulOrder }) =
     const [name, setName] = useState('');
     const [phone, setPhone] = useState('');
     const [isProcessing, setIsProcessing] = useState(false);
-    const [isOnlinePaymentFlow, setIsOnlinePaymentFlow] = useState(false);
+    const [paymentStep, setPaymentStep] = useState('initial'); // 'initial', 'options', 'split'
+    const [splitCount, setSplitCount] = useState(2);
     const router = useRouter();
-
-    useEffect(() => {
-        console.log(`[CheckoutModal] Name updated: "${name}"`);
-    }, [name]);
-    
-    useEffect(() => {
-        console.log(`[CheckoutModal] Phone updated: "${phone}"`);
-    }, [phone]);
 
     const grandTotal = useMemo(() => {
         return cart.reduce((sum, item) => sum + (item.portion.price * item.quantity), 0);
     }, [cart]);
+    
+    useEffect(() => {
+        if(!isOpen) {
+            setPaymentStep('initial');
+        }
+    }, [isOpen]);
 
     const handlePayOnlineClick = () => {
-        console.log('[CheckoutModal] handlePayOnlineClick called.');
         if (!name.trim()) {
             alert("Please enter your name before proceeding.");
             return;
         }
-        setIsOnlinePaymentFlow(true);
+        setPaymentStep('options');
     }
     
     const handlePayAtCounter = () => {
-        console.log('[CheckoutModal] handlePayAtCounter called.');
         if (!name.trim()) {
             alert("Please enter your name before proceeding.");
             return;
@@ -201,8 +198,32 @@ const CheckoutModal = ({ isOpen, onClose, cart, vendorId, onSuccessfulOrder }) =
         handlePayment('cod');
     }
 
+    const handleGenerateSplitLinks = async () => {
+        if (splitCount < 2) return;
+        setIsProcessing(true);
+        try {
+            const response = await fetch('/api/payment/create-order', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ 
+                    totalAmount: grandTotal, 
+                    splitCount, 
+                    baseOrderId: `preorder_${Date.now()}`,
+                    restaurantId: vendorId,
+                }),
+            });
+            const data = await response.json();
+            if (!response.ok) throw new Error(data.message || 'Failed to create split payment session.');
+            router.push(`/split-pay/${data.splitId}`);
+
+        } catch (err) {
+            alert('Error creating split session: ' + err.message);
+            setIsProcessing(false);
+        }
+    };
+
+
     const handlePayment = async (paymentMethod) => {
-        console.log(`[CheckoutModal] handlePayment called with method: ${paymentMethod}`);
         setIsProcessing(true);
         try {
             const orderPayload = {
@@ -216,8 +237,6 @@ const CheckoutModal = ({ isOpen, onClose, cart, vendorId, onSuccessfulOrder }) =
                 businessType: 'street-vendor',
             };
             
-            console.log("[CheckoutModal] Submitting Order Payload:", orderPayload);
-
             const response = await fetch('/api/customer/register', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -254,18 +273,34 @@ const CheckoutModal = ({ isOpen, onClose, cart, vendorId, onSuccessfulOrder }) =
 
 
     const renderContent = () => {
-        if (isOnlinePaymentFlow) {
+        if (paymentStep === 'options') {
             return (
                 <div>
-                     <Button variant="ghost" onClick={() => setIsOnlinePaymentFlow(false)} className="mb-4"><ArrowLeft className="mr-2"/>Back</Button>
+                    <Button variant="ghost" onClick={() => setPaymentStep('initial')} className="mb-4"><ArrowLeft className="mr-2"/>Back</Button>
                     <div className="space-y-4">
                         <Button onClick={() => handlePayment('razorpay')} className="w-full h-16 text-lg" disabled={isProcessing}>
                             {isProcessing ? <Loader2 className="animate-spin" /> : 'Pay Full Bill'}
                         </Button>
-                        <Button onClick={() => alert('Split bill coming soon!')} variant="secondary" className="w-full h-16 text-lg" disabled={isProcessing}>
+                        <Button onClick={() => setPaymentStep('split')} variant="secondary" className="w-full h-16 text-lg" disabled={isProcessing}>
                             <Split className="mr-2"/> Split The Bill
                         </Button>
                     </div>
+                </div>
+            )
+        }
+        
+        if (paymentStep === 'split') {
+            return (
+                 <div className="space-y-4">
+                    <Button onClick={() => setPaymentStep('options')} variant="ghost" size="sm" className="mb-4"><ArrowLeft className="mr-2 h-4 w-4"/> Back to Payment Options</Button>
+                    <h3 className="text-lg font-bold">Split Equally</h3>
+                    <div className="flex items-center gap-4 p-4 bg-muted rounded-lg">
+                        <label htmlFor="split-count">Split bill between how many people?</label>
+                        <input id="split-count" type="number" min="2" value={splitCount} onChange={e => setSplitCount(parseInt(e.target.value))} className="w-24 p-2 rounded-md bg-input border border-border" />
+                    </div>
+                    <Button onClick={handleGenerateSplitLinks} disabled={isProcessing || splitCount < 2} className="w-full h-12 text-lg">
+                        {isProcessing ? <Loader2 className="animate-spin"/> : 'Create Split Session'}
+                    </Button>
                 </div>
             )
         }
@@ -299,7 +334,7 @@ const CheckoutModal = ({ isOpen, onClose, cart, vendorId, onSuccessfulOrder }) =
     };
     
     return (
-        <Dialog open={isOpen} onOpenChange={(open) => { if (!open) { onClose(); setIsOnlinePaymentFlow(false); }}}>
+        <Dialog open={isOpen} onOpenChange={(open) => { if (!open) { onClose(); setPaymentStep('initial'); }}}>
             <DialogContent className="bg-card border-border">
                 {renderContent()}
             </DialogContent>
