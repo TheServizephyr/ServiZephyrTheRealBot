@@ -49,7 +49,7 @@ async function makeRazorpayRequest(options, payload) {
 
 // --- NEW HELPER FOR SPLIT PAYMENTS ---
 const handleSplitPayment = async (firestore, paymentEntity) => {
-    const { order_id: razorpayOrderId, amount, notes } = paymentEntity;
+    const { order_id: razorpayOrderId, notes } = paymentEntity;
     const splitId = notes?.split_session_id;
 
     if (!splitId) return false;
@@ -65,7 +65,7 @@ const handleSplitPayment = async (firestore, paymentEntity) => {
         }
 
         const splitData = splitDoc.data();
-        const shares = splitData.shares;
+        const shares = splitData.shares || [];
         const shareIndex = shares.findIndex(s => s.razorpay_order_id === razorpayOrderId);
 
         if (shareIndex === -1) {

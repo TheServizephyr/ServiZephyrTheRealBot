@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useState, useEffect } from 'react';
@@ -49,9 +50,9 @@ export default function SplitPayPage() {
     useEffect(() => {
         console.log(`[DEBUG] SplitPay Page Mounted. splitId: ${splitId}`);
 
-        if (!splitId) {
-            console.error("[DEBUG] No splitId found in URL.");
-            setError("Split session ID is missing.");
+        if (!splitId || !firestore) { // Also check if firestore is available
+            console.error("[DEBUG] No splitId found in URL or Firestore not initialized.");
+            setError("Split session ID is missing or database is not ready.");
             setLoading(false);
             return;
         }
@@ -111,6 +112,7 @@ export default function SplitPayPage() {
             },
             handler: function (response) {
                console.log("[DEBUG] Razorpay payment successful:", response);
+               // The webhook will handle the Firestore update.
             },
             modal: {
                 ondismiss: function() {
