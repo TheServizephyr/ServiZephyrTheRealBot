@@ -168,17 +168,20 @@ const CheckoutModal = ({ isOpen, onClose, cart, vendorId, onSuccessfulOrder }) =
     const [name, setName] = useState('');
     const [phone, setPhone] = useState('');
     const [isProcessing, setIsProcessing] = useState(false);
-    const [paymentStep, setPaymentStep] = useState('initial'); // 'initial', 'options', 'split'
+    const [paymentStep, setPaymentStep] = useState('initial');
     const [splitCount, setSplitCount] = useState(2);
     const router = useRouter();
 
-    const grandTotal = useMemo(() => {
+    const subtotal = useMemo(() => {
         return cart.reduce((sum, item) => sum + (item.portion.price * item.quantity), 0);
     }, [cart]);
-    
+
+    const grandTotal = subtotal; // For pre-orders, we assume no extra charges like tax for simplicity.
+
     useEffect(() => {
-        if(!isOpen) {
+        if (!isOpen) {
             setPaymentStep('initial');
+            setIsProcessing(false); // Reset processing state when modal closes
         }
     }, [isOpen]);
 
@@ -188,15 +191,15 @@ const CheckoutModal = ({ isOpen, onClose, cart, vendorId, onSuccessfulOrder }) =
             return;
         }
         setPaymentStep('options');
-    }
-    
+    };
+
     const handlePayAtCounter = () => {
         if (!name.trim()) {
             alert("Please enter your name before proceeding.");
             return;
         }
         handlePayment('cod');
-    }
+    };
 
     const handleGenerateSplitLinks = async () => {
         if (splitCount < 2) return;
@@ -206,7 +209,7 @@ const CheckoutModal = ({ isOpen, onClose, cart, vendorId, onSuccessfulOrder }) =
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ 
-                    totalAmount: grandTotal, 
+                    grandTotal, 
                     splitCount, 
                     baseOrderId: `preorder_${Date.now()}`,
                     restaurantId: vendorId,
@@ -215,28 +218,27 @@ const CheckoutModal = ({ isOpen, onClose, cart, vendorId, onSuccessfulOrder }) =
             const data = await response.json();
             if (!response.ok) throw new Error(data.message || 'Failed to create split payment session.');
             router.push(`/split-pay/${data.splitId}`);
-
         } catch (err) {
             alert('Error creating split session: ' + err.message);
             setIsProcessing(false);
         }
     };
 
-
     const handlePayment = async (paymentMethod) => {
         setIsProcessing(true);
         try {
             const orderPayload = {
                 restaurantId: vendorId,
-                items: cart,
+                items: cart.map(item => ({ ...item, cartItemId: undefined })), // Clean up internal cart-specific fields
+                subtotal,
                 grandTotal,
-                name: name,
-                phone: phone,
+                name,
+                phone,
                 paymentMethod,
                 deliveryType: 'street-vendor-pre-order',
                 businessType: 'street-vendor',
             };
-            
+
             const response = await fetch('/api/customer/register', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -244,7 +246,7 @@ const CheckoutModal = ({ isOpen, onClose, cart, vendorId, onSuccessfulOrder }) =
             });
 
             const data = await response.json();
-            if (!response.ok) throw new Error(data.message);
+            if (!response.ok) throw new Error(data.message || "Failed to create order.");
 
             if (paymentMethod === 'razorpay') {
                 const options = {
@@ -271,7 +273,6 @@ const CheckoutModal = ({ isOpen, onClose, cart, vendorId, onSuccessfulOrder }) =
         }
     };
 
-
     const renderContent = () => {
         if (paymentStep === 'options') {
             return (
@@ -279,14 +280,14 @@ const CheckoutModal = ({ isOpen, onClose, cart, vendorId, onSuccessfulOrder }) =
                     <Button variant="ghost" onClick={() => setPaymentStep('initial')} className="mb-4"><ArrowLeft className="mr-2"/>Back</Button>
                     <div className="space-y-4">
                         <Button onClick={() => handlePayment('razorpay')} className="w-full h-16 text-lg" disabled={isProcessing}>
-                            {isProcessing ? <Loader2 className="animate-spin" /> : 'Pay Full Bill'}
+                            {isProcessing ? <Loader2 className="animate-spin" /> : `Pay Full Bill (${formatCurrency(grandTotal)})`}
                         </Button>
                         <Button onClick={() => setPaymentStep('split')} variant="secondary" className="w-full h-16 text-lg" disabled={isProcessing}>
                             <Split className="mr-2"/> Split The Bill
                         </Button>
                     </div>
                 </div>
-            )
+            );
         }
         
         if (paymentStep === 'split') {
@@ -302,7 +303,7 @@ const CheckoutModal = ({ isOpen, onClose, cart, vendorId, onSuccessfulOrder }) =
                         {isProcessing ? <Loader2 className="animate-spin"/> : 'Create Split Session'}
                     </Button>
                 </div>
-            )
+            );
         }
 
         return (
@@ -322,7 +323,7 @@ const CheckoutModal = ({ isOpen, onClose, cart, vendorId, onSuccessfulOrder }) =
                     </div>
                     <div className="flex justify-between items-center text-xl pt-4 border-t border-border">
                         <span className="font-semibold">Total:</span>
-                        <span className="font-bold text-primary">₹{grandTotal}</span>
+                        <span className="font-bold text-primary">{formatCurrency(grandTotal)}</span>
                     </div>
                 </div>
                 <DialogFooter className="grid grid-cols-2 gap-4">
@@ -553,3 +554,4 @@ export default function PreOrderPage({ params }) {
         </div>
     );
 }
+

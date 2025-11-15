@@ -338,6 +338,7 @@ export async function POST(req) {
         }, { status: 200 });
 
     } catch (error) {
+        console.error("REGISTER CUSTOMER ERROR:", error);
         if(error.error && error.error.code === 'BAD_REQUEST_ERROR') {
              return NextResponse.json({ message: `Payment Gateway Error: ${error.error.description}` }, { status: 400 });
         }

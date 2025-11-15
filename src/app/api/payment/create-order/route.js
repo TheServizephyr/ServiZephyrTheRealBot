@@ -1,4 +1,5 @@
 
+
 import { NextResponse } from 'next/server';
 import Razorpay from 'razorpay';
 import { nanoid } from 'nanoid';
@@ -6,7 +7,7 @@ import { getFirestore, FieldValue } from '@/lib/firebase-admin';
 
 export async function POST(req) {
     try {
-        const { totalAmount, splitCount, baseOrderId, restaurantId } = await req.json();
+        const { grandTotal, splitCount, baseOrderId, restaurantId } = await req.json();
 
         if (!process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID || !process.env.RAZORPAY_KEY_SECRET) {
             console.error("CRITICAL: Razorpay credentials are not configured.");
@@ -19,9 +20,9 @@ export async function POST(req) {
         });
 
         // If it's a split bill request
-        if (splitCount && baseOrderId && restaurantId) {
+        if (splitCount && baseOrderId && restaurantId && grandTotal) {
             const firestore = await getFirestore();
-            const amountPerShare = Math.round((totalAmount / splitCount) * 100); // Amount in paise
+            const amountPerShare = Math.round((grandTotal / splitCount) * 100); // Amount in paise
             const splitId = `split_${baseOrderId}`;
             const splitRef = firestore.collection('split_payments').doc(splitId);
 
@@ -45,7 +46,7 @@ export async function POST(req) {
                 id: splitId,
                 baseOrderId,
                 restaurantId,
-                totalAmount,
+                totalAmount: grandTotal,
                 splitCount,
                 shares,
                 status: 'pending',
