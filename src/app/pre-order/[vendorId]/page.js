@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useState, useEffect, useMemo } from 'react';
@@ -171,6 +172,7 @@ const CheckoutModal = ({ isOpen, onClose, onConfirm, total, vendorName, cart, ve
     const router = useRouter();
 
     const handlePayment = async (paymentMethod) => {
+        // --- START FIX: Validation logic updated ---
         if (!name.trim()) {
             setError("Name is required.");
             return;
@@ -179,13 +181,14 @@ const CheckoutModal = ({ isOpen, onClose, onConfirm, total, vendorName, cart, ve
             setError("If providing a phone number, it must be a valid 10-digit number.");
             return;
         }
+        // --- END FIX ---
 
         setIsProcessing(true);
         setError('');
 
         const orderData = {
             name: name,
-            phone: phone,
+            phone: phone.trim() || null, // Send null if empty
             restaurantId: vendorId,
             businessType: 'street-vendor',
             items: cart.map(item => ({

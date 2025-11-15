@@ -48,14 +48,29 @@ export async function POST(req) {
             return NextResponse.json({ message: 'Invalid phone number format. Must be 10 digits.' }, { status: 400 });
         }
         
-        const collectionName = businessType === 'shop' ? 'shops' : 'restaurants';
-        console.log(`[DEBUG] /api/customer/register: Looking for business ${restaurantId} in collection '${collectionName}'.`);
-        const businessRef = firestore.collection(collectionName).doc(restaurantId);
-        const businessDoc = await businessRef.get();
-        if (!businessDoc.exists) {
-            console.error(`[DEBUG] /api/customer/register: Business with ID ${restaurantId} not found.`);
+        let businessRef;
+        let collectionName;
+        
+        // --- START FIX: Check multiple collections for the business ---
+        const collectionsToTry = ['restaurants', 'shops', 'street_vendors'];
+        for (const name of collectionsToTry) {
+            const docRef = firestore.collection(name).doc(restaurantId);
+            const docSnap = await docRef.get();
+            if (docSnap.exists) {
+                businessRef = docRef;
+                collectionName = name;
+                break; 
+            }
+        }
+        // --- END FIX ---
+        
+        if (!businessRef) {
+            console.error(`[DEBUG] /api/customer/register: Business with ID ${restaurantId} not found in any collection.`);
             return NextResponse.json({ message: 'This business does not exist.' }, { status: 404 });
         }
+        
+        console.log(`[DEBUG] /api/customer/register: Looking for business ${restaurantId} in collection '${collectionName}'.`);
+        const businessDoc = await businessRef.get();
         console.log("[DEBUG] /api/customer/register: Business found.");
         const businessData = businessDoc.data();
 
