@@ -43,7 +43,7 @@ const SplitBillInterface = ({ totalAmount, onBack, orderDetails }) => {
 
         try {
             const newShares = [];
-            for (let i = 0; i < splitCount; i++) {
+            for (let i = 0; i < splitCount - 1; i++) { // Generate n-1 QR codes for friends
                 const res = await fetch('/api/payment/create-order', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -61,73 +61,47 @@ const SplitBillInterface = ({ totalAmount, onBack, orderDetails }) => {
         }
     };
     
-    const [selectedItems, setSelectedItems] = useState({});
-    const selectedItemsTotal = useMemo(() => {
-        return 0; // Placeholder
-    }, [selectedItems]);
-
-
-    if (!mode) {
-        return (
-            <div className="space-y-4 text-center">
-                <h3 className="text-xl font-bold">How do you want to split the bill?</h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <Button onClick={() => setMode('equally')} className="w-full h-24 text-lg" variant="outline"><UsersIcon className="mr-2"/> Split Equally</Button>
-                    <Button onClick={() => setMode('items')} className="w-full h-24 text-lg" variant="outline" disabled><CreditCard className="mr-2"/> Split by Item (Coming Soon)</Button>
-                </div>
-                 <Button onClick={onBack} variant="link">Or, go back to pay full</Button>
+    return (
+        <div className="space-y-4">
+            <Button onClick={onBack} variant="ghost" size="sm" className="mb-4"><ArrowLeft className="mr-2 h-4 w-4"/> Back to Payment Options</Button>
+            <h3 className="text-lg font-bold">Split Equally</h3>
+            <div className="flex items-center gap-4 p-4 bg-muted rounded-lg">
+                <Label htmlFor="split-count">Split bill between how many people?</Label>
+                <input id="split-count" type="number" min="2" value={splitCount} onChange={e => setSplitCount(parseInt(e.target.value))} className="w-24 p-2 rounded-md bg-input border border-border" />
             </div>
-        );
-    }
-    
-    if (mode === 'equally') {
-        return (
-            <div className="space-y-4">
-                 <Button onClick={() => setMode(null)} variant="ghost" size="sm" className="mb-4"><ArrowLeft className="mr-2 h-4 w-4"/> Back</Button>
-                <h3 className="text-lg font-bold">Split Equally</h3>
-                <div className="flex items-center gap-4">
-                    <Label htmlFor="split-count">Split between how many people?</Label>
-                    <input id="split-count" type="number" min="2" value={splitCount} onChange={e => setSplitCount(parseInt(e.target.value))} className="w-24 p-2 rounded-md bg-input border border-border" />
-                </div>
-                <Button onClick={handleGenerateSplitLinks} disabled={loading} className="w-full">
-                    {loading ? 'Generating...' : 'Generate Payment Links'}
-                </Button>
-                {error && <p className="text-red-500 text-sm">{error}</p>}
+            <Button onClick={handleGenerateSplitLinks} disabled={loading || splitCount < 2} className="w-full h-12 text-lg">
+                {loading ? <Loader2 className="animate-spin"/> : 'Generate Payment Links'}
+            </Button>
+            {error && <p className="text-red-500 text-sm text-center">{error}</p>}
 
-                {shares.length > 0 && (
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+            <AnimatePresence>
+            {shares.length > 0 && (
+                <motion.div 
+                    initial={{opacity: 0}}
+                    animate={{opacity: 1}}
+                    className="space-y-6 mt-6 pt-6 border-t border-dashed"
+                >
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                         {shares.map((share, index) => (
                             <div key={share.id} className="bg-muted p-4 rounded-lg text-center">
-                                <p className="font-bold">Share {index + 1}: ₹{share.amount.toFixed(2)}</p>
+                                <p className="font-bold">Friend {index + 1}'s Share: ₹{share.amount.toFixed(2)}</p>
                                 <div className="p-2 bg-white inline-block mt-2 rounded-lg">
                                     <QRCode value={JSON.stringify({order_id: share.id, amount: share.amount})} size={128} />
                                 </div>
-                                <p className="text-sm mt-2 font-semibold text-yellow-500">Status: {share.status}</p>
+                                <p className="text-xs mt-2 text-muted-foreground">Ask your friend to scan this</p>
                             </div>
                         ))}
                     </div>
-                )}
-            </div>
-        );
-    }
-
-    if (mode === 'items') {
-        return (
-             <div className="space-y-4">
-                 <Button onClick={() => setMode(null)} variant="ghost" size="sm" className="mb-4"><ArrowLeft className="mr-2 h-4 w-4"/> Back</Button>
-                 <h3 className="text-lg font-bold">Split by Item</h3>
-                 <p className="text-sm text-muted-foreground">Select the items you want to pay for.</p>
-                 <div className="max-h-60 overflow-y-auto space-y-2 p-2 bg-muted rounded-lg">
-                     <p className="text-center py-8 text-muted-foreground">Item selection UI coming soon.</p>
-                 </div>
-                 <Button disabled={true} className="w-full">
-                    Pay My Share (₹{selectedItemsTotal.toFixed(2)})
-                </Button>
-             </div>
-        )
-    }
-
-    return null;
+                     <div className="p-4 bg-primary/10 border-2 border-dashed border-primary rounded-lg text-center">
+                        <h4 className="font-bold text-primary">Your Share</h4>
+                        <p className="text-3xl font-bold my-2">₹{(totalAmount / splitCount).toFixed(2)}</p>
+                        <Button className="w-full bg-primary hover:bg-primary/90 text-primary-foreground">Pay My Share</Button>
+                    </div>
+                </motion.div>
+            )}
+            </AnimatePresence>
+        </div>
+    );
 };
 
 const CheckoutPageInternal = () => {
@@ -570,3 +544,5 @@ const CheckoutPage = () => (
 );
 
 export default CheckoutPage;
+
+    
