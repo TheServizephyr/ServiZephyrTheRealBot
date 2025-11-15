@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useState, useEffect, useMemo, Suspense } from 'react';
@@ -317,6 +318,8 @@ const CheckoutPageInternal = () => {
                  rzp.on('payment.failed', function (response){
                     console.error("[Checkout Page] Razorpay payment failed:", response.error);
                     setInfoDialog({ isOpen: true, title: 'Payment Failed', message: response.error.description });
+                    setLoading(false); // ** THE FIX **
+                    setSelectedPaymentMethod(null); // ** THE FIX **
                  });
                 rzp.open();
             } else {
@@ -336,7 +339,11 @@ const CheckoutPageInternal = () => {
             console.error("[Checkout Page] Error confirming order:", err.message);
             setError(err.message);
         } finally {
-            setLoading(false);
+            // Do not set loading to false here for Razorpay flow, as it will handle the redirect.
+            // Only set it to false if it's NOT a razorpay flow or if there's an error.
+            if (!orderData.paymentMethod === 'razorpay') {
+                setLoading(false);
+            }
         }
     };
     
@@ -396,7 +403,12 @@ const CheckoutPageInternal = () => {
                 message={infoDialog.message}
             />
             <Script src="https://checkout.razorpay.com/v1/checkout.js" />
-            <Dialog open={!!selectedPaymentMethod} onOpenChange={(isOpen) => !isOpen && setSelectedPaymentMethod(null)}>
+            <Dialog open={!!selectedPaymentMethod} onOpenChange={(isOpen) => {
+                if (!isOpen) {
+                    setSelectedPaymentMethod(null);
+                    setLoading(false); // ** THE FIX **
+                }
+            }}>
                  <DialogContent className="bg-background border-border text-foreground">
                     <DialogHeader>
                         <DialogTitle>Confirm Your Details</DialogTitle>
@@ -522,3 +534,5 @@ const CheckoutPage = () => (
 );
 
 export default CheckoutPage;
+
+    
