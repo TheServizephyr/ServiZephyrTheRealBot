@@ -122,7 +122,7 @@ function DineInTrackingContent() {
 
     if (loading && !orderData) {
         return (
-            <div className="min-h-screen bg-background flex flex-col items-center justify-center text-center p-4">
+            <div className="min-h-screen bg-background flex flex-col items-center justify-center text-center p-4 green-theme">
                 <Loader2 className="w-16 h-16 text-primary animate-spin" />
                 <h1 className="text-2xl font-bold mt-4">Loading Your Order Status...</h1>
             </div>
@@ -131,7 +131,7 @@ function DineInTrackingContent() {
     
     if (error) {
         return (
-             <div className="min-h-screen bg-background flex flex-col items-center justify-center text-center p-4">
+             <div className="min-h-screen bg-background flex flex-col items-center justify-center text-center p-4 green-theme">
                 <h1 className="text-2xl font-bold text-destructive">Error Loading Order</h1>
                 <p className="text-muted-foreground mt-2">{error}</p>
                  <Button onClick={() => router.back()} className="mt-6"><ArrowLeft className="mr-2 h-4 w-4"/> Go Back</Button>
@@ -141,7 +141,7 @@ function DineInTrackingContent() {
 
     if (!orderData || !orderData.order) {
         return (
-             <div className="min-h-screen bg-background flex flex-col items-center justify-center text-center p-4">
+             <div className="min-h-screen bg-background flex flex-col items-center justify-center text-center p-4 green-theme">
                 <h1 className="text-2xl font-bold">Order Not Found</h1>
                  <Button onClick={() => router.back()} className="mt-6"><ArrowLeft className="mr-2 h-4 w-4"/> Go Back</Button>
             </div>

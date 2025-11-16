@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useState, useEffect, useMemo, Suspense, useCallback, useRef } from 'react';
@@ -131,7 +132,7 @@ function OrderTrackingContent() {
 
     if (loading && !orderData) {
         return (
-            <div className="min-h-screen bg-background flex flex-col items-center justify-center text-center p-4">
+            <div className="min-h-screen bg-background flex flex-col items-center justify-center text-center p-4 green-theme">
                 <Loader2 className="w-16 h-16 text-primary animate-spin" />
                 <h1 className="text-2xl font-bold mt-4">Finding Your Order...</h1>
             </div>
@@ -140,7 +141,7 @@ function OrderTrackingContent() {
     
     if (error) {
         return (
-             <div className="min-h-screen bg-background flex flex-col items-center justify-center text-center p-4">
+             <div className="min-h-screen bg-background flex flex-col items-center justify-center text-center p-4 green-theme">
                 <h1 className="text-2xl font-bold text-destructive">Error Loading Order</h1>
                 <p className="text-muted-foreground mt-2">{error}</p>
                  <Button onClick={() => router.back()} className="mt-6"><ArrowLeft className="mr-2 h-4 w-4"/> Go Back</Button>
@@ -150,7 +151,7 @@ function OrderTrackingContent() {
 
     if (!orderData || !orderData.order) {
         return (
-             <div className="min-h-screen bg-background flex flex-col items-center justify-center text-center p-4">
+             <div className="min-h-screen bg-background flex flex-col items-center justify-center text-center p-4 green-theme">
                 <h1 className="text-2xl font-bold">Order Not Found</h1>
                  <Button onClick={() => router.back()} className="mt-6"><ArrowLeft className="mr-2 h-4 w-4"/> Go Back</Button>
             </div>
@@ -167,7 +168,7 @@ function OrderTrackingContent() {
     };
 
     return (
-        <div className="min-h-screen bg-background text-foreground flex flex-col md:flex-row">
+        <div className="min-h-screen bg-background text-foreground flex flex-col md:flex-row green-theme">
             <div className="w-full md:w-1/2 lg:w-2/3 h-64 md:h-screen relative">
                 <LiveTrackingMap {...mapLocations} mapRef={mapRef}/>
                 <Button onClick={handleRecenter} variant="secondary" size="icon" className="absolute top-4 right-4 z-10 h-12 w-12 rounded-full shadow-lg" aria-label="Recenter map"><Navigation /></Button>

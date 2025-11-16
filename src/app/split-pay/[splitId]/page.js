@@ -211,9 +211,9 @@ export default function SplitPayPage() {
     }
     if (splitData.status === 'completed') {
         return (
-             <div className="min-h-screen bg-background flex flex-col items-center justify-center text-center p-4">
+             <div className="min-h-screen bg-background flex flex-col items-center justify-center text-center p-4 green-theme">
                 <motion.div initial={{ scale: 0 }} animate={{ scale: 1, transition: { type: 'spring', delay: 0.2 } }}>
-                    <CheckCircle className="h-24 w-24 text-green-500" />
+                    <CheckCircle className="h-24 w-24 text-primary" />
                 </motion.div>
                 <h1 className="text-3xl font-bold mt-4">All Payments Received!</h1>
                 <p className="text-muted-foreground mt-2">Your order is being placed. Redirecting you now...</p>

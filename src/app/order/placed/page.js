@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { Suspense, useEffect, useState, useCallback } from 'react';
@@ -148,7 +149,7 @@ const OrderPlacedContent = () => {
     }
 
     return (
-         <div className="min-h-screen bg-background text-foreground flex flex-col items-center justify-center text-center p-4">
+         <div className="min-h-screen bg-background text-foreground flex flex-col items-center justify-center text-center p-4 green-theme">
             <CheckCircle className="w-24 h-24 text-primary mx-auto" />
             <h1 className="text-4xl font-bold text-foreground mt-6">Order Placed!</h1>
             <p className="mt-4 text-lg text-muted-foreground max-w-md">Your order has been sent to the restaurant.</p>

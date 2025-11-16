@@ -357,7 +357,7 @@ const CheckoutPageInternal = () => {
     
     if (deliveryType === 'dine-in' && cartData?.dineInModel === 'post-paid' && cart.length > 0) {
         return (
-            <div className="min-h-screen bg-background flex flex-col items-center justify-center text-center p-4">
+            <div className="min-h-screen bg-background flex flex-col items-center justify-center text-center p-4 green-theme">
                  <Lock size={48} className="text-destructive mb-4" />
                 <h1 className="text-2xl font-bold text-foreground">Payment Not Required</h1>
                 <p className="mt-2 text-muted-foreground max-w-md">This is a post-paid order. Please place your order from the cart to get a WhatsApp confirmation.</p>
@@ -370,8 +370,8 @@ const CheckoutPageInternal = () => {
     
     if (isPaymentConfirmed) {
         return (
-             <div className="min-h-screen bg-background flex flex-col items-center justify-center text-center p-4">
-                <CheckCircle className="w-24 h-24 text-green-500 mx-auto" />
+             <div className="min-h-screen bg-background flex flex-col items-center justify-center text-center p-4 green-theme">
+                <CheckCircle className="w-24 h-24 text-primary mx-auto" />
                 <h1 className="text-4xl font-bold text-foreground mt-6">Payment Successful!</h1>
                 <p className="mt-4 text-lg text-muted-foreground max-w-md">Thank you for dining with us. Your bill has been settled.</p>
                 <Button onClick={() => router.push(`/order/${restaurantId}?table=${tableId}`)} className="mt-8">
