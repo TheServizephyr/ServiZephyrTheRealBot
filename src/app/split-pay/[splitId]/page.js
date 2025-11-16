@@ -1,15 +1,18 @@
 'use client';
 
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { motion } from 'framer-motion';
-import { Loader2, CheckCircle, Clock, Users, IndianRupee, Share2, Copy, RefreshCw, Wallet, User } from 'lucide-react';
+import { Loader2, CheckCircle, Clock, Users, IndianRupee, Share2, Copy, RefreshCw, Wallet, User, QrCode } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 import QRCode from 'qrcode.react';
 import Script from 'next/script';
-import { useFirestore } from '@/firebase'; // THE FIX: Use the correct hook
+import { useFirestore } from '@/firebase';
 import { doc, onSnapshot } from 'firebase/firestore';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import { cn } from '@/lib/utils';
+
 
 const formatCurrency = (value) => `₹${Number(value || 0).toLocaleString('en-IN', { maximumFractionDigits: 2 })}`;
 
@@ -36,49 +39,58 @@ const CopyButton = ({ text }) => {
     );
 };
 
+const QrModal = ({ isOpen, onClose, qrValue, title }) => (
+    <Dialog open={isOpen} onOpenChange={onClose}>
+        <DialogContent className="bg-background border-border">
+            <DialogHeader>
+                <DialogTitle>{title}</DialogTitle>
+                <DialogDescription>Your friend can scan this code to pay their share.</DialogDescription>
+            </DialogHeader>
+            <div className="flex justify-center p-4">
+                 {qrValue && <QRCode value={qrValue} size={256} level="H" />}
+            </div>
+        </DialogContent>
+    </Dialog>
+);
+
 export default function SplitPayPage() {
     const { splitId } = useParams();
     const searchParams = useSearchParams();
     const router = useRouter();
-    const db = useFirestore(); // THE FIX: Use the hook to get the correct, initialized Firestore instance
+    const db = useFirestore();
 
     const [splitData, setSplitData] = useState(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
     const [isPaying, setIsPaying] = useState(null);
+    const [qrModal, setQrModal] = useState({ isOpen: false, value: '', title: '' });
 
     useEffect(() => {
         if (!splitId || !db) {
-            const errorMsg = `Session ID is missing or Firestore is not ready.`;
-            setError(errorMsg);
+            setError(`Session ID is missing or Firestore is not ready.`);
             setLoading(false);
             return;
         }
 
         setLoading(true);
-        console.log(`[SplitPay Page] Setting up listener for split_payments/${splitId}`);
         const splitDocRef = doc(db, 'split_payments', splitId);
 
         const unsubscribe = onSnapshot(splitDocRef, 
             (docSnap) => {
-                console.log(`[SplitPay Page] Snapshot received. Document exists: ${docSnap.exists()}`);
                 if (docSnap.exists()) {
                     const data = docSnap.data();
-                    console.log("[SplitPay Page] Data from Firestore:", data);
                     setSplitData(data);
                     if (data.status === 'completed' && data.trackingToken) {
                         setTimeout(() => router.push(`/order/placed?orderId=${data.baseOrderId}&token=${data.trackingToken}`), 2500);
                     }
                 } else {
-                    const notFoundError = "This payment session could not be found. It may have been deleted or never existed.";
-                    console.error(`[SplitPay Page] ${notFoundError}`);
-                    setError(notFoundError);
+                    setError("This payment session could not be found.");
                 }
                 setLoading(false);
             },
             (err) => {
-                console.error("[SplitPay Page] CRITICAL: Firestore onSnapshot error:", err);
-                setError(`Could not load the payment session in real-time. Please check your connection and permissions. Error: ${err.message}.`);
+                console.error("Firestore onSnapshot error:", err);
+                setError(`Could not load the payment session. Please check your connection. Error: ${err.message}.`);
                 setLoading(false);
             }
         );
@@ -97,7 +109,6 @@ export default function SplitPayPage() {
         return splitData.totalAmount - paidAmount;
     }, [splitData]);
 
-
     const handlePayShare = useCallback(async (share, isRemaining = false) => {
         if (!process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID) {
             setError("Payment gateway is not configured.");
@@ -115,7 +126,6 @@ export default function SplitPayPage() {
                 return;
             }
             try {
-                console.log(`[SplitPay Page] Creating new Razorpay order for remaining amount: ${remainingAmount}`);
                 const res = await fetch('/api/payment/create-order', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -125,7 +135,6 @@ export default function SplitPayPage() {
                 const orderData = await res.json();
                 orderId = orderData.id;
                 amount = remainingAmount;
-                console.log(`[SplitPay Page] New Razorpay order created for remaining amount: ${orderId}`);
             } catch(err) {
                  setError(err.message);
                  setIsPaying(null);
@@ -133,49 +142,33 @@ export default function SplitPayPage() {
             }
         }
         
-        console.log(`[SplitPay Page] Opening Razorpay checkout for orderId: ${orderId}`);
         const options = {
             key: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID,
             amount: amount * 100,
             currency: "INR",
             name: "Group Order Payment",
-            description: `Your share for the group order`,
+            description: `Payment for group order`,
             order_id: orderId,
-            notes: {
-                split_session_id: splitId,
-            },
-            handler: function (response) {
-               console.log("[SplitPay Page] Payment successful handler called by Razorpay.");
-               // The onSnapshot listener will automatically update the UI
-            },
-            modal: {
-                ondismiss: function() {
-                    console.log("[SplitPay Page] Razorpay modal dismissed.");
-                    setIsPaying(null);
-                }
-            },
-            "prefill": {
-                // You can prefill customer info here if available
-            }
+            notes: { split_session_id: splitId },
+            handler: (response) => {},
+            modal: { ondismiss: () => setIsPaying(null) }
         };
         try {
             const rzp = new window.Razorpay(options);
-            rzp.on('payment.failed', function (response){
-                 console.error("[SplitPay Page] Razorpay payment failed:", response.error.description);
+            rzp.on('payment.failed', (response) => {
                  setError("Payment Failed: " + response.error.description);
                  setIsPaying(null);
             });
             rzp.open();
         } catch (e) {
-            console.error("[SplitPay Page] Error opening Razorpay window:", e);
             setError("Could not open payment window. Please try again or refresh the page.");
             setIsPaying(null);
         }
     }, [splitId, remainingAmount]);
 
     const initiatorShare = useMemo(() => splitData?.shares?.find(s => s.shareId === 0), [splitData]);
+    const friendShares = useMemo(() => splitData?.shares?.filter(s => s.shareId !== 0) || [], [splitData]);
     const paidSharesCount = useMemo(() => (splitData?.shares || []).filter(s => s.status === 'paid').length, [splitData]);
-    const progress = useMemo(() => (paidSharesCount / (splitData?.splitCount || 1)) * 100, [paidSharesCount, splitData]);
 
     if (loading) {
         return <div className="min-h-screen bg-background flex items-center justify-center"><Loader2 className="animate-spin text-primary h-16 w-16" /></div>;
@@ -198,15 +191,14 @@ export default function SplitPayPage() {
         );
     }
 
+    const showOnlyMyCard = shareToPay !== null;
+    const cardToShow = showOnlyMyCard ? splitData.shares.find(s => s.shareId === shareToPay) : null;
+
     const renderCard = (share) => {
         const isPaid = share.status === 'paid';
         const paymentLink = `${window.location.origin}/split-pay/${splitId}?pay_share=${share.shareId}`;
         const shareText = `Hi! Please pay your share of ${formatCurrency(share.amount)} for our group order using this link: ${paymentLink}`;
-
-        // If a friend is viewing, only show their card
-        if (shareToPay !== null && share.shareId !== shareToPay) {
-            return null;
-        }
+        const isInitiator = share.shareId === 0;
 
         return (
             <motion.div 
@@ -217,23 +209,20 @@ export default function SplitPayPage() {
                 transition={{delay: share.shareId * 0.1}}
             >
                 <div className="flex justify-between items-center">
-                    <p className="font-bold text-foreground flex items-center gap-2"><User size={16}/> {share.shareId === 0 ? 'Your Share' : `Friend ${share.shareId + 1}`}</p>
-                    {isPaid ? (
-                        <span className="flex items-center gap-1 text-xs font-semibold px-2 py-1 rounded-full bg-green-500/20 text-green-400"><CheckCircle size={14}/> Paid</span>
-                    ) : (
-                        <span className="flex items-center gap-1 text-xs font-semibold px-2 py-1 rounded-full bg-yellow-500/20 text-yellow-400"><Clock size={14}/> Pending</span>
-                    )}
+                    <p className="font-bold text-foreground flex items-center gap-2"><User size={16}/> {isInitiator ? 'Your Share' : `Friend ${share.shareId}`}</p>
+                    {isPaid && (<span className="flex items-center gap-1 text-xs font-semibold px-2 py-1 rounded-full bg-green-500/20 text-green-400"><CheckCircle size={14}/> Paid</span>)}
                 </div>
-                <p className="text-2xl font-bold text-center my-4">{formatCurrency(share.amount)}</p>
+                <p className="text-3xl font-bold text-center my-4">{formatCurrency(share.amount)}</p>
                 {!isPaid && (
                     <div className="space-y-3 flex flex-col items-center">
                          <Button onClick={() => handlePayShare(share)} className="w-full bg-primary hover:bg-primary/80" disabled={!!isPaying}>
                             {isPaying === share.shareId ? <Loader2 className="animate-spin" /> : `Pay Now`}
                          </Button>
-                         {shareToPay === null && (
+                         {!showOnlyMyCard && (
                             <>
-                                <p className="text-xs text-muted-foreground">Or share the payment link:</p>
+                                <p className="text-xs text-muted-foreground">Or share payment options:</p>
                                 <div className="flex gap-2 justify-center">
+                                    <Button size="sm" variant="outline" onClick={() => setQrModal({ isOpen: true, value: paymentLink, title: `QR Code for Friend ${share.shareId}` })}><QrCode className="mr-2 h-4 w-4"/> Show QR</Button>
                                     <ShareButton text={shareText}/>
                                     <CopyButton text={paymentLink}/>
                                 </div>
@@ -245,50 +234,62 @@ export default function SplitPayPage() {
         );
     }
     
-    const showOnlyMyCard = shareToPay !== null;
-
     return (
         <div className="min-h-screen bg-background text-foreground p-4 md:p-8">
             <Script src="https://checkout.razorpay.com/v1/checkout.js" />
+            <QrModal isOpen={qrModal.isOpen} onClose={() => setQrModal({isOpen: false, value: '', title: ''})} qrValue={qrModal.value} title={qrModal.title} />
+
             <div className="max-w-4xl mx-auto">
                 <header className="text-center mb-8">
                     <h1 className="text-3xl md:text-4xl font-bold tracking-tight">Split Payment Tracker</h1>
                     <p className="text-muted-foreground mt-2">Track payments from your friends in real-time.</p>
                 </header>
-                <motion.div initial={{opacity:0}} animate={{opacity:1}} className="bg-card border border-border rounded-xl p-6 shadow-lg">
-                    <div className="flex flex-col md:flex-row justify-between items-center gap-4">
-                        <div className="flex items-center gap-3 text-lg">
-                            <Users className="text-primary"/>
-                            <span className="font-semibold text-foreground">Split between {splitData.splitCount} people</span>
-                        </div>
-                        <div className="text-right">
-                             <p className="text-muted-foreground text-sm">Total Bill</p>
-                             <p className="font-bold text-3xl text-primary">{formatCurrency(splitData.totalAmount)}</p>
-                        </div>
-                    </div>
-                    <div className="mt-6">
-                        <div className="flex justify-between items-center mb-2">
-                             <span className="text-sm font-semibold text-foreground">{paidSharesCount} of {splitData.splitCount} Paid</span>
-                             <span className="text-sm font-semibold text-foreground">{formatCurrency(remainingAmount)} Remaining</span>
-                        </div>
-                        <Progress value={progress} className="h-4" />
-                    </div>
-                </motion.div>
 
-                {/* Initiator's special pay remaining button */}
-                {!showOnlyMyCard && paidSharesCount > 0 && paidSharesCount < splitData.splitCount && (
-                     <motion.div initial={{opacity:0}} animate={{opacity:1}} className="mt-6">
-                        <Button onClick={() => handlePayShare({ amount: remainingAmount }, true)} className="w-full h-14 text-lg bg-green-600 hover:bg-green-700" disabled={!!isPaying}>
-                             {isPaying === 'remaining' ? <Loader2 className="animate-spin" /> : `Pay Remaining Balance (${formatCurrency(remainingAmount)})`}
-                        </Button>
+                <div className="grid lg:grid-cols-3 gap-8 items-start">
+                    <motion.div initial={{opacity:0}} animate={{opacity:1}} className="lg:col-span-1 bg-card border border-border rounded-xl p-6 shadow-lg space-y-4">
+                        <div className="flex justify-between items-center text-lg">
+                            <span className="font-semibold text-muted-foreground">Total Bill</span>
+                            <span className="font-bold text-primary">{formatCurrency(splitData.totalAmount)}</span>
+                        </div>
+                        <div className="flex justify-between items-center text-lg">
+                            <span className="font-semibold text-muted-foreground">Remaining</span>
+                            <span className="font-bold text-foreground">{formatCurrency(remainingAmount)}</span>
+                        </div>
+                        <h3 className="text-lg font-bold pt-4 border-t border-dashed">Payment Status</h3>
+                        <div className="space-y-3">
+                            {(splitData.shares || []).map(share => (
+                                <div key={share.shareId} className="flex items-center gap-3">
+                                    {share.status === 'paid' ? <CheckCircle className="text-green-500"/> : <Clock className="text-yellow-500"/>}
+                                    <span className={cn("font-semibold", share.status === 'paid' && 'text-muted-foreground line-through')}>{share.shareId === 0 ? 'You' : `Friend ${share.shareId}`}</span>
+                                    <span className="ml-auto font-mono text-sm">{formatCurrency(share.amount)}</span>
+                                </div>
+                            ))}
+                        </div>
                     </motion.div>
-                )}
+                    
+                    <div className="lg:col-span-2 space-y-6">
+                        {showOnlyMyCard ? (
+                             cardToShow && renderCard(cardToShow)
+                        ) : (
+                            <>
+                                {initiatorShare && (
+                                     <motion.div initial={{opacity: 0}} animate={{opacity:1}} className="bg-card p-4 rounded-lg border-2 border-primary">
+                                         {renderCard(initiatorShare)}
+                                     </motion.div>
+                                )}
 
-
-                <div className="mt-8">
-                    <h2 className="text-xl font-bold mb-4">{showOnlyMyCard ? 'Your Share' : 'Friends\' Shares'}</h2>
-                    <div className={`grid grid-cols-1 md:grid-cols-2 ${!showOnlyMyCard && 'lg:grid-cols-3'} gap-6`}>
-                        {splitData.shares?.map(renderCard)}
+                                <div className="space-y-4">
+                                     <Button onClick={() => handlePayShare({ amount: remainingAmount }, true)} className="w-full h-14 text-lg" disabled={!!isPaying || remainingAmount <= 0}>
+                                        {isPaying === 'remaining' ? <Loader2 className="animate-spin" /> : `Pay Remaining Balance (${formatCurrency(remainingAmount)})`}
+                                    </Button>
+                                </div>
+                                 
+                                <h2 className="text-xl font-bold pt-4">Friends' Shares</h2>
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                    {friendShares.map(renderCard)}
+                                </div>
+                            </>
+                        )}
                     </div>
                 </div>
             </div>
