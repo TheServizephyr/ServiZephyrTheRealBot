@@ -162,6 +162,7 @@ export async function POST(req) {
             ...item,
             categoryId: finalCategoryId,
             portions: item.portions || [],
+            isAvailable: item.isAvailable === undefined ? true : item.isAvailable,
         };
 
         let newItemId = item.id;
@@ -189,7 +190,6 @@ export async function POST(req) {
                 id: newItemId,
                 order: maxOrder + 1,
                 createdAt: FieldValue.serverTimestamp(),
-                isAvailable: item.isAvailable,
             });
             console.log(`[API LOG] POST /api/owner/menu: New item with ID ${newItemId} added to batch:`, JSON.stringify({ ...finalItem, id: newItemId, order: maxOrder + 1 }));
         }

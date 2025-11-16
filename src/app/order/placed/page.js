@@ -66,7 +66,8 @@ const OrderPlacedContent = () => {
     const handleBackToMenu = () => {
         const vendorId = searchParams.get('restaurantId') || localStorage.getItem('lastOrderedFrom');
         if (vendorId) {
-            const backUrl = `/pre-order/${vendorId}`;
+            // FIX: Point back to the universal order page
+            const backUrl = `/order/${vendorId}`;
             router.push(backUrl);
         } else {
             router.push('/'); 
@@ -152,7 +153,8 @@ const OrderPlacedContent = () => {
          <div className="min-h-screen bg-background text-foreground flex flex-col items-center justify-center text-center p-4 green-theme">
             <CheckCircle className="w-24 h-24 text-primary mx-auto" />
             <h1 className="text-4xl font-bold text-foreground mt-6">Order Placed!</h1>
-            <p className="mt-4 text-lg text-muted-foreground max-w-md">Your order has been sent to the restaurant.</p>
+            <p className="text-lg text-muted-foreground mt-2">Your order has been sent to the restaurant.</p>
+            <p className="text-sm text-muted-foreground max-w-md">Your order ID is <span className="font-bold text-foreground">#{orderId}</span></p>
             <div className="flex flex-col sm:flex-row gap-4 mt-8">
                  <Button 
                     onClick={handleTrackOrder}

@@ -88,7 +88,7 @@ export default function DiscoverPage() {
     useEffect(() => {
         const fetchLocations = async () => {
             try {
-                const res = await fetch('/api/discover/locations');
+                const res = await fetch('/api/public/locations');
                 if (!res.ok) throw new Error('Failed to fetch locations');
                 const data = await res.json();
                 setLocations(data.locations || []);

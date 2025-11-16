@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useState, useEffect, Suspense, useRef, useCallback } from 'react';
@@ -110,7 +111,7 @@ const AddAddressPageInternal = () => {
         geocodeTimeoutRef.current = setTimeout(async () => {
             setLoading(true); setError('');
             try {
-                const res = await fetch(`/api/location/geocode?lat=${coords.lat}&lng=${coords.lng}`);
+                const res = await fetch(`/api/public/location/geocode?lat=${coords.lat}&lng=${coords.lng}`);
                 const data = await res.json();
                 if (!res.ok) throw new Error(data.message || 'Failed to fetch address details.');
                 setAddressDetails({

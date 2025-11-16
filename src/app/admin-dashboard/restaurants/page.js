@@ -1,6 +1,7 @@
 
 
 
+
 'use client';
 
 import { useState, useEffect } from 'react';
@@ -225,7 +226,7 @@ export default function AdminRestaurantsPage() {
     setLoading(true);
     setError(null);
     try {
-        const response = await fetch('/api/admin/restaurants');
+        const response = await fetch('/api/admin/listings');
         if (!response.ok) {
             const errorData = await response.json();
             throw new Error(errorData.message || 'Failed to fetch listings');
@@ -245,7 +246,7 @@ export default function AdminRestaurantsPage() {
 
   const handleUpdateStatus = async (restaurantId, businessType, newStatus, suspensionDetails = {}) => {
     try {
-        const res = await fetch('/api/admin/restaurants', {
+        const res = await fetch('/api/admin/listings', {
             method: 'PATCH',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ restaurantId, businessType, status: newStatus, ...suspensionDetails }),

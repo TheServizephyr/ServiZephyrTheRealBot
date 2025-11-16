@@ -1,4 +1,3 @@
-
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
@@ -78,7 +77,8 @@ export default function StreetVendorQrPage() {
       alert("This feature is for future use.");
   }
 
-  const qrValue = vendorId ? `${window.location.origin}/pre-order/${vendorId}` : '';
+  // --- FIX: Use the universal `/order` page instead of `/pre-order` ---
+  const qrValue = vendorId ? `${window.location.origin}/order/${vendorId}` : '';
 
   return (
     <>
