@@ -197,7 +197,6 @@ const CartPageInternal = () => {
             const isLoggedInUser = !!user;
             const isWhatsAppSession = !!phone && !!token;
             
-            // Street vendor pre-order flow: no user, no table, no token
             const savedCart = JSON.parse(localStorage.getItem(`cart_${restaurantId}`) || '{}');
             const isAnonymousPreOrder = savedCart.deliveryType === 'street-vendor-pre-order' && !isDineIn && !isLoggedInUser && !isWhatsAppSession;
 
@@ -492,12 +491,17 @@ const CartPageInternal = () => {
     }, [appliedCoupons, subtotal, cartData?.deliveryFreeThreshold]);
 
     const finalDeliveryCharge = useMemo(() => {
-        if (deliveryType === 'pickup' || deliveryType === 'dine-in' || !cartData) return 0;
+        if (deliveryType === 'pickup' || deliveryType === 'dine-in' || !cartData || deliveryType === 'street-vendor-pre-order') return 0;
         return isDeliveryFree ? 0 : (cartData.deliveryCharge || 0);
     }, [isDeliveryFree, cartData, deliveryType]);
 
 
     const { cgst, sgst, grandTotal } = useMemo(() => {
+        const isStreetVendor = deliveryType === 'street-vendor-pre-order';
+        if (isStreetVendor) {
+            return { cgst: 0, sgst: 0, grandTotal: subtotal - totalDiscount };
+        }
+
         const taxableAmount = subtotal - totalDiscount;
         const tax = taxableAmount > 0 ? taxableAmount * 0.05 : 0;
         const finalTip = deliveryType === 'delivery' ? tipAmount : 0;
@@ -532,6 +536,7 @@ const CartPageInternal = () => {
     const allCoupons = cartData?.coupons || [];
     const specialCoupons = allCoupons.filter(c => c.customerId);
     const normalCoupons = allCoupons.filter(c => !c.customerId);
+    const isStreetVendor = deliveryType === 'street-vendor-pre-order';
 
     if (loadingPage) {
         return <div className="min-h-screen bg-background flex items-center justify-center"><Loader2 className="animate-spin text-primary h-16 w-16"/></div>;
@@ -793,7 +798,7 @@ const CartPageInternal = () => {
                                             {couponDiscount > 0 && <div className="flex justify-between text-green-400"><span>Coupon Discount:</span> <span className="font-medium">- ₹{couponDiscount.toFixed(2)}</span></div>}
                                             {specialCouponDiscount > 0 && <div className="flex justify-between text-primary"><span>Special Discount:</span> <span className="font-medium">- ₹{specialCouponDiscount.toFixed(2)}</span></div>}
                                             
-                                            {deliveryType === 'delivery' && (
+                                            {!isStreetVendor && deliveryType === 'delivery' && (
                                                 <div className="flex justify-between">
                                                     <span>Delivery Fee:</span>
                                                     <span className={cn(isDeliveryFree && "font-bold text-green-400")}>
@@ -802,9 +807,9 @@ const CartPageInternal = () => {
                                                 </div>
                                             )}
 
-                                            {tipAmount > 0 && <div className="flex justify-between text-green-400"><span>Rider Tip:</span> <span className="font-medium">+ ₹{tipAmount.toFixed(2)}</span></div>}
-                                            <div className="flex justify-between"><span>CGST ({5}%):</span> <span className="font-medium">₹{cgst.toFixed(2)}</span></div>
-                                            <div className="flex justify-between"><span>SGST ({5}%):</span> <span className="font-medium">₹{sgst.toFixed(2)}</span></div>
+                                            {!isStreetVendor && tipAmount > 0 && <div className="flex justify-between text-green-400"><span>Rider Tip:</span> <span className="font-medium">+ ₹{tipAmount.toFixed(2)}</span></div>}
+                                            {!isStreetVendor && <div className="flex justify-between"><span>CGST ({5}%):</span> <span className="font-medium">₹{cgst.toFixed(2)}</span></div>}
+                                            {!isStreetVendor && <div className="flex justify-between"><span>SGST ({5}%):</span> <span className="font-medium">₹{sgst.toFixed(2)}</span></div>}
                                         </div>
                                     </motion.div>
                                 )}
@@ -816,7 +821,7 @@ const CartPageInternal = () => {
                                  <span>{deliveryType === 'dine-in' ? 'Total to be Added:' : 'Grand Total:'}</span>
                                 <div className="flex items-center gap-3">
                                 {totalDiscount > 0 && (
-                                    <span className="text-muted-foreground line-through text-base font-medium">₹{(subtotal + finalDeliveryCharge + (cgst*2) + (deliveryType === 'delivery' ? tipAmount : 0)).toFixed(2)}</span>
+                                    <span className="text-muted-foreground line-through text-base font-medium">₹{(subtotal + finalDeliveryCharge + (isStreetVendor ? 0 : (cgst*2)) + (deliveryType === 'delivery' ? tipAmount : 0)).toFixed(2)}</span>
                                 )}
                                 <span>₹{grandTotal > 0 ? grandTotal.toFixed(2) : '0.00'}</span>
                                 </div>

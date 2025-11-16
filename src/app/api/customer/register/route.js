@@ -44,7 +44,8 @@ export async function POST(req) {
         } = await req.json();
 
         // --- VALIDATION ---
-        if (deliveryType !== 'dine-in' && !name) {
+        const isStreetVendorOrder = deliveryType === 'street-vendor-pre-order';
+        if (!isStreetVendorOrder && deliveryType !== 'dine-in' && !name) {
             return NextResponse.json({ message: 'Name is required.' }, { status: 400 });
         }
         if (!restaurantId || !items || grandTotal === undefined || subtotal === undefined) {
@@ -226,7 +227,8 @@ export async function POST(req) {
                 currency: 'INR',
                 receipt: firestoreOrderId,
                 notes: {
-                    servizephyr_payload: JSON.stringify(servizephyrOrderPayload)
+                    servizephyr_payload: JSON.stringify(servizephyrOrderPayload),
+                    split_session_id: isStreetVendorOrder ? `sv_${firestoreOrderId}` : undefined // Add a note for street vendor split
                 }
             };
             
@@ -245,7 +247,7 @@ export async function POST(req) {
         // --- "Pay at Counter" logic for Street Vendor ---
         const batch = firestore.batch();
         
-        if (isNewUser && normalizedPhone && businessType !== 'street-vendor') {
+        if (isNewUser && normalizedPhone && !isStreetVendorOrder) {
             const unclaimedUserRef = firestore.collection('unclaimed_profiles').doc(normalizedPhone);
             const newOrderedFrom = { restaurantId, restaurantName: businessData.name, businessType };
             const addressesToSave = (deliveryType === 'delivery' && address) ? [{ ...address, full: address.full }] : []; 
@@ -263,7 +265,7 @@ export async function POST(req) {
         const pointsEarned = Math.floor(subtotal / 100) * 10;
         const pointsSpent = finalLoyaltyDiscount > 0 ? finalLoyaltyDiscount / 0.5 : 0;
         
-        if (normalizedPhone && businessType !== 'street-vendor') {
+        if (normalizedPhone && !isStreetVendorOrder) {
             const restaurantCustomerRef = businessRef.collection('customers').doc(userId);
             batch.set(restaurantCustomerRef, {
                 name: name, phone: normalizedPhone, status: isNewUser ? 'unclaimed' : 'verified',
@@ -338,7 +340,7 @@ export async function POST(req) {
         }, { status: 200 });
 
     } catch (error) {
-        console.error("REGISTER CUSTOMER ERROR:", error);
+        console.error("CREATE ORDER API ERROR:", error);
         if(error.error && error.error.code === 'BAD_REQUEST_ERROR') {
              return NextResponse.json({ message: `Payment Gateway Error: ${error.error.description}` }, { status: 400 });
         }

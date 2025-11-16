@@ -186,6 +186,7 @@ const CheckoutPageInternal = () => {
                     if (deliveryType === 'delivery') setCodEnabled(paymentData.deliveryCodEnabled);
                     else if (deliveryType === 'pickup') setCodEnabled(paymentData.pickupPodEnabled);
                     else if (deliveryType === 'dine-in') setCodEnabled(paymentData.dineInPayAtCounterEnabled);
+                    else if (deliveryType === 'street-vendor-pre-order') setCodEnabled(true); // Always true for pay at counter for vendors
                 }
             } catch (err) {
                 setError('Failed to load checkout details. Please try again.');
@@ -216,7 +217,9 @@ const CheckoutPageInternal = () => {
     
     const { totalDiscount, finalDeliveryCharge, cgst, sgst, grandTotal } = useMemo(() => {
         if (!cartData) return { totalDiscount: 0, finalDeliveryCharge: 0, cgst: 0, sgst: 0, grandTotal: subtotal };
-        const deliveryType = cartData.tableId ? 'dine-in' : (cartData.deliveryType || 'delivery');
+        const deliveryType = cartData.deliveryType || 'delivery';
+        const isStreetVendor = deliveryType === 'street-vendor-pre-order';
+        
         let couponDiscountValue = 0;
         appliedCoupons.forEach(coupon => {
             if (subtotal >= coupon.minOrder) {
@@ -225,10 +228,12 @@ const CheckoutPageInternal = () => {
             }
         });
         const hasFreeDelivery = appliedCoupons.some(c => c.type === 'free_delivery' && subtotal >= c.minOrder);
-        const deliveryCharge = (deliveryType !== 'delivery' || hasFreeDelivery) ? 0 : (cartData.deliveryCharge || 0);
-        const tip = (deliveryType === 'delivery' ? (cartData.tipAmount || 0) : 0);
+        const deliveryCharge = (isStreetVendor || deliveryType !== 'delivery' || hasFreeDelivery) ? 0 : (cartData.deliveryCharge || 0);
+        const tip = (isStreetVendor || deliveryType !== 'delivery') ? 0 : (cartData.tipAmount || 0);
         const taxableAmount = subtotal - couponDiscountValue;
-        const tax = taxableAmount > 0 ? taxableAmount * 0.05 : 0;
+        
+        const tax = (isStreetVendor || taxableAmount <= 0) ? 0 : taxableAmount * 0.05;
+
         const finalGrandTotal = taxableAmount + deliveryCharge + (tax * 2) + tip;
         return { totalDiscount: couponDiscountValue, finalDeliveryCharge: deliveryCharge, cgst: tax, sgst: tax, grandTotal: finalGrandTotal };
     }, [cartData, cart, appliedCoupons, subtotal]);
@@ -247,7 +252,6 @@ const CheckoutPageInternal = () => {
     };
     
     const placeOrder = async (paymentMethod) => {
-        // Validation check before proceeding
         if (!validateOrderDetails()) return;
         
         const deliveryType = cartData.tableId ? 'dine-in' : (cartData.deliveryType || 'delivery');
@@ -275,9 +279,9 @@ const CheckoutPageInternal = () => {
                     description: `Order from ${cartData.restaurantName}`, order_id: data.razorpay_order_id,
                     handler: function (response) {
                         localStorage.removeItem(`cart_${restaurantId}`);
-                        // FIX: Use firestore_order_id for non-dine-in tracking
-                        const trackingUrl = (orderData.deliveryType === 'dine-in' || orderData.businessType === 'street-vendor') 
-                            ? `/track/dine-in/${data.firestore_order_id}?token=${data.token}`
+                        const isPreOrder = deliveryType === 'street-vendor-pre-order';
+                        const trackingUrl = isPreOrder
+                            ? `/order/placed?orderId=${data.firestore_order_id}&token=${data.token}&restaurantId=${restaurantId}`
                             : `/order/placed?orderId=${data.firestore_order_id}&token=${data.token}`;
                         router.push(trackingUrl);
                     },
@@ -305,7 +309,7 @@ const CheckoutPageInternal = () => {
                         router.replace(newUrl);
                     }, 2000);
                 } else {
-                    router.push(`/order/placed?orderId=${data.firestore_order_id}&token=${data.token}`);
+                    router.push(`/order/placed?orderId=${data.firestore_order_id}&token=${data.token}&restaurantId=${restaurantId}`);
                 }
             }
         } catch (err) {
@@ -320,7 +324,7 @@ const CheckoutPageInternal = () => {
             setError("Please select or add a delivery address.");
             return false;
         }
-        if (deliveryType !== 'street-vendor-pre-order' && (!orderName || orderName.trim().length === 0)) {
+        if (deliveryType === 'street-vendor-pre-order' && (!orderName || orderName.trim().length === 0)) {
              setError("Please provide a name for the order.");
              return false;
         }
@@ -352,7 +356,7 @@ const CheckoutPageInternal = () => {
         return <div className="min-h-screen bg-background flex items-center justify-center"><Loader2 className="animate-spin text-primary h-16 w-16"/></div>;
     }
 
-    const deliveryType = tableId ? 'dine-in' : (cartData?.deliveryType || 'delivery');
+    const deliveryType = cartData?.deliveryType || 'delivery';
     const cameToPay = (!cart || cart.length === 0) && tabId;
     
     if (deliveryType === 'dine-in' && cartData?.dineInModel === 'post-paid' && cart.length > 0) {
@@ -405,7 +409,7 @@ const CheckoutPageInternal = () => {
                         <p className="text-muted-foreground">Use UPI, Card, or Netbanking</p>
                     </div>
                 </motion.button>
-                 {deliveryType === 'dine-in' && (
+                 {(deliveryType === 'dine-in' || deliveryType === 'street-vendor-pre-order') && (
                      <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} onClick={() => setIsSplitBillActive(true)} className="w-full text-left p-6 bg-card border-2 border-border rounded-lg flex items-center gap-6 hover:border-primary transition-all">
                         <Split size={40} className="text-primary flex-shrink-0"/>
                         <div>
@@ -451,7 +455,7 @@ const CheckoutPageInternal = () => {
                     <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5 }}>
                         {error && <p className="text-destructive text-sm bg-destructive/10 p-2 rounded-md mb-4">{error}</p>}
                         
-                        {(deliveryType === 'delivery' || !cameToPay) && (
+                        {deliveryType !== 'dine-in' && !isOnlinePaymentFlow && (
                          <div className="mb-6 bg-card p-4 rounded-lg border">
                              <h3 className="font-bold text-lg mb-2">Confirm Your Details</h3>
                              <div className="space-y-4">
@@ -472,12 +476,12 @@ const CheckoutPageInternal = () => {
                                             <Button variant="outline" className="w-full" onClick={handleAddNewAddress}><PlusCircle className="mr-2 h-4 w-4" /> Add New Address</Button>
                                         </div>
                                     </div>
-                                ) : deliveryType !== 'street-vendor-pre-order' ? (
+                                ) : (
                                     <div>
                                         <Label htmlFor="name">Your Name</Label>
                                         <Input id="name" value={orderName} onChange={(e) => setOrderName(e.target.value)} disabled={loading} />
                                     </div>
-                                ) : null }
+                                )}
                                 {deliveryType !== 'street-vendor-pre-order' && (
                                     <div>
                                         <Label htmlFor="phone">Phone Number</Label>
@@ -510,7 +514,7 @@ const CheckoutPageInternal = () => {
                                     <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} onClick={handlePayAtCounter} disabled={isProcessingPayment} className="w-full text-left p-6 bg-card border-2 border-border rounded-lg flex items-center gap-6 hover:border-primary transition-all disabled:opacity-50">
                                         {isProcessingPayment ? <Loader2 className="animate-spin h-10 w-10 text-primary flex-shrink-0"/> : <IndianRupee size={40} className="text-primary flex-shrink-0"/>}
                                         <div>
-                                            <h3 className="text-xl font-bold">{deliveryType === 'pickup' ? 'Pay at Store' : (deliveryType === 'dine-in' ? 'Pay at Counter' : 'Pay on Delivery')}</h3>
+                                            <h3 className="text-xl font-bold">{deliveryType === 'pickup' ? 'Pay at Store' : (deliveryType === 'dine-in' || deliveryType === 'street-vendor-pre-order') ? 'Pay at Counter' : 'Pay on Delivery'}</h3>
                                             <p className="text-muted-foreground">Pay with cash or UPI when you receive your order</p>
                                         </div>
                                     </motion.button>
@@ -518,7 +522,7 @@ const CheckoutPageInternal = () => {
                                     <div className="w-full text-left p-6 bg-muted/50 border-2 border-dashed border-border rounded-lg flex items-center gap-6 opacity-60">
                                         <IndianRupee size={40} className="text-muted-foreground flex-shrink-0"/>
                                         <div>
-                                            <h3 className="text-xl font-bold text-muted-foreground">{deliveryType === 'pickup' ? 'Pay at Store' : (deliveryType === 'dine-in' ? 'Pay at Counter' : 'Pay on Delivery')}</h3>
+                                            <h3 className="text-xl font-bold text-muted-foreground">{deliveryType === 'pickup' ? 'Pay at Store' : (deliveryType === 'dine-in' || deliveryType === 'street-vendor-pre-order') ? 'Pay at Counter' : 'Pay on Delivery'}</h3>
                                             <p className="text-muted-foreground">This payment method is not available right now.</p>
                                         </div>
                                     </div>
