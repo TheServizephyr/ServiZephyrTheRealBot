@@ -8,8 +8,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import Image from 'next/image';
 import Script from 'next/script';
 import { cn } from '@/lib/utils';
-import { useRouter } from 'next/navigation';
-import { db } from '@/lib/firebase'; // Correct, simple import for a public page
+import { useRouter, useParams } from 'next/navigation';
+import { db } from '@/lib/firebase';
 
 
 const MenuItem = ({ item, cartQuantity, onAdd, onIncrement, onDecrement }) => (
@@ -397,48 +397,35 @@ export default function PreOrderPage({ params }) {
         });
         setCartQuantities(quantities);
     }, [cart, vendorId]);
-
-
-    const handleAddClick = (item) => {
-        if (item.portions && item.portions.length > 1) {
-            setCustomizationItem(item);
-        } else {
-            const portion = item.portions[0];
-            const cartItemId = `${item.id}-${portion.name}`;
-            setCart(prevCart => {
-                 const existingItem = prevCart.find(cartItem => cartItem.cartItemId === cartItemId);
-                if (existingItem) {
-                    return prevCart.map(cartItem =>
-                        cartItem.cartItemId === cartItemId ? { ...cartItem, quantity: cartItem.quantity + 1 } : cartItem
-                    );
-                } else {
-                    return [...prevCart, { ...item, quantity: 1, portion, cartItemId }];
-                }
-            });
-        }
-    };
     
     const handleAddToCart = (item, portion) => {
         const cartItemId = `${item.id}-${portion.name}`;
         setCart(prevCart => {
-            const existingItem = prevCart.find(cartItem => cartItem.cartItemId === cartItemId);
-            if (existingItem) {
-                return prevCart.map(cartItem =>
-                    cartItem.cartItemId === cartItemId ? { ...cartItem, quantity: cartItem.quantity + 1 } : cartItem
-                );
+            const existingItemIndex = prevCart.findIndex(cartItem => cartItem.cartItemId === cartItemId);
+            if (existingItemIndex > -1) {
+                const newCart = [...prevCart];
+                newCart[existingItemIndex].quantity++;
+                return newCart;
             } else {
                 return [...prevCart, { ...item, quantity: 1, portion, cartItemId }];
             }
         });
     };
 
-
+    const handleAddClick = (item) => {
+        if (item.portions && item.portions.length > 1) {
+            setCustomizationItem(item);
+        } else {
+            handleAddToCart(item, item.portions[0]);
+        }
+    };
+    
     const updateQuantity = (cartItemId, change) => {
-        setCart(prevCart => {
-            const itemIndex = prevCart.findIndex(i => i.cartItemId === cartItemId);
-            if (itemIndex === -1) return prevCart;
+        setCart(currentCart => {
+            const itemIndex = currentCart.findIndex(i => i.cartItemId === cartItemId);
+            if (itemIndex === -1) return currentCart;
 
-            const newCart = [...prevCart];
+            const newCart = [...currentCart];
             const newQuantity = newCart[itemIndex].quantity + change;
 
             if (newQuantity <= 0) {
@@ -451,10 +438,13 @@ export default function PreOrderPage({ params }) {
     };
 
      const handleIncrement = (item) => {
-        const cartItem = cart.find(ci => ci.id === item.id && ci.portions?.length === 1);
+        // Find the specific item in the cart. This simple implementation assumes one portion type per item ID in cart for simplicity.
+        const cartItem = cart.find(ci => ci.id === item.id);
         if (cartItem) {
             updateQuantity(cartItem.cartItemId, 1);
         } else {
+            // This case shouldn't happen if the '+' button only shows for items already in cart.
+            // But as a fallback, we can treat it as adding the item for the first time.
             handleAddClick(item);
         }
     };
