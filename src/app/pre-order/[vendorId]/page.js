@@ -1,4 +1,3 @@
-
 'use client';
 
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
@@ -41,7 +40,7 @@ const MenuItem = ({ item, cartQuantity, onAdd, onIncrement, onDecrement }) => (
             <div className="absolute -bottom-3 left-1/2 -translate-x-1/2 w-[90%]">
                  {cartQuantity > 0 ? (
                     <div className="flex items-center justify-center bg-background border-2 border-primary/50 rounded-lg shadow-lg h-10">
-                        <Button variant="ghost" size="icon" className="h-full w-10 text-primary rounded-r-none" onClick={() => onDecrement(item.cartItemId || item.id)}>-</Button>
+                        <Button variant="ghost" size="icon" className="h-full w-10 text-primary rounded-r-none" onClick={() => onDecrement(item.id)}>-</Button>
                         <span className="font-bold text-lg text-primary flex-grow text-center">{cartQuantity}</span>
                         <Button variant="ghost" size="icon" className="h-full w-10 text-primary rounded-l-none" onClick={() => onIncrement(item)}>+</Button>
                     </div>
@@ -400,7 +399,26 @@ export default function PreOrderPage({ params }) {
     }, [cart, vendorId]);
 
 
-    const addToCart = (item, portion) => {
+    const handleAddClick = (item) => {
+        if (item.portions && item.portions.length > 1) {
+            setCustomizationItem(item);
+        } else {
+            const portion = item.portions[0];
+            const cartItemId = `${item.id}-${portion.name}`;
+            setCart(prevCart => {
+                 const existingItem = prevCart.find(cartItem => cartItem.cartItemId === cartItemId);
+                if (existingItem) {
+                    return prevCart.map(cartItem =>
+                        cartItem.cartItemId === cartItemId ? { ...cartItem, quantity: cartItem.quantity + 1 } : cartItem
+                    );
+                } else {
+                    return [...prevCart, { ...item, quantity: 1, portion, cartItemId }];
+                }
+            });
+        }
+    };
+    
+    const handleAddToCart = (item, portion) => {
         const cartItemId = `${item.id}-${portion.name}`;
         setCart(prevCart => {
             const existingItem = prevCart.find(cartItem => cartItem.cartItemId === cartItemId);
@@ -414,13 +432,6 @@ export default function PreOrderPage({ params }) {
         });
     };
 
-    const handleAddClick = (item) => {
-        if (item.portions && item.portions.length > 1) {
-            setCustomizationItem(item);
-        } else {
-            addToCart(item, item.portions[0]);
-        }
-    };
 
     const updateQuantity = (cartItemId, change) => {
         setCart(prevCart => {
@@ -440,7 +451,7 @@ export default function PreOrderPage({ params }) {
     };
 
      const handleIncrement = (item) => {
-        const cartItem = cart.find(ci => ci.id === item.id);
+        const cartItem = cart.find(ci => ci.id === item.id && ci.portions?.length === 1);
         if (cartItem) {
             updateQuantity(cartItem.cartItemId, 1);
         } else {
@@ -525,7 +536,7 @@ export default function PreOrderPage({ params }) {
                 isOpen={!!customizationItem}
                 onClose={() => setCustomizationItem(null)}
                 item={customizationItem}
-                onAddToCart={addToCart}
+                onAddToCart={handleAddToCart}
             />
 
             {totalItems > 0 && (
@@ -553,4 +564,3 @@ export default function PreOrderPage({ params }) {
         </div>
     );
 }
-
