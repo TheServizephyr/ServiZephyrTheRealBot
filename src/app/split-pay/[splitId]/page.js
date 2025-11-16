@@ -39,19 +39,48 @@ const CopyButton = ({ text }) => {
     );
 };
 
-const QrModal = ({ isOpen, onClose, qrValue, title }) => (
-    <Dialog open={isOpen} onOpenChange={onClose}>
-        <DialogContent className="bg-background border-border">
-            <DialogHeader>
-                <DialogTitle>{title}</DialogTitle>
-                <DialogDescription>Your friend can scan this code to pay their share.</DialogDescription>
-            </DialogHeader>
-            <div className="flex justify-center p-4">
-                 {qrValue && <QRCode value={qrValue} size={256} level="H" />}
+const PaymentTimeline = ({ shares }) => (
+    <div className="space-y-4">
+        {shares.map((share, index) => (
+            <div key={share.shareId} className="flex items-center gap-4">
+                <div className={cn("flex h-8 w-8 items-center justify-center rounded-full", share.status === 'paid' ? 'bg-green-500' : 'bg-yellow-500')}>
+                    {share.status === 'paid' ? <CheckCircle size={18} className="text-white"/> : <Clock size={18} className="text-white"/>}
+                </div>
+                <div className="flex-grow flex justify-between items-center">
+                    <span className="font-semibold">{share.shareId === 0 ? 'You' : `Friend ${share.shareId}`}</span>
+                    <span className="font-mono text-sm">{formatCurrency(share.amount)}</span>
+                </div>
             </div>
-        </DialogContent>
-    </Dialog>
+        ))}
+    </div>
 );
+
+
+const ShareCard = ({ share, isInitiator = false }) => {
+    const paymentLink = `${window.location.origin}/split-pay/${share.splitId}?pay_share=${share.shareId}`;
+    const shareText = `Hi! Please pay your share of ${formatCurrency(share.amount)} for our group order using this link: ${paymentLink}`;
+
+    return (
+         <div className="bg-card rounded-lg border border-border p-4 space-y-4">
+            <p className="font-bold text-foreground flex items-center gap-2"><User size={16}/> {isInitiator ? 'Your Share' : `Friend ${share.shareId}`}</p>
+            <div className="flex justify-center items-center gap-4">
+                <div className="text-center">
+                    <p className="text-4xl font-bold text-center">{formatCurrency(share.amount)}</p>
+                </div>
+                {!isInitiator && (
+                    <div className="bg-white p-2 rounded-md">
+                         <QRCode value={paymentLink} size={80} level="H" />
+                    </div>
+                )}
+            </div>
+             <div className="flex gap-2 justify-center pt-2 border-t border-dashed">
+                <ShareButton text={shareText}/>
+                <CopyButton text={paymentLink}/>
+            </div>
+        </div>
+    );
+};
+
 
 export default function SplitPayPage() {
     const { splitId } = useParams();
@@ -63,7 +92,6 @@ export default function SplitPayPage() {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
     const [isPaying, setIsPaying] = useState(null);
-    const [qrModal, setQrModal] = useState({ isOpen: false, value: '', title: '' });
 
     useEffect(() => {
         if (!splitId || !db) {
@@ -78,7 +106,7 @@ export default function SplitPayPage() {
         const unsubscribe = onSnapshot(splitDocRef, 
             (docSnap) => {
                 if (docSnap.exists()) {
-                    const data = docSnap.data();
+                    const data = { ...docSnap.data(), id: docSnap.id };
                     setSplitData(data);
                     if (data.status === 'completed' && data.trackingToken) {
                         setTimeout(() => router.push(`/order/placed?orderId=${data.baseOrderId}&token=${data.trackingToken}`), 2500);
@@ -90,7 +118,7 @@ export default function SplitPayPage() {
             },
             (err) => {
                 console.error("Firestore onSnapshot error:", err);
-                setError(`Could not load the payment session. Please check your connection. Error: ${err.message}.`);
+                setError(`Could not load the payment session. Error: ${err.message}.`);
                 setLoading(false);
             }
         );
@@ -99,8 +127,8 @@ export default function SplitPayPage() {
     }, [splitId, db, router]);
 
     const shareToPay = useMemo(() => {
-        const shareId = searchParams.get('pay_share');
-        return shareId ? parseInt(shareId, 10) : null;
+        const shareIdParam = searchParams.get('pay_share');
+        return shareIdParam ? parseInt(shareIdParam, 10) : null;
     }, [searchParams]);
     
     const remainingAmount = useMemo(() => {
@@ -116,8 +144,8 @@ export default function SplitPayPage() {
         }
         setIsPaying(isRemaining ? 'remaining' : share.shareId);
 
-        let orderId = share.razorpay_order_id;
-        let amount = share.amount;
+        let orderId;
+        let amount;
 
         if (isRemaining) {
              if (remainingAmount <= 0) {
@@ -140,6 +168,9 @@ export default function SplitPayPage() {
                  setIsPaying(null);
                  return;
             }
+        } else {
+            orderId = share.razorpay_order_id;
+            amount = share.amount;
         }
         
         const options = {
@@ -168,7 +199,6 @@ export default function SplitPayPage() {
 
     const initiatorShare = useMemo(() => splitData?.shares?.find(s => s.shareId === 0), [splitData]);
     const friendShares = useMemo(() => splitData?.shares?.filter(s => s.shareId !== 0) || [], [splitData]);
-    const paidSharesCount = useMemo(() => (splitData?.shares || []).filter(s => s.status === 'paid').length, [splitData]);
 
     if (loading) {
         return <div className="min-h-screen bg-background flex items-center justify-center"><Loader2 className="animate-spin text-primary h-16 w-16" /></div>;
@@ -191,53 +221,26 @@ export default function SplitPayPage() {
         );
     }
 
-    const showOnlyMyCard = shareToPay !== null;
-    const cardToShow = showOnlyMyCard ? splitData.shares.find(s => s.shareId === shareToPay) : null;
+    const myShareCard = splitData.shares.find(s => s.shareId === shareToPay);
 
-    const renderCard = (share) => {
-        const isPaid = share.status === 'paid';
-        const paymentLink = `${window.location.origin}/split-pay/${splitId}?pay_share=${share.shareId}`;
-        const shareText = `Hi! Please pay your share of ${formatCurrency(share.amount)} for our group order using this link: ${paymentLink}`;
-        const isInitiator = share.shareId === 0;
-
-        return (
-            <motion.div 
-                key={share.shareId}
-                className={`p-4 rounded-lg border-2 ${isPaid ? 'border-green-500 bg-green-500/10' : 'border-dashed border-border'}`}
-                initial={{opacity: 0, y:20}}
-                animate={{opacity:1, y:0}}
-                transition={{delay: share.shareId * 0.1}}
-            >
-                <div className="flex justify-between items-center">
-                    <p className="font-bold text-foreground flex items-center gap-2"><User size={16}/> {isInitiator ? 'Your Share' : `Friend ${share.shareId}`}</p>
-                    {isPaid && (<span className="flex items-center gap-1 text-xs font-semibold px-2 py-1 rounded-full bg-green-500/20 text-green-400"><CheckCircle size={14}/> Paid</span>)}
-                </div>
-                <p className="text-3xl font-bold text-center my-4">{formatCurrency(share.amount)}</p>
-                {!isPaid && (
-                    <div className="space-y-3 flex flex-col items-center">
-                         <Button onClick={() => handlePayShare(share)} className="w-full bg-primary hover:bg-primary/80" disabled={!!isPaying}>
-                            {isPaying === share.shareId ? <Loader2 className="animate-spin" /> : `Pay Now`}
-                         </Button>
-                         {!showOnlyMyCard && (
-                            <>
-                                <p className="text-xs text-muted-foreground">Or share payment options:</p>
-                                <div className="flex gap-2 justify-center">
-                                    <Button size="sm" variant="outline" onClick={() => setQrModal({ isOpen: true, value: paymentLink, title: `QR Code for Friend ${share.shareId}` })}><QrCode className="mr-2 h-4 w-4"/> Show QR</Button>
-                                    <ShareButton text={shareText}/>
-                                    <CopyButton text={paymentLink}/>
-                                </div>
-                            </>
-                         )}
-                    </div>
-                )}
-            </motion.div>
-        );
+    if (shareToPay !== null) {
+        if (!myShareCard) {
+             return <div className="min-h-screen bg-background flex items-center justify-center text-red-500 p-4 text-center">This specific payment link is invalid.</div>
+        }
+         return (
+             <div className="min-h-screen bg-background text-foreground p-4 md:p-8 flex items-center justify-center">
+                 <Script src="https://checkout.razorpay.com/v1/checkout.js" />
+                 <div className="w-full max-w-sm">
+                    <h1 className="text-2xl font-bold text-center mb-6">Pay Your Share</h1>
+                    <ShareCard share={myShareCard} isInitiator={false}/>
+                 </div>
+            </div>
+         );
     }
     
     return (
         <div className="min-h-screen bg-background text-foreground p-4 md:p-8">
             <Script src="https://checkout.razorpay.com/v1/checkout.js" />
-            <QrModal isOpen={qrModal.isOpen} onClose={() => setQrModal({isOpen: false, value: '', title: ''})} qrValue={qrModal.value} title={qrModal.title} />
 
             <div className="max-w-4xl mx-auto">
                 <header className="text-center mb-8">
@@ -256,40 +259,28 @@ export default function SplitPayPage() {
                             <span className="font-bold text-foreground">{formatCurrency(remainingAmount)}</span>
                         </div>
                         <h3 className="text-lg font-bold pt-4 border-t border-dashed">Payment Status</h3>
-                        <div className="space-y-3">
-                            {(splitData.shares || []).map(share => (
-                                <div key={share.shareId} className="flex items-center gap-3">
-                                    {share.status === 'paid' ? <CheckCircle className="text-green-500"/> : <Clock className="text-yellow-500"/>}
-                                    <span className={cn("font-semibold", share.status === 'paid' && 'text-muted-foreground line-through')}>{share.shareId === 0 ? 'You' : `Friend ${share.shareId}`}</span>
-                                    <span className="ml-auto font-mono text-sm">{formatCurrency(share.amount)}</span>
-                                </div>
-                            ))}
-                        </div>
+                        <PaymentTimeline shares={splitData.shares} />
                     </motion.div>
                     
                     <div className="lg:col-span-2 space-y-6">
-                        {showOnlyMyCard ? (
-                             cardToShow && renderCard(cardToShow)
-                        ) : (
-                            <>
-                                {initiatorShare && (
-                                     <motion.div initial={{opacity: 0}} animate={{opacity:1}} className="bg-card p-4 rounded-lg border-2 border-primary">
-                                         {renderCard(initiatorShare)}
-                                     </motion.div>
-                                )}
-
-                                <div className="space-y-4">
-                                     <Button onClick={() => handlePayShare({ amount: remainingAmount }, true)} className="w-full h-14 text-lg" disabled={!!isPaying || remainingAmount <= 0}>
-                                        {isPaying === 'remaining' ? <Loader2 className="animate-spin" /> : `Pay Remaining Balance (${formatCurrency(remainingAmount)})`}
-                                    </Button>
-                                </div>
-                                 
-                                <h2 className="text-xl font-bold pt-4">Friends' Shares</h2>
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                    {friendShares.map(renderCard)}
-                                </div>
-                            </>
+                        {initiatorShare && (
+                             <motion.div initial={{opacity: 0, y:20}} animate={{opacity:1, y:0}} className="bg-card p-4 rounded-lg border-2 border-primary">
+                                 <ShareCard share={initiatorShare} isInitiator={true}/>
+                             </motion.div>
                         )}
+
+                        <div className="space-y-4">
+                             <Button onClick={() => handlePayShare({ amount: remainingAmount }, true)} className="w-full h-14 text-lg" disabled={!!isPaying || remainingAmount <= 0}>
+                                {isPaying === 'remaining' ? <Loader2 className="animate-spin" /> : `Pay Remaining Balance (${formatCurrency(remainingAmount)})`}
+                            </Button>
+                        </div>
+                         
+                        <h2 className="text-xl font-bold pt-4">Friends' Shares</h2>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            {friendShares.map(share => (
+                               <ShareCard key={share.shareId} share={{...share, splitId}} isInitiator={false} />
+                            ))}
+                        </div>
                     </div>
                 </div>
             </div>
