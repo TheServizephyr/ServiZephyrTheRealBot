@@ -42,7 +42,7 @@ export default function SplitPayPage() {
     const { splitId } = useParams();
     const searchParams = useSearchParams();
     const router = useRouter();
-    const db = useFirestore(); // Use the hook to get the correct, initialized firestore instance
+    const db = useFirestore(); 
 
     const [splitData, setSplitData] = useState(null);
     const [loading, setLoading] = useState(true);
@@ -50,45 +50,38 @@ export default function SplitPayPage() {
     const [isPaying, setIsPaying] = useState(false);
 
     useEffect(() => {
-        console.log(`[DEBUG] split-pay page: useEffect triggered for splitId: ${splitId}`);
         if (!splitId || !db) {
-            const errorMsg = `Split session ID is missing or Firestore is not ready. splitId: ${splitId}, db: ${!!db}`;
-            console.error(`[DEBUG] split-pay page: ${errorMsg}`);
+            const errorMsg = `Session ID is missing or Firestore is not ready.`;
             setError(errorMsg);
             setLoading(false);
             return;
         }
 
         setLoading(true);
-        console.log(`[DEBUG] split-pay page: Setting up Firestore listener for split_payments/${splitId}`);
         const splitDocRef = doc(db, 'split_payments', splitId);
 
         const unsubscribe = onSnapshot(splitDocRef, 
             (docSnap) => {
                 if (docSnap.exists()) {
                     const data = docSnap.data();
-                    console.log("[DEBUG] split-pay page: Firestore onSnapshot received data:", JSON.stringify(data, null, 2));
                     setSplitData(data);
 
-                    if (data.status === 'completed') {
-                         console.log("[DEBUG] split-pay page: Session completed. Redirecting in 2.5 seconds...");
+                    if (data.status === 'completed' && data.trackingToken) {
                         setTimeout(() => router.push(`/order/placed?orderId=${data.baseOrderId}&token=${data.trackingToken}`), 2500);
                     }
                 } else {
-                    console.warn(`[DEBUG] split-pay page: Firestore document does not exist for ID: ${splitId}`);
                     setError("This payment session could not be found. It may have been deleted or never existed.");
                 }
                 setLoading(false);
             },
             (err) => {
-                console.error("[DEBUG] CRITICAL: Firestore onSnapshot error:", err);
+                console.error("CRITICAL: Firestore onSnapshot error:", err);
                 setError(`Could not load the payment session. Error: ${err.message}. Please check console for details.`);
                 setLoading(false);
             }
         );
 
         return () => {
-            console.log(`[DEBUG] split-pay page: Cleaning up Firestore listener for ${splitId}`);
             unsubscribe();
         };
     }, [splitId, db, router]);
@@ -110,6 +103,9 @@ export default function SplitPayPage() {
             name: "Group Order Payment",
             description: `Your share for the group order`,
             order_id: share.razorpay_order_id,
+            notes: {
+                split_session_id: splitId,
+            },
             handler: function (response) {
                // The onSnapshot listener will automatically update the UI
             },
@@ -133,14 +129,13 @@ export default function SplitPayPage() {
             setError("Could not open payment window. Please try again or refresh the page.");
             setIsPaying(false);
         }
-    }, []);
+    }, [splitId]);
 
     useEffect(() => {
         if (shareToPay && splitData && !loading) {
             const shareIndex = parseInt(shareToPay, 10);
             const share = splitData.shares?.find(s => s.shareId === shareIndex);
             if (share && share.status === 'pending') {
-                console.log(`[DEBUG] split-pay page: Auto-triggering payment for shareId: ${shareToPay}`);
                 handlePayShare(share);
             }
         }
@@ -180,7 +175,7 @@ export default function SplitPayPage() {
                 <header className="text-center mb-8">
                     <div className="flex justify-center items-center gap-4">
                         <h1 className="text-3xl md:text-4xl font-bold tracking-tight">Split Payment Tracker</h1>
-                        <Button onClick={() => fetchStatus(false)} variant="ghost" size="icon" disabled={loading}><RefreshCw className={loading ? "animate-spin" : ""}/></Button>
+                        <Button onClick={() => window.location.reload()} variant="ghost" size="icon"><RefreshCw className={loading ? "animate-spin" : ""}/></Button>
                     </div>
                     <p className="text-muted-foreground mt-2">Track payments from your friends in real-time.</p>
                 </header>

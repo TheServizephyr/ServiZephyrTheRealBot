@@ -50,56 +50,47 @@ async function makeRazorpayRequest(options, payload) {
 // --- NEW HELPER FOR SPLIT PAYMENTS ---
 const handleSplitPayment = async (firestore, paymentEntity) => {
     const { order_id: razorpayOrderId, notes } = paymentEntity;
-    console.log(`[Webhook RZP] Checking for split payment notes in payment entity...`, notes);
     const splitId = notes?.split_session_id;
 
     if (!splitId) {
-        console.log(`[Webhook RZP] No split_session_id found in notes. Proceeding with normal order flow.`);
         return false;
     }
 
-    console.log(`[Webhook RZP] Detected split payment for session: ${splitId}. Starting transaction...`);
     const splitRef = firestore.collection('split_payments').doc(splitId);
     
     try {
         await firestore.runTransaction(async (transaction) => {
             const splitDoc = await transaction.get(splitRef);
             if (!splitDoc.exists) {
-                console.error(`[Webhook RZP] CRITICAL: Split session ${splitId} not found in Firestore. Cannot process payment.`);
+                console.error(`CRITICAL: Split session ${splitId} not found in Firestore. Cannot process payment.`);
                 return; // Abort transaction
             }
 
             const splitData = splitDoc.data();
-            console.log(`[Webhook RZP] Found split session data for ${splitId}.`);
             const shares = splitData.shares || [];
             const shareIndex = shares.findIndex(s => s.razorpay_order_id === razorpayOrderId);
 
             if (shareIndex === -1) {
-                console.error(`[Webhook RZP] CRITICAL: Razorpay order ${razorpayOrderId} not found in shares for split ${splitId}.`);
+                console.error(`CRITICAL: Razorpay order ${razorpayOrderId} not found in shares for split ${splitId}.`);
                 return; // Abort transaction
             }
 
             // Update the specific share that was paid
             shares[shareIndex].status = 'paid';
             shares[shareIndex].razorpay_payment_id = paymentEntity.id;
-            console.log(`[Webhook RZP] Marked share index ${shareIndex} as 'paid'.`);
-
 
             const paidShares = shares.filter(s => s.status === 'paid');
             const isFullyPaid = paidShares.length === splitData.splitCount;
-            console.log(`[Webhook RZP] Paid shares: ${paidShares.length}/${splitData.splitCount}. Is fully paid: ${isFullyPaid}`);
 
             const updateData = { shares };
             if (isFullyPaid) {
                 updateData.status = 'completed';
-                console.log(`[Webhook RZP] All shares paid. Marking session ${splitId} as 'completed'.`);
             }
             
             transaction.update(splitRef, updateData);
         });
-        console.log(`[Webhook RZP] Transaction for split payment ${splitId} committed successfully.`);
     } catch (error) {
-         console.error(`[Webhook RZP] CRITICAL ERROR during split payment transaction for ${splitId}:`, error);
+         console.error(`CRITICAL ERROR during split payment transaction for ${splitId}:`, error);
     }
 
     return true; // Indicates this was a split payment and was handled
@@ -130,7 +121,6 @@ export async function POST(req) {
         const eventData = JSON.parse(body);
         
         if (eventData.event === 'payment.captured') {
-            console.log(`[Webhook RZP] Received 'payment.captured' event.`);
             const paymentEntity = eventData.payload.payment.entity;
             const razorpayOrderId = paymentEntity.order_id;
             const paymentId = paymentEntity.id;
@@ -146,13 +136,10 @@ export async function POST(req) {
             // --- NEW: Check if this is a split payment ---
             const isSplitPayment = await handleSplitPayment(firestore, paymentEntity);
             if (isSplitPayment) {
-                console.log(`[Webhook RZP] Split payment for RZP Order ${razorpayOrderId} handled. Ending webhook processing for this event.`);
                 return NextResponse.json({ status: 'ok', message: 'Split payment processed.' });
             }
 
             // --- Regular Order Processing Continues Below ---
-            console.log(`[Webhook RZP] Starting regular order processing for RZP Order ${razorpayOrderId}.`);
-
             const key_id = process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID;
             const key_secret = process.env.RAZORPAY_KEY_SECRET;
             const credentials = Buffer.from(`${key_id}:${key_secret}`).toString('base64');
