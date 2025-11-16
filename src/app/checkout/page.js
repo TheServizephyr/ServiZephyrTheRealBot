@@ -412,15 +412,13 @@ const CheckoutPageInternal = () => {
                         <p className="text-muted-foreground">Use UPI, Card, or Netbanking</p>
                     </div>
                 </motion.button>
-                 {(deliveryType === 'dine-in' || deliveryType === 'street-vendor-pre-order') && (
-                     <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} onClick={() => setIsSplitBillActive(true)} className="w-full text-left p-6 bg-card border-2 border-border rounded-lg flex items-center gap-6 hover:border-primary transition-all">
-                        <Split size={40} className="text-primary flex-shrink-0"/>
-                        <div>
-                            <h3 className="text-xl font-bold">Split The Bill</h3>
-                            <p className="text-muted-foreground">Split equally with your friends.</p>
-                        </div>
-                    </motion.button>
-                )}
+                <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} onClick={() => setIsSplitBillActive(true)} className="w-full text-left p-6 bg-card border-2 border-border rounded-lg flex items-center gap-6 hover:border-primary transition-all">
+                    <Split size={40} className="text-primary flex-shrink-0"/>
+                    <div>
+                        <h3 className="text-xl font-bold">Split The Bill</h3>
+                        <p className="text-muted-foreground">Split equally with your friends.</p>
+                    </div>
+                </motion.button>
             </div>
         );
     }
