@@ -642,6 +642,7 @@ const OrderPageInternal = () => {
     const tableIdFromUrl = searchParams.get('table');
     const impersonatedOwnerId = searchParams.get('impersonate_owner_id');
 
+    // This effect now ONLY runs once on mount to determine session validity.
     useEffect(() => {
         const verifySession = async () => {
             // Case 1: Dine-in via QR code scan
@@ -650,7 +651,13 @@ const OrderPageInternal = () => {
                 return;
             }
             
-            // Case 2: WhatsApp session with token
+            // Case 2: Street Vendor QR Scan (no token, no tableId)
+            if (!tableIdFromUrl && !phone && !token) {
+                setIsTokenValid(true);
+                return;
+            }
+            
+            // Case 3: WhatsApp session with token
             if (phone && token) {
                 try {
                     const res = await fetch('/api/auth/verify-token', {
@@ -664,22 +671,16 @@ const OrderPageInternal = () => {
                 }
                 return;
             }
-            
-            // Case 3: Street Vendor QR code scan (no token, no tableId)
-            // This is the FIX: We consider this a valid session type for this page.
-            if (!tableIdFromUrl && !phone && !token) {
-                setIsTokenValid(true);
-                return;
-            }
 
             // Default case: If something is missing, it's an error.
-            setTokenError("No valid session information found. Please scan the QR code again or start a new order from WhatsApp.");
+            setTokenError("No valid session information found. Please start a new session.");
         };
 
         if (restaurantId) {
             verifySession();
         }
     }, [restaurantId, tableIdFromUrl, phone, token]);
+
 
     const [customerLocation, setCustomerLocation] = useState(null);
     const [restaurantData, setRestaurantData] = useState({
