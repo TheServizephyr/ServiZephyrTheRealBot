@@ -66,7 +66,7 @@ export async function POST(req) {
                 shares,
                 status: 'pending',
                 createdAt: FieldValue.serverTimestamp(),
-                isPublic: true // THE FIX: Add a public flag
+                isPublic: true // Ensure public readability via security rules
             };
             console.log("[DEBUG] /api/payment/create-order: Writing to Firestore:", JSON.stringify(firestorePayload, null, 2));
             await splitRef.set(firestorePayload);
