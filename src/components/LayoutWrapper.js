@@ -24,7 +24,8 @@ const LayoutWrapper = ({ children }) => {
     '/bill',
     '/order/placed',
     '/street-vendor-dashboard',
-    '/pre-order' // Added this line
+    '/pre-order',
+    '/split-pay' // Added this line
   ];
 
   // Check if the current path starts with any of the noLayoutPaths

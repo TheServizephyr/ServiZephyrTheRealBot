@@ -1,5 +1,4 @@
 
-
 import { NextResponse } from 'next/server';
 import { getFirestore, FieldValue } from '@/lib/firebase-admin';
 import { sendNewOrderToOwner } from '@/lib/notifications';

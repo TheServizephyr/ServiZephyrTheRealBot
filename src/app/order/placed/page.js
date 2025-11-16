@@ -1,5 +1,3 @@
-
-
 'use client';
 
 import React, { Suspense, useEffect, useState, useCallback } from 'react';
@@ -37,6 +35,7 @@ const OrderPlacedContent = () => {
 
             if (!tokenInUrl && orderId) {
                 try {
+                    // Give the backend a moment to process the webhook and generate the token
                     await new Promise(resolve => setTimeout(resolve, 1500)); 
                     
                     const res = await fetch(`/api/order/status/${orderId}`);
