@@ -151,7 +151,7 @@ function DineInTrackingContent() {
     const currentStatusInfo = statusConfig[orderData.order.status] || statusConfig.pending;
 
     return (
-        <div className="min-h-screen bg-background text-foreground flex flex-col">
+        <div className="min-h-screen bg-background text-foreground flex flex-col green-theme">
             <header className="p-4 border-b border-border flex justify-between items-center">
                 <div>
                     <p className="text-xs text-muted-foreground">Tracking Dine-In Order</p>
