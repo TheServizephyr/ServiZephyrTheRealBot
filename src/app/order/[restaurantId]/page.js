@@ -644,11 +644,13 @@ const OrderPageInternal = () => {
 
     useEffect(() => {
         const verifySession = async () => {
+            // Case 1: Dine-in via QR code scan
             if (tableIdFromUrl) {
                 setIsTokenValid(true);
                 return;
             }
             
+            // Case 2: WhatsApp session with token
             if (phone && token) {
                 try {
                     const res = await fetch('/api/auth/verify-token', {
@@ -662,10 +664,16 @@ const OrderPageInternal = () => {
                 }
                 return;
             }
-
+            
+            // Case 3: Street Vendor QR code scan (no token, no tableId)
+            // This is the FIX: We consider this a valid session type for this page.
             if (!tableIdFromUrl && !phone && !token) {
-                 setTokenError("No valid session information found. Please scan the QR code again or start a new order from WhatsApp.");
+                setIsTokenValid(true);
+                return;
             }
+
+            // Default case: If something is missing, it's an error.
+            setTokenError("No valid session information found. Please scan the QR code again or start a new order from WhatsApp.");
         };
 
         if (restaurantId) {
@@ -753,7 +761,7 @@ const OrderPageInternal = () => {
             if(locationStr) { try { setCustomerLocation(JSON.parse(locationStr)); } catch (e) {} }
 
             try {
-                const url = `/api/menu/${restaurantId}${phone ? `?phone=${phone}`: ''}`;
+                const url = `/api/public/menu/${restaurantId}${phone ? `?phone=${phone}`: ''}`;
                 const menuRes = await fetch(url);
                 const menuData = await menuRes.json();
 
@@ -795,7 +803,15 @@ const OrderPageInternal = () => {
                     }
 
                 } else {
-                    setDeliveryType(menuData.deliveryEnabled ? 'delivery' : (menuData.pickupEnabled ? 'pickup' : 'delivery'));
+                    // --- START FIX: Smart Delivery Type for QR Scan ---
+                    // If it's a street vendor, default to their special pre-order type
+                    if (fetchedSettings.businessType === 'street-vendor') {
+                        setDeliveryType('street-vendor-pre-order');
+                    } else {
+                        // Otherwise, default to delivery if enabled, then pickup
+                        setDeliveryType(menuData.deliveryEnabled ? 'delivery' : (menuData.pickupEnabled ? 'pickup' : 'delivery'));
+                    }
+                    // --- END FIX ---
                     setDineInState('ready');
                 }
             } catch (err) {
