@@ -9,7 +9,7 @@ import Image from 'next/image';
 import Script from 'next/script';
 import { cn } from '@/lib/utils';
 import { useRouter } from 'next/navigation';
-import { db } from '@/lib/firebase';
+import { db } from '@/lib/firebase'; // Correct, simple import for a public page
 
 
 const MenuItem = ({ item, cartQuantity, onAdd, onIncrement, onDecrement }) => (
