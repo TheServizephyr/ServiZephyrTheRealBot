@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ShoppingCart, Plus, Minus, X, IndianRupee, Loader2, Utensils, Wallet, User, Phone, Split, ArrowLeft } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -9,6 +9,7 @@ import Image from 'next/image';
 import Script from 'next/script';
 import { cn } from '@/lib/utils';
 import { useRouter } from 'next/navigation';
+import { db } from '@/lib/firebase';
 
 
 const MenuItem = ({ item, cartQuantity, onAdd, onIncrement, onDecrement }) => (
