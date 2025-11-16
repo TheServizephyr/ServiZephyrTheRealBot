@@ -61,7 +61,6 @@ const AddAddressPageInternal = () => {
 
     useEffect(() => {
         const verifyToken = async () => {
-            // Dine-in or logged-in users don't need token verification for this page
             if (tableId || user) {
                 setIsTokenValid(true);
                 return;
@@ -90,7 +89,7 @@ const AddAddressPageInternal = () => {
                     return;
                 }
             } 
-            else if (!isUserLoading) { // Only show error if we're sure user is not logged in
+            else if (!isUserLoading) {
                 setTokenError("No session token found. Please start your order from WhatsApp or log in.");
                 setLoading(false);
                 return;

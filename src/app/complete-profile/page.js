@@ -53,7 +53,7 @@ export default function CompleteProfile() {
               router.push('/admin-dashboard');
             } else if (role === 'rider') {
                 router.push('/rider-dashboard');
-            } else if (role === 'street-vendor') { // New Role Check
+            } else if (role === 'street-vendor') {
                 router.push('/street-vendor-dashboard');
             } else {
               router.push('/customer-dashboard');
@@ -155,7 +155,7 @@ export default function CompleteProfile() {
                 ownerId: user.uid,
                 ownerPhone: normalizedPhone,
                 approvalStatus: 'pending',
-                botPhoneNumberId: `REPLACE_WITH_BOT_ID_${businessName.replace(/\s+/g, '-').toLowerCase()}`,
+                botPhoneNumberId: null, // Set to null instead of placeholder
                 businessType: finalUserData.businessType,
              };
         }

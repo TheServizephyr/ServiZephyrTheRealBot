@@ -87,15 +87,15 @@ const GeoPoint = admin.firestore.GeoPoint;
  * Verifies the authorization token from a request and returns the user's UID.
  * This is the central point for all API authentication checks.
  * @param {Request} req The incoming Next.js request object.
- * @returns {Promise<string>} The user's UID.
- * @throws Will throw an error with a status code if unauthorized.
+ * @returns {Promise<string|null>} The user's UID or null if no token is present.
+ * @throws Will throw an error with a status code if the token is present but invalid.
  */
 const verifyAndGetUid = async (req) => {
   const auth = await getAuth();
   const authHeader = req.headers.get('authorization');
 
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
-    throw { message: 'Authorization token not found or invalid.', status: 401 };
+    return null;
   }
   const token = authHeader.split('Bearer ')[1];
   
@@ -103,7 +103,6 @@ const verifyAndGetUid = async (req) => {
       const decodedToken = await auth.verifyIdToken(token);
       return decodedToken.uid;
   } catch (error) {
-      // Add more specific error handling if needed
       console.error("[verifyAndGetUid] Error verifying token:", error.message);
       throw { message: `Token verification failed: ${error.message}`, status: 403 };
   }
