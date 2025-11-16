@@ -9,6 +9,7 @@ import { nanoid } from 'nanoid';
 
 
 const generateSecureToken = async (firestore, customerPhone) => {
+    console.log("[Webhook RZP] Generating secure tracking token...");
     const token = nanoid(24);
     const expiry = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24-hour validity for tracking link
     const authTokenRef = firestore.collection('auth_tokens').doc(token);
@@ -17,6 +18,7 @@ const generateSecureToken = async (firestore, customerPhone) => {
         expiresAt: expiry,
         type: 'tracking'
     });
+    console.log(`[Webhook RZP] Generated secure tracking token for ${customerPhone}.`);
     return token;
 };
 
@@ -53,44 +55,54 @@ const handleSplitPayment = async (firestore, paymentEntity) => {
     const splitId = notes?.split_session_id;
 
     if (!splitId) {
+        console.log(`[Webhook RZP] Not a split payment. No split_session_id found in notes for order ${razorpayOrderId}.`);
         return false;
     }
-
+    
+    console.log(`[Webhook RZP] Detected split payment for session ${splitId}.`);
     const splitRef = firestore.collection('split_payments').doc(splitId);
     
     try {
         await firestore.runTransaction(async (transaction) => {
+            console.log(`[Webhook RZP] Starting Firestore transaction for split payment.`);
             const splitDoc = await transaction.get(splitRef);
             if (!splitDoc.exists) {
-                console.error(`CRITICAL: Split session ${splitId} not found in Firestore. Cannot process payment.`);
+                console.error(`[Webhook RZP] CRITICAL: Split session ${splitId} not found in Firestore. Cannot process payment.`);
                 return; // Abort transaction
             }
 
             const splitData = splitDoc.data();
             const shares = splitData.shares || [];
+            console.log(`[Webhook RZP] Found ${shares.length} shares in session ${splitId}.`);
             const shareIndex = shares.findIndex(s => s.razorpay_order_id === razorpayOrderId);
 
             if (shareIndex === -1) {
-                console.error(`CRITICAL: Razorpay order ${razorpayOrderId} not found in shares for split ${splitId}.`);
+                console.error(`[Webhook RZP] CRITICAL: Razorpay order ${razorpayOrderId} not found in shares for split ${splitId}.`);
                 return; // Abort transaction
             }
+            console.log(`[Webhook RZP] Matched Razorpay Order ID to share index ${shareIndex}.`);
 
             // Update the specific share that was paid
             shares[shareIndex].status = 'paid';
             shares[shareIndex].razorpay_payment_id = paymentEntity.id;
+            console.log(`[Webhook RZP] Share index ${shareIndex} marked as paid.`);
 
             const paidShares = shares.filter(s => s.status === 'paid');
             const isFullyPaid = paidShares.length === splitData.splitCount;
+            console.log(`[Webhook RZP] ${paidShares.length}/${splitData.splitCount} shares are now paid.`);
 
             const updateData = { shares };
             if (isFullyPaid) {
+                console.log(`[Webhook RZP] All shares paid. Marking session ${splitId} as completed.`);
                 updateData.status = 'completed';
             }
             
             transaction.update(splitRef, updateData);
+            console.log(`[Webhook RZP] Transaction update prepared.`);
         });
+        console.log(`[Webhook RZP] Firestore transaction for split payment ${splitId} successful.`);
     } catch (error) {
-         console.error(`CRITICAL ERROR during split payment transaction for ${splitId}:`, error);
+         console.error(`[Webhook RZP] CRITICAL ERROR during split payment transaction for ${splitId}:`, error);
     }
 
     return true; // Indicates this was a split payment and was handled
@@ -98,10 +110,11 @@ const handleSplitPayment = async (firestore, paymentEntity) => {
 
 
 export async function POST(req) {
+    console.log("[Webhook RZP] Received POST request.");
     const secret = process.env.RAZORPAY_WEBHOOK_SECRET;
 
     if (!secret) {
-        console.error("CRITICAL: RAZORPAY_WEBHOOK_SECRET is not set.");
+        console.error("[Webhook RZP] CRITICAL: RAZORPAY_WEBHOOK_SECRET is not set.");
         return NextResponse.json({ message: 'Webhook secret not configured' }, { status: 500 });
     }
 
@@ -114,11 +127,12 @@ export async function POST(req) {
         const digest = shasum.digest('hex');
 
         if (digest !== signature) {
-            console.warn("Invalid signature received.");
+            console.warn("[Webhook RZP] Invalid signature received.");
             return NextResponse.json({ message: 'Invalid signature' }, { status: 403 });
         }
 
         const eventData = JSON.parse(body);
+        console.log(`[Webhook RZP] Event received: ${eventData.event}`);
         
         if (eventData.event === 'payment.captured') {
             const paymentEntity = eventData.payload.payment.entity;
@@ -127,7 +141,7 @@ export async function POST(req) {
             const paymentAmount = paymentEntity.amount; 
             
             if (!razorpayOrderId) {
-                console.warn("'order_id' not found in payment entity. Skipping.");
+                console.warn("[Webhook RZP] 'order_id' not found in payment entity. Skipping.");
                 return NextResponse.json({ status: 'ok' });
             }
             
@@ -136,10 +150,12 @@ export async function POST(req) {
             // --- NEW: Check if this is a split payment ---
             const isSplitPayment = await handleSplitPayment(firestore, paymentEntity);
             if (isSplitPayment) {
+                console.log(`[Webhook RZP] Split payment for order ${razorpayOrderId} handled. Ending request.`);
                 return NextResponse.json({ status: 'ok', message: 'Split payment processed.' });
             }
 
             // --- Regular Order Processing Continues Below ---
+            console.log(`[Webhook RZP] Not a split payment. Proceeding with regular order flow for ${razorpayOrderId}.`);
             const key_id = process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID;
             const key_secret = process.env.RAZORPAY_KEY_SECRET;
             const credentials = Buffer.from(`${key_id}:${key_secret}`).toString('base64');
@@ -155,7 +171,7 @@ export async function POST(req) {
             const payloadString = rzpOrder.notes?.servizephyr_payload;
             
             if (!payloadString) {
-                console.error(`CRITICAL: servizephyr_payload not found for Razorpay Order ${razorpayOrderId}`);
+                console.error(`[Webhook RZP] CRITICAL: servizephyr_payload not found for Razorpay Order ${razorpayOrderId}`);
                 return NextResponse.json({ status: 'error', message: 'Order payload not found in notes.' });
             }
             
@@ -171,7 +187,7 @@ export async function POST(req) {
             } = JSON.parse(payloadString);
             
             if (!firestoreOrderId || !userId || !restaurantId || !businessType) {
-                console.error(`CRITICAL: Missing key identifiers in payload for RZP Order ${razorpayOrderId}`);
+                console.error(`[Webhook RZP] CRITICAL: Missing key identifiers in payload for RZP Order ${razorpayOrderId}`);
                 return NextResponse.json({ status: 'error', message: 'Order identifier notes missing.' });
             }
 
@@ -279,6 +295,7 @@ export async function POST(req) {
             });
             
             await batch.commit();
+            console.log(`[Webhook RZP] Successfully created Firestore order ${newOrderRef.id} from Razorpay Order ${razorpayOrderId}.`);
 
             const collectionForBusinessLookup = businessType === 'street-vendor' ? 'street_vendors' : (businessType === 'shop' ? 'shops' : 'restaurants');
             const businessDoc = await firestore.collection(collectionForBusinessLookup).doc(restaurantId).get();
@@ -304,11 +321,12 @@ export async function POST(req) {
                     
                     try {
                         await makeRazorpayRequest(transferOptions, transferPayload);
+                        console.log(`[Webhook RZP] Initiated transfer for payment ${paymentId} to account ${linkedAccountId}.`);
                     } catch (transferError) {
-                        console.error(`CRITICAL: Failed to process transfer for payment ${paymentId}. Error:`, JSON.stringify(transferError, null, 2));
+                        console.error(`[Webhook RZP] CRITICAL: Failed to process transfer for payment ${paymentId}. Error:`, JSON.stringify(transferError, null, 2));
                     }
                 } else {
-                    console.warn(`Restaurant ${restaurantId} has no Linked Account. Skipping transfer.`);
+                    console.warn(`[Webhook RZP] Restaurant ${restaurantId} has no Linked Account. Skipping transfer.`);
                 }
 
                 if (businessData.ownerPhone && businessData.botPhoneNumberId) {
@@ -327,7 +345,7 @@ export async function POST(req) {
         return NextResponse.json({ status: 'ok' });
 
     } catch (error) {
-        console.error('CRITICAL Error processing webhook:', error);
+        console.error('[Webhook RZP] CRITICAL Error processing webhook:', error);
         return NextResponse.json({ status: 'error', message: 'Internal server error' }, { status: 200 });
     }
 }
