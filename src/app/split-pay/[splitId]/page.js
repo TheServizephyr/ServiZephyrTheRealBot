@@ -1,17 +1,14 @@
 
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { useFirestore } from '@/firebase'; // THE FIX: Use the hook to get the correct db instance
-import { doc, onSnapshot } from 'firebase/firestore';
 import { motion } from 'framer-motion';
-import { Loader2, CheckCircle, Clock, Users, IndianRupee, Share2, Copy } from 'lucide-react';
+import { Loader2, CheckCircle, Clock, Users, IndianRupee, Share2, Copy, RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 import QRCode from 'qrcode.react';
 import Script from 'next/script';
-
 
 const formatCurrency = (value) => `₹${Number(value || 0).toLocaleString('en-IN', { maximumFractionDigits: 2 })}`;
 
@@ -38,108 +35,85 @@ const CopyButton = ({ text }) => {
     );
 };
 
-
 export default function SplitPayPage() {
     const { splitId } = useParams();
     const router = useRouter();
     const [splitData, setSplitData] = useState(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
-    const firestore = useFirestore(); // THE FIX: Get the correct db instance from the context
+
+    const fetchStatus = useCallback(async (isBackground = false) => {
+        if (!isBackground) {
+            setLoading(true);
+        }
+        setError(null);
+        try {
+            const res = await fetch(`/api/payment/status?splitId=${splitId}`);
+            if (!res.ok) {
+                const errData = await res.json();
+                throw new Error(errData.message || "Failed to fetch session status.");
+            }
+            const data = await res.json();
+            setSplitData(data);
+
+            if (data.status === 'completed') {
+                setTimeout(() => router.push(`/order/placed?orderId=${data.baseOrderId}&token=${data.trackingToken}`), 2500);
+            }
+        } catch (err) {
+            setError(err.message);
+        } finally {
+            if (!isBackground) {
+                setLoading(false);
+            }
+        }
+    }, [splitId, router]);
 
     useEffect(() => {
-        console.log(`[DEBUG] SplitPay Page Mounted. splitId: ${splitId}`);
-
-        if (!splitId || !firestore) { // Also check if firestore is available
-            console.error("[DEBUG] No splitId found in URL or Firestore not initialized.");
-            setError("Split session ID is missing or database is not ready.");
+        if (!splitId) {
+            setError("Split session ID is missing.");
             setLoading(false);
             return;
         }
-
-        console.log(`[DEBUG] Setting up Firestore listener for split_payments/${splitId}`);
-        const splitDocRef = doc(firestore, 'split_payments', splitId);
-        
-        const unsubscribe = onSnapshot(splitDocRef, (docSnap) => {
-            console.log("[DEBUG] onSnapshot callback triggered.");
-            if (docSnap.exists()) {
-                const data = docSnap.data();
-                console.log("[DEBUG] Document exists. Data received:", JSON.stringify(data, null, 2));
-                setSplitData(data);
-                setError(null);
-
-                if (data.status === 'completed') {
-                    console.log("[DEBUG] Split is complete. Redirecting to tracking page for base order:", data.baseOrderId);
-                    // Use a small delay before redirecting to allow user to see the completed state
-                    setTimeout(() => router.push(`/track/${data.baseOrderId}`), 2000);
-                }
-            } else {
-                console.error("[DEBUG] Document does not exist in Firestore.");
-                setError("This split payment session was not found or has expired.");
-            }
-            setLoading(false);
-            console.log("[DEBUG] State updated. Loading: false");
-        }, (err) => {
-            console.error("[DEBUG] CRITICAL: Firestore onSnapshot error:", err);
-            setError("Could not load the payment session. Please try again.");
-            setLoading(false);
-            console.log("[DEBUG] Error state updated. Loading: false");
-        });
-
-        return () => {
-            console.log("[DEBUG] Unsubscribing from Firestore listener.");
-            unsubscribe();
-        };
-    }, [splitId, router, firestore]);
+        fetchStatus(); // Initial fetch
+        const interval = setInterval(() => fetchStatus(true), 15000); // Poll every 15 seconds
+        return () => clearInterval(interval);
+    }, [splitId, fetchStatus]);
     
     const handlePayShare = (share) => {
-        console.log("[DEBUG] handlePayShare triggered for share:", share);
         if (!process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID) {
             alert("Payment gateway is not configured.");
-            console.error("[DEBUG] Razorpay Key ID is missing.");
             return;
         }
-        
         const options = {
             key: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID,
             amount: share.amount * 100,
             currency: "INR",
             name: "Group Order Payment",
-            description: `Your share for order #${splitData?.baseOrderId?.substring(0,8)}`,
+            description: `Your share for the order`,
             order_id: share.razorpay_order_id,
-            notes: {
-                split_session_id: splitId,
-            },
             handler: function (response) {
-               console.log("[DEBUG] Razorpay payment successful:", response);
-               // The webhook will handle the Firestore update.
+               fetchStatus(true); // Re-fetch status immediately after successful payment
             },
             modal: {
                 ondismiss: function() {
-                    console.log("[DEBUG] Razorpay modal dismissed.");
                     alert('Payment was not completed.');
                 }
             }
         };
-        console.log("[DEBUG] Opening Razorpay with options:", options);
         try {
             const rzp = new window.Razorpay(options);
             rzp.on('payment.failed', function (response){
-                console.error("[DEBUG] Razorpay payment failed:", response.error);
                 alert("Payment Failed: " + response.error.description);
             });
             rzp.open();
         } catch (e) {
-            console.error("[DEBUG] Error initializing Razorpay:", e);
             alert("Could not open payment window. Please try again.");
         }
     };
 
-
-    if (loading) {
+    if (loading && !splitData) {
         return <div className="min-h-screen bg-background flex items-center justify-center"><Loader2 className="animate-spin text-primary h-16 w-16" /></div>;
     }
-
     if (error) {
         return <div className="min-h-screen bg-background flex items-center justify-center text-red-500 p-4 text-center">{error}</div>;
     }
@@ -148,16 +122,29 @@ export default function SplitPayPage() {
     const progress = splitData ? (paidShares / splitData.splitCount) * 100 : 0;
     const remainingAmount = splitData ? splitData.totalAmount - (paidShares * (splitData.shares?.[0]?.amount || 0)) : 0;
 
+    if (splitData?.status === 'completed') {
+        return (
+             <div className="min-h-screen bg-background flex flex-col items-center justify-center text-center p-4">
+                <motion.div initial={{ scale: 0 }} animate={{ scale: 1, transition: { type: 'spring', delay: 0.2 } }}>
+                    <CheckCircle className="h-24 w-24 text-green-500" />
+                </motion.div>
+                <h1 className="text-3xl font-bold mt-4">All Payments Received!</h1>
+                <p className="text-muted-foreground mt-2">Your order is being placed. Redirecting you now...</p>
+            </div>
+        );
+    }
 
     return (
         <div className="min-h-screen bg-background text-foreground p-4 md:p-8">
             <Script src="https://checkout.razorpay.com/v1/checkout.js" />
             <div className="max-w-4xl mx-auto">
                 <header className="text-center mb-8">
-                    <h1 className="text-3xl md:text-4xl font-bold tracking-tight">Split Payment Tracker</h1>
+                    <div className="flex justify-center items-center gap-4">
+                        <h1 className="text-3xl md:text-4xl font-bold tracking-tight">Split Payment Tracker</h1>
+                        <Button onClick={() => fetchStatus()} variant="ghost" size="icon" disabled={loading}><RefreshCw className={loading ? "animate-spin" : ""}/></Button>
+                    </div>
                     <p className="text-muted-foreground mt-2">Track payments from your friends in real-time.</p>
                 </header>
-
                 <motion.div initial={{opacity:0}} animate={{opacity:1}} className="bg-card border border-border rounded-xl p-6 shadow-lg">
                     <div className="flex flex-col md:flex-row justify-between items-center gap-4">
                         <div className="flex items-center gap-3 text-lg">
@@ -177,14 +164,13 @@ export default function SplitPayPage() {
                         <Progress value={progress} className="h-4" />
                     </div>
                 </motion.div>
-
                 <div className="mt-8">
                     <h2 className="text-xl font-bold mb-4">Your Friends' Shares</h2>
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                         {(splitData?.shares || []).map((share, index) => {
                             const isPaid = share.status === 'paid';
-                             const paymentLink = `${window.location.origin}/split-pay/${splitId}?pay_share=${share.shareId}`;
-                             const shareText = `Hi! Please pay your share of ${formatCurrency(share.amount)} for our group order using this link: ${paymentLink}`;
+                            const paymentLink = `${window.location.origin}/split-pay/${splitId}?pay_share=${share.shareId}`;
+                            const shareText = `Hi! Please pay your share of ${formatCurrency(share.amount)} for our group order using this link: ${paymentLink}`;
 
                             return (
                                 <motion.div 
@@ -203,7 +189,6 @@ export default function SplitPayPage() {
                                         )}
                                     </div>
                                     <p className="text-2xl font-bold text-center my-3">{formatCurrency(share.amount)}</p>
-                                    
                                     {!isPaid && (
                                         <div className="space-y-3 flex flex-col items-center">
                                              <Button onClick={() => handlePayShare(share)} className="w-full bg-primary hover:bg-primary/80">Pay Now</Button>
@@ -222,16 +207,6 @@ export default function SplitPayPage() {
                         })}
                     </div>
                 </div>
-                
-                 {remainingAmount > 0 && paidShares > 0 && (
-                    <div className="mt-12 text-center p-6 bg-card border border-dashed rounded-xl">
-                        <h3 className="text-lg font-semibold">Someone not paying?</h3>
-                        <p className="text-muted-foreground text-sm mt-1">You can pay the remaining amount to complete the order now.</p>
-                        <Button onClick={() => alert("This feature is coming soon!")} className="mt-4 bg-primary hover:bg-primary/90 text-primary-foreground">
-                            Pay Remaining {formatCurrency(remainingAmount)}
-                        </Button>
-                    </div>
-                )}
             </div>
         </div>
     );
