@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
@@ -39,16 +40,16 @@ const MenuItem = ({ item, cartQuantity, onAdd, onIncrement, onDecrement }) => (
             </div>
             <div className="absolute -bottom-3 left-1/2 -translate-x-1/2 w-[90%]">
                  {cartQuantity > 0 ? (
-                    <div className="flex items-center justify-center bg-background border-2 border-border rounded-lg shadow-lg h-10">
-                        <Button variant="ghost" size="icon" className="h-full w-10 text-primary rounded-r-none" onClick={() => onDecrement(item.cartItemId || item.id)}>-</Button>
-                        <span className="font-bold text-lg text-primary flex-grow text-center">{cartQuantity}</span>
-                        <Button variant="ghost" size="icon" className="h-full w-10 text-primary rounded-l-none" onClick={() => onIncrement(item)}>+</Button>
+                    <div className="flex items-center justify-center bg-background border-2 border-green-500/50 rounded-lg shadow-lg h-10">
+                        <Button variant="ghost" size="icon" className="h-full w-10 text-green-500 rounded-r-none" onClick={() => onDecrement(item.cartItemId || item.id)}>-</Button>
+                        <span className="font-bold text-lg text-green-500 flex-grow text-center">{cartQuantity}</span>
+                        <Button variant="ghost" size="icon" className="h-full w-10 text-green-500 rounded-l-none" onClick={() => onIncrement(item)}>+</Button>
                     </div>
                 ) : (
                     <Button
                         onClick={() => onAdd(item)}
                         variant="outline"
-                        className="w-full bg-background/80 backdrop-blur-sm text-primary font-bold border-2 border-primary hover:bg-primary/10 shadow-lg active:translate-y-px h-10"
+                        className="w-full bg-background/80 backdrop-blur-sm text-green-600 font-bold border-2 border-green-500 hover:bg-green-500/10 shadow-lg active:translate-y-px h-10"
                     >
                         ADD
                     </Button>
@@ -483,7 +484,7 @@ export default function PreOrderPage({ params }) {
     }
 
     return (
-        <div className="min-h-screen bg-background text-foreground font-body">
+        <div className="min-h-screen bg-background text-foreground font-body green-theme">
             <Script src="https://checkout.razorpay.com/v1/checkout.js" />
             <header className="text-center p-6 border-b border-border bg-card sticky top-0 z-10">
                 <h1 className="text-3xl font-bold font-headline">{vendor?.name}</h1>
@@ -552,3 +553,4 @@ export default function PreOrderPage({ params }) {
         </div>
     );
 }
+
