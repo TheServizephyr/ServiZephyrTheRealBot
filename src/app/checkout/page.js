@@ -125,15 +125,18 @@ const CheckoutPageInternal = () => {
         const verifyAndFetch = async () => {
             setLoading(true);
 
-            // --- START FIX: Handle anonymous pre-order flow ---
-            const isAnonymousPreOrder = !phoneFromUrl && !token && !user && !tableId;
+            // --- START: NEW UNIVERSAL VERIFICATION LOGIC ---
+            const isDineIn = !!tableId;
+            const isLoggedInUser = !!user;
+            const isWhatsAppSession = !!phoneFromUrl && !!token;
+            
+            const savedCart = JSON.parse(localStorage.getItem(`cart_${restaurantId}`) || '{}');
+            const isAnonymousPreOrder = savedCart.deliveryType === 'street-vendor-pre-order' && !isDineIn && !isLoggedInUser && !isWhatsAppSession;
 
-            if (isAnonymousPreOrder) {
-                console.log("[DEBUG] Anonymous pre-order flow detected.");
-                setIsTokenValid(true); // Bypass token validation for this flow
-            } else if (tableId) {
+            if (isDineIn || isLoggedInUser || isAnonymousPreOrder) {
+                console.log(`[Checkout Page] Session validated. Reason: ${isDineIn ? 'Dine-in' : isLoggedInUser ? 'Logged in' : 'Anonymous Pre-order'}`);
                 setIsTokenValid(true);
-            } else if (!user && phoneFromUrl && token) {
+            } else if (isWhatsAppSession) {
                 try {
                     const res = await fetch('/api/auth/verify-token', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ phone: phoneFromUrl, token }) });
                     if (!res.ok) throw new Error((await res.json()).message || "Session validation failed.");
@@ -141,14 +144,12 @@ const CheckoutPageInternal = () => {
                 } catch (err) {
                     setTokenError(err.message); setLoading(false); return;
                 }
-            } else if (user) {
-                setIsTokenValid(true);
             } else {
                 if(!isUserLoading) {
                     setTokenError("No session information found."); setLoading(false); return;
                 }
             }
-            // --- END FIX ---
+            // --- END: NEW UNIVERSAL VERIFICATION LOGIC ---
 
             const phoneToLookup = phoneFromUrl || user?.phoneNumber || '';
             setOrderPhone(phoneToLookup);
@@ -156,8 +157,7 @@ const CheckoutPageInternal = () => {
             if (!restaurantId) { router.push('/'); return; }
             setError('');
 
-            const savedCartData = localStorage.getItem(`cart_${restaurantId}`);
-            const parsedData = savedCartData ? JSON.parse(savedCartData) : {};
+            const parsedData = savedCart;
             
             const deliveryType = tableId ? 'dine-in' : (parsedData.deliveryType || 'delivery');
             const updatedData = { ...parsedData, phone: phoneToLookup, token, tableId, dineInTabId: tabId, deliveryType };
@@ -167,7 +167,7 @@ const CheckoutPageInternal = () => {
             setCartData(updatedData);
 
             try {
-                setOrderName(user?.displayName || '');
+                setOrderName(user?.displayName || parsedData.tab_name || '');
                 if (phoneToLookup) {
                     const lookupRes = await fetch('/api/customer/lookup', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ phone: phoneToLookup }) });
                     if (lookupRes.ok) {
@@ -320,7 +320,7 @@ const CheckoutPageInternal = () => {
             setError("Please select or add a delivery address.");
             return false;
         }
-        if (!orderName || orderName.trim().length === 0) {
+        if (deliveryType !== 'street-vendor-pre-order' && (!orderName || orderName.trim().length === 0)) {
              setError("Please provide a name for the order.");
              return false;
         }
@@ -472,16 +472,18 @@ const CheckoutPageInternal = () => {
                                             <Button variant="outline" className="w-full" onClick={handleAddNewAddress}><PlusCircle className="mr-2 h-4 w-4" /> Add New Address</Button>
                                         </div>
                                     </div>
-                                ) : (
+                                ) : deliveryType !== 'street-vendor-pre-order' ? (
                                     <div>
                                         <Label htmlFor="name">Your Name</Label>
                                         <Input id="name" value={orderName} onChange={(e) => setOrderName(e.target.value)} disabled={loading} />
                                     </div>
+                                ) : null }
+                                {deliveryType !== 'street-vendor-pre-order' && (
+                                    <div>
+                                        <Label htmlFor="phone">Phone Number</Label>
+                                        <Input id="phone" value={orderPhone} onChange={(e) => setOrderPhone(e.target.value)} disabled={loading || !!phoneFromUrl} />
+                                    </div>
                                 )}
-                                <div>
-                                    <Label htmlFor="phone">Phone Number</Label>
-                                    <Input id="phone" value={orderPhone} onChange={(e) => setOrderPhone(e.target.value)} disabled={loading || !!phoneFromUrl} />
-                                </div>
                              </div>
                          </div>
                         )}

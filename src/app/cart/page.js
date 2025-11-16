@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useState, useEffect, useMemo, Suspense } from 'react';
@@ -190,22 +191,20 @@ const CartPageInternal = () => {
         console.log("[Cart Page] Component mounting. User loading:", isUserLoading);
         const verifyToken = async () => {
             console.log("[Cart Page] Verifying token. Table ID:", tableId, "User:", !!user);
-            if (tableId) {
-                // For dine-in, no token is needed, just the presence of tableId is enough.
-                console.log("[Cart Page] Dine-in session detected (tableId present). Token is valid.");
-                setIsTokenValid(true);
-                setLoadingPage(false);
-                return;
-            }
+            
+            // --- START: NEW UNIVERSAL VERIFICATION LOGIC ---
+            const isDineIn = !!tableId;
+            const isLoggedInUser = !!user;
+            const isWhatsAppSession = !!phone && !!token;
+            
+            // Street vendor pre-order flow: no user, no table, no token
+            const savedCart = JSON.parse(localStorage.getItem(`cart_${restaurantId}`) || '{}');
+            const isAnonymousPreOrder = savedCart.deliveryType === 'street-vendor-pre-order' && !isDineIn && !isLoggedInUser && !isWhatsAppSession;
 
-            if (user) {
-                console.log("[Cart Page] Logged-in user detected. Token is valid.");
+            if (isDineIn || isLoggedInUser || isAnonymousPreOrder) {
+                console.log(`[Cart Page] Session validated. Reason: ${isDineIn ? 'Dine-in' : isLoggedInUser ? 'Logged in' : 'Anonymous Pre-order'}`);
                 setIsTokenValid(true);
-                setLoadingPage(false);
-                return;
-            }
-
-            if (phone && token) {
+            } else if (isWhatsAppSession) {
                 console.log("[Cart Page] Phone and token found in URL. Verifying with API...");
                 try {
                     const res = await fetch('/api/auth/verify-token', {
@@ -218,17 +217,14 @@ const CartPageInternal = () => {
                 } catch (err) {
                     console.error("[Cart Page] Token verification failed:", err.message);
                     setTokenError(err.message);
-                } finally {
-                    setLoadingPage(false);
                 }
-                return;
-            }
-
-            if (!isUserLoading) {
+            } else if (!isUserLoading) {
                  console.log("[Cart Page] No session info found and user is not loading. Setting error.");
                  setTokenError("No session token found. Please start your order from WhatsApp or log in.");
-                 setLoadingPage(false);
             }
+            // --- END: NEW UNIVERSAL VERIFICATION LOGIC ---
+
+            setLoadingPage(false);
         };
 
         if (!restaurantId) {
