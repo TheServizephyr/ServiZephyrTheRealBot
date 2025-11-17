@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, Suspense } from 'react';
 import { motion } from 'framer-motion';
 import { Check, ShoppingBag, Loader2, ArrowLeft } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -152,7 +152,7 @@ function PreOrderTrackingContent() {
                                 <path id="curve" d="M 50, 150 a 100,100 0 1,1 200,0" fill="transparent"/>
                                 <text width="100" className="coin-text-fill"><textPath xlinkHref="#curve" startOffset="50%" textAnchor="middle">★ {orderData.restaurantName} ★</textPath></text>
                             </svg>
-                            <span className="token-number">{token}</span>
+                            <div className="token-number">{orderData.dineInToken || '#----'}</div>
                             <svg className="circular-text" viewBox="0 0 300 300">
                                 <path id="bottom-curve" d="M 250, 150 a 100,100 0 1,1 -200,0" fill="transparent"/>
                                 <text width="100" className="coin-text-fill">
@@ -163,7 +163,7 @@ function PreOrderTrackingContent() {
                             </svg>
                         </div>
                         <div className={cn("coin-face coin-back", tierStyle)}>
-                            <svg className="circular-text" viewBox="0 0 300 300">
+                             <svg className="circular-text" viewBox="0 0 300 300">
                                 <path id="brand-curve" d="M 50, 150 a 100,100 0 1,1 200,0" fill="transparent"/>
                                 <text width="100" className="coin-text-fill"><textPath xlinkHref="#brand-curve" startOffset="50%" textAnchor="middle">● POWERED BY SERVİZEPHYR ●</textPath></text>
                             </svg>
