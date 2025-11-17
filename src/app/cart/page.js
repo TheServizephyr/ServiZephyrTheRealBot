@@ -1,5 +1,4 @@
 
-
 'use client';
 
 import React, { useState, useEffect, useMemo, Suspense } from 'react';
@@ -551,11 +550,6 @@ const CartPageInternal = () => {
     const normalCoupons = allCoupons.filter(c => !c.customerId);
     const isStreetVendor = deliveryType === 'street-vendor-pre-order';
     
-    const liveOrderStatus = liveOrder?.status || 'pending';
-    const isOrderReady = liveOrderStatus === 'ready_for_pickup' || liveOrderStatus === 'dispatched';
-    const trackingBarColor = isOrderReady ? 'bg-green-500' : 'bg-yellow-400';
-    const trackingTextColor = isOrderReady ? 'text-white' : 'text-black';
-
     if (loadingPage) {
         return <div className="min-h-screen bg-background flex items-center justify-center"><Loader2 className="animate-spin text-primary h-16 w-16"/></div>;
     }
@@ -571,13 +565,13 @@ const CartPageInternal = () => {
     if (!cartData || cart.length === 0) {
         return (
             <div className="min-h-screen bg-background flex flex-col items-center justify-center text-muted-foreground p-4">
-                {liveOrder ? (
+                {liveOrder && (
                      <div className="fixed bottom-0 left-0 right-0 w-full p-3 z-40">
                          <div className="container mx-auto">
                             <motion.div 
                                 initial={{ y: 20, opacity: 0 }} 
                                 animate={{ y: 0, opacity: 1 }} 
-                                className={cn("flex justify-between items-center rounded-lg p-3", trackingBarColor, trackingTextColor)}
+                                className={"flex justify-between items-center rounded-lg p-3 bg-yellow-400 text-black"}
                             >
                                 <div>
                                     <p className="font-bold">Your order is {liveOrder.status}</p>
@@ -586,7 +580,7 @@ const CartPageInternal = () => {
                                 <Button 
                                     size="sm" 
                                     onClick={() => router.push(`/track/pre-order/${liveOrder.orderId}?token=${liveOrder.trackingToken}`)}
-                                    className={cn(isOrderReady ? "bg-white text-black" : "bg-black text-white")}
+                                    className={"bg-black text-white"}
                                 >
                                     <Navigation size={16} className="mr-2"/> Track
                                 </Button>
@@ -732,7 +726,7 @@ const CartPageInternal = () => {
                         </div>
                         
                          <div className="p-4 mt-4 bg-card rounded-lg border border-border">
-                            <h3 className="font-bold text-lg mb-2">Coupons & Offers</h3>
+                            <h3 className="font-bold text-lg mb-2">Coupons &amp; Offers</h3>
                              <Popover open={isCouponPopoverOpen} onOpenChange={setCouponPopoverOpen}>
                                 <PopoverTrigger asChild>
                                     <Button variant="outline" className="w-full justify-start text-left font-normal">
@@ -856,7 +850,7 @@ const CartPageInternal = () => {
                                 )}
                             </AnimatePresence>
                             
-                            <div className="border-t border-dashed border-border my-3"></div>
+                            <div className="border-t border-dashed my-3"></div>
                             
                             <div className="flex justify-between items-center text-lg font-bold">
                                  <span>{deliveryType === 'dine-in' ? 'Total to be Added:' : 'Grand Total:'}</span>
@@ -884,7 +878,7 @@ const CartPageInternal = () => {
                         <motion.div 
                             initial={{ y: 20, opacity: 0 }} 
                             animate={{ y: 0, opacity: 1 }} 
-                            className={cn("flex justify-between items-center rounded-lg p-3", trackingBarColor, trackingTextColor)}
+                            className={"flex justify-between items-center rounded-lg p-3 bg-yellow-400 text-black"}
                         >
                             <div>
                                 <p className="font-bold">Your order is {liveOrder.status}</p>
@@ -893,7 +887,7 @@ const CartPageInternal = () => {
                             <Button 
                                 size="sm" 
                                 onClick={() => router.push(`/track/pre-order/${liveOrder.orderId}?token=${liveOrder.trackingToken}`)}
-                                className={cn(isOrderReady ? "bg-white text-black" : "bg-black text-white")}
+                                className={"bg-black text-white"}
                             >
                                 <Navigation size={16} className="mr-2"/> Track
                             </Button>
@@ -909,7 +903,7 @@ const CartPageInternal = () => {
                             </Button>
                         ) : deliveryType === 'dine-in' ? (
                              <Button onClick={() => router.push(`/checkout?restaurantId=${restaurantId}&phone=${phone || ''}&token=${token || ''}&table=${tableId}&tabId=${tabId}`)} className="flex-grow bg-green-600 hover:bg-green-700 text-white h-12 text-lg font-bold w-full">
-                                <Wallet className="mr-2"/> View Bill & Pay
+                                <Wallet className="mr-2"/> View Bill &amp; Pay
                             </Button>
                         ) : null }
                     </div>

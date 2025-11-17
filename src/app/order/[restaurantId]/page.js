@@ -1,5 +1,4 @@
 
-
 'use client';
 
 import React, { useState, useEffect, Suspense, useMemo, useCallback, useRef } from 'react';
@@ -1038,10 +1037,6 @@ const OrderPageInternal = () => {
         }
     }, [isQrScannerOpen]);
     
-    const liveOrderStatus = liveOrder?.status || 'pending';
-    const isOrderReady = liveOrderStatus === 'ready_for_pickup' || liveOrderStatus === 'dispatched';
-    const trackingBarColor = isOrderReady ? 'bg-green-500' : 'bg-yellow-400';
-    const trackingTextColor = isOrderReady ? 'text-white' : 'text-black';
 
     if (loading) {
         return <div className="min-h-screen bg-background flex items-center justify-center"><Loader2 className="animate-spin text-primary h-16 w-16" /></div>;
@@ -1109,6 +1104,7 @@ const OrderPageInternal = () => {
                     setIsQrScannerOpen={setIsQrScannerOpen} 
                     setInfoDialog={setInfoDialog} />
                 <CustomizationDrawer item={customizationItem} isOpen={!!customizationItem} onClose={() => setCustomizationItem(null)} onAddToCart={handleAddToCart} />
+                <MenuBrowserModal isOpen={isMenuBrowserOpen} onClose={() => setIsMenuBrowserOpen(false)} categories={menuCategories} onCategoryClick={handleCategoryClick} />
 
                  <header>
                     <BannerCarousel images={restaurantData.bannerUrls} onClick={() => setIsBannerExpanded(true)} restaurantName={restaurantData.name} logoUrl={restaurantData.logoUrl} />
@@ -1184,11 +1180,21 @@ const OrderPageInternal = () => {
                 </div>
 
                 <div className="sticky top-0 z-10 bg-background/95 backdrop-blur-sm py-2 border-b border-border mt-4">
-                    <div className="container mx-auto px-4 flex items-center justify-end gap-4">
+                    <div className="container mx-auto px-4 flex items-center justify-between gap-4">
+                        <Button variant="outline" className="flex items-center gap-2 flex-shrink-0" onClick={() => setIsMenuBrowserOpen(true)}>
+                            <BookOpen size={16} /> Menu
+                        </Button>
+                        {liveOrder && (
+                             <Button asChild variant="secondary" className="flex items-center gap-2 flex-shrink-0 bg-yellow-400/20 text-yellow-300 border-yellow-500/50 hover:bg-yellow-400/30">
+                                <Link href={`/track/pre-order/${liveOrder.orderId}?token=${liveOrder.trackingToken}`}>
+                                    <Navigation size={16} /> Track Live Order
+                                </Link>
+                            </Button>
+                        )}
                         <Popover>
                             <PopoverTrigger asChild>
                                 <Button variant="outline" className="flex items-center gap-2 flex-shrink-0">
-                                    <SlidersHorizontal size={16} /> Filter & Sort
+                                    <SlidersHorizontal size={16} /> Filter &amp; Sort
                                 </Button>
                             </PopoverTrigger>
                             <PopoverContent className="w-64">
@@ -1247,42 +1253,7 @@ const OrderPageInternal = () => {
                 </div>
                 
                 <div className="fixed bottom-0 left-0 w-full z-30">
-                    {liveOrder && (
-                        <div className="container mx-auto px-4 pb-2">
-                             <motion.div 
-                                initial={{ y: 20, opacity: 0 }} 
-                                animate={{ y: 0, opacity: 1 }} 
-                                className={cn("flex justify-between items-center rounded-lg p-3", trackingBarColor, trackingTextColor)}
-                            >
-                                <div>
-                                    <p className="font-bold">Your order is {liveOrder.status}</p>
-                                    <p className="text-xs opacity-80">ID: #{liveOrder.orderId.substring(0, 8)}</p>
-                                </div>
-                                <Button 
-                                    size="sm" 
-                                    onClick={() => router.push(`/track/pre-order/${liveOrder.orderId}?token=${liveOrder.trackingToken}`)}
-                                    className={cn(isOrderReady ? "bg-white text-black" : "bg-black text-white")}
-                                >
-                                    <Navigation size={16} className="mr-2"/> Track
-                                </Button>
-                            </motion.div>
-                        </div>
-                    )}
                     <div className="relative pointer-events-none">
-                         <motion.div
-                            className="absolute right-4 pointer-events-auto"
-                            animate={{ bottom: totalCartItems > 0 || (deliveryType === 'dine-in' && activeTabInfo.id) || liveOrder ? '6.5rem' : '1rem' }}
-                            transition={{ type: "spring", stiffness: 300, damping: 25 }}
-                        >
-                             <button
-                                onClick={() => setIsMenuBrowserOpen(true)}
-                                className="bg-card text-foreground h-16 w-16 rounded-2xl shadow-lg flex flex-col items-center justify-center gap-1 border border-border"
-                            >
-                                <BookOpen size={24} className="text-primary" />
-                                <span className="text-xs font-bold">Menu</span>
-                            </button>
-                        </motion.div>
-
                         <AnimatePresence>
                            {(totalCartItems > 0 || (deliveryType === 'dine-in' && activeTabInfo.id)) && (
                                 <motion.div
@@ -1307,7 +1278,7 @@ const OrderPageInternal = () => {
                                                             <span>{activeTabInfo.name || 'Your Tab'}</span>
                                                         </div>
                                                         <div className="flex items-center gap-2">
-                                                            <span>View Bill & Pay</span>
+                                                            <span>View Bill &amp; Pay</span>
                                                             <Wallet size={20}/>
                                                         </div>
                                                     </>
@@ -1338,12 +1309,6 @@ const OrderPage = () => (
           enableSystem
           disableTransitionOnChange
         >
-            <MenuBrowserModal 
-                isOpen={false} // This needs to be controlled by state
-                onClose={() => {}} 
-                categories={[]} 
-                onCategoryClick={() => {}} 
-            />
             <OrderPageInternal />
         </ThemeProvider>
     </Suspense>
