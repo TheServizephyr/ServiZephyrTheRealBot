@@ -682,12 +682,10 @@ const OrderPageInternal = () => {
             verifySession();
         }
 
-        // --- START FIX: Check for live order on mount ---
         const activeOrder = localStorage.getItem('liveOrder');
         if (activeOrder) {
             setLiveOrder(JSON.parse(activeOrder));
         }
-        // --- END FIX ---
     }, [restaurantId, tableIdFromUrl, phone, token]);
 
 
@@ -813,15 +811,11 @@ const OrderPageInternal = () => {
                     }
 
                 } else {
-                    // --- START FIX: Smart Delivery Type for QR Scan ---
-                    // If it's a street vendor, default to their special pre-order type
                     if (fetchedSettings.businessType === 'street-vendor') {
                         setDeliveryType('street-vendor-pre-order');
                     } else {
-                        // Otherwise, default to delivery if enabled, then pickup
                         setDeliveryType(menuData.deliveryEnabled ? 'delivery' : (menuData.pickupEnabled ? 'pickup' : 'delivery'));
                     }
-                    // --- END FIX ---
                     setDineInState('ready');
                 }
             } catch (err) {
@@ -1044,6 +1038,11 @@ const OrderPageInternal = () => {
         }
     }, [isQrScannerOpen]);
     
+    const liveOrderStatus = liveOrder?.status || 'pending';
+    const isOrderReady = liveOrderStatus === 'ready_for_pickup' || liveOrderStatus === 'dispatched';
+    const trackingBarColor = isOrderReady ? 'bg-green-500' : 'bg-yellow-400';
+    const trackingTextColor = isOrderReady ? 'text-white' : 'text-black';
+
     if (loading) {
         return <div className="min-h-screen bg-background flex items-center justify-center"><Loader2 className="animate-spin text-primary h-16 w-16" /></div>;
     }
@@ -1250,12 +1249,20 @@ const OrderPageInternal = () => {
                 <div className="fixed bottom-0 left-0 w-full z-30">
                     {liveOrder && (
                         <div className="container mx-auto px-4 pb-2">
-                             <motion.div initial={{ y: 20, opacity: 0 }} animate={{ y: 0, opacity: 1 }} className="flex justify-between items-center bg-primary/10 border border-primary/20 rounded-lg p-3">
+                             <motion.div 
+                                initial={{ y: 20, opacity: 0 }} 
+                                animate={{ y: 0, opacity: 1 }} 
+                                className={cn("flex justify-between items-center rounded-lg p-3", trackingBarColor, trackingTextColor)}
+                            >
                                 <div>
-                                    <p className="font-bold text-primary">Your order is {liveOrder.status}</p>
-                                    <p className="text-xs text-muted-foreground">ID: #{liveOrder.orderId.substring(0, 8)}</p>
+                                    <p className="font-bold">Your order is {liveOrder.status}</p>
+                                    <p className="text-xs opacity-80">ID: #{liveOrder.orderId.substring(0, 8)}</p>
                                 </div>
-                                <Button size="sm" onClick={() => router.push(`/track/pre-order/${liveOrder.orderId}?token=${liveOrder.trackingToken}`)}>
+                                <Button 
+                                    size="sm" 
+                                    onClick={() => router.push(`/track/pre-order/${liveOrder.orderId}?token=${liveOrder.trackingToken}`)}
+                                    className={cn(isOrderReady ? "bg-white text-black" : "bg-black text-white")}
+                                >
                                     <Navigation size={16} className="mr-2"/> Track
                                 </Button>
                             </motion.div>
@@ -1279,7 +1286,7 @@ const OrderPageInternal = () => {
                         <AnimatePresence>
                            {(totalCartItems > 0 || (deliveryType === 'dine-in' && activeTabInfo.id)) && (
                                 <motion.div
-                                    className="bg-background/80 backdrop-blur-lg border-t border-border pointer-events-auto"
+                                    className="bg-background border-t border-border pointer-events-auto"
                                     initial={{ y: "100%" }}
                                     animate={{ y: 0 }}
                                     exit={{ y: "100%" }}

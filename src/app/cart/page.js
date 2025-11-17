@@ -188,7 +188,6 @@ const CartPageInternal = () => {
     const [isCheckoutFlow, setIsCheckoutFlow] = useState(false);
     const [loadingPage, setLoadingPage] = useState(true);
 
-    // --- START: Live Order Tracking State ---
     const [liveOrder, setLiveOrder] = useState(null);
     useEffect(() => {
         const checkLiveOrder = () => {
@@ -198,18 +197,15 @@ const CartPageInternal = () => {
             }
         }
         checkLiveOrder();
-        // Also listen for storage changes from other tabs
         window.addEventListener('storage', checkLiveOrder);
         return () => window.removeEventListener('storage', checkLiveOrder);
     }, []);
-    // --- END: Live Order Tracking State ---
 
     useEffect(() => {
         console.log("[Cart Page] Component mounting. User loading:", isUserLoading);
         const verifyToken = async () => {
             console.log("[Cart Page] Verifying token. Table ID:", tableId, "User:", !!user);
             
-            // --- START: NEW UNIVERSAL VERIFICATION LOGIC ---
             const isDineIn = !!tableId;
             const isLoggedInUser = !!user;
             const isWhatsAppSession = !!phone && !!token;
@@ -238,7 +234,6 @@ const CartPageInternal = () => {
                  console.log("[Cart Page] No session info found and user is not loading. Setting error.");
                  setTokenError("No session token found. Please start your order from WhatsApp or log in.");
             }
-            // --- END: NEW UNIVERSAL VERIFICATION LOGIC ---
 
             setLoadingPage(false);
         };
@@ -555,6 +550,11 @@ const CartPageInternal = () => {
     const specialCoupons = allCoupons.filter(c => c.customerId);
     const normalCoupons = allCoupons.filter(c => !c.customerId);
     const isStreetVendor = deliveryType === 'street-vendor-pre-order';
+    
+    const liveOrderStatus = liveOrder?.status || 'pending';
+    const isOrderReady = liveOrderStatus === 'ready_for_pickup' || liveOrderStatus === 'dispatched';
+    const trackingBarColor = isOrderReady ? 'bg-green-500' : 'bg-yellow-400';
+    const trackingTextColor = isOrderReady ? 'text-white' : 'text-black';
 
     if (loadingPage) {
         return <div className="min-h-screen bg-background flex items-center justify-center"><Loader2 className="animate-spin text-primary h-16 w-16"/></div>;
@@ -572,16 +572,26 @@ const CartPageInternal = () => {
         return (
             <div className="min-h-screen bg-background flex flex-col items-center justify-center text-muted-foreground p-4">
                 {liveOrder ? (
-                     <div className="fixed bottom-0 left-0 right-0 p-3 bg-card border-t border-border z-40">
-                         <motion.div initial={{ y: 20, opacity: 0 }} animate={{ y: 0, opacity: 1 }} className="flex justify-between items-center bg-primary/10 border border-primary/20 rounded-lg p-3">
-                             <div>
-                                 <p className="font-bold text-primary">Your order is {liveOrder.status}</p>
-                                 <p className="text-xs text-muted-foreground">ID: #{liveOrder.orderId.substring(0, 8)}</p>
-                             </div>
-                             <Button size="sm" onClick={() => router.push(`/track/pre-order/${liveOrder.orderId}?token=${liveOrder.trackingToken}`)}>
-                                 <Navigation size={16} className="mr-2"/> Track
-                             </Button>
-                         </motion.div>
+                     <div className="fixed bottom-0 left-0 right-0 w-full p-3 z-40">
+                         <div className="container mx-auto">
+                            <motion.div 
+                                initial={{ y: 20, opacity: 0 }} 
+                                animate={{ y: 0, opacity: 1 }} 
+                                className={cn("flex justify-between items-center rounded-lg p-3", trackingBarColor, trackingTextColor)}
+                            >
+                                <div>
+                                    <p className="font-bold">Your order is {liveOrder.status}</p>
+                                    <p className="text-xs opacity-80">ID: #{liveOrder.orderId.substring(0, 8)}</p>
+                                </div>
+                                <Button 
+                                    size="sm" 
+                                    onClick={() => router.push(`/track/pre-order/${liveOrder.orderId}?token=${liveOrder.trackingToken}`)}
+                                    className={cn(isOrderReady ? "bg-white text-black" : "bg-black text-white")}
+                                >
+                                    <Navigation size={16} className="mr-2"/> Track
+                                </Button>
+                            </motion.div>
+                         </div>
                      </div>
                 ) : null}
                 <ShoppingCart size={48} className="mb-4" />
@@ -871,18 +881,26 @@ const CartPageInternal = () => {
             <div className="fixed bottom-0 left-0 w-full z-30">
                 {liveOrder && (
                      <div className="container mx-auto px-4 pb-2">
-                        <motion.div initial={{ y: 20, opacity: 0 }} animate={{ y: 0, opacity: 1 }} className="flex justify-between items-center bg-primary/10 border border-primary/20 rounded-lg p-3">
+                        <motion.div 
+                            initial={{ y: 20, opacity: 0 }} 
+                            animate={{ y: 0, opacity: 1 }} 
+                            className={cn("flex justify-between items-center rounded-lg p-3", trackingBarColor, trackingTextColor)}
+                        >
                             <div>
-                                <p className="font-bold text-primary">Your order is {liveOrder.status}</p>
-                                <p className="text-xs text-muted-foreground">ID: #{liveOrder.orderId.substring(0, 8)}</p>
+                                <p className="font-bold">Your order is {liveOrder.status}</p>
+                                <p className="text-xs opacity-80">ID: #{liveOrder.orderId.substring(0, 8)}</p>
                             </div>
-                            <Button size="sm" onClick={() => router.push(`/track/pre-order/${liveOrder.orderId}?token=${liveOrder.trackingToken}`)}>
+                            <Button 
+                                size="sm" 
+                                onClick={() => router.push(`/track/pre-order/${liveOrder.orderId}?token=${liveOrder.trackingToken}`)}
+                                className={cn(isOrderReady ? "bg-white text-black" : "bg-black text-white")}
+                            >
                                 <Navigation size={16} className="mr-2"/> Track
                             </Button>
                         </motion.div>
                     </div>
                 )}
-                <div className="bg-background/80 backdrop-blur-lg border-t border-border">
+                <div className="bg-background border-t border-border">
                     <div className="container mx-auto p-4">
                         {cart.length > 0 ? (
                             <Button onClick={handleConfirmOrder} className="flex-grow bg-primary hover:bg-primary/90 text-primary-foreground h-12 text-lg font-bold w-full" disabled={cart.length === 0 || isCheckoutFlow}>
