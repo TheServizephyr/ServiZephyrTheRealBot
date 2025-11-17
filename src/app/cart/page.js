@@ -1,10 +1,11 @@
 
+
 'use client';
 
 import React, { useState, useEffect, useMemo, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Utensils, Plus, Minus, X, Home, User, ShoppingCart, CookingPot, Ticket, Gift, ArrowLeft, Sparkles, Check, PlusCircle, Trash2, ChevronDown, Tag as TagIcon, RadioGroup, IndianRupee, HardHat, Bike, Store, Heart, Wallet, Clock, ChevronUp, Edit2, Lock, Loader2 } from 'lucide-react';
+import { Utensils, Plus, Minus, X, Home, User, ShoppingCart, CookingPot, Ticket, Gift, ArrowLeft, Sparkles, Check, PlusCircle, Trash2, ChevronDown, Tag as TagIcon, RadioGroup, IndianRupee, HardHat, Bike, Store, Heart, Wallet, Clock, ChevronUp, Edit2, Lock, Loader2, Navigation } from 'lucide-react';
 import Script from 'next/script';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose } from "@/components/ui/dialog";
@@ -187,6 +188,22 @@ const CartPageInternal = () => {
     const [isCheckoutFlow, setIsCheckoutFlow] = useState(false);
     const [loadingPage, setLoadingPage] = useState(true);
 
+    // --- START: Live Order Tracking State ---
+    const [liveOrder, setLiveOrder] = useState(null);
+    useEffect(() => {
+        const checkLiveOrder = () => {
+            const activeOrder = localStorage.getItem('liveOrder');
+            if (activeOrder) {
+                setLiveOrder(JSON.parse(activeOrder));
+            }
+        }
+        checkLiveOrder();
+        // Also listen for storage changes from other tabs
+        window.addEventListener('storage', checkLiveOrder);
+        return () => window.removeEventListener('storage', checkLiveOrder);
+    }, []);
+    // --- END: Live Order Tracking State ---
+
     useEffect(() => {
         console.log("[Cart Page] Component mounting. User loading:", isUserLoading);
         const verifyToken = async () => {
@@ -345,9 +362,9 @@ const CartPageInternal = () => {
                 tab_name: cartData?.tab_name || 'Guest',
             };
             
-            console.log("[Cart Page] Sending post-paid order to /api/customer/register:", orderData);
+            console.log("[Cart Page] Sending post-paid order to /api/order/create:", orderData);
             // This API now returns orderId, botDisplayNumber, and a tracking token
-            const res = await fetch('/api/customer/register', {
+            const res = await fetch('/api/order/create', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(orderData)
@@ -356,6 +373,7 @@ const CartPageInternal = () => {
             if (!res.ok) throw new Error(data.message || "Failed to place order.");
             
             console.log("[Cart Page] Post-paid order successful. Response:", data);
+            localStorage.setItem('liveOrder', JSON.stringify({ orderId: data.order_id, restaurantId, trackingToken: data.token, status: 'pending' }));
             localStorage.removeItem(`cart_${restaurantId}`);
             // Redirect to the new confirmation page with all necessary info
             router.push(`/order/placed?orderId=${data.order_id}&whatsappNumber=${data.whatsappNumber}&token=${data.token}`);
@@ -553,6 +571,19 @@ const CartPageInternal = () => {
     if (!cartData || cart.length === 0) {
         return (
             <div className="min-h-screen bg-background flex flex-col items-center justify-center text-muted-foreground p-4">
+                {liveOrder ? (
+                     <div className="fixed bottom-0 left-0 right-0 p-3 bg-card border-t border-border z-40">
+                         <motion.div initial={{ y: 20, opacity: 0 }} animate={{ y: 0, opacity: 1 }} className="flex justify-between items-center bg-primary/10 border border-primary/20 rounded-lg p-3">
+                             <div>
+                                 <p className="font-bold text-primary">Your order is {liveOrder.status}</p>
+                                 <p className="text-xs text-muted-foreground">ID: #{liveOrder.orderId.substring(0, 8)}</p>
+                             </div>
+                             <Button size="sm" onClick={() => router.push(`/track/pre-order/${liveOrder.orderId}?token=${liveOrder.trackingToken}`)}>
+                                 <Navigation size={16} className="mr-2"/> Track
+                             </Button>
+                         </motion.div>
+                     </div>
+                ) : null}
                 <ShoppingCart size={48} className="mb-4" />
                 <h1 className="text-2xl font-bold">Your Cart is Empty</h1>
                 <p className="mt-2">Looks like you haven't added anything to your cart yet.</p>
@@ -601,7 +632,7 @@ const CartPageInternal = () => {
                 </div>
             </header>
 
-            <main className="flex-grow p-4 container mx-auto pb-28">
+            <main className="flex-grow p-4 container mx-auto pb-40">
                 {cart.length === 0 ? (
                     <div className="h-full flex flex-col items-center justify-center text-muted-foreground">
                         <ShoppingCart size={48} className="mb-4" />
@@ -837,15 +868,26 @@ const CartPageInternal = () => {
                 )}
             </main>
 
-            <footer className="fixed bottom-0 left-0 w-full bg-background/80 backdrop-blur-lg border-t border-border z-30">
-                <div className="container mx-auto p-4 flex items-center justify-center gap-4">
-                     {cart.length > 0 ? (
-                        <Button onClick={handleConfirmOrder} className="flex-grow bg-primary hover:bg-primary/90 text-primary-foreground h-12 text-lg font-bold" disabled={cart.length === 0 || isCheckoutFlow}>
+             <footer className="fixed bottom-0 left-0 w-full bg-background/80 backdrop-blur-lg border-t border-border z-30">
+                <div className="container mx-auto p-4 space-y-3">
+                    {liveOrder && (
+                        <motion.div initial={{ y: 20, opacity: 0 }} animate={{ y: 0, opacity: 1 }} className="flex justify-between items-center bg-primary/10 border border-primary/20 rounded-lg p-3">
+                            <div>
+                                <p className="font-bold text-primary">Your order is {liveOrder.status}</p>
+                                <p className="text-xs text-muted-foreground">ID: #{liveOrder.orderId.substring(0, 8)}</p>
+                            </div>
+                            <Button size="sm" onClick={() => router.push(`/track/pre-order/${liveOrder.orderId}?token=${liveOrder.trackingToken}`)}>
+                                <Navigation size={16} className="mr-2"/> Track
+                            </Button>
+                        </motion.div>
+                    )}
+                    {cart.length > 0 ? (
+                        <Button onClick={handleConfirmOrder} className="flex-grow bg-primary hover:bg-primary/90 text-primary-foreground h-12 text-lg font-bold w-full" disabled={cart.length === 0 || isCheckoutFlow}>
                              {isCheckoutFlow ? <Loader2 className="animate-spin mr-2"/> : null}
                             {deliveryType === 'dine-in' ? (cartData?.dineInModel === 'post-paid' ? 'Place Order' : 'Add to Tab') : 'Proceed to Checkout'}
                         </Button>
                     ) : deliveryType === 'dine-in' ? (
-                         <Button onClick={() => router.push(`/checkout?restaurantId=${restaurantId}&phone=${phone || ''}&token=${token || ''}&table=${tableId}&tabId=${tabId}`)} className="flex-grow bg-green-600 hover:bg-green-700 text-white h-12 text-lg font-bold">
+                         <Button onClick={() => router.push(`/checkout?restaurantId=${restaurantId}&phone=${phone || ''}&token=${token || ''}&table=${tableId}&tabId=${tabId}`)} className="flex-grow bg-green-600 hover:bg-green-700 text-white h-12 text-lg font-bold w-full">
                             <Wallet className="mr-2"/> View Bill & Pay
                         </Button>
                     ) : null }
