@@ -277,8 +277,8 @@ export async function POST(req) {
         }
 
 
-        // --- "Pay at Counter" logic for Street Vendor ---
-         console.log("[API /customer/register] Handling 'Pay at Counter' flow for Street Vendor.");
+        // --- START FIX: Logic for "Pay at Counter" for Street Vendor ---
+        console.log("[API /customer/register] Handling 'Pay at Counter' flow.");
         const batch = firestore.batch();
         
         if (isNewUser && normalizedPhone && !isStreetVendorOrder) {
@@ -338,6 +338,33 @@ export async function POST(req) {
         const newOrderRef = firestore.collection('orders').doc();
         const trackingToken = await generateSecureToken(firestore, normalizedPhone || newOrderRef.id);
         console.log(`[API /customer/register] Creating final order document with ID ${newOrderRef.id}`);
+
+        let dineInToken = null;
+        if (isStreetVendorOrder) {
+            console.log(`[API /customer/register] Generating token for street vendor order.`);
+            const vendorRef = firestore.collection('street_vendors').doc(restaurantId);
+            try {
+                const vendorDoc = await vendorRef.get(); // Not in transaction, as it's a read before write
+                if (vendorDoc.exists) {
+                    const vendorData = vendorDoc.data();
+                    const lastToken = vendorData.lastOrderToken || 0;
+                    const newTokenNumber = lastToken + 1;
+                    
+                    const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+                    const randomChar1 = alphabet[Math.floor(Math.random() * alphabet.length)];
+                    const randomChar2 = alphabet[Math.floor(Math.random() * alphabet.length)];
+                    
+                    dineInToken = `${String(newTokenNumber).padStart(4, '0')}-${randomChar1}${randomChar2}`;
+                    
+                    batch.update(vendorRef, { lastOrderToken: newTokenNumber });
+                    console.log(`[API /customer/register] Generated Street Vendor Token: ${dineInToken}`);
+                } else {
+                    console.warn(`[API /customer/register] Street vendor document ${restaurantId} not found, cannot generate token.`);
+                }
+            } catch (e) {
+                console.error(`[API /customer/register] Error fetching street vendor doc to generate token:`, e);
+            }
+        }
         
         const finalOrderData = {
             customerName: name, customerId: userId, customerAddress: address?.full || null, customerPhone: normalizedPhone,
@@ -345,6 +372,7 @@ export async function POST(req) {
             restaurantId: restaurantId, restaurantName: businessData.name,
             businessType, deliveryType, pickupTime: pickupTime || '', tipAmount: tipAmount || 0,
             items: items,
+            dineInToken, // <-- ADDED TOKEN HERE
             subtotal: subtotal || 0,
             coupon: coupon || null,
             loyaltyDiscount: loyaltyDiscount || 0,
@@ -378,6 +406,7 @@ export async function POST(req) {
             firestore_order_id: newOrderRef.id,
             token: trackingToken
         }, { status: 200 });
+        // --- END FIX ---
 
     } catch (error) {
         console.error("CREATE ORDER API CRITICAL ERROR:", error);
