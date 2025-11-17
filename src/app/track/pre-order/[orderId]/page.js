@@ -1,9 +1,9 @@
 
 'use client';
 
-import React, { useState, useEffect, useMemo, Suspense } from 'react';
+import React, { useState, useEffect, useMemo, Suspense, useCallback, useRef } from 'react';
 import { motion } from 'framer-motion';
-import { Check, ShoppingBag, Loader2, ArrowLeft } from 'lucide-react';
+import { Check, ShoppingBag, Loader2, ArrowLeft, ClipboardList } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useRouter, useParams } from 'next/navigation';
 import { cn } from '@/lib/utils';
@@ -137,16 +137,16 @@ function PreOrderTrackingContent() {
         ? "Your order is ready! Please flip the coin and show the QR code at the counter."
         : "Your order is being prepared...";
         
-    const orderDate = order?.orderDate?.seconds 
-        ? new Date(order.orderDate.seconds * 1000)
-        : (order?.orderDate ? new Date(order.orderDate) : null);
+    const orderDate = order?.orderDate;
 
     return (
         <div className="min-h-screen bg-slate-900 text-white font-sans p-4 flex flex-col">
             <header className="flex justify-between items-center mb-6">
-                <Button variant="ghost" className="text-slate-400 hover:text-white" onClick={handleBackToMenu}><ArrowLeft size={28} /></Button>
+                <Button variant="ghost" className="text-slate-400 hover:text-white" onClick={() => router.back()}><ArrowLeft size={28} /></Button>
                 <h1 className="text-xl font-bold font-headline">{order?.restaurantName || 'Your Order'}</h1>
-                <div className="w-12"></div>
+                <Button variant="outline" className="bg-slate-800 border-slate-700 hover:bg-slate-700" onClick={handleBackToMenu}>
+                    <ClipboardList size={20} className="mr-2"/> Menu
+                </Button>
             </header>
 
             <main className="flex-grow flex flex-col items-center justify-center text-center">
@@ -170,7 +170,7 @@ function PreOrderTrackingContent() {
                             <svg className="circular-text" viewBox="0 0 300 300">
                                 <path id="bottom-curve" d="M 250, 150 a 100,100 0 1,1 -200,0" fill="transparent"/>
                                 {orderDate && (
-                                     <text width="100" className="coin-text-fill"><textPath xlinkHref="#bottom-curve" startOffset="50%" textAnchor="middle">{format(orderDate, 'dd MMM • hh:mm a')}</textPath></text>
+                                     <text width="100" className="coin-text-fill"><textPath xlinkHref="#bottom-curve" startOffset="50%" textAnchor="middle">{format(new Date(orderDate.seconds * 1000), 'dd MMM • hh:mm a')}</textPath></text>
                                 )}
                             </svg>
                         </div>
@@ -206,5 +206,3 @@ export default function PreOrderTrackingPage() {
         </Suspense>
     )
 }
-
-    
