@@ -565,7 +565,7 @@ const CartPageInternal = () => {
     if (!cartData || cart.length === 0) {
         return (
             <div className="min-h-screen bg-background flex flex-col items-center justify-center text-muted-foreground p-4">
-                {liveOrder && (
+                {liveOrder ? (
                      <div className="fixed bottom-0 left-0 right-0 w-full p-3 z-40">
                          <div className="container mx-auto">
                             <motion.div 
@@ -625,14 +625,23 @@ const CartPageInternal = () => {
         
         <div className="min-h-screen bg-background text-foreground flex flex-col green-theme">
              <header className="sticky top-0 z-20 bg-background/80 backdrop-blur-lg border-b border-border">
-                <div className="container mx-auto px-4 py-3 flex items-center gap-4">
-                     <Button variant="ghost" size="icon" onClick={handleGoBack} className="h-10 w-10">
-                        <ArrowLeft />
-                    </Button>
-                    <div>
-                        <p className="text-xs text-muted-foreground">Reviewing Your Order from</p>
-                        <h1 className="text-xl font-bold">{cartData.restaurantName}</h1>
+                <div className="container mx-auto px-4 py-3 flex items-center justify-between gap-4">
+                    <div className="flex items-center gap-4">
+                        <Button variant="ghost" size="icon" onClick={handleGoBack} className="h-10 w-10">
+                            <ArrowLeft />
+                        </Button>
+                        <div>
+                            <p className="text-xs text-muted-foreground">Reviewing Your Order from</p>
+                            <h1 className="text-xl font-bold">{cartData.restaurantName}</h1>
+                        </div>
                     </div>
+                     {liveOrder && (
+                        <Button asChild variant="secondary" className="flex-shrink-0 animate-pulse bg-yellow-400/20 text-yellow-300 border-yellow-500/50 hover:bg-yellow-400/30">
+                            <a href={`/track/pre-order/${liveOrder.orderId}?token=${liveOrder.trackingToken}`}>
+                                <Navigation size={16} className="mr-2"/> Track Live Order
+                            </a>
+                        </Button>
+                    )}
                 </div>
             </header>
 
@@ -872,41 +881,18 @@ const CartPageInternal = () => {
                 )}
             </main>
 
-            <div className="fixed bottom-0 left-0 w-full z-30">
-                {liveOrder && (
-                     <div className="container mx-auto px-4 pb-2">
-                        <motion.div 
-                            initial={{ y: 20, opacity: 0 }} 
-                            animate={{ y: 0, opacity: 1 }} 
-                            className={"flex justify-between items-center rounded-lg p-3 bg-yellow-400 text-black"}
-                        >
-                            <div>
-                                <p className="font-bold">Your order is {liveOrder.status}</p>
-                                <p className="text-xs opacity-80">ID: #{liveOrder.orderId.substring(0, 8)}</p>
-                            </div>
-                            <Button 
-                                size="sm" 
-                                onClick={() => router.push(`/track/pre-order/${liveOrder.orderId}?token=${liveOrder.trackingToken}`)}
-                                className={"bg-black text-white"}
-                            >
-                                <Navigation size={16} className="mr-2"/> Track
-                            </Button>
-                        </motion.div>
-                    </div>
-                )}
-                <div className="bg-background border-t border-border">
-                    <div className="container mx-auto p-4">
-                        {cart.length > 0 ? (
-                            <Button onClick={handleConfirmOrder} className="flex-grow bg-primary hover:bg-primary/90 text-primary-foreground h-12 text-lg font-bold w-full" disabled={cart.length === 0 || isCheckoutFlow}>
-                                 {isCheckoutFlow ? <Loader2 className="animate-spin mr-2"/> : null}
-                                {deliveryType === 'dine-in' ? (cartData?.dineInModel === 'post-paid' ? 'Place Order' : 'Add to Tab') : 'Proceed to Checkout'}
-                            </Button>
-                        ) : deliveryType === 'dine-in' ? (
-                             <Button onClick={() => router.push(`/checkout?restaurantId=${restaurantId}&phone=${phone || ''}&token=${token || ''}&table=${tableId}&tabId=${tabId}`)} className="flex-grow bg-green-600 hover:bg-green-700 text-white h-12 text-lg font-bold w-full">
-                                <Wallet className="mr-2"/> View Bill &amp; Pay
-                            </Button>
-                        ) : null }
-                    </div>
+            <div className="fixed bottom-0 left-0 w-full z-30 bg-background border-t border-border">
+                <div className="container mx-auto p-4">
+                    {cart.length > 0 ? (
+                        <Button onClick={handleConfirmOrder} className="flex-grow bg-primary hover:bg-primary/90 text-primary-foreground h-12 text-lg font-bold w-full" disabled={cart.length === 0 || isCheckoutFlow}>
+                             {isCheckoutFlow ? <Loader2 className="animate-spin mr-2"/> : null}
+                            {deliveryType === 'dine-in' ? (cartData?.dineInModel === 'post-paid' ? 'Place Order' : 'Add to Tab') : 'Proceed to Checkout'}
+                        </Button>
+                    ) : deliveryType === 'dine-in' ? (
+                         <Button onClick={() => router.push(`/checkout?restaurantId=${restaurantId}&phone=${phone || ''}&token=${token || ''}&table=${tableId}&tabId=${tabId}`)} className="flex-grow bg-green-600 hover:bg-green-700 text-white h-12 text-lg font-bold w-full">
+                            <Wallet className="mr-2"/> View Bill &amp; Pay
+                        </Button>
+                    ) : null }
                 </div>
             </div>
         </div>
