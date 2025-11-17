@@ -42,21 +42,18 @@ const SplitBillInterface = ({ totalAmount, onBack, orderDetails }) => {
         setError('');
 
         try {
-            console.log("[SplitBillInterface] Calling /api/payment/create-order with payload:", {
+            const payload = { 
                 grandTotal: orderDetails.grandTotal, 
                 splitCount, 
                 baseOrderId: orderDetails.firestore_order_id,
                 restaurantId: orderDetails.restaurantId,
-            });
+            };
+            console.log("[SplitBillInterface] Calling /api/payment/create-order with payload:", payload);
+
             const res = await fetch('/api/payment/create-order', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ 
-                    grandTotal: orderDetails.grandTotal, 
-                    splitCount, 
-                    baseOrderId: orderDetails.firestore_order_id,
-                    restaurantId: orderDetails.restaurantId,
-                }),
+                body: JSON.stringify(payload),
             });
             const data = await res.json();
             if (!res.ok) throw new Error(data.message || 'Failed to create split payment session.');
@@ -427,7 +424,7 @@ const CheckoutPageInternal = () => {
 
     const fullOrderDetailsForSplit = {
         grandTotal,
-        firestore_order_id: cartData.id, 
+        firestore_order_id: `temp_${Date.now()}`, // Generate a temporary ID for splitting before main order is created
         restaurantId
     };
 

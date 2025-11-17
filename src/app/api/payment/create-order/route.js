@@ -28,6 +28,11 @@ export async function POST(req) {
         // If it's a split bill request
         if (splitCount && baseOrderId && restaurantId && finalAmount) {
             console.log(`[API /payment/create-order] Creating split payment session. Base Order: ${baseOrderId}, Split Count: ${splitCount}, Amount: ${finalAmount}`);
+            if(!baseOrderId) {
+                console.error("[API /payment/create-order] CRITICAL: baseOrderId is missing for split payment.");
+                return NextResponse.json({ message: 'Base Order ID is missing for split payment.'}, { status: 400 });
+            }
+            
             const firestore = await getFirestore();
             const amountPerShare = Math.round((finalAmount / splitCount) * 100); // Amount in paise
             
