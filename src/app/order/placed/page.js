@@ -87,14 +87,16 @@ const OrderPlacedContent = () => {
     
     const handleTrackOrder = () => {
         const isDineIn = !!whatsappNumber;
+        // Determine if it's a street-vendor pre-order by checking the businessType from cart/order data if available
+        // For simplicity, we'll check if a restaurantId exists as a proxy for pre-order vs standard delivery
+        const isPreOrder = !isDineIn && restaurantId;
+
         let trackingPath = 'track/';
         
-        // Check if the order is a street vendor pre-order
-        const isPreOrder = !isDineIn && restaurantId && restaurantId.includes('-');
-
         if (isDineIn) {
             trackingPath = 'track/dine-in/';
         } else if (isPreOrder) {
+            // Correctly route street vendor pre-orders to the new page
             trackingPath = 'track/pre-order/';
         }
         

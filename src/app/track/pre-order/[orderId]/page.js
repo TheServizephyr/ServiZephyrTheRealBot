@@ -1,25 +1,42 @@
-
 'use client';
 
-import React, { useState, useEffect, Suspense, useCallback } from 'react';
+import React, { useState, useEffect, Suspense, useCallback, useMemo } from 'react';
 import { motion } from 'framer-motion';
-import { Check, CookingPot, ShoppingBag, Loader2, ArrowLeft, XCircle, Info, RefreshCw } from 'lucide-react';
+import { Check, ShoppingBag, Loader2, ArrowLeft, RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { useRouter, useParams, useSearchParams } from 'next/navigation';
+import { useRouter, useParams } from 'next/navigation';
 import { cn } from '@/lib/utils';
 
+const coinTiers = {
+    bronze: {
+        gradient: 'from-[#CD7F32] via-[#E6AC75] to-[#8B4513]',
+        shadow: 'shadow-orange-900/50',
+        text: 'text-orange-900',
+    },
+    silver: {
+        gradient: 'from-[#C0C0C0] via-[#FFFFFF] to-[#A9A9A9]',
+        shadow: 'shadow-gray-700/50',
+        text: 'text-gray-800',
+    },
+    gold: {
+        gradient: 'from-[#FFD700] via-[#FFF8C6] to-[#DAA520]',
+        shadow: 'shadow-yellow-700/50',
+        text: 'text-yellow-900',
+    },
+};
+
 const SimpleTimeline = ({ currentStatus }) => {
-    const activeStatus = (currentStatus === 'paid' || currentStatus === 'pending' || currentStatus === 'confirmed') ? 'confirmed' : currentStatus;
+    const activeStatus = (currentStatus === 'paid' || currentStatus === 'pending' || currentStatus === 'confirmed' || currentStatus === 'preparing') ? 'confirmed' : currentStatus;
     
     const steps = [
-        { key: 'confirmed', title: 'Order Confirmed', icon: <Check size={24} /> },
-        { key: 'Ready', title: 'Ready for Pickup', icon: <ShoppingBag size={24} /> },
+        { key: 'confirmed', title: 'Order Confirmed', icon: <Check size={32} /> },
+        { key: 'Ready', title: 'Ready for Pickup', icon: <ShoppingBag size={32} /> },
     ];
     
     let currentStepIndex = -1;
-    if (activeStatus === 'confirmed' || activeStatus === 'preparing') {
+    if (activeStatus === 'confirmed') {
         currentStepIndex = 0;
-    } else if (activeStatus === 'Ready' || activeStatus === 'delivered') {
+    } else if (activeStatus === 'Ready' || activeStatus === 'delivered' || activeStatus === 'picked_up') {
         currentStepIndex = 1;
     }
 
@@ -34,7 +51,7 @@ const SimpleTimeline = ({ currentStatus }) => {
                         <div className="flex flex-col items-center text-center w-28">
                             <motion.div
                                 className={cn(
-                                    "w-16 h-16 rounded-full flex items-center justify-center border-4 transition-all duration-500",
+                                    "w-20 h-20 rounded-full flex items-center justify-center border-4 transition-all duration-500",
                                     isCompleted ? 'bg-primary border-primary/50 text-primary-foreground' : 'bg-card border-border text-muted-foreground'
                                 )}
                                 animate={{ scale: isCurrent ? 1.1 : 1 }}
@@ -47,7 +64,7 @@ const SimpleTimeline = ({ currentStatus }) => {
                             </p>
                         </div>
                         {index < steps.length - 1 && (
-                             <div className="flex-1 h-1 mt-8 mx-1 rounded-full bg-border">
+                             <div className="flex-1 h-1 mt-10 mx-1 rounded-full bg-border">
                                 <motion.div
                                     className="h-full rounded-full bg-primary"
                                     initial={{ width: '0%' }}
@@ -62,7 +79,6 @@ const SimpleTimeline = ({ currentStatus }) => {
         </div>
     );
 };
-
 
 function PreOrderTrackingContent() {
     const router = useRouter();
@@ -101,97 +117,82 @@ function PreOrderTrackingContent() {
         return () => clearInterval(interval);
     }, [fetchData]);
 
+    const coinTier = useMemo(() => {
+        const amount = orderData?.order?.totalAmount || 0;
+        if (amount > 500) return 'gold';
+        if (amount > 150) return 'silver';
+        return 'bronze';
+    }, [orderData]);
+
     if (loading) {
         return (
-            <div className="min-h-screen bg-background flex flex-col items-center justify-center text-center p-4 green-theme">
-                <Loader2 className="w-16 h-16 text-primary animate-spin" />
-                <h1 className="text-2xl font-bold mt-4">Loading Your Order Status...</h1>
-            </div>
+            <div className="min-h-screen bg-background flex items-center justify-center"><Loader2 className="animate-spin text-primary h-16 w-16" /></div>
         );
     }
     
     if (error) {
         return (
-             <div className="min-h-screen bg-background flex flex-col items-center justify-center text-center p-4 green-theme">
-                <h1 className="text-2xl font-bold text-destructive">Error Loading Order</h1>
-                <p className="text-muted-foreground mt-2">{error}</p>
-                 <Button onClick={() => router.back()} className="mt-6"><ArrowLeft className="mr-2 h-4 w-4"/> Go Back</Button>
-            </div>
-        )
+             <div className="min-h-screen bg-background flex items-center justify-center text-red-500 p-4 text-center">{error}</div>
+        );
     }
 
     if (!orderData || !orderData.order) {
         return (
-             <div className="min-h-screen bg-background flex flex-col items-center justify-center text-center p-4 green-theme">
-                <h1 className="text-2xl font-bold">Order Not Found</h1>
-                 <Button onClick={() => router.back()} className="mt-6"><ArrowLeft className="mr-2 h-4 w-4"/> Go Back</Button>
-            </div>
-        )
+             <div className="min-h-screen bg-background flex items-center justify-center text-muted-foreground p-4 text-center">Order data not available.</div>
+        );
     }
-    
-    const currentStatusKey = (orderData.order.status === 'paid' || orderData.order.status === 'pending') ? 'confirmed' : orderData.order.status;
-    const currentStatusInfo = statusConfig[currentStatusKey] || statusConfig.confirmed;
 
-    const coinClass = "bg-gradient-to-br from-gray-400 via-gray-100 to-gray-400 text-gray-800"; // Silver
-
+    const { order, restaurant } = orderData;
+    const currentStatus = order.status;
+    const token = order.dineInToken;
 
     return (
-        <div className="min-h-screen bg-background text-foreground flex flex-col green-theme">
-            <style jsx global>{`
-                .coin-shadow {
-                    box-shadow: 
-                        inset 0 0 10px rgba(255,255,255,0.8), 
-                        0 5px 15px rgba(0,0,0,0.3),
-                        inset 0px -5px 5px rgba(0,0,0,0.2);
-                }
-            `}</style>
-
-            <header className="p-4 border-b border-border flex justify-between items-center">
-                <div>
-                    <p className="text-xs text-muted-foreground">Tracking Pre-Order</p>
-                    <h1 className="font-bold text-lg">{orderData.restaurant?.name}</h1>
-                </div>
-                <Button onClick={() => fetchData()} variant="outline" size="icon" disabled={loading}>
-                    <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
-                </Button>
+        <div className="min-h-screen bg-background text-foreground p-4 flex flex-col green-theme">
+            <header className="flex justify-between items-center mb-6">
+                <Button variant="ghost" className="text-muted-foreground hover:text-foreground" onClick={() => router.back()}><ArrowLeft size={28} /></Button>
+                <h1 className="text-2xl font-bold font-headline">{restaurant.name}</h1>
+                <Button onClick={() => fetchData(true)} variant="ghost" size="icon" disabled={loading}><RefreshCw className={`h-6 w-6 ${loading ? 'animate-spin' : ''}`} /></Button>
             </header>
-            
-            <main className="flex-grow flex flex-col items-center justify-center p-4 md:p-8">
-                <div className="w-full max-w-2xl mx-auto">
+
+            <main className="flex-grow flex flex-col items-center justify-center text-center">
+                <motion.div
+                    initial={{ scale: 0.5, opacity: 0, y: 50 }}
+                    animate={{ scale: 1, opacity: 1, y: 0 }}
+                    transition={{ type: "spring", stiffness: 150, damping: 15, delay: 0.2 }}
+                    className={cn(
+                        "relative w-64 h-64 sm:w-72 sm:h-72 rounded-full flex flex-col items-center justify-center shadow-2xl",
+                        coinTiers[coinTier].shadow
+                    )}
+                >
+                    {/* Coin Background & Shine */}
+                    <div className={cn("absolute inset-0 rounded-full bg-gradient-to-br", coinTiers[coinTier].gradient)} />
                     <motion.div
-                        initial={{ scale: 0.8, opacity: 0 }}
-                        animate={{ scale: 1, opacity: 1 }}
-                        transition={{ type: "spring", stiffness: 260, damping: 20 }}
-                        className={`relative w-64 h-64 mx-auto rounded-full ${coinClass} flex flex-col items-center justify-center coin-shadow`}
-                    >
-                        <p className="font-bold text-xl opacity-70">TOKEN</p>
-                        <p className="text-7xl font-bold tracking-wider">{orderData.order.dineInToken || "#----"}</p>
-                    </motion.div>
+                        className="absolute inset-0 rounded-full opacity-50"
+                        style={{
+                            background: 'linear-gradient(135deg, rgba(255,255,255,0.4) 0%, rgba(255,255,255,0) 50%)'
+                        }}
+                        animate={{ rotate: 360 }}
+                        transition={{ duration: 10, repeat: Infinity, ease: 'linear' }}
+                    />
                     
-                     <motion.div
-                        key={orderData.order.status}
-                        initial={{ opacity: 0, scale: 0.9 }}
-                        animate={{ opacity: 1, scale: 1 }}
-                        transition={{ delay: 0.3 }}
-                        className="mt-8 text-center bg-card p-6 rounded-lg border border-border"
-                    >
-                         <h3 className="text-2xl font-bold">{currentStatusInfo.title}</h3>
-                         <p className="mt-2 text-muted-foreground">{currentStatusInfo.description}</p>
-                    </motion.div>
-                    
-                    <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{delay: 0.4}}>
-                        <div className="bg-card rounded-lg border mt-8">
-                            <SimpleTimeline currentStatus={orderData.order.status} />
-                        </div>
-                    </motion.div>
-                    
-                     <div className="mt-8 text-center bg-blue-500/10 text-blue-400 p-4 rounded-lg flex items-start gap-3">
-                        <Info size={16} className="flex-shrink-0 mt-1"/>
-                        <p className="text-sm">
-                            Show this token at the counter to collect your order when it's ready. You will get a notification, or you can keep this page open.
+                    {/* Coin Content */}
+                    <div className="relative z-10 flex flex-col items-center justify-center text-center">
+                         <p className={cn("font-bold text-xl opacity-80", coinTiers[coinTier].text)}>TOKEN</p>
+                        <p className={cn("text-7xl sm:text-8xl font-bold tracking-wider", coinTiers[coinTier].text)} style={{ textShadow: '2px 2px 4px rgba(0,0,0,0.2)' }}>
+                            {token ? token.split('-')[0] : '#----'}
+                        </p>
+                         <p className={cn("text-2xl font-bold opacity-80", coinTiers[coinTier].text)}>
+                            {token ? token.split('-')[1] : 'XX'}
                         </p>
                     </div>
-
+                </motion.div>
+                
+                <p className="mt-8 text-muted-foreground max-w-md">
+                    Please show this token at the counter to collect your order when it's ready.
+                </p>
+                
+                <div className="w-full max-w-xl mt-8">
+                     <SimpleTimeline currentStatus={currentStatus} />
                 </div>
             </main>
         </div>
