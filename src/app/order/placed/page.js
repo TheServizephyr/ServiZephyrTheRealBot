@@ -90,7 +90,6 @@ const OrderPlacedContent = () => {
         let trackingPath = 'track/';
         
         // Check if the order is a street vendor pre-order
-        // This is a heuristic. A more robust way would be to get this info from the order status API.
         const isPreOrder = !isDineIn && restaurantId && restaurantId.includes('-');
 
         if (isDineIn) {

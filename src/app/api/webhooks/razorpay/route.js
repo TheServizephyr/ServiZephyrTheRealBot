@@ -287,22 +287,31 @@ export async function POST(req) {
                     state: 'occupied'
                 });
             }
-
+            
             // --- START: Token Generation for Street Vendor ---
             let dineInToken = null;
             if (isStreetVendorOrder) {
                 const vendorRef = firestore.collection('street_vendors').doc(restaurantId);
-                const vendorDoc = await vendorRef.get();
-                if (vendorDoc.exists) {
-                    const vendorData = vendorDoc.data();
-                    const lastToken = vendorData.lastOrderToken || 0;
-                    const newTokenNumber = lastToken + 1;
-                    const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
-                    const randomChar1 = alphabet[Math.floor(Math.random() * alphabet.length)];
-                    const randomChar2 = alphabet[Math.floor(Math.random() * alphabet.length)];
-                    dineInToken = `#${String(newTokenNumber).padStart(4, '0')}-${randomChar1}${randomChar2}`;
-                    batch.update(vendorRef, { lastOrderToken: FieldValue.increment(1) });
-                    console.log(`[Webhook RZP] Generated Street Vendor Token: ${dineInToken}`);
+                try {
+                    const vendorDoc = await vendorRef.get();
+                    if (vendorDoc.exists) {
+                        const vendorData = vendorDoc.data();
+                        const lastToken = vendorData.lastOrderToken || 0;
+                        const newTokenNumber = lastToken + 1;
+                        
+                        const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+                        const randomChar1 = alphabet[Math.floor(Math.random() * alphabet.length)];
+                        const randomChar2 = alphabet[Math.floor(Math.random() * alphabet.length)];
+                        
+                        dineInToken = `#${String(newTokenNumber).padStart(4, '0')}-${randomChar1}${randomChar2}`;
+                        
+                        batch.update(vendorRef, { lastOrderToken: newTokenNumber });
+                        console.log(`[Webhook RZP] Generated Street Vendor Token: ${dineInToken}`);
+                    } else {
+                        console.warn(`[Webhook RZP] Street vendor document ${restaurantId} not found, cannot generate token.`);
+                    }
+                } catch (e) {
+                    console.error(`[Webhook RZP] Error fetching street vendor doc to generate token:`, e);
                 }
             }
             // --- END: Token Generation ---
