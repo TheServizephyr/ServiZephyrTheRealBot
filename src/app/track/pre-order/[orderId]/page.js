@@ -98,11 +98,14 @@ function PreOrderTrackingContent() {
         return () => unsubscribe();
     }, [orderId]);
 
-    const coinTier = useMemo(() => {
-        const amount = order?.totalAmount || 0;
+    const getCoinTier = (amount) => {
         if (amount > 500) return 'gold';
-        if (amount > 200) return 'silver';
+        if (amount > 150) return 'silver';
         return 'bronze';
+    };
+
+    const coinTier = useMemo(() => {
+        return getCoinTier(order?.totalAmount || 0);
     }, [order]);
 
     if (loading) {
