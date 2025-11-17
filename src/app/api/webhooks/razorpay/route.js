@@ -298,7 +298,7 @@ export async function POST(req) {
                     const lastToken = vendorData.lastOrderToken || 0;
                     const newTokenNumber = lastToken + 1;
                     dineInToken = `#${String(newTokenNumber).padStart(4, '0')}`;
-                    batch.update(vendorRef, { lastOrderToken: newTokenNumber });
+                    batch.update(vendorRef, { lastOrderToken: FieldValue.increment(1) });
                     console.log(`[Webhook RZP] Generated Street Vendor Token: ${dineInToken}`);
                 }
             }
