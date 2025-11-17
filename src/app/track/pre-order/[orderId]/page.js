@@ -8,18 +8,8 @@ import { Button } from '@/components/ui/button';
 import { useRouter, useParams, useSearchParams } from 'next/navigation';
 import { cn } from '@/lib/utils';
 
-
-const statusConfig = {
-  pending: { title: 'Order Placed', step: 0, description: "Your order has been sent to the vendor." },
-  confirmed: { title: 'Order Confirmed', icon: <Check size={24} />, step: 1, description: "The vendor has confirmed your order and will start preparing it soon." },
-  preparing: { title: 'Preparing Your Order', icon: <CookingPot size={24} />, step: 1, description: "Your food is being freshly prepared." },
-  Ready: { title: 'Ready for Pickup', icon: <ShoppingBag size={24} />, step: 2, description: "Your order is ready! Please show your token at the counter." },
-  delivered: { title: 'Collected', icon: <Check size={24} />, step: 3, description: "Enjoy your meal!" },
-  rejected: { title: 'Order Rejected', icon: <XCircle size={24} />, step: 3, isError: true, description: "We're sorry, the vendor could not accept your order." },
-};
-
 const SimpleTimeline = ({ currentStatus }) => {
-    const activeStatus = (currentStatus === 'paid' || currentStatus === 'pending') ? 'confirmed' : currentStatus;
+    const activeStatus = (currentStatus === 'paid' || currentStatus === 'pending' || currentStatus === 'confirmed') ? 'confirmed' : currentStatus;
     
     const steps = [
         { key: 'confirmed', title: 'Order Confirmed', icon: <Check size={24} /> },
@@ -77,8 +67,6 @@ const SimpleTimeline = ({ currentStatus }) => {
 function PreOrderTrackingContent() {
     const router = useRouter();
     const { orderId } = useParams();
-    const searchParams = useSearchParams();
-    const sessionToken = searchParams.get('token');
 
     const [orderData, setOrderData] = useState(null);
     const [loading, setLoading] = useState(true);
@@ -141,15 +129,16 @@ function PreOrderTrackingContent() {
         )
     }
     
-    const currentStatusKey = (orderData.order.status === 'paid') ? 'pending' : orderData.order.status;
-    const currentStatusInfo = statusConfig[currentStatusKey] || statusConfig.pending;
+    const currentStatusKey = (orderData.order.status === 'paid' || orderData.order.status === 'pending') ? 'confirmed' : orderData.order.status;
+    const currentStatusInfo = statusConfig[currentStatusKey] || statusConfig.confirmed;
+
+    const coinClass = "bg-gradient-to-br from-gray-400 via-gray-100 to-gray-400 text-gray-800"; // Silver
 
 
     return (
         <div className="min-h-screen bg-background text-foreground flex flex-col green-theme">
             <style jsx global>{`
-                .silver-coin {
-                    background: radial-gradient(circle at 50% 50%, #f0f0f0, #c0c0c0);
+                .coin-shadow {
                     box-shadow: 
                         inset 0 0 10px rgba(255,255,255,0.8), 
                         0 5px 15px rgba(0,0,0,0.3),
@@ -173,10 +162,10 @@ function PreOrderTrackingContent() {
                         initial={{ scale: 0.8, opacity: 0 }}
                         animate={{ scale: 1, opacity: 1 }}
                         transition={{ type: "spring", stiffness: 260, damping: 20 }}
-                        className="relative w-64 h-64 mx-auto rounded-full silver-coin flex flex-col items-center justify-center"
+                        className={`relative w-64 h-64 mx-auto rounded-full ${coinClass} flex flex-col items-center justify-center coin-shadow`}
                     >
-                        <p className="text-slate-600 font-bold text-xl">TOKEN</p>
-                        <p className="text-6xl font-bold text-slate-800 tracking-wider">{orderData.order.dineInToken || "#----"}</p>
+                        <p className="font-bold text-xl opacity-70">TOKEN</p>
+                        <p className="text-7xl font-bold tracking-wider">{orderData.order.dineInToken || "#----"}</p>
                     </motion.div>
                     
                      <motion.div
