@@ -1,9 +1,8 @@
-
 'use client';
 
 import React, { useState, useEffect, Suspense, useMemo } from 'react';
 import { motion } from 'framer-motion';
-import { Check, ShoppingBag, Loader2, ArrowLeft, RefreshCw } from 'lucide-react';
+import { Check, ShoppingBag, Loader2, ArrowLeft } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useRouter, useParams } from 'next/navigation';
 import { cn } from '@/lib/utils';
@@ -106,21 +105,9 @@ function PreOrderTrackingContent() {
     const coinTier = useMemo(() => {
         const amount = orderData?.order?.totalAmount || 0;
         if (amount > 500) return 'gold';
-        if (amount > 150) return 'silver';
+        if (amount > 200) return 'silver';
         return 'bronze';
     }, [orderData]);
-
-    const { order, restaurant } = orderData || {};
-    const currentStatus = order?.status;
-    const token = order?.dineInToken || '#----';
-    const tierStyle = coinTiers[coinTier];
-    const tierColor = tierColors[coinTier];
-    
-    const qrValue = order ? `${window.location.origin}/collect/${order.id}` : '';
-
-    const statusText = currentStatus === 'Ready' || currentStatus === 'delivered' || currentStatus === 'picked_up'
-        ? "Your order is ready! Please slide the coin and show the QR code at the counter."
-        : "Your order is being prepared...";
 
     if (loading) {
         return <div className="min-h-screen bg-background flex items-center justify-center"><Loader2 className="animate-spin text-primary h-16 w-16" /></div>;
@@ -130,9 +117,19 @@ function PreOrderTrackingContent() {
         return <div className="min-h-screen bg-background flex items-center justify-center text-red-500 p-4 text-center">{error}</div>;
     }
 
-    if (!order) {
+    if (!orderData || !orderData.order) {
         return <div className="min-h-screen bg-background flex items-center justify-center text-muted-foreground p-4 text-center">Order data not available.</div>;
     }
+    
+    const { order, restaurant } = orderData;
+    const token = order?.dineInToken || '#----';
+    const tierStyle = coinTiers[coinTier];
+    const tierColor = tierColors[coinTier];
+    const qrValue = `${window.location.origin}/collect/${order.id}`;
+    
+    const statusText = order.status === 'Ready' || order.status === 'delivered' || order.status === 'picked_up'
+        ? "Your order is ready! Please flip the coin and show the QR code at the counter."
+        : "Your order is being prepared...";
 
     return (
         <div className="min-h-screen bg-slate-900 text-white font-sans p-4 flex flex-col">
@@ -159,7 +156,7 @@ function PreOrderTrackingContent() {
                             <span className="token-number font-mono text-7xl font-bold">{token}</span>
                             <svg className="circular-text" viewBox="0 0 300 300">
                                 <path id="bottom-curve" d="M 250, 150 a 100,100 0 1,1 -200,0" fill="transparent"/>
-                                <text width="100"><textPath xlinkHref="#bottom-curve" startOffset="50%" textAnchor="middle">{new Date(order.orderDate.seconds * 1000).toLocaleDateString()}</textPath></text>
+                                <text width="100"><textPath xlinkHref="#bottom-curve" startOffset="50%" textAnchor="middle">{order.orderDate && order.orderDate.seconds ? new Date(order.orderDate.seconds * 1000).toLocaleDateString() : ''}</textPath></text>
                             </svg>
                         </div>
                         <div className={cn("coin-face coin-back", tierStyle)}>
@@ -183,7 +180,7 @@ function PreOrderTrackingContent() {
                 </motion.p>
                 
                 <div className="w-full max-w-xl mt-8">
-                     <SimpleTimeline currentStatus={currentStatus} />
+                     <SimpleTimeline currentStatus={order.status} />
                 </div>
             </main>
         </div>
