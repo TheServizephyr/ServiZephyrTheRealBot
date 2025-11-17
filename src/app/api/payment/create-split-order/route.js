@@ -37,7 +37,10 @@ export async function POST(req) {
                 const rzpOrder = await razorpay.orders.create({
                     amount: amountPerShare,
                     currency: "INR",
-                    receipt: shareReceipt
+                    receipt: shareReceipt,
+                    notes: {
+                        split_session_id: splitId
+                    }
                 });
                 shares.push({
                     shareId: i,
