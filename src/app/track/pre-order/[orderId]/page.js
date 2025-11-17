@@ -164,7 +164,6 @@ function PreOrderTrackingContent() {
                         coinTiers[coinTier].shadow
                     )}
                 >
-                    {/* Coin Background & Shine */}
                     <div className={cn("absolute inset-0 rounded-full bg-gradient-to-br", coinTiers[coinTier].gradient)} />
                     <motion.div
                         className="absolute inset-0 rounded-full opacity-50"
@@ -175,7 +174,6 @@ function PreOrderTrackingContent() {
                         transition={{ duration: 10, repeat: Infinity, ease: 'linear' }}
                     />
                     
-                    {/* Coin Content */}
                     <div className="relative z-10 flex flex-col items-center justify-center text-center">
                          <p className={cn("font-bold text-xl opacity-80", coinTiers[coinTier].text)}>TOKEN</p>
                         <p className={cn("text-7xl sm:text-8xl font-bold tracking-wider", coinTiers[coinTier].text)} style={{ textShadow: '2px 2px 4px rgba(0,0,0,0.2)' }}>
