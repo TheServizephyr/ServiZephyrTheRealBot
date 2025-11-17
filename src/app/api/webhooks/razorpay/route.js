@@ -9,7 +9,7 @@ import { nanoid } from 'nanoid';
 
 
 const generateSecureToken = async (firestore, customerPhone) => {
-    console.log("[Webhook RZP] Generating secure tracking token...");
+    console.log(`[Webhook RZP] generateSecureToken for phone: ${customerPhone}`);
     const token = nanoid(24);
     const expiry = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24-hour validity for tracking link
     const authTokenRef = firestore.collection('auth_tokens').doc(token);
@@ -18,7 +18,7 @@ const generateSecureToken = async (firestore, customerPhone) => {
         expiresAt: expiry,
         type: 'tracking'
     });
-    console.log(`[Webhook RZP] Generated secure tracking token for ${customerPhone}.`);
+    console.log(`[Webhook RZP] Token generated: ${token}`);
     return token;
 };
 
@@ -95,12 +95,21 @@ const handleSplitPayment = async (firestore, paymentEntity) => {
             if (isFullyPaid) {
                 console.log(`[Webhook RZP] All shares paid. Marking session ${splitId} as completed.`);
                 updateData.status = 'completed';
+                
                  const baseOrderRef = firestore.collection('orders').doc(splitData.baseOrderId);
-                 transaction.update(baseOrderRef, { paymentDetails: { ...paymentEntity, method: 'razorpay_split' }, status: 'pending' });
+                 const baseOrderSnap = await transaction.get(baseOrderRef);
+                 
+                 // If the base order exists, update it. If not, this part is skipped.
+                 if(baseOrderSnap.exists){
+                    console.log(`[Webhook RZP] Base order ${splitData.baseOrderId} found. Updating its status.`);
+                    transaction.update(baseOrderRef, { paymentDetails: { ...paymentEntity, method: 'razorpay_split' }, status: 'pending' });
+                 } else {
+                    console.warn(`[Webhook RZP] Base order ${splitData.baseOrderId} not found for split payment. Cannot update status.`);
+                 }
             }
             
             transaction.update(splitRef, updateData);
-            console.log(`[Webhook RZP] Transaction update prepared.`);
+            console.log(`[Webhook RZP] Transaction update prepared for split session.`);
         });
         console.log(`[Webhook RZP] Firestore transaction for split payment ${splitId} successful.`);
     } catch (error) {
@@ -122,22 +131,27 @@ export async function POST(req) {
 
     try {
         const body = await req.text();
+        console.log("[Webhook RZP] Raw body:", body);
         const signature = req.headers.get('x-razorpay-signature');
+        console.log(`[Webhook RZP] Received signature: ${signature}`);
 
         const shasum = crypto.createHmac('sha256', secret);
         shasum.update(body);
         const digest = shasum.digest('hex');
 
         if (digest !== signature) {
-            console.warn("[Webhook RZP] Invalid signature received.");
+            console.warn(`[Webhook RZP] Invalid signature. Digest: ${digest}, Signature: ${signature}`);
             return NextResponse.json({ message: 'Invalid signature' }, { status: 403 });
         }
+        console.log("[Webhook RZP] Signature verified successfully.");
 
         const eventData = JSON.parse(body);
         console.log(`[Webhook RZP] Event received: ${eventData.event}`);
         
         if (eventData.event === 'payment.captured') {
             const paymentEntity = eventData.payload.payment.entity;
+            console.log("[Webhook RZP] Payment Entity:", JSON.stringify(paymentEntity, null, 2));
+
             const razorpayOrderId = paymentEntity.order_id;
             const paymentId = paymentEntity.id;
             const paymentAmount = paymentEntity.amount; 
@@ -146,6 +160,7 @@ export async function POST(req) {
                 console.warn("[Webhook RZP] 'order_id' not found in payment entity. Skipping.");
                 return NextResponse.json({ status: 'ok' });
             }
+            console.log(`[Webhook RZP] Processing payment for Razorpay Order ID: ${razorpayOrderId}`);
             
             const firestore = await getFirestore();
             
@@ -170,6 +185,7 @@ export async function POST(req) {
             };
 
             const rzpOrder = await makeRazorpayRequest(fetchOrderOptions);
+            console.log("[Webhook RZP] Fetched Razorpay order details:", JSON.stringify(rzpOrder, null, 2));
             const payloadString = rzpOrder.notes?.servizephyr_payload;
             
             if (!payloadString) {
@@ -187,6 +203,7 @@ export async function POST(req) {
                 bill_details: billDetailsString,
                 notes: customNotes 
             } = JSON.parse(payloadString);
+            console.log("[Webhook RZP] Parsed servizephyr_payload:", { firestoreOrderId, userId, restaurantId, businessType });
             
             if (!firestoreOrderId || !userId || !restaurantId || !businessType) {
                 console.error(`[Webhook RZP] CRITICAL: Missing key identifiers in payload for RZP Order ${razorpayOrderId}`);
@@ -197,17 +214,20 @@ export async function POST(req) {
             const orderItems = JSON.parse(itemsString);
             const billDetails = JSON.parse(billDetailsString);
             const isStreetVendorOrder = billDetails.deliveryType === 'street-vendor-pre-order';
+            console.log(`[Webhook RZP] Is street vendor order? ${isStreetVendorOrder}`);
             
             const trackingToken = await generateSecureToken(firestore, customerDetails.phone || firestoreOrderId);
 
             const batch = firestore.batch();
 
             if (!isStreetVendorOrder && customerDetails.phone) {
+                 console.log("[Webhook RZP] Processing customer profile updates for non-street-vendor order.");
                 const usersRef = firestore.collection('users');
                 const existingUserQuery = await usersRef.where('phone', '==', customerDetails.phone).limit(1).get();
                 const isNewUser = existingUserQuery.empty;
 
                 if (isNewUser) {
+                    console.log(`[Webhook RZP] New user detected (${customerDetails.phone}), creating unclaimed profile.`);
                     const unclaimedUserRef = firestore.collection('unclaimed_profiles').doc(customerDetails.phone);
                     batch.set(unclaimedUserRef, {
                         name: customerDetails.name, 
@@ -238,12 +258,16 @@ export async function POST(req) {
                     lastOrderDate: FieldValue.serverTimestamp(),
                     totalOrders: FieldValue.increment(1),
                 }, { merge: true });
+            } else {
+                console.log("[Webhook RZP] Skipping customer profile updates for street vendor order or order with no phone.");
             }
             
             const newOrderRef = firestore.collection('orders').doc(firestoreOrderId);
+            console.log(`[Webhook RZP] Preparing to write main order document to: ${newOrderRef.path}`);
             
             let finalDineInTabId = billDetails.dineInTabId;
             if (billDetails.deliveryType === 'dine-in' && billDetails.tableId && !finalDineInTabId) {
+                 console.log("[Webhook RZP] Pre-paid dine-in order detected, creating new tab.");
                  const businessCollectionName = businessType === 'shop' ? 'shops' : 'restaurants';
                 const newTabRef = firestore.collection(businessCollectionName).doc(restaurantId).collection('dineInTabs').doc();
                 finalDineInTabId = newTabRef.id;
@@ -278,8 +302,7 @@ export async function POST(req) {
                 dineInTabId: finalDineInTabId || null,
                 items: orderItems,
                 subtotal: billDetails.subtotal, 
-                coupon: billDetails.coupon || null, 
-                loyaltyDiscount: billDetails.loyaltyDiscount || 0, 
+                coupon: billDetails.coupon || null,                   loyaltyDiscount: billDetails.loyaltyDiscount || 0, 
                 discount: (billDetails.coupon?.discount || 0) + (billDetails.loyaltyDiscount || 0), 
                 cgst: billDetails.cgst, 
                 sgst: billDetails.sgst, 
@@ -332,6 +355,7 @@ export async function POST(req) {
                 }
 
                 if (businessData.ownerPhone && businessData.botPhoneNumberId) {
+                    console.log(`[Webhook RZP] Sending new order notification to owner.`);
                     await sendNewOrderToOwner({
                         ownerPhone: businessData.ownerPhone,
                         botPhoneNumberId: businessData.botPhoneNumberId,

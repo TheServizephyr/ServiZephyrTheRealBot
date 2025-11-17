@@ -1,4 +1,5 @@
 
+
 'use client';
 
 import React, { useState, useEffect, useMemo, Suspense } from 'react';
@@ -32,6 +33,7 @@ const SplitBillInterface = ({ totalAmount, onBack, orderDetails }) => {
     const router = useRouter();
 
     const handleGenerateSplitLinks = async () => {
+        console.log("[SplitBillInterface] Generating split links...");
         if (splitCount < 2) {
             setError("Must split between at least 2 people.");
             return;
@@ -40,6 +42,12 @@ const SplitBillInterface = ({ totalAmount, onBack, orderDetails }) => {
         setError('');
 
         try {
+            console.log("[SplitBillInterface] Calling /api/payment/create-order with payload:", {
+                grandTotal: orderDetails.grandTotal, 
+                splitCount, 
+                baseOrderId: orderDetails.firestore_order_id,
+                restaurantId: orderDetails.restaurantId,
+            });
             const res = await fetch('/api/payment/create-order', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -53,9 +61,11 @@ const SplitBillInterface = ({ totalAmount, onBack, orderDetails }) => {
             const data = await res.json();
             if (!res.ok) throw new Error(data.message || 'Failed to create split payment session.');
             
+            console.log(`[SplitBillInterface] Split session created with ID: ${data.splitId}. Redirecting...`);
             router.push(`/split-pay/${data.splitId}`);
 
         } catch (err) {
+            console.error("[SplitBillInterface] Error creating split session:", err);
             setError(err.message);
             setLoading(false);
         }
@@ -123,6 +133,7 @@ const CheckoutPageInternal = () => {
     
 
     useEffect(() => {
+        console.log("[Checkout Page] Component mounting. isUserLoading:", isUserLoading);
         const verifyAndFetch = async () => {
             setLoading(true);
 
@@ -133,23 +144,31 @@ const CheckoutPageInternal = () => {
             const savedCart = JSON.parse(localStorage.getItem(`cart_${restaurantId}`) || '{}');
             const isAnonymousPreOrder = savedCart.deliveryType === 'street-vendor-pre-order' && !isDineIn && !isLoggedInUser && !isWhatsAppSession;
 
+            console.log(`[Checkout Page] Verification checks: isDineIn=${isDineIn}, isLoggedInUser=${isLoggedInUser}, isWhatsAppSession=${isWhatsAppSession}, isAnonymousPreOrder=${isAnonymousPreOrder}`);
+
             if (isDineIn || isLoggedInUser || isAnonymousPreOrder) {
+                console.log("[Checkout Page] Session validated (Direct).");
                 setIsTokenValid(true);
             } else if (isWhatsAppSession) {
                 try {
+                    console.log("[Checkout Page] Verifying WhatsApp session via API...");
                     const res = await fetch('/api/auth/verify-token', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ phone: phoneFromUrl, token }) });
                     if (!res.ok) throw new Error((await res.json()).message || "Session validation failed.");
+                    console.log("[Checkout Page] Session validated (API).");
                     setIsTokenValid(true);
                 } catch (err) {
+                    console.error("[Checkout Page] Token verification failed:", err.message);
                     setTokenError(err.message); setLoading(false); return;
                 }
             } else {
                 if(!isUserLoading) {
+                    console.error("[Checkout Page] No session info found and user is not loading.");
                     setTokenError("No session information found."); setLoading(false); return;
                 }
             }
             
             if (isLoggedInUser) {
+                console.log("[Checkout Page] User is logged in, auto-confirming details.");
                 setDetailsConfirmed(true);
             }
 
@@ -164,6 +183,7 @@ const CheckoutPageInternal = () => {
             const deliveryType = tableId ? 'dine-in' : (parsedData.deliveryType || 'delivery');
             const updatedData = { ...parsedData, phone: phoneToLookup, token, tableId, dineInTabId: tabId, deliveryType };
             
+            console.log("[Checkout Page] Setting cart data from localStorage:", updatedData);
             setCart(updatedData.cart || []);
             setAppliedCoupons(updatedData.appliedCoupons || []);
             setCartData(updatedData);
@@ -171,26 +191,33 @@ const CheckoutPageInternal = () => {
             try {
                 setOrderName(user?.displayName || parsedData.tab_name || '');
                 if (phoneToLookup) {
+                     console.log(`[Checkout Page] Looking up customer details for phone: ${phoneToLookup}`);
                     const lookupRes = await fetch('/api/customer/lookup', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ phone: phoneToLookup }) });
                     if (lookupRes.ok) {
                         const data = await lookupRes.json();
+                        console.log("[Checkout Page] Customer lookup successful:", data);
                         setOrderName(prev => prev || data.name || '');
                         if (deliveryType === 'delivery') {
                             setUserAddresses(data.addresses || []);
                             setSelectedAddress(prev => prev || data.addresses?.[0] || null);
                         }
+                    } else {
+                        console.warn("[Checkout Page] Customer lookup failed or user not found.");
                     }
                 }
 
+                console.log(`[Checkout Page] Fetching payment settings for restaurant: ${restaurantId}`);
                 const paymentSettingsRes = await fetch(`/api/owner/settings?restaurantId=${restaurantId}`);
                 if (paymentSettingsRes.ok) {
                     const paymentData = await paymentSettingsRes.json();
+                    console.log("[Checkout Page] Payment settings fetched:", paymentData);
                     if (deliveryType === 'delivery') setCodEnabled(paymentData.deliveryCodEnabled);
                     else if (deliveryType === 'pickup') setCodEnabled(paymentData.pickupPodEnabled);
                     else if (deliveryType === 'dine-in') setCodEnabled(paymentData.dineInPayAtCounterEnabled);
                     else if (deliveryType === 'street-vendor-pre-order') setCodEnabled(true);
                 }
             } catch (err) {
+                console.error("[Checkout Page] Error fetching initial data:", err);
                 setError('Failed to load checkout details. Please try again.');
             } finally {
                 setLoading(false);
@@ -259,6 +286,7 @@ const CheckoutPageInternal = () => {
     };
     
     const placeOrder = async (paymentMethod) => {
+        console.log(`[Checkout Page] placeOrder called with paymentMethod: ${paymentMethod}`);
         if (!validateOrderDetails()) return;
         
         const orderData = {
@@ -273,16 +301,21 @@ const CheckoutPageInternal = () => {
         setError('');
 
         try {
+            console.log("[Checkout Page] Sending order to /api/customer/register with payload:", orderData);
             const res = await fetch('/api/customer/register', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(orderData) });
             const data = await res.json();
             if (!res.ok) throw new Error(data.message || "Failed to place order.");
 
+            console.log("[Checkout Page] Order API response received:", data);
+
             if (data.razorpay_order_id) {
+                console.log("[Checkout Page] Razorpay order ID found. Opening payment gateway.");
                 const redirectUrl = `${window.location.origin}/checkout?restaurantId=${restaurantId}&table=${tableId}&tabId=${data.dine_in_tab_id || tabId}&payment_confirmed=true`;
                 const options = {
                     key: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID, amount: grandTotal * 100, currency: "INR", name: cartData.restaurantName,
                     description: `Order from ${cartData.restaurantName}`, order_id: data.razorpay_order_id,
                     handler: function (response) {
+                        console.log("[Checkout Page] Razorpay payment successful:", response);
                         localStorage.removeItem(`cart_${restaurantId}`);
                         const isPreOrder = deliveryType === 'street-vendor-pre-order';
                         const trackingUrl = isPreOrder
@@ -294,6 +327,7 @@ const CheckoutPageInternal = () => {
                     redirect: orderData.deliveryType === 'dine-in' ? true : false,
                     modal: {
                         ondismiss: function() {
+                            console.log("[Checkout Page] Razorpay modal dismissed.");
                             setInfoDialog({ isOpen: true, title: 'Payment Cancelled', message: 'You can try paying again.' });
                             setIsProcessingPayment(false); 
                         }
@@ -301,11 +335,13 @@ const CheckoutPageInternal = () => {
                 };
                 const rzp = new window.Razorpay(options);
                 rzp.on('payment.failed', function (response){
+                    console.error("[Checkout Page] Razorpay payment failed:", response);
                     setInfoDialog({ isOpen: true, title: 'Payment Failed', message: response.error.description });
                     setIsProcessingPayment(false);
                 });
                 rzp.open();
             } else {
+                console.log("[Checkout Page] No Razorpay ID. Clearing cart and handling redirection.");
                 localStorage.removeItem(`cart_${restaurantId}`);
                 if (orderData.deliveryType === 'dine-in') {
                     setInfoDialog({ isOpen: true, title: 'Success', message: 'Tab settled at counter. Thank you!' });
@@ -318,6 +354,7 @@ const CheckoutPageInternal = () => {
                 }
             }
         } catch (err) {
+            console.error("[Checkout Page] placeOrder function error:", err);
             setError(err.message);
             setIsProcessingPayment(false);
         }
@@ -328,7 +365,7 @@ const CheckoutPageInternal = () => {
             setError("Please select or add a delivery address.");
             return false;
         }
-        if (deliveryType === 'street-vendor-pre-order' && (!orderName || orderName.trim().length === 0)) {
+        if ((deliveryType === 'street-vendor-pre-order' || deliveryType === 'pickup') && (!orderName || orderName.trim().length === 0)) {
              setError("Please provide a name for the order.");
              return false;
         }
@@ -451,15 +488,15 @@ const CheckoutPageInternal = () => {
                             <Input id="name" value={orderName} onChange={(e) => setOrderName(e.target.value)} disabled={loading} required/>
                         </div>
                     )}
-                    {(deliveryType !== 'street-vendor-pre-order') ? (
-                        <div>
-                            <Label htmlFor="phone" className="flex items-center gap-2"><Phone size={16}/> Phone Number</Label>
-                            <Input id="phone" value={orderPhone} onChange={(e) => setOrderPhone(e.target.value)} disabled={loading || !!phoneFromUrl} />
-                        </div>
-                    ): (
+                    {(deliveryType === 'street-vendor-pre-order') ? (
                          <div>
                             <Label htmlFor="phone" className="flex items-center gap-2"><Phone size={16}/> Phone Number (Optional)</Label>
                             <Input id="phone" value={orderPhone} onChange={(e) => setOrderPhone(e.target.value)} disabled={loading || !!phoneFromUrl} placeholder="For order updates via WhatsApp"/>
+                        </div>
+                    ): (
+                        <div>
+                            <Label htmlFor="phone" className="flex items-center gap-2"><Phone size={16}/> Phone Number</Label>
+                            <Input id="phone" value={orderPhone} onChange={(e) => setOrderPhone(e.target.value)} disabled={loading || !!phoneFromUrl} />
                         </div>
                     )}
                  </div>

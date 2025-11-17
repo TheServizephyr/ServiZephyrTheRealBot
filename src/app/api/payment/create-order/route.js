@@ -6,8 +6,10 @@ import { nanoid } from 'nanoid';
 import { getFirestore, FieldValue } from '@/lib/firebase-admin';
 
 export async function POST(req) {
+    console.log("[API /payment/create-order] POST request received.");
     try {
         const body = await req.json();
+        console.log("[API /payment/create-order] Request body parsed:", JSON.stringify(body, null, 2));
         
         const { grandTotal, totalAmount, subtotal, splitCount, baseOrderId, restaurantId } = body;
         
@@ -25,23 +27,29 @@ export async function POST(req) {
 
         // If it's a split bill request
         if (splitCount && baseOrderId && restaurantId && finalAmount) {
+            console.log(`[API /payment/create-order] Creating split payment session. Base Order: ${baseOrderId}, Split Count: ${splitCount}, Amount: ${finalAmount}`);
             const firestore = await getFirestore();
             const amountPerShare = Math.round((finalAmount / splitCount) * 100); // Amount in paise
             
             const splitId = `split_${baseOrderId}`;
             const splitRef = firestore.collection('split_payments').doc(splitId);
+            console.log(`[API /payment/create-order] Split session ID: ${splitId}`);
 
             const shares = [];
             for (let i = 0; i < splitCount; i++) {
                 const shareReceipt = `share_${splitId}_${i}`;
+                console.log(`[API /payment/create-order] Creating Razorpay order for share ${i+1}/${splitCount}`);
                 const rzpOrder = await razorpay.orders.create({
                     amount: amountPerShare,
                     currency: "INR",
                     receipt: shareReceipt,
                     notes: {
-                        split_session_id: splitId
+                        split_session_id: splitId,
+                        base_order_id: baseOrderId,
+                        share_number: i,
                     }
                 });
+                console.log(`[API /payment/create-order] Razorpay order created for share ${i}: ${rzpOrder.id}`);
                 shares.push({
                     shareId: i,
                     razorpay_order_id: rzpOrder.id,
@@ -61,16 +69,18 @@ export async function POST(req) {
                 createdAt: FieldValue.serverTimestamp(),
                 isPublic: true 
             };
+            console.log("[API /payment/create-order] Saving split session to Firestore:", JSON.stringify(firestorePayload, null, 2));
             await splitRef.set(firestorePayload);
 
             return NextResponse.json({ message: 'Split session created', splitId }, { status: 200 });
         }
 
         // --- Fallback for simple order creation (as it was before) ---
-        
+        console.log("[API /payment/create-order] Handling as a simple, non-split order.");
         const amountForSimpleOrder = subtotal !== undefined ? subtotal : finalAmount;
 
         if (!amountForSimpleOrder || amountForSimpleOrder < 1) {
+             console.error("[API /payment/create-order] Invalid amount for simple order:", amountForSimpleOrder);
             return NextResponse.json({ message: 'A valid amount is required for a simple order.' }, { status: 400 });
         }
         const options = {
@@ -79,6 +89,7 @@ export async function POST(req) {
             receipt: `receipt_${nanoid(10)}`,
         };
         const order = await razorpay.orders.create(options);
+        console.log("[API /payment/create-order] Simple Razorpay order created:", order.id);
         return NextResponse.json(order, { status: 200 });
 
 
