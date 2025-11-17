@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useState, useEffect, useMemo, Suspense } from 'react';
@@ -117,6 +118,7 @@ function PreOrderTrackingContent() {
     }
     
     const token = order?.dineInToken || '----';
+    const [tokenPart1, tokenPart2] = token.includes('-') ? token.split('-') : [token, ''];
     const tierStyle = `coin-${coinTier}`;
     const qrValue = `${window.location.origin}/collect/${orderId}`;
     
@@ -126,7 +128,7 @@ function PreOrderTrackingContent() {
         
     const orderDate = order?.orderDate?.seconds 
         ? new Date(order.orderDate.seconds * 1000)
-        : null;
+        : (order?.orderDate ? new Date(order.orderDate) : null);
 
     return (
         <div className="min-h-screen bg-slate-900 text-white font-sans p-4 flex flex-col">
@@ -150,7 +152,10 @@ function PreOrderTrackingContent() {
                                 <path id="curve" d="M 50, 150 a 100,100 0 1,1 200,0" fill="transparent"/>
                                 <text width="100" className="coin-text-fill"><textPath xlinkHref="#curve" startOffset="50%" textAnchor="middle">★ {order.restaurantName} ★</textPath></text>
                             </svg>
-                            <div className="token-number">#{token}</div>
+                             <div className="token-number">
+                                <span className="token-number-main">#{tokenPart1}-</span>
+                                <span className="token-number-sub">{tokenPart2}</span>
+                            </div>
                             <svg className="circular-text" viewBox="0 0 300 300">
                                 <path id="bottom-curve" d="M 250, 150 a 100,100 0 1,1 -200,0" fill="transparent"/>
                                 {orderDate && (
@@ -159,13 +164,10 @@ function PreOrderTrackingContent() {
                             </svg>
                         </div>
                         <div className={cn("coin-face coin-back", tierStyle)}>
-                            <svg className="circular-text" viewBox="0 0 300 300">
-                                <path id="brand-curve" d="M 50, 150 a 100,100 0 1,1 200,0" fill="transparent"/>
-                                <text width="100" className="coin-text-fill"><textPath xlinkHref="#brand-curve" startOffset="50%" textAnchor="middle">● POWERED BY SERVİZEPHYR ●</textPath></text>
-                            </svg>
                             <div className="p-4 bg-white rounded-lg">
                                  <QRCode value={qrValue} size={160} fgColor={tierColors[coinTier].dark} bgColor="transparent" />
                             </div>
+                            <p className="mt-2 text-xs font-semibold" style={{ color: tierColors[coinTier].dark }}>Powered by ServiZephyr</p>
                         </div>
                     </div>
                 </motion.div>
