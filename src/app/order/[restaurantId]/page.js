@@ -1,4 +1,3 @@
-
 'use client';
 
 import React, { useState, useEffect, Suspense, useMemo, useCallback, useRef } from 'react';
@@ -1093,7 +1092,7 @@ const OrderPageInternal = () => {
                     </motion.div>
                 )}
             </AnimatePresence>
-            <div className="min-h-screen bg-background text-foreground green-theme">
+            <div className="min-h-screen bg-background text-foreground green-theme overflow-x-hidden">
                  <DineInModal 
                     isOpen={isDineInModalOpen} 
                     onClose={handleCloseDineInModal} 
@@ -1180,12 +1179,12 @@ const OrderPageInternal = () => {
                 </div>
 
                 <div className="sticky top-0 z-10 bg-background/95 backdrop-blur-sm py-2 border-b border-border mt-4">
-                    <div className="container mx-auto px-4 flex items-center justify-between gap-4">
-                        <Button variant="outline" className="flex items-center gap-2 flex-shrink-0" onClick={() => setIsMenuBrowserOpen(true)}>
+                    <div className="container mx-auto px-4 flex items-center justify-between gap-2">
+                         <Button variant="outline" className="flex items-center gap-2 flex-shrink-0 bg-green-500/10 border-green-500/30 text-green-400" onClick={() => setIsMenuBrowserOpen(true)}>
                             <BookOpen size={16} /> Menu
                         </Button>
                         {liveOrder && (
-                             <Button asChild variant="secondary" className="flex items-center gap-2 flex-shrink-0 bg-yellow-400/20 text-yellow-300 border-yellow-500/50 hover:bg-yellow-400/30">
+                             <Button asChild variant="secondary" className="flex items-center gap-2 flex-shrink-0 bg-yellow-400 text-black hover:bg-yellow-500 animate-pulse">
                                 <Link href={`/track/pre-order/${liveOrder.orderId}?token=${liveOrder.trackingToken}`}>
                                     <Navigation size={16} /> Track Live Order
                                 </Link>

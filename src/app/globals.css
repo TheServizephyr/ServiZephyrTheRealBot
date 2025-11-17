@@ -214,11 +214,11 @@
     font-weight: 900;
   }
   .token-number-main {
-      font-size: 3.5rem;
+      font-size: 2.5rem;
       letter-spacing: 0.05em;
   }
   .token-number-sub {
-      font-size: 2.5rem;
+      font-size: 1.75rem;
       letter-spacing: 0.1em;
   }
 }
