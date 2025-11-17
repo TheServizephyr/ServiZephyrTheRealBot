@@ -587,7 +587,7 @@ const CartPageInternal = () => {
                             </motion.div>
                          </div>
                      </div>
-                ) : null}
+                ) : null }
                 <ShoppingCart size={48} className="mb-4" />
                 <h1 className="text-2xl font-bold">Your Cart is Empty</h1>
                 <p className="mt-2">Looks like you haven't added anything to your cart yet.</p>
@@ -636,7 +636,7 @@ const CartPageInternal = () => {
                         </div>
                     </div>
                      {liveOrder && (
-                        <Button asChild variant="secondary" className="flex-shrink-0 animate-pulse bg-yellow-400/20 text-yellow-300 border-yellow-500/50 hover:bg-yellow-400/30">
+                        <Button asChild variant="secondary" className="flex-shrink-0 animate-pulse bg-yellow-400 text-black hover:bg-yellow-500">
                             <a href={`/track/pre-order/${liveOrder.orderId}?token=${liveOrder.trackingToken}`}>
                                 <Navigation size={16} className="mr-2"/> Track Live Order
                             </a>
@@ -881,7 +881,7 @@ const CartPageInternal = () => {
                 )}
             </main>
 
-            <div className="fixed bottom-0 left-0 w-full z-30 bg-background border-t border-border">
+            <div className="fixed bottom-0 left-0 w-full z-30 bg-background/80 backdrop-blur-sm border-t border-border">
                 <div className="container mx-auto p-4">
                     {cart.length > 0 ? (
                         <Button onClick={handleConfirmOrder} className="flex-grow bg-primary hover:bg-primary/90 text-primary-foreground h-12 text-lg font-bold w-full" disabled={cart.length === 0 || isCheckoutFlow}>

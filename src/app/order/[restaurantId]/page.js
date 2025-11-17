@@ -1092,7 +1092,7 @@ const OrderPageInternal = () => {
                     </motion.div>
                 )}
             </AnimatePresence>
-            <div className="min-h-screen bg-background text-foreground green-theme overflow-x-hidden">
+            <div className="min-h-screen bg-background text-foreground green-theme">
                  <DineInModal 
                     isOpen={isDineInModalOpen} 
                     onClose={handleCloseDineInModal} 
@@ -1180,16 +1180,6 @@ const OrderPageInternal = () => {
 
                 <div className="sticky top-0 z-10 bg-background/95 backdrop-blur-sm py-2 border-b border-border mt-4">
                     <div className="container mx-auto px-4 flex items-center justify-between gap-2">
-                         <Button variant="outline" className="flex items-center gap-2 flex-shrink-0 bg-green-500/10 border-green-500/30 text-green-400" onClick={() => setIsMenuBrowserOpen(true)}>
-                            <BookOpen size={16} /> Menu
-                        </Button>
-                        {liveOrder && (
-                             <Button asChild variant="secondary" className="flex items-center gap-2 flex-shrink-0 bg-yellow-400 text-black hover:bg-yellow-500 animate-pulse">
-                                <Link href={`/track/pre-order/${liveOrder.orderId}?token=${liveOrder.trackingToken}`}>
-                                    <Navigation size={16} /> Track Live Order
-                                </Link>
-                            </Button>
-                        )}
                         <Popover>
                             <PopoverTrigger asChild>
                                 <Button variant="outline" className="flex items-center gap-2 flex-shrink-0">
@@ -1224,6 +1214,13 @@ const OrderPageInternal = () => {
                                 </div>
                             </PopoverContent>
                         </Popover>
+                         {liveOrder && (
+                             <Button asChild variant="secondary" className="flex items-center gap-2 flex-shrink-0 animate-pulse bg-yellow-400 text-black hover:bg-yellow-500">
+                                <Link href={`/track/pre-order/${liveOrder.orderId}?token=${liveOrder.trackingToken}`}>
+                                    <Navigation size={16} /> Track Live Order
+                                </Link>
+                            </Button>
+                        )}
                     </div>
                 </div>
 
@@ -1250,51 +1247,39 @@ const OrderPageInternal = () => {
                         </div>
                     </main>
                 </div>
-                
+
                 <div className="fixed bottom-0 left-0 w-full z-30">
-                    <div className="relative pointer-events-none">
-                        <AnimatePresence>
-                           {(totalCartItems > 0 || (deliveryType === 'dine-in' && activeTabInfo.id)) && (
-                                <motion.div
-                                    className="bg-background border-t border-border pointer-events-auto"
-                                    initial={{ y: "100%" }}
-                                    animate={{ y: 0 }}
-                                    exit={{ y: "100%" }}
-                                    transition={{ type: "spring", stiffness: 300, damping: 30 }}
-                                >
-                                    <div className="container mx-auto p-4">
-                                        {deliveryType === 'dine-in' ? (
-                                            <Button onClick={handleCheckout} className="h-14 text-lg font-bold rounded-lg shadow-lg flex justify-between items-center w-full bg-primary hover:bg-primary/90 text-primary-foreground">
-                                                {totalCartItems > 0 ? (
-                                                     <>
-                                                        <span>{totalCartItems} New Item{totalCartItems > 1 ? 's' : ''}</span>
-                                                        <span>Add to Tab | ₹{subtotal}</span>
-                                                    </>
-                                                ) : (
-                                                    <>
-                                                        <div className="flex items-center gap-2">
-                                                            <Users size={20}/>
-                                                            <span>{activeTabInfo.name || 'Your Tab'}</span>
-                                                        </div>
-                                                        <div className="flex items-center gap-2">
-                                                            <span>View Bill &amp; Pay</span>
-                                                            <Wallet size={20}/>
-                                                        </div>
-                                                    </>
-                                                )}
-                                            </Button>
-                                        ) : ( totalCartItems > 0 &&
-                                            <Button onClick={handleCheckout} className="bg-primary hover:bg-primary/90 h-14 text-lg font-bold rounded-lg shadow-primary/30 flex justify-between items-center text-primary-foreground w-full">
-                                                <span>{totalCartItems} Item{totalCartItems > 1 ? 's' : ''} in Cart</span>
-                                                <span>View Cart | ₹{subtotal}</span>
-                                            </Button>
-                                        )}
-                                    </div>
-                                </motion.div>
-                            )}
-                        </AnimatePresence>
-                    </div>
+                    <AnimatePresence>
+                        {totalCartItems > 0 && (
+                            <motion.div
+                                className="bg-background border-t border-border"
+                                initial={{ y: "100%" }}
+                                animate={{ y: 0 }}
+                                exit={{ y: "100%" }}
+                                transition={{ type: "spring", stiffness: 300, damping: 30 }}
+                            >
+                                <div className="container mx-auto p-4">
+                                    <Button onClick={handleCheckout} className="bg-primary hover:bg-primary/90 h-14 text-lg font-bold rounded-lg shadow-primary/30 flex justify-between items-center text-primary-foreground w-full">
+                                        <span>{totalCartItems} Item{totalCartItems > 1 ? 's' : ''} in Cart</span>
+                                        <span>View Cart | ₹{subtotal}</span>
+                                    </Button>
+                                </div>
+                            </motion.div>
+                        )}
+                    </AnimatePresence>
                 </div>
+                
+                 <motion.button
+                    onClick={() => setIsMenuBrowserOpen(true)}
+                    className={cn(
+                        "fixed right-6 text-white bg-green-600 rounded-full h-16 w-16 flex items-center justify-center shadow-lg z-20 transition-transform duration-300",
+                        totalCartItems > 0 ? "bottom-28" : "bottom-6"
+                    )}
+                    whileHover={{ scale: 1.1 }}
+                    whileTap={{ scale: 0.9 }}
+                >
+                    <BookOpen size={28} />
+                </motion.button>
             </div>
         </>
     );
