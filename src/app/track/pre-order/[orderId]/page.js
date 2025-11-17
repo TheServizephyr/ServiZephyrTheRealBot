@@ -1,18 +1,14 @@
 'use client';
 
-import React, { useState, useEffect, Suspense, useMemo } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { motion } from 'framer-motion';
 import { Check, ShoppingBag, Loader2, ArrowLeft } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useRouter, useParams } from 'next/navigation';
 import { cn } from '@/lib/utils';
 import QRCode from 'qrcode.react';
-
-const coinTiers = {
-    bronze: 'coin-bronze',
-    silver: 'coin-silver',
-    gold: 'coin-gold',
-};
+import { db } from '@/lib/firebase';
+import { doc, onSnapshot } from 'firebase/firestore';
 
 const tierColors = {
     bronze: { base: '#CD7F32', dark: '#8B4513' },
@@ -21,19 +17,22 @@ const tierColors = {
 };
 
 const SimpleTimeline = ({ currentStatus }) => {
-    const isConfirmed = currentStatus === 'pending' || currentStatus === 'confirmed' || currentStatus === 'Ready' || currentStatus === 'delivered' || currentStatus === 'picked_up';
-    const isReady = currentStatus === 'Ready' || currentStatus === 'delivered' || currentStatus === 'picked_up';
+    const isConfirmed = ['pending', 'confirmed', 'Ready', 'delivered', 'picked_up'].includes(currentStatus);
+    const isReady = ['Ready', 'delivered', 'picked_up'].includes(currentStatus);
 
     return (
         <div className="flex justify-between items-center w-full max-w-sm mx-auto px-4 pt-4">
             <div className="flex flex-col items-center text-center">
                 <motion.div
-                    className="w-16 h-16 rounded-full flex items-center justify-center border-4 bg-primary border-primary/50 text-primary-foreground"
+                    className={cn(
+                        "w-16 h-16 rounded-full flex items-center justify-center border-4",
+                        isConfirmed ? 'bg-primary border-primary/50 text-primary-foreground' : 'bg-card border-border text-muted-foreground'
+                    )}
                     animate={{ scale: isConfirmed ? 1 : 0.9, opacity: isConfirmed ? 1 : 0.7 }}
                 >
                     <Check size={32} />
                 </motion.div>
-                <p className="mt-2 text-sm font-semibold text-foreground">Order Confirmed</p>
+                <p className={`mt-2 text-sm font-semibold ${isConfirmed ? 'text-foreground' : 'text-muted-foreground'}`}>Order Confirmed</p>
             </div>
             
             <div className="flex-1 h-1.5 rounded-full bg-border mx-4">
@@ -74,74 +73,74 @@ function PreOrderTrackingContent() {
     const [isFlipped, setIsFlipped] = useState(false);
 
     useEffect(() => {
-        const fetchData = async (isBackground = false) => {
-            if (!isBackground) setLoading(true);
-            if (!orderId) {
-                setError("Order ID is missing.");
-                setLoading(false);
-                return;
-            }
+        if (!orderId) {
+            setError("Order ID is missing.");
+            setLoading(false);
+            return;
+        }
 
-            try {
-                const res = await fetch(`/api/order/status/${orderId}`);
-                if (!res.ok) {
-                    const errData = await res.json();
-                    throw new Error(errData.message || 'Failed to fetch order status.');
-                }
-                const data = await res.json();
+        const docRef = doc(db, 'orders', orderId);
+
+        const unsubscribe = onSnapshot(docRef, (docSnap) => {
+            if (docSnap.exists()) {
+                const data = { id: docSnap.id, ...docSnap.data() };
                 setOrderData(data);
-            } catch (err) {
-                setError(err.message);
-            } finally {
-                if (!isBackground) setLoading(false);
+                setError(null);
+            } else {
+                setError("This order could not be found.");
             }
-        };
+            setLoading(false);
+        }, (err) => {
+            console.error("Firestore onSnapshot error:", err);
+            setError("Could not load the order session.");
+            setLoading(false);
+        });
 
-        fetchData();
-        const interval = setInterval(() => fetchData(true), 20000);
-        return () => clearInterval(interval);
+        return () => unsubscribe();
     }, [orderId]);
-
+    
     const coinTier = useMemo(() => {
-        const amount = orderData?.order?.totalAmount || 0;
+        const amount = orderData?.totalAmount || 0;
         if (amount > 500) return 'gold';
         if (amount > 200) return 'silver';
         return 'bronze';
     }, [orderData]);
 
     if (loading) {
-        return <div className="min-h-screen bg-background flex items-center justify-center"><Loader2 className="animate-spin text-primary h-16 w-16" /></div>;
+        return <div className="min-h-screen bg-slate-900 flex items-center justify-center"><Loader2 className="animate-spin text-primary h-16 w-16" /></div>;
     }
     
     if (error) {
-        return <div className="min-h-screen bg-background flex items-center justify-center text-red-500 p-4 text-center">{error}</div>;
+        return <div className="min-h-screen bg-slate-900 flex items-center justify-center text-red-400 p-4 text-center">{error}</div>;
     }
 
-    if (!orderData || !orderData.order) {
-        return <div className="min-h-screen bg-background flex items-center justify-center text-muted-foreground p-4 text-center">Order data not available.</div>;
+    if (!orderData) {
+        return <div className="min-h-screen bg-slate-900 flex items-center justify-center text-slate-400 p-4 text-center">Order data not available.</div>;
     }
     
-    const { order, restaurant } = orderData;
-    const token = order?.dineInToken || '#----';
-    const tierStyle = coinTiers[coinTier];
-    const tierColor = tierColors[coinTier];
-    const qrValue = `${window.location.origin}/collect/${order.id}`;
+    const token = orderData?.dineInToken || '#----';
+    const tierStyle = `coin-${coinTier}`;
+    const qrValue = `${window.location.origin}/collect/${orderId}`;
     
-    const statusText = order.status === 'Ready' || order.status === 'delivered' || order.status === 'picked_up'
+    const statusText = orderData.status === 'Ready' || orderData.status === 'delivered' || orderData.status === 'picked_up'
         ? "Your order is ready! Please flip the coin and show the QR code at the counter."
         : "Your order is being prepared...";
+        
+    const orderDate = orderData?.orderDate?.seconds 
+        ? new Date(orderData.orderDate.seconds * 1000)
+        : null;
 
     return (
         <div className="min-h-screen bg-slate-900 text-white font-sans p-4 flex flex-col">
             <header className="flex justify-between items-center mb-6">
                 <Button variant="ghost" className="text-slate-400 hover:text-white" onClick={() => router.back()}><ArrowLeft size={28} /></Button>
-                <h1 className="text-xl font-bold font-headline">{restaurant?.name}</h1>
+                <h1 className="text-xl font-bold font-headline">{orderData?.restaurantName || 'Your Order'}</h1>
                 <div className="w-12"></div>
             </header>
 
             <main className="flex-grow flex flex-col items-center justify-center text-center">
                  <motion.div
-                    initial={{ y: 50, opacity: 0 }}
+                    initial={{ y: -50, opacity: 0 }}
                     animate={{ y: 0, opacity: 1 }}
                     transition={{ type: "spring", stiffness: 150, damping: 20 }}
                     className={cn("coin-container w-80 h-80", isFlipped && 'is-flipped')}
@@ -151,21 +150,25 @@ function PreOrderTrackingContent() {
                         <div className={cn("coin-face coin-front", tierStyle)}>
                             <svg className="circular-text" viewBox="0 0 300 300">
                                 <path id="curve" d="M 50, 150 a 100,100 0 1,1 200,0" fill="transparent"/>
-                                <text width="100"><textPath xlinkHref="#curve" startOffset="50%" textAnchor="middle">{restaurant?.name || 'Your Restaurant'}</textPath></text>
+                                <text width="100" className="coin-text-fill"><textPath xlinkHref="#curve" startOffset="50%" textAnchor="middle">★ {orderData.restaurantName} ★</textPath></text>
                             </svg>
-                            <span className="token-number font-mono text-7xl font-bold">{token}</span>
+                            <span className="token-number">{token}</span>
                             <svg className="circular-text" viewBox="0 0 300 300">
                                 <path id="bottom-curve" d="M 250, 150 a 100,100 0 1,1 -200,0" fill="transparent"/>
-                                <text width="100"><textPath xlinkHref="#bottom-curve" startOffset="50%" textAnchor="middle">{order.orderDate && order.orderDate.seconds ? new Date(order.orderDate.seconds * 1000).toLocaleDateString() : ''}</textPath></text>
+                                <text width="100" className="coin-text-fill">
+                                    <textPath xlinkHref="#bottom-curve" startOffset="50%" textAnchor="middle">
+                                        {orderDate ? `${orderDate.toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })} • ${orderDate.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}` : ''}
+                                    </textPath>
+                                </text>
                             </svg>
                         </div>
                         <div className={cn("coin-face coin-back", tierStyle)}>
                             <svg className="circular-text" viewBox="0 0 300 300">
                                 <path id="brand-curve" d="M 50, 150 a 100,100 0 1,1 200,0" fill="transparent"/>
-                                <text width="100"><textPath xlinkHref="#brand-curve" startOffset="50%" textAnchor="middle">Powered by ServiZephyr</textPath></text>
+                                <text width="100" className="coin-text-fill"><textPath xlinkHref="#brand-curve" startOffset="50%" textAnchor="middle">● POWERED BY SERVİZEPHYR ●</textPath></text>
                             </svg>
                             <div className="p-4 bg-white rounded-lg">
-                                <QRCode value={qrValue} size={160} fgColor={tierColor.dark} bgColor="transparent" />
+                                 <QRCode value={qrValue} size={160} fgColor={tierColors[coinTier].dark} bgColor="transparent" />
                             </div>
                         </div>
                     </div>
@@ -180,7 +183,7 @@ function PreOrderTrackingContent() {
                 </motion.p>
                 
                 <div className="w-full max-w-xl mt-8">
-                     <SimpleTimeline currentStatus={order.status} />
+                     <SimpleTimeline currentStatus={orderData.status} />
                 </div>
             </main>
         </div>

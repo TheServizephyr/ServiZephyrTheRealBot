@@ -134,7 +134,8 @@
     justify-content: center;
     flex-direction: column;
     border-radius: 50%;
-    box-shadow: 0 5px 15px rgba(0,0,0,0.2), inset 0 0 25px rgba(0,0,0,0.1);
+    box-shadow: inset 0 0 25px rgba(0,0,0,0.2), 0 0 10px rgba(0,0,0,0.3);
+    border: 8px solid rgba(0,0,0,0.1);
   }
 
   .coin-back {
@@ -143,38 +144,55 @@
 
   /* Bronze Coin Theme */
   .coin-bronze {
-    background: linear-gradient(135deg, #E6AC75 0%, #CD7F32 50%, #8B4513 100%);
+    background: linear-gradient(145deg, #E6AC75, #CD7F32);
+    border-color: #A0522D;
+    color: #5c300a;
+    text-shadow: 1px 1px 1px rgba(255,255,255,0.2);
   }
-  .coin-bronze .circular-text text {
+  .coin-bronze .coin-text-fill {
     fill: #8B4513;
   }
   .coin-bronze .token-number {
     color: #8B4513;
-    text-shadow: 1px 1px 1px #E6AC75, -1px -1px 1px #5c300a;
+    text-shadow: 1px 1px 0px #E6AC75, -1px -1px 0px #5c300a;
   }
 
   /* Silver Coin Theme */
   .coin-silver {
-    background: linear-gradient(135deg, #FFFFFF 0%, #C0C0C0 50%, #A9A9A9 100%);
+    background: linear-gradient(145deg, #f0f0f0, #b0b0b0);
+    border-color: #8d8d8d;
+    color: #4a4a4a;
+    text-shadow: 1px 1px 1px rgba(255,255,255,0.5);
   }
-   .coin-silver .circular-text text {
+   .coin-silver .coin-text-fill {
     fill: #757575;
   }
   .coin-silver .token-number {
-    color: #757575;
-    text-shadow: 1px 1px 1px #E8E8E8, -1px -1px 1px #505050;
+    color: #555;
+    text-shadow: 1px 1px 0px #e0e0e0, -1px -1px 0px #606060;
   }
 
   /* Gold Coin Theme */
   .coin-gold {
-     background: linear-gradient(135deg, #FFF8C6 0%, #FFD700 50%, #DAA520 100%);
+     background: linear-gradient(145deg, #FFF8C6, #FFD700);
+     border-color: #DAA520;
+     color: #8c5b06;
+     text-shadow: 1px 1px 1px rgba(255,255,255,0.4);
   }
-   .coin-gold .circular-text text {
+   .coin-gold .coin-text-fill {
     fill: #DAA520;
   }
   .coin-gold .token-number {
-    color: #DAA520;
-    text-shadow: 1px 1px 1px #FFF8C6, -1px -1px 1px #a37c18;
+    font-family: 'Times New Roman', serif;
+    font-weight: bold;
+    font-size: 5rem;
+    color: #B8860B;
+    text-shadow: 
+      -1px -1px 0 #fff,  
+      1px -1px 0 #fff,
+      -1px 1px 0 #fff,
+      1px 1px 0 #fff,
+      -2px -2px 2px rgba(0,0,0,0.2);
   }
 
   .circular-text {
@@ -189,6 +207,11 @@
     font-weight: 800;
     text-transform: uppercase;
     letter-spacing: 2px;
+  }
+  .token-number {
+    font-family: 'Courier New', Courier, monospace;
+    font-size: 4.5rem;
+    font-weight: 900;
   }
 }
 
