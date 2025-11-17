@@ -183,9 +183,10 @@
     fill: #DAA520;
   }
   .coin-gold .token-number {
-    font-family: 'Times New Roman', serif;
+    font-family: 'Courier New', Courier, monospace;
     font-weight: bold;
-    font-size: 5rem;
+    font-size: 3rem;
+    letter-spacing: 0.1em;
     color: #B8860B;
     text-shadow: 
       -1px -1px 0 #fff,  
@@ -210,8 +211,9 @@
   }
   .token-number {
     font-family: 'Courier New', Courier, monospace;
-    font-size: 4.5rem;
+    font-size: 4rem;
     font-weight: 900;
+    letter-spacing: 0.1em;
   }
 }
 

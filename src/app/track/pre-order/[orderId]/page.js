@@ -9,6 +9,7 @@ import { cn } from '@/lib/utils';
 import QRCode from 'qrcode.react';
 import { db } from '@/lib/firebase';
 import { doc, onSnapshot } from 'firebase/firestore';
+import { format } from 'date-fns';
 
 const tierColors = {
     bronze: { base: '#CD7F32', dark: '#8B4513' },
@@ -25,14 +26,14 @@ const SimpleTimeline = ({ currentStatus }) => {
             <div className="flex flex-col items-center text-center">
                 <motion.div
                     className={cn(
-                        "w-16 h-16 rounded-full flex items-center justify-center border-4",
+                        "w-12 h-12 rounded-full flex items-center justify-center border-4",
                         isConfirmed ? 'bg-primary border-primary/50 text-primary-foreground' : 'bg-card border-border text-muted-foreground'
                     )}
                     animate={{ scale: isConfirmed ? 1 : 0.9, opacity: isConfirmed ? 1 : 0.7 }}
                 >
-                    <Check size={32} />
+                    <Check size={24} />
                 </motion.div>
-                <p className={`mt-2 text-sm font-semibold ${isConfirmed ? 'text-foreground' : 'text-muted-foreground'}`}>Order Confirmed</p>
+                <p className={`mt-2 text-xs font-semibold ${isConfirmed ? 'text-foreground' : 'text-muted-foreground'}`}>Order Confirmed</p>
             </div>
             
             <div className="flex-1 h-1.5 rounded-full bg-border mx-4">
@@ -47,14 +48,14 @@ const SimpleTimeline = ({ currentStatus }) => {
             <div className="flex flex-col items-center text-center">
                 <motion.div
                     className={cn(
-                        "w-16 h-16 rounded-full flex items-center justify-center border-4 transition-colors duration-500",
+                        "w-12 h-12 rounded-full flex items-center justify-center border-4 transition-colors duration-500",
                         isReady ? 'bg-primary border-primary/50 text-primary-foreground' : 'bg-card border-border text-muted-foreground'
                     )}
                     animate={{ scale: isReady ? 1 : 0.9, opacity: isReady ? 1 : 0.7 }}
                 >
-                    <ShoppingBag size={32} />
+                    <ShoppingBag size={24} />
                 </motion.div>
-                <p className={`mt-2 text-sm font-semibold ${isReady ? 'text-foreground' : 'text-muted-foreground'}`}>
+                <p className={`mt-2 text-xs font-semibold ${isReady ? 'text-foreground' : 'text-muted-foreground'}`}>
                     Ready for Pickup
                 </p>
             </div>
@@ -62,12 +63,10 @@ const SimpleTimeline = ({ currentStatus }) => {
     );
 };
 
-
 function PreOrderTrackingContent() {
     const router = useRouter();
     const { orderId } = useParams();
-
-    const [orderData, setOrderData] = useState(null);
+    const [order, setOrder] = useState(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
     const [isFlipped, setIsFlipped] = useState(false);
@@ -80,11 +79,10 @@ function PreOrderTrackingContent() {
         }
 
         const docRef = doc(db, 'orders', orderId);
-
         const unsubscribe = onSnapshot(docRef, (docSnap) => {
             if (docSnap.exists()) {
                 const data = { id: docSnap.id, ...docSnap.data() };
-                setOrderData(data);
+                setOrder(data);
                 setError(null);
             } else {
                 setError("This order could not be found.");
@@ -98,13 +96,13 @@ function PreOrderTrackingContent() {
 
         return () => unsubscribe();
     }, [orderId]);
-    
+
     const coinTier = useMemo(() => {
-        const amount = orderData?.totalAmount || 0;
+        const amount = order?.totalAmount || 0;
         if (amount > 500) return 'gold';
         if (amount > 200) return 'silver';
         return 'bronze';
-    }, [orderData]);
+    }, [order]);
 
     if (loading) {
         return <div className="min-h-screen bg-slate-900 flex items-center justify-center"><Loader2 className="animate-spin text-primary h-16 w-16" /></div>;
@@ -114,27 +112,27 @@ function PreOrderTrackingContent() {
         return <div className="min-h-screen bg-slate-900 flex items-center justify-center text-red-400 p-4 text-center">{error}</div>;
     }
 
-    if (!orderData) {
+    if (!order) {
         return <div className="min-h-screen bg-slate-900 flex items-center justify-center text-slate-400 p-4 text-center">Order data not available.</div>;
     }
     
-    const token = orderData?.dineInToken || '#----';
+    const token = order?.dineInToken || '----';
     const tierStyle = `coin-${coinTier}`;
     const qrValue = `${window.location.origin}/collect/${orderId}`;
     
-    const statusText = orderData.status === 'Ready' || orderData.status === 'delivered' || orderData.status === 'picked_up'
+    const statusText = order.status === 'Ready' || order.status === 'delivered' || order.status === 'picked_up'
         ? "Your order is ready! Please flip the coin and show the QR code at the counter."
         : "Your order is being prepared...";
         
-    const orderDate = orderData?.orderDate?.seconds 
-        ? new Date(orderData.orderDate.seconds * 1000)
+    const orderDate = order?.orderDate?.seconds 
+        ? new Date(order.orderDate.seconds * 1000)
         : null;
 
     return (
         <div className="min-h-screen bg-slate-900 text-white font-sans p-4 flex flex-col">
             <header className="flex justify-between items-center mb-6">
                 <Button variant="ghost" className="text-slate-400 hover:text-white" onClick={() => router.back()}><ArrowLeft size={28} /></Button>
-                <h1 className="text-xl font-bold font-headline">{orderData?.restaurantName || 'Your Order'}</h1>
+                <h1 className="text-xl font-bold font-headline">{order?.restaurantName || 'Your Order'}</h1>
                 <div className="w-12"></div>
             </header>
 
@@ -142,28 +140,26 @@ function PreOrderTrackingContent() {
                  <motion.div
                     initial={{ y: -50, opacity: 0 }}
                     animate={{ y: 0, opacity: 1 }}
-                    transition={{ type: "spring", stiffness: 150, damping: 20 }}
+                    transition={{ type: "spring", stiffness: 150, damping: 20, delay: 0.2 }}
                     className={cn("coin-container w-80 h-80", isFlipped && 'is-flipped')}
                     onClick={() => setIsFlipped(f => !f)}
                 >
                     <div className="coin-flipper">
                         <div className={cn("coin-face coin-front", tierStyle)}>
-                            <svg className="circular-text" viewBox="0 0 300 300">
+                             <svg className="circular-text" viewBox="0 0 300 300">
                                 <path id="curve" d="M 50, 150 a 100,100 0 1,1 200,0" fill="transparent"/>
-                                <text width="100" className="coin-text-fill"><textPath xlinkHref="#curve" startOffset="50%" textAnchor="middle">★ {orderData.restaurantName} ★</textPath></text>
+                                <text width="100" className="coin-text-fill"><textPath xlinkHref="#curve" startOffset="50%" textAnchor="middle">★ {order.restaurantName} ★</textPath></text>
                             </svg>
-                            <div className="token-number">{orderData.dineInToken || '#----'}</div>
+                            <div className="token-number">#{token}</div>
                             <svg className="circular-text" viewBox="0 0 300 300">
                                 <path id="bottom-curve" d="M 250, 150 a 100,100 0 1,1 -200,0" fill="transparent"/>
-                                <text width="100" className="coin-text-fill">
-                                    <textPath xlinkHref="#bottom-curve" startOffset="50%" textAnchor="middle">
-                                        {orderDate ? `${orderDate.toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })} • ${orderDate.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}` : ''}
-                                    </textPath>
-                                </text>
+                                {orderDate && (
+                                     <text width="100" className="coin-text-fill"><textPath xlinkHref="#bottom-curve" startOffset="50%" textAnchor="middle">{format(orderDate, 'dd MMM • hh:mm a')}</textPath></text>
+                                )}
                             </svg>
                         </div>
                         <div className={cn("coin-face coin-back", tierStyle)}>
-                             <svg className="circular-text" viewBox="0 0 300 300">
+                            <svg className="circular-text" viewBox="0 0 300 300">
                                 <path id="brand-curve" d="M 50, 150 a 100,100 0 1,1 200,0" fill="transparent"/>
                                 <text width="100" className="coin-text-fill"><textPath xlinkHref="#brand-curve" startOffset="50%" textAnchor="middle">● POWERED BY SERVİZEPHYR ●</textPath></text>
                             </svg>
@@ -183,7 +179,7 @@ function PreOrderTrackingContent() {
                 </motion.p>
                 
                 <div className="w-full max-w-xl mt-8">
-                     <SimpleTimeline currentStatus={orderData.status} />
+                     <SimpleTimeline currentStatus={order.status} />
                 </div>
             </main>
         </div>
