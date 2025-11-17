@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, Suspense, useCallback, useMemo } from 'react';
 import { motion } from 'framer-motion';
-import { Check, ShoppingBag, Loader2, ArrowLeft, RefreshCw } from 'lucide-react';
+import { Check, ShoppingBag, Loader2, ArrowLeft, RefreshCw, CheckCircle, CookingPot } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useRouter, useParams } from 'next/navigation';
 import { cn } from '@/lib/utils';
@@ -29,59 +29,48 @@ const coinTiers = {
 };
 
 const SimpleTimeline = ({ currentStatus }) => {
-    const activeStatus = (currentStatus === 'paid' || currentStatus === 'pending' || currentStatus === 'confirmed' || currentStatus === 'preparing') ? 'confirmed' : currentStatus;
-    
-    const steps = [
-        { key: 'confirmed', title: 'Order Confirmed', icon: <Check size={32} /> },
-        { key: 'Ready', title: 'Ready for Pickup', icon: <ShoppingBag size={32} /> },
-    ];
-    
-    let currentStepIndex = -1;
-    if (activeStatus === 'confirmed') {
-        currentStepIndex = 0;
-    } else if (activeStatus === 'Ready' || activeStatus === 'delivered' || activeStatus === 'picked_up') {
-        currentStepIndex = 1;
-    }
+    const isConfirmed = currentStatus === 'pending' || currentStatus === 'confirmed' || currentStatus === 'Ready' || currentStatus === 'delivered' || currentStatus === 'picked_up';
+    const isReady = currentStatus === 'Ready' || currentStatus === 'delivered' || currentStatus === 'picked_up';
 
     return (
-        <div className="flex justify-between items-center w-full max-w-sm mx-auto px-2 sm:px-4 pt-4">
-            {steps.map(({ key, title, icon }, index) => {
-                const isCompleted = index <= currentStepIndex;
-                const isCurrent = index === currentStepIndex;
-                
-                return (
-                    <React.Fragment key={key}>
-                        <div className="flex flex-col items-center text-center w-28">
-                            <motion.div
-                                className={cn(
-                                    "w-20 h-20 rounded-full flex items-center justify-center border-4 transition-all duration-500",
-                                    isCompleted ? 'bg-primary border-primary/50 text-primary-foreground' : 'bg-card border-border text-muted-foreground'
-                                )}
-                                animate={{ scale: isCurrent ? 1.1 : 1 }}
-                                transition={{ type: 'spring' }}
-                            >
-                                {icon}
-                            </motion.div>
-                            <p className={`mt-2 text-sm font-semibold ${isCompleted ? 'text-foreground' : 'text-muted-foreground'}`}>
-                                {title}
-                            </p>
-                        </div>
-                        {index < steps.length - 1 && (
-                             <div className="flex-1 h-1 rounded-full bg-border">
-                                <motion.div
-                                    className="h-full rounded-full bg-primary"
-                                    initial={{ width: '0%' }}
-                                    animate={{ width: isCompleted ? '100%' : '0%' }}
-                                    transition={{ duration: 0.5, delay: 0.2 }}
-                                />
-                            </div>
-                        )}
-                    </React.Fragment>
-                );
-            })}
+        <div className="flex justify-between items-center w-full max-w-sm mx-auto px-4 pt-4">
+            <div className="flex flex-col items-center text-center">
+                <motion.div
+                    className="w-16 h-16 rounded-full flex items-center justify-center border-4 bg-primary border-primary/50 text-primary-foreground"
+                    animate={{ scale: isConfirmed ? 1 : 0.9, opacity: isConfirmed ? 1 : 0.7 }}
+                >
+                    <Check size={32} />
+                </motion.div>
+                <p className="mt-2 text-sm font-semibold text-foreground">Order Confirmed</p>
+            </div>
+            
+            <div className="flex-1 h-1.5 rounded-full bg-border mx-4">
+                <motion.div
+                    className="h-full rounded-full bg-primary"
+                    initial={{ width: '0%' }}
+                    animate={{ width: isReady ? '100%' : '0%' }}
+                    transition={{ duration: 0.5, delay: 0.2 }}
+                />
+            </div>
+            
+            <div className="flex flex-col items-center text-center">
+                <motion.div
+                    className={cn(
+                        "w-16 h-16 rounded-full flex items-center justify-center border-4 transition-colors duration-500",
+                        isReady ? 'bg-primary border-primary/50 text-primary-foreground' : 'bg-card border-border text-muted-foreground'
+                    )}
+                    animate={{ scale: isReady ? 1 : 0.9, opacity: isReady ? 1 : 0.7 }}
+                >
+                    <ShoppingBag size={32} />
+                </motion.div>
+                <p className={`mt-2 text-sm font-semibold ${isReady ? 'text-foreground' : 'text-muted-foreground'}`}>
+                    Ready for Pickup
+                </p>
+            </div>
         </div>
     );
 };
+
 
 function PreOrderTrackingContent() {
     const router = useRouter();
@@ -123,7 +112,7 @@ function PreOrderTrackingContent() {
     const coinTier = useMemo(() => {
         const amount = orderData?.order?.totalAmount || 0;
         if (amount > 500) return 'gold';
-        if (amount > 150) return 'silver';
+        if (amount > 200) return 'silver';
         return 'bronze';
     }, [orderData]);
 
@@ -148,16 +137,41 @@ function PreOrderTrackingContent() {
     const { order, restaurant } = orderData;
     const currentStatus = order.status;
     const token = order.dineInToken || '#----XX';
-    const tokenNumber = token.split('-')[0];
-    const tokenChars = token.split('-')[1] || 'XX';
     const tierStyles = coinTiers[coinTier];
+    
+    const statusText = currentStatus === 'Ready' || currentStatus === 'delivered' || currentStatus === 'picked_up'
+        ? "Order Ready! Please show this coin at the counter."
+        : "Preparing your order...";
 
     return (
+        <>
+        <style jsx global>{`
+            @keyframes gradient-animation {
+                0% { background-position: 0% 50%; }
+                50% { background-position: 100% 50%; }
+                100% { background-position: 0% 50%; }
+            }
+            .animated-gradient-bronze {
+                background: linear-gradient(-45deg, #CD7F32, #E6AC75, #8B4513, #CD7F32);
+                background-size: 400% 400%;
+                animation: gradient-animation 15s ease infinite;
+            }
+             .animated-gradient-silver {
+                background: linear-gradient(-45deg, #C0C0C0, #FFFFFF, #A9A9A9, #C0C0C0);
+                background-size: 400% 400%;
+                animation: gradient-animation 15s ease infinite;
+            }
+             .animated-gradient-gold {
+                background: linear-gradient(-45deg, #FFD700, #FFF8C6, #DAA520, #FFD700);
+                background-size: 400% 400%;
+                animation: gradient-animation 15s ease infinite;
+            }
+        `}</style>
         <div className="min-h-screen bg-slate-900 text-white font-sans p-4 flex flex-col">
             <header className="flex justify-between items-center mb-6">
                 <Button variant="ghost" className="text-slate-400 hover:text-white" onClick={() => router.back()}><ArrowLeft size={28} /></Button>
                 <h1 className="text-2xl font-bold font-headline">{restaurant.name}</h1>
-                <Button onClick={() => fetchData()} variant="ghost" size="icon" disabled={loading} className="text-slate-400 hover:text-white">
+                <Button onClick={() => fetchData(false)} variant="ghost" size="icon" disabled={loading} className="text-slate-400 hover:text-white">
                     <RefreshCw className={`h-6 w-6 ${loading ? 'animate-spin' : ''}`} />
                 </Button>
             </header>
@@ -168,41 +182,41 @@ function PreOrderTrackingContent() {
                     animate={{ scale: 1, y: 0, opacity: 1 }}
                     transition={{ type: "spring", stiffness: 150, damping: 15, delay: 0.2 }}
                     className={cn(
-                        "relative w-72 h-72 rounded-full flex flex-col items-center justify-center shadow-2xl bg-gradient-to-br",
-                        tierStyles.gradient, tierStyles.shadow
+                        "relative w-72 h-72 rounded-full flex flex-col items-center justify-center shadow-2xl",
+                        `animated-gradient-${coinTier}`, tierStyles.shadow
                     )}
                 >
                     <div className="absolute inset-2 rounded-full border-4 border-white/20"></div>
                     <div className="absolute inset-4 rounded-full border-2 border-white/20"></div>
-                     <motion.div
+                    <div
                         className="absolute inset-0 rounded-full opacity-30"
                         style={{
                             background: 'linear-gradient(135deg, rgba(255,255,255,0.6) 0%, rgba(255,255,255,0) 60%)'
                         }}
-                        animate={{ rotate: 360 }}
-                        transition={{ duration: 15, repeat: Infinity, ease: 'linear' }}
                     />
                     
                     <div className="relative z-10 flex flex-col items-center justify-center text-center">
-                         <p className={cn("font-bold text-xl opacity-80", tierStyles.text)}>TOKEN</p>
-                        <p className={cn("text-7xl font-bold tracking-wider", tierStyles.text)} style={{ textShadow: '2px 2px 4px rgba(0,0,0,0.2)' }}>
-                            {tokenNumber}
-                        </p>
-                         <p className={cn("text-2xl font-bold opacity-80", tierStyles.text)}>
-                            {tokenChars}
+                        <p className={cn("font-bold text-xl opacity-80", tierStyles.text)}>TOKEN</p>
+                        <p className={cn("text-7xl font-bold tracking-wider", tierStyles.tokenText)} style={{ textShadow: '2px 2px 4px rgba(0,0,0,0.2)' }}>
+                            {token}
                         </p>
                     </div>
                 </motion.div>
                 
-                <p className="mt-8 text-slate-400 max-w-md">
-                    Please show this token at the counter to collect your order when it's ready.
-                </p>
+                <motion.p 
+                    className="mt-8 text-slate-300 text-lg font-semibold max-w-md"
+                    key={statusText}
+                    initial={{opacity: 0}} animate={{opacity: 1}}
+                >
+                    {statusText}
+                </motion.p>
                 
                 <div className="w-full max-w-xl mt-8">
                      <SimpleTimeline currentStatus={currentStatus} />
                 </div>
             </main>
         </div>
+        </>
     );
 }
 

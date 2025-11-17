@@ -95,7 +95,9 @@ const OrderPlacedContent = () => {
         if (isDineIn) {
             trackingPath = 'track/dine-in/';
         } else if (isPreOrder) {
+            // --- START FIX: Use the correct pre-order tracking path ---
             trackingPath = 'track/pre-order/';
+            // --- END FIX ---
         }
         
         if (orderId && trackingToken) {
