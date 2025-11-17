@@ -1,31 +1,24 @@
+
 'use client';
 
-import React, { useState, useEffect, Suspense, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, Suspense, useMemo } from 'react';
 import { motion } from 'framer-motion';
-import { Check, ShoppingBag, Loader2, ArrowLeft, RefreshCw, CheckCircle, CookingPot } from 'lucide-react';
+import { Check, ShoppingBag, Loader2, ArrowLeft, RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useRouter, useParams } from 'next/navigation';
 import { cn } from '@/lib/utils';
+import QRCode from 'qrcode.react';
 
 const coinTiers = {
-    bronze: {
-        gradient: 'from-[#CD7F32] via-[#E6AC75] to-[#8B4513]',
-        shadow: 'shadow-orange-900/50',
-        text: 'text-orange-900',
-        tokenText: 'text-[#8B4513]',
-    },
-    silver: {
-        gradient: 'from-[#C0C0C0] via-[#FFFFFF] to-[#A9A9A9]',
-        shadow: 'shadow-gray-700/50',
-        text: 'text-gray-800',
-        tokenText: 'text-gray-700',
-    },
-    gold: {
-        gradient: 'from-[#FFD700] via-[#FFF8C6] to-[#DAA520]',
-        shadow: 'shadow-yellow-700/50',
-        text: 'text-yellow-900',
-        tokenText: 'text-yellow-800',
-    },
+    bronze: 'coin-bronze',
+    silver: 'coin-silver',
+    gold: 'coin-gold',
+};
+
+const tierColors = {
+    bronze: { base: '#CD7F32', dark: '#8B4513' },
+    silver: { base: '#C0C0C0', dark: '#757575' },
+    gold: { base: '#FFD700', dark: '#B8860B' },
 };
 
 const SimpleTimeline = ({ currentStatus }) => {
@@ -79,127 +72,105 @@ function PreOrderTrackingContent() {
     const [orderData, setOrderData] = useState(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
-
-    const fetchData = useCallback(async (isBackground = false) => {
-        if (!isBackground) setLoading(true);
-        if (!orderId) {
-            setError("Order ID is missing.");
-            setLoading(false);
-            return;
-        }
-
-        try {
-            const res = await fetch(`/api/order/status/${orderId}`);
-            if (!res.ok) {
-                const errData = await res.json();
-                throw new Error(errData.message || 'Failed to fetch order status.');
-            }
-            const data = await res.json();
-            setOrderData(data);
-        } catch (err) {
-            setError(err.message);
-        } finally {
-            if (!isBackground) setLoading(false);
-        }
-    }, [orderId]);
+    const [isFlipped, setIsFlipped] = useState(false);
 
     useEffect(() => {
+        const fetchData = async (isBackground = false) => {
+            if (!isBackground) setLoading(true);
+            if (!orderId) {
+                setError("Order ID is missing.");
+                setLoading(false);
+                return;
+            }
+
+            try {
+                const res = await fetch(`/api/order/status/${orderId}`);
+                if (!res.ok) {
+                    const errData = await res.json();
+                    throw new Error(errData.message || 'Failed to fetch order status.');
+                }
+                const data = await res.json();
+                setOrderData(data);
+            } catch (err) {
+                setError(err.message);
+            } finally {
+                if (!isBackground) setLoading(false);
+            }
+        };
+
         fetchData();
         const interval = setInterval(() => fetchData(true), 20000);
         return () => clearInterval(interval);
-    }, [fetchData]);
+    }, [orderId]);
 
     const coinTier = useMemo(() => {
         const amount = orderData?.order?.totalAmount || 0;
         if (amount > 500) return 'gold';
-        if (amount > 200) return 'silver';
+        if (amount > 150) return 'silver';
         return 'bronze';
     }, [orderData]);
 
+    const { order, restaurant } = orderData || {};
+    const currentStatus = order?.status;
+    const token = order?.dineInToken || '#----';
+    const tierStyle = coinTiers[coinTier];
+    const tierColor = tierColors[coinTier];
+    
+    const qrValue = order ? `${window.location.origin}/collect/${order.id}` : '';
+
+    const statusText = currentStatus === 'Ready' || currentStatus === 'delivered' || currentStatus === 'picked_up'
+        ? "Your order is ready! Please slide the coin and show the QR code at the counter."
+        : "Your order is being prepared...";
+
     if (loading) {
-        return (
-            <div className="min-h-screen bg-background flex items-center justify-center"><Loader2 className="animate-spin text-primary h-16 w-16" /></div>
-        );
+        return <div className="min-h-screen bg-background flex items-center justify-center"><Loader2 className="animate-spin text-primary h-16 w-16" /></div>;
     }
     
     if (error) {
-        return (
-             <div className="min-h-screen bg-background flex items-center justify-center text-red-500 p-4 text-center">{error}</div>
-        );
+        return <div className="min-h-screen bg-background flex items-center justify-center text-red-500 p-4 text-center">{error}</div>;
     }
 
-    if (!orderData || !orderData.order) {
-        return (
-             <div className="min-h-screen bg-background flex items-center justify-center text-muted-foreground p-4 text-center">Order data not available.</div>
-        );
+    if (!order) {
+        return <div className="min-h-screen bg-background flex items-center justify-center text-muted-foreground p-4 text-center">Order data not available.</div>;
     }
-
-    const { order, restaurant } = orderData;
-    const currentStatus = order.status;
-    const token = order.dineInToken || '#----XX';
-    const tierStyles = coinTiers[coinTier];
-    
-    const statusText = currentStatus === 'Ready' || currentStatus === 'delivered' || currentStatus === 'picked_up'
-        ? "Order Ready! Please show this coin at the counter."
-        : "Preparing your order...";
 
     return (
-        <>
-        <style jsx global>{`
-            @keyframes gradient-animation {
-                0% { background-position: 0% 50%; }
-                50% { background-position: 100% 50%; }
-                100% { background-position: 0% 50%; }
-            }
-            .animated-gradient-bronze {
-                background: linear-gradient(-45deg, #CD7F32, #E6AC75, #8B4513, #CD7F32);
-                background-size: 400% 400%;
-                animation: gradient-animation 15s ease infinite;
-            }
-             .animated-gradient-silver {
-                background: linear-gradient(-45deg, #C0C0C0, #FFFFFF, #A9A9A9, #C0C0C0);
-                background-size: 400% 400%;
-                animation: gradient-animation 15s ease infinite;
-            }
-             .animated-gradient-gold {
-                background: linear-gradient(-45deg, #FFD700, #FFF8C6, #DAA520, #FFD700);
-                background-size: 400% 400%;
-                animation: gradient-animation 15s ease infinite;
-            }
-        `}</style>
         <div className="min-h-screen bg-slate-900 text-white font-sans p-4 flex flex-col">
             <header className="flex justify-between items-center mb-6">
                 <Button variant="ghost" className="text-slate-400 hover:text-white" onClick={() => router.back()}><ArrowLeft size={28} /></Button>
-                <h1 className="text-2xl font-bold font-headline">{restaurant.name}</h1>
-                <Button onClick={() => fetchData(false)} variant="ghost" size="icon" disabled={loading} className="text-slate-400 hover:text-white">
-                    <RefreshCw className={`h-6 w-6 ${loading ? 'animate-spin' : ''}`} />
-                </Button>
+                <h1 className="text-xl font-bold font-headline">{restaurant?.name}</h1>
+                <div className="w-12"></div>
             </header>
 
             <main className="flex-grow flex flex-col items-center justify-center text-center">
-                <motion.div
-                    initial={{ scale: 0.5, y: 100, opacity: 0 }}
-                    animate={{ scale: 1, y: 0, opacity: 1 }}
-                    transition={{ type: "spring", stiffness: 150, damping: 15, delay: 0.2 }}
-                    className={cn(
-                        "relative w-72 h-72 rounded-full flex flex-col items-center justify-center shadow-2xl",
-                        `animated-gradient-${coinTier}`, tierStyles.shadow
-                    )}
+                 <motion.div
+                    initial={{ y: 50, opacity: 0 }}
+                    animate={{ y: 0, opacity: 1 }}
+                    transition={{ type: "spring", stiffness: 150, damping: 20 }}
+                    className={cn("coin-container w-80 h-80", isFlipped && 'is-flipped')}
+                    onClick={() => setIsFlipped(f => !f)}
                 >
-                    <div className="absolute inset-2 rounded-full border-4 border-white/20"></div>
-                    <div className="absolute inset-4 rounded-full border-2 border-white/20"></div>
-                    <div
-                        className="absolute inset-0 rounded-full opacity-30"
-                        style={{
-                            background: 'linear-gradient(135deg, rgba(255,255,255,0.6) 0%, rgba(255,255,255,0) 60%)'
-                        }}
-                    />
-                    
-                    <div className="relative z-10 flex flex-col items-center justify-center text-center">
-                        <p className={cn("font-bold text-xl opacity-80", tierStyles.text)}>TOKEN</p>
-                        <p className={cn("text-7xl font-bold tracking-wider", tierStyles.tokenText)} style={{ textShadow: '2px 2px 4px rgba(0,0,0,0.2)' }}>
-                            {token}
-                        </p>
+                    <div className="coin-flipper">
+                        <div className={cn("coin-face coin-front", tierStyle)}>
+                            <svg className="circular-text" viewBox="0 0 300 300">
+                                <path id="curve" d="M 50, 150 a 100,100 0 1,1 200,0" fill="transparent"/>
+                                <text width="100"><textPath xlinkHref="#curve" startOffset="50%" textAnchor="middle">{restaurant?.name || 'Your Restaurant'}</textPath></text>
+                            </svg>
+                            <span className="token-number font-mono text-7xl font-bold">{token}</span>
+                            <svg className="circular-text" viewBox="0 0 300 300">
+                                <path id="bottom-curve" d="M 250, 150 a 100,100 0 1,1 -200,0" fill="transparent"/>
+                                <text width="100"><textPath xlinkHref="#bottom-curve" startOffset="50%" textAnchor="middle">{new Date(order.orderDate.seconds * 1000).toLocaleDateString()}</textPath></text>
+                            </svg>
+                        </div>
+                        <div className={cn("coin-face coin-back", tierStyle)}>
+                            <svg className="circular-text" viewBox="0 0 300 300">
+                                <path id="brand-curve" d="M 50, 150 a 100,100 0 1,1 200,0" fill="transparent"/>
+                                <text width="100"><textPath xlinkHref="#brand-curve" startOffset="50%" textAnchor="middle">Powered by ServiZephyr</textPath></text>
+                            </svg>
+                            <div className="p-4 bg-white rounded-lg">
+                                <QRCode value={qrValue} size={160} fgColor={tierColor.dark} bgColor="transparent" />
+                            </div>
+                        </div>
                     </div>
                 </motion.div>
                 
@@ -216,7 +187,6 @@ function PreOrderTrackingContent() {
                 </div>
             </main>
         </div>
-        </>
     );
 }
 

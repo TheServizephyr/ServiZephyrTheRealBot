@@ -288,12 +288,11 @@ export async function POST(req) {
                 });
             }
             
-            // --- START: Token Generation for Street Vendor ---
             let dineInToken = null;
             if (isStreetVendorOrder) {
                 const vendorRef = firestore.collection('street_vendors').doc(restaurantId);
                 try {
-                    const vendorDoc = await vendorRef.get(); // Transaction-less get
+                    const vendorDoc = await vendorRef.get();
                     if (vendorDoc.exists) {
                         const vendorData = vendorDoc.data();
                         const lastToken = vendorData.lastOrderToken || 0;
@@ -314,7 +313,6 @@ export async function POST(req) {
                     console.error(`[Webhook RZP] Error fetching street vendor doc to generate token:`, e);
                 }
             }
-            // --- END: Token Generation ---
 
             batch.set(newOrderRef, {
                 customerName: customerDetails.name,
@@ -328,7 +326,7 @@ export async function POST(req) {
                 tipAmount: billDetails.tipAmount || 0,
                 tableId: billDetails.tableId || null,
                 dineInTabId: finalDineInTabId || null,
-                dineInToken: dineInToken, // <-- Save the new token here
+                dineInToken: dineInToken,
                 items: orderItems,
                 subtotal: billDetails.subtotal, 
                 coupon: billDetails.coupon || null,
