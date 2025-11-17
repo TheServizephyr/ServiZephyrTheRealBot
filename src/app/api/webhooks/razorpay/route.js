@@ -293,7 +293,7 @@ export async function POST(req) {
             if (isStreetVendorOrder) {
                 const vendorRef = firestore.collection('street_vendors').doc(restaurantId);
                 try {
-                    const vendorDoc = await vendorRef.get();
+                    const vendorDoc = await vendorRef.get(); // Transaction-less get
                     if (vendorDoc.exists) {
                         const vendorData = vendorDoc.data();
                         const lastToken = vendorData.lastOrderToken || 0;

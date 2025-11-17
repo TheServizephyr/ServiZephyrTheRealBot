@@ -12,16 +12,19 @@ const coinTiers = {
         gradient: 'from-[#CD7F32] via-[#E6AC75] to-[#8B4513]',
         shadow: 'shadow-orange-900/50',
         text: 'text-orange-900',
+        tokenText: 'text-[#8B4513]',
     },
     silver: {
         gradient: 'from-[#C0C0C0] via-[#FFFFFF] to-[#A9A9A9]',
         shadow: 'shadow-gray-700/50',
         text: 'text-gray-800',
+        tokenText: 'text-gray-700',
     },
     gold: {
         gradient: 'from-[#FFD700] via-[#FFF8C6] to-[#DAA520]',
         shadow: 'shadow-yellow-700/50',
         text: 'text-yellow-900',
+        tokenText: 'text-yellow-800',
     },
 };
 
@@ -41,7 +44,7 @@ const SimpleTimeline = ({ currentStatus }) => {
     }
 
     return (
-        <div className="flex justify-between items-start w-full max-w-sm mx-auto px-2 sm:px-4 pt-4">
+        <div className="flex justify-between items-center w-full max-w-sm mx-auto px-2 sm:px-4 pt-4">
             {steps.map(({ key, title, icon }, index) => {
                 const isCompleted = index <= currentStepIndex;
                 const isCurrent = index === currentStepIndex;
@@ -64,7 +67,7 @@ const SimpleTimeline = ({ currentStatus }) => {
                             </p>
                         </div>
                         {index < steps.length - 1 && (
-                             <div className="flex-1 h-1 mt-10 mx-1 rounded-full bg-border">
+                             <div className="flex-1 h-1 rounded-full bg-border">
                                 <motion.div
                                     className="h-full rounded-full bg-primary"
                                     initial={{ width: '0%' }}
@@ -144,48 +147,54 @@ function PreOrderTrackingContent() {
 
     const { order, restaurant } = orderData;
     const currentStatus = order.status;
-    const token = order.dineInToken;
+    const token = order.dineInToken || '#----XX';
+    const tokenNumber = token.split('-')[0];
+    const tokenChars = token.split('-')[1] || 'XX';
+    const tierStyles = coinTiers[coinTier];
 
     return (
-        <div className="min-h-screen bg-background text-foreground p-4 flex flex-col green-theme">
+        <div className="min-h-screen bg-slate-900 text-white font-sans p-4 flex flex-col">
             <header className="flex justify-between items-center mb-6">
-                <Button variant="ghost" className="text-muted-foreground hover:text-foreground" onClick={() => router.back()}><ArrowLeft size={28} /></Button>
+                <Button variant="ghost" className="text-slate-400 hover:text-white" onClick={() => router.back()}><ArrowLeft size={28} /></Button>
                 <h1 className="text-2xl font-bold font-headline">{restaurant.name}</h1>
-                <Button onClick={() => fetchData(true)} variant="ghost" size="icon" disabled={loading}><RefreshCw className={`h-6 w-6 ${loading ? 'animate-spin' : ''}`} /></Button>
+                <Button onClick={() => fetchData()} variant="ghost" size="icon" disabled={loading} className="text-slate-400 hover:text-white">
+                    <RefreshCw className={`h-6 w-6 ${loading ? 'animate-spin' : ''}`} />
+                </Button>
             </header>
 
             <main className="flex-grow flex flex-col items-center justify-center text-center">
                 <motion.div
-                    initial={{ scale: 0.5, opacity: 0, y: 50 }}
-                    animate={{ scale: 1, opacity: 1, y: 0 }}
+                    initial={{ scale: 0.5, y: 100, opacity: 0 }}
+                    animate={{ scale: 1, y: 0, opacity: 1 }}
                     transition={{ type: "spring", stiffness: 150, damping: 15, delay: 0.2 }}
                     className={cn(
-                        "relative w-64 h-64 sm:w-72 sm:h-72 rounded-full flex flex-col items-center justify-center shadow-2xl",
-                        coinTiers[coinTier].shadow
+                        "relative w-72 h-72 rounded-full flex flex-col items-center justify-center shadow-2xl bg-gradient-to-br",
+                        tierStyles.gradient, tierStyles.shadow
                     )}
                 >
-                    <div className={cn("absolute inset-0 rounded-full bg-gradient-to-br", coinTiers[coinTier].gradient)} />
-                    <motion.div
-                        className="absolute inset-0 rounded-full opacity-50"
+                    <div className="absolute inset-2 rounded-full border-4 border-white/20"></div>
+                    <div className="absolute inset-4 rounded-full border-2 border-white/20"></div>
+                     <motion.div
+                        className="absolute inset-0 rounded-full opacity-30"
                         style={{
-                            background: 'linear-gradient(135deg, rgba(255,255,255,0.4) 0%, rgba(255,255,255,0) 50%)'
+                            background: 'linear-gradient(135deg, rgba(255,255,255,0.6) 0%, rgba(255,255,255,0) 60%)'
                         }}
                         animate={{ rotate: 360 }}
-                        transition={{ duration: 10, repeat: Infinity, ease: 'linear' }}
+                        transition={{ duration: 15, repeat: Infinity, ease: 'linear' }}
                     />
                     
                     <div className="relative z-10 flex flex-col items-center justify-center text-center">
-                         <p className={cn("font-bold text-xl opacity-80", coinTiers[coinTier].text)}>TOKEN</p>
-                        <p className={cn("text-7xl sm:text-8xl font-bold tracking-wider", coinTiers[coinTier].text)} style={{ textShadow: '2px 2px 4px rgba(0,0,0,0.2)' }}>
-                            {token ? token.split('-')[0] : '#----'}
+                         <p className={cn("font-bold text-xl opacity-80", tierStyles.text)}>TOKEN</p>
+                        <p className={cn("text-7xl font-bold tracking-wider", tierStyles.text)} style={{ textShadow: '2px 2px 4px rgba(0,0,0,0.2)' }}>
+                            {tokenNumber}
                         </p>
-                         <p className={cn("text-2xl font-bold opacity-80", coinTiers[coinTier].text)}>
-                            {token ? token.split('-')[1] : 'XX'}
+                         <p className={cn("text-2xl font-bold opacity-80", tierStyles.text)}>
+                            {tokenChars}
                         </p>
                     </div>
                 </motion.div>
                 
-                <p className="mt-8 text-muted-foreground max-w-md">
+                <p className="mt-8 text-slate-400 max-w-md">
                     Please show this token at the counter to collect your order when it's ready.
                 </p>
                 
