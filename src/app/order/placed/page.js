@@ -1,5 +1,4 @@
 
-
 'use client';
 
 import React, { Suspense, useEffect, useState, useCallback } from 'react';
@@ -90,14 +89,13 @@ const OrderPlacedContent = () => {
         const isDineIn = !!whatsappNumber;
         const isPreOrder = !isDineIn && restaurantId;
 
-        let trackingPath = 'track/';
-        
+        let trackingPath;
         if (isDineIn) {
             trackingPath = 'track/dine-in/';
         } else if (isPreOrder) {
-            // --- START FIX: Use the correct pre-order tracking path ---
             trackingPath = 'track/pre-order/';
-            // --- END FIX ---
+        } else {
+            trackingPath = 'track/';
         }
         
         if (orderId && trackingToken) {
@@ -198,3 +196,5 @@ export default function OrderPlacedPage() {
         </Suspense>
     );
 }
+
+    

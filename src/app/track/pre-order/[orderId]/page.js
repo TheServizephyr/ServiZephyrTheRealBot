@@ -98,6 +98,14 @@ function PreOrderTrackingContent() {
         return () => unsubscribe();
     }, [orderId]);
 
+    const handleBackToMenu = () => {
+        if (order?.restaurantId) {
+            router.push(`/order/${order.restaurantId}`);
+        } else {
+            router.push('/');
+        }
+    };
+    
     const getCoinTier = (amount) => {
         if (amount > 500) return 'gold';
         if (amount > 150) return 'silver';
@@ -136,7 +144,7 @@ function PreOrderTrackingContent() {
     return (
         <div className="min-h-screen bg-slate-900 text-white font-sans p-4 flex flex-col">
             <header className="flex justify-between items-center mb-6">
-                <Button variant="ghost" className="text-slate-400 hover:text-white" onClick={() => router.back()}><ArrowLeft size={28} /></Button>
+                <Button variant="ghost" className="text-slate-400 hover:text-white" onClick={handleBackToMenu}><ArrowLeft size={28} /></Button>
                 <h1 className="text-xl font-bold font-headline">{order?.restaurantName || 'Your Order'}</h1>
                 <div className="w-12"></div>
             </header>
@@ -170,7 +178,7 @@ function PreOrderTrackingContent() {
                             <div className="p-4 bg-white rounded-lg">
                                  <QRCode value={qrValue} size={160} fgColor={tierColors[coinTier].dark} bgColor="transparent" />
                             </div>
-                            <p className="mt-2 text-xs font-semibold" style={{ color: tierColors[coinTier].dark }}>Powered by ServiZephyr</p>
+                             <p className="mt-4 text-xs font-semibold" style={{ color: tierColors[coinTier].dark }}>Powered by ServiZephyr</p>
                         </div>
                     </div>
                 </motion.div>
@@ -198,3 +206,5 @@ export default function PreOrderTrackingPage() {
         </Suspense>
     )
 }
+
+    

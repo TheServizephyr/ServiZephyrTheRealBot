@@ -1,5 +1,4 @@
 
-
 'use client';
 
 import React, { useState, useEffect, useMemo, Suspense } from 'react';
@@ -905,3 +904,5 @@ const CartPage = () => (
 );
 
 export default CartPage;
+
+    

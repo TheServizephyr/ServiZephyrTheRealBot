@@ -1,11 +1,10 @@
 
-
 'use client';
 
 import React, { useState, useEffect, Suspense, useMemo, useCallback, useRef } from 'react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Utensils, Plus, Minus, X, Home, User, Edit2, ShoppingCart, Star, CookingPot, BookOpen, Check, SlidersHorizontal, ArrowUpDown, PlusCircle, Ticket, Gift, Sparkles, Flame, Search, Trash2, ChevronDown, Tag as TagIcon, RadioGroup, IndianRupee, HardHat, MapPin, Bike, Store, ConciergeBell, QrCode, CalendarClock, Wallet, Users, Camera, BookMarked, Calendar as CalendarIcon, Bell, CheckCircle, AlertTriangle, ExternalLink, ShoppingBag, Sun, Moon, ChevronUp, Lock, Loader2 } from 'lucide-react';
+import { Utensils, Plus, Minus, X, Home, User, Edit2, ShoppingCart, Star, CookingPot, BookOpen, Check, SlidersHorizontal, ArrowUpDown, PlusCircle, Ticket, Gift, Sparkles, Flame, Search, Trash2, ChevronDown, Tag as TagIcon, RadioGroup, IndianRupee, HardHat, MapPin, Bike, Store, ConciergeBell, QrCode, CalendarClock, Wallet, Users, Camera, BookMarked, Calendar as CalendarIcon, Bell, CheckCircle, AlertTriangle, ExternalLink, ShoppingBag, Sun, Moon, ChevronUp, Lock, Loader2, Navigation } from 'lucide-react';
 import Image from 'next/image';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
@@ -642,6 +641,8 @@ const OrderPageInternal = () => {
     const tableIdFromUrl = searchParams.get('table');
     const impersonatedOwnerId = searchParams.get('impersonate_owner_id');
 
+    const [liveOrder, setLiveOrder] = useState(null);
+
     // This effect now ONLY runs once on mount to determine session validity.
     useEffect(() => {
         const verifySession = async () => {
@@ -679,6 +680,12 @@ const OrderPageInternal = () => {
         if (restaurantId) {
             verifySession();
         }
+
+        const activeOrder = localStorage.getItem('liveOrder');
+        if (activeOrder) {
+            setLiveOrder(JSON.parse(activeOrder));
+        }
+
     }, [restaurantId, tableIdFromUrl, phone, token]);
 
 
@@ -1240,10 +1247,22 @@ const OrderPageInternal = () => {
                 
                 <footer className="fixed bottom-0 left-0 right-0 z-30 pointer-events-none">
                     <div className="container mx-auto px-4 relative h-28">
-                         
+                         {liveOrder && (
+                            <motion.div initial={{ y: 20, opacity: 0 }} animate={{ y: 0, opacity: 1 }} className="absolute bottom-full left-4 right-4 mb-2 pointer-events-auto">
+                                <div className="flex justify-between items-center bg-primary/10 border border-primary/20 rounded-lg p-3">
+                                    <div>
+                                        <p className="font-bold text-primary">Your order is {liveOrder.status}</p>
+                                        <p className="text-xs text-muted-foreground">ID: #{liveOrder.orderId.substring(0, 8)}</p>
+                                    </div>
+                                    <Button size="sm" onClick={() => router.push(`/track/pre-order/${liveOrder.orderId}?token=${liveOrder.trackingToken}`)}>
+                                        <Navigation size={16} className="mr-2"/> Track
+                                    </Button>
+                                </div>
+                            </motion.div>
+                         )}
                          <motion.div
                             className="absolute right-4 pointer-events-auto"
-                            animate={{ bottom: totalCartItems > 0 || (deliveryType === 'dine-in' && activeTabInfo.id) ? '6.5rem' : '1rem' }}
+                            animate={{ bottom: totalCartItems > 0 || (deliveryType === 'dine-in' && activeTabInfo.id) || liveOrder ? '6.5rem' : '1rem' }}
                             transition={{ type: "spring", stiffness: 300, damping: 25 }}
                         >
                              <button
@@ -1322,3 +1341,5 @@ const OrderPage = () => (
 );
 
 export default OrderPage;
+
+    
