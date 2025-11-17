@@ -228,7 +228,7 @@ export async function POST(req) {
                 receipt: firestoreOrderId,
                 notes: {
                     servizephyr_payload: JSON.stringify(servizephyrOrderPayload),
-                    split_session_id: isStreetVendorOrder ? `sv_${firestoreOrderId}` : undefined // Add a note for street vendor split
+                    split_session_id: isStreetVendorOrder ? `split_${firestoreOrderId}` : undefined
                 }
             };
             

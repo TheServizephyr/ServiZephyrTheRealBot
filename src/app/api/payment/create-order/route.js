@@ -39,7 +39,7 @@ export async function POST(req) {
                     currency: "INR",
                     receipt: shareReceipt,
                     notes: {
-                        split_session_id: splitId // Add a note to identify split payments in webhooks
+                        split_session_id: splitId
                     }
                 });
                 shares.push({

@@ -1,4 +1,5 @@
 
+
 import { NextResponse } from 'next/server';
 import { getFirestore, FieldValue } from '@/lib/firebase-admin';
 import { sendNewOrderToOwner } from '@/lib/notifications';
@@ -94,6 +95,8 @@ const handleSplitPayment = async (firestore, paymentEntity) => {
             if (isFullyPaid) {
                 console.log(`[Webhook RZP] All shares paid. Marking session ${splitId} as completed.`);
                 updateData.status = 'completed';
+                 const baseOrderRef = firestore.collection('orders').doc(splitData.baseOrderId);
+                 transaction.update(baseOrderRef, { paymentDetails: { ...paymentEntity, method: 'razorpay_split' }, status: 'pending' });
             }
             
             transaction.update(splitRef, updateData);
