@@ -681,11 +681,12 @@ const OrderPageInternal = () => {
             verifySession();
         }
 
+        // --- START FIX: Check for live order on mount ---
         const activeOrder = localStorage.getItem('liveOrder');
         if (activeOrder) {
             setLiveOrder(JSON.parse(activeOrder));
         }
-
+        // --- END FIX ---
     }, [restaurantId, tableIdFromUrl, phone, token]);
 
 

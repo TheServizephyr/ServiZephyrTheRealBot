@@ -1,4 +1,3 @@
-
 'use client';
 
 import React, { Suspense, useEffect, useState, useCallback } from 'react';
@@ -46,6 +45,14 @@ const OrderPlacedContent = () => {
                         const data = await res.json();
                         if (data.order?.trackingToken) {
                             setTrackingToken(data.order.trackingToken);
+                            // --- START FIX: Save live order data here after fetching ---
+                            localStorage.setItem('liveOrder', JSON.stringify({ 
+                                orderId, 
+                                restaurantId: data.restaurant.id, 
+                                trackingToken: data.order.trackingToken, 
+                                status: 'pending' 
+                            }));
+                             // --- END FIX ---
                         }
                     }
                 } catch (error) {
@@ -55,6 +62,14 @@ const OrderPlacedContent = () => {
                 if (tokenInUrl !== trackingToken) {
                     setTrackingToken(tokenInUrl);
                 }
+                // --- START FIX: Save live order data when token is in URL ---
+                localStorage.setItem('liveOrder', JSON.stringify({ 
+                    orderId, 
+                    restaurantId: currentRestaurantId || localStorage.getItem('lastOrderedFrom'), 
+                    trackingToken: tokenInUrl, 
+                    status: 'pending' 
+                }));
+                // --- END FIX ---
             }
         };
 
@@ -196,5 +211,3 @@ export default function OrderPlacedPage() {
         </Suspense>
     );
 }
-
-    
