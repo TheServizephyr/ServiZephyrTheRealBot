@@ -1,4 +1,5 @@
 
+
 'use client';
 
 import React, { useState, useEffect, Suspense, useMemo, useCallback, useRef } from 'react';
@@ -1246,21 +1247,21 @@ const OrderPageInternal = () => {
                     </main>
                 </div>
                 
-                <footer className="fixed bottom-0 left-0 right-0 z-30 pointer-events-none">
-                    <div className="container mx-auto px-4 relative h-28">
-                         {liveOrder && (
-                            <motion.div initial={{ y: 20, opacity: 0 }} animate={{ y: 0, opacity: 1 }} className="absolute bottom-full left-4 right-4 mb-2 pointer-events-auto">
-                                <div className="flex justify-between items-center bg-primary/10 border border-primary/20 rounded-lg p-3">
-                                    <div>
-                                        <p className="font-bold text-primary">Your order is {liveOrder.status}</p>
-                                        <p className="text-xs text-muted-foreground">ID: #{liveOrder.orderId.substring(0, 8)}</p>
-                                    </div>
-                                    <Button size="sm" onClick={() => router.push(`/track/pre-order/${liveOrder.orderId}?token=${liveOrder.trackingToken}`)}>
-                                        <Navigation size={16} className="mr-2"/> Track
-                                    </Button>
+                <div className="fixed bottom-0 left-0 w-full z-30">
+                    {liveOrder && (
+                        <div className="container mx-auto px-4 pb-2">
+                             <motion.div initial={{ y: 20, opacity: 0 }} animate={{ y: 0, opacity: 1 }} className="flex justify-between items-center bg-primary/10 border border-primary/20 rounded-lg p-3">
+                                <div>
+                                    <p className="font-bold text-primary">Your order is {liveOrder.status}</p>
+                                    <p className="text-xs text-muted-foreground">ID: #{liveOrder.orderId.substring(0, 8)}</p>
                                 </div>
+                                <Button size="sm" onClick={() => router.push(`/track/pre-order/${liveOrder.orderId}?token=${liveOrder.trackingToken}`)}>
+                                    <Navigation size={16} className="mr-2"/> Track
+                                </Button>
                             </motion.div>
-                         )}
+                        </div>
+                    )}
+                    <div className="relative pointer-events-none">
                          <motion.div
                             className="absolute right-4 pointer-events-auto"
                             animate={{ bottom: totalCartItems > 0 || (deliveryType === 'dine-in' && activeTabInfo.id) || liveOrder ? '6.5rem' : '1rem' }}
@@ -1278,7 +1279,7 @@ const OrderPageInternal = () => {
                         <AnimatePresence>
                            {(totalCartItems > 0 || (deliveryType === 'dine-in' && activeTabInfo.id)) && (
                                 <motion.div
-                                    className="absolute bottom-0 left-0 right-0 bg-background/80 backdrop-blur-lg border-t border-border pointer-events-auto"
+                                    className="bg-background/80 backdrop-blur-lg border-t border-border pointer-events-auto"
                                     initial={{ y: "100%" }}
                                     animate={{ y: 0 }}
                                     exit={{ y: "100%" }}
@@ -1316,7 +1317,7 @@ const OrderPageInternal = () => {
                             )}
                         </AnimatePresence>
                     </div>
-                </footer>
+                </div>
             </div>
         </>
     );

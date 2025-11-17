@@ -1,4 +1,5 @@
 
+
 'use client';
 
 import React, { useState, useEffect, useMemo, Suspense } from 'react';
@@ -867,9 +868,9 @@ const CartPageInternal = () => {
                 )}
             </main>
 
-             <footer className="fixed bottom-0 left-0 w-full bg-background/80 backdrop-blur-lg border-t border-border z-30">
-                <div className="container mx-auto p-4 space-y-3">
-                    {liveOrder && (
+            <div className="fixed bottom-0 left-0 w-full z-30">
+                {liveOrder && (
+                     <div className="container mx-auto px-4 pb-2">
                         <motion.div initial={{ y: 20, opacity: 0 }} animate={{ y: 0, opacity: 1 }} className="flex justify-between items-center bg-primary/10 border border-primary/20 rounded-lg p-3">
                             <div>
                                 <p className="font-bold text-primary">Your order is {liveOrder.status}</p>
@@ -879,19 +880,23 @@ const CartPageInternal = () => {
                                 <Navigation size={16} className="mr-2"/> Track
                             </Button>
                         </motion.div>
-                    )}
-                    {cart.length > 0 ? (
-                        <Button onClick={handleConfirmOrder} className="flex-grow bg-primary hover:bg-primary/90 text-primary-foreground h-12 text-lg font-bold w-full" disabled={cart.length === 0 || isCheckoutFlow}>
-                             {isCheckoutFlow ? <Loader2 className="animate-spin mr-2"/> : null}
-                            {deliveryType === 'dine-in' ? (cartData?.dineInModel === 'post-paid' ? 'Place Order' : 'Add to Tab') : 'Proceed to Checkout'}
-                        </Button>
-                    ) : deliveryType === 'dine-in' ? (
-                         <Button onClick={() => router.push(`/checkout?restaurantId=${restaurantId}&phone=${phone || ''}&token=${token || ''}&table=${tableId}&tabId=${tabId}`)} className="flex-grow bg-green-600 hover:bg-green-700 text-white h-12 text-lg font-bold w-full">
-                            <Wallet className="mr-2"/> View Bill & Pay
-                        </Button>
-                    ) : null }
+                    </div>
+                )}
+                <div className="bg-background/80 backdrop-blur-lg border-t border-border">
+                    <div className="container mx-auto p-4">
+                        {cart.length > 0 ? (
+                            <Button onClick={handleConfirmOrder} className="flex-grow bg-primary hover:bg-primary/90 text-primary-foreground h-12 text-lg font-bold w-full" disabled={cart.length === 0 || isCheckoutFlow}>
+                                 {isCheckoutFlow ? <Loader2 className="animate-spin mr-2"/> : null}
+                                {deliveryType === 'dine-in' ? (cartData?.dineInModel === 'post-paid' ? 'Place Order' : 'Add to Tab') : 'Proceed to Checkout'}
+                            </Button>
+                        ) : deliveryType === 'dine-in' ? (
+                             <Button onClick={() => router.push(`/checkout?restaurantId=${restaurantId}&phone=${phone || ''}&token=${token || ''}&table=${tableId}&tabId=${tabId}`)} className="flex-grow bg-green-600 hover:bg-green-700 text-white h-12 text-lg font-bold w-full">
+                                <Wallet className="mr-2"/> View Bill & Pay
+                            </Button>
+                        ) : null }
+                    </div>
                 </div>
-            </footer>
+            </div>
         </div>
         </>
     );
