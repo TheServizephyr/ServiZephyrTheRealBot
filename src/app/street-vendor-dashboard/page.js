@@ -14,7 +14,7 @@ import InfoDialog from '@/components/InfoDialog';
 
 
 const OrderCard = ({ order, onMarkReady, onCancel, onMarkCollected }) => {
-    const token = order.id.slice(-4).toUpperCase();
+    const token = order.dineInToken; // Use dineInToken for display
     const isPending = order.status === 'pending';
     const isReady = order.status === 'Ready';
 
@@ -38,7 +38,7 @@ const OrderCard = ({ order, onMarkReady, onCancel, onMarkCollected }) => {
         >
             <div>
                 <div className="flex justify-between items-start">
-                    <p className="text-4xl font-bold text-foreground">#{token}</p>
+                    <p className="text-4xl font-bold text-foreground">{token}</p>
                     <div className={`px-2 py-1 text-xs font-semibold rounded-full ${statusClass} bg-opacity-20`}>{order.status}</div>
                 </div>
                  <div className="flex justify-between items-center mt-2 border-b border-dashed border-border/50 pb-3 mb-3">

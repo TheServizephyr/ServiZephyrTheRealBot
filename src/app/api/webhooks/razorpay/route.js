@@ -288,6 +288,23 @@ export async function POST(req) {
                 });
             }
 
+            // --- START: Token Generation for Street Vendor ---
+            let dineInToken = null;
+            if (isStreetVendorOrder) {
+                const vendorRef = firestore.collection('street_vendors').doc(restaurantId);
+                const vendorDoc = await vendorRef.get();
+                if (vendorDoc.exists) {
+                    const vendorData = vendorDoc.data();
+                    const lastToken = vendorData.lastOrderToken || 0;
+                    const newTokenNumber = lastToken + 1;
+                    const randomChar = String.fromCharCode(65 + Math.floor(Math.random() * 26)) + String.fromCharCode(65 + Math.floor(Math.random() * 26));
+                    dineInToken = `#${String(newTokenNumber).padStart(3, '0')}-${randomChar}`;
+                    batch.update(vendorRef, { lastOrderToken: newTokenNumber });
+                    console.log(`[Webhook RZP] Generated Street Vendor Token: ${dineInToken}`);
+                }
+            }
+            // --- END: Token Generation ---
+
             batch.set(newOrderRef, {
                 customerName: customerDetails.name,
                 customerId: userId,
@@ -300,9 +317,11 @@ export async function POST(req) {
                 tipAmount: billDetails.tipAmount || 0,
                 tableId: billDetails.tableId || null,
                 dineInTabId: finalDineInTabId || null,
+                dineInToken: dineInToken, // <-- Save the new token here
                 items: orderItems,
                 subtotal: billDetails.subtotal, 
-                coupon: billDetails.coupon || null,                   loyaltyDiscount: billDetails.loyaltyDiscount || 0, 
+                coupon: billDetails.coupon || null,
+                loyaltyDiscount: billDetails.loyaltyDiscount || 0, 
                 discount: (billDetails.coupon?.discount || 0) + (billDetails.loyaltyDiscount || 0), 
                 cgst: billDetails.cgst, 
                 sgst: billDetails.sgst, 
