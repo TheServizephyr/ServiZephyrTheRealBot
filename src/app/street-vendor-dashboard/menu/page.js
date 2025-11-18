@@ -6,14 +6,13 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { ArrowLeft, PlusCircle, Trash2, IndianRupee, Loader2, Camera, FileJson, Edit, Upload, X, Plus, Image as ImageIcon, Utensils } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import Link from 'next/link';
-import { useUser, useCollection, useMemoFirebase } from '@/firebase';
-import { db } from '@/lib/firebase';
-import { collection, query, where, onSnapshot, doc, updateDoc, deleteDoc, setDoc, getDocs } from 'firebase/firestore';
+import { useUser } from '@/firebase';
+import { db, auth } from '@/lib/firebase';
+import { collection, query, where, onSnapshot, doc, updateDoc, deleteDoc, getDocs } from 'firebase/firestore';
 import { FirestorePermissionError } from '@/firebase/errors';
 import { errorEmitter } from '@/firebase/error-emitter';
 import InfoDialog from '@/components/InfoDialog';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose } from "@/components/ui/dialog";
-import { Progress } from '@/components/ui/progress';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import Image from 'next/image';
@@ -54,14 +53,14 @@ const MenuItem = ({ item, onEdit, onDelete, onToggle }) => (
             )}
         </div>
         <div>
-            <p className={`font-bold text-lg ${!item.available ? 'text-muted-foreground line-through' : 'text-foreground'}`}>{item.name}</p>
+            <p className={`font-bold text-lg ${!item.isAvailable ? 'text-muted-foreground line-through' : 'text-foreground'}`}>{item.name}</p>
             <p className="text-primary font-semibold">₹{item.portions?.[0]?.price || 'N/A'}</p>
         </div>
     </div>
     <div className="flex items-center gap-4">
       <div className="flex items-center gap-2">
-        <Switch id={`switch-${item.id}`} checked={item.available} onCheckedChange={(checked) => onToggle(item.id, checked)} />
-         <Label htmlFor={`switch-${item.id}`} className="text-sm font-medium text-muted-foreground">{item.available ? 'Available' : 'Out of Stock'}</Label>
+        <Switch id={`switch-${item.id}`} checked={item.isAvailable} onCheckedChange={(checked) => onToggle(item.id, checked)} />
+         <Label htmlFor={`switch-${item.id}`} className="text-sm font-medium text-muted-foreground">{item.isAvailable ? 'Available' : 'Out of Stock'}</Label>
       </div>
       <Button onClick={() => onEdit(item)} size="icon" variant="ghost" className="text-muted-foreground hover:bg-muted hover:text-foreground">
         <Edit />
@@ -514,7 +513,7 @@ export default function StreetVendorMenuPage() {
     const [customCategories, setCustomCategories] = useState([]);
     const [itemToDelete, setItemToDelete] = useState(null);
 
-    const vendorQuery = useMemoFirebase(() => {
+    const vendorQuery = useMemo(() => {
         if (!user) return null;
         return query(collection(db, 'street_vendors'), where('ownerId', '==', user.uid));
     }, [user]);
@@ -567,9 +566,9 @@ export default function StreetVendorMenuPage() {
         if (!vendorId) return;
         const itemRef = doc(db, 'street_vendors', vendorId, 'menu', itemId);
         try {
-            await updateDoc(itemRef, { available: newAvailability });
+            await updateDoc(itemRef, { isAvailable: newAvailability });
         } catch(error) {
-            errorEmitter.emit('permission-error', new FirestorePermissionError({ path: itemRef.path, operation: 'update', requestResourceData: { available: newAvailability } }));
+            errorEmitter.emit('permission-error', new FirestorePermissionError({ path: itemRef.path, operation: 'update', requestResourceData: { isAvailable: newAvailability } }));
             setInfoDialog({ isOpen: true, title: 'Error', message: 'Could not update item status: ' + error.message });
         };
     };
@@ -722,14 +721,11 @@ export default function StreetVendorMenuPage() {
             </Link>
             <h1 className="text-2xl font-bold font-headline">My Menu</h1>
             <div className="flex gap-2">
-                <Button onClick={() => setIsAiModalOpen(true)} variant="ghost" className="text-primary hover:text-primary">
-                    <Camera size={28} />
+                <Button onClick={() => setIsAiModalOpen(true)} variant="outline" className="text-primary hover:text-primary">
+                     <Camera size={20} className="mr-2"/> AI Scan
                 </Button>
-                <Button onClick={() => setIsBulkModalOpen(true)} variant="ghost" className="text-primary hover:text-primary">
-                    <FileJson size={28} />
-                </Button>
-                <Button onClick={() => { setEditingItem(null); setIsAddItemModalOpen(true); }} variant="ghost" className="text-primary hover:text-primary">
-                    <PlusCircle size={28} />
+                <Button onClick={() => { setEditingItem(null); setIsAddItemModalOpen(true); }} className="bg-primary hover:bg-primary/90 text-primary-foreground">
+                    <PlusCircle size={20} />
                 </Button>
             </div>
         </header>

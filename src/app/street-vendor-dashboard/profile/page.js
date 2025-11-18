@@ -4,7 +4,7 @@
 import React, { useState, useEffect, Suspense } from 'react';
 import { motion } from 'framer-motion';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { User, Mail, Phone, Edit, Save, XCircle, Bell, Trash2, KeyRound, Eye, EyeOff, FileText, Bot, Image as ImageIcon, Upload, X, IndianRupee, MapPin, Wallet, ChevronsUpDown, Check, ShoppingBag, Store, ConciergeBell, Loader2, ArrowLeft } from 'lucide-react';
+import { User, Mail, Phone, Edit, Save, XCircle, Bell, Trash2, KeyRound, Eye, EyeOff, FileText, Bot, Image as ImageIcon, Upload, X, IndianRupee, MapPin, Wallet, ChevronsUpDown, Check, ShoppingBag, Store, ConciergeBell, Loader2, ArrowLeft, QrCode, Banknote } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
@@ -15,6 +15,7 @@ import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover
 import { Command, CommandInput, CommandEmpty, CommandGroup, CommandItem } from '@/components/ui/command';
 import { cn } from '@/lib/utils';
 import InfoDialog from '@/components/InfoDialog';
+import Link from 'next/link';
 
 export const dynamic = 'force-dynamic';
 
@@ -77,20 +78,21 @@ const CountrySelect = ({ value, onSelect, disabled }) => {
 };
 
 
-const SectionCard = ({ title, description, children, footer }) => (
+const SectionCard = ({ title, description, children, footer, action }) => (
     <motion.div 
         className="bg-card border border-border rounded-xl"
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.5 }}
     >
-        <div className="p-6 border-b border-border">
-            <h2 className="text-xl font-bold text-foreground">{title}</h2>
-            {description && <p className="text-sm text-muted-foreground mt-1">{description}</p>}
+        <div className="p-6 border-b border-border flex justify-between items-start">
+            <div>
+                <h2 className="text-xl font-bold text-foreground">{title}</h2>
+                {description && <p className="text-sm text-muted-foreground mt-1">{description}</p>}
+            </div>
+            {action && <div>{action}</div>}
         </div>
-        <div className="p-6">
-            {children}
-        </div>
+        {children && <div className="p-6">{children}</div>}
         {footer && <div className="p-6 bg-muted/30 border-t border-border rounded-b-xl">{footer}</div>}
     </motion.div>
 );
@@ -318,18 +320,14 @@ function VendorProfilePageContent() {
             <SectionCard 
                 title="Your Details"
                 description="Manage your personal and business details."
-                footer={
-                    <div className="flex justify-end gap-3">
-                        {isEditingProfile ? (
-                            <>
-                                <Button variant="secondary" onClick={() => handleEditToggle('profile')}><XCircle className="mr-2 h-4 w-4"/> Cancel</Button>
-                                <Button onClick={() => handleSave('profile')} className="bg-primary hover:bg-primary/90 text-primary-foreground"><Save className="mr-2 h-4 w-4"/> Save</Button>
-                            </>
-                        ) : (
-                            <Button onClick={() => handleEditToggle('profile')}><Edit className="mr-2 h-4 w-4"/> Edit</Button>
-                        )}
+                action={isEditingProfile ? (
+                    <div className="flex gap-2">
+                         <Button variant="ghost" onClick={() => handleEditToggle('profile')}><XCircle className="mr-2 h-4 w-4"/> Cancel</Button>
+                         <Button onClick={() => handleSave('profile')} className="bg-primary hover:bg-primary/90 text-primary-foreground"><Save className="mr-2 h-4 w-4"/> Save</Button>
                     </div>
-                }
+                ) : (
+                    <Button onClick={() => handleEditToggle('profile')}><Edit className="mr-2 h-4 w-4"/> Edit</Button>
+                )}
             >
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-8 items-start">
                     <div className="space-y-6">
@@ -358,18 +356,14 @@ function VendorProfilePageContent() {
             <SectionCard
                 title="Media & Branding"
                 description="Upload your stall's logo and a banner for your order page."
-                footer={
-                     <div className="flex justify-end gap-3">
-                        {isEditingMedia ? (
-                            <>
-                                <Button variant="secondary" onClick={() => handleEditToggle('media')}><XCircle className="mr-2 h-4 w-4"/> Cancel</Button>
-                                <Button onClick={() => handleSave('media')} className="bg-primary hover:bg-primary/90 text-primary-foreground"><Save className="mr-2 h-4 w-4"/> Save</Button>
-                            </>
-                        ) : (
-                            <Button onClick={() => handleEditToggle('media')}><Edit className="mr-2 h-4 w-4"/> Edit</Button>
-                        )}
+                action={isEditingMedia ? (
+                    <div className="flex gap-2">
+                        <Button variant="ghost" onClick={() => handleEditToggle('media')}><XCircle className="mr-2 h-4 w-4"/> Cancel</Button>
+                        <Button onClick={() => handleSave('media')} className="bg-primary hover:bg-primary/90 text-primary-foreground"><Save className="mr-2 h-4 w-4"/> Save</Button>
                     </div>
-                }
+                ) : (
+                    <Button onClick={() => handleEditToggle('media')}><Edit className="mr-2 h-4 w-4"/> Edit</Button>
+                )}
             >
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                     <ImageUpload label="Logo" currentImage={editedUser.logoUrl} onFileSelect={(url) => setEditedUser({...editedUser, logoUrl: url})} isEditing={isEditingMedia} />
@@ -380,18 +374,14 @@ function VendorProfilePageContent() {
              <SectionCard
                 title="Operational Settings"
                 description="Control your stall's availability and payment methods."
-                footer={
-                    <div className="flex justify-end gap-3">
-                        {isEditingPayment ? (
-                            <>
-                                <Button variant="secondary" onClick={() => handleEditToggle('payment')}><XCircle className="mr-2 h-4 w-4"/> Cancel</Button>
-                                <Button onClick={() => handleSave('payment')} className="bg-primary hover:bg-primary/90 text-primary-foreground"><Save className="mr-2 h-4 w-4"/> Save</Button>
-                            </>
-                        ) : (
-                            <Button onClick={() => handleEditToggle('payment')}><Edit className="mr-2 h-4 w-4"/> Edit</Button>
-                        )}
+                action={isEditingPayment ? (
+                    <div className="flex gap-2">
+                        <Button variant="ghost" onClick={() => handleEditToggle('payment')}><XCircle className="mr-2 h-4 w-4"/> Cancel</Button>
+                        <Button onClick={() => handleSave('payment')} className="bg-primary hover:bg-primary/90 text-primary-foreground"><Save className="mr-2 h-4 w-4"/> Save</Button>
                     </div>
-                }
+                ) : (
+                    <Button onClick={() => handleEditToggle('payment')}><Edit className="mr-2 h-4 w-4"/> Edit</Button>
+                )}
             >
                  <div className="space-y-6">
                     <div className="flex items-center justify-between p-4 bg-muted/50 rounded-lg">
@@ -414,6 +404,20 @@ function VendorProfilePageContent() {
                             </div>
                         </div>
                     </div>
+                </div>
+            </SectionCard>
+            
+             <SectionCard
+                title="Tools & Links"
+                description="Access important tools for your business."
+            >
+                <div className="grid md:grid-cols-2 gap-4">
+                    <Link href="/street-vendor-dashboard/qr" passHref>
+                        <Button variant="outline" className="w-full h-16 text-lg"><QrCode className="mr-2"/> My QR Code</Button>
+                    </Link>
+                    <Link href="/street-vendor-dashboard/payout-settings" passHref>
+                        <Button variant="outline" className="w-full h-16 text-lg"><Banknote className="mr-2"/> Payout Settings</Button>
+                    </Link>
                 </div>
             </SectionCard>
 

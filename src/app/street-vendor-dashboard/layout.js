@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { ClipboardList, BarChart3, User, Bot } from 'lucide-react';
+import { ClipboardList, BarChart3, User, Bot, Salad } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Suspense } from 'react';
 import { Loader2 } from 'lucide-react';
@@ -35,6 +35,12 @@ const StreetVendorLayout = ({ children }) => {
                 <Image src="/logo.png" alt="ServiZephyr Logo" width={140} height={35} className="h-9 w-auto" priority />
             </Link>
             <div className="flex items-center gap-2">
+                <Link href="/street-vendor-dashboard/menu" passHref>
+                    <Button variant="outline" className="flex items-center gap-2">
+                        <Salad size={16}/>
+                        <span className="hidden sm:inline">My Menu</span>
+                    </Button>
+                </Link>
                 <div className="flex items-center gap-2 px-3 py-1.5 text-sm font-semibold rounded-full bg-primary/10 text-primary border border-primary/20">
                     <Bot size={16} />
                     <span>Vendor Mode</span>
