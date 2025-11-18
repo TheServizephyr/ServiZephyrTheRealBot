@@ -15,6 +15,7 @@ import dynamic from 'next/dynamic';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { format } from 'date-fns';
 import { useSearchParams } from 'next/navigation';
+import { handleApiCall } from '@/lib/api'; // Assuming a helper library exists
 
 const QrScanner = dynamic(() => import('@/components/QrScanner'), { 
     ssr: false,
@@ -205,9 +206,10 @@ export default function StreetVendorDashboard() {
 
     const confirmCollection = async () => {
         if (!scannedOrder) return;
-        await handleUpdateStatus(scannedOrder.id, 'delivered');
+        const tempOrder = { ...scannedOrder };
         setScannedOrder(null);
-        setInfoDialog({isOpen: true, title: 'Success', message: `Order for ${scannedOrder.customerName} marked as collected!`});
+        await handleUpdateStatus(tempOrder.id, 'delivered');
+        setInfoDialog({isOpen: true, title: 'Success', message: `Order for ${tempOrder.customerName} marked as collected!`});
     };
 
     useEffect(() => {
