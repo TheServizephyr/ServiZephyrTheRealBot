@@ -63,10 +63,10 @@ export async function POST(req) {
                     const orderData = orderDoc.data();
                     
                     const newItems = [...orderData.items, ...items];
-                    const newSubtotal = orderData.subtotal + subtotal;
-                    const newCgst = orderData.cgst + cgst;
-                    const newSgst = orderData.sgst + sgst;
-                    const newGrandTotal = orderData.totalAmount + grandTotal;
+                    const newSubtotal = (orderData.subtotal || 0) + (subtotal || 0);
+                    const newCgst = (orderData.cgst || 0) + (cgst || 0);
+                    const newSgst = (orderData.sgst || 0) + (sgst || 0);
+                    const newGrandTotal = (orderData.totalAmount || 0) + (grandTotal || 0);
 
                     const updatePayload = {
                         items: newItems,
@@ -100,10 +100,13 @@ export async function POST(req) {
         const isStreetVendorOrder = deliveryType === 'street-vendor-pre-order';
         console.log(`[API /order/create] Is Street Vendor Order? ${isStreetVendorOrder}`);
 
-        if (deliveryType !== 'dine-in' && !name) {
+        // --- START FIX: Skip name validation for add-on orders ---
+        if (!existingOrderId && deliveryType !== 'dine-in' && !name) {
             console.error("[API /order/create] Validation Error: Name is required for non-dine-in orders.");
             return NextResponse.json({ message: 'Name is required.' }, { status: 400 });
         }
+        // --- END FIX ---
+
         if (!restaurantId || !items || grandTotal === undefined || subtotal === undefined) {
              const missingFields = `Missing fields: restaurantId=${!!restaurantId}, items=${!!items}, grandTotal=${grandTotal !== undefined}, subtotal=${subtotal !== undefined}`;
              console.error(`[API /order/create] Validation Error: Missing required fields. Details: ${missingFields}`);

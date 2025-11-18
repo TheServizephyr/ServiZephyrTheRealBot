@@ -166,10 +166,12 @@ const CheckoutPageInternal = () => {
                 }
             }
             
+            // --- START FIX: Auto-confirm details for add-on orders ---
             if (isLoggedInUser || activeOrderId) {
                 console.log("[Checkout Page] User is logged in or adding on, auto-confirming details.");
                 setDetailsConfirmed(true);
             }
+            // --- END FIX ---
 
             const phoneToLookup = phoneFromUrl || user?.phoneNumber || '';
             setOrderPhone(phoneToLookup);
@@ -371,7 +373,10 @@ const CheckoutPageInternal = () => {
         }
     };
     
+    // --- START FIX: Modify validation to ignore name for add-on orders ---
     const validateOrderDetails = () => {
+        if (activeOrderId) return true; // Skip all validations for add-on orders
+
         if (deliveryType === 'delivery' && !selectedAddress) {
             setError("Please select or add a delivery address.");
             return false;
@@ -383,6 +388,7 @@ const CheckoutPageInternal = () => {
         setError('');
         return true;
     }
+    // --- END FIX ---
 
     const handleConfirmDetails = () => {
         if (validateOrderDetails()) {
@@ -551,9 +557,9 @@ const CheckoutPageInternal = () => {
                     <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5 }}>
                         {error && <p className="text-destructive text-sm bg-destructive/10 p-2 rounded-md mb-4">{error}</p>}
                         
-                        {!detailsConfirmed && !activeOrderId && renderDetailsForm()}
+                        {!detailsConfirmed && renderDetailsForm()}
 
-                        {(detailsConfirmed || activeOrderId) && (
+                        {detailsConfirmed && (
                         <>
                             <div className="bg-card p-4 rounded-lg border border-border mb-6">
                                 <div className="flex justify-between items-center text-lg font-bold">
