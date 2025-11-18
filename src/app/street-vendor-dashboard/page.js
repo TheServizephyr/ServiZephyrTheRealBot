@@ -1,21 +1,26 @@
 
 'use client';
 
-import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ClipboardList, QrCode, CookingPot, PackageCheck, Check, X, Loader2, User, Phone, History, Wallet, IndianRupee } from 'lucide-react';
+import { ClipboardList, QrCode, CookingPot, PackageCheck, Check, X, Loader2, User, Phone, History, Wallet, IndianRupee, Calendar as CalendarIcon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import Link from 'next/link';
 import { useUser } from '@/firebase';
 import { db, auth } from '@/lib/firebase';
-import { collection, query, where, onSnapshot, doc, getDoc } from 'firebase/firestore';
+import { collection, query, where, onSnapshot, doc, Timestamp } from 'firebase/firestore';
 import { FirestorePermissionError } from '@/firebase/errors';
 import { errorEmitter } from '@/firebase/error-emitter';
 import InfoDialog from '@/components/InfoDialog';
 import dynamic from 'next/dynamic';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
-import { format } from 'date-fns';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
+import { format, startOfDay, endOfDay, subDays } from 'date-fns';
 import { useSearchParams } from 'next/navigation';
+import { cn } from '@/lib/utils';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Calendar } from "@/components/ui/calendar";
+
 
 const QrScanner = dynamic(() => import('@/components/QrScanner'), { 
     ssr: false,
@@ -23,9 +28,14 @@ const QrScanner = dynamic(() => import('@/components/QrScanner'), {
 });
 
 const formatCurrency = (value) => `₹${Number(value || 0).toLocaleString('en-IN', { maximumFractionDigits: 2 })}`;
+const formatTime = (timestamp) => {
+    if (!timestamp) return '';
+    const date = timestamp.toDate ? timestamp.toDate() : new Date(timestamp);
+    return format(date, 'p'); // e.g., 12:30 PM
+};
 
 const OrderCard = ({ order, onMarkReady, onCancel, onMarkCollected }) => {
-    const token = order.dineInToken; // Use dineInToken for display
+    const token = order.dineInToken;
     const isPending = order.status === 'pending';
     const isReady = order.status === 'Ready';
 
@@ -34,6 +44,9 @@ const OrderCard = ({ order, onMarkReady, onCancel, onMarkCollected }) => {
     if (isReady) {
         cardClass = 'border-green-500 bg-green-500/10';
         statusClass = 'text-green-400';
+    } else if (order.status === 'delivered' || order.status === 'picked_up') {
+        cardClass = 'border-blue-500 bg-blue-500/10';
+        statusClass = 'text-blue-400';
     }
     
     const isPaidOnline = order.paymentDetails?.method === 'razorpay';
@@ -50,7 +63,10 @@ const OrderCard = ({ order, onMarkReady, onCancel, onMarkCollected }) => {
             <div>
                 <div className="flex justify-between items-start">
                     <p className="text-4xl font-bold text-foreground">{token}</p>
-                    <div className={`px-2 py-1 text-xs font-semibold rounded-full ${statusClass} bg-opacity-20`}>{order.status}</div>
+                    <div className="text-right">
+                        <div className={`px-2 py-1 text-xs font-semibold rounded-full ${statusClass} bg-opacity-20 capitalize`}>{order.status}</div>
+                        <p className="text-xs text-muted-foreground mt-1">{formatTime(order.orderDate)}</p>
+                    </div>
                 </div>
                  <div className="flex justify-between items-center mt-2 border-b border-dashed border-border/50 pb-3 mb-3">
                     <p className="text-3xl font-bold text-primary">₹{order.totalAmount.toFixed(2)}</p>
@@ -170,6 +186,7 @@ export default function StreetVendorDashboard() {
     const [isScannerOpen, setScannerOpen] = useState(false);
     const [scannedOrder, setScannedOrder] = useState(null);
     const searchParams = useSearchParams();
+    const [selectedDate, setSelectedDate] = useState(new Date());
 
     const handleApiCall = useCallback(async (endpoint, method = 'PATCH', body = {}) => {
         if (!user) throw new Error('Authentication Error');
@@ -259,30 +276,36 @@ export default function StreetVendorDashboard() {
 
     useEffect(() => {
         if (!vendorId) return;
+        
+        setLoading(true);
+
+        const start = startOfDay(selectedDate);
+        const end = endOfDay(selectedDate);
 
         const q = query(
             collection(db, "orders"), 
             where("restaurantId", "==", vendorId),
-            where("status", "in", ["pending", "Ready"])
+            where("orderDate", ">=", Timestamp.fromDate(start)),
+            where("orderDate", "<=", Timestamp.fromDate(end))
         );
         
         const unsubscribe = onSnapshot(q, (querySnapshot) => {
-            const liveOrders = [];
+            const fetchedOrders = [];
             querySnapshot.forEach((doc) => {
-                liveOrders.push({ id: doc.id, ...doc.data() });
+                fetchedOrders.push({ id: doc.id, ...doc.data() });
             });
-            liveOrders.sort((a,b) => (b.orderDate?.seconds || 0) - (a.orderDate?.seconds || 0));
-            setOrders(liveOrders);
+            fetchedOrders.sort((a,b) => (b.orderDate?.seconds || 0) - (a.orderDate?.seconds || 0));
+            setOrders(fetchedOrders);
             setLoading(false);
         }, (err) => {
-             const contextualError = new FirestorePermissionError({ path: `orders`, operation: 'list' });
+            const contextualError = new FirestorePermissionError({ path: `orders`, operation: 'list' });
             errorEmitter.emit('permission-error', contextualError);
             console.error("Firestore Error:", err);
             setLoading(false);
         });
 
         return () => unsubscribe();
-    }, [vendorId]);
+    }, [vendorId, selectedDate]);
     
     const handleUpdateStatus = async (orderId, newStatus) => {
         try {
@@ -301,74 +324,120 @@ export default function StreetVendorDashboard() {
     
     const pendingOrders = useMemo(() => orders.filter(o => o.status === 'pending'), [orders]);
     const readyOrders = useMemo(() => orders.filter(o => o.status === 'Ready'), [orders]);
+    const collectedOrders = useMemo(() => orders.filter(o => o.status === 'delivered' || o.status === 'picked_up'), [orders]);
 
-    return (
-        <div className="min-h-screen bg-background text-foreground font-body p-4">
-             <InfoDialog 
-                isOpen={infoDialog.isOpen} 
-                onClose={() => setInfoDialog({isOpen: false, title: '', message: ''})} 
-                title={infoDialog.title} 
-                message={infoDialog.message}
-            />
-            {isScannerOpen && <QrScanner onClose={() => setScannerOpen(false)} onScanSuccess={handleScanSuccess} />}
-            {scannedOrder && <ScannedOrderModal isOpen={!!scannedOrder} onClose={() => setScannedOrder(null)} order={scannedOrder} onConfirm={confirmCollection} />}
+  return (
+    <div className="min-h-screen bg-background text-foreground font-body p-4">
+        <InfoDialog 
+            isOpen={infoDialog.isOpen} 
+            onClose={() => setInfoDialog({isOpen: false, title: '', message: ''})} 
+            title={infoDialog.title} 
+            message={infoDialog.message}
+        />
+        {isScannerOpen && <QrScanner onClose={() => setScannerOpen(false)} onScanSuccess={handleScanSuccess} />}
+        {scannedOrder && <ScannedOrderModal isOpen={!!scannedOrder} onClose={() => setScannedOrder(null)} order={scannedOrder} onConfirm={confirmCollection} />}
 
-            <header className="flex justify-between items-center mb-6">
-                 <Link href="/street-vendor-dashboard/qr" passHref>
+        <header className="flex justify-between items-center mb-6">
+             <Link href="/street-vendor-dashboard/qr" passHref>
+                <Button variant="ghost" className="text-muted-foreground hover:text-foreground">
+                    <QrCode size={28} />
+                </Button>
+             </Link>
+             <h1 className="text-2xl font-bold font-headline">Live Orders</h1>
+             <div className="flex gap-2">
+                 <Link href="/street-vendor-dashboard/payout-settings" passHref>
                     <Button variant="ghost" className="text-muted-foreground hover:text-foreground">
-                        <QrCode size={28} />
+                        <Wallet size={28} />
                     </Button>
                  </Link>
-                 <h1 className="text-2xl font-bold font-headline">Live Orders</h1>
-                 <div className="flex gap-2">
-                     <Link href="/street-vendor-dashboard/payout-settings" passHref>
-                        <Button variant="ghost" className="text-muted-foreground hover:text-foreground">
-                            <Wallet size={28} />
-                        </Button>
-                     </Link>
-                     <Link href="/street-vendor-dashboard/menu" passHref>
-                        <Button variant="ghost" className="text-muted-foreground hover:text-foreground">
-                            <ClipboardList size={28} />
-                        </Button>
-                     </Link>
+                 <Link href="/street-vendor-dashboard/menu" passHref>
+                    <Button variant="ghost" className="text-muted-foreground hover:text-foreground">
+                        <ClipboardList size={28} />
+                    </Button>
+                 </Link>
+             </div>
+        </header>
+        
+        <div className="mb-6">
+            <Button className="w-full h-16 text-lg bg-primary hover:bg-primary/80" onClick={() => setScannerOpen(true)}>
+                <QrCode className="mr-3"/> Scan QR to Collect
+            </Button>
+        </div>
+
+        <div className="mb-6 flex flex-wrap items-center justify-center gap-2">
+            <Button variant={format(selectedDate, 'yyyy-MM-dd') === format(new Date(), 'yyyy-MM-dd') ? 'default' : 'outline'} onClick={() => setSelectedDate(new Date())}>Today</Button>
+            <Button variant={format(selectedDate, 'yyyy-MM-dd') === format(subDays(new Date(), 1), 'yyyy-MM-dd') ? 'default' : 'outline'} onClick={() => setSelectedDate(subDays(new Date(), 1))}>Yesterday</Button>
+             <Popover>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant={"outline"}
+                    className={cn(
+                      "w-[240px] justify-start text-left font-normal",
+                      !selectedDate && "text-muted-foreground"
+                    )}
+                  >
+                    <CalendarIcon className="mr-2 h-4 w-4" />
+                    {selectedDate ? format(selectedDate, "PPP") : <span>Pick a date</span>}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0">
+                  <Calendar
+                    mode="single"
+                    selected={selectedDate}
+                    onSelect={setSelectedDate}
+                    initialFocus
+                    disabled={(date) => date > new Date() || date < new Date("2024-01-01")}
+                  />
+                </PopoverContent>
+              </Popover>
+        </div>
+        
+        <main>
+            {(loading || isUserLoading || !vendorId) && !error ? (
+                 <div className="text-center py-20 text-muted-foreground">
+                    <Loader2 className="mx-auto animate-spin" size={48} />
+                    <p className="mt-4">Loading your dashboard...</p>
                  </div>
-            </header>
-            
-            <div className="mb-6">
-                <Button className="w-full h-16 text-lg bg-primary hover:bg-primary/80" onClick={() => setScannerOpen(true)}>
-                    <QrCode className="mr-3"/> Scan QR to Collect
-                </Button>
-            </div>
-            
-            <main>
-                {loading || isUserLoading || !vendorId && !error ? (
-                    <div className="text-center py-20 text-muted-foreground">
-                        <Loader2 className="mx-auto animate-spin" size={48} />
-                        <p className="mt-4">Loading your dashboard...</p>
-                    </div>
-                ) : (
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
+            ) : (
+                <Tabs defaultValue="new_orders" className="w-full">
+                    <TabsList className="grid w-full grid-cols-3">
+                        <TabsTrigger value="new_orders">New ({pendingOrders.length})</TabsTrigger>
+                        <TabsTrigger value="ready">Ready ({readyOrders.length})</TabsTrigger>
+                        <TabsTrigger value="collected">Collected ({collectedOrders.length})</TabsTrigger>
+                    </TabsList>
+                    <TabsContent value="new_orders" className="mt-4">
                         <div className="space-y-4">
-                            <h2 className="text-xl font-bold text-yellow-400">New Orders ({pendingOrders.length})</h2>
-                            <AnimatePresence>
+                             <AnimatePresence>
                                 {pendingOrders.map(order => (
                                     <OrderCard key={order.id} order={order} onMarkReady={handleMarkReady} onCancel={handleCancelOrder} />
                                 ))}
                             </AnimatePresence>
-                            {pendingOrders.length === 0 && <p className="text-muted-foreground text-center py-10">No new orders waiting.</p>}
+                            {pendingOrders.length === 0 && <p className="text-muted-foreground text-center py-10">No new orders for the selected date.</p>}
                         </div>
+                    </TabsContent>
+                    <TabsContent value="ready" className="mt-4">
                          <div className="space-y-4">
-                            <h2 className="text-xl font-bold text-green-400">Ready for Pickup ({readyOrders.length})</h2>
                             <AnimatePresence>
                                 {readyOrders.map(order => (
                                     <OrderCard key={order.id} order={order} onMarkCollected={handleMarkCollected} />
                                 ))}
                             </AnimatePresence>
-                             {readyOrders.length === 0 && <p className="text-muted-foreground text-center py-10">No orders are ready for pickup.</p>}
+                            {readyOrders.length === 0 && <p className="text-muted-foreground text-center py-10">No orders are ready for pickup.</p>}
                         </div>
-                    </div>
-                )}
-            </main>
-        </div>
-    );
+                    </TabsContent>
+                    <TabsContent value="collected" className="mt-4">
+                         <div className="space-y-4">
+                             <AnimatePresence>
+                                {collectedOrders.map(order => (
+                                    <OrderCard key={order.id} order={order} />
+                                ))}
+                            </AnimatePresence>
+                            {collectedOrders.length === 0 && <p className="text-muted-foreground text-center py-10">No orders have been collected today.</p>}
+                        </div>
+                    </TabsContent>
+                </Tabs>
+            )}
+        </main>
+    </div>
+  );
 }
