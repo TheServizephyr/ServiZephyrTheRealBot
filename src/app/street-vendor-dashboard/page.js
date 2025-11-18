@@ -174,14 +174,17 @@ export default function StreetVendorDashboard() {
     const handleApiCall = useCallback(async (endpoint, method = 'PATCH', body = {}) => {
         if (!user) throw new Error('Authentication Error');
         const idToken = await user.getIdToken();
-        const response = await fetch(endpoint, {
+        const fetchOptions = {
             method,
-            headers: { 
-                'Authorization': `Bearer ${idToken}`,
-                'Content-Type': 'application/json'
-             },
-            body: JSON.stringify(body)
-        });
+            headers: { 'Authorization': `Bearer ${idToken}` }
+        };
+    
+        if (method !== 'GET') {
+            fetchOptions.headers['Content-Type'] = 'application/json';
+            fetchOptions.body = JSON.stringify(body);
+        }
+    
+        const response = await fetch(endpoint, fetchOptions);
         if (!response.ok) {
             const errData = await response.json();
             throw new Error(errData.message || 'An API error occurred.');
