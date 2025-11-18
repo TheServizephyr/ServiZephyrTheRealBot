@@ -1,4 +1,5 @@
 
+
 'use client';
 
 import React, { useState, useEffect, Suspense, useMemo, useCallback, useRef } from 'react';
@@ -656,7 +657,6 @@ const OrderPageInternal = () => {
                     const status = data.order?.status;
                     let completedStatuses = ['delivered', 'picked_up', 'rejected'];
                     
-                    // --- START FIX: Add specific statuses for street vendors ---
                     if (deliveryType === 'street-vendor-pre-order') {
                         if (status === 'delivered' || status === 'picked_up' || status === 'rejected') {
                              localStorage.removeItem('liveOrder');
@@ -672,7 +672,6 @@ const OrderPageInternal = () => {
                              setLiveOrder({ ...parsedOrder, status: status, deliveryType: deliveryType });
                         }
                     }
-                    // --- END FIX ---
                     
                 } else {
                     localStorage.removeItem('liveOrder');
@@ -1113,6 +1112,12 @@ const OrderPageInternal = () => {
             </div>
          )
     }
+
+    const trackingUrl = liveOrder?.deliveryType === 'street-vendor-pre-order'
+        ? `/track/pre-order/${liveOrder.orderId}?token=${liveOrder.trackingToken}`
+        : liveOrder?.deliveryType === 'dine-in'
+        ? `/track/dine-in/${liveOrder.orderId}?token=${liveOrder.trackingToken}`
+        : `/track/${liveOrder?.orderId}?token=${liveOrder?.trackingToken}`;
     
     return (
         <>
@@ -1254,12 +1259,12 @@ const OrderPageInternal = () => {
                         </Popover>
                          {liveOrder && (
                              <Button asChild variant="secondary" className={cn("flex-shrink-0 animate-pulse text-black", liveOrder.status === 'Ready' || liveOrder.status === 'ready_for_pickup' ? 'bg-green-400 hover:bg-green-500' : 'bg-yellow-400 hover:bg-yellow-500')}>
-                                <Link href={`/track/${liveOrder.deliveryType === 'dine-in' ? 'dine-in/' : ''}${liveOrder.orderId}?token=${liveOrder.trackingToken}`}>
+                                <Link href={trackingUrl}>
                                     <Navigation size={16} /> <span className="ml-2 hidden sm:inline">Track Live Order</span>
                                 </Link>
                             </Button>
                         )}
-                        <Button variant="outline" className="flex items-center gap-2 flex-shrink-0 md:hidden" onClick={() => setIsMenuBrowserOpen(true)}>
+                        <Button variant="outline" className="flex items-center gap-2 flex-shrink-0" onClick={() => setIsMenuBrowserOpen(true)}>
                             <BookOpen size={16} /> Menu
                         </Button>
                     </div>
@@ -1289,10 +1294,10 @@ const OrderPageInternal = () => {
                     </main>
                 </div>
 
-                 <AnimatePresence>
+                <AnimatePresence>
                     {totalCartItems > 0 && (
                         <motion.div
-                            className="fixed bottom-4 right-4 z-30"
+                            className="fixed bottom-4 left-1/2 -translate-x-1/2 w-auto z-30"
                             initial={{ scale: 0, opacity: 0 }}
                             animate={{ scale: 1, opacity: 1 }}
                             exit={{ scale: 0, opacity: 0 }}
@@ -1323,4 +1328,5 @@ const OrderPage = () => (
 );
 
 export default OrderPage;
+
 

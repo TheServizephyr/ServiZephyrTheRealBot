@@ -1,4 +1,5 @@
 
+
 'use client';
 
 import React, { useState, useEffect, useMemo, Suspense, useCallback } from 'react';
@@ -207,14 +208,14 @@ const CartPageInternal = () => {
                              localStorage.removeItem('liveOrder');
                              setLiveOrder(null);
                         } else {
-                            setLiveOrder({ ...parsedOrder, status: status });
+                            setLiveOrder({ ...parsedOrder, status: status, deliveryType: deliveryType });
                         }
                     } else {
                          if (completedStatuses.includes(status)) {
                             localStorage.removeItem('liveOrder');
                             setLiveOrder(null);
                         } else {
-                             setLiveOrder({ ...parsedOrder, status: status });
+                             setLiveOrder({ ...parsedOrder, status: status, deliveryType: deliveryType });
                         }
                     }
 
@@ -601,6 +602,12 @@ const CartPageInternal = () => {
     }
 
     if (!cartData || cart.length === 0) {
+        const trackingUrl = liveOrder?.deliveryType === 'street-vendor-pre-order'
+            ? `/track/pre-order/${liveOrder.orderId}?token=${liveOrder.trackingToken}`
+            : liveOrder?.deliveryType === 'dine-in'
+            ? `/track/dine-in/${liveOrder.orderId}?token=${liveOrder.trackingToken}`
+            : `/track/${liveOrder?.orderId}?token=${liveOrder?.trackingToken}`;
+        
         return (
             <div className="min-h-screen bg-background flex flex-col items-center justify-center text-muted-foreground p-4">
                  {liveOrder && (
@@ -610,14 +617,14 @@ const CartPageInternal = () => {
                         animate={{ y: 0 }}
                         transition={{ type: 'spring', stiffness: 100 }}
                     >
-                        <div className={`p-3 rounded-lg text-black flex justify-between items-center ${liveOrder.status === 'Ready' || liveOrder.status === 'ready_for_pickup' ? 'bg-green-400' : 'bg-yellow-400'}`}>
+                        <div className={cn("p-3 rounded-lg text-black flex justify-between items-center", liveOrder.status === 'Ready' || liveOrder.status === 'ready_for_pickup' ? 'bg-green-400' : 'bg-yellow-400')}>
                             <div>
                                 <p className="font-bold">Your order is {liveOrder.status}</p>
                                 <p className="text-xs opacity-80">ID: #{liveOrder.orderId.substring(0, 8)}</p>
                             </div>
                             <Button
                                 size="sm"
-                                onClick={() => router.push(`/${liveOrder.deliveryType === 'dine-in' ? 'track/dine-in' : 'track'}/${liveOrder.orderId}?token=${liveOrder.trackingToken}`)}
+                                onClick={() => router.push(trackingUrl)}
                                 className="bg-black text-white"
                             >
                                 <Navigation size={16} className="mr-2"/> Track
@@ -635,6 +642,12 @@ const CartPageInternal = () => {
         );
     }
     
+     const trackingUrl = liveOrder?.deliveryType === 'street-vendor-pre-order'
+        ? `/track/pre-order/${liveOrder.orderId}?token=${liveOrder.trackingToken}`
+        : liveOrder?.deliveryType === 'dine-in'
+        ? `/track/dine-in/${liveOrder.orderId}?token=${liveOrder.trackingToken}`
+        : `/track/${liveOrder?.orderId}?token=${liveOrder?.trackingToken}`;
+
     return (
         <>
         <InfoDialog
@@ -674,7 +687,7 @@ const CartPageInternal = () => {
                     </div>
                       {liveOrder && (
                         <Button asChild variant="secondary" className={cn("flex-shrink-0 animate-pulse text-black", liveOrder.status === 'Ready' || liveOrder.status === 'ready_for_pickup' ? 'bg-green-400 hover:bg-green-500' : 'bg-yellow-400 hover:bg-yellow-500')}>
-                             <a href={`/${liveOrder.deliveryType === 'dine-in' ? 'track/dine-in' : 'track'}/${liveOrder.orderId}?token=${liveOrder.trackingToken}`}>
+                             <a href={trackingUrl}>
                                 <Navigation size={16} /> <span className="ml-2 hidden sm:inline">Track Live Order</span>
                             </a>
                         </Button>
@@ -944,4 +957,5 @@ const CartPage = () => (
 );
 
 export default CartPage;
+
 
