@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { Suspense, useEffect, useState, useCallback } from 'react';
@@ -16,8 +17,6 @@ const OrderPlacedContent = () => {
     const [trackingToken, setTrackingToken] = useState(searchParams.get('token'));
     const [restaurantId, setRestaurantId] = useState(searchParams.get('restaurantId'));
 
-    // This logic fetches the tracking token if it's not in the URL,
-    // which is common after an online payment redirect where the token might be lost.
     useEffect(() => {
         const currentRestaurantId = searchParams.get('restaurantId');
         if (currentRestaurantId) {
@@ -37,7 +36,6 @@ const OrderPlacedContent = () => {
 
             if (!tokenInUrl && orderId) {
                 try {
-                    // Give the backend a moment to process the webhook and generate the token
                     await new Promise(resolve => setTimeout(resolve, 1500)); 
                     
                     const res = await fetch(`/api/order/status/${orderId}`);
@@ -45,14 +43,11 @@ const OrderPlacedContent = () => {
                         const data = await res.json();
                         if (data.order?.trackingToken) {
                             setTrackingToken(data.order.trackingToken);
-                            // --- START FIX: Save live order data here after fetching ---
                             localStorage.setItem('liveOrder', JSON.stringify({ 
                                 orderId, 
                                 restaurantId: data.restaurant.id, 
                                 trackingToken: data.order.trackingToken, 
-                                status: 'pending' 
                             }));
-                             // --- END FIX ---
                         }
                     }
                 } catch (error) {
@@ -62,14 +57,11 @@ const OrderPlacedContent = () => {
                 if (tokenInUrl !== trackingToken) {
                     setTrackingToken(tokenInUrl);
                 }
-                // --- START FIX: Save live order data when token is in URL ---
                 localStorage.setItem('liveOrder', JSON.stringify({ 
                     orderId, 
                     restaurantId: currentRestaurantId || localStorage.getItem('lastOrderedFrom'), 
                     trackingToken: tokenInUrl, 
-                    status: 'pending' 
                 }));
-                // --- END FIX ---
             }
         };
 

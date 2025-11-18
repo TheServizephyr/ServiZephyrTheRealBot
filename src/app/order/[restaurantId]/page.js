@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useState, useEffect, Suspense, useMemo, useCallback, useRef } from 'react';
@@ -642,22 +643,18 @@ const OrderPageInternal = () => {
 
     const [liveOrder, setLiveOrder] = useState(null);
 
-    // This effect now ONLY runs once on mount to determine session validity.
     useEffect(() => {
         const verifySession = async () => {
-            // Case 1: Dine-in via QR code scan
             if (tableIdFromUrl) {
                 setIsTokenValid(true);
                 return;
             }
             
-            // Case 2: Street Vendor QR Scan (no token, no tableId)
             if (!tableIdFromUrl && !phone && !token) {
                 setIsTokenValid(true);
                 return;
             }
             
-            // Case 3: WhatsApp session with token
             if (phone && token) {
                 try {
                     const res = await fetch('/api/auth/verify-token', {
@@ -672,7 +669,6 @@ const OrderPageInternal = () => {
                 return;
             }
 
-            // Default case: If something is missing, it's an error.
             setTokenError("No valid session information found. Please start a new session.");
         };
 
@@ -680,10 +676,37 @@ const OrderPageInternal = () => {
             verifySession();
         }
 
-        const activeOrder = localStorage.getItem('liveOrder');
-        if (activeOrder) {
-            setLiveOrder(JSON.parse(activeOrder));
-        }
+        const checkLiveOrder = async () => {
+            const activeOrderData = localStorage.getItem('liveOrder');
+            if (activeOrderData) {
+                const parsedOrder = JSON.parse(activeOrderData);
+                try {
+                    const res = await fetch(`/api/order/status/${parsedOrder.orderId}`);
+                    if (res.ok) {
+                        const data = await res.json();
+                        const liveStatus = data.order?.status;
+                        const completedStatuses = ['delivered', 'picked_up', 'rejected'];
+                        if (liveStatus && !completedStatuses.includes(liveStatus)) {
+                            setLiveOrder({ ...parsedOrder, status: liveStatus });
+                        } else {
+                            localStorage.removeItem('liveOrder');
+                            setLiveOrder(null);
+                        }
+                    } else {
+                        localStorage.removeItem('liveOrder');
+                        setLiveOrder(null);
+                    }
+                } catch (error) {
+                    console.error("Failed to fetch live order status", error);
+                    localStorage.removeItem('liveOrder');
+                    setLiveOrder(null);
+                }
+            } else {
+                setLiveOrder(null);
+            }
+        };
+
+        checkLiveOrder();
     }, [restaurantId, tableIdFromUrl, phone, token]);
 
 
@@ -1215,12 +1238,15 @@ const OrderPageInternal = () => {
                             </PopoverContent>
                         </Popover>
                          {liveOrder && (
-                             <Button asChild variant="secondary" className="flex items-center gap-2 flex-shrink-0 animate-pulse bg-yellow-400 text-black hover:bg-yellow-500">
+                             <Button asChild variant="secondary" className={cn("flex-shrink-0 animate-pulse text-black", liveOrder.status === 'Ready' ? 'bg-green-400 hover:bg-green-500' : 'bg-yellow-400 hover:bg-yellow-500')}>
                                 <Link href={`/track/pre-order/${liveOrder.orderId}?token=${liveOrder.trackingToken}`}>
-                                    <Navigation size={16} /> Track Live Order
+                                    <Navigation size={16} /> <span className="ml-2 hidden sm:inline">Track Live Order</span>
                                 </Link>
                             </Button>
                         )}
+                        <Button variant="outline" className="flex items-center gap-2 flex-shrink-0" onClick={() => setIsMenuBrowserOpen(true)}>
+                            <BookOpen size={16} /> Menu
+                        </Button>
                     </div>
                 </div>
 
@@ -1268,18 +1294,6 @@ const OrderPageInternal = () => {
                         )}
                     </AnimatePresence>
                 </div>
-                
-                 <motion.button
-                    onClick={() => setIsMenuBrowserOpen(true)}
-                    className={cn(
-                        "fixed right-6 text-white bg-green-600 rounded-full h-16 w-16 flex items-center justify-center shadow-lg z-20 transition-transform duration-300",
-                        totalCartItems > 0 ? "bottom-28" : "bottom-6"
-                    )}
-                    whileHover={{ scale: 1.1 }}
-                    whileTap={{ scale: 0.9 }}
-                >
-                    <BookOpen size={28} />
-                </motion.button>
             </div>
         </>
     );
