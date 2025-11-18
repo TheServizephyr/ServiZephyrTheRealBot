@@ -1,10 +1,11 @@
+
 'use client';
 
 import React, { useState, useEffect, useMemo, Suspense, useCallback, useRef } from 'react';
 import { motion } from 'framer-motion';
 import { Check, ShoppingBag, Loader2, ArrowLeft, ClipboardList } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { useRouter, useParams } from 'next/navigation';
+import { useRouter, useParams, useSearchParams } from 'next/navigation';
 import { cn } from '@/lib/utils';
 import QRCode from 'qrcode.react';
 import { db } from '@/lib/firebase';
@@ -151,7 +152,7 @@ function PreOrderTrackingContent() {
     return (
         <div className="min-h-screen bg-slate-900 text-white font-sans p-4 flex flex-col">
             <header className="flex justify-between items-center mb-6">
-                <Button variant="ghost" className="text-slate-400 hover:text-white" onClick={() => router.back()}><ArrowLeft size={28} /></Button>
+                <Button variant="ghost" className="text-slate-400 hover:text-white" onClick={() => router.push('/')}><ArrowLeft size={28} /></Button>
                 <h1 className="text-xl font-bold font-headline">{order?.restaurantName || 'Your Order'}</h1>
                 <Button variant="outline" className="bg-slate-800 border-slate-700 hover:bg-slate-700" onClick={handleBackToMenu}>
                     <ClipboardList size={20} className="mr-2"/> Menu

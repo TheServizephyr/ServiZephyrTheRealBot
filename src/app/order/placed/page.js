@@ -32,166 +32,66 @@ const OrderPlacedContent = () => {
             }
         }
         
-        const fetchTokenIfNeeded = async () => {
+        const fetchTokenAndRedirect = async () => {
             const tokenInUrl = searchParams.get('token');
+            let finalToken = tokenInUrl;
 
+            // If token is missing, fetch it.
             if (!tokenInUrl && orderId) {
                 try {
-                    await new Promise(resolve => setTimeout(resolve, 1500)); 
-                    
+                    await new Promise(resolve => setTimeout(resolve, 1500)); // Wait for backend processing
                     const res = await fetch(`/api/order/status/${orderId}`);
                     if (res.ok) {
                         const data = await res.json();
                         if (data.order?.trackingToken) {
-                            setTrackingToken(data.order.trackingToken);
-                            localStorage.setItem('liveOrder', JSON.stringify({ 
-                                orderId, 
-                                restaurantId: data.restaurant.id, 
-                                trackingToken: data.order.trackingToken, 
-                            }));
+                            finalToken = data.order.trackingToken;
+                            setTrackingToken(finalToken);
                         }
                     }
                 } catch (error) {
                     console.error("Error fetching tracking token:", error);
                 }
-            } else if (tokenInUrl) {
-                if (tokenInUrl !== trackingToken) {
-                    setTrackingToken(tokenInUrl);
-                }
+            }
+
+            if(orderId && finalToken) {
                 localStorage.setItem('liveOrder', JSON.stringify({ 
                     orderId, 
                     restaurantId: currentRestaurantId || localStorage.getItem('lastOrderedFrom'), 
-                    trackingToken: tokenInUrl, 
+                    trackingToken: finalToken,
                 }));
+                
+                // *** THE FIX: Replace current history state with the tracking page URL ***
+                const isDineIn = !!whatsappNumber;
+                const isPreOrder = !isDineIn && (currentRestaurantId || localStorage.getItem('lastOrderedFrom'));
+
+                let trackingPath;
+                if (isDineIn) {
+                    trackingPath = `/track/dine-in/${orderId}`;
+                } else if (isPreOrder) {
+                    trackingPath = `/track/pre-order/${orderId}`;
+                } else {
+                    trackingPath = `/track/${orderId}`;
+                }
+                const trackUrl = `${trackingPath}?token=${finalToken}`;
+
+                // Replace the current entry in the history stack
+                router.replace(trackUrl);
             }
         };
 
         if(orderId) {
-            fetchTokenIfNeeded();
+            fetchTokenAndRedirect();
         }
 
-    }, [orderId, searchParams, restaurantId, trackingToken]); 
+    }, [orderId, searchParams, restaurantId, router, whatsappNumber]); 
 
 
-    const handleBackToMenu = () => {
-        const vendorId = searchParams.get('restaurantId') || localStorage.getItem('lastOrderedFrom');
-        if (vendorId) {
-            const backUrl = `/order/${vendorId}`;
-            router.push(backUrl);
-        } else {
-            router.push('/'); 
-        }
-    };
-
-    const handleConfirmOnWhatsApp = () => {
-        if (orderId && whatsappNumber) {
-            const message = `Hi! I've placed a dine-in order. Please confirm my order ID: ${orderId}`;
-            const whatsappUrl = `https://wa.me/${whatsappNumber}?text=${encodeURIComponent(message)}`;
-            window.location.href = whatsappUrl;
-        } else {
-            alert("Could not create WhatsApp confirmation link. Order ID or bot number is missing.");
-        }
-    };
-    
-    const handleTrackOrder = () => {
-        const isDineIn = !!whatsappNumber;
-        const isPreOrder = !isDineIn && restaurantId;
-
-        let trackingPath;
-        if (isDineIn) {
-            trackingPath = 'track/dine-in/';
-        } else if (isPreOrder) {
-            trackingPath = 'track/pre-order/';
-        } else {
-            trackingPath = 'track/';
-        }
-        
-        if (orderId && trackingToken) {
-            const trackUrl = `/${trackingPath}${orderId}?token=${trackingToken}`;
-            router.push(trackUrl);
-        } else {
-            alert("Tracking information is not yet available. This can happen with online payments. Please wait a moment and try again.");
-        }
-    }
-    
-    const isDineIn = !!whatsappNumber;
-
-    if (isDineIn) {
-        return (
-            <div className="min-h-screen bg-background text-foreground flex flex-col items-center justify-center text-center p-4 green-theme">
-                <motion.div
-                    initial={{ scale: 0.5, opacity: 0 }}
-                    animate={{ scale: 1, opacity: 1 }}
-                    transition={{ type: 'spring', stiffness: 260, damping: 20, delay: 0.2 }}
-                >
-                    <CheckCircle className="w-24 h-24 text-primary mx-auto" />
-                </motion.div>
-                <motion.h1 
-                    className="text-4xl font-bold text-foreground mt-6"
-                    initial={{ y: 20, opacity: 0 }}
-                    animate={{ y: 0, opacity: 1 }}
-                    transition={{ delay: 0.4 }}
-                >
-                    One Last Step!
-                </motion.h1>
-                <motion.p 
-                    className="mt-4 text-lg text-muted-foreground max-w-md"
-                    initial={{ y: 20, opacity: 0 }}
-                    animate={{ y: 0, opacity: 1 }}
-                    transition={{ delay: 0.5 }}
-                >
-                    To confirm your order and get your unique token number, please send the pre-filled message on WhatsApp.
-                </motion.p>
-                <motion.div
-                    className="flex flex-col sm:flex-row gap-4 mt-8"
-                    initial={{ y: 20, opacity: 0 }}
-                    animate={{ y: 0, opacity: 1 }}
-                    transition={{ delay: 0.6 }}
-                >
-                    <Button 
-                        onClick={handleConfirmOnWhatsApp}
-                        className="flex items-center gap-2 px-6 py-3 rounded-md bg-primary hover:bg-primary/90 text-primary-foreground text-lg font-medium"
-                    >
-                        <MessageSquare className="w-5 h-5" /> Confirm on WhatsApp
-                    </Button>
-                    <Button 
-                        onClick={handleTrackOrder}
-                        variant="outline"
-                        className="flex items-center gap-2 px-6 py-3 rounded-md text-lg font-medium"
-                        disabled={!trackingToken}
-                    >
-                        { !trackingToken ? <Loader2 className="w-5 h-5 animate-spin"/> : <Navigation className="w-5 h-5" /> }
-                         <span className="ml-2">Track Your Order</span>
-                    </Button>
-                </motion.div>
-            </div>
-        );
-    }
-
+    // This content will be shown briefly before the redirect happens.
     return (
          <div className="min-h-screen bg-background text-foreground flex flex-col items-center justify-center text-center p-4 green-theme">
-            <CheckCircle className="w-24 h-24 text-primary mx-auto" />
-            <h1 className="text-4xl font-bold text-foreground mt-6">Order Placed!</h1>
-            <p className="text-lg text-muted-foreground mt-2">Your order has been sent to the vendor.</p>
-            <p className="text-sm text-muted-foreground max-w-md">Your order ID is <span className="font-bold text-foreground">#{orderId}</span></p>
-            <div className="flex flex-col sm:flex-row gap-4 mt-8">
-                 <Button 
-                    onClick={handleTrackOrder}
-                    className="flex items-center gap-2 px-6 py-3 rounded-md bg-primary hover:bg-primary/90 text-primary-foreground text-lg font-medium"
-                    disabled={!trackingToken}
-                >
-                   { !trackingToken ? <Loader2 className="w-5 h-5 animate-spin"/> : <Navigation className="w-5 h-5" /> }
-                   <span className="ml-2">Track Your Order</span>
-                </Button>
-                <Button 
-                    onClick={handleBackToMenu}
-                    variant="outline"
-                    className="flex items-center gap-2 px-6 py-3 rounded-md text-lg font-medium"
-                    disabled={!restaurantId}
-                >
-                    <ArrowLeft className="w-5 h-5" /> Back to Menu
-                </Button>
-            </div>
+            <Loader2 className="w-24 h-24 text-primary animate-spin" />
+            <h1 className="text-4xl font-bold text-foreground mt-6">Placing Your Order...</h1>
+            <p className="text-lg text-muted-foreground mt-2">Finalizing details and creating your tracking link. Please wait a moment.</p>
         </div>
     )
 };
