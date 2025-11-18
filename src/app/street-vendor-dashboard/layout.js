@@ -7,6 +7,7 @@ import { cn } from '@/lib/utils';
 import { Suspense } from 'react';
 import { Loader2 } from 'lucide-react';
 import Image from 'next/image';
+import { Button } from '@/components/ui/button';
 
 const navItems = [
   { href: '/street-vendor-dashboard', icon: ClipboardList, label: 'Live Orders' },
