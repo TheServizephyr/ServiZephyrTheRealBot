@@ -5,7 +5,7 @@
 import React, { useState, useEffect, Suspense, useMemo, useCallback, useRef } from 'react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Utensils, Plus, Minus, X, Home, User, Edit2, ShoppingCart, Star, CookingPot, BookOpen, Check, SlidersHorizontal, ArrowUpDown, PlusCircle, Ticket, Gift, Sparkles, Flame, Search, Trash2, ChevronDown, Tag as TagIcon, RadioGroup, IndianRupee, HardHat, MapPin, Bike, Store, ConciergeBell, QrCode, CalendarClock, Wallet, Users, Camera, BookMarked, Calendar as CalendarIcon, Bell, CheckCircle, AlertTriangle, ExternalLink, ShoppingBag, Sun, Moon, ChevronUp, Lock, Loader2, Navigation } from 'lucide-react';
+import { Utensils, Plus, Minus, X, Home, User, Edit2, ShoppingCart, Star, CookingPot, BookOpen, Check, SlidersHorizontal, ArrowUpDown, PlusCircle, Ticket, Gift, Sparkles, Flame, Search, Trash2, ChevronDown, Tag as TagIcon, RadioGroup, IndianRupee, HardHat, MapPin, Bike, Store, ConciergeBell, QrCode, CalendarClock, Wallet, Users, Camera, BookMarked, Calendar as CalendarIcon, Bell, CheckCircle, AlertTriangle, ExternalLink, ShoppingBag, Sun, Moon, ChevronUp, Lock, Loader2, Navigation, ArrowRight } from 'lucide-react';
 import Image from 'next/image';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
@@ -652,13 +652,12 @@ const OrderPageInternal = () => {
                 const res = await fetch(`/api/order/status/${parsedOrder.orderId}`);
                 if (res.ok) {
                     const data = await res.json();
-                    
                     const deliveryType = data.order?.deliveryType;
                     const status = data.order?.status;
                     let completedStatuses = ['delivered', 'picked_up', 'rejected'];
-                    
+
                     if (deliveryType === 'street-vendor-pre-order') {
-                        if (completedStatuses.includes(status)) {
+                        if (status === 'delivered' || status === 'picked_up' || status === 'rejected') {
                              localStorage.removeItem('liveOrder');
                              setLiveOrder(null);
                         } else {
@@ -1154,17 +1153,7 @@ const OrderPageInternal = () => {
 
                 <div className="container mx-auto px-4 mt-6 space-y-4">
                      
-                    {restaurantData.businessType !== 'street-vendor' && tableIdFromUrl ? (
-                        <div className="bg-card p-4 rounded-lg border border-border flex justify-between items-center">
-                            <div className="flex items-center gap-2">
-                                <ConciergeBell className="text-primary"/>
-                                <h2 className="text-lg font-bold text-foreground">Ordering for: Table {tableIdFromUrl}</h2>
-                            </div>
-                            <Button onClick={handleCallWaiter} variant="outline" className="flex items-center gap-2 text-base font-semibold">
-                                <Bell size={20} className="text-primary"/> Call Waiter
-                            </Button>
-                        </div>
-                    ) : restaurantData.businessType !== 'street-vendor' && (
+                    {restaurantData.businessType !== 'street-vendor' && !tableIdFromUrl && (
                         <div className="bg-card p-4 rounded-lg border border-border">
                             <div className="flex bg-muted p-1 rounded-lg">
                                 {restaurantData.deliveryEnabled && (
@@ -1206,6 +1195,17 @@ const OrderPageInternal = () => {
                                     </div>
                                 ) : null}
                             </div>
+                        </div>
+                    )}
+                    {tableIdFromUrl && (
+                         <div className="bg-card p-4 rounded-lg border border-border flex justify-between items-center">
+                            <div className="flex items-center gap-2">
+                                <ConciergeBell className="text-primary"/>
+                                <h2 className="text-lg font-bold text-foreground">Ordering for: Table {tableIdFromUrl}</h2>
+                            </div>
+                            <Button onClick={handleCallWaiter} variant="outline" className="flex items-center gap-2 text-base font-semibold">
+                                <Bell size={20} className="text-primary"/> Call Waiter
+                            </Button>
                         </div>
                     )}
 
@@ -1298,12 +1298,13 @@ const OrderPageInternal = () => {
                     </main>
                 </div>
                  <AnimatePresence>
-                     {totalCartItems > 0 ? (
+                     {totalCartItems > 0 && (
                         <motion.div
                             className="fixed bottom-4 left-1/2 -translate-x-1/2 w-auto z-30"
                             initial={{ scale: 0, opacity: 0 }}
                             animate={{ scale: 1, opacity: 1 }}
                             exit={{ scale: 0, opacity: 0 }}
+                            style={{ bottom: 'calc(1rem + env(safe-area-inset-bottom))' }}
                         >
                             <Button onClick={handleCheckout} className="bg-primary hover:bg-primary/90 h-16 w-auto min-w-[200px] text-lg font-bold rounded-full shadow-lg shadow-primary/30 flex justify-between items-center text-primary-foreground px-6">
                                 <span>{totalCartItems} Item{totalCartItems > 1 ? 's' : ''}</span>
@@ -1313,18 +1314,20 @@ const OrderPageInternal = () => {
                                 </span>
                             </Button>
                         </motion.div>
-                     ) : (
-                         <motion.div
-                            initial={{ y: 100 }}
-                            animate={{ y: cart.length > 0 ? 100 : 0 }}
-                            className="fixed bottom-4 right-4 z-20"
-                         >
-                             <Button size="icon" className="w-16 h-16 rounded-full bg-green-600 hover:bg-green-700 text-white shadow-lg" onClick={() => setIsMenuBrowserOpen(true)}>
-                                 <BookOpen size={28}/>
-                             </Button>
-                         </motion.div>
                      )}
                  </AnimatePresence>
+
+                 <motion.div
+                    className="fixed bottom-4 right-4 z-20"
+                    animate={{ y: totalCartItems > 0 ? -80 : 0 }}
+                    transition={{ type: 'spring', stiffness: 200, damping: 20 }}
+                    style={{ bottom: 'calc(1rem + env(safe-area-inset-bottom))' }}
+                >
+                     <Button size="icon" className="w-16 h-16 rounded-full bg-green-600 hover:bg-green-700 text-white shadow-lg" onClick={() => setIsMenuBrowserOpen(true)}>
+                         <BookOpen size={28}/>
+                     </Button>
+                 </motion.div>
+
             </div>
         </>
     );
@@ -1344,3 +1347,4 @@ const OrderPage = () => (
 );
 
 export default OrderPage;
+
