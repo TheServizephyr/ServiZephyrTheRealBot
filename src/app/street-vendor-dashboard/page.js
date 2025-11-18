@@ -1,5 +1,3 @@
-
-
 'use client';
 
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
@@ -9,11 +7,21 @@ import { Button } from '@/components/ui/button';
 import Link from 'next/link';
 import { useUser } from '@/firebase';
 import { db } from '@/lib/firebase';
-import { collection, query, where, onSnapshot } from 'firebase/firestore';
+import { collection, query, where, onSnapshot, doc, getDoc } from 'firebase/firestore';
 import { FirestorePermissionError } from '@/firebase/errors';
 import { errorEmitter } from '@/firebase/error-emitter';
 import InfoDialog from '@/components/InfoDialog';
+import dynamic from 'next/dynamic';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
+import { format } from 'date-fns';
+import { useSearchParams } from 'next/navigation';
 
+const QrScanner = dynamic(() => import('@/components/QrScanner'), { 
+    ssr: false,
+    loading: () => <div className="min-h-screen bg-background flex items-center justify-center"><div className="animate-spin rounded-full h-16 w-16 border-b-2 border-primary"></div></div>
+});
+
+const formatCurrency = (value) => `₹${Number(value || 0).toLocaleString('en-IN', { maximumFractionDigits: 2 })}`;
 
 const OrderCard = ({ order, onMarkReady, onCancel, onMarkCollected }) => {
     const token = order.dineInToken; // Use dineInToken for display
@@ -98,6 +106,59 @@ const OrderCard = ({ order, onMarkReady, onCancel, onMarkCollected }) => {
     );
 };
 
+const ScannedOrderModal = ({ order, isOpen, onClose, onConfirm }) => {
+    if (!order) return null;
+    const isPaidOnline = order.paymentDetails?.method === 'razorpay';
+    const orderDate = order?.orderDate;
+
+    return (
+        <Dialog open={isOpen} onOpenChange={onClose}>
+            <DialogContent className="bg-card border-border text-foreground">
+                <DialogHeader>
+                    <DialogTitle>Confirm Collection for Order <span className="font-mono text-primary">{order.dineInToken}</span></DialogTitle>
+                    <DialogDescription>
+                        Hand over the following items to the customer. This will automatically mark the order as collected.
+                    </DialogDescription>
+                </DialogHeader>
+                <div className="py-4 space-y-4">
+                     <div className="p-4 bg-muted rounded-lg border border-border">
+                        <div className="flex justify-between items-center font-bold">
+                            <span>TOTAL BILL:</span>
+                            <span className="text-2xl text-primary">{formatCurrency(order.totalAmount)}</span>
+                        </div>
+                        <div className="flex justify-between items-center text-xs mt-1">
+                            <span>Payment Status:</span>
+                             {isPaidOnline ? (
+                                <span className="font-semibold text-green-500">PAID ONLINE</span>
+                            ) : (
+                                <span className="font-semibold text-yellow-400">TO BE COLLECTED AT COUNTER</span>
+                            )}
+                        </div>
+                    </div>
+                    <div>
+                        <h4 className="font-semibold text-muted-foreground mb-2">Customer Details:</h4>
+                        <p><strong>Name:</strong> {order.customerName}</p>
+                        {order.customerPhone && <p><strong>Phone:</strong> {order.customerPhone}</p>}
+                        {orderDate && <p><strong>Time:</strong> {format(new Date(orderDate.seconds * 1000), 'hh:mm a')}</p>}
+                    </div>
+                     <div>
+                        <h4 className="font-semibold text-muted-foreground mb-2">Items:</h4>
+                        <ul className="list-disc list-inside text-muted-foreground text-sm space-y-1">
+                           {order.items.map(item => (
+                                <li key={item.name}>{item.quantity}x {item.name}</li>
+                            ))}
+                        </ul>
+                    </div>
+                </div>
+                <DialogFooter>
+                    <Button variant="secondary" onClick={onClose}>Cancel</Button>
+                    <Button onClick={onConfirm} className="bg-primary hover:bg-primary/90">Confirm & Handover</Button>
+                </DialogFooter>
+            </DialogContent>
+        </Dialog>
+    );
+};
+
 
 export default function StreetVendorDashboard() {
     const { user, isUserLoading } = useUser();
@@ -105,6 +166,48 @@ export default function StreetVendorDashboard() {
     const [orders, setOrders] = useState([]);
     const [loading, setLoading] = useState(true);
     const [infoDialog, setInfoDialog] = useState({ isOpen: false, title: '', message: '' });
+    const [isScannerOpen, setScannerOpen] = useState(false);
+    const [scannedOrder, setScannedOrder] = useState(null);
+    const searchParams = useSearchParams();
+
+    useEffect(() => {
+        const orderToCollect = searchParams.get('collect_order');
+        if (orderToCollect) {
+            handleScanSuccess(window.location.href);
+        }
+    }, [searchParams]);
+
+    const handleScanSuccess = async (scannedUrl) => {
+        setScannerOpen(false);
+        const url = new URL(scannedUrl);
+        const orderId = url.searchParams.get('collect_order');
+
+        if (!orderId) {
+            setInfoDialog({ isOpen: true, title: 'Invalid QR', message: 'This QR code does not contain a valid order ID.' });
+            return;
+        }
+
+        try {
+            const orderRef = doc(db, 'orders', orderId);
+            const orderSnap = await getDoc(orderRef);
+            if (!orderSnap.exists()) {
+                throw new Error('Order not found in the system.');
+            }
+            if (orderSnap.data().restaurantId !== vendorId) {
+                throw new Error('This order does not belong to your stall.');
+            }
+            setScannedOrder(orderSnap.data());
+        } catch (error) {
+            setInfoDialog({ isOpen: true, title: 'Error', message: error.message });
+        }
+    };
+    
+    const confirmCollection = async () => {
+        if (!scannedOrder) return;
+        await handleUpdateStatus(scannedOrder.id, 'delivered');
+        setScannedOrder(null);
+        setInfoDialog({isOpen: true, title: 'Success', message: `Order for ${scannedOrder.customerName} marked as collected!`});
+    };
 
     useEffect(() => {
         if (isUserLoading || !user) {
@@ -144,7 +247,6 @@ export default function StreetVendorDashboard() {
             querySnapshot.forEach((doc) => {
                 liveOrders.push({ id: doc.id, ...doc.data() });
             });
-            // New orders first
             liveOrders.sort((a,b) => (b.orderDate?.seconds || 0) - (a.orderDate?.seconds || 0));
             setOrders(liveOrders);
             setLoading(false);
@@ -193,6 +295,9 @@ export default function StreetVendorDashboard() {
                 title={infoDialog.title} 
                 message={infoDialog.message}
             />
+            {isScannerOpen && <QrScanner onClose={() => setScannerOpen(false)} onScanSuccess={handleScanSuccess} />}
+            {scannedOrder && <ScannedOrderModal isOpen={!!scannedOrder} onClose={() => setScannedOrder(null)} order={scannedOrder} onConfirm={confirmCollection} />}
+
             <header className="flex justify-between items-center mb-6">
                  <Link href="/street-vendor-dashboard/qr" passHref>
                     <Button variant="ghost" className="text-muted-foreground hover:text-foreground">
@@ -213,6 +318,12 @@ export default function StreetVendorDashboard() {
                      </Link>
                  </div>
             </header>
+            
+            <div className="mb-6">
+                <Button className="w-full h-16 text-lg bg-primary hover:bg-primary/80" onClick={() => setScannerOpen(true)}>
+                    <QrCode className="mr-3"/> Scan QR to Collect
+                </Button>
+            </div>
             
             <main>
                 {loading ? (

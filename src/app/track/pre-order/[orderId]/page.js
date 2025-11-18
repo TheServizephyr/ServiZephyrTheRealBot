@@ -1,4 +1,3 @@
-
 'use client';
 
 import React, { useState, useEffect, useMemo, Suspense, useCallback, useRef } from 'react';
@@ -131,7 +130,7 @@ function PreOrderTrackingContent() {
     const token = order?.dineInToken || '----';
     const [tokenPart1, tokenPart2] = token.includes('-') ? token.split('-') : [token, ''];
     const tierStyle = `coin-${coinTier}`;
-    const qrValue = `${window.location.origin}/collect/${orderId}`;
+    const qrValue = `${window.location.origin}/street-vendor-dashboard?collect_order=${orderId}`;
     
     const statusText = order.status === 'Ready' || order.status === 'delivered' || order.status === 'picked_up'
         ? "Your order is ready! Please flip the coin and show the QR code at the counter."
