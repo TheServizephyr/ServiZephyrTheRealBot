@@ -67,6 +67,8 @@ const SimpleTimeline = ({ currentStatus }) => {
 function PreOrderTrackingContent() {
     const router = useRouter();
     const { orderId } = useParams();
+    const searchParams = useSearchParams();
+    const tokenFromUrl = searchParams.get('token');
     const [order, setOrder] = useState(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
@@ -83,8 +85,13 @@ function PreOrderTrackingContent() {
         const unsubscribe = onSnapshot(docRef, (docSnap) => {
             if (docSnap.exists()) {
                 const data = { id: docSnap.id, ...docSnap.data() };
-                setOrder(data);
-                setError(null);
+                if (data.trackingToken !== tokenFromUrl) {
+                    setError("Invalid token. You do not have permission to view this order.");
+                    setOrder(null);
+                } else {
+                    setOrder(data);
+                    setError(null);
+                }
             } else {
                 setError("This order could not be found.");
             }
@@ -96,11 +103,13 @@ function PreOrderTrackingContent() {
         });
 
         return () => unsubscribe();
-    }, [orderId]);
+    }, [orderId, tokenFromUrl]);
 
     const handleBackToMenu = () => {
-        if (order?.restaurantId) {
-            router.push(`/order/${order.restaurantId}`);
+        if (order?.restaurantId && order?.trackingToken) {
+            // FIX: Pass active order details to the URL
+            const backUrl = `/order/${order.restaurantId}?activeOrderId=${order.id}&token=${order.trackingToken}`;
+            router.push(backUrl);
         } else {
             router.push('/');
         }
