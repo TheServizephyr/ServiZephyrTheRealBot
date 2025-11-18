@@ -186,8 +186,12 @@ export default function StreetVendorDashboard() {
     const [isScannerOpen, setScannerOpen] = useState(false);
     const [scannedOrder, setScannedOrder] = useState(null);
     const searchParams = useSearchParams();
-    const [selectedDate, setSelectedDate] = useState(new Date());
+    const [selectedDate, setSelectedDate] = useState(null);
     const [error, setError] = useState(null);
+
+    useEffect(() => {
+        setSelectedDate(new Date());
+    }, []);
 
 
     const handleApiCall = useCallback(async (endpoint, method = 'PATCH', body = {}) => {
@@ -277,7 +281,7 @@ export default function StreetVendorDashboard() {
     }, [user, isUserLoading]);
 
     useEffect(() => {
-        if (!vendorId) return;
+        if (!vendorId || !selectedDate) return;
         
         setLoading(true);
 
@@ -367,8 +371,8 @@ export default function StreetVendorDashboard() {
         </div>
 
         <div className="mb-6 flex flex-wrap items-center justify-center gap-2">
-            <Button variant={format(selectedDate, 'yyyy-MM-dd') === format(new Date(), 'yyyy-MM-dd') ? 'default' : 'outline'} onClick={() => setSelectedDate(new Date())}>Today</Button>
-            <Button variant={format(selectedDate, 'yyyy-MM-dd') === format(subDays(new Date(), 1), 'yyyy-MM-dd') ? 'default' : 'outline'} onClick={() => setSelectedDate(subDays(new Date(), 1))}>Yesterday</Button>
+            <Button variant={selectedDate && format(selectedDate, 'yyyy-MM-dd') === format(new Date(), 'yyyy-MM-dd') ? 'default' : 'outline'} onClick={() => setSelectedDate(new Date())}>Today</Button>
+            <Button variant={selectedDate && format(selectedDate, 'yyyy-MM-dd') === format(subDays(new Date(), 1), 'yyyy-MM-dd') ? 'default' : 'outline'} onClick={() => setSelectedDate(subDays(new Date(), 1))}>Yesterday</Button>
              <Popover>
                 <PopoverTrigger asChild>
                   <Button
@@ -400,6 +404,8 @@ export default function StreetVendorDashboard() {
                     <Loader2 className="mx-auto animate-spin" size={48} />
                     <p className="mt-4">Loading your dashboard...</p>
                  </div>
+            ) : error ? (
+                 <div className="text-center py-20 text-red-500">{error}</div>
             ) : (
                 <Tabs defaultValue="new_orders" className="w-full">
                     <TabsList className="grid w-full grid-cols-3">
