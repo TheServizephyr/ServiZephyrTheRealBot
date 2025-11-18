@@ -10,9 +10,7 @@ import { auth } from '@/lib/firebase';
 const InfoDialog = ({ isOpen, onClose, title, message }) => {
   const [isSending, setIsSending] = useState(false);
   const [reportSent, setReportSent] = useState(false);
-  // --- START FIX ---
   const isError = (title || '').toLowerCase().includes('error') || (title || '').toLowerCase().includes('failed') || (title || '').toLowerCase().includes('invalid');
-  // --- END FIX ---
   const pathname = usePathname();
 
   const handleSendReport = async () => {

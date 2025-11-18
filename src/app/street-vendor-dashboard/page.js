@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
@@ -6,7 +7,7 @@ import { ClipboardList, QrCode, CookingPot, PackageCheck, Check, X, Loader2, Use
 import { Button } from '@/components/ui/button';
 import Link from 'next/link';
 import { useUser } from '@/firebase';
-import { db } from '@/lib/firebase';
+import { db, auth } from '@/lib/firebase';
 import { collection, query, where, onSnapshot, doc, getDoc } from 'firebase/firestore';
 import { FirestorePermissionError } from '@/firebase/errors';
 import { errorEmitter } from '@/firebase/error-emitter';
@@ -15,7 +16,6 @@ import dynamic from 'next/dynamic';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { format } from 'date-fns';
 import { useSearchParams } from 'next/navigation';
-import { handleApiCall } from '@/lib/api'; // Assuming a helper library exists
 
 const QrScanner = dynamic(() => import('@/components/QrScanner'), { 
     ssr: false,
@@ -171,6 +171,24 @@ export default function StreetVendorDashboard() {
     const [scannedOrder, setScannedOrder] = useState(null);
     const searchParams = useSearchParams();
 
+    const handleApiCall = useCallback(async (endpoint, method = 'PATCH', body = {}) => {
+        if (!user) throw new Error('Authentication Error');
+        const idToken = await user.getIdToken();
+        const response = await fetch(endpoint, {
+            method,
+            headers: { 
+                'Authorization': `Bearer ${idToken}`,
+                'Content-Type': 'application/json'
+             },
+            body: JSON.stringify(body)
+        });
+        if (!response.ok) {
+            const errData = await response.json();
+            throw new Error(errData.message || 'An API error occurred.');
+        }
+        return await response.json();
+    }, [user]);
+
     const handleScanSuccess = useCallback(async (scannedUrl) => {
         setScannerOpen(false);
         try {
@@ -189,7 +207,7 @@ export default function StreetVendorDashboard() {
             if (orderSnap.data().restaurantId !== vendorId) {
                 throw new Error('This order does not belong to your stall.');
             }
-            setScannedOrder(orderSnap.data());
+            setScannedOrder({ id: orderSnap.id, ...orderSnap.data() });
         } catch (error) {
             setInfoDialog({ isOpen: true, title: 'Invalid QR', message: error.message });
         }
@@ -265,19 +283,10 @@ export default function StreetVendorDashboard() {
     
     const handleUpdateStatus = async (orderId, newStatus) => {
         try {
-            const idToken = await user.getIdToken();
-            const response = await fetch('/api/owner/orders', {
-                method: 'PATCH',
-                headers: { 
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${idToken}`
-                 },
-                body: JSON.stringify({ orderIds: [orderId], newStatus }),
+            await handleApiCall('/api/owner/orders', 'PATCH', {
+                orderIds: [orderId],
+                newStatus
             });
-            if (!response.ok) {
-                const errorData = await response.json();
-                throw new Error(errorData.message || 'Failed to update order status');
-            }
         } catch (error) {
              setInfoDialog({isOpen: true, title: "Error", message: error.message});
         }
@@ -329,7 +338,7 @@ export default function StreetVendorDashboard() {
             </div>
             
             <main>
-                {loading ? (
+                {loading || isUserLoading || !vendorId && !error ? (
                     <div className="text-center py-20 text-muted-foreground">
                         <Loader2 className="mx-auto animate-spin" size={48} />
                         <p className="mt-4">Loading your dashboard...</p>
