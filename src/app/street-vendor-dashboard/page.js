@@ -194,7 +194,6 @@ export default function StreetVendorDashboard() {
         setSelectedDate(new Date());
     }, []);
 
-
     const handleApiCall = useCallback(async (endpoint, method = 'PATCH', body = {}) => {
         if (!user) throw new Error('Authentication Error');
         const idToken = await user.getIdToken();
@@ -344,27 +343,6 @@ export default function StreetVendorDashboard() {
         {isScannerOpen && <QrScanner onClose={() => setScannerOpen(false)} onScanSuccess={handleScanSuccess} />}
         {scannedOrder && <ScannedOrderModal isOpen={!!scannedOrder} onClose={() => setScannedOrder(null)} order={scannedOrder} onConfirm={confirmCollection} />}
 
-        <header className="flex justify-between items-center mb-6">
-             <Link href="/street-vendor-dashboard/qr" passHref>
-                <Button variant="ghost" className="text-muted-foreground hover:text-foreground">
-                    <QrCode size={28} />
-                </Button>
-             </Link>
-             <h1 className="text-2xl font-bold font-headline">Live Orders</h1>
-             <div className="flex gap-2">
-                 <Link href="/street-vendor-dashboard/payout-settings" passHref>
-                    <Button variant="ghost" className="text-muted-foreground hover:text-foreground">
-                        <Wallet size={28} />
-                    </Button>
-                 </Link>
-                 <Link href="/street-vendor-dashboard/menu" passHref>
-                    <Button variant="ghost" className="text-muted-foreground hover:text-foreground">
-                        <ClipboardList size={28} />
-                    </Button>
-                 </Link>
-             </div>
-        </header>
-        
         <div className="mb-6">
             <Button className="w-full h-16 text-lg bg-primary hover:bg-primary/80" onClick={() => setScannerOpen(true)}>
                 <QrCode className="mr-3"/> Scan QR to Collect

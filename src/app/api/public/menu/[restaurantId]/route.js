@@ -3,206 +3,147 @@
 import { NextResponse } from 'next/server';
 import { getFirestore } from '@/lib/firebase-admin';
 
-// This function can be used in any API route that needs to fetch menu data publicly.
-export async function GET(request, { params }) {
-    console.log("[DEBUG] Menu API: Request received.");
+export const dynamic = 'force-dynamic';
+
+async function fetchCollection(firestore, collectionName, restaurantId) {
+    const docRef = firestore.collection(collectionName).doc(restaurantId);
+    const docSnap = await docRef.get();
+
+    if (!docSnap.exists) {
+        return null;
+    }
+
+    const data = docSnap.data();
+    return {
+        id: docSnap.id,
+        name: data.name || 'Unnamed Business',
+        logoUrl: data.logoUrl || null,
+        bannerUrls: data.bannerUrls || [],
+        approvalStatus: data.approvalStatus || 'pending',
+        deliveryCharge: data.deliveryCharge || 0,
+        deliveryFreeThreshold: data.deliveryFreeThreshold || 9999,
+        deliveryEnabled: data.deliveryEnabled,
+        pickupEnabled: data.pickupEnabled,
+        dineInEnabled: data.dineInEnabled,
+        dineInModel: data.dineInModel || 'post-paid',
+        businessAddress: data.address || null,
+        businessType: data.businessType || collectionName.slice(0, -1),
+        // --- START FIX: Pass payment settings to order page ---
+        dineInOnlinePaymentEnabled: data.dineInOnlinePaymentEnabled !== false, // Default to true
+        dineInPayAtCounterEnabled: data.dineInPayAtCounterEnabled !== false, // Default to true
+        // --- END FIX ---
+    };
+}
+
+
+export async function GET(req, { params }) {
+    const { restaurantId } = params;
+    const { searchParams } = new URL(req.url);
+    const customerPhone = searchParams.get('phone');
+
     try {
         const firestore = await getFirestore();
-        const { restaurantId } = params;
-        const { searchParams } = new URL(request.url);
-        const phone = searchParams.get('phone');
         
-        console.log(`[DEBUG] Menu API: restaurantId from params: ${restaurantId}`);
-
-        if (!restaurantId || restaurantId === 'undefined') {
-            console.error("[DEBUG] Menu API: Invalid restaurantId received:", restaurantId);
-            return NextResponse.json({ message: 'Restaurant ID is invalid or missing.' }, { status: 400 });
-        }
-        
-        let businessDoc;
-        let collectionName = 'restaurants';
-        
+        let restaurantData = null;
         const collectionsToTry = ['restaurants', 'shops', 'street_vendors'];
 
-        for (const name of collectionsToTry) {
-            console.log(`[DEBUG] Menu API: Trying to fetch from '${name}' collection with ID: ${restaurantId}`);
-            const docRef = firestore.collection(name).doc(restaurantId);
-            const docSnap = await docRef.get();
-            if (docSnap.exists) {
-                businessDoc = docSnap;
-                collectionName = name;
-                break; // Found it, stop searching
-            }
-        }
-
-        if (!businessDoc || !businessDoc.exists) {
-            console.error(`[DEBUG] Menu API: Business with ID ${restaurantId} not found in any collection.`);
-            return NextResponse.json({ message: `Business with ID ${restaurantId} not found.` }, { status: 404 });
-        }
-        
-        const restaurantRef = businessDoc.ref;
-        const restaurantData = businessDoc.data();
-        
-        const businessType = restaurantData.businessType || 'restaurant';
-        
-        console.log(`[DEBUG] Menu API: Found business '${restaurantData.name}' in collection '${collectionName}'. BusinessType set to: '${businessType}'`);
-
-        
-        let loyaltyPoints = 0;
-        let customerData = null;
-        if (phone) {
-            const usersRef = firestore.collection('users');
-            const userQuery = await usersRef.where('phone', '==', phone).limit(1).get();
-
-            if (!userQuery.empty) {
-                const userDoc = userQuery.docs[0];
-                const userId = userDoc.id;
-                customerData = userDoc.data();
-                
-                const customerInBusinessRef = restaurantRef.collection('customers').doc(userId);
-                const customerInBusinessSnap = await customerInBusinessRef.get();
-                if(customerInBusinessSnap.exists) {
-                    loyaltyPoints = customerInBusinessSnap.data().loyaltyPoints || 0;
-                }
-            } else {
-                 const unclaimedProfileRef = firestore.collection('unclaimed_profiles').doc(phone);
-                 const unclaimedSnap = await unclaimedProfileRef.get();
-                 if (unclaimedSnap.exists) {
-                     customerData = unclaimedSnap.data();
-                 }
+        for (const collectionName of collectionsToTry) {
+            const data = await fetchCollection(firestore, collectionName, restaurantId);
+            if (data) {
+                restaurantData = data;
+                break;
             }
         }
         
-        if (businessType !== 'street-vendor' && restaurantData.approvalStatus !== 'approved' && restaurantData.approvalStatus !== 'approve') {
-            console.warn(`[DEBUG] Menu API: Business '${restaurantData.name}' is not accepting orders. Status: ${restaurantData.approvalStatus}`);
-            const message = restaurantData.approvalStatus === 'pending' 
-                ? 'This business is currently pending approval and not accepting orders.'
-                : 'This business is currently not accepting orders.';
-            return NextResponse.json({ 
-                message: message,
-                restaurantName: restaurantData.name,
-                businessAddress: restaurantData.address,
-                status: restaurantData.approvalStatus,
-                isOpen: restaurantData.isOpen,
-            }, { status: 403 });
+        if (!restaurantData) {
+            return NextResponse.json({ message: "Restaurant not found." }, { status: 404 });
         }
 
-        const menuSnap = await restaurantRef.collection('menu').get();
-        console.log(`[DEBUG] Menu API: Fetched ${menuSnap.size} raw items from DB.`);
-
-        const couponsRef = restaurantRef.collection('coupons');
-        const generalCouponsQuery = couponsRef.where('status', '==', 'Active').where('customerId', '==', null);
-
-        const promises = [
-            generalCouponsQuery.get()
-        ];
-        
-        if (phone) {
-            const customerCouponsQuery = couponsRef.where('status', '==', 'Active').where('customerId', '==', phone);
-            promises.push(customerCouponsQuery.get());
-        }
-
-        const [generalCouponsSnap, customerCouponsSnap] = await Promise.all(promises);
+        const menuRef = firestore.collection(restaurantData.businessType === 'shop' ? 'shops' : 'restaurants').doc(restaurantId).collection('menu');
+        const menuSnap = await menuRef.where('isAvailable', '==', true).get();
 
         const menuData = {};
-        const defaultRestaurantCategories = ["momos", "burgers", "rolls", "soup", "tandoori-item", "starters", "main-course", "tandoori-khajana", "rice", "noodles", "pasta", "raita", "desserts", "beverages"];
-        const defaultShopCategories = ["electronics", "groceries", "clothing", "books", "home-appliances", "toys-games", "beauty-personal-care", "sports-outdoors"];
-        const customCategories = restaurantData.customCategories || [];
+        const customCategories = (await firestore.collection(restaurantData.businessType === 'shop' ? 'shops' : 'restaurants').doc(restaurantId).get()).data()?.customCategories || [];
+
+        const categoryConfig = {
+            restaurant: {
+              "starters": { title: "Starters" }, "main-course": { title: "Main Course" }, "beverages": { title: "Beverages" },
+              "desserts": { title: "Desserts" }, "soup": { title: "Soup" }, "tandoori-item": { title: "Tandoori Items" },
+            },
+            shop: {
+              "electronics": { title: "Electronics" }, "groceries": { title: "Groceries" }, "clothing": { title: "Clothing" },
+            }
+        };
+
+        const businessTypeForCategories = restaurantData.businessType === 'street-vendor' ? 'restaurant' : restaurantData.businessType;
+        const allCategories = { ...(categoryConfig[businessTypeForCategories] || {}) };
         
-        const defaultCategoryKeys = businessType === 'restaurant' ? defaultRestaurantCategories : (businessType === 'shop' || businessType === 'street-vendor' ? defaultShopCategories : []);
-        const allCategoryKeys = [...new Set([...defaultCategoryKeys, ...customCategories.map(c => c.id)])];
-
-        allCategoryKeys.forEach(key => {
-            menuData[key] = [];
-        });
-
-        const allItems = menuSnap.docs.map(doc => doc.data());
-        console.log(`[DEBUG] Menu API: Filtering ${allItems.length} items on server.`);
-
-        // SERVER-SIDE FILTERING for available items
-        const availableItems = allItems.filter(item => item.isAvailable === true || item.available === true);
-        console.log(`[DEBUG] Menu API: Found ${availableItems.length} available items after filtering.`);
-        
-        // SERVER-SIDE SORTING
-        availableItems.sort((a, b) => (a.order || 999) - (b.order || 999));
-
-        availableItems.forEach(item => {
-            const itemWithId = { id: item.id || 'unknown-id', ...item };
-            const categoryKey = item.categoryId || 'general';
-            if (menuData.hasOwnProperty(categoryKey)) {
-                menuData[categoryKey].push(itemWithId);
-            } else {
-                if (!menuData[categoryKey]) menuData[categoryKey] = [];
-                menuData[categoryKey].push(itemWithId);
+        customCategories.forEach(cat => {
+            if (!allCategories[cat.id]) {
+              allCategories[cat.id] = { title: cat.title };
             }
         });
+        Object.keys(allCategories).forEach(key => { menuData[key] = []; });
         
-        let allCoupons = [];
+        menuSnap.docs.forEach(doc => {
+            const item = doc.data();
+            const categoryKey = item.categoryId || 'general';
+            if (!menuData[categoryKey]) menuData[categoryKey] = [];
+            menuData[categoryKey].push({ id: doc.id, ...item });
+        });
 
-        const processCouponSnap = (snap) => {
-             if (!snap) return [];
-             return snap.docs.map(doc => {
-                const data = doc.data();
-                return {
-                    id: doc.id,
-                    ...data,
-                    startDate: data.startDate?.toDate ? data.startDate.toDate().toISOString() : data.startDate,
-                    expiryDate: data.expiryDate?.toDate ? data.expiryDate.toDate().toISOString() : data.expiryDate,
-                };
-            });
-        }
-        
-        allCoupons = allCoupons.concat(processCouponSnap(generalCouponsSnap));
-        if (customerCouponsSnap) {
-             allCoupons = allCoupons.concat(processCouponSnap(customerCouponsSnap));
-        }
-        
-        const businessAddress = restaurantData.address ? {
-            ...restaurantData.address,
-            full: `${restaurantData.address.street}, ${restaurantData.address.city}, ${restaurantData.address.state} ${restaurantData.address.postalCode}`.trim()
-        } : null;
+        // Add special coupons for this customer
+        let specialCoupons = [];
+        let loyaltyPoints = 0;
+        if(customerPhone) {
+            const normalizedPhone = customerPhone.length > 10 ? customerPhone.slice(-10) : customerPhone;
+            const usersRef = firestore.collection('users');
+            const userQuery = await usersRef.where('phone', '==', normalizedPhone).limit(1).get();
 
-        let deliveryCharge = 0;
-        const feeType = restaurantData.deliveryFeeType || 'fixed';
-        if (feeType === 'fixed') {
-            deliveryCharge = restaurantData.deliveryFixedFee !== undefined ? restaurantData.deliveryFixedFee : 30;
-        } else if (feeType === 'per-km') {
-            deliveryCharge = restaurantData.deliveryPerKmFee || 10;
-        } else if (feeType === 'free-over') {
-             deliveryCharge = restaurantData.deliveryFixedFee !== undefined ? restaurantData.deliveryFixedFee : 30;
+            if (!userQuery.empty) {
+                const userId = userQuery.docs[0].id;
+                const customerCouponsRef = firestore.collection(restaurantData.businessType === 'shop' ? 'shops' : 'restaurants').doc(restaurantId).collection('coupons');
+                const customerCouponsSnap = await customerCouponsRef.where('customerId', '==', userId).get();
+                customerCouponsSnap.forEach(doc => specialCoupons.push({ id: doc.id, ...doc.data() }));
+
+                const customerDataRef = firestore.collection(restaurantData.businessType === 'shop' ? 'shops' : 'restaurants').doc(restaurantId).collection('customers').doc(userId);
+                const customerDataSnap = await customerDataRef.get();
+                if(customerDataSnap.exists){
+                    loyaltyPoints = customerDataSnap.data().loyaltyPoints || 0;
+                }
+            }
         }
         
-        const finalPayload = { 
+        const generalCouponsRef = firestore.collection(restaurantData.businessType === 'shop' ? 'shops' : 'restaurants').doc(restaurantId).collection('coupons');
+        const generalCouponsSnap = await generalCouponsRef.where('customerId', '==', null).get();
+        const generalCoupons = generalCouponsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        
+        const allCoupons = [...generalCoupons, ...specialCoupons];
+
+        return NextResponse.json({
             restaurantName: restaurantData.name,
-            deliveryCharge: deliveryCharge,
-            deliveryFreeThreshold: restaurantData.deliveryFreeThreshold,
             logoUrl: restaurantData.logoUrl,
             bannerUrls: restaurantData.bannerUrls,
+            approvalStatus: restaurantData.approvalStatus,
+            deliveryCharge: restaurantData.deliveryCharge,
+            deliveryFreeThreshold: restaurantData.deliveryFreeThreshold,
+            deliveryEnabled: restaurantData.deliveryEnabled,
+            pickupEnabled: restaurantData.pickupEnabled,
+            dineInEnabled: restaurantData.dineInEnabled,
+            dineInModel: restaurantData.dineInModel,
+            businessAddress: restaurantData.businessAddress,
+            businessType: restaurantData.businessType,
+            // --- START FIX: Pass payment settings to order page ---
+            dineInOnlinePaymentEnabled: restaurantData.dineInOnlinePaymentEnabled,
+            dineInPayAtCounterEnabled: restaurantData.dineInPayAtCounterEnabled,
+            // --- END FIX ---
             menu: menuData,
             coupons: allCoupons,
             loyaltyPoints: loyaltyPoints,
-            businessType: restaurantData.businessType || businessType,
-            approvalStatus: restaurantData.approvalStatus,
-            isOpen: restaurantData.isOpen,
-            deliveryEnabled: restaurantData.deliveryEnabled === undefined ? true : restaurantData.deliveryEnabled,
-            pickupEnabled: restaurantData.pickupEnabled === undefined ? false : restaurantData.pickupEnabled,
-            dineInEnabled: restaurantData.dineInEnabled !== undefined ? restaurantData.dineInEnabled : true,
-            deliveryOnlinePaymentEnabled: restaurantData.deliveryOnlinePaymentEnabled === undefined ? true : restaurantData.deliveryOnlinePaymentEnabled,
-            deliveryCodEnabled: restaurantData.deliveryCodEnabled === undefined ? true : restaurantData.deliveryCodEnabled,
-            pickupOnlinePaymentEnabled: restaurantData.pickupOnlinePaymentEnabled === undefined ? true : restaurantData.pickupOnlinePaymentEnabled,
-            pickupPodEnabled: restaurantData.pickupPodEnabled === undefined ? true : restaurantData.pickupPodEnabled,
-            dineInOnlinePaymentEnabled: restaurantData.dineInOnlinePaymentEnabled === undefined ? true : restaurantData.dineInOnlinePaymentEnabled,
-            dineInPayAtCounterEnabled: restaurantData.dineInPayAtCounterEnabled === undefined ? true : restaurantData.dineInPayAtCounterEnabled,
-            businessAddress: businessAddress,
-            dineInModel: restaurantData.dineInModel || 'post-paid',
-        };
-        
-        console.log(`[DEBUG] Menu API: Sending final payload to client. Total categories with items: ${Object.values(finalPayload.menu).filter(i => i.length > 0).length}`);
-
-        return NextResponse.json(finalPayload, { status: 200 });
+        }, { status: 200 });
 
     } catch (error) {
-        console.error("[DEBUG] GET MENU/COUPONS API CRITICAL ERROR:", error);
+        console.error(`[API ERROR] /api/public/menu/${restaurantId}:`, error);
         return NextResponse.json({ message: `Backend Error: ${error.message}` }, { status: 500 });
     }
 }

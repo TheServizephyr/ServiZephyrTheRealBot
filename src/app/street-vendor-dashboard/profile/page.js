@@ -1,9 +1,8 @@
-
 'use client';
 
 import React, { useState, useEffect, Suspense } from 'react';
 import { motion } from 'framer-motion';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { User, Mail, Phone, Edit, Save, XCircle, Bell, Trash2, KeyRound, Eye, EyeOff, FileText, Bot, Image as ImageIcon, Upload, X, IndianRupee, MapPin, Wallet, ShoppingBag, Store, ConciergeBell, Loader2, ArrowLeft } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
@@ -230,13 +229,7 @@ function VendorProfilePageContent() {
             <InfoDialog isOpen={infoDialog.isOpen} onClose={() => setInfoDialog({ isOpen: false, title: '', message: '' })} title={infoDialog.title} message={infoDialog.message} />
             <DeleteAccountModal isOpen={isDeleteModalOpen} setIsOpen={setDeleteModalOpen} />
             
-             <header className="flex items-center gap-4">
-                <Button variant="ghost" size="icon" onClick={() => router.push('/street-vendor-dashboard')}><ArrowLeft/></Button>
-                <div>
-                    <h1 className="text-3xl font-bold tracking-tight">Stall Profile & Settings</h1>
-                     <p className="text-muted-foreground mt-1">Manage your business details and payment options.</p>
-                </div>
-            </header>
+            <h1 className="text-3xl font-bold tracking-tight">Stall Profile & Settings</h1>
 
             <SectionCard 
                 title="Your Details"

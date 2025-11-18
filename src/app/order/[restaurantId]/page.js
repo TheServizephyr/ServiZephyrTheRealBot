@@ -1,5 +1,3 @@
-
-
 'use client';
 
 import React, { useState, useEffect, Suspense, useMemo, useCallback, useRef } from 'react';
@@ -729,6 +727,8 @@ const OrderPageInternal = () => {
         deliveryCharge: 0, menu: {}, coupons: [], deliveryEnabled: true,
         pickupEnabled: false, dineInEnabled: true, businessAddress: null,
         dineInModel: 'post-paid',
+        dineInOnlinePaymentEnabled: true,
+        dineInPayAtCounterEnabled: true,
     });
     const [tableStatus, setTableStatus] = useState(null);
     const [loyaltyPoints, setLoyaltyPoints] = useState(0);
@@ -803,12 +803,17 @@ const OrderPageInternal = () => {
             if(locationStr) { try { setCustomerLocation(JSON.parse(locationStr)); } catch (e) {} }
 
             try {
+                // Use public menu endpoint which is faster and doesn't require auth
                 const url = `/api/public/menu/${restaurantId}${phone ? `?phone=${phone}`: ''}`;
                 const menuRes = await fetch(url);
                 const menuData = await menuRes.json();
-
+                
                 if (!menuRes.ok) throw new Error(menuData.message || 'Failed to fetch menu');
                 
+                // Fetch payment settings separately
+                const settingsRes = await fetch(`/api/owner/settings?restaurantId=${restaurantId}`);
+                const settingsData = settingsRes.ok ? await settingsRes.json() : {};
+
                 const fetchedSettings = {
                     name: menuData.restaurantName, status: menuData.approvalStatus,
                     logoUrl: menuData.logoUrl || '', bannerUrls: (menuData.bannerUrls?.length > 0) ? menuData.bannerUrls : ['/order_banner.jpg'],
@@ -819,7 +824,11 @@ const OrderPageInternal = () => {
                     dineInEnabled: menuData.dineInEnabled, businessAddress: menuData.businessAddress || null,
                     businessType: menuData.businessType || 'restaurant',
                     dineInModel: menuData.dineInModel || 'post-paid',
+                    // Add payment settings
+                    dineInOnlinePaymentEnabled: settingsData.dineInOnlinePaymentEnabled !== false,
+                    dineInPayAtCounterEnabled: settingsData.dineInPayAtCounterEnabled !== false,
                 };
+
                 setRestaurantData(fetchedSettings);
                 setLoyaltyPoints(menuData.loyaltyPoints || 0);
 
@@ -1347,4 +1356,3 @@ const OrderPage = () => (
 );
 
 export default OrderPage;
-
