@@ -1,10 +1,8 @@
 
 'use client';
 
-import React, { Suspense, useEffect, useState, useCallback } from 'react';
-import { motion } from 'framer-motion';
-import { CheckCircle, ArrowLeft, Navigation, MessageSquare, Loader2 } from 'lucide-react';
-import { Button } from '@/components/ui/button';
+import React, { Suspense, useEffect, useState } from 'react';
+import { Loader2 } from 'lucide-react';
 import { useRouter, useSearchParams } from 'next/navigation';
 
 const OrderPlacedContent = () => {
@@ -13,30 +11,23 @@ const OrderPlacedContent = () => {
     
     const orderId = searchParams.get('orderId');
     const whatsappNumber = searchParams.get('whatsappNumber');
+    const restaurantId = searchParams.get('restaurantId');
     
-    const [trackingToken, setTrackingToken] = useState(searchParams.get('token'));
-    const [restaurantId, setRestaurantId] = useState(searchParams.get('restaurantId'));
-
     useEffect(() => {
-        const currentRestaurantId = searchParams.get('restaurantId');
-        if (currentRestaurantId) {
-            localStorage.setItem('lastOrderedFrom', currentRestaurantId);
-            if (!restaurantId) {
-                setRestaurantId(currentRestaurantId);
+        const handleRedirect = async () => {
+            if (!orderId) return;
+
+            // Immediately clear the cart and live order from localStorage
+            if (restaurantId) {
+                localStorage.removeItem(`cart_${restaurantId}`);
+                localStorage.removeItem('liveOrder');
             }
-        } else {
-            const storedId = localStorage.getItem('lastOrderedFrom');
-            if (storedId && !restaurantId) {
-                setRestaurantId(storedId);
-            }
-        }
-        
-        const fetchTokenAndRedirect = async () => {
+
             const tokenInUrl = searchParams.get('token');
             let finalToken = tokenInUrl;
 
-            // If token is missing, fetch it.
-            if (!tokenInUrl && orderId) {
+            // If token is missing, fetch it from the status endpoint.
+            if (!tokenInUrl) {
                 try {
                     await new Promise(resolve => setTimeout(resolve, 1500)); // Wait for backend processing
                     const res = await fetch(`/api/order/status/${orderId}`);
@@ -44,7 +35,6 @@ const OrderPlacedContent = () => {
                         const data = await res.json();
                         if (data.order?.trackingToken) {
                             finalToken = data.order.trackingToken;
-                            setTrackingToken(finalToken);
                         }
                     }
                 } catch (error) {
@@ -52,15 +42,19 @@ const OrderPlacedContent = () => {
                 }
             }
 
-            if(orderId && finalToken) {
+            // Only proceed if we have a token
+            if (finalToken) {
+                // Save the new live order details
                 localStorage.setItem('liveOrder', JSON.stringify({ 
                     orderId, 
-                    restaurantId: currentRestaurantId || localStorage.getItem('lastOrderedFrom'), 
+                    restaurantId,
                     trackingToken: finalToken,
+                    status: 'pending',
                 }));
                 
+                // Determine the correct tracking path
                 const isDineIn = !!whatsappNumber;
-                const isPreOrder = !isDineIn && (currentRestaurantId || localStorage.getItem('lastOrderedFrom'));
+                const isPreOrder = !!restaurantId && !isDineIn;
 
                 let trackingPath;
                 if (isDineIn) {
@@ -72,16 +66,13 @@ const OrderPlacedContent = () => {
                 }
                 const trackUrl = `${trackingPath}?token=${finalToken}`;
 
-                // Replace the current entry in the history stack
+                // Replace the current history entry, so the back button doesn't lead here
                 router.replace(trackUrl);
             }
         };
 
-        if(orderId) {
-            fetchTokenAndRedirect();
-        }
-
-    }, [orderId, searchParams, restaurantId, router, whatsappNumber]); 
+        handleRedirect();
+    }, [orderId, whatsappNumber, restaurantId, searchParams, router]); 
 
 
     // This content will be shown briefly before the redirect happens.

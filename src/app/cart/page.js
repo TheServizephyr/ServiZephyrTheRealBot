@@ -191,9 +191,14 @@ const CartPageInternal = () => {
     const [liveOrder, setLiveOrder] = useState(null);
 
     useEffect(() => {
-        if (activeOrderId) {
+        // --- START FIX: Use localStorage to reliably get liveOrder ---
+        const liveOrderData = localStorage.getItem('liveOrder');
+        if (liveOrderData) {
+            setLiveOrder(JSON.parse(liveOrderData));
+        } else if (activeOrderId) {
             setLiveOrder({ orderId: activeOrderId, trackingToken: token });
         }
+        // --- END FIX ---
     }, [activeOrderId, token]);
 
     useEffect(() => {
@@ -363,9 +368,10 @@ const CartPageInternal = () => {
             if (!res.ok) throw new Error(data.message || "Failed to place order.");
             
             console.log("[Cart Page] Post-paid order successful. Response:", data);
-            localStorage.setItem('liveOrder', JSON.stringify({ orderId: data.order_id, restaurantId, trackingToken: data.token, status: 'pending' }));
+            // --- START FIX: Clear all local storage ---
             localStorage.removeItem(`cart_${restaurantId}`);
-            // Redirect to the new confirmation page with all necessary info
+            localStorage.removeItem('liveOrder');
+            // --- END FIX ---
             router.push(`/order/placed?orderId=${data.order_id}&whatsappNumber=${data.whatsappNumber}&token=${data.token}`);
         } catch (err) {
             console.error("[Cart Page] Post-paid checkout error:", err.message);
@@ -554,18 +560,29 @@ const CartPageInternal = () => {
         return <div className="min-h-screen bg-background flex items-center justify-center"><p className="text-destructive">Session could not be verified.</p></div>;
     }
 
-    if (!cartData || cart.length === 0) {
-        const trackingUrl = activeOrderId
-            ? `/track/pre-order/${activeOrderId}?token=${token}`
-            : liveOrder?.deliveryType === 'street-vendor-pre-order'
-            ? `/track/pre-order/${liveOrder.orderId}?token=${liveOrder.trackingToken}`
-            : liveOrder?.deliveryType === 'dine-in'
-            ? `/track/dine-in/${liveOrder.orderId}?token=${liveOrder.trackingToken}`
-            : `/track/${liveOrder?.orderId}?token=${liveOrder?.trackingToken}`;
+    // --- START FIX: Determine tracking URL dynamically ---
+    const getTrackingUrl = () => {
+        if (!liveOrder) return null;
+        const businessType = cartData?.businessType || 'restaurant'; 
         
+        let path;
+        if (businessType === 'street-vendor') {
+            path = `/track/pre-order/${liveOrder.orderId}`;
+        } else if (deliveryType === 'dine-in') {
+            path = `/track/dine-in/${liveOrder.orderId}`;
+        } else {
+            path = `/track/${liveOrder.orderId}`;
+        }
+        
+        return `${path}?token=${liveOrder.trackingToken}`;
+    };
+    const trackingUrl = getTrackingUrl();
+    // --- END FIX ---
+    
+    if (!cartData || cart.length === 0) {
         return (
             <div className="min-h-screen bg-background flex flex-col items-center justify-center text-muted-foreground p-4">
-                 {(liveOrder || activeOrderId) && (
+                 {(liveOrder) && trackingUrl && (
                     <motion.div
                         className="fixed bottom-4 left-4 right-4 z-20"
                         initial={{ y: 100 }}
@@ -575,7 +592,7 @@ const CartPageInternal = () => {
                         <div className={cn("p-3 rounded-lg text-black flex justify-between items-center", liveOrder?.status === 'Ready' || liveOrder?.status === 'ready_for_pickup' ? 'bg-green-400' : 'bg-yellow-400')}>
                             <div>
                                 <p className="font-bold">Your order is {liveOrder?.status || 'active'}</p>
-                                <p className="text-xs opacity-80">ID: #{(liveOrder?.orderId || activeOrderId).substring(0, 8)}</p>
+                                <p className="text-xs opacity-80">ID: #{(liveOrder?.orderId).substring(0, 8)}</p>
                             </div>
                             <Button
                                 size="sm"
@@ -596,15 +613,6 @@ const CartPageInternal = () => {
             </div>
         );
     }
-    
-     const trackingUrl = activeOrderId
-        ? `/track/pre-order/${activeOrderId}?token=${token}`
-        : liveOrder?.deliveryType === 'street-vendor-pre-order'
-        ? `/track/pre-order/${liveOrder.orderId}?token=${liveOrder.trackingToken}`
-        : liveOrder?.deliveryType === 'dine-in'
-        ? `/track/dine-in/${liveOrder.orderId}?token=${liveOrder.trackingToken}`
-        : `/track/${liveOrder?.orderId}?token=${liveOrder?.trackingToken}`;
-
 
     return (
         <>
@@ -643,7 +651,7 @@ const CartPageInternal = () => {
                             <h1 className="text-xl font-bold">{cartData.restaurantName}</h1>
                         </div>
                     </div>
-                      {(liveOrder || activeOrderId) && (
+                      {(liveOrder) && trackingUrl && (
                         <Button asChild variant="secondary" className={cn("flex-shrink-0 animate-pulse text-black", liveOrder?.status === 'Ready' || liveOrder?.status === 'ready_for_pickup' ? 'bg-green-400 hover:bg-green-500' : 'bg-yellow-400 hover:bg-yellow-500')}>
                              <a href={trackingUrl}>
                                 <Navigation size={16} /> <span className="ml-2 hidden sm:inline">Track Live Order</span>

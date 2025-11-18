@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useState, useEffect, Suspense, useMemo, useCallback, useRef } from 'react';
@@ -643,7 +644,16 @@ const OrderPageInternal = () => {
     // --- START: ADD-ON ORDER STATE ---
     const activeOrderId = searchParams.get('activeOrderId');
     const activeOrderToken = searchParams.get('token'); // Can reuse the token
-    const [liveOrder, setLiveOrder] = useState(activeOrderId ? { orderId: activeOrderId, trackingToken: activeOrderToken } : null);
+    const [liveOrder, setLiveOrder] = useState(null);
+
+    useEffect(() => {
+        const liveOrderData = localStorage.getItem('liveOrder');
+        if (liveOrderData) {
+            setLiveOrder(JSON.parse(liveOrderData));
+        } else if (activeOrderId) {
+            setLiveOrder({ orderId: activeOrderId, trackingToken: activeOrderToken });
+        }
+    }, [activeOrderId, activeOrderToken]);
     // --- END: ADD-ON ORDER STATE ---
 
     useEffect(() => {
@@ -858,9 +868,10 @@ const OrderPageInternal = () => {
             businessType: restaurantData.businessType,
             dineInModel: restaurantData.dineInModel,
             loyaltyPoints, expiryTimestamp,
-            // ADDED: Active order info
+            // --- START FIX: Use liveOrder state to save active order info ---
             activeOrderId: liveOrder?.orderId,
             activeOrderToken: liveOrder?.trackingToken,
+            // --- END FIX ---
         };
         localStorage.setItem(`cart_${restaurantId}`, JSON.stringify(cartDataToSave));
     }, [cart, notes, deliveryType, restaurantData, loyaltyPoints, loading, isTokenValid, restaurantId, phone, token, tableIdFromUrl, activeTabInfo, liveOrder]);
@@ -1027,13 +1038,12 @@ const OrderPageInternal = () => {
         if (deliveryType === 'dine-in' && activeTabInfo.id) {
             params.append('tabId', activeTabInfo.id);
         }
-        // --- START: ADD-ON ORDER LOGIC ---
-        // Pass live order info to the cart page
+        // --- START FIX: Pass live order info to the cart page ---
         if (liveOrder) {
             params.append('activeOrderId', liveOrder.orderId);
-            params.append('token', liveOrder.trackingToken);
+            params.append('token', liveOrder.trackingToken); // This token is crucial for the session
         }
-        // --- END: ADD-ON ORDER LOGIC ---
+        // --- END FIX ---
         
         const url = `/cart?${params.toString()}`;
         router.push(url);
@@ -1094,11 +1104,27 @@ const OrderPageInternal = () => {
          )
     }
 
-    const trackingUrl = liveOrder?.deliveryType === 'street-vendor-pre-order'
-        ? `/track/pre-order/${liveOrder.orderId}?token=${liveOrder.trackingToken}`
-        : liveOrder?.deliveryType === 'dine-in'
-        ? `/track/dine-in/${liveOrder.orderId}?token=${liveOrder.trackingToken}`
-        : `/track/${liveOrder?.orderId}?token=${liveOrder?.trackingToken}`;
+    // --- START FIX: Determine tracking URL based on business type ---
+    const getTrackingUrl = () => {
+        if (!liveOrder) return null;
+        
+        // The businessType is now stored in localStorage and state, so we can use it here
+        const businessType = restaurantData.businessType || 'restaurant'; 
+        
+        let path;
+        if (businessType === 'street-vendor') {
+            path = `/track/pre-order/${liveOrder.orderId}`;
+        } else if (deliveryType === 'dine-in') {
+            path = `/track/dine-in/${liveOrder.orderId}`;
+        } else {
+            path = `/track/${liveOrder.orderId}`;
+        }
+        
+        return `${path}?token=${liveOrder.trackingToken}`;
+    };
+
+    const trackingUrl = getTrackingUrl();
+    // --- END FIX ---
     
     return (
         <>
@@ -1239,7 +1265,7 @@ const OrderPageInternal = () => {
                                 </div>
                             </PopoverContent>
                         </Popover>
-                         {liveOrder && (
+                         {liveOrder && trackingUrl && (
                             <Link href={trackingUrl}>
                                 <motion.div
                                     className={cn("p-2 rounded-lg text-black flex items-center animate-pulse", liveOrder.status === 'Ready' || liveOrder.status === 'ready_for_pickup' ? 'bg-green-400' : 'bg-yellow-400')}
