@@ -1,7 +1,6 @@
-
 'use client';
 
-import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ClipboardList, QrCode, CookingPot, PackageCheck, Check, X, Loader2, User, Phone, History, Wallet, IndianRupee, Calendar as CalendarIcon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -28,10 +27,10 @@ const QrScanner = dynamic(() => import('@/components/QrScanner'), {
 });
 
 const formatCurrency = (value) => `₹${Number(value || 0).toLocaleString('en-IN', { maximumFractionDigits: 2 })}`;
-const formatTime = (timestamp) => {
+const formatDateTime = (timestamp) => {
     if (!timestamp) return '';
     const date = timestamp.toDate ? timestamp.toDate() : new Date(timestamp);
-    return format(date, 'p'); // e.g., 12:30 PM
+    return format(date, 'dd/MM, p'); // e.g., 25/12, 1:33 PM
 };
 
 const OrderCard = ({ order, onMarkReady, onCancel, onMarkCollected }) => {
@@ -65,7 +64,7 @@ const OrderCard = ({ order, onMarkReady, onCancel, onMarkCollected }) => {
                     <p className="text-4xl font-bold text-foreground">{token}</p>
                     <div className="text-right">
                         <div className={`px-2 py-1 text-xs font-semibold rounded-full ${statusClass} bg-opacity-20 capitalize`}>{order.status}</div>
-                        <p className="text-xs text-muted-foreground mt-1">{formatTime(order.orderDate)}</p>
+                        <p className="text-xs text-muted-foreground mt-1">{formatDateTime(order.orderDate)}</p>
                     </div>
                 </div>
                  <div className="flex justify-between items-center mt-2 border-b border-dashed border-border/50 pb-3 mb-3">
@@ -188,8 +187,10 @@ export default function StreetVendorDashboard() {
     const searchParams = useSearchParams();
     const [selectedDate, setSelectedDate] = useState(null);
     const [error, setError] = useState(null);
+    const [isCalendarOpen, setIsCalendarOpen] = useState(false);
 
     useEffect(() => {
+        // Set initial date to today only on client-side
         setSelectedDate(new Date());
     }, []);
 
@@ -373,7 +374,7 @@ export default function StreetVendorDashboard() {
         <div className="mb-6 flex flex-wrap items-center justify-center gap-2">
             <Button variant={selectedDate && format(selectedDate, 'yyyy-MM-dd') === format(new Date(), 'yyyy-MM-dd') ? 'default' : 'outline'} onClick={() => setSelectedDate(new Date())}>Today</Button>
             <Button variant={selectedDate && format(selectedDate, 'yyyy-MM-dd') === format(subDays(new Date(), 1), 'yyyy-MM-dd') ? 'default' : 'outline'} onClick={() => setSelectedDate(subDays(new Date(), 1))}>Yesterday</Button>
-             <Popover>
+             <Popover open={isCalendarOpen} onOpenChange={setIsCalendarOpen}>
                 <PopoverTrigger asChild>
                   <Button
                     variant={"outline"}
@@ -390,7 +391,10 @@ export default function StreetVendorDashboard() {
                   <Calendar
                     mode="single"
                     selected={selectedDate}
-                    onSelect={setSelectedDate}
+                    onSelect={(date) => {
+                        setSelectedDate(date);
+                        setIsCalendarOpen(false);
+                    }}
                     initialFocus
                     disabled={(date) => date > new Date() || date < new Date("2024-01-01")}
                   />
