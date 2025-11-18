@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
@@ -5,7 +6,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { ArrowLeft, PlusCircle, Trash2, IndianRupee, Loader2, Camera, FileJson, Edit, Upload, X, Plus, Image as ImageIcon, Utensils } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import Link from 'next/link';
-import { useUser, useCollection, useMemoFirebase } from '@/firebase';
+import { useUser, useMemoFirebase } from '@/firebase';
 import { db, auth } from '@/lib/firebase';
 import { collection, query, where, onSnapshot, doc, updateDoc, deleteDoc, getDocs } from 'firebase/firestore';
 import { FirestorePermissionError } from '@/firebase/errors';
@@ -720,6 +721,9 @@ export default function StreetVendorMenuPage() {
             </Link>
             <h1 className="text-2xl font-bold font-headline">My Menu</h1>
             <div className="flex gap-2">
+                <Button onClick={() => setIsBulkModalOpen(true)} variant="outline" className="text-primary hover:text-primary">
+                     <FileJson size={20} className="mr-2"/> Bulk
+                </Button>
                 <Button onClick={() => setIsAiModalOpen(true)} variant="outline" className="text-primary hover:text-primary">
                      <Camera size={20} className="mr-2"/> AI Scan
                 </Button>
