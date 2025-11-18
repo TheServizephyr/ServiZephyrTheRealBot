@@ -170,24 +170,16 @@ export default function StreetVendorDashboard() {
     const [scannedOrder, setScannedOrder] = useState(null);
     const searchParams = useSearchParams();
 
-    useEffect(() => {
-        const orderToCollect = searchParams.get('collect_order');
-        if (orderToCollect) {
-            handleScanSuccess(window.location.href);
-        }
-    }, [searchParams]);
-
-    const handleScanSuccess = async (scannedUrl) => {
+    const handleScanSuccess = useCallback(async (scannedUrl) => {
         setScannerOpen(false);
-        const url = new URL(scannedUrl);
-        const orderId = url.searchParams.get('collect_order');
-
-        if (!orderId) {
-            setInfoDialog({ isOpen: true, title: 'Invalid QR', message: 'This QR code does not contain a valid order ID.' });
-            return;
-        }
-
         try {
+            const url = new URL(scannedUrl);
+            const orderId = url.searchParams.get('collect_order');
+    
+            if (!orderId) {
+                throw new Error('This QR code does not contain a valid order ID.');
+            }
+    
             const orderRef = doc(db, 'orders', orderId);
             const orderSnap = await getDoc(orderRef);
             if (!orderSnap.exists()) {
@@ -198,10 +190,19 @@ export default function StreetVendorDashboard() {
             }
             setScannedOrder(orderSnap.data());
         } catch (error) {
-            setInfoDialog({ isOpen: true, title: 'Error', message: error.message });
+            setInfoDialog({ isOpen: true, title: 'Invalid QR', message: error.message });
         }
-    };
-    
+    }, [vendorId]);
+
+
+    useEffect(() => {
+        const orderToCollect = searchParams.get('collect_order');
+        if (orderToCollect) {
+            const fullUrl = `${window.location.origin}${window.location.pathname}?collect_order=${orderToCollect}`;
+            handleScanSuccess(fullUrl);
+        }
+    }, [searchParams, handleScanSuccess]);
+
     const confirmCollection = async () => {
         if (!scannedOrder) return;
         await handleUpdateStatus(scannedOrder.id, 'delivered');

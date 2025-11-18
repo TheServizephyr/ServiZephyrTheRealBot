@@ -10,6 +10,7 @@ import QRCode from 'qrcode.react';
 import { db } from '@/lib/firebase';
 import { doc, onSnapshot } from 'firebase/firestore';
 import { format } from 'date-fns';
+import { useReactToPrint } from 'react-to-print';
 
 const tierColors = {
     bronze: { base: '#CD7F32', dark: '#8B4513' },
