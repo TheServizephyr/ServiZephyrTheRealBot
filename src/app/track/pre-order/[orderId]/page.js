@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useState, useEffect, useMemo, Suspense, useCallback, useRef } from 'react';
@@ -107,7 +108,6 @@ function PreOrderTrackingContent() {
 
     const handleBackToMenu = () => {
         if (order?.restaurantId && order?.trackingToken) {
-            // FIX: Pass active order details to the URL
             const backUrl = `/order/${order.restaurantId}?activeOrderId=${order.id}&token=${order.trackingToken}`;
             router.push(backUrl);
         } else {

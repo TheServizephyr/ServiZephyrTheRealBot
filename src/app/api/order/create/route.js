@@ -46,8 +46,55 @@ export async function POST(req) {
             tableId = null, 
             pax_count, 
             tab_name, 
-            dineInTabId 
+            dineInTabId,
+            existingOrderId // <-- NEW: For adding items to an existing order
         } = body;
+
+        // --- START: ADD-ON ORDER LOGIC ---
+        if (existingOrderId && items && items.length > 0) {
+            console.log(`[API /order/create] ADD-ON FLOW: Adding items to existing order ${existingOrderId}`);
+            const orderRef = firestore.collection('orders').doc(existingOrderId);
+            
+            try {
+                await firestore.runTransaction(async (transaction) => {
+                    const orderDoc = await transaction.get(orderRef);
+                    if (!orderDoc.exists) throw new Error("The original order to add to was not found.");
+                    
+                    const orderData = orderDoc.data();
+                    
+                    const newItems = [...orderData.items, ...items];
+                    const newSubtotal = orderData.subtotal + subtotal;
+                    const newCgst = orderData.cgst + cgst;
+                    const newSgst = orderData.sgst + sgst;
+                    const newGrandTotal = orderData.totalAmount + grandTotal;
+
+                    const updatePayload = {
+                        items: newItems,
+                        subtotal: newSubtotal,
+                        cgst: newCgst,
+                        sgst: newSgst,
+                        totalAmount: newGrandTotal,
+                        statusHistory: FieldValue.arrayUnion({
+                            status: 'updated',
+                            timestamp: new Date(),
+                            notes: `Added ${items.length} new item(s).`
+                        })
+                    };
+
+                    transaction.update(orderRef, updatePayload);
+                });
+                console.log(`[API /order/create] ADD-ON FLOW: Successfully added items to order ${existingOrderId}.`);
+                 return NextResponse.json({ 
+                    message: 'Items added to your existing order successfully!',
+                    order_id: existingOrderId,
+                }, { status: 200 });
+
+            } catch (error) {
+                console.error(`[API /order/create] ADD-ON FLOW: Transaction failed for order ${existingOrderId}:`, error);
+                return NextResponse.json({ message: error.message }, { status: 400 });
+            }
+        }
+        // --- END: ADD-ON ORDER LOGIC ---
 
         // --- VALIDATION ---
         const isStreetVendorOrder = deliveryType === 'street-vendor-pre-order';

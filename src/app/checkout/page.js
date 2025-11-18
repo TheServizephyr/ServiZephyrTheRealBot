@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useState, useEffect, useMemo, Suspense } from 'react';
@@ -119,9 +120,7 @@ const CheckoutPageInternal = () => {
     
     const [infoDialog, setInfoDialog] = useState({ isOpen: false, title: '', message: '' });
     
-    // --- START: ADD-ON ORDER STATE ---
     const activeOrderId = searchParams.get('activeOrderId');
-    // --- END: ADD-ON ORDER STATE ---
 
     useEffect(() => {
         if (isPaymentConfirmed) {
@@ -300,9 +299,7 @@ const CheckoutPageInternal = () => {
             deliveryType: cartData.deliveryType, pickupTime: cartData.pickupTime || '', tipAmount: cartData.tipAmount || 0,
             businessType: cartData.businessType || 'restaurant', tableId: cartData.tableId || null, dineInTabId: cartData.dineInTabId || null,
             pax_count: cartData.pax_count || null, tab_name: cartData.tab_name || null, address: selectedAddress,
-            // --- START: ADD-ON ORDER LOGIC ---
             existingOrderId: activeOrderId || undefined,
-            // --- END: ADD-ON ORDER LOGIC ---
         };
 
         setIsProcessingPayment(true); 
