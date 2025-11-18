@@ -1,11 +1,9 @@
-
-
 'use client';
 
 import React, { useState, useEffect, useMemo, Suspense, useCallback } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Utensils, Plus, Minus, X, Home, User, ShoppingCart, CookingPot, Ticket, Gift, ArrowLeft, Sparkles, Check, PlusCircle, Trash2, ChevronDown, Tag as TagIcon, RadioGroup, IndianRupee, HardHat, Bike, Store, Heart, Wallet, Clock, ChevronUp, Edit2, Lock, Loader2, Navigation, BookOpen } from 'lucide-react';
+import { Utensils, Plus, Minus, X, Home, User, ShoppingCart, CookingPot, Ticket, Gift, ArrowLeft, Sparkles, Check, PlusCircle, Trash2, ChevronDown, Tag as TagIcon, RadioGroup, IndianRupee, HardHat, Bike, Store, Heart, Wallet, Clock, ChevronUp, Edit2, Lock, Loader2, Navigation, BookOpen, ArrowRight } from 'lucide-react';
 import Script from 'next/script';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose } from "@/components/ui/dialog";
@@ -188,56 +186,14 @@ const CartPageInternal = () => {
     const [isCheckoutFlow, setIsCheckoutFlow] = useState(false);
     const [loadingPage, setLoadingPage] = useState(true);
 
+    const activeOrderId = searchParams.get('activeOrderId');
     const [liveOrder, setLiveOrder] = useState(null);
-    
-    const checkLiveOrder = useCallback(async () => {
-        const activeOrderData = localStorage.getItem('liveOrder');
-        if (activeOrderData) {
-            const parsedOrder = JSON.parse(activeOrderData);
-            try {
-                const res = await fetch(`/api/order/status/${parsedOrder.orderId}`);
-                if (res.ok) {
-                    const data = await res.json();
-                    
-                    const deliveryType = data.order?.deliveryType;
-                    const status = data.order?.status;
-                    let completedStatuses = ['delivered', 'picked_up', 'rejected'];
-
-                    if (deliveryType === 'street-vendor-pre-order') {
-                        if (status === 'delivered' || status === 'picked_up' || status === 'rejected') {
-                             localStorage.removeItem('liveOrder');
-                             setLiveOrder(null);
-                        } else {
-                            setLiveOrder({ ...parsedOrder, status: status, deliveryType: deliveryType });
-                        }
-                    } else {
-                         if (completedStatuses.includes(status)) {
-                            localStorage.removeItem('liveOrder');
-                            setLiveOrder(null);
-                        } else {
-                             setLiveOrder({ ...parsedOrder, status: status, deliveryType: deliveryType });
-                        }
-                    }
-
-                } else {
-                    localStorage.removeItem('liveOrder');
-                    setLiveOrder(null);
-                }
-            } catch (error) {
-                console.error("Failed to fetch live order status", error);
-                localStorage.removeItem('liveOrder');
-                setLiveOrder(null);
-            }
-        } else {
-            setLiveOrder(null);
-        }
-    }, []);
 
     useEffect(() => {
-        checkLiveOrder();
-        window.addEventListener('storage', checkLiveOrder);
-        return () => window.removeEventListener('storage', checkLiveOrder);
-    }, [checkLiveOrder]);
+        if (activeOrderId) {
+            setLiveOrder({ orderId: activeOrderId, trackingToken: token });
+        }
+    }, [activeOrderId, token]);
 
     useEffect(() => {
         console.log("[Cart Page] Component mounting. User loading:", isUserLoading);
@@ -251,8 +207,8 @@ const CartPageInternal = () => {
             const savedCart = JSON.parse(localStorage.getItem(`cart_${restaurantId}`) || '{}');
             const isAnonymousPreOrder = savedCart.deliveryType === 'street-vendor-pre-order' && !isDineIn && !isLoggedInUser && !isWhatsAppSession;
 
-            if (isDineIn || isLoggedInUser || isAnonymousPreOrder) {
-                console.log(`[Cart Page] Session validated. Reason: ${isDineIn ? 'Dine-in' : isLoggedInUser ? 'Logged in' : 'Anonymous Pre-order'}`);
+            if (isDineIn || isLoggedInUser || isAnonymousPreOrder || activeOrderId) {
+                console.log(`[Cart Page] Session validated. Reason: ${isDineIn ? 'Dine-in' : isLoggedInUser ? 'Logged in' : activeOrderId ? 'Add-on Order' : 'Anonymous Pre-order'}`);
                 setIsTokenValid(true);
             } else if (isWhatsAppSession) {
                 console.log("[Cart Page] Phone and token found in URL. Verifying with API...");
@@ -285,7 +241,7 @@ const CartPageInternal = () => {
         if (!isUserLoading) {
             verifyToken();
         }
-    }, [phone, token, tableId, user, isUserLoading, restaurantId, router]);
+    }, [phone, token, tableId, user, isUserLoading, restaurantId, router, activeOrderId]);
     
     useEffect(() => {
         if (isTokenValid && restaurantId) {
@@ -430,14 +386,9 @@ const CartPageInternal = () => {
             return;
         }
 
-        const params = new URLSearchParams();
-        if(restaurantId) params.append('restaurantId', restaurantId);
-        if (phone) params.append('phone', phone);
-        if (token) params.append('token', token);
-        if (tableId) params.append('table', tableId);
-        if (tabId) params.append('tabId', tabId);
-        
+        const params = new URLSearchParams(searchParams.toString());
         let checkoutUrl = `/checkout?${params.toString()}`;
+
         console.log("[Cart Page] Proceeding to checkout URL:", checkoutUrl);
 
         if (deliveryType === 'dine-in' && !tabId) {
@@ -484,6 +435,7 @@ const CartPageInternal = () => {
         if (token) params.append('token', token);
         if (tableId) params.append('table', tableId);
         if (tabId) params.append('tabId', tabId);
+        if (activeOrderId) params.append('activeOrderId', activeOrderId);
 
         let backUrl = `/order/${restaurantId}`;
         const paramsString = params.toString();
@@ -602,7 +554,9 @@ const CartPageInternal = () => {
     }
 
     if (!cartData || cart.length === 0) {
-        const trackingUrl = liveOrder?.deliveryType === 'street-vendor-pre-order'
+        const trackingUrl = activeOrderId
+            ? `/track/pre-order/${activeOrderId}?token=${token}`
+            : liveOrder?.deliveryType === 'street-vendor-pre-order'
             ? `/track/pre-order/${liveOrder.orderId}?token=${liveOrder.trackingToken}`
             : liveOrder?.deliveryType === 'dine-in'
             ? `/track/dine-in/${liveOrder.orderId}?token=${liveOrder.trackingToken}`
@@ -610,17 +564,17 @@ const CartPageInternal = () => {
         
         return (
             <div className="min-h-screen bg-background flex flex-col items-center justify-center text-muted-foreground p-4">
-                 {liveOrder && (
+                 {(liveOrder || activeOrderId) && (
                     <motion.div
                         className="fixed bottom-4 left-4 right-4 z-20"
                         initial={{ y: 100 }}
                         animate={{ y: 0 }}
                         transition={{ type: 'spring', stiffness: 100 }}
                     >
-                        <div className={cn("p-3 rounded-lg text-black flex justify-between items-center", liveOrder.status === 'Ready' || liveOrder.status === 'ready_for_pickup' ? 'bg-green-400' : 'bg-yellow-400')}>
+                        <div className={cn("p-3 rounded-lg text-black flex justify-between items-center", liveOrder?.status === 'Ready' || liveOrder?.status === 'ready_for_pickup' ? 'bg-green-400' : 'bg-yellow-400')}>
                             <div>
-                                <p className="font-bold">Your order is {liveOrder.status}</p>
-                                <p className="text-xs opacity-80">ID: #{liveOrder.orderId.substring(0, 8)}</p>
+                                <p className="font-bold">Your order is {liveOrder?.status || 'active'}</p>
+                                <p className="text-xs opacity-80">ID: #{(liveOrder?.orderId || activeOrderId).substring(0, 8)}</p>
                             </div>
                             <Button
                                 size="sm"
@@ -642,11 +596,14 @@ const CartPageInternal = () => {
         );
     }
     
-     const trackingUrl = liveOrder?.deliveryType === 'street-vendor-pre-order'
+     const trackingUrl = activeOrderId
+        ? `/track/pre-order/${activeOrderId}?token=${token}`
+        : liveOrder?.deliveryType === 'street-vendor-pre-order'
         ? `/track/pre-order/${liveOrder.orderId}?token=${liveOrder.trackingToken}`
         : liveOrder?.deliveryType === 'dine-in'
         ? `/track/dine-in/${liveOrder.orderId}?token=${liveOrder.trackingToken}`
         : `/track/${liveOrder?.orderId}?token=${liveOrder?.trackingToken}`;
+
 
     return (
         <>
@@ -681,12 +638,12 @@ const CartPageInternal = () => {
                             <ArrowLeft />
                         </Button>
                         <div>
-                            <p className="text-xs text-muted-foreground">Reviewing Your Order from</p>
+                            <p className="text-xs text-muted-foreground">{activeOrderId ? 'Adding to your order for' : 'Reviewing Your Order from'}</p>
                             <h1 className="text-xl font-bold">{cartData.restaurantName}</h1>
                         </div>
                     </div>
-                      {liveOrder && (
-                        <Button asChild variant="secondary" className={cn("flex-shrink-0 animate-pulse text-black", liveOrder.status === 'Ready' || liveOrder.status === 'ready_for_pickup' ? 'bg-green-400 hover:bg-green-500' : 'bg-yellow-400 hover:bg-yellow-500')}>
+                      {(liveOrder || activeOrderId) && (
+                        <Button asChild variant="secondary" className={cn("flex-shrink-0 animate-pulse text-black", liveOrder?.status === 'Ready' || liveOrder?.status === 'ready_for_pickup' ? 'bg-green-400 hover:bg-green-500' : 'bg-yellow-400 hover:bg-yellow-500')}>
                              <a href={trackingUrl}>
                                 <Navigation size={16} /> <span className="ml-2 hidden sm:inline">Track Live Order</span>
                             </a>
@@ -839,7 +796,7 @@ const CartPageInternal = () => {
                         </div>
                         
                         <AnimatePresence>
-                        {deliveryType === 'delivery' && (
+                        {deliveryType === 'delivery' && !activeOrderId && (
                             <motion.div 
                                 className="p-4 mt-4 bg-card rounded-lg border border-border"
                                 initial={{ opacity: 0, y: -10 }}
@@ -869,7 +826,7 @@ const CartPageInternal = () => {
 
                         <div className="mt-6 p-4 border-t-2 border-primary bg-card rounded-lg shadow-lg">
                              <div className="flex justify-between items-center">
-                                <h3 className="text-xl font-bold">Bill Summary</h3>
+                                <h3 className="text-xl font-bold">{activeOrderId ? 'Amount to Add' : 'Bill Summary'}</h3>
                                 <Button variant="ghost" size="sm" onClick={() => setIsBillExpanded(!isBillExpanded)} className="text-primary">
                                     {isBillExpanded ? 'Hide Details' : 'View Detailed Bill'}
                                     <ChevronDown className={cn("ml-1 h-4 w-4 transition-transform", isBillExpanded && "rotate-180")} />
@@ -892,7 +849,7 @@ const CartPageInternal = () => {
                                             {couponDiscount > 0 && <div className="flex justify-between text-green-400"><span>Coupon Discount:</span> <span className="font-medium">- ₹{couponDiscount.toFixed(2)}</span></div>}
                                             {specialCouponDiscount > 0 && <div className="flex justify-between text-primary"><span>Special Discount:</span> <span className="font-medium">- ₹{specialCouponDiscount.toFixed(2)}</span></div>}
                                             
-                                            {!isStreetVendor && deliveryType === 'delivery' && (
+                                            {!isStreetVendor && deliveryType === 'delivery' && !activeOrderId && (
                                                 <div className="flex justify-between">
                                                     <span>Delivery Fee:</span>
                                                     <span className={cn(isDeliveryFree && "font-bold text-green-400")}>
@@ -901,7 +858,7 @@ const CartPageInternal = () => {
                                                 </div>
                                             )}
 
-                                            {!isStreetVendor && tipAmount > 0 && <div className="flex justify-between text-green-400"><span>Rider Tip:</span> <span className="font-medium">+ ₹{tipAmount.toFixed(2)}</span></div>}
+                                            {!isStreetVendor && tipAmount > 0 && !activeOrderId && <div className="flex justify-between text-green-400"><span>Rider Tip:</span> <span className="font-medium">+ ₹{tipAmount.toFixed(2)}</span></div>}
                                             {!isStreetVendor && <div className="flex justify-between"><span>CGST ({5}%):</span> <span className="font-medium">₹{cgst.toFixed(2)}</span></div>}
                                             {!isStreetVendor && <div className="flex justify-between"><span>SGST ({5}%):</span> <span className="font-medium">₹{sgst.toFixed(2)}</span></div>}
                                         </div>
@@ -912,9 +869,9 @@ const CartPageInternal = () => {
                             <div className="border-t border-dashed my-3"></div>
                             
                             <div className="flex justify-between items-center text-lg font-bold">
-                                 <span>{deliveryType === 'dine-in' ? 'Total to be Added:' : 'Grand Total:'}</span>
+                                 <span>{activeOrderId ? 'To Pay:' : (deliveryType === 'dine-in' ? 'Total to be Added:' : 'Grand Total:')}</span>
                                 <div className="flex items-center gap-3">
-                                {totalDiscount > 0 && (
+                                {totalDiscount > 0 && !activeOrderId && (
                                     <span className="text-muted-foreground line-through text-base font-medium">₹{(subtotal + finalDeliveryCharge + (isStreetVendor ? 0 : (cgst*2)) + (deliveryType === 'delivery' ? tipAmount : 0)).toFixed(2)}</span>
                                 )}
                                 <span>₹{grandTotal > 0 ? grandTotal.toFixed(2) : '0.00'}</span>
@@ -936,7 +893,8 @@ const CartPageInternal = () => {
                     {cart.length > 0 ? (
                         <Button onClick={handleConfirmOrder} className="flex-grow bg-primary hover:bg-primary/90 text-primary-foreground h-12 text-lg font-bold w-full" disabled={cart.length === 0 || isCheckoutFlow}>
                              {isCheckoutFlow ? <Loader2 className="animate-spin mr-2"/> : null}
-                            {deliveryType === 'dine-in' ? (cartData?.dineInModel === 'post-paid' ? 'Place Order' : 'Add to Tab') : 'Proceed to Checkout'}
+                            {activeOrderId ? <> <PlusCircle size={20} className="mr-2"/> Add to Existing Order </> : 
+                            (deliveryType === 'dine-in' ? (cartData?.dineInModel === 'post-paid' ? 'Place Order' : 'Add to Tab') : 'Proceed to Checkout')}
                         </Button>
                     ) : deliveryType === 'dine-in' ? (
                          <Button onClick={() => router.push(`/checkout?restaurantId=${restaurantId}&phone=${phone || ''}&token=${token || ''}&table=${tableId}&tabId=${tabId}`)} className="flex-grow bg-green-600 hover:bg-green-700 text-white h-12 text-lg font-bold w-full">
@@ -957,5 +915,3 @@ const CartPage = () => (
 );
 
 export default CartPage;
-
-

@@ -1,5 +1,3 @@
-
-
 'use client';
 
 import React, { Suspense, useEffect, useState, useCallback } from 'react';
@@ -60,7 +58,6 @@ const OrderPlacedContent = () => {
                     trackingToken: finalToken,
                 }));
                 
-                // *** THE FIX: Replace current history state with the tracking page URL ***
                 const isDineIn = !!whatsappNumber;
                 const isPreOrder = !isDineIn && (currentRestaurantId || localStorage.getItem('lastOrderedFrom'));
 
@@ -104,4 +101,3 @@ export default function OrderPlacedPage() {
         </Suspense>
     );
 }
-

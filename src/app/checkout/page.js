@@ -1,5 +1,3 @@
-
-
 'use client';
 
 import React, { useState, useEffect, useMemo, Suspense } from 'react';
@@ -108,6 +106,7 @@ const CheckoutPageInternal = () => {
     
     const [userAddresses, setUserAddresses] = useState([]);
     const [codEnabled, setCodEnabled] = useState(false);
+    const [onlinePaymentEnabled, setOnlinePaymentEnabled] = useState(true);
     
     const [isOnlinePaymentFlow, setIsOnlinePaymentFlow] = useState(false); 
     const [isSplitBillActive, setIsSplitBillActive] = useState(false);
@@ -119,6 +118,10 @@ const CheckoutPageInternal = () => {
     const [isDineInModalOpen, setDineInModalOpen] = useState(false);
     
     const [infoDialog, setInfoDialog] = useState({ isOpen: false, title: '', message: '' });
+    
+    // --- START: ADD-ON ORDER STATE ---
+    const activeOrderId = searchParams.get('activeOrderId');
+    // --- END: ADD-ON ORDER STATE ---
 
     useEffect(() => {
         if (isPaymentConfirmed) {
@@ -143,7 +146,7 @@ const CheckoutPageInternal = () => {
 
             console.log(`[Checkout Page] Verification checks: isDineIn=${isDineIn}, isLoggedInUser=${isLoggedInUser}, isWhatsAppSession=${isWhatsAppSession}, isAnonymousPreOrder=${isAnonymousPreOrder}`);
 
-            if (isDineIn || isLoggedInUser || isAnonymousPreOrder) {
+            if (isDineIn || isLoggedInUser || isAnonymousPreOrder || activeOrderId) {
                 console.log("[Checkout Page] Session validated (Direct).");
                 setIsTokenValid(true);
             } else if (isWhatsAppSession) {
@@ -164,8 +167,8 @@ const CheckoutPageInternal = () => {
                 }
             }
             
-            if (isLoggedInUser) {
-                console.log("[Checkout Page] User is logged in, auto-confirming details.");
+            if (isLoggedInUser || activeOrderId) {
+                console.log("[Checkout Page] User is logged in or adding on, auto-confirming details.");
                 setDetailsConfirmed(true);
             }
 
@@ -208,10 +211,19 @@ const CheckoutPageInternal = () => {
                 if (paymentSettingsRes.ok) {
                     const paymentData = await paymentSettingsRes.json();
                     console.log("[Checkout Page] Payment settings fetched:", paymentData);
-                    if (deliveryType === 'delivery') setCodEnabled(paymentData.deliveryCodEnabled);
-                    else if (deliveryType === 'pickup') setCodEnabled(paymentData.pickupPodEnabled);
-                    else if (deliveryType === 'dine-in') setCodEnabled(paymentData.dineInPayAtCounterEnabled);
-                    else if (deliveryType === 'street-vendor-pre-order') setCodEnabled(true);
+                    if (deliveryType === 'delivery') {
+                        setCodEnabled(paymentData.deliveryCodEnabled);
+                        setOnlinePaymentEnabled(paymentData.deliveryOnlinePaymentEnabled);
+                    } else if (deliveryType === 'pickup') {
+                        setCodEnabled(paymentData.pickupPodEnabled);
+                        setOnlinePaymentEnabled(paymentData.pickupOnlinePaymentEnabled);
+                    } else if (deliveryType === 'dine-in') {
+                        setCodEnabled(paymentData.dineInPayAtCounterEnabled);
+                        setOnlinePaymentEnabled(paymentData.dineInOnlinePaymentEnabled);
+                    } else if (deliveryType === 'street-vendor-pre-order') {
+                        setCodEnabled(true);
+                        setOnlinePaymentEnabled(true);
+                    }
                 }
             } catch (err) {
                 console.error("[Checkout Page] Error fetching initial data:", err);
@@ -226,17 +238,13 @@ const CheckoutPageInternal = () => {
         } else if (isPaymentConfirmed) {
             setLoading(false);
         }
-    }, [restaurantId, phoneFromUrl, token, tableId, tabId, user, isUserLoading, router, isPaymentConfirmed]);
+    }, [restaurantId, phoneFromUrl, token, tableId, tabId, user, isUserLoading, router, isPaymentConfirmed, activeOrderId]);
     
     const deliveryType = useMemo(() => cartData?.deliveryType || 'delivery', [cartData]);
 
     const handleAddNewAddress = () => {
-        const params = new URLSearchParams({
-            returnUrl: window.location.href,
-            phone: phoneFromUrl || '',
-            token: token || '',
-        });
-        if (tableId) params.append('table', tableId);
+        const params = new URLSearchParams(searchParams.toString());
+        params.set('returnUrl', window.location.href);
         router.push(`/add-address?${params.toString()}`);
     };
 
@@ -257,15 +265,15 @@ const CheckoutPageInternal = () => {
             }
         });
         
-        const deliveryCharge = (isStreetVendor || deliveryType !== 'delivery' || isDeliveryFree) ? 0 : (cartData.deliveryCharge || 0);
-        const tip = (isStreetVendor || deliveryType !== 'delivery') ? 0 : (cartData.tipAmount || 0);
+        const deliveryCharge = (isStreetVendor || deliveryType !== 'delivery' || isDeliveryFree || activeOrderId) ? 0 : (cartData.deliveryCharge || 0);
+        const tip = (isStreetVendor || deliveryType !== 'delivery' || activeOrderId) ? 0 : (cartData.tipAmount || 0);
         const taxableAmount = currentSubtotal - couponDiscountValue;
         
         const tax = (isStreetVendor || taxableAmount <= 0) ? 0 : taxableAmount * 0.05;
 
         const finalGrandTotal = taxableAmount + deliveryCharge + (tax * 2) + tip;
         return { subtotal: currentSubtotal, totalDiscount: couponDiscountValue, finalDeliveryCharge: deliveryCharge, cgst: tax, sgst: tax, grandTotal: finalGrandTotal };
-    }, [cartData, cart, appliedCoupons, deliveryType]);
+    }, [cartData, cart, appliedCoupons, deliveryType, activeOrderId]);
 
 
     const handleAddMoreToTab = () => {
@@ -291,19 +299,28 @@ const CheckoutPageInternal = () => {
             loyaltyDiscount: 0, subtotal, cgst, sgst, deliveryCharge: finalDeliveryCharge, grandTotal, paymentMethod: paymentMethod,
             deliveryType: cartData.deliveryType, pickupTime: cartData.pickupTime || '', tipAmount: cartData.tipAmount || 0,
             businessType: cartData.businessType || 'restaurant', tableId: cartData.tableId || null, dineInTabId: cartData.dineInTabId || null,
-            pax_count: cartData.pax_count || null, tab_name: cartData.tab_name || null, address: selectedAddress 
+            pax_count: cartData.pax_count || null, tab_name: cartData.tab_name || null, address: selectedAddress,
+            // --- START: ADD-ON ORDER LOGIC ---
+            existingOrderId: activeOrderId || undefined,
+            // --- END: ADD-ON ORDER LOGIC ---
         };
 
         setIsProcessingPayment(true); 
         setError('');
 
         try {
-            console.log("[Checkout Page] Sending order to /api/customer/register with payload:", orderData);
-            const res = await fetch('/api/customer/register', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(orderData) });
+            console.log("[Checkout Page] Sending order to /api/order/create with payload:", orderData);
+            const res = await fetch('/api/order/create', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(orderData) });
             const data = await res.json();
             if (!res.ok) throw new Error(data.message || "Failed to place order.");
 
             console.log("[Checkout Page] Order API response received:", data);
+
+            // If it was an add-on order, just redirect to tracking
+            if (activeOrderId) {
+                 router.push(`/track/pre-order/${activeOrderId}?token=${token}`);
+                 return;
+            }
 
             if (data.razorpay_order_id) {
                 console.log("[Checkout Page] Razorpay order ID found. Opening payment gateway.");
@@ -424,7 +441,7 @@ const CheckoutPageInternal = () => {
 
     const fullOrderDetailsForSplit = {
         grandTotal,
-        firestore_order_id: `temp_${Date.now()}`, // Generate a temporary ID for splitting before main order is created
+        firestore_order_id: activeOrderId || `temp_${Date.now()}`,
         restaurantId
     };
 
@@ -527,7 +544,7 @@ const CheckoutPageInternal = () => {
                     <div className="container mx-auto px-4 py-3 flex items-center gap-4">
                         <Button variant="ghost" size="icon" onClick={() => router.back()} className="h-10 w-10"><ArrowLeft /></Button>
                         <div>
-                            <p className="text-xs text-muted-foreground">{cameToPay ? 'Final Step' : detailsConfirmed ? 'Step 2 of 2' : 'Step 1 of 2'}</p>
+                            <p className="text-xs text-muted-foreground">{cameToPay ? 'Final Step' : detailsConfirmed ? (activeOrderId ? 'Add to Order' : 'Step 2 of 2') : 'Step 1 of 2'}</p>
                             <h1 className="text-xl font-bold">{cameToPay ? 'Pay Your Bill' : detailsConfirmed ? 'Choose Payment Method' : 'Confirm Your Details'}</h1>
                         </div>
                     </div>
@@ -537,29 +554,29 @@ const CheckoutPageInternal = () => {
                     <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5 }}>
                         {error && <p className="text-destructive text-sm bg-destructive/10 p-2 rounded-md mb-4">{error}</p>}
                         
-                        {!detailsConfirmed && renderDetailsForm()}
+                        {!detailsConfirmed && !activeOrderId && renderDetailsForm()}
 
-                        {detailsConfirmed && (
+                        {(detailsConfirmed || activeOrderId) && (
                         <>
                             <div className="bg-card p-4 rounded-lg border border-border mb-6">
                                 <div className="flex justify-between items-center text-lg font-bold">
-                                    <span>Total Amount Payable</span>
+                                    <span>{activeOrderId ? 'Amount to Add:' : 'Total Amount Payable'}</span>
                                     <span>₹{grandTotal > 0 ? grandTotal.toFixed(2) : '0.00'}</span>
                                 </div>
                             </div>
                             
                             {isOnlinePaymentFlow ? renderPaymentOptions() : (
                                  <div className="space-y-4">
-                                    <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} onClick={() => setIsOnlinePaymentFlow(true)} disabled={isProcessingPayment} className="w-full text-left p-6 bg-card border-2 border-border rounded-lg flex items-center gap-6 hover:border-primary transition-all disabled:opacity-50">
-                                         {isProcessingPayment ? <Loader2 className="animate-spin h-10 w-10 text-primary flex-shrink-0"/> : <Landmark size={40} className="text-primary flex-shrink-0"/>}
-                                        <div>
-                                            <h3 className="text-xl font-bold">Pay Online</h3>
-                                            <p className="text-muted-foreground">UPI, Credit/Debit Card, Netbanking</p>
-                                        </div>
-                                    </motion.button>
-                                    {loading ? (
-                                        <div className="w-full p-6 bg-card border-2 border-border rounded-lg animate-pulse h-[116px]"><div className="h-6 bg-muted rounded w-3/4"></div></div>
-                                    ) : codEnabled ? (
+                                     {onlinePaymentEnabled &&
+                                        <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} onClick={() => setIsOnlinePaymentFlow(true)} disabled={isProcessingPayment} className="w-full text-left p-6 bg-card border-2 border-border rounded-lg flex items-center gap-6 hover:border-primary transition-all disabled:opacity-50">
+                                            {isProcessingPayment ? <Loader2 className="animate-spin h-10 w-10 text-primary flex-shrink-0"/> : <Landmark size={40} className="text-primary flex-shrink-0"/>}
+                                            <div>
+                                                <h3 className="text-xl font-bold">Pay Online</h3>
+                                                <p className="text-muted-foreground">UPI, Credit/Debit Card, Netbanking</p>
+                                            </div>
+                                        </motion.button>
+                                     }
+                                    {codEnabled ? (
                                         <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} onClick={handlePayAtCounter} disabled={isProcessingPayment} className="w-full text-left p-6 bg-card border-2 border-border rounded-lg flex items-center gap-6 hover:border-primary transition-all disabled:opacity-50">
                                             {isProcessingPayment ? <Loader2 className="animate-spin h-10 w-10 text-primary flex-shrink-0"/> : <IndianRupee size={40} className="text-primary flex-shrink-0"/>}
                                             <div>

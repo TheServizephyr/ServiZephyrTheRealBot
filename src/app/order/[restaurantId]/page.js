@@ -640,59 +640,21 @@ const OrderPageInternal = () => {
     const tableIdFromUrl = searchParams.get('table');
     const impersonatedOwnerId = searchParams.get('impersonate_owner_id');
 
-    const [liveOrder, setLiveOrder] = useState(null);
-
-    const checkLiveOrder = useCallback(async () => {
-        const activeOrderData = localStorage.getItem('liveOrder');
-        if (activeOrderData) {
-            const parsedOrder = JSON.parse(activeOrderData);
-            try {
-                const res = await fetch(`/api/order/status/${parsedOrder.orderId}`);
-                if (res.ok) {
-                    const data = await res.json();
-                    const deliveryType = data.order?.deliveryType;
-                    const status = data.order?.status;
-                    let completedStatuses = ['delivered', 'picked_up', 'rejected'];
-
-                    if (deliveryType === 'street-vendor-pre-order') {
-                        if (status === 'delivered' || status === 'picked_up' || status === 'rejected') {
-                             localStorage.removeItem('liveOrder');
-                             setLiveOrder(null);
-                        } else {
-                            setLiveOrder({ ...parsedOrder, status: status, deliveryType: deliveryType });
-                        }
-                    } else {
-                         if (completedStatuses.includes(status)) {
-                            localStorage.removeItem('liveOrder');
-                            setLiveOrder(null);
-                        } else {
-                             setLiveOrder({ ...parsedOrder, status: status, deliveryType: deliveryType });
-                        }
-                    }
-                    
-                } else {
-                    localStorage.removeItem('liveOrder');
-                    setLiveOrder(null);
-                }
-            } catch (error) {
-                console.error("Failed to fetch live order status", error);
-                localStorage.removeItem('liveOrder');
-                setLiveOrder(null);
-            }
-        } else {
-            setLiveOrder(null);
-        }
-    }, []);
+    // --- START: ADD-ON ORDER STATE ---
+    const activeOrderId = searchParams.get('activeOrderId');
+    const activeOrderToken = searchParams.get('token'); // Can reuse the token
+    const [liveOrder, setLiveOrder] = useState(activeOrderId ? { orderId: activeOrderId, trackingToken: activeOrderToken } : null);
+    // --- END: ADD-ON ORDER STATE ---
 
     useEffect(() => {
         const verifySession = async () => {
-            if (tableIdFromUrl) {
+            if (tableIdFromUrl || activeOrderId) { // An active order also validates the session
                 setIsTokenValid(true);
                 return;
             }
             
-            if (!tableIdFromUrl && !phone && !token) {
-                setIsTokenValid(true);
+            if (!tableIdFromUrl && !phone && !token && !activeOrderId) {
+                setIsTokenValid(true); // Allow anonymous access for street vendors if no other auth method is present
                 return;
             }
             
@@ -716,9 +678,7 @@ const OrderPageInternal = () => {
         if (restaurantId) {
             verifySession();
         }
-
-        checkLiveOrder();
-    }, [restaurantId, tableIdFromUrl, phone, token, checkLiveOrder]);
+    }, [restaurantId, tableIdFromUrl, phone, token, activeOrderId]);
 
 
     const [customerLocation, setCustomerLocation] = useState(null);
@@ -803,16 +763,17 @@ const OrderPageInternal = () => {
             if(locationStr) { try { setCustomerLocation(JSON.parse(locationStr)); } catch (e) {} }
 
             try {
-                // Use public menu endpoint which is faster and doesn't require auth
                 const url = `/api/public/menu/${restaurantId}${phone ? `?phone=${phone}`: ''}`;
                 const menuRes = await fetch(url);
                 const menuData = await menuRes.json();
                 
                 if (!menuRes.ok) throw new Error(menuData.message || 'Failed to fetch menu');
                 
-                // Fetch payment settings separately
                 const settingsRes = await fetch(`/api/owner/settings?restaurantId=${restaurantId}`);
                 const settingsData = settingsRes.ok ? await settingsRes.json() : {};
+                
+                const onlinePaymentEnabled = settingsData?.onlinePaymentEnabled ?? true;
+                const codEnabled = settingsData?.codEnabled ?? true;
 
                 const fetchedSettings = {
                     name: menuData.restaurantName, status: menuData.approvalStatus,
@@ -824,9 +785,11 @@ const OrderPageInternal = () => {
                     dineInEnabled: menuData.dineInEnabled, businessAddress: menuData.businessAddress || null,
                     businessType: menuData.businessType || 'restaurant',
                     dineInModel: menuData.dineInModel || 'post-paid',
-                    // Add payment settings
                     dineInOnlinePaymentEnabled: settingsData.dineInOnlinePaymentEnabled !== false,
                     dineInPayAtCounterEnabled: settingsData.dineInPayAtCounterEnabled !== false,
+                    // ADDED: General payment settings for other types
+                    onlinePaymentEnabled: onlinePaymentEnabled,
+                    codEnabled: codEnabled,
                 };
 
                 setRestaurantData(fetchedSettings);
@@ -895,9 +858,12 @@ const OrderPageInternal = () => {
             businessType: restaurantData.businessType,
             dineInModel: restaurantData.dineInModel,
             loyaltyPoints, expiryTimestamp,
+            // ADDED: Active order info
+            activeOrderId: liveOrder?.orderId,
+            activeOrderToken: liveOrder?.trackingToken,
         };
         localStorage.setItem(`cart_${restaurantId}`, JSON.stringify(cartDataToSave));
-    }, [cart, notes, deliveryType, restaurantData, loyaltyPoints, loading, isTokenValid, restaurantId, phone, token, tableIdFromUrl, activeTabInfo]);
+    }, [cart, notes, deliveryType, restaurantData, loyaltyPoints, loading, isTokenValid, restaurantId, phone, token, tableIdFromUrl, activeTabInfo, liveOrder]);
 
 
     useEffect(() => {
@@ -1061,6 +1027,13 @@ const OrderPageInternal = () => {
         if (deliveryType === 'dine-in' && activeTabInfo.id) {
             params.append('tabId', activeTabInfo.id);
         }
+        // --- START: ADD-ON ORDER LOGIC ---
+        // Pass live order info to the cart page
+        if (liveOrder) {
+            params.append('activeOrderId', liveOrder.orderId);
+            params.append('token', liveOrder.trackingToken);
+        }
+        // --- END: ADD-ON ORDER LOGIC ---
         
         const url = `/cart?${params.toString()}`;
         router.push(url);
@@ -1319,7 +1292,7 @@ const OrderPageInternal = () => {
                                 <span>{totalCartItems} Item{totalCartItems > 1 ? 's' : ''}</span>
                                 <div className="mx-4 h-6 w-px bg-primary-foreground/30"></div>
                                 <span className="flex items-center">
-                                    View Cart <ArrowRight className="ml-2 h-5 w-5"/>
+                                    {liveOrder ? 'Add to Order' : 'View Cart'} <ArrowRight className="ml-2 h-5 w-5"/>
                                 </span>
                             </Button>
                         </motion.div>
