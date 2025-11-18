@@ -5,7 +5,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { ArrowLeft, PlusCircle, Trash2, IndianRupee, Loader2, Camera, FileJson, Edit, Upload, X, Plus, Image as ImageIcon, Utensils } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import Link from 'next/link';
-import { useUser, useCollection } from '@/firebase';
+import { useUser, useCollection, useMemoFirebase } from '@/firebase';
 import { db, auth } from '@/lib/firebase';
 import { collection, query, where, onSnapshot, doc, updateDoc, deleteDoc, getDocs } from 'firebase/firestore';
 import { FirestorePermissionError } from '@/firebase/errors';
@@ -512,7 +512,7 @@ export default function StreetVendorMenuPage() {
     const [customCategories, setCustomCategories] = useState([]);
     const [itemToDelete, setItemToDelete] = useState(null);
 
-    const vendorQuery = useMemo(() => {
+    const vendorQuery = useMemoFirebase(() => {
         if (!user) return null;
         return query(collection(db, 'street_vendors'), where('ownerId', '==', user.uid));
     }, [user]);
