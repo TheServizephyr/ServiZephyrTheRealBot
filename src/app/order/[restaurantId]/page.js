@@ -658,7 +658,7 @@ const OrderPageInternal = () => {
                     let completedStatuses = ['delivered', 'picked_up', 'rejected'];
                     
                     if (deliveryType === 'street-vendor-pre-order') {
-                        if (status === 'delivered' || status === 'picked_up' || status === 'rejected') {
+                        if (completedStatuses.includes(status)) {
                              localStorage.removeItem('liveOrder');
                              setLiveOrder(null);
                         } else {
@@ -1154,7 +1154,7 @@ const OrderPageInternal = () => {
 
                 <div className="container mx-auto px-4 mt-6 space-y-4">
                      
-                    {tableIdFromUrl ? (
+                    {restaurantData.businessType !== 'street-vendor' && tableIdFromUrl ? (
                         <div className="bg-card p-4 rounded-lg border border-border flex justify-between items-center">
                             <div className="flex items-center gap-2">
                                 <ConciergeBell className="text-primary"/>
@@ -1164,7 +1164,7 @@ const OrderPageInternal = () => {
                                 <Bell size={20} className="text-primary"/> Call Waiter
                             </Button>
                         </div>
-                    ) : (
+                    ) : restaurantData.businessType !== 'street-vendor' && (
                         <div className="bg-card p-4 rounded-lg border border-border">
                             <div className="flex bg-muted p-1 rounded-lg">
                                 {restaurantData.deliveryEnabled && (
@@ -1258,19 +1258,23 @@ const OrderPageInternal = () => {
                             </PopoverContent>
                         </Popover>
                          {liveOrder && (
-                             <Button asChild variant="secondary" className={cn("flex-shrink-0 animate-pulse text-black", liveOrder.status === 'Ready' || liveOrder.status === 'ready_for_pickup' ? 'bg-green-400 hover:bg-green-500' : 'bg-yellow-400 hover:bg-yellow-500')}>
-                                <Link href={trackingUrl}>
-                                    <Navigation size={16} /> <span className="ml-2 hidden sm:inline">Track Live Order</span>
-                                </Link>
-                            </Button>
+                            <Link href={trackingUrl}>
+                                <motion.div
+                                    className={cn("p-2 rounded-lg text-black flex items-center animate-pulse", liveOrder.status === 'Ready' || liveOrder.status === 'ready_for_pickup' ? 'bg-green-400' : 'bg-yellow-400')}
+                                    whileHover={{ scale: 1.05 }}
+                                >
+                                    <Navigation size={16} className="mr-2"/> 
+                                    <span className="text-sm font-bold hidden sm:inline">Track Live Order</span>
+                                </motion.div>
+                            </Link>
                         )}
-                        <Button variant="outline" className="flex items-center gap-2 flex-shrink-0" onClick={() => setIsMenuBrowserOpen(true)}>
-                            <BookOpen size={16} /> Menu
+                        <Button variant="outline" className="flex-shrink-0" onClick={() => setIsMenuBrowserOpen(true)}>
+                            <BookOpen size={16} /> <span className="ml-2 hidden sm:inline">Menu</span>
                         </Button>
                     </div>
                 </div>
 
-                <div className="container mx-auto px-4 mt-6 pb-32">
+                <div className="container mx-auto px-4 mt-6 pb-40">
                     <main>
                         <div className="space-y-8">
                             {menuCategories.map(({key, title}) => (
@@ -1293,22 +1297,34 @@ const OrderPageInternal = () => {
                         </div>
                     </main>
                 </div>
-
-                <AnimatePresence>
-                    {totalCartItems > 0 && (
+                 <AnimatePresence>
+                     {totalCartItems > 0 ? (
                         <motion.div
                             className="fixed bottom-4 left-1/2 -translate-x-1/2 w-auto z-30"
                             initial={{ scale: 0, opacity: 0 }}
                             animate={{ scale: 1, opacity: 1 }}
                             exit={{ scale: 0, opacity: 0 }}
                         >
-                            <Button onClick={handleCheckout} className="bg-primary hover:bg-primary/90 h-16 w-48 text-lg font-bold rounded-full shadow-primary/30 flex justify-between items-center text-primary-foreground px-6">
+                            <Button onClick={handleCheckout} className="bg-primary hover:bg-primary/90 h-16 w-auto min-w-[200px] text-lg font-bold rounded-full shadow-lg shadow-primary/30 flex justify-between items-center text-primary-foreground px-6">
                                 <span>{totalCartItems} Item{totalCartItems > 1 ? 's' : ''}</span>
-                                <span>₹{subtotal}</span>
+                                <div className="mx-4 h-6 w-px bg-primary-foreground/30"></div>
+                                <span className="flex items-center">
+                                    View Cart <ArrowRight className="ml-2 h-5 w-5"/>
+                                </span>
                             </Button>
                         </motion.div>
-                    )}
-                </AnimatePresence>
+                     ) : (
+                         <motion.div
+                            initial={{ y: 100 }}
+                            animate={{ y: cart.length > 0 ? 100 : 0 }}
+                            className="fixed bottom-4 right-4 z-20"
+                         >
+                             <Button size="icon" className="w-16 h-16 rounded-full bg-green-600 hover:bg-green-700 text-white shadow-lg" onClick={() => setIsMenuBrowserOpen(true)}>
+                                 <BookOpen size={28}/>
+                             </Button>
+                         </motion.div>
+                     )}
+                 </AnimatePresence>
             </div>
         </>
     );
@@ -1328,5 +1344,3 @@ const OrderPage = () => (
 );
 
 export default OrderPage;
-
-
