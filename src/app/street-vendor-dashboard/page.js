@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
@@ -251,9 +252,14 @@ export default function StreetVendorDashboard() {
     const confirmCollection = async () => {
         if (!scannedOrder) return;
         const tempOrder = { ...scannedOrder };
+        // Close modal immediately for better UX
         setScannedOrder(null);
-        await handleUpdateStatus(tempOrder.id, 'delivered');
-        setInfoDialog({isOpen: true, title: 'Success', message: `Order for ${tempOrder.customerName} marked as collected!`});
+        try {
+            await handleUpdateStatus(tempOrder.id, 'delivered');
+            setInfoDialog({isOpen: true, title: 'Success', message: `Order for ${tempOrder.customerName} marked as collected!`});
+        } catch (error) {
+            setInfoDialog({ isOpen: true, title: "Error", message: `Could not mark order as collected: ${error.message}` });
+        }
     };
 
     useEffect(() => {
