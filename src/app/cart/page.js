@@ -1,7 +1,7 @@
 
 'use client';
 
-import React, { useState, useEffect, useMemo, Suspense } from 'react';
+import React, { useState, useEffect, useMemo, Suspense, useCallback } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Utensils, Plus, Minus, X, Home, User, ShoppingCart, CookingPot, Ticket, Gift, ArrowLeft, Sparkles, Check, PlusCircle, Trash2, ChevronDown, Tag as TagIcon, RadioGroup, IndianRupee, HardHat, Bike, Store, Heart, Wallet, Clock, ChevronUp, Edit2, Lock, Loader2, Navigation, BookOpen } from 'lucide-react';
@@ -189,40 +189,54 @@ const CartPageInternal = () => {
 
     const [liveOrder, setLiveOrder] = useState(null);
     
-    useEffect(() => {
-        const checkLiveOrder = async () => {
-            const activeOrderData = localStorage.getItem('liveOrder');
-            if (activeOrderData) {
-                const parsedOrder = JSON.parse(activeOrderData);
-                try {
-                    const res = await fetch(`/api/order/status/${parsedOrder.orderId}`);
-                    if (res.ok) {
-                        const data = await res.json();
-                        const liveStatus = data.order?.status;
-                        const completedStatuses = ['delivered', 'picked_up', 'rejected'];
-                        if (liveStatus && !completedStatuses.includes(liveStatus)) {
-                            setLiveOrder({ ...parsedOrder, status: liveStatus });
+    const checkLiveOrder = useCallback(async () => {
+        const activeOrderData = localStorage.getItem('liveOrder');
+        if (activeOrderData) {
+            const parsedOrder = JSON.parse(activeOrderData);
+            try {
+                const res = await fetch(`/api/order/status/${parsedOrder.orderId}`);
+                if (res.ok) {
+                    const data = await res.json();
+                    
+                    const deliveryType = data.order?.deliveryType;
+                    const status = data.order?.status;
+                    let completedStatuses = ['delivered', 'picked_up', 'rejected'];
+
+                    if (deliveryType === 'street-vendor-pre-order') {
+                        if (status === 'delivered' || status === 'picked_up' || status === 'rejected') {
+                             localStorage.removeItem('liveOrder');
+                             setLiveOrder(null);
                         } else {
-                            localStorage.removeItem('liveOrder');
-                            setLiveOrder(null);
+                            setLiveOrder({ ...parsedOrder, status: status });
                         }
                     } else {
-                        localStorage.removeItem('liveOrder');
-                        setLiveOrder(null);
+                         if (completedStatuses.includes(status)) {
+                            localStorage.removeItem('liveOrder');
+                            setLiveOrder(null);
+                        } else {
+                             setLiveOrder({ ...parsedOrder, status: status });
+                        }
                     }
-                } catch (error) {
-                    console.error("Failed to fetch live order status", error);
+
+                } else {
                     localStorage.removeItem('liveOrder');
                     setLiveOrder(null);
                 }
-            } else {
+            } catch (error) {
+                console.error("Failed to fetch live order status", error);
+                localStorage.removeItem('liveOrder');
                 setLiveOrder(null);
             }
+        } else {
+            setLiveOrder(null);
         }
+    }, []);
+
+    useEffect(() => {
         checkLiveOrder();
         window.addEventListener('storage', checkLiveOrder);
         return () => window.removeEventListener('storage', checkLiveOrder);
-    }, []);
+    }, [checkLiveOrder]);
 
     useEffect(() => {
         console.log("[Cart Page] Component mounting. User loading:", isUserLoading);
@@ -589,28 +603,28 @@ const CartPageInternal = () => {
     if (!cartData || cart.length === 0) {
         return (
             <div className="min-h-screen bg-background flex flex-col items-center justify-center text-muted-foreground p-4">
-                {liveOrder ? (
+                 {liveOrder && (
                     <motion.div
-                        className="fixed bottom-0 left-0 right-0 p-4 w-full z-20"
+                        className="fixed bottom-4 left-4 right-4 z-20"
                         initial={{ y: 100 }}
                         animate={{ y: 0 }}
                         transition={{ type: 'spring', stiffness: 100 }}
                     >
-                        <div className={`p-3 rounded-lg text-black flex justify-between items-center ${liveOrder.status === 'Ready' ? 'bg-green-400' : 'bg-yellow-400'}`}>
+                        <div className={`p-3 rounded-lg text-black flex justify-between items-center ${liveOrder.status === 'Ready' || liveOrder.status === 'ready_for_pickup' ? 'bg-green-400' : 'bg-yellow-400'}`}>
                             <div>
                                 <p className="font-bold">Your order is {liveOrder.status}</p>
                                 <p className="text-xs opacity-80">ID: #{liveOrder.orderId.substring(0, 8)}</p>
                             </div>
                             <Button
                                 size="sm"
-                                onClick={() => router.push(`/track/pre-order/${liveOrder.orderId}?token=${liveOrder.trackingToken}`)}
+                                onClick={() => router.push(`/${liveOrder.deliveryType === 'dine-in' ? 'track/dine-in' : 'track'}/${liveOrder.orderId}?token=${liveOrder.trackingToken}`)}
                                 className="bg-black text-white"
                             >
                                 <Navigation size={16} className="mr-2"/> Track
                             </Button>
                         </div>
                     </motion.div>
-                ) : null}
+                )}
                 <ShoppingCart size={48} className="mb-4" />
                 <h1 className="text-2xl font-bold">Your Cart is Empty</h1>
                 <p className="mt-2">Looks like you haven't added anything to your cart yet.</p>
@@ -658,10 +672,10 @@ const CartPageInternal = () => {
                             <h1 className="text-xl font-bold">{cartData.restaurantName}</h1>
                         </div>
                     </div>
-                     {liveOrder && (
-                        <Button asChild variant="secondary" className="flex-shrink-0 animate-pulse bg-yellow-400 text-black hover:bg-yellow-500">
-                            <a href={`/track/pre-order/${liveOrder.orderId}?token=${liveOrder.trackingToken}`}>
-                                <Navigation size={16} className="mr-2"/> Track Live Order
+                      {liveOrder && (
+                        <Button asChild variant="secondary" className={cn("flex-shrink-0 animate-pulse text-black", liveOrder.status === 'Ready' || liveOrder.status === 'ready_for_pickup' ? 'bg-green-400 hover:bg-green-500' : 'bg-yellow-400 hover:bg-yellow-500')}>
+                             <a href={`/${liveOrder.deliveryType === 'dine-in' ? 'track/dine-in' : 'track'}/${liveOrder.orderId}?token=${liveOrder.trackingToken}`}>
+                                <Navigation size={16} /> <span className="ml-2 hidden sm:inline">Track Live Order</span>
                             </a>
                         </Button>
                     )}
@@ -915,7 +929,7 @@ const CartPageInternal = () => {
                          <Button onClick={() => router.push(`/checkout?restaurantId=${restaurantId}&phone=${phone || ''}&token=${token || ''}&table=${tableId}&tabId=${tabId}`)} className="flex-grow bg-green-600 hover:bg-green-700 text-white h-12 text-lg font-bold w-full">
                             <Wallet className="mr-2"/> View Bill &amp; Pay
                         </Button>
-                    ) : null }
+                    ) : null}
                 </div>
             </div>
         </div>
@@ -930,3 +944,4 @@ const CartPage = () => (
 );
 
 export default CartPage;
+

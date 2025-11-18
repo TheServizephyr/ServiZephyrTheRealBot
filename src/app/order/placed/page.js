@@ -1,4 +1,5 @@
 
+
 'use client';
 
 import React, { Suspense, useEffect, useState, useCallback } from 'react';
@@ -203,3 +204,4 @@ export default function OrderPlacedPage() {
         </Suspense>
     );
 }
+

@@ -643,6 +643,51 @@ const OrderPageInternal = () => {
 
     const [liveOrder, setLiveOrder] = useState(null);
 
+    const checkLiveOrder = useCallback(async () => {
+        const activeOrderData = localStorage.getItem('liveOrder');
+        if (activeOrderData) {
+            const parsedOrder = JSON.parse(activeOrderData);
+            try {
+                const res = await fetch(`/api/order/status/${parsedOrder.orderId}`);
+                if (res.ok) {
+                    const data = await res.json();
+                    
+                    const deliveryType = data.order?.deliveryType;
+                    const status = data.order?.status;
+                    let completedStatuses = ['delivered', 'picked_up', 'rejected'];
+                    
+                    // --- START FIX: Add specific statuses for street vendors ---
+                    if (deliveryType === 'street-vendor-pre-order') {
+                        if (status === 'delivered' || status === 'picked_up' || status === 'rejected') {
+                             localStorage.removeItem('liveOrder');
+                             setLiveOrder(null);
+                        } else {
+                            setLiveOrder({ ...parsedOrder, status: status, deliveryType: deliveryType });
+                        }
+                    } else {
+                         if (completedStatuses.includes(status)) {
+                            localStorage.removeItem('liveOrder');
+                            setLiveOrder(null);
+                        } else {
+                             setLiveOrder({ ...parsedOrder, status: status, deliveryType: deliveryType });
+                        }
+                    }
+                    // --- END FIX ---
+                    
+                } else {
+                    localStorage.removeItem('liveOrder');
+                    setLiveOrder(null);
+                }
+            } catch (error) {
+                console.error("Failed to fetch live order status", error);
+                localStorage.removeItem('liveOrder');
+                setLiveOrder(null);
+            }
+        } else {
+            setLiveOrder(null);
+        }
+    }, []);
+
     useEffect(() => {
         const verifySession = async () => {
             if (tableIdFromUrl) {
@@ -676,38 +721,8 @@ const OrderPageInternal = () => {
             verifySession();
         }
 
-        const checkLiveOrder = async () => {
-            const activeOrderData = localStorage.getItem('liveOrder');
-            if (activeOrderData) {
-                const parsedOrder = JSON.parse(activeOrderData);
-                try {
-                    const res = await fetch(`/api/order/status/${parsedOrder.orderId}`);
-                    if (res.ok) {
-                        const data = await res.json();
-                        const liveStatus = data.order?.status;
-                        const completedStatuses = ['delivered', 'picked_up', 'rejected'];
-                        if (liveStatus && !completedStatuses.includes(liveStatus)) {
-                            setLiveOrder({ ...parsedOrder, status: liveStatus });
-                        } else {
-                            localStorage.removeItem('liveOrder');
-                            setLiveOrder(null);
-                        }
-                    } else {
-                        localStorage.removeItem('liveOrder');
-                        setLiveOrder(null);
-                    }
-                } catch (error) {
-                    console.error("Failed to fetch live order status", error);
-                    localStorage.removeItem('liveOrder');
-                    setLiveOrder(null);
-                }
-            } else {
-                setLiveOrder(null);
-            }
-        };
-
         checkLiveOrder();
-    }, [restaurantId, tableIdFromUrl, phone, token]);
+    }, [restaurantId, tableIdFromUrl, phone, token, checkLiveOrder]);
 
 
     const [customerLocation, setCustomerLocation] = useState(null);
@@ -1238,13 +1253,13 @@ const OrderPageInternal = () => {
                             </PopoverContent>
                         </Popover>
                          {liveOrder && (
-                             <Button asChild variant="secondary" className={cn("flex-shrink-0 animate-pulse text-black", liveOrder.status === 'Ready' ? 'bg-green-400 hover:bg-green-500' : 'bg-yellow-400 hover:bg-yellow-500')}>
-                                <Link href={`/track/pre-order/${liveOrder.orderId}?token=${liveOrder.trackingToken}`}>
+                             <Button asChild variant="secondary" className={cn("flex-shrink-0 animate-pulse text-black", liveOrder.status === 'Ready' || liveOrder.status === 'ready_for_pickup' ? 'bg-green-400 hover:bg-green-500' : 'bg-yellow-400 hover:bg-yellow-500')}>
+                                <Link href={`/track/${liveOrder.deliveryType === 'dine-in' ? 'dine-in/' : ''}${liveOrder.orderId}?token=${liveOrder.trackingToken}`}>
                                     <Navigation size={16} /> <span className="ml-2 hidden sm:inline">Track Live Order</span>
                                 </Link>
                             </Button>
                         )}
-                        <Button variant="outline" className="flex items-center gap-2 flex-shrink-0" onClick={() => setIsMenuBrowserOpen(true)}>
+                        <Button variant="outline" className="flex items-center gap-2 flex-shrink-0 md:hidden" onClick={() => setIsMenuBrowserOpen(true)}>
                             <BookOpen size={16} /> Menu
                         </Button>
                     </div>
@@ -1274,26 +1289,21 @@ const OrderPageInternal = () => {
                     </main>
                 </div>
 
-                <div className="fixed bottom-0 left-0 w-full z-30">
-                    <AnimatePresence>
-                        {totalCartItems > 0 && (
-                            <motion.div
-                                className="bg-background border-t border-border"
-                                initial={{ y: "100%" }}
-                                animate={{ y: 0 }}
-                                exit={{ y: "100%" }}
-                                transition={{ type: "spring", stiffness: 300, damping: 30 }}
-                            >
-                                <div className="container mx-auto p-4">
-                                    <Button onClick={handleCheckout} className="bg-primary hover:bg-primary/90 h-14 text-lg font-bold rounded-lg shadow-primary/30 flex justify-between items-center text-primary-foreground w-full">
-                                        <span>{totalCartItems} Item{totalCartItems > 1 ? 's' : ''} in Cart</span>
-                                        <span>View Cart | ₹{subtotal}</span>
-                                    </Button>
-                                </div>
-                            </motion.div>
-                        )}
-                    </AnimatePresence>
-                </div>
+                 <AnimatePresence>
+                    {totalCartItems > 0 && (
+                        <motion.div
+                            className="fixed bottom-4 right-4 z-30"
+                            initial={{ scale: 0, opacity: 0 }}
+                            animate={{ scale: 1, opacity: 1 }}
+                            exit={{ scale: 0, opacity: 0 }}
+                        >
+                            <Button onClick={handleCheckout} className="bg-primary hover:bg-primary/90 h-16 w-48 text-lg font-bold rounded-full shadow-primary/30 flex justify-between items-center text-primary-foreground px-6">
+                                <span>{totalCartItems} Item{totalCartItems > 1 ? 's' : ''}</span>
+                                <span>₹{subtotal}</span>
+                            </Button>
+                        </motion.div>
+                    )}
+                </AnimatePresence>
             </div>
         </>
     );
@@ -1313,3 +1323,4 @@ const OrderPage = () => (
 );
 
 export default OrderPage;
+
