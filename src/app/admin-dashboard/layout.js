@@ -60,7 +60,7 @@ const SidebarLink = ({ href, icon: Icon, children, isCollapsed }) => {
 
 const useIsMobile = () => {
     const { width } = useWindowSize();
-    const [isMobile, setIsMobile] = useState(false);
+    const [isMobile, setIsMobile] = useState(true); // FIX: Default to true
 
     useEffect(() => {
         setIsMobile(width < 768);

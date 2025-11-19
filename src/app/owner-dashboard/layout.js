@@ -55,7 +55,7 @@ function FeatureLockScreen({ remark, featureId }) {
 
 
 function OwnerDashboardContent({ children }) {
-  const [isMobile, setIsMobile] = useState(false);
+  const [isMobile, setIsMobile] = useState(true); // FIX: Default to true
   const [isSidebarOpen, setSidebarOpen] = useState(true);
   const [restaurantStatus, setRestaurantStatus] = useState({
       status: null,
