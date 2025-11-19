@@ -1,4 +1,3 @@
-
 'use client';
 
 import React, { Suspense, useEffect } from 'react';
@@ -17,17 +16,16 @@ const OrderPlacedContent = () => {
         const handleRedirect = async () => {
             if (!orderId) return;
 
-            // Immediately clear the cart from localStorage upon placing an order
+            // Immediately clear the cart and any OLD live order from localStorage upon placing a new order
             if (restaurantId) {
                 localStorage.removeItem(`cart_${restaurantId}`);
-                // Clear liveOrder as well to ensure a fresh start
                 localStorage.removeItem('liveOrder');
             }
 
             const tokenInUrl = searchParams.get('token');
             let finalToken = tokenInUrl;
 
-            // Wait for backend processing if token isn't immediately available
+            // Wait for backend processing if token isn't immediately available in the URL
             if (!tokenInUrl) {
                 try {
                     await new Promise(resolve => setTimeout(resolve, 1500));
@@ -45,7 +43,9 @@ const OrderPlacedContent = () => {
 
             // Only proceed if we have a token
             if (finalToken) {
-                // Save the new live order details for potential add-ons
+                // *** THE FIX ***
+                // Save the NEW live order details to localStorage BEFORE redirecting.
+                // This allows the order page to recognize the active session when the user navigates back.
                 if (restaurantId) {
                     localStorage.setItem('liveOrder', JSON.stringify({ 
                         orderId, 
