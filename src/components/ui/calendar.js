@@ -1,7 +1,6 @@
 "use client"
 
 import * as React from "react"
-import * as RadixDialog from "@radix-ui/react-dialog"
 import { DayPicker } from "react-day-picker"
 import { format } from "date-fns"
 import { ChevronLeft, ChevronRight, Edit } from "lucide-react"
@@ -18,13 +17,9 @@ const CalendarHeader = ({ selectedRange, onSave, onClear, onClose, onYearClick }
 
   const from = selectedRange?.from ? formatDate(selectedRange.from) : '...';
   const to = selectedRange?.to ? formatDate(selectedRange.to) : '...';
-  const year = selectedRange?.from ? format(selectedRange.from, 'yyyy') : new Date().getFullYear();
 
   return (
     <div className="bg-primary text-primary-foreground p-4 flex flex-col rounded-t-lg">
-        <button onClick={onYearClick} className="text-xs uppercase opacity-70 mb-1 w-fit hover:opacity-100 transition-opacity flex items-center gap-1">
-            {year} <Edit size={12} />
-        </button>
         <div className="text-3xl font-bold">
             {from} {selectedRange?.to && from !== to ? ` – ${to}` : ''}
         </div>
@@ -67,24 +62,9 @@ function Calendar({
       }
   }
   
-  const handleYearClick = () => {
-    const yearSelect = document.querySelector('.rdp-caption_select[aria-label="Select year"]');
-    if (yearSelect) {
-      // For some reason, a direct click() doesn't always work on all browsers.
-      // A more reliable way is to dispatch a mouse event.
-      const event = new MouseEvent('mousedown', {
-          view: window,
-          bubbles: true,
-          cancelable: true
-      });
-      yearSelect.dispatchEvent(event);
-    }
-  };
-
-
   return (
     <div className={cn("rounded-lg border bg-card text-card-foreground shadow-sm w-full max-w-sm", className)}>
-        <CalendarHeader selectedRange={range} onSave={handleSave} onClear={handleClear} onClose={onClose} onYearClick={handleYearClick}/>
+        <CalendarHeader selectedRange={range} onSave={handleSave} onClear={handleClear} onClose={onClose} />
         <DayPicker
           showOutsideDays={showOutsideDays}
           mode="range"
@@ -97,13 +77,10 @@ function Calendar({
           classNames={{
             months: "flex flex-col sm:flex-row space-y-4 sm:space-y-0",
             month: "space-y-4",
-            caption: "hidden", // This hides the default caption entirely
+            caption: "flex justify-center pt-1 relative items-center mb-4",
             caption_label: "hidden",
             nav: "space-x-1 flex items-center",
-            nav_button: cn(
-              buttonVariants({ variant: "outline" }),
-              "h-7 w-7 bg-transparent p-0 opacity-50 hover:opacity-100"
-            ),
+            nav_button: "h-7 w-7 bg-transparent p-0 opacity-50 hover:opacity-100",
             nav_button_previous: "absolute left-1",
             nav_button_next: "absolute right-1",
             table: "w-full border-collapse space-y-1",
@@ -125,7 +102,9 @@ function Calendar({
               "aria-selected:bg-primary/10",
             day_hidden: "invisible",
             vsc_captions: 'flex justify-center items-center gap-4', // Use this to style the dropdown container
-            vsc_caption_label: 'hidden', // Hide default text label
+            vsc_caption_label: 'font-semibold text-lg', // Style the main label (e.g., "December 2025")
+            vsc_dropdowns: 'flex gap-2',
+            vsc_dropdown: 'p-1 border rounded-md bg-input text-sm',
             ...classNames,
           }}
           components={{
