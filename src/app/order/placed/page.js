@@ -28,12 +28,12 @@ const OrderPlacedContent = () => {
             // Clear any old cart or live order data to ensure a fresh start for the next session
             if (restaurantId) {
                 localStorage.removeItem(`cart_${restaurantId}`);
-                localStorage.removeItem('liveOrder');
                  console.log(`[Order Placed] Cleared localStorage for restaurant ${restaurantId}.`);
-            } else {
-                 localStorage.removeItem('liveOrder');
-                 console.log(`[Order Placed] Cleared liveOrder from localStorage (no restaurantId).`);
             }
+            // Always clear the old liveOrder before setting a new one
+            localStorage.removeItem('liveOrder');
+            console.log(`[Order Placed] Cleared any previous liveOrder from localStorage.`);
+
 
             let finalToken = tokenFromUrl;
 
@@ -68,8 +68,8 @@ const OrderPlacedContent = () => {
             if (finalToken) {
                  console.log(`[Order Placed] Proceeding with Order ID: ${orderId} and Token: ${finalToken.substring(0,5)}...`);
                 
-                // Save the new live order details to localStorage BEFORE redirecting.
-                // This allows the order page to recognize the active session when the user navigates back.
+                // --- START FIX: Save the new live order details to localStorage BEFORE redirecting. ---
+                // This allows other pages (like the order page) to recognize the active session.
                 localStorage.setItem('liveOrder', JSON.stringify({ 
                     orderId, 
                     restaurantId, // May be null, that's okay
@@ -77,6 +77,8 @@ const OrderPlacedContent = () => {
                     status: 'pending', // Initial status
                 }));
                  console.log(`[Order Placed] Saved new live order to localStorage.`);
+                // --- END FIX ---
+
 
                 // Determine the correct tracking URL based on context
                 const isDineIn = !!whatsappNumber;
