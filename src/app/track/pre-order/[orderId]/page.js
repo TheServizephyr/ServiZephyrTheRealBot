@@ -175,12 +175,12 @@ function PreOrderTrackingContent() {
                              <svg className="circular-text" viewBox="0 0 300 300">
                                 <path id="curve" d="M 50, 150 a 100,100 0 1,1 200,0" fill="transparent"/>
                                 <text width="100" className="coin-text-fill"><textPath xlinkHref="#curve" startOffset="50%" textAnchor="middle">★ {order.restaurantName} ★</textPath></text>
-                            </svg>
+                             </svg>
                              <div className="token-number">
                                 <span className="token-number-main">#{tokenPart1}-</span>
                                 <span className="token-number-sub">{tokenPart2}</span>
                             </div>
-                            <svg className="circular-text" viewBox="0 0 300 300">
+                             <svg className="circular-text" viewBox="0 0 300 300">
                                 <path id="bottom-curve" d="M 250, 150 a 100,100 0 1,1 -200,0" fill="transparent"/>
                                 {orderDate && (
                                      <text width="100" className="coin-text-fill"><textPath xlinkHref="#bottom-curve" startOffset="50%" textAnchor="middle">{format(new Date(orderDate.seconds * 1000), 'dd MMM • hh:mm a')}</textPath></text>
@@ -188,31 +188,41 @@ function PreOrderTrackingContent() {
                             </svg>
                         </div>
                         <div className={cn("coin-face coin-back", tierStyle)}>
-                            <div className="p-4 bg-white rounded-lg">
+                            
                                  <QRCode value={qrValue} size={160} fgColor={tierColors[coinTier].dark} bgColor="transparent" />
-                            </div>
+                            
                              <p className="mt-4 text-xs font-semibold" style={{ color: tierColors[coinTier].dark }}>Powered by ServiZephyr</p>
                         </div>
                     </div>
                 </motion.div>
                 
                 <motion.p 
-                    className="mt-8 text-slate-300 text-lg font-semibold max-w-md"
                     key={statusText}
-                    initial={{opacity: 0}} animate={{opacity: 1}}
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    className="mt-8 text-slate-300 max-w-sm"
                 >
                     {statusText}
                 </motion.p>
                 
-                <div className="w-full max-w-xl mt-8">
+                <motion.div 
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    transition={{ delay: 0.5 }}
+                    className="w-full mt-8"
+                >
                     {isCompleted ? (
-                         <div className="flex items-center justify-center gap-2 text-green-400 font-bold text-xl p-4 bg-green-500/10 rounded-lg">
-                            <CheckCircle size={28}/> Order Completed
-                         </div>
+                        <div className="flex items-center justify-center gap-2 text-green-400 font-bold p-3 bg-green-500/10 rounded-lg">
+                            <CheckCircle />
+                             Order Completed
+                        </div>
                     ) : (
-                        <SimpleTimeline currentStatus={order.status} />
+                        <div className="w-full">
+                            <SimpleTimeline currentStatus={order.status} />
+                        </div>
                     )}
-                </div>
+                </motion.div>
+                
             </main>
         </div>
     );
@@ -220,7 +230,7 @@ function PreOrderTrackingContent() {
 
 export default function PreOrderTrackingPage() {
     return (
-        <Suspense fallback={<div className="min-h-screen bg-background flex items-center justify-center"><Loader2 className="w-16 h-16 animate-spin text-primary"/></div>}>
+        <Suspense fallback={<div className="min-h-screen bg-slate-900 flex items-center justify-center"><Loader2 className="animate-spin text-primary h-16 w-16" /></div>}>
             <PreOrderTrackingContent />
         </Suspense>
     )
