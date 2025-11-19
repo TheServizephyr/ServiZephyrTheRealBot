@@ -1,4 +1,5 @@
 
+
 'use client';
 
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
@@ -39,14 +40,17 @@ const OrderCard = ({ order, onMarkReady, onCancel, onMarkCollected }) => {
     const isPending = order.status === 'pending';
     const isReady = order.status === 'Ready';
 
-    let cardClass = 'border-yellow-500 bg-yellow-500/10';
+    let cardClass = 'border-yellow-500 bg-white';
     let statusClass = 'text-yellow-400';
     if (isReady) {
-        cardClass = 'border-green-500 bg-green-500/10';
+        cardClass = 'border-green-500 bg-white';
         statusClass = 'text-green-400';
     } else if (order.status === 'delivered' || order.status === 'picked_up') {
-        cardClass = 'border-blue-500 bg-blue-500/10';
+        cardClass = 'border-blue-500 bg-white';
         statusClass = 'text-blue-400';
+    } else if (order.status === 'rejected') {
+        cardClass = 'border-red-500 bg-white';
+        statusClass = 'text-red-400';
     }
     
     const isPaidOnline = order.paymentDetails?.method === 'razorpay';
@@ -64,12 +68,12 @@ const OrderCard = ({ order, onMarkReady, onCancel, onMarkCollected }) => {
                 <div className="flex justify-between items-start">
                     <p className="text-4xl font-bold text-foreground">{token}</p>
                     <div className="text-right">
-                        <div className={`px-2 py-1 text-xs font-semibold rounded-full ${statusClass} bg-opacity-20 capitalize`}>{order.status}</div>
+                        <div className={`px-2 py-1 text-xs font-semibold rounded-full bg-opacity-20 capitalize ${statusClass}`}>{order.status}</div>
                         <p className="text-xs text-muted-foreground mt-1">{formatDateTime(order.orderDate)}</p>
                     </div>
                 </div>
                  <div className="flex justify-between items-center mt-2 border-b border-dashed border-border/50 pb-3 mb-3">
-                    <p className="text-3xl font-bold text-primary">₹{order.totalAmount.toFixed(2)}</p>
+                    <p className="text-3xl font-bold text-green-500">{formatCurrency(order.totalAmount)}</p>
                     {isPaidOnline ? (
                          <div className="flex items-center gap-1 text-xs font-semibold px-2 py-1 rounded-full bg-green-500/10 text-green-400 border border-green-500/20">
                             <Wallet size={14}/> PAID ONLINE
@@ -108,7 +112,7 @@ const OrderCard = ({ order, onMarkReady, onCancel, onMarkCollected }) => {
                          <Button onClick={() => onCancel(order.id)} variant="destructive" className="h-12 text-base">
                             <X className="mr-2" /> Cancel
                         </Button>
-                        <Button onClick={() => onMarkReady(order.id)} className="bg-primary h-12 text-base">
+                        <Button onClick={() => onMarkReady(order.id)} className="bg-green-600 hover:bg-green-700 h-12 text-base">
                             <CookingPot className="mr-2" /> Mark Ready
                         </Button>
                     </div>
