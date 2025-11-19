@@ -214,9 +214,9 @@
     .coin-back { transform: rotateY(180deg); }
 
     .token-label { font-size: 10px; font-weight: bold; color: var(--coin-text-color); }
-    .token-number { display: flex; align-items: baseline; line-height: 1; font-family: 'Arial Black', sans-serif; text-shadow: 2px 2px 0px rgba(255,255,255,0.4); color: var(--coin-text-color); }
-    .token-number-main { font-size: 65px; font-weight: 900; }
-    .token-number-sub { font-size: 55px; font-weight: 900; margin-left: 2px; }
+    .token-number { display: flex; align-items: baseline; line-height: 0.9; font-family: 'Arial Black', sans-serif; text-shadow: 2px 2px 0px rgba(255,255,255,0.4); color: var(--coin-text-color); }
+    .token-number-main { font-size: 50px; font-weight: 900; }
+    .token-number-sub { font-size: 50px; font-weight: 900; margin-left: 2px; }
 
     .rotating-text-svg { position: absolute; width: 100%; height: 100%; animation: rotateText 20s linear infinite; pointer-events: none; }
     @keyframes rotateText { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
