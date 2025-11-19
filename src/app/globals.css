@@ -167,7 +167,7 @@
         transform: translate(-50%, -50%);
         width: 280px; height: 280px;
         border-radius: 50%;
-        border: 2px solid rgba(255, 215, 0, 0.6);
+        border: 2px solid var(--coin-color-main);
         opacity: 0;
         z-index: 1;
         pointer-events: none;
@@ -187,9 +187,9 @@
         backface-visibility: hidden;
         -webkit-backface-visibility: hidden;
         display: flex; justify-content: center; align-items: center; flex-direction: column;
-        background: radial-gradient(ellipse at center, #ffd700 0%, #d4af37 50%, #aa771c 100%);
+        background: radial-gradient(ellipse at center, var(--coin-color-light) 0%, var(--coin-color-main) 50%, var(--coin-color-dark) 100%);
         box-shadow: inset 0 0 15px rgba(0,0,0,0.5), inset 4px 4px 10px rgba(255,255,255,0.4), 0 20px 50px rgba(0,0,0,0.6);
-        border: 6px solid #b8860b;
+        border: 6px solid var(--coin-color-border);
     }
 
     .texture-overlay {
@@ -212,37 +212,63 @@
 
     .coin-front { transform: rotateY(0deg); }
     .coin-back { transform: rotateY(180deg); }
-    
-    .token-number {
-        font-size: 75px; font-weight: 900; color: #5c3c00;
-        text-shadow: 2px 2px 0px rgba(255,255,255,0.4);
-        font-family: 'Arial Black', sans-serif; z-index: 2;
-    }
+
+    .token-label { font-size: 10px; font-weight: bold; color: var(--coin-text-color); }
+    .token-number { display: flex; align-items: baseline; line-height: 1; font-family: 'Arial Black', sans-serif; text-shadow: 2px 2px 0px rgba(255,255,255,0.4); color: var(--coin-text-color); }
+    .token-number-main { font-size: 65px; font-weight: 900; }
+    .token-number-sub { font-size: 55px; font-weight: 900; margin-left: 2px; }
+
     .rotating-text-svg { position: absolute; width: 100%; height: 100%; animation: rotateText 20s linear infinite; pointer-events: none; }
     @keyframes rotateText { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
-    .rotating-text-svg text { font-weight: bold; font-size: 14px; letter-spacing: 2px; fill: #3e2800; }
-
+    .rotating-text-svg text { font-weight: bold; font-size: 14px; letter-spacing: 2px; fill: var(--coin-text-color-dark); }
+    
     .qr-box {
         width: 140px; height: 140px; background: rgba(60, 40, 0, 0.1);
         border: 2px dashed rgba(92, 60, 0, 0.4); border-radius: 12px;
-        display: flex; justify-content: center; align-items: center;
-        padding: 4px;
+        display: flex; justify-content: center; align-items: center; padding: 4px;
     }
+    .qr-label { margin-top: 8px; font-size: 10px; font-weight: bold; opacity: 0.6; color: var(--coin-text-color-dark); }
     
-    .instruction { position: absolute; bottom: 50px; color: #666; font-size: 12px; letter-spacing: 1px; }
+    .instruction { position: absolute; bottom: 1rem; color: #666; font-size: 12px; letter-spacing: 1px; z-index: 20; }
 
     .particles-container {
         position: absolute; width: 100%; height: 100%; pointer-events: none; z-index: 5;
     }
     .particle {
-        position: absolute; width: 4px; height: 4px; background: #ffd700; border-radius: 50%;
-        box-shadow: 0 0 10px #ffd700; opacity: 0;
+        position: absolute; width: 4px; height: 4px; background: var(--coin-color-main); border-radius: 50%;
+        box-shadow: 0 0 10px var(--coin-color-main); opacity: 0;
         animation: floatUp 4s infinite linear;
     }
     @keyframes floatUp {
         0% { transform: translateY(100px) scale(0); opacity: 0; }
         50% { opacity: 0.8; }
         100% { transform: translateY(-300px) scale(1); opacity: 0; }
+    }
+
+    /* Coin Themes */
+    .bronze-theme {
+      --coin-color-main: #cd7f32;
+      --coin-color-light: #e09f5a;
+      --coin-color-dark: #a06528;
+      --coin-color-border: #8b5a2b;
+      --coin-text-color: #5d401f;
+      --coin-text-color-dark: #4a3318;
+    }
+    .silver-theme {
+      --coin-color-main: #c0c0c0;
+      --coin-color-light: #e0e0e0;
+      --coin-color-dark: #a0a0a0;
+      --coin-color-border: #8d8d8d;
+      --coin-text-color: #4a4a4a;
+      --coin-text-color-dark: #333333;
+    }
+    .gold-theme {
+      --coin-color-main: #ffd700;
+      --coin-color-light: #ffec80;
+      --coin-color-dark: #d4af37;
+      --coin-color-border: #b8860b;
+      --coin-text-color: #5c3c00;
+      --coin-text-color-dark: #3e2800;
     }
 }
 

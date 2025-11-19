@@ -1,16 +1,69 @@
-
 'use client';
 
 import React, { useState, useEffect, useMemo, useCallback, useRef, Suspense } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Loader2, ArrowLeft } from 'lucide-react';
+import { Loader2, ArrowLeft, CookingPot, Check, ShoppingBag } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useRouter, useParams, useSearchParams } from 'next/navigation';
 import { cn } from '@/lib/utils';
 import QRCode from 'qrcode.react';
 import { db } from '@/lib/firebase';
 import { doc, onSnapshot } from 'firebase/firestore';
-import { format } from 'date-fns';
+
+const statusConfig = [
+    { key: 'confirmed', title: 'Confirmed', icon: <Check size={20} /> },
+    { key: 'preparing', title: 'Preparing', icon: <CookingPot size={20} /> },
+    { key: 'Ready', title: 'Ready', icon: <ShoppingBag size={20} /> }
+];
+
+const StatusTimeline = ({ currentStatus }) => {
+    const activeIndex = statusConfig.findIndex(s => s.key === currentStatus);
+    
+    return (
+        <div className="w-full max-w-sm">
+            <div className="flex justify-between items-center">
+                {statusConfig.map((status, index) => {
+                    const isCompleted = index <= activeIndex;
+                    return (
+                         <div key={status.key} className="flex flex-col items-center text-center w-20">
+                            <motion.div
+                                className={cn(
+                                    "w-10 h-10 rounded-full flex items-center justify-center border-2 transition-all duration-500",
+                                    isCompleted ? 'bg-primary border-primary text-primary-foreground' : 'bg-card border-border text-muted-foreground'
+                                )}
+                                animate={{ scale: isCompleted ? 1.1 : 1 }}
+                                transition={{ type: 'spring' }}
+                            >
+                                {status.icon}
+                            </motion.div>
+                            <p className={cn(
+                                "mt-2 text-xs font-semibold",
+                                isCompleted ? 'text-foreground' : 'text-muted-foreground'
+                            )}>
+                                {status.title}
+                            </p>
+                        </div>
+                    );
+                })}
+            </div>
+             <div className="flex justify-between items-center w-full px-10 h-1 -mt-9">
+                 {statusConfig.slice(0, -1).map((_, index) => {
+                     const isCompleted = index < activeIndex;
+                     return (
+                         <div key={`line-${index}`} className="flex-1 h-0.5 bg-border">
+                            <motion.div
+                                className="h-full bg-primary"
+                                initial={{ width: '0%' }}
+                                animate={{ width: isCompleted ? '100%' : '0%' }}
+                                transition={{ duration: 0.5, delay: 0.2 }}
+                            />
+                        </div>
+                     )
+                 })}
+            </div>
+        </div>
+    );
+}
 
 function PreOrderTrackingContent() {
     const router = useRouter();
@@ -21,12 +74,10 @@ function PreOrderTrackingContent() {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
     
-    // States for animations
     const [isFlipped, setIsFlipped] = useState(false);
-    const [animationState, setAnimationState] = useState('drop'); // 'drop', 'float'
+    const [animationState, setAnimationState] = useState('drop'); 
     const [showRipple, setShowRipple] = useState(false);
 
-    // Ref for tilt effect
     const tiltWrapperRef = useRef(null);
 
     useEffect(() => {
@@ -60,7 +111,6 @@ function PreOrderTrackingContent() {
         return () => unsubscribe();
     }, [orderId, tokenFromUrl]);
 
-    // Handle the drop animation and transition to float
     useEffect(() => {
         const timer = setTimeout(() => {
             setAnimationState('float');
@@ -68,17 +118,11 @@ function PreOrderTrackingContent() {
             if(navigator.vibrate) navigator.vibrate([50, 20, 50]);
         }, 1200);
 
-        const rippleTimer = setTimeout(() => {
-            setShowRipple(false);
-        }, 2200);
+        const rippleTimer = setTimeout(() => setShowRipple(false), 2200);
 
-        return () => {
-            clearTimeout(timer);
-            clearTimeout(rippleTimer);
-        };
+        return () => { clearTimeout(timer); clearTimeout(rippleTimer); };
     }, []);
 
-    // Tilt effect logic
     useEffect(() => {
         const handleMouseMove = (e) => {
             if (!tiltWrapperRef.current) return;
@@ -99,13 +143,25 @@ function PreOrderTrackingContent() {
             router.push('/');
         }
     };
+    
+    const coinTheme = useMemo(() => {
+        if (!order) return 'bronze-theme';
+        const amount = order.totalAmount || 0;
+        if (amount > 500) return 'gold-theme';
+        if (amount >= 150) return 'silver-theme';
+        return 'bronze-theme';
+    }, [order]);
+
 
     if (loading) {
         return <div className="fixed inset-0 bg-slate-900 flex items-center justify-center"><Loader2 className="animate-spin text-primary h-16 w-16" /></div>;
     }
     
     if (error) {
-        return <div className="fixed inset-0 bg-slate-900 flex items-center justify-center text-red-400 p-4 text-center">{error}</div>;
+        return <div className="fixed inset-0 bg-slate-900 flex flex-col items-center justify-center text-red-400 p-4 text-center">
+            <p>{error}</p>
+            <Button onClick={handleBackToMenu} className="mt-4"><ArrowLeft size={16} className="mr-2"/> Back to Menu</Button>
+        </div>;
     }
 
     if (!order) {
@@ -117,70 +173,70 @@ function PreOrderTrackingContent() {
     const qrValue = `${window.location.origin}/street-vendor-dashboard?collect_order=${orderId}`;
     
     return (
-        <div className="fixed inset-0 bg-slate-900 text-white font-sans p-4 flex flex-col justify-center items-center">
-            <div className="particles-container">
-                {[...Array(20)].map((_, i) => (
-                    <div key={i} className="particle" style={{
-                        left: `${Math.random() * 100}%`,
-                        animationDelay: `${Math.random() * 5}s`,
-                        animationDuration: `${(Math.random() * 3 + 3)}s`,
-                    }}></div>
-                ))}
-            </div>
-            
-            <AnimatePresence>
-              {showRipple && (
-                <motion.div
-                  className="ripple"
-                  initial={{ width: 100, height: 100, opacity: 0.8, borderWidth: 10 }}
-                  animate={{ width: 500, height: 500, opacity: 0, borderWidth: 0 }}
-                  transition={{ duration: 1, ease: "easeOut" }}
-                />
-              )}
-            </AnimatePresence>
+        <div className={cn("fixed inset-0 bg-slate-900 text-white font-sans p-4 flex flex-col justify-between items-center", coinTheme)}>
+            <header className="absolute top-0 left-0 right-0 p-4 flex justify-between items-center w-full z-20">
+                <Button onClick={handleBackToMenu} variant="ghost" className="text-slate-300 hover:bg-slate-700 hover:text-white">
+                    <ArrowLeft className="mr-2"/> Back to Menu
+                </Button>
+            </header>
 
-            <div className="scene">
-                <div className="tilt-wrapper" ref={tiltWrapperRef}>
-                    <div className={cn("anim-wrapper", animationState === 'drop' ? 'animate-drop' : 'animate-float')}>
-                        <div className={cn("coin", isFlipped && 'flipped')} onClick={() => setIsFlipped(f => !f)}>
-                            
-                            <div className="coin-face coin-front">
-                                <div className="texture-overlay"></div>
-                                <div className="sheen"></div>
-                                <svg className="rotating-text-svg" viewBox="0 0 200 200">
-                                    <path id="frontCurve" d="M 25,100 a 75,75 0 1,1 150,0 a 75,75 0 1,1 -150,0" fill="none"/>
-                                    <text><textPath href="#frontCurve" startOffset="50%" textAnchor="middle">★ {order.restaurantName} ★ ORDER READY ★</textPath></text>
-                                </svg>
-                                <div style={{fontSize:'10px', fontWeight:'bold', color:'#5c3c00'}}>TOKEN</div>
-                                <div className="token-number">{tokenPart1}</div>
-                            </div>
+            <div className="flex-grow flex flex-col items-center justify-center">
+                <div className="particles-container">
+                    {[...Array(20)].map((_, i) => (
+                        <div key={i} className="particle" style={{ left: `${Math.random() * 100}%`, animationDelay: `${Math.random() * 5}s`, animationDuration: `${(Math.random() * 3 + 3)}s`}}></div>
+                    ))}
+                </div>
+                
+                <AnimatePresence>
+                  {showRipple && <motion.div className="ripple" initial={{ width: 100, height: 100, opacity: 0.8, borderWidth: 10 }} animate={{ width: 500, height: 500, opacity: 0, borderWidth: 0 }} transition={{ duration: 1, ease: "easeOut" }} />}
+                </AnimatePresence>
 
-                            <div className="coin-face coin-back">
-                                <div className="texture-overlay"></div>
-                                <div className="sheen"></div>
-                                <svg className="rotating-text-svg" viewBox="0 0 200 200">
-                                    <path id="backCurve" d="M 25,100 a 75,75 0 1,1 150,0 a 75,75 0 1,1 -150,0" fill="none"/>
-                                    <text><textPath href="#backCurve" startOffset="50%" textAnchor="middle">● POWERED BY SERVIZEPHYR ● SECURE ●</textPath></text>
-                                </svg>
-                                <div className="qr-box">
-                                     <QRCode value={qrValue} size={120} level={"H"} bgColor="transparent" fgColor="#3e2800" />
+                <div className="scene">
+                    <div className="tilt-wrapper" ref={tiltWrapperRef}>
+                        <div className={cn("anim-wrapper", animationState === 'drop' ? 'animate-drop' : 'animate-float')}>
+                            <div className={cn("coin", isFlipped && 'flipped')} onClick={() => setIsFlipped(f => !f)}>
+                                
+                                <div className="coin-face coin-front">
+                                    <div className="texture-overlay"></div><div className="sheen"></div>
+                                    <svg className="rotating-text-svg" viewBox="0 0 200 200">
+                                        <path id="frontCurve" d="M 25,100 a 75,75 0 1,1 150,0 a 75,75 0 1,1 -150,0" fill="none"/>
+                                        <text><textPath href="#frontCurve" startOffset="50%" textAnchor="middle">★ {order.restaurantName} ★ ORDER READY ★</textPath></text>
+                                    </svg>
+                                    <div className="token-label">TOKEN</div>
+                                    <div className="token-number">
+                                        <span className="token-number-main">{tokenPart1}-</span>
+                                        <span className="token-number-sub">{tokenPart2}</span>
+                                    </div>
                                 </div>
-                                <div style={{marginTop:'8px', fontSize:'10px', fontWeight:'bold', opacity:'0.6'}}>SCAN TO COLLECT</div>
-                            </div>
 
+                                <div className="coin-face coin-back">
+                                    <div className="texture-overlay"></div><div className="sheen"></div>
+                                    <svg className="rotating-text-svg" viewBox="0 0 200 200">
+                                        <path id="backCurve" d="M 25,100 a 75,75 0 1,1 150,0 a 75,75 0 1,1 -150,0" fill="none"/>
+                                        <text><textPath href="#backCurve" startOffset="50%" textAnchor="middle">● POWERED BY SERVIZEPHYR ● SECURE ●</textPath></text>
+                                    </svg>
+                                    <div className="qr-box">
+                                         <QRCode value={qrValue} size={120} level={"H"} bgColor="transparent" fgColor="#3e2800" />
+                                    </div>
+                                    <div className="qr-label">SCAN TO COLLECT</div>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>
             </div>
 
-            <div className="instruction">Tap to Flip • Move cursor to Tilt</div>
+            <footer className="w-full flex flex-col items-center gap-4 z-20 pb-8">
+                <StatusTimeline currentStatus={order.status} />
+                <div className="instruction">Tap to Flip • Move cursor to Tilt</div>
+            </footer>
         </div>
     );
 }
 
 export default function PreOrderTrackingPage() {
     return (
-        <Suspense fallback={<div className="min-h-screen bg-slate-900 flex items-center justify-center"><Loader2 className="animate-spin text-primary h-16 w-16" /></div>}>
+        <Suspense fallback={<div className="fixed inset-0 bg-slate-900 flex items-center justify-center"><Loader2 className="animate-spin text-primary h-16 w-16" /></div>}>
             <PreOrderTrackingContent />
         </Suspense>
     )
