@@ -1,31 +1,35 @@
 "use client"
 
 import * as React from "react"
-import { ChevronLeft, ChevronRight, X, Edit } from "lucide-react"
+import { ChevronLeft, ChevronRight, Edit } from "lucide-react"
 import { DayPicker } from "react-day-picker"
-import { format } from "date-fns" // <-- FIX: Added this import
+import { format } from "date-fns"
 
 import { cn } from "@/lib/utils"
 import { buttonVariants } from "@/components/ui/button"
+import { Button } from "@/components/ui/button"
 
-const CalendarHeader = ({ selectedRange, onSave, onClose }) => {
+const CalendarHeader = ({ selectedRange, onSave, onClear, onClose }) => {
   const formatDate = (date) => {
     if (!date) return '...';
-    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    return format(date, 'EEE, MMM dd');
   };
+
   const from = selectedRange?.from ? formatDate(selectedRange.from) : '...';
   const to = selectedRange?.to ? formatDate(selectedRange.to) : '...';
+  const year = selectedRange?.from ? format(selectedRange.from, 'yyyy') : new Date().getFullYear();
 
   return (
-    <div className="bg-primary text-primary-foreground p-4 flex flex-col">
-      <div className="flex justify-between items-center mb-2">
-        <button onClick={onClose} className="p-2"><X size={24} /></button>
-        <button onClick={onSave} className="font-bold text-sm px-4 py-2 rounded-md hover:bg-primary-foreground/10">SAVE</button>
-      </div>
-      <div className="ml-2">
-        <p className="text-xs uppercase opacity-70">Selected Range</p>
-        <p className="text-2xl font-bold">{from} – {to}</p>
-      </div>
+    <div className="bg-primary text-primary-foreground p-4 flex flex-col rounded-t-lg">
+        <div className="text-xs uppercase opacity-70 mb-1">{year}</div>
+        <div className="text-3xl font-bold">
+            {from} {selectedRange?.to && from !== to ? ` – ${to}` : ''}
+        </div>
+        <div className="flex justify-end gap-2 mt-4">
+             <Button variant="ghost" className="text-primary-foreground hover:bg-primary-foreground/10" onClick={onClear}>Clear</Button>
+             <Button variant="ghost" className="text-primary-foreground hover:bg-primary-foreground/10" onClick={onClose}>Cancel</Button>
+             <Button variant="ghost" className="text-primary-foreground hover:bg-primary-foreground/10 font-bold" onClick={onSave}>Set</Button>
+        </div>
     </div>
   );
 };
@@ -38,6 +42,7 @@ function Calendar({
   onRangeSelect,
   selected,
   onClose,
+  onClear,
   ...props
 }) {
   const [range, setRange] = React.useState(selected);
@@ -53,16 +58,23 @@ function Calendar({
     }
   };
 
+  const handleClear = () => {
+      setRange(undefined);
+      if(onClear) {
+          onClear();
+      }
+  }
+
   return (
-    <div className={cn("rounded-lg border bg-card text-card-foreground shadow-sm", className)}>
-        <CalendarHeader selectedRange={range} onSave={handleSave} onClose={onClose} />
+    <div className={cn("rounded-lg border bg-card text-card-foreground shadow-sm w-full max-w-sm", className)}>
+        <CalendarHeader selectedRange={range} onSave={handleSave} onClear={handleClear} onClose={onClose} />
         <DayPicker
           showOutsideDays={showOutsideDays}
           mode="range"
           selected={range}
           onSelect={setRange}
           fromYear={2024}
-          toYear={new Date().getFullYear()}
+          toYear={new Date().getFullYear() + 5}
           captionLayout={showMonthYearPicker ? "dropdown-buttons" : "buttons"}
           className="p-3"
           classNames={{
@@ -94,7 +106,7 @@ function Calendar({
             day_range_middle:
               "aria-selected:bg-primary/10 aria-selected:text-primary-foreground",
             day_hidden: "invisible",
-            caption_dropdowns: "flex gap-2", // For alignment of dropdowns
+            caption_dropdowns: "flex gap-2 justify-center", 
             vsc_captions: "flex justify-center items-center gap-4",
             vsc_caption: "flex items-center gap-2",
             ...classNames,
