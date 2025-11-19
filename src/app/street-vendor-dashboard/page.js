@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
@@ -185,14 +186,9 @@ export default function StreetVendorDashboard() {
     const [isScannerOpen, setScannerOpen] = useState(false);
     const [scannedOrder, setScannedOrder] = useState(null);
     const searchParams = useSearchParams();
-    const [selectedDate, setSelectedDate] = useState(null);
+    const [selectedDate, setSelectedDate] = useState(new Date());
     const [error, setError] = useState(null);
     const [isCalendarOpen, setIsCalendarOpen] = useState(false);
-
-    useEffect(() => {
-        // Set initial date to today only on client-side
-        setSelectedDate(new Date());
-    }, []);
 
     const handleApiCall = useCallback(async (endpoint, method = 'PATCH', body = {}) => {
         if (!user) throw new Error('Authentication Error');
@@ -251,7 +247,6 @@ export default function StreetVendorDashboard() {
         try {
             await handleUpdateStatus(tempOrder.id, 'delivered');
             setInfoDialog({isOpen: true, title: 'Success', message: `Order for ${tempOrder.customerName} marked as collected!`});
-            // This is the fix: Close the modal after the operation completes.
             setScannedOrder(null);
         } catch (error) {
             setInfoDialog({ isOpen: true, title: "Error", message: `Could not mark order as collected: ${error.message}` });
@@ -352,14 +347,12 @@ export default function StreetVendorDashboard() {
         </div>
 
         <div className="mb-6 flex flex-wrap items-center justify-center gap-2">
-            <Button variant={selectedDate && format(selectedDate, 'yyyy-MM-dd') === format(new Date(), 'yyyy-MM-dd') ? 'default' : 'outline'} onClick={() => setSelectedDate(new Date())}>Today</Button>
-            <Button variant={selectedDate && format(selectedDate, 'yyyy-MM-dd') === format(subDays(new Date(), 1), 'yyyy-MM-dd') ? 'default' : 'outline'} onClick={() => setSelectedDate(subDays(new Date(), 1))}>Yesterday</Button>
-             <Popover open={isCalendarOpen} onOpenChange={setIsCalendarOpen}>
+            <Popover open={isCalendarOpen} onOpenChange={setIsCalendarOpen}>
                 <PopoverTrigger asChild>
                   <Button
                     variant={"outline"}
                     className={cn(
-                      "w-[240px] justify-start text-left font-normal",
+                      "w-full max-w-xs justify-start text-left font-normal",
                       !selectedDate && "text-muted-foreground"
                     )}
                   >
@@ -368,6 +361,10 @@ export default function StreetVendorDashboard() {
                   </Button>
                 </PopoverTrigger>
                 <PopoverContent className="w-auto p-0">
+                  <div className="p-2 space-x-2 bg-muted border-b border-border">
+                    <Button variant={selectedDate && format(selectedDate, 'yyyy-MM-dd') === format(new Date(), 'yyyy-MM-dd') ? 'default' : 'ghost'} size="sm" onClick={() => {setSelectedDate(new Date()); setIsCalendarOpen(false);}}>Today</Button>
+                    <Button variant={selectedDate && format(selectedDate, 'yyyy-MM-dd') === format(subDays(new Date(), 1), 'yyyy-MM-dd') ? 'default' : 'ghost'} size="sm" onClick={() => {setSelectedDate(subDays(new Date(), 1)); setIsCalendarOpen(false);}}>Yesterday</Button>
+                  </div>
                   <Calendar
                     mode="single"
                     selected={selectedDate}
