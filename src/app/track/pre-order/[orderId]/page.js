@@ -1,9 +1,9 @@
 
 'use client';
 
-import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef, Suspense } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Loader2, ArrowLeft, Check, ShoppingBag, CheckCircle, PackageCheck } from 'lucide-react';
+import { Loader2, ArrowLeft, CheckCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useRouter, useParams, useSearchParams } from 'next/navigation';
 import { cn } from '@/lib/utils';
@@ -12,52 +12,50 @@ import { db } from '@/lib/firebase';
 import { doc, onSnapshot } from 'firebase/firestore';
 
 const statusConfig = [
-    { key: 'confirmed', title: 'Confirmed', icon: <Check size={20} /> },
-    { key: 'Ready', title: 'Ready', icon: <ShoppingBag size={20} /> },
-    { key: 'delivered', title: 'Collected', icon: <CheckCircle size={20} /> },
+    { key: 'confirmed', title: 'Confirmed' },
+    { key: 'Ready', title: 'Ready' },
+    { key: 'delivered', title: 'Collected' },
 ];
 
 const StatusTimeline = ({ currentStatus }) => {
-    const adjustedStatus = currentStatus === 'pending' ? 'confirmed' : currentStatus;
-    const activeIndex = statusConfig.findIndex(s => s.key === adjustedStatus);
-    
+    const activeIndex = useMemo(() => {
+        const adjustedStatus = currentStatus === 'pending' ? 'confirmed' : currentStatus;
+        return statusConfig.findIndex(s => s.key === adjustedStatus);
+    }, [currentStatus]);
+
     return (
-        <div className="w-full max-w-sm">
-            <div className="flex justify-between items-center relative z-10">
-                {statusConfig.map((status, index) => {
-                    const isCompleted = index <= activeIndex;
-                    return (
-                         <div key={status.key} className="flex flex-col items-center text-center w-24">
-                            <motion.div
-                                className={cn(
-                                    "w-10 h-10 rounded-full flex items-center justify-center border-2 transition-all duration-500",
-                                    isCompleted ? 'bg-primary border-primary text-primary-foreground' : 'bg-card border-border text-muted-foreground'
-                                )}
-                                animate={{ scale: isCompleted ? 1.1 : 1 }}
-                                transition={{ type: 'spring' }}
-                            >
-                                {status.icon}
-                            </motion.div>
-                            <p className={cn(
-                                "mt-2 text-xs font-semibold",
-                                isCompleted ? 'text-foreground' : 'text-muted-foreground'
-                            )}>
-                                {status.title}
-                            </p>
-                        </div>
-                    );
-                })}
+        <div className="w-full max-w-sm relative flex justify-between items-center z-10">
+            <div className="absolute top-1/2 left-0 w-full h-1 bg-border -translate-y-1/2">
+                 <motion.div
+                    className="h-full bg-primary"
+                    initial={{ width: '0%' }}
+                    animate={{ width: activeIndex > 0 ? `${(activeIndex / (statusConfig.length -1)) * 100}%` : '0%' }}
+                    transition={{ duration: 0.5, delay: 0.2 }}
+                />
             </div>
-             <div className="flex justify-center items-center w-full h-1 -mt-9 z-0">
-                 <div className="w-full max-w-[calc(100%-96px)] h-0.5 bg-border relative">
-                     <motion.div
-                        className="h-full bg-primary"
-                        initial={{ width: '0%' }}
-                        animate={{ width: activeIndex > 0 ? `${(activeIndex / (statusConfig.length -1)) * 100}%` : '0%' }}
-                        transition={{ duration: 0.5, delay: 0.2 }}
-                    />
-                 </div>
-            </div>
+            {statusConfig.map((status, index) => {
+                const isCompleted = index <= activeIndex;
+                return (
+                     <div key={status.key} className="flex flex-col items-center text-center w-24 z-10">
+                        <motion.div
+                            className={cn(
+                                "w-6 h-6 rounded-full flex items-center justify-center border-2 transition-all duration-500",
+                                isCompleted ? 'bg-primary border-primary text-primary-foreground' : 'bg-background border-border text-muted-foreground'
+                            )}
+                            animate={{ scale: isCompleted ? 1.1 : 1 }}
+                            transition={{ type: 'spring' }}
+                        >
+                            <Check size={14} />
+                        </motion.div>
+                        <p className={cn(
+                            "mt-2 text-xs font-semibold",
+                            isCompleted ? 'text-foreground' : 'text-muted-foreground'
+                        )}>
+                            {status.title}
+                        </p>
+                    </div>
+                );
+            })}
         </div>
     );
 }
@@ -246,9 +244,9 @@ function PreOrderTrackingContent() {
                                                 <path id="backCurve" d="M 25,100 a 75,75 0 1,1 150,0 a 75,75 0 1,1 -150,0" fill="none"/>
                                                 <text><textPath href="#backCurve" startOffset="50%" textAnchor="middle">● POWERED BY SERVIZEPHYR ● SECURE ●</textPath></text>
                                             </svg>
-                                            <div className="qr-box">
-                                                 <QRCode value={qrValue} size={140} level={"H"} />
-                                            </div>
+                                             <div className="qr-box">
+                                                 <QRCode value={qrValue} size={140} level={"H"} bgColor="#FFFFFF" fgColor="#000000" />
+                                             </div>
                                             <div className="qr-label">SCAN TO COLLECT</div>
                                         </div>
                                     </div>
