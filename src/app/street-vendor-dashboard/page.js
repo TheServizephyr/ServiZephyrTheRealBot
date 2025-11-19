@@ -1,4 +1,3 @@
-
 'use client';
 
 import React, { useState, useEffect, useMemo, useCallback, useRef, Suspense } from 'react';
@@ -352,12 +351,10 @@ export default function StreetVendorDashboard() {
         {isScannerOpen && <QrScanner onClose={() => setScannerOpen(false)} onScanSuccess={handleScanSuccess} />}
         {scannedOrder && <ScannedOrderModal isOpen={!!scannedOrder} onClose={() => setScannedOrder(null)} order={scannedOrder} onConfirm={confirmCollection} />}
         
-        <div className="fixed bottom-4 right-4 z-50 md:relative md:bottom-auto md:right-auto md:mb-6">
-            <Button className="md:hidden h-16 w-16 rounded-lg shadow-lg bg-black hover:bg-gray-800" size="icon" onClick={() => setScannerOpen(true)}>
-                <QrCode size={28} className="text-white"/>
-            </Button>
-            <Button className="hidden md:flex w-full h-16 text-lg bg-primary hover:bg-primary/80" onClick={() => setScannerOpen(true)}>
-                <QrCode className="mr-3"/> Scan QR to Collect
+        <div className="fixed bottom-4 right-4 z-40 md:sticky md:top-0 md:z-auto md:mb-6">
+            <Button className="h-16 w-16 rounded-full shadow-lg md:w-full md:rounded-lg md:text-lg bg-primary hover:bg-primary/80" size="icon" onClick={() => setScannerOpen(true)}>
+                <QrCode size={28} className="md:mr-3"/>
+                <span className="hidden md:inline">Scan to Collect</span>
             </Button>
         </div>
 
