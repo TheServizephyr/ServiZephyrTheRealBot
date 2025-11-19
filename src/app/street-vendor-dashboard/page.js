@@ -1,7 +1,6 @@
-
 'use client';
 
-import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef, Suspense } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ClipboardList, QrCode, CookingPot, PackageCheck, Check, X, Loader2, User, Phone, History, Wallet, IndianRupee, Calendar as CalendarIcon, Search, Filter } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -279,9 +278,9 @@ export default function StreetVendorDashboard() {
 
         let q = query(collection(db, "orders"), where("restaurantId", "==", vendorId));
         
-        if (date && date.from) {
-             const start = startOfDay(date.from || date);
-             const end = endOfDay(date.to || date);
+        if (date) {
+             const start = startOfDay(date);
+             const end = endOfDay(date);
              q = query(q, where("orderDate", ">=", Timestamp.fromDate(start)), where("orderDate", "<=", Timestamp.fromDate(end)));
         }
         
@@ -354,7 +353,7 @@ export default function StreetVendorDashboard() {
         </div>
 
 
-         <div className="mb-6 flex flex-col md:flex-row items-center justify-center gap-4">
+         <div className="mb-6 flex flex-col md:flex-row items-center justify-between gap-4">
              <div className="relative w-full flex-grow">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                 <input
@@ -378,33 +377,19 @@ export default function StreetVendorDashboard() {
                       >
                         <CalendarIcon className="mr-2 h-4 w-4" />
                          <span>
-                            {date?.from ? (
-                              date.to ? (
-                                <>
-                                  {format(date.from, "LLL dd")} - {format(date.to, "LLL dd")}
-                                </>
-                              ) : (
-                                format(date.from, "LLL dd, yyyy")
-                              )
-                            ) : (
-                              <span>Filter by Date</span>
-                            )}
+                            {date ? format(date, "LLL dd, yyyy") : <span>Filter by Date</span>}
                          </span>
                       </Button>
                     </PopoverTrigger>
                     <PopoverContent className="w-auto p-0">
                       <Calendar
                         initialFocus
-                        mode="range"
-                        defaultMonth={date?.from}
+                        mode="single"
                         selected={date}
                         onSelect={(newDate) => {
                             setDate(newDate);
-                            if (newDate?.from && newDate?.to) {
-                                setIsCalendarOpen(false);
-                            }
+                            setIsCalendarOpen(false);
                         }}
-                        numberOfMonths={1}
                         disabled={(date) => date > new Date() || date < new Date("2024-01-01")}
                       />
                     </PopoverContent>
