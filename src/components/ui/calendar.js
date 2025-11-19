@@ -3,6 +3,7 @@
 import * as React from "react"
 import { ChevronLeft, ChevronRight, X, Edit } from "lucide-react"
 import { DayPicker } from "react-day-picker"
+import { format } from "date-fns" // <-- FIX: Added this import
 
 import { cn } from "@/lib/utils"
 import { buttonVariants } from "@/components/ui/button"
@@ -68,7 +69,6 @@ function Calendar({
             months: "flex flex-col sm:flex-row space-y-4 sm:space-y-0",
             month: "space-y-4",
             caption: "flex justify-center pt-1 relative items-center mb-4",
-            caption_label: "text-lg font-medium flex items-center gap-2 cursor-pointer",
             nav: "space-x-1 flex items-center",
             nav_button: cn(
               buttonVariants({ variant: "outline" }),
@@ -88,12 +88,15 @@ function Calendar({
             ),
             day_selected:
               "bg-primary text-primary-foreground hover:bg-primary hover:text-primary-foreground focus:bg-primary focus:text-primary-foreground",
-            day_today: "bg-transparent border border-muted-foreground text-foreground",
+            day_today: "bg-accent text-accent-foreground",
             day_outside: "text-muted-foreground opacity-50",
             day_disabled: "text-muted-foreground opacity-50",
             day_range_middle:
               "aria-selected:bg-primary/10 aria-selected:text-primary-foreground",
             day_hidden: "invisible",
+            caption_dropdowns: "flex gap-2", // For alignment of dropdowns
+            vsc_captions: "flex justify-center items-center gap-4",
+            vsc_caption: "flex items-center gap-2",
             ...classNames,
           }}
           components={{
