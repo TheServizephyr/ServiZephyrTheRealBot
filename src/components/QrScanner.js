@@ -28,7 +28,7 @@ const QrScanner = ({ onClose, onScanSuccess }) => {
                         fps: 10,
                         qrbox: (viewfinderWidth, viewfinderHeight) => {
                             const minEdge = Math.min(viewfinderWidth, viewfinderHeight);
-                            const qrboxSize = Math.floor(minEdge * 0.9); // Increased from 0.8
+                            const qrboxSize = Math.floor(minEdge * 0.9);
                             return {
                                 width: qrboxSize,
                                 height: qrboxSize,
@@ -37,6 +37,7 @@ const QrScanner = ({ onClose, onScanSuccess }) => {
                     },
                     (decodedText, decodedResult) => {
                         onScanSuccess(decodedText);
+                        html5QrCode.stop();
                     },
                     (errorMessage) => {
                         // ignore non-critical errors

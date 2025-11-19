@@ -1,7 +1,7 @@
 
 'use client';
 
-import React, { useState, useEffect, useMemo, useCallback, useRef, Suspense } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Loader2, ArrowLeft, Check, ShoppingBag, CheckCircle, PackageCheck } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -169,21 +169,25 @@ function PreOrderTrackingContent() {
     
     const token = order?.dineInToken || '----';
     const [tokenPart1, tokenPart2] = token.includes('-') ? token.split('-') : [token, ''];
-    const qrValue = `${window.location.origin}/street-vendor-dashboard?collect_order=${orderId}`;
+    const qrValue = orderId ? `https://servizephyr.com/street-vendor-dashboard?collect_order=${orderId}` : '';
     
     return (
         <div className={cn("fixed inset-0 bg-white text-foreground font-sans p-4 flex flex-col justify-between items-center", coinTheme)}>
-             <div className="confetti-container">
-                {[...Array(100)].map((_, i) => {
-                    const style = {
-                        left: `${Math.random() * 100}%`,
-                        animationDelay: `${Math.random() * 4}s`,
-                        animationDuration: `${Math.random() * 3 + 3}s`,
-                        backgroundColor: `hsl(${Math.random() * 360}, 70%, 60%)`
-                    };
-                    return <div key={i} className="confetti" style={style}></div>
-                })}
-            </div>
+             <AnimatePresence>
+                {isOrderComplete && (
+                    <div className="confetti-container">
+                        {[...Array(100)].map((_, i) => {
+                            const style = {
+                                left: `${Math.random() * 100}%`,
+                                animationDelay: `${Math.random() * 4}s`,
+                                animationDuration: `${Math.random() * 3 + 3}s`,
+                                backgroundColor: `hsl(${Math.random() * 360}, 70%, 60%)`
+                            };
+                            return <div key={i} className="confetti" style={style}></div>
+                        })}
+                    </div>
+                )}
+             </AnimatePresence>
             <header className="absolute top-0 left-0 right-0 p-4 flex justify-between items-center w-full z-20">
                 <Button onClick={handleBackToMenu} variant="ghost" className="text-foreground hover:bg-muted">
                     <ArrowLeft className="mr-2"/> Back to Menu
@@ -222,7 +226,8 @@ function PreOrderTrackingContent() {
                                     <div className={cn("coin", isFlipped && 'flipped')} onClick={() => setIsFlipped(f => !f)}>
                                         
                                         <div className="coin-face coin-front">
-                                            <div className="texture-overlay"></div><div className="sheen"></div>
+                                            <div className="texture-overlay"></div>
+                                            <div className="sheen"></div>
                                             <svg className="rotating-text-svg" viewBox="0 0 200 200">
                                                 <path id="frontCurve" d="M 25,100 a 75,75 0 1,1 150,0 a 75,75 0 1,1 -150,0" fill="none"/>
                                                 <text><textPath href="#frontCurve" startOffset="50%" textAnchor="middle">★ {order.restaurantName} ★ ORDER READY ★</textPath></text>
@@ -235,13 +240,14 @@ function PreOrderTrackingContent() {
                                         </div>
 
                                         <div className="coin-face coin-back">
-                                            <div className="texture-overlay"></div><div className="sheen"></div>
+                                            <div className="texture-overlay"></div>
+                                            <div className="sheen"></div>
                                             <svg className="rotating-text-svg" viewBox="0 0 200 200">
                                                 <path id="backCurve" d="M 25,100 a 75,75 0 1,1 150,0 a 75,75 0 1,1 -150,0" fill="none"/>
                                                 <text><textPath href="#backCurve" startOffset="50%" textAnchor="middle">● POWERED BY SERVIZEPHYR ● SECURE ●</textPath></text>
                                             </svg>
                                             <div className="qr-box">
-                                                 <QRCode value={qrValue} size={140} level={"H"} bgColor="#FFFFFF" fgColor="#3e2800" />
+                                                 <QRCode value={qrValue} size={140} level={"H"} />
                                             </div>
                                             <div className="qr-label">SCAN TO COLLECT</div>
                                         </div>
