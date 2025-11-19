@@ -281,7 +281,6 @@ export default function StreetVendorDashboard() {
         
         if (date?.from) {
             const start = startOfDay(date.from);
-            // If there's no 'to', use the end of the 'from' date for a single-day query
             const end = date.to ? endOfDay(date.to) : endOfDay(date.from);
             q = query(q, where("orderDate", ">=", Timestamp.fromDate(start)), where("orderDate", "<=", Timestamp.fromDate(end)));
         }
@@ -336,11 +335,12 @@ export default function StreetVendorDashboard() {
     
     const handleSetDateFilter = (selectedDate) => {
         setDate(selectedDate);
-        // Only close if it's not a range selection or if both ends of the range are selected
-        if (!selectedDate?.to && selectedDate?.from) {
-             setIsCalendarOpen(false);
-        } else if (selectedDate?.to && selectedDate?.from) {
-             setIsCalendarOpen(false);
+        // Auto-close calendar after selection
+        if (selectedDate?.from && selectedDate?.to) {
+            setIsCalendarOpen(false);
+        } else if (selectedDate && !selectedDate.to) {
+            // This case handles single date selection, which is now a range of the same day
+            setIsCalendarOpen(false);
         }
     };
 
@@ -404,10 +404,6 @@ export default function StreetVendorDashboard() {
                       </Button>
                     </PopoverTrigger>
                     <PopoverContent className="w-auto p-0" align="end">
-                         <div className="p-2 flex flex-col gap-1 border-b border-border">
-                            <Button variant="ghost" size="sm" className="justify-start text-sm" onClick={() => handleSetDateFilter({ from: new Date(), to: new Date() })}>Today</Button>
-                            <Button variant="ghost" size="sm" className="justify-start text-sm" onClick={() => handleSetDateFilter({ from: addDays(new Date(), -7), to: new Date() })}>Last 7 days</Button>
-                        </div>
                       <Calendar
                         initialFocus
                         mode="range"
@@ -417,12 +413,9 @@ export default function StreetVendorDashboard() {
                         numberOfMonths={1}
                         disabled={(d) => d > new Date() || d < new Date("2024-01-01")}
                       />
-                       <div className="p-2 border-t border-border flex justify-between">
-                          <Button variant="ghost" size="sm" onClick={() => { setDate(null); setIsCalendarOpen(false); }}>Clear</Button>
-                          <Button size="sm" onClick={() => setIsCalendarOpen(false)} >Done</Button>
-                       </div>
                     </PopoverContent>
                   </Popover>
+                  {date && <Button variant="ghost" size="sm" onClick={() => setDate(null)}>Clear</Button>}
             </div>
         </div>
         
