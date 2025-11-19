@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useState, useEffect, useMemo, useCallback, useRef, Suspense } from 'react';
@@ -351,13 +352,7 @@ export default function StreetVendorDashboard() {
         {isScannerOpen && <QrScanner onClose={() => setScannerOpen(false)} onScanSuccess={handleScanSuccess} />}
         {scannedOrder && <ScannedOrderModal isOpen={!!scannedOrder} onClose={() => setScannedOrder(null)} order={scannedOrder} onConfirm={confirmCollection} />}
         
-        <div className="fixed bottom-4 right-4 z-40 md:sticky md:top-0 md:z-auto md:mb-6">
-            <Button className="h-16 w-16 rounded-full shadow-lg md:w-full md:rounded-lg md:text-lg bg-primary hover:bg-primary/80" size="icon" onClick={() => setScannerOpen(true)}>
-                <QrCode size={28} className="md:mr-3"/>
-                <span className="hidden md:inline">Scan to Collect</span>
-            </Button>
-        </div>
-
+        {/* The Scan button is now part of the header in the layout file, not here */}
 
         <div className="mb-6 flex flex-col md:flex-row items-center justify-center gap-4">
             <div className="relative w-full flex-grow">

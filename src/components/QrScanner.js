@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
@@ -18,7 +19,6 @@ const QrScanner = ({ onClose, onScanSuccess }) => {
 
         const startScanner = (cameras) => {
             if (cameras && cameras.length > 0) {
-                // Use the back camera if available
                 const camera = cameras.find(c => c.label.toLowerCase().includes('back')) || cameras[0];
                 currentCameraId = camera.id;
 
@@ -39,8 +39,7 @@ const QrScanner = ({ onClose, onScanSuccess }) => {
                         onScanSuccess(decodedText);
                     },
                     (errorMessage) => {
-                        // This callback is called for non-critical errors, like when no QR code is found.
-                        // We can ignore it to avoid console spam.
+                        // ignore non-critical errors
                     }
                 ).catch((err) => {
                     console.error(`Unable to start scanning, error: ${err}`);
@@ -79,7 +78,7 @@ const QrScanner = ({ onClose, onScanSuccess }) => {
                 >
                     <X size={24} />
                 </button>
-                <h2 className="text-2xl font-bold text-center mb-4">Scan Table QR Code</h2>
+                <h2 className="text-2xl font-bold text-center mb-4">Scan QR to Collect</h2>
                 
                 {cameraError ? (
                     <Alert variant="destructive">
