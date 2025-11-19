@@ -1,9 +1,10 @@
 "use client"
 
 import * as React from "react"
-import { ChevronLeft, ChevronRight, Edit } from "lucide-react"
+import * as RadixDialog from "@radix-ui/react-dialog"
 import { DayPicker } from "react-day-picker"
 import { format } from "date-fns"
+import { ChevronLeft, ChevronRight, Edit } from "lucide-react"
 
 import { cn } from "@/lib/utils"
 import { buttonVariants } from "@/components/ui/button"
@@ -21,7 +22,9 @@ const CalendarHeader = ({ selectedRange, onSave, onClear, onClose, onYearClick }
 
   return (
     <div className="bg-primary text-primary-foreground p-4 flex flex-col rounded-t-lg">
-        <button onClick={onYearClick} className="text-xs uppercase opacity-70 mb-1 w-fit hover:opacity-100 transition-opacity">{year}</button>
+        <button onClick={onYearClick} className="text-xs uppercase opacity-70 mb-1 w-fit hover:opacity-100 transition-opacity flex items-center gap-1">
+            {year} <Edit size={12} />
+        </button>
         <div className="text-3xl font-bold">
             {from} {selectedRange?.to && from !== to ? ` – ${to}` : ''}
         </div>
@@ -63,7 +66,7 @@ function Calendar({
           onClear();
       }
   }
-
+  
   const handleYearClick = () => {
     const yearSelect = document.querySelector('.rdp-caption_select[aria-label="Select year"]');
     if (yearSelect) {
@@ -78,9 +81,10 @@ function Calendar({
     }
   };
 
+
   return (
     <div className={cn("rounded-lg border bg-card text-card-foreground shadow-sm w-full max-w-sm", className)}>
-        <CalendarHeader selectedRange={range} onSave={handleSave} onClear={handleClear} onClose={onClose} onYearClick={handleYearClick} />
+        <CalendarHeader selectedRange={range} onSave={handleSave} onClear={handleClear} onClose={onClose} onYearClick={handleYearClick}/>
         <DayPicker
           showOutsideDays={showOutsideDays}
           mode="range"
@@ -93,8 +97,8 @@ function Calendar({
           classNames={{
             months: "flex flex-col sm:flex-row space-y-4 sm:space-y-0",
             month: "space-y-4",
-            caption: "flex justify-center pt-1 relative items-center mb-4",
-            caption_dropdowns: "flex justify-center gap-1",
+            caption: "hidden", // This hides the default caption entirely
+            caption_label: "hidden",
             nav: "space-x-1 flex items-center",
             nav_button: cn(
               buttonVariants({ variant: "outline" }),
@@ -114,13 +118,14 @@ function Calendar({
             ),
             day_selected:
               "bg-primary text-primary-foreground hover:bg-primary hover:text-primary-foreground focus:bg-primary focus:text-primary-foreground",
-            day_today: "bg-accent/50 text-accent-foreground",
+            day_today: "bg-accent text-accent-foreground",
             day_outside: "text-muted-foreground opacity-50",
             day_disabled: "text-muted-foreground opacity-50",
             day_range_middle:
               "aria-selected:bg-primary/10",
             day_hidden: "invisible",
-            vsc_captions: "hidden", // Hide the default caption
+            vsc_captions: 'flex justify-center items-center gap-4', // Use this to style the dropdown container
+            vsc_caption_label: 'hidden', // Hide default text label
             ...classNames,
           }}
           components={{
