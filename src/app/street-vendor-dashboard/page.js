@@ -1,4 +1,3 @@
-
 'use client';
 
 import React, { useState, useEffect, useMemo, useCallback, useRef, Suspense } from 'react';
@@ -9,7 +8,7 @@ import Link from 'next/link';
 import { useUser, useMemoFirebase, useCollection } from '@/firebase';
 import { db, auth } from '@/lib/firebase';
 import { collection, query, where, onSnapshot, doc, Timestamp, getDocs, updateDoc, deleteDoc } from 'firebase/firestore';
-import { startOfDay, endOfDay, format } from 'date-fns';
+import { startOfDay, endOfDay, format, addDays } from 'date-fns';
 import { FirestorePermissionError } from '@/firebase/errors';
 import { errorEmitter } from '@/firebase/error-emitter';
 import InfoDialog from '@/components/InfoDialog';
@@ -279,9 +278,13 @@ export default function StreetVendorDashboard() {
 
         let q = query(collection(db, "orders"), where("restaurantId", "==", vendorId));
         
-        if (date) {
-             const start = startOfDay(date);
-             const end = endOfDay(date);
+        if (date?.from && date?.to) {
+            const start = startOfDay(date.from);
+            const end = endOfDay(date.to);
+            q = query(q, where("orderDate", ">=", Timestamp.fromDate(start)), where("orderDate", "<=", Timestamp.fromDate(end)));
+        } else if (date?.from) {
+             const start = startOfDay(date.from);
+             const end = endOfDay(date.from);
              q = query(q, where("orderDate", ">=", Timestamp.fromDate(start)), where("orderDate", "<=", Timestamp.fromDate(end)));
         }
         
@@ -335,7 +338,7 @@ export default function StreetVendorDashboard() {
     
     const handleSetDateFilter = (selectedDate) => {
         setDate(selectedDate);
-        if(selectedDate) setIsCalendarOpen(false);
+        if(selectedDate && !selectedDate.to) setIsCalendarOpen(false);
     };
 
   return (
@@ -350,7 +353,7 @@ export default function StreetVendorDashboard() {
         {scannedOrder && <ScannedOrderModal isOpen={!!scannedOrder} onClose={() => setScannedOrder(null)} order={scannedOrder} onConfirm={confirmCollection} />}
         
         <div className="fixed bottom-4 right-4 z-50 md:relative md:bottom-auto md:right-auto md:mb-6">
-             <Button className="md:hidden h-16 w-16 rounded-full shadow-lg bg-black hover:bg-gray-800" size="icon" onClick={() => setScannerOpen(true)}>
+            <Button className="md:hidden h-16 w-16 rounded-full shadow-lg bg-black hover:bg-gray-800" size="icon" onClick={() => setScannerOpen(true)}>
                 <QrCode size={28} className="text-white"/>
             </Button>
             <Button className="hidden md:flex w-full h-16 text-lg bg-primary hover:bg-primary/80" onClick={() => setScannerOpen(true)}>
@@ -376,7 +379,6 @@ export default function StreetVendorDashboard() {
                       <Button
                         id="date"
                         variant={"outline"}
-                        size="sm"
                         className={cn(
                           "w-full md:w-auto justify-start text-left font-normal",
                           !date && "text-muted-foreground"
@@ -384,22 +386,39 @@ export default function StreetVendorDashboard() {
                       >
                         <CalendarIcon className="mr-2 h-4 w-4" />
                          <span>
-                            {date ? format(date, "LLL dd, yyyy") : "All Time"}
+                            {date?.from ? (
+                              date.to ? (
+                                <>
+                                  {format(date.from, "LLL dd, y")} -{" "}
+                                  {format(date.to, "LLL dd, y")}
+                                </>
+                              ) : (
+                                format(date.from, "LLL dd, y")
+                              )
+                            ) : (
+                              "All Time"
+                            )}
                          </span>
                       </Button>
                     </PopoverTrigger>
-                    <PopoverContent className="w-auto p-0">
-                        <div className="p-2 flex flex-col gap-2">
-                            <Button variant="ghost" size="sm" className="justify-start" onClick={() => handleSetDateFilter(null)}>All Time</Button>
-                            <Button variant="ghost" size="sm" className="justify-start" onClick={() => handleSetDateFilter(new Date())}>Today</Button>
+                    <PopoverContent className="w-auto p-0" align="end">
+                         <div className="p-2 flex flex-col gap-1">
+                            <Button variant="ghost" size="sm" className="justify-start text-sm" onClick={() => handleSetDateFilter(null)}>All Time</Button>
+                            <Button variant="ghost" size="sm" className="justify-start text-sm" onClick={() => handleSetDateFilter({ from: new Date(), to: new Date() })}>Today</Button>
+                            <Button variant="ghost" size="sm" className="justify-start text-sm" onClick={() => handleSetDateFilter({ from: addDays(new Date(), -7), to: new Date() })}>Last 7 days</Button>
                         </div>
                       <Calendar
                         initialFocus
-                        mode="single"
+                        mode="range"
+                        defaultMonth={date?.from}
                         selected={date}
-                        onSelect={handleSetDateFilter}
+                        onSelect={setDate}
+                        numberOfMonths={1}
                         disabled={(d) => d > new Date() || d < new Date("2024-01-01")}
                       />
+                       <div className="p-2 border-t border-border">
+                          <Button onClick={() => setIsCalendarOpen(false)} className="w-full">Done</Button>
+                       </div>
                     </PopoverContent>
                   </Popover>
             </div>
