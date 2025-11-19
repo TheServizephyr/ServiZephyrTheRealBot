@@ -1336,13 +1336,13 @@ const OrderPageInternal = () => {
                  <AnimatePresence>
                      {totalCartItems > 0 && (
                         <motion.div
-                            className="fixed bottom-4 left-1/2 -translate-x-1/2 w-auto z-30"
-                            initial={{ scale: 0, opacity: 0 }}
-                            animate={{ scale: 1, opacity: 1 }}
-                            exit={{ scale: 0, opacity: 0 }}
-                            style={{ bottom: 'calc(1rem + env(safe-area-inset-bottom))' }}
+                            className="fixed bottom-0 left-0 right-0 p-2 md:p-4 md:bottom-4 md:left-1/2 md:-translate-x-1/2 md:w-auto z-30"
+                            initial={{ y: 100, opacity: 0 }}
+                            animate={{ y: 0, opacity: 1 }}
+                            exit={{ y: -100, opacity: 0 }}
+                            style={{ paddingBottom: 'calc(0.5rem + env(safe-area-inset-bottom))' }}
                         >
-                            <Button onClick={handleCheckout} className="bg-primary hover:bg-primary/90 h-16 w-auto min-w-[200px] text-lg font-bold rounded-full shadow-lg shadow-primary/30 flex justify-between items-center text-primary-foreground px-6">
+                            <Button onClick={handleCheckout} className="bg-primary hover:bg-primary/90 h-16 w-full md:w-auto md:min-w-[250px] text-lg font-bold rounded-lg md:rounded-full shadow-lg shadow-primary/30 flex justify-between items-center text-primary-foreground px-6">
                                 <span>{totalCartItems} Item{totalCartItems > 1 ? 's' : ''}</span>
                                 <div className="mx-4 h-6 w-px bg-primary-foreground/30"></div>
                                 <span className="flex items-center">

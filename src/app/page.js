@@ -276,7 +276,7 @@ export default function Home() {
         {process.env.NODE_ENV === 'development' && (
           <div className="fixed bottom-4 right-4 z-[1000] bg-yellow-400 text-black p-4 rounded-lg shadow-lg">
             <h3 className="font-bold text-lg">Local Test Links</h3>
-            <Link href="/order/patel-ki-hatti?phone=8922035716" className="block hover:underline">
+            <Link href="/order/baaghi-chai" className="block hover:underline">
               Test Order Page
             </Link>
           </div>
