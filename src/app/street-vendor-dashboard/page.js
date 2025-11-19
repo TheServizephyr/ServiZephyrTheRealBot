@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ClipboardList, QrCode, CookingPot, PackageCheck, Check, X, Loader2, User, Phone, History, Wallet, IndianRupee, Calendar as CalendarIcon, Search } from 'lucide-react';
+import { ClipboardList, QrCode, CookingPot, PackageCheck, Check, X, Loader2, User, Phone, History, Wallet, IndianRupee, Calendar as CalendarIcon, Search, Filter } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import Link from 'next/link';
 import { useUser } from '@/firebase';
@@ -38,16 +38,12 @@ const OrderCard = ({ order, onMarkReady, onCancel, onMarkCollected }) => {
     const isPending = order.status === 'pending';
     const isReady = order.status === 'Ready';
 
-    let cardClass = 'bg-white border-yellow-500';
     let statusClass = 'text-yellow-400';
     if (isReady) {
-        cardClass = 'bg-white border-green-500';
         statusClass = 'text-green-400';
     } else if (order.status === 'delivered' || order.status === 'picked_up') {
-        cardClass = 'bg-white border-blue-500';
         statusClass = 'text-blue-400';
     } else if (order.status === 'rejected') {
-        cardClass = 'bg-white border-red-500';
         statusClass = 'text-red-400';
     }
     
@@ -60,7 +56,7 @@ const OrderCard = ({ order, onMarkReady, onCancel, onMarkCollected }) => {
             animate={{ scale: 1, opacity: 1 }}
             exit={{ scale: 0.8, opacity: 0 }}
             transition={{ type: 'spring', stiffness: 200, damping: 20 }}
-            className={`rounded-lg p-4 flex flex-col justify-between border-l-4 ${cardClass}`}
+            className={`rounded-lg p-4 flex flex-col justify-between border-l-4 bg-white border-yellow-500`}
         >
             <div>
                 <div className="flex justify-between items-start">
@@ -193,11 +189,6 @@ export default function StreetVendorDashboard() {
     const [isCalendarOpen, setIsCalendarOpen] = useState(false);
     const [searchQuery, setSearchQuery] = useState('');
 
-    useEffect(() => {
-        // This effect ensures date is only set on the client-side
-        setSelectedDate(new Date());
-    }, []);
-
     const handleApiCall = useCallback(async (endpoint, method = 'PATCH', body = {}) => {
         if (!user) throw new Error('Authentication Error');
         const idToken = await user.getIdToken();
@@ -286,19 +277,17 @@ export default function StreetVendorDashboard() {
     }, [user, isUserLoading]);
 
     useEffect(() => {
-        if (!vendorId || !selectedDate) return;
+        if (!vendorId) return;
         
         setLoading(true);
 
-        const start = startOfDay(selectedDate);
-        const end = endOfDay(selectedDate);
-
-        const q = query(
-            collection(db, "orders"), 
-            where("restaurantId", "==", vendorId),
-            where("orderDate", ">=", Timestamp.fromDate(start)),
-            where("orderDate", "<=", Timestamp.fromDate(end))
-        );
+        let q = query(collection(db, "orders"), where("restaurantId", "==", vendorId));
+        
+        if (selectedDate) {
+            const start = startOfDay(selectedDate);
+            const end = endOfDay(selectedDate);
+            q = query(q, where("orderDate", ">=", Timestamp.fromDate(start)), where("orderDate", "<=", Timestamp.fromDate(end)));
+        }
         
         const unsubscribe = onSnapshot(q, (querySnapshot) => {
             const fetchedOrders = [];
@@ -384,16 +373,17 @@ export default function StreetVendorDashboard() {
                  <Popover open={isCalendarOpen} onOpenChange={setIsCalendarOpen}>
                     <PopoverTrigger asChild>
                       <Button
-                        variant={"outline"}
+                        variant={selectedDate ? 'default' : 'outline'}
                         className={cn("w-auto justify-start text-left font-normal", !selectedDate && "text-muted-foreground")}
                       >
-                        <CalendarIcon className="mr-2 h-4 w-4 hidden md:inline" />
-                        {selectedDate ? <span className="hidden md:inline">{format(selectedDate, "PPP")}</span> : <span className="hidden md:inline">Pick a date</span>}
-                         <CalendarIcon className="h-5 w-5 md:hidden" />
+                        <Filter className="mr-2 h-4 w-4" />
+                        <span className="hidden md:inline">{selectedDate ? format(selectedDate, "PPP") : 'Filter by Date'}</span>
+                        <CalendarIcon className="h-5 w-5 md:hidden" />
                       </Button>
                     </PopoverTrigger>
                     <PopoverContent className="w-auto p-0">
                       <div className="p-2 space-x-2 bg-muted border-b border-border">
+                        <Button variant={'ghost'} size="sm" onClick={() => {setSelectedDate(null); setIsCalendarOpen(false);}}>All Time</Button>
                         <Button variant={selectedDate && format(selectedDate, 'yyyy-MM-dd') === format(new Date(), 'yyyy-MM-dd') ? 'default' : 'ghost'} size="sm" onClick={() => {setSelectedDate(new Date()); setIsCalendarOpen(false);}}>Today</Button>
                         <Button variant={selectedDate && format(selectedDate, 'yyyy-MM-dd') === format(subDays(new Date(), 1), 'yyyy-MM-dd') ? 'default' : 'ghost'} size="sm" onClick={() => {setSelectedDate(subDays(new Date(), 1)); setIsCalendarOpen(false);}}>Yesterday</Button>
                       </div>
@@ -401,9 +391,7 @@ export default function StreetVendorDashboard() {
                         mode="single"
                         selected={selectedDate}
                         onSelect={(date) => {
-                            if (date) {
-                                setSelectedDate(date);
-                            }
+                            if (date) setSelectedDate(date);
                             setIsCalendarOpen(false);
                         }}
                         initialFocus
@@ -411,6 +399,7 @@ export default function StreetVendorDashboard() {
                       />
                     </PopoverContent>
                   </Popover>
+                  {selectedDate && <Button variant="ghost" size="sm" onClick={() => setSelectedDate(null)}><X className="mr-1" size={14}/> Clear</Button>}
             </div>
         </div>
         
