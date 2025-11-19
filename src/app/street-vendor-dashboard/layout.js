@@ -81,6 +81,8 @@ const StreetVendorLayout = ({ children }) => {
   const handleStatusToggle = async (newStatus) => {
     setLoadingStatus(true);
     try {
+      const user = auth.currentUser;
+      if (!user) throw new Error("Not authenticated");
       const idToken = await user.getIdToken();
       const res = await fetch('/api/owner/settings', {
         method: 'PATCH',
@@ -212,9 +214,6 @@ const StreetVendorLayout = ({ children }) => {
                             <DropdownMenuSeparator />
                             <DropdownMenuItem onClick={() => router.push('/street-vendor-dashboard/profile')} className="cursor-pointer">
                                 <User className="mr-2 h-4 w-4"/> Profile
-                            </DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => router.push('/street-vendor-dashboard/payout-settings')} className="cursor-pointer">
-                               <Banknote className="mr-2 h-4 w-4"/> Payouts
                             </DropdownMenuItem>
                             <DropdownMenuSeparator />
                             <DropdownMenuItem onClick={handleLogout} className="text-red-500 font-semibold cursor-pointer">
