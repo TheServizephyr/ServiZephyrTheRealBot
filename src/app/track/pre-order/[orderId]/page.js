@@ -3,7 +3,7 @@
 
 import React, { useState, useEffect, useMemo, useCallback, useRef, Suspense } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Loader2, ArrowLeft, CookingPot, Check, ShoppingBag, CheckCircle } from 'lucide-react';
+import { Loader2, ArrowLeft, Check, ShoppingBag, CheckCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useRouter, useParams, useSearchParams } from 'next/navigation';
 import { cn } from '@/lib/utils';
@@ -17,7 +17,9 @@ const statusConfig = [
 ];
 
 const StatusTimeline = ({ currentStatus }) => {
-    const activeIndex = statusConfig.findIndex(s => s.key === currentStatus);
+    // Treat 'pending' the same as 'confirmed' for timeline UI
+    const adjustedStatus = currentStatus === 'pending' ? 'confirmed' : currentStatus;
+    const activeIndex = statusConfig.findIndex(s => s.key === adjustedStatus);
     
     return (
         <div className="w-full max-w-sm">
@@ -172,7 +174,7 @@ function PreOrderTrackingContent() {
     return (
         <div className={cn("fixed inset-0 bg-background text-foreground font-sans p-4 flex flex-col justify-between items-center", coinTheme)}>
              <div className="confetti-container">
-                {[...Array(50)].map((_, i) => {
+                {[...Array(100)].map((_, i) => {
                     const style = {
                         left: `${Math.random() * 100}%`,
                         animationDelay: `${Math.random() * 4}s`,
@@ -183,7 +185,7 @@ function PreOrderTrackingContent() {
                 })}
             </div>
             <header className="absolute top-0 left-0 right-0 p-4 flex justify-between items-center w-full z-20">
-                <Button onClick={handleBackToMenu} variant="ghost" className="text-slate-500 hover:bg-slate-100 hover:text-slate-800">
+                <Button onClick={handleBackToMenu} variant="ghost" className="text-foreground hover:bg-muted">
                     <ArrowLeft className="mr-2"/> Back to Menu
                 </Button>
             </header>
@@ -218,6 +220,7 @@ function PreOrderTrackingContent() {
                             <div className="tilt-wrapper" ref={tiltWrapperRef}>
                                 <div className={cn("anim-wrapper", animationState === 'drop' ? 'animate-drop' : 'animate-float')}>
                                     <div className={cn("coin", isFlipped && 'flipped')} onClick={() => setIsFlipped(f => !f)}>
+                                        
                                         <div className="coin-face coin-front">
                                             <div className="texture-overlay"></div><div className="sheen"></div>
                                             <svg className="rotating-text-svg" viewBox="0 0 200 200">
@@ -246,13 +249,13 @@ function PreOrderTrackingContent() {
                                 </div>
                             </div>
                         </div>
+                         <div className="instruction text-muted-foreground">Tap to Flip • Move cursor to Tilt</div>
                     </motion.div>
                 )}
             </AnimatePresence>
 
             {!isOrderComplete && (
                 <footer className="w-full flex flex-col items-center gap-4 z-20 pb-8">
-                    <div className="instruction text-muted-foreground">Tap to Flip • Move cursor to Tilt</div>
                     <StatusTimeline currentStatus={order.status} />
                 </footer>
             )}
