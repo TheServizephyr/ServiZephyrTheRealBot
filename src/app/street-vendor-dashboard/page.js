@@ -333,9 +333,9 @@ export default function StreetVendorDashboard() {
     const readyOrders = useMemo(() => filteredOrders.filter(o => o.status === 'Ready'), [filteredOrders]);
     const collectedOrders = useMemo(() => filteredOrders.filter(o => o.status === 'delivered' || o.status === 'picked_up'), [filteredOrders]);
     
-    const handleSetDateFilter = (selectedDate) => {
-        setDate(selectedDate);
-        if (selectedDate?.from && selectedDate?.to) {
+     const handleSetDateFilter = (selectedRange) => {
+        setDate(selectedRange);
+        if (selectedRange?.to || !selectedRange?.from) {
             setIsCalendarOpen(false);
         }
     };
@@ -395,7 +395,7 @@ export default function StreetVendorDashboard() {
                                 format(date.from, "LLL dd, y")
                               )
                             ) : (
-                              "All Time"
+                              "Filter by Date"
                             )}
                          </span>
                       </Button>
@@ -404,17 +404,14 @@ export default function StreetVendorDashboard() {
                        <Calendar
                         initialFocus
                         mode="range"
-                        defaultMonth={date?.from}
                         selected={date}
                         onSelect={handleSetDateFilter}
                         numberOfMonths={1}
                         disabled={(d) => d > new Date() || d < new Date("2024-01-01")}
                       />
-                      <div className="p-2 border-t border-border">
-                        <Button variant="ghost" size="sm" className="w-full justify-start" onClick={() => { setDate(null); setIsCalendarOpen(false); }}>Clear</Button>
-                      </div>
                     </PopoverContent>
                   </Popover>
+                  {date && <Button variant="ghost" size="sm" onClick={() => setDate(null)}>Clear</Button>}
             </div>
         </div>
         
