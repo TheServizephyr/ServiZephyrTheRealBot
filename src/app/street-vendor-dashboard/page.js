@@ -6,26 +6,21 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { ClipboardList, QrCode, CookingPot, PackageCheck, Check, X, Loader2, User, Phone, History, Wallet, IndianRupee, Calendar as CalendarIcon, Search, Filter } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import Link from 'next/link';
-import { useUser } from '@/firebase';
+import { useUser, useMemoFirebase, useCollection } from '@/firebase';
 import { db, auth } from '@/lib/firebase';
-import { collection, query, where, onSnapshot, doc, Timestamp, getDocs, updateDoc, deleteDoc } from 'firebase/firestore';
+import { collection, query, where, onSnapshot, doc, Timestamp, getDocs, updateDoc, deleteDoc, startOfDay, endOfDay } from 'firebase/firestore';
 import { FirestorePermissionError } from '@/firebase/errors';
 import { errorEmitter } from '@/firebase/error-emitter';
 import InfoDialog from '@/components/InfoDialog';
-import dynamic from 'next/dynamic';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
-import { format, startOfDay, endOfDay, subDays } from 'date-fns';
+import { format } from 'date-fns';
 import { useSearchParams } from 'next/navigation';
 import { cn } from '@/lib/utils';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
+import QrScanner from '@/components/QrScanner';
 
-
-const QrScanner = dynamic(() => import('@/components/QrScanner'), { 
-    ssr: false,
-    loading: () => <div className="min-h-screen bg-background flex items-center justify-center"><div className="animate-spin rounded-full h-16 w-16 border-b-2 border-primary"></div></div>
-});
 
 const formatCurrency = (value) => `₹${Number(value || 0).toLocaleString('en-IN', { maximumFractionDigits: 2 })}`;
 const formatDateTime = (timestamp) => {
@@ -285,8 +280,8 @@ export default function StreetVendorDashboard() {
         let q = query(collection(db, "orders"), where("restaurantId", "==", vendorId));
         
         if (date && date.from) {
-             const start = startOfDay(date.from);
-             const end = date.to ? endOfDay(date.to) : endOfDay(date.from);
+             const start = startOfDay(date.from || date);
+             const end = endOfDay(date.to || date);
              q = query(q, where("orderDate", ">=", Timestamp.fromDate(start)), where("orderDate", "<=", Timestamp.fromDate(end)));
         }
         
@@ -350,8 +345,8 @@ export default function StreetVendorDashboard() {
         {scannedOrder && <ScannedOrderModal isOpen={!!scannedOrder} onClose={() => setScannedOrder(null)} order={scannedOrder} onConfirm={confirmCollection} />}
         
         <div className="fixed bottom-4 right-4 z-50 md:relative md:bottom-auto md:right-auto md:mb-6">
-             <Button className="md:hidden h-16 w-16 rounded-lg shadow-lg bg-black hover:bg-gray-800" size="icon" onClick={() => setScannerOpen(true)}>
-                <QrCode size={28}/>
+             <Button className="md:hidden h-16 w-16 rounded-full shadow-lg bg-black hover:bg-gray-800" size="icon" onClick={() => setScannerOpen(true)}>
+                <QrCode size={28} className="text-white"/>
             </Button>
             <Button className="hidden md:flex w-full h-16 text-lg bg-primary hover:bg-primary/80" onClick={() => setScannerOpen(true)}>
                 <QrCode className="mr-3"/> Scan QR to Collect
@@ -381,8 +376,8 @@ export default function StreetVendorDashboard() {
                           !date && "text-muted-foreground"
                         )}
                       >
-                        <CalendarIcon className="mr-2 h-4 w-4 hidden md:inline" />
-                         <span className="hidden md:inline">
+                        <CalendarIcon className="mr-2 h-4 w-4" />
+                         <span>
                             {date?.from ? (
                               date.to ? (
                                 <>
@@ -395,7 +390,6 @@ export default function StreetVendorDashboard() {
                               <span>Filter by Date</span>
                             )}
                          </span>
-                          <Filter className="h-5 w-5 md:hidden" />
                       </Button>
                     </PopoverTrigger>
                     <PopoverContent className="w-auto p-0">
@@ -470,5 +464,3 @@ export default function StreetVendorDashboard() {
     </div>
   );
 }
-
-    
