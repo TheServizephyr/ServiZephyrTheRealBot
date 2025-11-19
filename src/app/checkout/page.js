@@ -139,11 +139,18 @@ const CheckoutPageInternal = () => {
             const isDineIn = !!tableId;
             const isLoggedInUser = !!user;
             const isWhatsAppSession = !!phoneFromUrl && !!token;
-            
-            const savedCart = JSON.parse(localStorage.getItem(`cart_${restaurantId}`) || '{}');
-            const isAnonymousPreOrder = savedCart.deliveryType === 'street-vendor-pre-order' && !isDineIn && !isLoggedInUser && !isWhatsAppSession;
 
-            console.log(`[Checkout Page] Verification checks: isDineIn=${isDineIn}, isLoggedInUser=${isLoggedInUser}, isWhatsAppSession=${isWhatsAppSession}, isAnonymousPreOrder=${isAnonymousPreOrder}`);
+            // --- START: Anonymous Pre-Order Check ---
+            let isAnonymousPreOrder = false;
+            try {
+                const savedCart = JSON.parse(localStorage.getItem(`cart_${restaurantId}`) || '{}');
+                isAnonymousPreOrder = savedCart.deliveryType === 'street-vendor-pre-order' && !isDineIn && !isLoggedInUser && !isWhatsAppSession;
+            } catch (e) {
+                // Ignore parsing errors, isAnonymousPreOrder will remain false
+            }
+            // --- END: Anonymous Pre-Order Check ---
+            
+            console.log(`[Checkout Page] Verification checks: isDineIn=${isDineIn}, isLoggedInUser=${isLoggedInUser}, isWhatsAppSession=${isWhatsAppSession}, isAnonymousPreOrder=${isAnonymousPreOrder}, activeOrderId=${!!activeOrderId}`);
 
             if (isDineIn || isLoggedInUser || isAnonymousPreOrder || activeOrderId) {
                 console.log("[Checkout Page] Session validated (Direct).");
@@ -166,12 +173,12 @@ const CheckoutPageInternal = () => {
                 }
             }
             
-            // --- START FIX: Auto-confirm details for add-on orders ---
-            if (isLoggedInUser || activeOrderId) {
-                console.log("[Checkout Page] User is logged in or adding on, auto-confirming details.");
+            // --- START: Auto-confirm details for add-on orders and other non-interactive sessions ---
+            if (isLoggedInUser || activeOrderId || isAnonymousPreOrder) {
+                console.log("[Checkout Page] Auto-confirming details for non-interactive session.");
                 setDetailsConfirmed(true);
             }
-            // --- END FIX ---
+            // --- END: Auto-confirm details ---
 
             const phoneToLookup = phoneFromUrl || user?.phoneNumber || '';
             setOrderPhone(phoneToLookup);
@@ -179,6 +186,7 @@ const CheckoutPageInternal = () => {
             if (!restaurantId) { router.push('/'); return; }
             setError('');
 
+            const savedCart = JSON.parse(localStorage.getItem(`cart_${restaurantId}`) || '{}');
             const parsedData = savedCart;
             
             const deliveryType = tableId ? 'dine-in' : (parsedData.deliveryType || 'delivery');
@@ -315,7 +323,6 @@ const CheckoutPageInternal = () => {
 
             console.log("[Checkout Page] Order API response received:", data);
 
-            // If it was an add-on order, just redirect to tracking
             if (activeOrderId) {
                  router.push(`/track/pre-order/${activeOrderId}?token=${token}`);
                  return;
@@ -373,9 +380,8 @@ const CheckoutPageInternal = () => {
         }
     };
     
-    // --- START FIX: Modify validation to ignore name for add-on orders ---
     const validateOrderDetails = () => {
-        if (activeOrderId) return true; // Skip all validations for add-on orders
+        if (activeOrderId) return true;
 
         if (deliveryType === 'delivery' && !selectedAddress) {
             setError("Please select or add a delivery address.");
@@ -388,7 +394,6 @@ const CheckoutPageInternal = () => {
         setError('');
         return true;
     }
-    // --- END FIX ---
 
     const handleConfirmDetails = () => {
         if (validateOrderDetails()) {
@@ -615,3 +620,5 @@ const CheckoutPage = () => (
 );
 
 export default CheckoutPage;
+
+    

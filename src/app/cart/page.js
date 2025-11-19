@@ -191,14 +191,12 @@ const CartPageInternal = () => {
     const [liveOrder, setLiveOrder] = useState(null);
 
     useEffect(() => {
-        // --- START FIX: Use localStorage to reliably get liveOrder ---
         const liveOrderData = localStorage.getItem('liveOrder');
         if (liveOrderData) {
             setLiveOrder(JSON.parse(liveOrderData));
         } else if (activeOrderId) {
             setLiveOrder({ orderId: activeOrderId, trackingToken: token });
         }
-        // --- END FIX ---
     }, [activeOrderId, token]);
 
     useEffect(() => {
@@ -209,10 +207,17 @@ const CartPageInternal = () => {
             const isDineIn = !!tableId;
             const isLoggedInUser = !!user;
             const isWhatsAppSession = !!phone && !!token;
-            
-            const savedCart = JSON.parse(localStorage.getItem(`cart_${restaurantId}`) || '{}');
-            const isAnonymousPreOrder = savedCart.deliveryType === 'street-vendor-pre-order' && !isDineIn && !isLoggedInUser && !isWhatsAppSession;
 
+            // --- START: Anonymous Pre-Order Check ---
+            let isAnonymousPreOrder = false;
+            try {
+                const savedCart = JSON.parse(localStorage.getItem(`cart_${restaurantId}`) || '{}');
+                isAnonymousPreOrder = savedCart.deliveryType === 'street-vendor-pre-order' && !isDineIn && !isLoggedInUser && !isWhatsAppSession;
+            } catch (e) {
+                // Ignore parsing errors, isAnonymousPreOrder will remain false
+            }
+            // --- END: Anonymous Pre-Order Check ---
+            
             if (isDineIn || isLoggedInUser || isAnonymousPreOrder || activeOrderId) {
                 console.log(`[Cart Page] Session validated. Reason: ${isDineIn ? 'Dine-in' : isLoggedInUser ? 'Logged in' : activeOrderId ? 'Add-on Order' : 'Anonymous Pre-order'}`);
                 setIsTokenValid(true);
@@ -368,10 +373,8 @@ const CartPageInternal = () => {
             if (!res.ok) throw new Error(data.message || "Failed to place order.");
             
             console.log("[Cart Page] Post-paid order successful. Response:", data);
-            // --- START FIX: Clear all local storage ---
             localStorage.removeItem(`cart_${restaurantId}`);
             localStorage.removeItem('liveOrder');
-            // --- END FIX ---
             router.push(`/order/placed?orderId=${data.order_id}&whatsappNumber=${data.whatsappNumber}&token=${data.token}`);
         } catch (err) {
             console.error("[Cart Page] Post-paid checkout error:", err.message);
@@ -560,7 +563,6 @@ const CartPageInternal = () => {
         return <div className="min-h-screen bg-background flex items-center justify-center"><p className="text-destructive">Session could not be verified.</p></div>;
     }
 
-    // --- START FIX: Determine tracking URL dynamically ---
     const getTrackingUrl = () => {
         if (!liveOrder) return null;
         const businessType = cartData?.businessType || 'restaurant'; 
@@ -577,7 +579,6 @@ const CartPageInternal = () => {
         return `${path}?token=${liveOrder.trackingToken}`;
     };
     const trackingUrl = getTrackingUrl();
-    // --- END FIX ---
     
     if (!cartData || cart.length === 0) {
         return (
@@ -924,3 +925,5 @@ const CartPage = () => (
 );
 
 export default CartPage;
+
+    
