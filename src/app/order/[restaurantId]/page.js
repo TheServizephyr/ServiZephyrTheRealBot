@@ -641,17 +641,14 @@ const OrderPageInternal = () => {
     const tableIdFromUrl = searchParams.get('table');
     const impersonatedOwnerId = searchParams.get('impersonate_owner_id');
 
-    // --- START: ADD-ON ORDER STATE ---
     const activeOrderId = searchParams.get('activeOrderId');
-    const activeOrderToken = searchParams.get('token'); // Can reuse the token
+    const activeOrderToken = searchParams.get('token');
     const [liveOrder, setLiveOrder] = useState(null);
 
-    // --- START: FIX ---
     useEffect(() => {
         const liveOrderDataStr = localStorage.getItem('liveOrder');
         if (liveOrderDataStr) {
             const liveOrderData = JSON.parse(liveOrderDataStr);
-            // Check if the order is still active
             const pollStatus = async () => {
                 try {
                     const res = await fetch(`/api/order/status/${liveOrderData.orderId}`);
@@ -665,7 +662,6 @@ const OrderPageInternal = () => {
                             setLiveOrder(liveOrderData);
                         }
                     } else {
-                        // If status check fails, assume it's done to be safe
                         localStorage.removeItem('liveOrder');
                         setLiveOrder(null);
                     }
@@ -680,43 +676,6 @@ const OrderPageInternal = () => {
             setLiveOrder({ orderId: activeOrderId, trackingToken: activeOrderToken });
         }
     }, [activeOrderId, activeOrderToken]);
-     // --- END: FIX ---
-
-    useEffect(() => {
-        const verifySession = async () => {
-            // Allow anonymous access if this is a street vendor and no other auth method is present
-            const isStreetVendorPage = restaurantData.businessType === 'street-vendor';
-            if (isStreetVendorPage && !tableIdFromUrl && !phone && !token && !activeOrderId) {
-                setIsTokenValid(true);
-                return;
-            }
-
-            if (tableIdFromUrl || activeOrderId) { // An active order also validates the session
-                setIsTokenValid(true);
-                return;
-            }
-            
-            if (phone && token) {
-                try {
-                    const res = await fetch('/api/auth/verify-token', {
-                        method: 'POST', headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ phone, token }),
-                    });
-                    if (!res.ok) throw new Error((await res.json()).message || "Session validation failed.");
-                    setIsTokenValid(true);
-                } catch (err) {
-                    setTokenError(err.message);
-                }
-                return;
-            }
-
-            setTokenError("No valid session information found. Please start a new session.");
-        };
-
-        if (restaurantId) {
-            verifySession();
-        }
-    }, [restaurantId, tableIdFromUrl, phone, token, activeOrderId, restaurantData.businessType]);
 
 
     const [customerLocation, setCustomerLocation] = useState(null);
@@ -788,7 +747,9 @@ const OrderPageInternal = () => {
         setIsDineInModalOpen(false);
     };
 
+    // --- START: Reordered useEffect hooks ---
 
+    // Effect 1: Fetch initial restaurant data first.
     useEffect(() => {
         const fetchInitialData = async () => {
             if (!restaurantId || restaurantId === 'undefined') {
@@ -825,7 +786,6 @@ const OrderPageInternal = () => {
                     dineInModel: menuData.dineInModel || 'post-paid',
                     dineInOnlinePaymentEnabled: settingsData.dineInOnlinePaymentEnabled !== false,
                     dineInPayAtCounterEnabled: settingsData.dineInPayAtCounterEnabled !== false,
-                    // ADDED: General payment settings for other types
                     onlinePaymentEnabled: onlinePaymentEnabled,
                     codEnabled: codEnabled,
                 };
@@ -833,13 +793,65 @@ const OrderPageInternal = () => {
                 setRestaurantData(fetchedSettings);
                 setLoyaltyPoints(menuData.loyaltyPoints || 0);
 
-                if (tableIdFromUrl) {
-                    setDeliveryType('dine-in');
+            } catch (err) {
+                setError(err.message);
+            } finally {
+                setLoading(false);
+            }
+        };
 
-                    if (tabIdFromUrl) {
-                        setActiveTabInfo({ id: tabIdFromUrl, name: 'Active Tab', total: 0 });
-                        setDineInState('ready');
-                    } else {
+        fetchInitialData();
+    }, [restaurantId, phone]);
+
+
+    // Effect 2: Verify the session *after* restaurantData is available.
+    useEffect(() => {
+        const verifySession = async () => {
+            const isStreetVendorPage = restaurantData.businessType === 'street-vendor';
+            if (isStreetVendorPage && !tableIdFromUrl && !phone && !token && !activeOrderId) {
+                setIsTokenValid(true);
+                return;
+            }
+
+            if (tableIdFromUrl || activeOrderId) {
+                setIsTokenValid(true);
+                return;
+            }
+            
+            if (phone && token) {
+                try {
+                    const res = await fetch('/api/auth/verify-token', {
+                        method: 'POST', headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ phone, token }),
+                    });
+                    if (!res.ok) throw new Error((await res.json()).message || "Session validation failed.");
+                    setIsTokenValid(true);
+                } catch (err) {
+                    setTokenError(err.message);
+                }
+                return;
+            }
+            // This is the final check, if no other condition is met, the session is invalid.
+            setTokenError("No valid session information found. Please start a new session.");
+        };
+
+        // Don't run this effect until we have the businessType
+        if (!loading && restaurantData.businessType) {
+            verifySession();
+        }
+    }, [restaurantId, tableIdFromUrl, phone, token, activeOrderId, restaurantData.businessType, loading]);
+
+    // Effect 3: Load cart and handle dine-in state after token is validated.
+    useEffect(() => {
+        const handleDineInSetup = async () => {
+            if (tableIdFromUrl) {
+                setDeliveryType('dine-in');
+
+                if (tabIdFromUrl) {
+                    setActiveTabInfo({ id: tabIdFromUrl, name: 'Active Tab', total: 0 });
+                    setDineInState('ready');
+                } else {
+                    try {
                         const tableRes = await fetch(`/api/owner/tables?restaurantId=${restaurantId}&tableId=${tableIdFromUrl}`);
                         if (!tableRes.ok) throw new Error((await tableRes.json()).message);
                         const tableData = await tableRes.json();
@@ -852,31 +864,43 @@ const OrderPageInternal = () => {
                         setTableStatus({ ...tableData, tableId: tableIdFromUrl, state });
                         setDineInState('needs_setup');
                         setIsDineInModalOpen(true);
+                    } catch (err) {
+                        setError(err.message);
                     }
-
-                } else {
-                    if (fetchedSettings.businessType === 'street-vendor') {
-                        setDeliveryType('street-vendor-pre-order');
-                    } else {
-                        setDeliveryType(menuData.deliveryEnabled ? 'delivery' : (menuData.pickupEnabled ? 'pickup' : 'delivery'));
-                    }
-                    setDineInState('ready');
                 }
-            } catch (err) {
-                setError(err.message);
-            } finally {
-                setLoading(false);
+
+            } else {
+                if (restaurantData.businessType === 'street-vendor') {
+                    setDeliveryType('street-vendor-pre-order');
+                } else {
+                    setDeliveryType(restaurantData.deliveryEnabled ? 'delivery' : (restaurantData.pickupEnabled ? 'pickup' : 'delivery'));
+                }
+                setDineInState('ready');
             }
         };
 
         if (isTokenValid) {
-            fetchInitialData();
-        } else if (!tokenError) {
-            setLoading(true);
-        } else {
-            setLoading(false);
+            const savedCartData = localStorage.getItem(`cart_${restaurantId}`);
+            if (savedCartData) {
+                const parsedData = JSON.parse(savedCartData);
+                const now = new Date().getTime();
+                if (parsedData.expiryTimestamp && now > parsedData.expiryTimestamp) {
+                    localStorage.removeItem(`cart_${restaurantId}`);
+                    setCart([]); setNotes('');
+                } else {
+                    setCart(parsedData.cart || []);
+                    setNotes(parsedData.notes || '');
+                    if (parsedData.deliveryType && !tableIdFromUrl) setDeliveryType(parsedData.deliveryType);
+                    if (parsedData.dineInTabId) {
+                        setActiveTabInfo({ id: parsedData.dineInTabId, name: parsedData.tab_name || 'Active Tab', pax_count: parsedData.pax_count || 1 });
+                    }
+                }
+            }
+            handleDineInSetup();
         }
-    }, [isTokenValid, tokenError, restaurantId, phone, tableIdFromUrl, tabIdFromUrl]);
+    }, [isTokenValid, restaurantId, tableIdFromUrl, tabIdFromUrl, restaurantData.businessType, restaurantData.deliveryEnabled, restaurantData.pickupEnabled]);
+    
+    // --- END: Reordered useEffect hooks ---
     
     useEffect(() => {
         if (!restaurantId || loading || !isTokenValid) return;
@@ -899,34 +923,11 @@ const OrderPageInternal = () => {
         };
         localStorage.setItem(`cart_${restaurantId}`, JSON.stringify(cartDataToSave));
         
-        // Save liveOrder to local storage IF it exists
         if (liveOrder && liveOrder.orderId) {
              localStorage.setItem('liveOrder', JSON.stringify(liveOrder));
         }
 
     }, [cart, notes, deliveryType, restaurantData, loyaltyPoints, loading, isTokenValid, restaurantId, phone, token, tableIdFromUrl, activeTabInfo, liveOrder]);
-
-
-    useEffect(() => {
-        if (restaurantId && isTokenValid) {
-            const savedCartData = localStorage.getItem(`cart_${restaurantId}`);
-            if (savedCartData) {
-                const parsedData = JSON.parse(savedCartData);
-                const now = new Date().getTime();
-                if (parsedData.expiryTimestamp && now > parsedData.expiryTimestamp) {
-                    localStorage.removeItem(`cart_${restaurantId}`);
-                    setCart([]); setNotes('');
-                } else {
-                    setCart(parsedData.cart || []);
-                    setNotes(parsedData.notes || '');
-                    if (parsedData.deliveryType && !tableIdFromUrl) setDeliveryType(parsedData.deliveryType);
-                    if (parsedData.dineInTabId) {
-                        setActiveTabInfo({ id: parsedData.dineInTabId, name: parsedData.tab_name || 'Active Tab', pax_count: parsedData.pax_count || 1 });
-                    }
-                }
-            }
-        }
-    }, [restaurantId, tableIdFromUrl, isTokenValid]);
 
     const searchPlaceholder = useMemo(() => {
         return restaurantData.businessType === 'shop' ? 'Search for a product...' : 'Search for a dish...';
@@ -1068,12 +1069,10 @@ const OrderPageInternal = () => {
         if (deliveryType === 'dine-in' && activeTabInfo.id) {
             params.append('tabId', activeTabInfo.id);
         }
-        // --- START FIX: Pass live order info to the cart page ---
         if (liveOrder) {
             params.append('activeOrderId', liveOrder.orderId);
-            params.append('token', liveOrder.trackingToken); // This token is crucial for the session
+            params.append('token', liveOrder.trackingToken);
         }
-        // --- END FIX ---
         
         const url = `/cart?${params.toString()}`;
         router.push(url);
@@ -1134,11 +1133,9 @@ const OrderPageInternal = () => {
          )
     }
 
-    // --- START FIX: Determine tracking URL based on business type ---
     const getTrackingUrl = () => {
         if (!liveOrder) return null;
         
-        // The businessType is now stored in localStorage and state, so we can use it here
         const businessType = restaurantData.businessType || 'restaurant'; 
         
         let path;
@@ -1154,7 +1151,6 @@ const OrderPageInternal = () => {
     };
 
     const trackingUrl = getTrackingUrl();
-    // --- END FIX ---
     
     return (
         <>
@@ -1272,7 +1268,7 @@ const OrderPageInternal = () => {
                                 </motion.div>
                             </Link>
                         )}
-                        <div className="flex-grow"></div> {/* This will push the next button to the right */}
+                        <div className="flex-grow"></div>
                         <Popover>
                             <PopoverTrigger asChild>
                                 <Button variant="outline" className="flex items-center gap-2 flex-shrink-0">
@@ -1336,20 +1332,21 @@ const OrderPageInternal = () => {
                  <AnimatePresence>
                      {totalCartItems > 0 && (
                         <motion.div
-                            className="fixed bottom-0 left-0 right-0 z-30 bg-background/80 backdrop-blur-sm border-t border-border"
+                            className="fixed bottom-0 left-0 right-0 z-30"
                             initial={{ y: 100, opacity: 0 }}
                             animate={{ y: 0, opacity: 1 }}
                             exit={{ y: 100, opacity: 0 }}
-                            style={{ paddingBottom: 'calc(0.5rem + env(safe-area-inset-bottom))' }}
                         >
-                             <div className="container mx-auto p-4">
-                                <Button onClick={handleCheckout} className="h-16 w-full text-lg font-bold rounded-lg shadow-lg shadow-primary/30 flex justify-between items-center text-primary-foreground px-6 bg-primary hover:bg-primary/90">
-                                    <span>{totalCartItems} Item{totalCartItems > 1 ? 's' : ''}</span>
-                                    <div className="mx-4 h-6 w-px bg-primary-foreground/30"></div>
-                                    <span className="flex items-center">
-                                        {liveOrder ? 'Add to Order' : 'View Cart'} <ArrowRight className="ml-2 h-5 w-5"/>
-                                    </span>
-                                </Button>
+                            <div className="bg-background/80 backdrop-blur-sm border-t border-border p-4">
+                                <div className="container mx-auto">
+                                    <Button onClick={handleCheckout} className="h-16 w-full text-lg font-bold rounded-lg shadow-lg shadow-primary/30 flex justify-between items-center text-primary-foreground px-6 bg-primary hover:bg-primary/90">
+                                        <span>{totalCartItems} Item{totalCartItems > 1 ? 's' : ''}</span>
+                                        <div className="mx-4 h-6 w-px bg-primary-foreground/30"></div>
+                                        <span className="flex items-center">
+                                            {liveOrder ? 'Add to Order' : 'View Cart'} <ArrowRight className="ml-2 h-5 w-5"/>
+                                        </span>
+                                    </Button>
+                                </div>
                             </div>
                         </motion.div>
                      )}
@@ -1359,7 +1356,6 @@ const OrderPageInternal = () => {
                     className="fixed bottom-4 right-4 z-20"
                     animate={{ y: totalCartItems > 0 ? -80 : 0 }}
                     transition={{ type: 'spring', stiffness: 200, damping: 20 }}
-                    style={{ bottom: 'calc(1rem + env(safe-area-inset-bottom))' }}
                 >
                      <Button size="icon" className="w-16 h-16 rounded-full bg-green-600 hover:bg-green-700 text-white shadow-lg" onClick={() => setIsMenuBrowserOpen(true)}>
                          <BookOpen size={28}/>
