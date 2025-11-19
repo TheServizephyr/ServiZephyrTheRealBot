@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
@@ -7,7 +8,7 @@ import { Button } from '@/components/ui/button';
 import Link from 'next/link';
 import { useUser } from '@/firebase';
 import { db, auth } from '@/lib/firebase';
-import { collection, query, where, onSnapshot, doc, Timestamp, getDocs } from 'firebase/firestore';
+import { collection, query, where, onSnapshot, doc, Timestamp, getDocs, updateDoc, deleteDoc } from 'firebase/firestore';
 import { FirestorePermissionError } from '@/firebase/errors';
 import { errorEmitter } from '@/firebase/error-emitter';
 import InfoDialog from '@/components/InfoDialog';
@@ -38,13 +39,13 @@ const OrderCard = ({ order, onMarkReady, onCancel, onMarkCollected }) => {
     const isPending = order.status === 'pending';
     const isReady = order.status === 'Ready';
 
-    let statusClass = 'text-yellow-400';
+    let statusClass = 'text-yellow-400 bg-yellow-100 border-yellow-200';
     if (isReady) {
-        statusClass = 'text-green-400';
+        statusClass = 'text-green-700 bg-green-100 border-green-200';
     } else if (order.status === 'delivered' || order.status === 'picked_up') {
-        statusClass = 'text-blue-400';
+        statusClass = 'text-blue-700 bg-blue-100 border-blue-200';
     } else if (order.status === 'rejected') {
-        statusClass = 'text-red-400';
+        statusClass = 'text-red-700 bg-red-100 border-red-200';
     }
     
     const isPaidOnline = order.paymentDetails?.method === 'razorpay';
@@ -56,13 +57,13 @@ const OrderCard = ({ order, onMarkReady, onCancel, onMarkCollected }) => {
             animate={{ scale: 1, opacity: 1 }}
             exit={{ scale: 0.8, opacity: 0 }}
             transition={{ type: 'spring', stiffness: 200, damping: 20 }}
-            className={`rounded-lg p-4 flex flex-col justify-between border-l-4 bg-white border-yellow-500`}
+            className="rounded-lg p-4 flex flex-col justify-between border-l-4 bg-white border-yellow-500"
         >
             <div>
                 <div className="flex justify-between items-start">
                     <p className="text-4xl font-bold text-black">{token}</p>
                     <div className="text-right">
-                        <div className={`px-2 py-1 text-xs font-semibold rounded-full bg-opacity-20 capitalize ${statusClass}`}>{order.status}</div>
+                        <div className={cn('px-2 py-1 text-xs font-semibold rounded-full border bg-opacity-20 capitalize', statusClass)}>{order.status}</div>
                         <p className="text-xs text-gray-500 mt-1">{formatDateTime(order.orderDate)}</p>
                     </div>
                 </div>
@@ -283,7 +284,7 @@ export default function StreetVendorDashboard() {
 
         let q = query(collection(db, "orders"), where("restaurantId", "==", vendorId));
         
-        if (date?.from) {
+        if (date && date.from) {
              const start = startOfDay(date.from);
              const end = date.to ? endOfDay(date.to) : endOfDay(date.from);
              q = query(q, where("orderDate", ">=", Timestamp.fromDate(start)), where("orderDate", "<=", Timestamp.fromDate(end)));
@@ -398,9 +399,6 @@ export default function StreetVendorDashboard() {
                       </Button>
                     </PopoverTrigger>
                     <PopoverContent className="w-auto p-0">
-                      <div className="p-2 space-x-2 bg-muted border-b border-border">
-                        <Button variant={date && !date.to && format(date.from, 'yyyy-MM-dd') === format(new Date(), 'yyyy-MM-dd') ? 'secondary' : 'ghost'} size="sm" onClick={() => {setDate({from: new Date(), to: new Date()}); setIsCalendarOpen(false);}}>Today</Button>
-                      </div>
                       <Calendar
                         initialFocus
                         mode="range"
@@ -472,3 +470,5 @@ export default function StreetVendorDashboard() {
     </div>
   );
 }
+
+    
