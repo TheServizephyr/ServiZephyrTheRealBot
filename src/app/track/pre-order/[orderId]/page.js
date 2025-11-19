@@ -1,8 +1,9 @@
+
 'use client';
 
-import React, { useState, useEffect, useMemo, Suspense, useCallback, useRef } from 'react';
-import { motion } from 'framer-motion';
-import { Check, ShoppingBag, Loader2, ArrowLeft, ClipboardList, CheckCircle } from 'lucide-react';
+import React, { useState, useEffect, useMemo, useCallback, useRef, Suspense } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { Loader2, ArrowLeft } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useRouter, useParams, useSearchParams } from 'next/navigation';
 import { cn } from '@/lib/utils';
@@ -114,7 +115,6 @@ function PreOrderTrackingContent() {
     const token = order?.dineInToken || '----';
     const [tokenPart1, tokenPart2] = token.includes('-') ? token.split('-') : [token, ''];
     const qrValue = `${window.location.origin}/street-vendor-dashboard?collect_order=${orderId}`;
-    const orderDate = order?.orderDate;
     
     return (
         <div className="fixed inset-0 bg-slate-900 text-white font-sans p-4 flex flex-col justify-center items-center">
