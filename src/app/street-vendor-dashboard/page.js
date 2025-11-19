@@ -1,10 +1,9 @@
 
-
 'use client';
 
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ClipboardList, QrCode, CookingPot, PackageCheck, Check, X, Loader2, User, Phone, History, Wallet, IndianRupee, Calendar as CalendarIcon } from 'lucide-react';
+import { ClipboardList, QrCode, CookingPot, PackageCheck, Check, X, Loader2, User, Phone, History, Wallet, IndianRupee, Calendar as CalendarIcon, Search } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import Link from 'next/link';
 import { useUser } from '@/firebase';
@@ -193,6 +192,7 @@ export default function StreetVendorDashboard() {
     const [selectedDate, setSelectedDate] = useState(new Date());
     const [error, setError] = useState(null);
     const [isCalendarOpen, setIsCalendarOpen] = useState(false);
+    const [searchQuery, setSearchQuery] = useState('');
 
     const handleApiCall = useCallback(async (endpoint, method = 'PATCH', body = {}) => {
         if (!user) throw new Error('Authentication Error');
@@ -329,9 +329,20 @@ export default function StreetVendorDashboard() {
     const handleCancelOrder = (orderId) => handleUpdateStatus(orderId, 'rejected');
     const handleMarkCollected = (orderId) => handleUpdateStatus(orderId, 'delivered');
     
-    const pendingOrders = useMemo(() => orders.filter(o => o.status === 'pending'), [orders]);
-    const readyOrders = useMemo(() => orders.filter(o => o.status === 'Ready'), [orders]);
-    const collectedOrders = useMemo(() => orders.filter(o => o.status === 'delivered' || o.status === 'picked_up'), [orders]);
+    const filteredOrders = useMemo(() => {
+        if (!searchQuery) return orders;
+        const lowerQuery = searchQuery.toLowerCase();
+        return orders.filter(order => 
+            order.dineInToken?.toLowerCase().includes(lowerQuery) ||
+            order.customerName?.toLowerCase().includes(lowerQuery) ||
+            order.customerPhone?.includes(lowerQuery) ||
+            order.totalAmount?.toString().includes(lowerQuery)
+        );
+    }, [orders, searchQuery]);
+
+    const pendingOrders = useMemo(() => filteredOrders.filter(o => o.status === 'pending'), [filteredOrders]);
+    const readyOrders = useMemo(() => filteredOrders.filter(o => o.status === 'Ready'), [filteredOrders]);
+    const collectedOrders = useMemo(() => filteredOrders.filter(o => o.status === 'delivered' || o.status === 'picked_up'), [filteredOrders]);
 
   return (
     <div className="min-h-screen bg-background text-foreground font-body p-4 pb-24">
@@ -345,24 +356,32 @@ export default function StreetVendorDashboard() {
         {scannedOrder && <ScannedOrderModal isOpen={!!scannedOrder} onClose={() => setScannedOrder(null)} order={scannedOrder} onConfirm={confirmCollection} />}
         
         <div className="fixed bottom-4 right-4 z-50 md:relative md:bottom-auto md:right-auto md:mb-6">
-            {/* Mobile FAB */}
             <Button className="md:hidden h-16 w-16 rounded-lg shadow-lg bg-black hover:bg-gray-800 text-white" size="icon" onClick={() => setScannerOpen(true)}>
                 <QrCode size={28}/>
             </Button>
-            {/* Desktop Button */}
             <Button className="hidden md:flex w-full h-16 text-lg bg-primary hover:bg-primary/80" onClick={() => setScannerOpen(true)}>
                 <QrCode className="mr-3"/> Scan QR to Collect
             </Button>
         </div>
 
 
-        <div className="mb-6 flex flex-wrap items-center justify-center gap-2">
+        <div className="mb-6 flex flex-col md:flex-row items-center justify-center gap-4">
+            <div className="relative w-full max-w-sm">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <input
+                    type="text"
+                    placeholder="Search by token, name, phone..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="w-full pl-10 pr-4 py-2 h-10 rounded-md bg-input border border-border"
+                />
+            </div>
             <Popover open={isCalendarOpen} onOpenChange={setIsCalendarOpen}>
                 <PopoverTrigger asChild>
                   <Button
                     variant={"outline"}
                     className={cn(
-                      "w-full max-w-xs justify-start text-left font-normal",
+                      "w-full max-w-sm md:w-auto justify-start text-left font-normal",
                       !selectedDate && "text-muted-foreground"
                     )}
                   >
