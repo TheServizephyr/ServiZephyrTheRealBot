@@ -88,13 +88,19 @@ export async function POST(req) {
              console.error("[API /payment/create-order] Invalid amount for simple order:", amountForSimpleOrder);
             return NextResponse.json({ message: 'A valid amount is required for a simple order.' }, { status: 400 });
         }
+        
+        const splitIdFromNotes = body.notes?.split_session_id;
+
         const options = {
             amount: Math.round(amountForSimpleOrder * 100),
             currency: "INR",
             receipt: `receipt_${nanoid(10)}`,
+            notes: {
+                ...(splitIdFromNotes && { split_session_id: splitIdFromNotes }),
+            }
         };
         const order = await razorpay.orders.create(options);
-        console.log("[API /payment/create-order] Simple Razorpay order created:", order.id);
+        console.log("[API /payment/create-order] Simple Razorpay order created:", order.id, "with notes:", options.notes);
         return NextResponse.json(order, { status: 200 });
 
 

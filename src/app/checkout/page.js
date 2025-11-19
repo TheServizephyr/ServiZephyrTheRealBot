@@ -152,7 +152,7 @@ const CheckoutPageInternal = () => {
             
             console.log(`[Checkout Page] Verification checks: isDineIn=${isDineIn}, isLoggedInUser=${isLoggedInUser}, isWhatsAppSession=${isWhatsAppSession}, isAnonymousPreOrder=${isAnonymousPreOrder}, activeOrderId=${!!activeOrderId}`);
 
-            if (isDineIn || isLoggedInUser || isAnonymousPreOrder || activeOrderId) {
+            if (isDineIn || isLoggedInUser || activeOrderId) {
                 console.log("[Checkout Page] Session validated (Direct).");
                 setIsTokenValid(true);
             } else if (isWhatsAppSession) {
@@ -166,6 +166,9 @@ const CheckoutPageInternal = () => {
                     console.error("[Checkout Page] Token verification failed:", err.message);
                     setTokenError(err.message); setLoading(false); return;
                 }
+            } else if (isAnonymousPreOrder) {
+                console.log("[Checkout Page] Session validated (Anonymous Pre-Order).");
+                setIsTokenValid(true);
             } else {
                 if(!isUserLoading) {
                     console.error("[Checkout Page] No session info found and user is not loading.");
@@ -173,12 +176,10 @@ const CheckoutPageInternal = () => {
                 }
             }
             
-            // --- START: Auto-confirm details for add-on orders and other non-interactive sessions ---
-            if (isLoggedInUser || activeOrderId || isAnonymousPreOrder) {
+            if (isLoggedInUser || activeOrderId) {
                 console.log("[Checkout Page] Auto-confirming details for non-interactive session.");
                 setDetailsConfirmed(true);
             }
-            // --- END: Auto-confirm details ---
 
             const phoneToLookup = phoneFromUrl || user?.phoneNumber || '';
             setOrderPhone(phoneToLookup);
@@ -620,5 +621,3 @@ const CheckoutPage = () => (
 );
 
 export default CheckoutPage;
-
-    

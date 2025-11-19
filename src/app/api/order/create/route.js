@@ -309,7 +309,8 @@ export async function POST(req) {
                 currency: 'INR',
                 receipt: firestoreOrderId,
                 notes: {
-                    servizephyr_payload: JSON.stringify(servizephyrOrderPayload)
+                    servizephyr_payload: JSON.stringify(servizephyrOrderPayload),
+                    split_session_id: body.splitCount ? `split_${firestoreOrderId}` : undefined
                 }
             };
             console.log("[API /order/create] Razorpay Order Options:", JSON.stringify(razorpayOrderOptions, null, 2));
