@@ -1,4 +1,3 @@
-
 'use client';
 
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
@@ -361,7 +360,7 @@ export default function StreetVendorDashboard() {
         {scannedOrder && <ScannedOrderModal isOpen={!!scannedOrder} onClose={() => setScannedOrder(null)} order={scannedOrder} onConfirm={confirmCollection} />}
         
         <div className="fixed bottom-4 right-4 z-50 md:relative md:bottom-auto md:right-auto md:mb-6">
-            <Button className="md:hidden h-16 w-16 rounded-lg shadow-lg bg-black hover:bg-gray-800 text-white" size="icon" onClick={() => setScannerOpen(true)}>
+            <Button className="md:hidden h-16 w-16 rounded-lg shadow-lg bg-black hover:bg-gray-800" size="icon" onClick={() => setScannerOpen(true)}>
                 <QrCode size={28}/>
             </Button>
             <Button className="hidden md:flex w-full h-16 text-lg bg-primary hover:bg-primary/80" onClick={() => setScannerOpen(true)}>
@@ -370,8 +369,8 @@ export default function StreetVendorDashboard() {
         </div>
 
 
-        <div className="mb-6 flex flex-col md:flex-row items-center justify-center gap-4">
-             <div className="flex w-full md:w-auto items-center justify-center gap-2">
+         <div className="mb-6 flex flex-col md:flex-row items-center justify-center gap-4">
+            <div className="flex w-full items-center gap-2">
                 <div className="relative flex-grow">
                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                     <input
@@ -388,8 +387,9 @@ export default function StreetVendorDashboard() {
                         variant={"outline"}
                         className={cn("w-auto justify-start text-left font-normal", !selectedDate && "text-muted-foreground")}
                       >
-                        <CalendarIcon className="mr-2 h-4 w-4" />
-                        {selectedDate ? format(selectedDate, "PPP") : <span>Pick a date</span>}
+                        <CalendarIcon className="mr-2 h-4 w-4 hidden md:inline" />
+                        {selectedDate ? <span className="hidden md:inline">{format(selectedDate, "PPP")}</span> : <span className="hidden md:inline">Pick a date</span>}
+                         <CalendarIcon className="h-5 w-5 md:hidden" />
                       </Button>
                     </PopoverTrigger>
                     <PopoverContent className="w-auto p-0">
