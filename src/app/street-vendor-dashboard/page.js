@@ -352,7 +352,12 @@ export default function StreetVendorDashboard() {
         {isScannerOpen && <QrScanner onClose={() => setScannerOpen(false)} onScanSuccess={handleScanSuccess} />}
         {scannedOrder && <ScannedOrderModal isOpen={!!scannedOrder} onClose={() => setScannedOrder(null)} order={scannedOrder} onConfirm={confirmCollection} />}
         
-        {/* The Scan button is now part of the header in the layout file, not here */}
+        <header className="flex justify-between items-center mb-6">
+            <h1 className="text-2xl font-bold font-headline">Live Orders</h1>
+            <Button onClick={() => setScannerOpen(true)} className="bg-primary hover:bg-primary/90 text-primary-foreground">
+                <QrCode className="mr-2" /> Scan to Collect
+            </Button>
+        </header>
 
         <div className="mb-6 flex flex-col md:flex-row items-center justify-center gap-4">
             <div className="relative w-full flex-grow">
