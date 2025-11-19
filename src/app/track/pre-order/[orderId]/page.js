@@ -3,7 +3,7 @@
 
 import React, { useState, useEffect, useMemo, useCallback, useRef, Suspense } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Loader2, ArrowLeft, CheckCircle } from 'lucide-react';
+import { Loader2, ArrowLeft, CheckCircle, Check } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useRouter, useParams, useSearchParams } from 'next/navigation';
 import { cn } from '@/lib/utils';
@@ -20,6 +20,7 @@ const statusConfig = [
 const StatusTimeline = ({ currentStatus }) => {
     const activeIndex = useMemo(() => {
         const adjustedStatus = currentStatus === 'pending' ? 'confirmed' : currentStatus;
+        if (adjustedStatus === 'delivered' || adjustedStatus === 'picked_up') return 2;
         return statusConfig.findIndex(s => s.key === adjustedStatus);
     }, [currentStatus]);
 
