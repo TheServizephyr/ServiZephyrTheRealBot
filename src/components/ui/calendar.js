@@ -1,7 +1,7 @@
 "use client"
 
 import * as React from "react"
-import { ChevronLeft, ChevronRight, X } from "lucide-react"
+import { ChevronLeft, ChevronRight, X, Edit } from "lucide-react"
 import { DayPicker } from "react-day-picker"
 
 import { cn } from "@/lib/utils"
@@ -40,6 +40,7 @@ function Calendar({
   ...props
 }) {
   const [range, setRange] = React.useState(selected);
+  const [showMonthYearPicker, setShowMonthYearPicker] = React.useState(false);
 
   React.useEffect(() => {
     setRange(selected);
@@ -59,12 +60,15 @@ function Calendar({
           mode="range"
           selected={range}
           onSelect={setRange}
+          fromYear={2024}
+          toYear={new Date().getFullYear()}
+          captionLayout={showMonthYearPicker ? "dropdown-buttons" : "buttons"}
           className="p-3"
           classNames={{
             months: "flex flex-col sm:flex-row space-y-4 sm:space-y-0",
             month: "space-y-4",
             caption: "flex justify-center pt-1 relative items-center mb-4",
-            caption_label: "text-lg font-medium",
+            caption_label: "text-lg font-medium flex items-center gap-2 cursor-pointer",
             nav: "space-x-1 flex items-center",
             nav_button: cn(
               buttonVariants({ variant: "outline" }),
@@ -93,6 +97,15 @@ function Calendar({
             ...classNames,
           }}
           components={{
+            CaptionLabel: ({ displayMonth }) => (
+                <div 
+                    className="text-lg font-medium flex items-center gap-2 cursor-pointer hover:text-primary transition-colors"
+                    onClick={() => setShowMonthYearPicker(prev => !prev)}
+                >
+                    {format(displayMonth, 'MMMM yyyy')}
+                    <Edit size={16} />
+                </div>
+            ),
             IconLeft: ({ ...props }) => <ChevronLeft className="h-4 w-4" />,
             IconRight: ({ ...props }) => <ChevronRight className="h-4 w-4" />,
           }}
