@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button';
 import Link from 'next/link';
 import { useUser, useMemoFirebase, useCollection } from '@/firebase';
 import { db, auth } from '@/lib/firebase';
-import { collection, query, where, onSnapshot, doc, Timestamp, getDocs, updateDoc, deleteDoc } from 'firebase/firestore';
+import { collection, query, where, onSnapshot, doc, Timestamp, getDocs, updateDoc, deleteDoc, getDoc } from 'firebase/firestore';
 import { startOfDay, endOfDay, format, addDays } from 'date-fns';
 import { FirestorePermissionError } from '@/firebase/errors';
 import { errorEmitter } from '@/firebase/error-emitter';
@@ -354,9 +354,15 @@ export default function StreetVendorDashboard() {
         
         <header className="flex justify-between items-center mb-6">
             <h1 className="text-2xl font-bold font-headline">Live Orders</h1>
-            <Button onClick={() => setScannerOpen(true)} className="bg-primary hover:bg-primary/90 text-primary-foreground">
-                <QrCode className="mr-2" /> Scan to Collect
-            </Button>
+            {isScannerOpen ? (
+                <Button onClick={() => setScannerOpen(false)} variant="destructive">
+                    <X className="mr-2" /> Close Scanner
+                </Button>
+            ) : (
+                <Button onClick={() => setScannerOpen(true)} className="bg-primary hover:bg-primary/90 text-primary-foreground">
+                    <QrCode className="mr-2" /> Scan to Collect
+                </Button>
+            )}
         </header>
 
         <div className="mb-6 flex flex-col md:flex-row items-center justify-center gap-4">
