@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useState, useEffect, useMemo, useCallback, useRef, Suspense } from 'react';
@@ -278,9 +279,9 @@ export default function StreetVendorDashboard() {
 
         let q = query(collection(db, "orders"), where("restaurantId", "==", vendorId));
         
-        if (date?.from) {
-             const start = startOfDay(date.from);
-             const end = endOfDay(date.to || date.from);
+        if (date) {
+             const start = startOfDay(date);
+             const end = endOfDay(date);
              q = query(q, where("orderDate", ">=", Timestamp.fromDate(start)), where("orderDate", "<=", Timestamp.fromDate(end)));
         }
         
@@ -301,13 +302,7 @@ export default function StreetVendorDashboard() {
 
         return () => unsubscribe();
     }, [vendorId, date]);
-    
-    useEffect(() => {
-        if(date?.from && date?.to) {
-            setIsCalendarOpen(false);
-        }
-    }, [date]);
-    
+
     const handleUpdateStatus = async (orderId, newStatus) => {
         try {
             await handleApiCall('/api/owner/orders', 'PATCH', {
@@ -338,13 +333,9 @@ export default function StreetVendorDashboard() {
     const readyOrders = useMemo(() => filteredOrders.filter(o => o.status === 'Ready'), [filteredOrders]);
     const collectedOrders = useMemo(() => filteredOrders.filter(o => o.status === 'delivered' || o.status === 'picked_up'), [filteredOrders]);
     
-    const handleSetDateFilter = (filter) => {
-        if (filter === 'all') {
-            setDate(null);
-        } else if (filter === 'today') {
-            const today = new Date();
-            setDate({ from: today, to: today });
-        }
+    const handleSetDateFilter = (selectedDate) => {
+        setDate(selectedDate);
+        if(selectedDate) setIsCalendarOpen(false);
     };
 
   return (
@@ -368,7 +359,7 @@ export default function StreetVendorDashboard() {
         </div>
 
 
-         <div className="mb-6 flex flex-col md:flex-row items-center justify-center gap-4">
+        <div className="mb-6 flex flex-col md:flex-row items-center justify-center gap-4">
             <div className="relative w-full flex-grow">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                 <input
@@ -380,8 +371,6 @@ export default function StreetVendorDashboard() {
                 />
             </div>
              <div className="flex w-full md:w-auto items-center justify-center gap-2">
-                 <Button onClick={() => handleSetDateFilter('all')} variant={!date ? 'secondary' : 'outline'} size="sm">All Time</Button>
-                 <Button onClick={() => handleSetDateFilter('today')} variant={date && format(date.from, 'yyyy-MM-dd') === format(new Date(), 'yyyy-MM-dd') ? 'secondary' : 'outline'} size="sm">Today</Button>
                  <Popover open={isCalendarOpen} onOpenChange={setIsCalendarOpen}>
                     <PopoverTrigger asChild>
                       <Button
@@ -395,26 +384,20 @@ export default function StreetVendorDashboard() {
                       >
                         <CalendarIcon className="mr-2 h-4 w-4" />
                          <span>
-                            {date?.from ? (
-                                date.to ? (
-                                    `${format(date.from, "LLL dd")} - ${format(date.to, "LLL dd, y")}`
-                                ) : (
-                                    format(date.from, "LLL dd, yyyy")
-                                )
-                            ) : (
-                                "Custom Range"
-                            )}
+                            {date ? format(date, "LLL dd, yyyy") : "All Time"}
                          </span>
                       </Button>
                     </PopoverTrigger>
                     <PopoverContent className="w-auto p-0">
+                        <div className="p-2 flex flex-col gap-2">
+                            <Button variant="ghost" size="sm" className="justify-start" onClick={() => handleSetDateFilter(null)}>All Time</Button>
+                            <Button variant="ghost" size="sm" className="justify-start" onClick={() => handleSetDateFilter(new Date())}>Today</Button>
+                        </div>
                       <Calendar
                         initialFocus
-                        mode="range"
-                        defaultMonth={date?.from}
+                        mode="single"
                         selected={date}
-                        onSelect={setDate}
-                        numberOfMonths={1}
+                        onSelect={handleSetDateFilter}
                         disabled={(d) => d > new Date() || d < new Date("2024-01-01")}
                       />
                     </PopoverContent>
