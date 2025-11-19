@@ -330,7 +330,7 @@ export default function StreetVendorDashboard() {
     const collectedOrders = useMemo(() => orders.filter(o => o.status === 'delivered' || o.status === 'picked_up'), [orders]);
 
   return (
-    <div className="min-h-screen bg-background text-foreground font-body p-4">
+    <div className="min-h-screen bg-background text-foreground font-body p-4 pb-24">
         <InfoDialog 
             isOpen={infoDialog.isOpen} 
             onClose={() => setInfoDialog({isOpen: false, title: '', message: ''})} 
@@ -339,12 +339,18 @@ export default function StreetVendorDashboard() {
         />
         {isScannerOpen && <QrScanner onClose={() => setScannerOpen(false)} onScanSuccess={handleScanSuccess} />}
         {scannedOrder && <ScannedOrderModal isOpen={!!scannedOrder} onClose={() => setScannedOrder(null)} order={scannedOrder} onConfirm={confirmCollection} />}
-
-        <div className="mb-6">
-            <Button className="w-full h-16 text-lg bg-primary hover:bg-primary/80" onClick={() => setScannerOpen(true)}>
+        
+        <div className="fixed bottom-4 right-4 z-50 md:relative md:bottom-auto md:right-auto md:mb-6">
+            {/* Mobile FAB */}
+            <Button className="md:hidden h-16 w-16 rounded-full shadow-lg bg-primary hover:bg-primary/90" size="icon" onClick={() => setScannerOpen(true)}>
+                <QrCode size={28}/>
+            </Button>
+            {/* Desktop Button */}
+            <Button className="hidden md:flex w-full h-16 text-lg bg-primary hover:bg-primary/80" onClick={() => setScannerOpen(true)}>
                 <QrCode className="mr-3"/> Scan QR to Collect
             </Button>
         </div>
+
 
         <div className="mb-6 flex flex-wrap items-center justify-center gap-2">
             <Popover open={isCalendarOpen} onOpenChange={setIsCalendarOpen}>
