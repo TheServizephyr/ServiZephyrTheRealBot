@@ -1,4 +1,3 @@
-
 'use client';
 
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
@@ -198,17 +197,14 @@ export default function StreetVendorDashboard() {
     const handleApiCall = useCallback(async (endpoint, method = 'PATCH', body = {}) => {
         if (!user) throw new Error('Authentication Error');
         const idToken = await user.getIdToken();
-        const fetchOptions = {
+        const response = await fetch(endpoint, {
             method,
-            headers: { 'Authorization': `Bearer ${idToken}` }
-        };
-    
-        if (method !== 'GET') {
-            fetchOptions.headers['Content-Type'] = 'application/json';
-            fetchOptions.body = JSON.stringify(body);
-        }
-    
-        const response = await fetch(endpoint, fetchOptions);
+            headers: { 
+                'Authorization': `Bearer ${idToken}`,
+                'Content-Type': 'application/json'
+             },
+            body: JSON.stringify(body)
+        });
         if (!response.ok) {
             const errData = await response.json();
             throw new Error(errData.message || 'An API error occurred.');
@@ -252,13 +248,14 @@ export default function StreetVendorDashboard() {
     const confirmCollection = async () => {
         if (!scannedOrder) return;
         const tempOrder = { ...scannedOrder };
-        // Close modal immediately for better UX
-        setScannedOrder(null);
         try {
             await handleUpdateStatus(tempOrder.id, 'delivered');
             setInfoDialog({isOpen: true, title: 'Success', message: `Order for ${tempOrder.customerName} marked as collected!`});
         } catch (error) {
             setInfoDialog({ isOpen: true, title: "Error", message: `Could not mark order as collected: ${error.message}` });
+        } finally {
+            // This is the fix: Close the modal after the operation completes.
+            setScannedOrder(null);
         }
     };
 
