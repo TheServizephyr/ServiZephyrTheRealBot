@@ -335,14 +335,11 @@ export default function StreetVendorDashboard() {
     
     const handleSetDateFilter = (selectedDate) => {
         setDate(selectedDate);
-        // Auto-close calendar after selection
         if (selectedDate?.from && selectedDate?.to) {
-            setIsCalendarOpen(false);
-        } else if (selectedDate && !selectedDate.to) {
-            // This case handles single date selection, which is now a range of the same day
             setIsCalendarOpen(false);
         }
     };
+
 
   return (
     <div className="min-h-screen bg-background text-foreground font-body p-4 pb-24">
@@ -404,7 +401,7 @@ export default function StreetVendorDashboard() {
                       </Button>
                     </PopoverTrigger>
                     <PopoverContent className="w-auto p-0" align="end">
-                      <Calendar
+                       <Calendar
                         initialFocus
                         mode="range"
                         defaultMonth={date?.from}
@@ -413,9 +410,11 @@ export default function StreetVendorDashboard() {
                         numberOfMonths={1}
                         disabled={(d) => d > new Date() || d < new Date("2024-01-01")}
                       />
+                      <div className="p-2 border-t border-border">
+                        <Button variant="ghost" size="sm" className="w-full justify-start" onClick={() => { setDate(null); setIsCalendarOpen(false); }}>Clear</Button>
+                      </div>
                     </PopoverContent>
                   </Popover>
-                  {date && <Button variant="ghost" size="sm" onClick={() => setDate(null)}>Clear</Button>}
             </div>
         </div>
         
