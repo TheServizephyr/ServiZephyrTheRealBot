@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useState, useEffect, useMemo, useCallback, useRef, Suspense } from 'react';
@@ -278,14 +279,11 @@ export default function StreetVendorDashboard() {
 
         let q = query(collection(db, "orders"), where("restaurantId", "==", vendorId));
         
-        if (date?.from && date?.to) {
+        if (date?.from) {
             const start = startOfDay(date.from);
-            const end = endOfDay(date.to);
+            // If there's no 'to', use the end of the 'from' date for a single-day query
+            const end = date.to ? endOfDay(date.to) : endOfDay(date.from);
             q = query(q, where("orderDate", ">=", Timestamp.fromDate(start)), where("orderDate", "<=", Timestamp.fromDate(end)));
-        } else if (date?.from) {
-             const start = startOfDay(date.from);
-             const end = endOfDay(date.from);
-             q = query(q, where("orderDate", ">=", Timestamp.fromDate(start)), where("orderDate", "<=", Timestamp.fromDate(end)));
         }
         
         const unsubscribe = onSnapshot(q, (querySnapshot) => {
@@ -338,7 +336,12 @@ export default function StreetVendorDashboard() {
     
     const handleSetDateFilter = (selectedDate) => {
         setDate(selectedDate);
-        if(selectedDate && !selectedDate.to) setIsCalendarOpen(false);
+        // Only close if it's not a range selection or if both ends of the range are selected
+        if (!selectedDate?.to && selectedDate?.from) {
+             setIsCalendarOpen(false);
+        } else if (selectedDate?.to && selectedDate?.from) {
+             setIsCalendarOpen(false);
+        }
     };
 
   return (
@@ -353,7 +356,7 @@ export default function StreetVendorDashboard() {
         {scannedOrder && <ScannedOrderModal isOpen={!!scannedOrder} onClose={() => setScannedOrder(null)} order={scannedOrder} onConfirm={confirmCollection} />}
         
         <div className="fixed bottom-4 right-4 z-50 md:relative md:bottom-auto md:right-auto md:mb-6">
-            <Button className="md:hidden h-16 w-16 rounded-full shadow-lg bg-black hover:bg-gray-800" size="icon" onClick={() => setScannerOpen(true)}>
+            <Button className="md:hidden h-16 w-16 rounded-lg shadow-lg bg-black hover:bg-gray-800" size="icon" onClick={() => setScannerOpen(true)}>
                 <QrCode size={28} className="text-white"/>
             </Button>
             <Button className="hidden md:flex w-full h-16 text-lg bg-primary hover:bg-primary/80" onClick={() => setScannerOpen(true)}>
@@ -389,8 +392,7 @@ export default function StreetVendorDashboard() {
                             {date?.from ? (
                               date.to ? (
                                 <>
-                                  {format(date.from, "LLL dd, y")} -{" "}
-                                  {format(date.to, "LLL dd, y")}
+                                  {format(date.from, "LLL dd")} - {format(date.to, "LLL dd, y")}
                                 </>
                               ) : (
                                 format(date.from, "LLL dd, y")
@@ -402,8 +404,7 @@ export default function StreetVendorDashboard() {
                       </Button>
                     </PopoverTrigger>
                     <PopoverContent className="w-auto p-0" align="end">
-                         <div className="p-2 flex flex-col gap-1">
-                            <Button variant="ghost" size="sm" className="justify-start text-sm" onClick={() => handleSetDateFilter(null)}>All Time</Button>
+                         <div className="p-2 flex flex-col gap-1 border-b border-border">
                             <Button variant="ghost" size="sm" className="justify-start text-sm" onClick={() => handleSetDateFilter({ from: new Date(), to: new Date() })}>Today</Button>
                             <Button variant="ghost" size="sm" className="justify-start text-sm" onClick={() => handleSetDateFilter({ from: addDays(new Date(), -7), to: new Date() })}>Last 7 days</Button>
                         </div>
@@ -412,12 +413,13 @@ export default function StreetVendorDashboard() {
                         mode="range"
                         defaultMonth={date?.from}
                         selected={date}
-                        onSelect={setDate}
+                        onSelect={handleSetDateFilter}
                         numberOfMonths={1}
                         disabled={(d) => d > new Date() || d < new Date("2024-01-01")}
                       />
-                       <div className="p-2 border-t border-border">
-                          <Button onClick={() => setIsCalendarOpen(false)} className="w-full">Done</Button>
+                       <div className="p-2 border-t border-border flex justify-between">
+                          <Button variant="ghost" size="sm" onClick={() => { setDate(null); setIsCalendarOpen(false); }}>Clear</Button>
+                          <Button size="sm" onClick={() => setIsCalendarOpen(false)} >Done</Button>
                        </div>
                     </PopoverContent>
                   </Popover>
