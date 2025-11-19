@@ -39,16 +39,16 @@ const OrderCard = ({ order, onMarkReady, onCancel, onMarkCollected }) => {
     const isPending = order.status === 'pending';
     const isReady = order.status === 'Ready';
 
-    let cardClass = 'border-yellow-500 bg-white';
+    let cardClass = 'bg-white border-yellow-500';
     let statusClass = 'text-yellow-400';
     if (isReady) {
-        cardClass = 'border-green-500 bg-white';
+        cardClass = 'bg-white border-green-500';
         statusClass = 'text-green-400';
     } else if (order.status === 'delivered' || order.status === 'picked_up') {
-        cardClass = 'border-blue-500 bg-white';
+        cardClass = 'bg-white border-blue-500';
         statusClass = 'text-blue-400';
     } else if (order.status === 'rejected') {
-        cardClass = 'border-red-500 bg-white';
+        cardClass = 'bg-white border-red-500';
         statusClass = 'text-red-400';
     }
     
@@ -61,7 +61,7 @@ const OrderCard = ({ order, onMarkReady, onCancel, onMarkCollected }) => {
             animate={{ scale: 1, opacity: 1 }}
             exit={{ scale: 0.8, opacity: 0 }}
             transition={{ type: 'spring', stiffness: 200, damping: 20 }}
-            className={`bg-white rounded-lg p-4 flex flex-col justify-between border-l-4 ${cardClass}`}
+            className={`rounded-lg p-4 flex flex-col justify-between border-l-4 ${cardClass}`}
         >
             <div>
                 <div className="flex justify-between items-start">
@@ -195,6 +195,7 @@ export default function StreetVendorDashboard() {
     const [searchQuery, setSearchQuery] = useState('');
 
     useEffect(() => {
+        // This effect ensures date is only set on the client-side
         setSelectedDate(new Date());
     }, []);
 
@@ -370,48 +371,47 @@ export default function StreetVendorDashboard() {
 
 
         <div className="mb-6 flex flex-col md:flex-row items-center justify-center gap-4">
-            <div className="relative w-full max-w-sm">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                <input
-                    type="text"
-                    placeholder="Search by token, name, phone..."
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    className="w-full pl-10 pr-4 py-2 h-10 rounded-md bg-input border border-border"
-                />
+             <div className="flex w-full md:w-auto items-center justify-center gap-2">
+                <div className="relative flex-grow">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                    <input
+                        type="text"
+                        placeholder="Search by token, name, phone..."
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                        className="w-full pl-10 pr-4 py-2 h-10 rounded-md bg-input border border-border"
+                    />
+                </div>
+                 <Popover open={isCalendarOpen} onOpenChange={setIsCalendarOpen}>
+                    <PopoverTrigger asChild>
+                      <Button
+                        variant={"outline"}
+                        className={cn("w-auto justify-start text-left font-normal", !selectedDate && "text-muted-foreground")}
+                      >
+                        <CalendarIcon className="mr-2 h-4 w-4" />
+                        {selectedDate ? format(selectedDate, "PPP") : <span>Pick a date</span>}
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-auto p-0">
+                      <div className="p-2 space-x-2 bg-muted border-b border-border">
+                        <Button variant={selectedDate && format(selectedDate, 'yyyy-MM-dd') === format(new Date(), 'yyyy-MM-dd') ? 'default' : 'ghost'} size="sm" onClick={() => {setSelectedDate(new Date()); setIsCalendarOpen(false);}}>Today</Button>
+                        <Button variant={selectedDate && format(selectedDate, 'yyyy-MM-dd') === format(subDays(new Date(), 1), 'yyyy-MM-dd') ? 'default' : 'ghost'} size="sm" onClick={() => {setSelectedDate(subDays(new Date(), 1)); setIsCalendarOpen(false);}}>Yesterday</Button>
+                      </div>
+                      <Calendar
+                        mode="single"
+                        selected={selectedDate}
+                        onSelect={(date) => {
+                            if (date) {
+                                setSelectedDate(date);
+                            }
+                            setIsCalendarOpen(false);
+                        }}
+                        initialFocus
+                        disabled={(date) => date > new Date() || date < new Date("2024-01-01")}
+                      />
+                    </PopoverContent>
+                  </Popover>
             </div>
-            <Popover open={isCalendarOpen} onOpenChange={setIsCalendarOpen}>
-                <PopoverTrigger asChild>
-                  <Button
-                    variant={"outline"}
-                    className={cn(
-                      "w-full max-w-sm md:w-auto justify-start text-left font-normal",
-                      !selectedDate && "text-muted-foreground"
-                    )}
-                  >
-                    <CalendarIcon className="mr-2 h-4 w-4" />
-                    {selectedDate ? format(selectedDate, "PPP") : <span>Pick a date</span>}
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-auto p-0">
-                  <div className="p-2 space-x-2 bg-muted border-b border-border">
-                    <Button variant={selectedDate && format(selectedDate, 'yyyy-MM-dd') === format(new Date(), 'yyyy-MM-dd') ? 'default' : 'ghost'} size="sm" onClick={() => {setSelectedDate(new Date()); setIsCalendarOpen(false);}}>Today</Button>
-                    <Button variant={selectedDate && format(selectedDate, 'yyyy-MM-dd') === format(subDays(new Date(), 1), 'yyyy-MM-dd') ? 'default' : 'ghost'} size="sm" onClick={() => {setSelectedDate(subDays(new Date(), 1)); setIsCalendarOpen(false);}}>Yesterday</Button>
-                  </div>
-                  <Calendar
-                    mode="single"
-                    selected={selectedDate}
-                    onSelect={(date) => {
-                        if (date) {
-                            setSelectedDate(date);
-                        }
-                        setIsCalendarOpen(false);
-                    }}
-                    initialFocus
-                    disabled={(date) => date > new Date() || date < new Date("2024-01-01")}
-                  />
-                </PopoverContent>
-              </Popover>
         </div>
         
         <main>
