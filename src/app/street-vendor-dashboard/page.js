@@ -61,33 +61,33 @@ const OrderCard = ({ order, onMarkReady, onCancel, onMarkCollected }) => {
             animate={{ scale: 1, opacity: 1 }}
             exit={{ scale: 0.8, opacity: 0 }}
             transition={{ type: 'spring', stiffness: 200, damping: 20 }}
-            className={`bg-card rounded-lg p-4 flex flex-col justify-between border-l-4 ${cardClass}`}
+            className={`bg-white rounded-lg p-4 flex flex-col justify-between border-l-4 ${cardClass}`}
         >
             <div>
                 <div className="flex justify-between items-start">
-                    <p className="text-4xl font-bold text-foreground">{token}</p>
+                    <p className="text-4xl font-bold text-black">{token}</p>
                     <div className="text-right">
                         <div className={`px-2 py-1 text-xs font-semibold rounded-full bg-opacity-20 capitalize ${statusClass}`}>{order.status}</div>
-                        <p className="text-xs text-muted-foreground mt-1">{formatDateTime(order.orderDate)}</p>
+                        <p className="text-xs text-gray-500 mt-1">{formatDateTime(order.orderDate)}</p>
                     </div>
                 </div>
-                 <div className="flex justify-between items-center mt-2 border-b border-dashed border-border/50 pb-3 mb-3">
-                    <p className="text-3xl font-bold text-green-500">{formatCurrency(order.totalAmount)}</p>
+                 <div className="flex justify-between items-center mt-2 border-b border-dashed border-gray-300 pb-3 mb-3">
+                    <p className="text-3xl font-bold text-green-600">{formatCurrency(order.totalAmount)}</p>
                     {isPaidOnline ? (
-                         <div className="flex items-center gap-1 text-xs font-semibold px-2 py-1 rounded-full bg-green-500/10 text-green-400 border border-green-500/20">
+                         <div className="flex items-center gap-1 text-xs font-semibold px-2 py-1 rounded-full bg-green-100 text-green-700 border border-green-200">
                             <Wallet size={14}/> PAID ONLINE
                         </div>
                     ) : (
-                         <div className="flex items-center gap-1 text-xs font-semibold px-2 py-1 rounded-full bg-yellow-500/10 text-yellow-400 border border-yellow-500/20">
+                         <div className="flex items-center gap-1 text-xs font-semibold px-2 py-1 rounded-full bg-yellow-100 text-yellow-700 border border-yellow-200">
                             <IndianRupee size={14}/> PAY AT COUNTER
                         </div>
                     )}
                 </div>
 
-                <div className="mt-2 text-muted-foreground space-y-1">
+                <div className="mt-2 text-gray-600 space-y-1">
                     <div className="flex items-center gap-2">
                         <User size={16}/>
-                        <span className="font-semibold text-foreground text-lg">{order.customerName}</span>
+                        <span className="font-semibold text-black text-lg">{order.customerName}</span>
                     </div>
                     {order.customerPhone && (
                         <div className="flex items-center gap-2 text-sm">
@@ -96,9 +96,9 @@ const OrderCard = ({ order, onMarkReady, onCancel, onMarkCollected }) => {
                         </div>
                     )}
                 </div>
-                <div className="mt-3 pt-3 border-t border-dashed border-border/50">
-                    <p className="font-semibold text-foreground">Items:</p>
-                    <ul className="list-disc list-inside text-muted-foreground text-sm">
+                <div className="mt-3 pt-3 border-t border-dashed border-gray-300">
+                    <p className="font-semibold text-black">Items:</p>
+                    <ul className="list-disc list-inside text-gray-600 text-sm">
                         {order.items.map(item => (
                             <li key={item.name}>{item.quantity}x {item.name}</li>
                         ))}
@@ -189,10 +189,14 @@ export default function StreetVendorDashboard() {
     const [isScannerOpen, setScannerOpen] = useState(false);
     const [scannedOrder, setScannedOrder] = useState(null);
     const searchParams = useSearchParams();
-    const [selectedDate, setSelectedDate] = useState(new Date());
+    const [selectedDate, setSelectedDate] = useState(null);
     const [error, setError] = useState(null);
     const [isCalendarOpen, setIsCalendarOpen] = useState(false);
     const [searchQuery, setSearchQuery] = useState('');
+
+    useEffect(() => {
+        setSelectedDate(new Date());
+    }, []);
 
     const handleApiCall = useCallback(async (endpoint, method = 'PATCH', body = {}) => {
         if (!user) throw new Error('Authentication Error');
@@ -398,7 +402,9 @@ export default function StreetVendorDashboard() {
                     mode="single"
                     selected={selectedDate}
                     onSelect={(date) => {
-                        setSelectedDate(date);
+                        if (date) {
+                            setSelectedDate(date);
+                        }
                         setIsCalendarOpen(false);
                     }}
                     initialFocus
