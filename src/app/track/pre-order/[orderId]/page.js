@@ -172,7 +172,7 @@ function PreOrderTrackingContent() {
     const qrValue = `${window.location.origin}/street-vendor-dashboard?collect_order=${orderId}`;
     
     return (
-        <div className={cn("fixed inset-0 bg-background text-foreground font-sans p-4 flex flex-col justify-between items-center", coinTheme)}>
+        <div className={cn("fixed inset-0 bg-white text-foreground font-sans p-4 flex flex-col justify-between items-center", coinTheme)}>
              <div className="confetti-container">
                 {[...Array(100)].map((_, i) => {
                     const style = {
@@ -249,7 +249,7 @@ function PreOrderTrackingContent() {
                                 </div>
                             </div>
                         </div>
-                         <div className="instruction text-muted-foreground">Tap to Flip • Move cursor to Tilt</div>
+                         <div className="instruction text-muted-foreground mt-4">Tap to Flip • Move cursor to Tilt</div>
                     </motion.div>
                 )}
             </AnimatePresence>
@@ -270,3 +270,5 @@ export default function PreOrderTrackingPage() {
         </Suspense>
     )
 }
+
+    
