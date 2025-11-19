@@ -100,7 +100,7 @@ const StreetVendorLayout = ({ children }) => {
   };
 
   return (
-    <div className="min-h-screen bg-background text-foreground flex flex-col">
+    <div className="min-h-screen bg-background text-foreground flex flex-col md:flex-row">
         <InfoDialog
             isOpen={infoDialog.isOpen}
             onClose={() => setInfoDialog({ isOpen: false, title: '', message: '' })}
@@ -112,14 +112,14 @@ const StreetVendorLayout = ({ children }) => {
             {isSidebarOpen && (
                 <>
                     <motion.div 
-                        className="fixed inset-0 bg-black/60 z-40"
+                        className="fixed inset-0 bg-black/60 z-40 md:hidden"
                         initial={{ opacity: 0 }}
                         animate={{ opacity: 1 }}
                         exit={{ opacity: 0 }}
                         onClick={() => setIsSidebarOpen(false)}
                     />
                     <motion.aside
-                        className="fixed top-0 left-0 h-full w-72 bg-card z-50 flex flex-col border-r border-border"
+                        className="fixed top-0 left-0 h-full w-72 bg-card z-50 flex flex-col border-r border-border md:hidden"
                         initial={{ x: '-100%' }}
                         animate={{ x: 0 }}
                         exit={{ x: '-100%' }}
@@ -145,84 +145,92 @@ const StreetVendorLayout = ({ children }) => {
                 </>
             )}
         </AnimatePresence>
-
-        <header className="sticky top-0 z-20 bg-card/80 backdrop-blur-lg border-b border-border">
-          <div className="container mx-auto px-4 py-3 flex items-center justify-between">
-            <div className="flex items-center gap-2">
-                <Button variant="ghost" size="icon" className="md:hidden" onClick={() => setIsSidebarOpen(true)}>
-                    <Menu />
-                </Button>
-                <Link href="/" className="hidden md:flex items-center justify-center">
-                   <Image src="/logo.png" alt="ServiZephyr Logo" width={140} height={35} className="h-9 w-auto" priority />
+        
+        {/* Static Sidebar for Desktop */}
+        <aside className="hidden md:flex md:w-64 bg-card border-r border-border p-4 flex-col flex-shrink-0">
+             <header className="p-4 border-b border-border flex justify-between items-center">
+                 <Link href="/" className="flex items-center justify-center">
+                    <Image src="/logo.png" alt="ServiZephyr Logo" width={140} height={35} className="h-9 w-auto" priority />
                 </Link>
-            </div>
-            <div className="flex items-center gap-4">
-                 <div className="flex items-center space-x-2">
-                  <Switch
-                      id="restaurant-status-header"
-                      checked={restaurantStatus}
-                      onCheckedChange={handleStatusToggle}
-                      disabled={loadingStatus}
-                      aria-label="Toggle restaurant open/closed status"
-                  />
-                  <Label htmlFor="restaurant-status-header" className="hidden sm:block">
-                      <span className={`font-semibold ${restaurantStatus ? 'text-green-500' : 'text-red-500'}`}>
-                          {restaurantStatus ? 'Open' : 'Closed'}
-                      </span>
-                  </Label>
-                </div>
-                <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                        <Button variant="ghost" className="relative h-10 w-10 rounded-full">
-                           <Avatar>
-                                <AvatarImage src={user?.photoURL} alt={user?.displayName || 'User'} />
-                                <AvatarFallback>{user?.displayName?.charAt(0) || 'U'}</AvatarFallback>
-                            </Avatar>
-                        </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent className="w-64" align="end">
-                        <DropdownMenuLabel>
-                            <p className="font-semibold">{user?.displayName}</p>
-                            <p className="text-xs text-muted-foreground font-normal">{user?.email}</p>
-                        </DropdownMenuLabel>
-                        <DropdownMenuSeparator />
-                        <DropdownMenuItem onClick={() => router.push('/street-vendor-dashboard/profile')} className="cursor-pointer">
-                            <User className="mr-2 h-4 w-4"/> Profile
-                        </DropdownMenuItem>
-                        <DropdownMenuItem onClick={() => router.push('/street-vendor-dashboard/payout-settings')} className="cursor-pointer">
-                           <Banknote className="mr-2 h-4 w-4"/> Payouts
-                        </DropdownMenuItem>
-                        <DropdownMenuSeparator />
-                        <DropdownMenuItem onClick={handleLogout} className="text-red-500 font-semibold cursor-pointer">
-                            <LogOut className="mr-2 h-4 w-4"/>
-                            <span>Logout</span>
-                        </DropdownMenuItem>
-                    </DropdownMenuContent>
-                </DropdownMenu>
-            </div>
-          </div>
-        </header>
-        <main className="flex-grow pb-4 md:pb-8">
-             <Suspense fallback={<div className="min-h-[80vh] flex items-center justify-center"><Loader2 className="animate-spin text-primary h-10 w-10"/></div>}>
-                {children}
-            </Suspense>
-        </main>
-        <footer className="md:hidden sticky bottom-0 z-10 bg-card border-t border-border">
-            <div className="container mx-auto px-2 h-20 flex items-center justify-around">
-                 {navItems.slice(0, 4).map(item => ( // Show only first 4 items on mobile bottom nav
-                    <NavLink key={item.href} {...item} onClick={() => {}} />
-                ))}
-            </div>
-        </footer>
-        <aside className="hidden md:block fixed top-[65px] left-0 h-[calc(100vh-65px)] w-64 bg-card border-r border-border p-4">
-             <nav className="flex-grow">
+            </header>
+            <nav className="flex-grow mt-4">
                 {navItems.map(item => (
                     <NavLink key={item.href} {...item} onClick={() => {}} />
                 ))}
             </nav>
+             <footer className="p-4 border-t border-border">
+                 <Button onClick={handleLogout} variant="outline" className="w-full">
+                    <LogOut className="mr-2 h-4 w-4"/> Logout
+                </Button>
+             </footer>
         </aside>
-        <div className="hidden md:block md:pl-64 flex-grow">
-            {children}
+
+        <div className="flex flex-col flex-grow">
+            <header className="sticky top-0 z-20 bg-card/80 backdrop-blur-lg border-b border-border">
+              <div className="container mx-auto px-4 py-3 flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                    <Button variant="ghost" size="icon" className="md:hidden" onClick={() => setIsSidebarOpen(true)}>
+                        <Menu />
+                    </Button>
+                     <div className="hidden md:block">
+                        {/* Placeholder for breadcrumbs or page title if needed */}
+                    </div>
+                </div>
+                <div className="flex items-center gap-4">
+                    <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                            <Button variant="ghost" className="relative h-10 w-10 rounded-full">
+                               <Avatar>
+                                    <AvatarImage src={user?.photoURL} alt={user?.displayName || 'User'} />
+                                    <AvatarFallback>{user?.displayName?.charAt(0) || 'U'}</AvatarFallback>
+                                </Avatar>
+                            </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent className="w-64" align="end">
+                            <DropdownMenuLabel>
+                                <p className="font-semibold">{user?.displayName}</p>
+                                <p className="text-xs text-muted-foreground font-normal">{user?.email}</p>
+                            </DropdownMenuLabel>
+                            <DropdownMenuSeparator />
+                             <div className="p-2">
+                                <Label htmlFor="restaurant-status-header" className="flex items-center justify-between cursor-pointer">
+                                    <div className="flex flex-col">
+                                        <span className="font-semibold">Stall Status</span>
+                                        <span className={cn("text-xs", restaurantStatus ? 'text-green-500' : 'text-red-500')}>
+                                            {restaurantStatus ? 'Open for orders' : 'Closed'}
+                                        </span>
+                                    </div>
+                                    <Switch
+                                        id="restaurant-status-header"
+                                        checked={restaurantStatus}
+                                        onCheckedChange={handleStatusToggle}
+                                        disabled={loadingStatus}
+                                        aria-label="Toggle restaurant open/closed status"
+                                    />
+                                </Label>
+                             </div>
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem onClick={() => router.push('/street-vendor-dashboard/profile')} className="cursor-pointer">
+                                <User className="mr-2 h-4 w-4"/> Profile
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => router.push('/street-vendor-dashboard/payout-settings')} className="cursor-pointer">
+                               <Banknote className="mr-2 h-4 w-4"/> Payouts
+                            </DropdownMenuItem>
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem onClick={handleLogout} className="text-red-500 font-semibold cursor-pointer">
+                                <LogOut className="mr-2 h-4 w-4"/>
+                                <span>Logout</span>
+                            </DropdownMenuItem>
+                        </DropdownMenuContent>
+                    </DropdownMenu>
+                </div>
+              </div>
+            </header>
+            <main className="flex-grow pb-4 md:pb-8">
+                 <Suspense fallback={<div className="min-h-[80vh] flex items-center justify-center"><Loader2 className="animate-spin text-primary h-10 w-10"/></div>}>
+                    {children}
+                </Suspense>
+            </main>
         </div>
     </div>
   );
