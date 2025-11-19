@@ -1,4 +1,3 @@
-
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
@@ -66,19 +65,19 @@ const QrScanner = ({ onClose, onScanSuccess }) => {
 
     return (
         <motion.div
-            className="fixed inset-0 bg-black/90 z-60 flex flex-col items-center justify-center p-4"
+            className="fixed inset-0 bg-black/90 z-50 flex flex-col items-center justify-center p-4"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
         >
-            <div className="relative w-full max-w-md bg-background rounded-2xl p-6 shadow-2xl">
+            <div className="relative w-full max-w-md bg-background rounded-2xl p-4 shadow-2xl">
                 <button 
                     onClick={onClose}
                     className="absolute -top-3 -right-3 bg-destructive text-destructive-foreground rounded-full p-2 z-10 shadow-lg"
                 >
                     <X size={24} />
                 </button>
-                <h2 className="text-2xl font-bold text-center mb-4">Scan QR to Collect</h2>
+                <h2 className="text-xl font-bold text-center mb-4">Scan QR Code to Collect Order</h2>
                 
                 {cameraError ? (
                     <Alert variant="destructive">
@@ -89,7 +88,7 @@ const QrScanner = ({ onClose, onScanSuccess }) => {
                         </AlertDescription>
                     </Alert>
                 ) : (
-                    <div id="qr-scanner-container" ref={scannerRef} className="rounded-lg overflow-hidden border border-border"></div>
+                    <div id="qr-scanner-container" ref={scannerRef} className="rounded-lg overflow-hidden border-2 border-primary"></div>
                 )}
             </div>
         </motion.div>

@@ -168,7 +168,7 @@ const StreetVendorLayout = ({ children }) => {
         </aside>
 
         <div className="flex flex-col flex-grow">
-            <header className="sticky top-0 z-20 bg-card/80 backdrop-blur-lg border-b border-border">
+            <header className="sticky top-0 z-30 bg-card/80 backdrop-blur-lg border-b border-border">
               <div className="container mx-auto px-4 py-3 flex items-center justify-between">
                 <div className="flex items-center gap-2">
                     <Button variant="ghost" size="icon" className="md:hidden" onClick={() => setIsSidebarOpen(true)}>
