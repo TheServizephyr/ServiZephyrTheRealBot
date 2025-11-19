@@ -1,4 +1,3 @@
-
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
@@ -68,7 +67,7 @@ const QrScanner = ({ onClose, onScanSuccess }) => {
 
     return (
         <motion.div
-            className="fixed inset-0 bg-black/90 z-50 flex flex-col items-center justify-center p-4"
+            className="fixed inset-0 bg-black/90 z-60 flex flex-col items-center justify-center p-4"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
