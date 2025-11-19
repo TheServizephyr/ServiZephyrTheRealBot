@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
@@ -27,7 +28,7 @@ const QrScanner = ({ onClose, onScanSuccess }) => {
                         fps: 10,
                         qrbox: (viewfinderWidth, viewfinderHeight) => {
                             const minEdge = Math.min(viewfinderWidth, viewfinderHeight);
-                            const qrboxSize = Math.floor(minEdge * 0.8);
+                            const qrboxSize = Math.floor(minEdge * 0.9); // Increased from 0.8
                             return {
                                 width: qrboxSize,
                                 height: qrboxSize,
@@ -77,7 +78,7 @@ const QrScanner = ({ onClose, onScanSuccess }) => {
                 >
                     <X size={24} />
                 </button>
-                <h2 className="text-xl font-bold text-center mb-4">Scan QR Code to Collect Order</h2>
+                <h2 className="text-xl font-bold text-center mb-4">Scan QR Code</h2>
                 
                 {cameraError ? (
                     <Alert variant="destructive">

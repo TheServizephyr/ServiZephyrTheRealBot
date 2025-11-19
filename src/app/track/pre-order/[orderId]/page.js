@@ -3,7 +3,7 @@
 
 import React, { useState, useEffect, useMemo, useCallback, useRef, Suspense } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Loader2, ArrowLeft, Check, ShoppingBag, CheckCircle } from 'lucide-react';
+import { Loader2, ArrowLeft, Check, ShoppingBag, CheckCircle, PackageCheck } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useRouter, useParams, useSearchParams } from 'next/navigation';
 import { cn } from '@/lib/utils';
@@ -13,11 +13,11 @@ import { doc, onSnapshot } from 'firebase/firestore';
 
 const statusConfig = [
     { key: 'confirmed', title: 'Confirmed', icon: <Check size={20} /> },
-    { key: 'Ready', title: 'Ready', icon: <ShoppingBag size={20} /> }
+    { key: 'Ready', title: 'Ready', icon: <ShoppingBag size={20} /> },
+    { key: 'delivered', title: 'Collected', icon: <CheckCircle size={20} /> },
 ];
 
 const StatusTimeline = ({ currentStatus }) => {
-    // Treat 'pending' the same as 'confirmed' for timeline UI
     const adjustedStatus = currentStatus === 'pending' ? 'confirmed' : currentStatus;
     const activeIndex = statusConfig.findIndex(s => s.key === adjustedStatus);
     
@@ -49,11 +49,11 @@ const StatusTimeline = ({ currentStatus }) => {
                 })}
             </div>
              <div className="flex justify-center items-center w-full h-1 -mt-9 z-0">
-                 <div className="w-24 h-0.5 bg-border relative">
+                 <div className="w-full max-w-[calc(100%-96px)] h-0.5 bg-border relative">
                      <motion.div
                         className="h-full bg-primary"
                         initial={{ width: '0%' }}
-                        animate={{ width: activeIndex >= 1 ? '100%' : '0%' }}
+                        animate={{ width: activeIndex > 0 ? `${(activeIndex / (statusConfig.length -1)) * 100}%` : '0%' }}
                         transition={{ duration: 0.5, delay: 0.2 }}
                     />
                  </div>
@@ -241,7 +241,7 @@ function PreOrderTrackingContent() {
                                                 <text><textPath href="#backCurve" startOffset="50%" textAnchor="middle">● POWERED BY SERVIZEPHYR ● SECURE ●</textPath></text>
                                             </svg>
                                             <div className="qr-box">
-                                                 <QRCode value={qrValue} size={120} level={"H"} bgColor="transparent" fgColor="#3e2800" />
+                                                 <QRCode value={qrValue} size={140} level={"H"} bgColor="#FFFFFF" fgColor="#3e2800" />
                                             </div>
                                             <div className="qr-label">SCAN TO COLLECT</div>
                                         </div>
@@ -270,5 +270,3 @@ export default function PreOrderTrackingPage() {
         </Suspense>
     )
 }
-
-    
