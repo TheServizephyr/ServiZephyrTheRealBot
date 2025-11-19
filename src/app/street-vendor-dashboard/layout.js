@@ -92,7 +92,7 @@ const StreetVendorLayout = ({ children }) => {
       });
       if (!res.ok) throw new Error("Failed to update status");
       setRestaurantStatus(newStatus);
-    } catch (error) => {
+    } catch (error) {
       setInfoDialog({ isOpen: true, title: "Error", message: `Error updating status: ${error.message}` });
     } finally {
       setLoadingStatus(false);
@@ -207,13 +207,23 @@ const StreetVendorLayout = ({ children }) => {
                 {children}
             </Suspense>
         </main>
-        <footer className="hidden md:fixed md:bottom-0 md:left-0 md:right-0 bg-card border-t border-border z-50">
-            <div className="container mx-auto px-4 h-20 flex items-center justify-around">
-                {navItems.map(item => (
-                    <NavLink key={item.href} {...item} />
+        <footer className="md:hidden sticky bottom-0 z-10 bg-card border-t border-border">
+            <div className="container mx-auto px-2 h-20 flex items-center justify-around">
+                 {navItems.slice(0, 4).map(item => ( // Show only first 4 items on mobile bottom nav
+                    <NavLink key={item.href} {...item} onClick={() => {}} />
                 ))}
             </div>
         </footer>
+        <aside className="hidden md:block fixed top-[65px] left-0 h-[calc(100vh-65px)] w-64 bg-card border-r border-border p-4">
+             <nav className="flex-grow">
+                {navItems.map(item => (
+                    <NavLink key={item.href} {...item} onClick={() => {}} />
+                ))}
+            </nav>
+        </aside>
+        <div className="hidden md:block md:pl-64 flex-grow">
+            {children}
+        </div>
     </div>
   );
 }
