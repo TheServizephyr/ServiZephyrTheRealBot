@@ -3,7 +3,7 @@
 
 import React, { useState, useEffect, useMemo, Suspense, useCallback, useRef } from 'react';
 import { motion } from 'framer-motion';
-import { Check, CookingPot, Bike, Home, Star, Phone, Navigation, RefreshCw, Loader2, ArrowLeft, XCircle, Wallet, Split, ConciergeBell, ShoppingBag, MapPin } from 'lucide-react';
+import { Check, CookingPot, Bike, Home, Star, Phone, Navigation, RefreshCw, Loader2, ArrowLeft, XCircle, Wallet, Split, ConciergeBell, ShoppingBag, MapPin, CheckCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useRouter, useParams, useSearchParams } from 'next/navigation';
 import dynamic from 'next/dynamic';
@@ -22,23 +22,23 @@ const statusConfig = {
   dispatched: { title: 'Out for Delivery', icon: <Bike size={24} />, step: 3, description: "Our delivery hero is on their way." },
   delivered: { title: 'Delivered', icon: <Home size={24} />, step: 4, description: "Enjoy your meal!" },
   rejected: { title: 'Order Rejected', icon: <XCircle size={24} />, step: 4, isError: true, description: "The restaurant could not accept your order." },
+  picked_up: { title: 'Picked Up', icon: <ShoppingBag size={24} />, step: 4, description: "You have picked up your order." },
+  ready_for_pickup: { title: 'Ready for Pickup', icon: <PackageCheck size={24}/>, step: 3, description: 'Your order is ready for pickup.' }
 };
 
 
-const StatusTimeline = ({ currentStatus }) => {
+const StatusTimeline = ({ currentStatus, deliveryType }) => {
     const activeStatus = (currentStatus === 'paid') ? 'pending' : currentStatus;
     const currentStepConfig = statusConfig[activeStatus] || { step: 0, isError: false };
     const currentStep = currentStepConfig.step;
     const isError = currentStepConfig.isError;
   
-    const uniqueSteps = Object.values(statusConfig)
-        .filter((value, index, self) => 
-            !value.isError && self.findIndex(v => v.step === value.step) === index
-        );
+    const flow = deliveryType === 'pickup' ? ['pending', 'confirmed', 'preparing', 'ready_for_pickup', 'picked_up'] : ['pending', 'confirmed', 'preparing', 'dispatched', 'delivered'];
+    const uniqueSteps = flow.map(statusKey => statusConfig[statusKey]);
 
     return (
       <div className="flex justify-between items-start w-full px-2 sm:px-4 pt-4">
-        {uniqueSteps.map(({ title, icon, step }) => {
+        {uniqueSteps.map(({ title, icon, step }, index) => {
           const isCompleted = step <= currentStep;
           const isCurrent = step === currentStep;
           return (
@@ -61,7 +61,7 @@ const StatusTimeline = ({ currentStatus }) => {
                   {isError ? statusConfig[currentStatus].title : title}
                 </p>
               </div>
-              {step < uniqueSteps.length - 1 && (
+              {index < uniqueSteps.length - 1 && (
                 <div className="flex-1 h-1 mt-6 mx-1 sm:mx-2 rounded-full bg-border">
                   <motion.div
                     className={`h-full rounded-full ${isError ? 'bg-destructive' : 'bg-primary'}`}
@@ -90,7 +90,8 @@ function OrderTrackingContent() {
     const [error, setError] = useState(null);
     const mapRef = useRef(null);
 
-    const fetchData = useCallback(async () => {
+    const fetchData = useCallback(async (isBackground = false) => {
+        if (!isBackground) setLoading(true);
         if (!orderId || !sessionToken) {
             setError("Order ID or tracking token is missing.");
             setLoading(false);
@@ -104,17 +105,25 @@ function OrderTrackingContent() {
                 throw new Error(errData.message || 'Failed to fetch order status.');
             }
             const data = await res.json();
+            
+            // --- START FIX: Clear localStorage if order is complete ---
+            const status = data.order?.status;
+            if (status === 'delivered' || status === 'picked_up' || status === 'rejected') {
+                localStorage.removeItem('liveOrder');
+            }
+            // --- END FIX ---
+            
             setOrderData(data);
         } catch (err) {
             setError(err.message);
         } finally {
-            setLoading(false);
+            if (!isBackground) setLoading(false);
         }
     }, [orderId, sessionToken]);
 
     useEffect(() => {
         fetchData();
-        const interval = setInterval(fetchData, 30000); // Poll every 30 seconds
+        const interval = setInterval(() => fetchData(true), 30000); // Poll every 30 seconds
         return () => clearInterval(interval);
     }, [fetchData]);
 
@@ -129,6 +138,16 @@ function OrderTrackingContent() {
             mapRef.current.fitBounds(bounds, 80);
         }
     };
+    
+    // --- START FIX: Function to handle going back to the menu ---
+    const handleBackToMenu = () => {
+        if (orderData?.restaurant?.id) {
+            router.push(`/order/${orderData.restaurant.id}`);
+        } else {
+            router.push('/');
+        }
+    };
+    // --- END FIX ---
 
     if (loading && !orderData) {
         return (
@@ -166,6 +185,9 @@ function OrderTrackingContent() {
         customerLocation: orderData.order.customerLocation,
         riderLocation: orderData.deliveryBoy?.location,
     };
+    
+    // --- START FIX: Check if the order is completed ---
+    const isCompleted = ['delivered', 'picked_up', 'rejected'].includes(orderData.order.status);
 
     return (
         <div className="min-h-screen bg-background text-foreground flex flex-col md:flex-row green-theme">
@@ -190,18 +212,36 @@ function OrderTrackingContent() {
                 </div>
 
                 <div className="p-6 bg-card rounded-lg border">
-                    <StatusTimeline currentStatus={orderData.order.status} />
+                    <StatusTimeline currentStatus={orderData.order.status} deliveryType={orderData.order.deliveryType}/>
                 </div>
-                 <motion.div
-                    key={orderData.order.status}
-                    initial={{ opacity: 0, scale: 0.9 }}
-                    animate={{ opacity: 1, scale: 1 }}
-                    transition={{ delay: 0.3 }}
-                    className="text-center bg-card p-6 rounded-lg border border-border"
-                >
-                     <h3 className="text-xl font-bold">{currentStatusInfo.title}</h3>
-                     <p className="mt-2 text-muted-foreground text-sm">{currentStatusInfo.description}</p>
-                </motion.div>
+                
+                {/* --- START FIX: Conditional rendering for status/completion message --- */}
+                {isCompleted ? (
+                    <motion.div
+                        initial={{ opacity: 0, scale: 0.9 }}
+                        animate={{ opacity: 1, scale: 1 }}
+                        className="text-center bg-card p-6 rounded-lg border-2 border-primary"
+                    >
+                         <CheckCircle size={40} className="mx-auto text-primary" />
+                         <h3 className="text-2xl font-bold mt-4">{currentStatusInfo.title}</h3>
+                         <p className="mt-2 text-muted-foreground">{currentStatusInfo.description}</p>
+                         <Button onClick={handleBackToMenu} className="mt-6 bg-primary hover:bg-primary/90">
+                            Order Something Else
+                         </Button>
+                    </motion.div>
+                ) : (
+                    <motion.div
+                        key={orderData.order.status}
+                        initial={{ opacity: 0, scale: 0.9 }}
+                        animate={{ opacity: 1, scale: 1 }}
+                        transition={{ delay: 0.3 }}
+                        className="text-center bg-card p-6 rounded-lg border border-border"
+                    >
+                         <h3 className="text-xl font-bold">{currentStatusInfo.title}</h3>
+                         <p className="mt-2 text-muted-foreground text-sm">{currentStatusInfo.description}</p>
+                    </motion.div>
+                )}
+                {/* --- END FIX --- */}
 
                 {orderData.deliveryBoy && (
                     <div className="bg-card p-4 rounded-lg border border-border">

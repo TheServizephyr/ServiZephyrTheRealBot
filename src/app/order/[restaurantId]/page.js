@@ -646,15 +646,41 @@ const OrderPageInternal = () => {
     const activeOrderToken = searchParams.get('token'); // Can reuse the token
     const [liveOrder, setLiveOrder] = useState(null);
 
+    // --- START: FIX ---
     useEffect(() => {
-        const liveOrderData = localStorage.getItem('liveOrder');
-        if (liveOrderData) {
-            setLiveOrder(JSON.parse(liveOrderData));
-        } else if (activeOrderId) {
+        const liveOrderDataStr = localStorage.getItem('liveOrder');
+        if (liveOrderDataStr) {
+            const liveOrderData = JSON.parse(liveOrderDataStr);
+            // Check if the order is still active
+            const pollStatus = async () => {
+                try {
+                    const res = await fetch(`/api/order/status/${liveOrderData.orderId}`);
+                    if (res.ok) {
+                        const statusData = await res.json();
+                        const status = statusData.order?.status;
+                        if (status === 'delivered' || status === 'picked_up' || status === 'rejected') {
+                            localStorage.removeItem('liveOrder');
+                            setLiveOrder(null);
+                        } else {
+                            setLiveOrder(liveOrderData);
+                        }
+                    } else {
+                        // If status check fails, assume it's done to be safe
+                        localStorage.removeItem('liveOrder');
+                        setLiveOrder(null);
+                    }
+                } catch (e) {
+                    console.error("Failed to poll live order status", e);
+                    localStorage.removeItem('liveOrder');
+                    setLiveOrder(null);
+                }
+            };
+            pollStatus();
+        } else if (activeOrderId && activeOrderToken) {
             setLiveOrder({ orderId: activeOrderId, trackingToken: activeOrderToken });
         }
     }, [activeOrderId, activeOrderToken]);
-    // --- END: ADD-ON ORDER STATE ---
+     // --- END: FIX ---
 
     useEffect(() => {
         const verifySession = async () => {
@@ -867,13 +893,15 @@ const OrderPageInternal = () => {
             deliveryFreeThreshold: restaurantData.deliveryFreeThreshold,
             businessType: restaurantData.businessType,
             dineInModel: restaurantData.dineInModel,
-            loyaltyPoints, expiryTimestamp,
-            // --- START FIX: Use liveOrder state to save active order info ---
-            activeOrderId: liveOrder?.orderId,
-            activeOrderToken: liveOrder?.trackingToken,
-            // --- END FIX ---
+            loyaltyPoints, expiryTimestamp
         };
         localStorage.setItem(`cart_${restaurantId}`, JSON.stringify(cartDataToSave));
+        
+        // Save liveOrder to local storage IF it exists
+        if (liveOrder && liveOrder.orderId) {
+             localStorage.setItem('liveOrder', JSON.stringify(liveOrder));
+        }
+
     }, [cart, notes, deliveryType, restaurantData, loyaltyPoints, loading, isTokenValid, restaurantId, phone, token, tableIdFromUrl, activeTabInfo, liveOrder]);
 
 

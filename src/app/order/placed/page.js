@@ -1,7 +1,7 @@
 
 'use client';
 
-import React, { Suspense, useEffect, useState } from 'react';
+import React, { Suspense, useEffect } from 'react';
 import { Loader2 } from 'lucide-react';
 import { useRouter, useSearchParams } from 'next/navigation';
 
@@ -17,19 +17,20 @@ const OrderPlacedContent = () => {
         const handleRedirect = async () => {
             if (!orderId) return;
 
-            // Immediately clear the cart and live order from localStorage
+            // Immediately clear the cart from localStorage upon placing an order
             if (restaurantId) {
                 localStorage.removeItem(`cart_${restaurantId}`);
+                // Clear liveOrder as well to ensure a fresh start
                 localStorage.removeItem('liveOrder');
             }
 
             const tokenInUrl = searchParams.get('token');
             let finalToken = tokenInUrl;
 
-            // If token is missing, fetch it from the status endpoint.
+            // Wait for backend processing if token isn't immediately available
             if (!tokenInUrl) {
                 try {
-                    await new Promise(resolve => setTimeout(resolve, 1500)); // Wait for backend processing
+                    await new Promise(resolve => setTimeout(resolve, 1500));
                     const res = await fetch(`/api/order/status/${orderId}`);
                     if (res.ok) {
                         const data = await res.json();
@@ -44,15 +45,16 @@ const OrderPlacedContent = () => {
 
             // Only proceed if we have a token
             if (finalToken) {
-                // Save the new live order details
-                localStorage.setItem('liveOrder', JSON.stringify({ 
-                    orderId, 
-                    restaurantId,
-                    trackingToken: finalToken,
-                    status: 'pending',
-                }));
+                // Save the new live order details for potential add-ons
+                if (restaurantId) {
+                    localStorage.setItem('liveOrder', JSON.stringify({ 
+                        orderId, 
+                        restaurantId,
+                        trackingToken: finalToken,
+                        status: 'pending', // Initial status
+                    }));
+                }
                 
-                // Determine the correct tracking path
                 const isDineIn = !!whatsappNumber;
                 const isPreOrder = !!restaurantId && !isDineIn;
 
@@ -68,6 +70,10 @@ const OrderPlacedContent = () => {
 
                 // Replace the current history entry, so the back button doesn't lead here
                 router.replace(trackUrl);
+            } else {
+                 console.error("Failed to obtain a tracking token for the new order.");
+                 // Fallback redirect to home to avoid getting stuck
+                 router.replace('/');
             }
         };
 

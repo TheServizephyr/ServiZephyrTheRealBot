@@ -3,7 +3,7 @@
 
 import React, { useState, useEffect, useMemo, Suspense, useCallback, useRef } from 'react';
 import { motion } from 'framer-motion';
-import { Check, ShoppingBag, Loader2, ArrowLeft, ClipboardList } from 'lucide-react';
+import { Check, ShoppingBag, Loader2, ArrowLeft, ClipboardList, CheckCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useRouter, useParams, useSearchParams } from 'next/navigation';
 import { cn } from '@/lib/utils';
@@ -107,9 +107,8 @@ function PreOrderTrackingContent() {
     }, [orderId, tokenFromUrl]);
 
     const handleBackToMenu = () => {
-        if (order?.restaurantId && order?.trackingToken) {
-            const backUrl = `/order/${order.restaurantId}?activeOrderId=${order.id}&token=${order.trackingToken}`;
-            router.push(backUrl);
+        if (order?.restaurantId) {
+            router.push(`/order/${order.restaurantId}`);
         } else {
             router.push('/');
         }
@@ -142,9 +141,14 @@ function PreOrderTrackingContent() {
     const tierStyle = `coin-${coinTier}`;
     const qrValue = `${window.location.origin}/street-vendor-dashboard?collect_order=${orderId}`;
     
-    const statusText = order.status === 'Ready' || order.status === 'delivered' || order.status === 'picked_up'
-        ? "Your order is ready! Please flip the coin and show the QR code at the counter."
-        : "Your order is being prepared...";
+    const isCompleted = ['delivered', 'picked_up'].includes(order.status);
+    
+    let statusText = "Your order is being prepared...";
+    if (order.status === 'Ready') {
+        statusText = "Your order is ready! Please flip the coin and show the QR code at the counter.";
+    } else if (isCompleted) {
+        statusText = "Your order has been collected. Thank you!";
+    }
         
     const orderDate = order?.orderDate;
 
@@ -201,7 +205,13 @@ function PreOrderTrackingContent() {
                 </motion.p>
                 
                 <div className="w-full max-w-xl mt-8">
-                     <SimpleTimeline currentStatus={order.status} />
+                    {isCompleted ? (
+                         <div className="flex items-center justify-center gap-2 text-green-400 font-bold text-xl p-4 bg-green-500/10 rounded-lg">
+                            <CheckCircle size={28}/> Order Completed
+                         </div>
+                    ) : (
+                        <SimpleTimeline currentStatus={order.status} />
+                    )}
                 </div>
             </main>
         </div>
