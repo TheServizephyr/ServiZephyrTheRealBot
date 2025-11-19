@@ -342,7 +342,7 @@ export default function StreetVendorDashboard() {
         
         <div className="fixed bottom-4 right-4 z-50 md:relative md:bottom-auto md:right-auto md:mb-6">
             {/* Mobile FAB */}
-            <Button className="md:hidden h-16 w-16 rounded-full shadow-lg bg-primary hover:bg-primary/90" size="icon" onClick={() => setScannerOpen(true)}>
+            <Button className="md:hidden h-16 w-16 rounded-lg shadow-lg bg-black hover:bg-gray-800 text-white" size="icon" onClick={() => setScannerOpen(true)}>
                 <QrCode size={28}/>
             </Button>
             {/* Desktop Button */}
