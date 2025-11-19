@@ -684,13 +684,15 @@ const OrderPageInternal = () => {
 
     useEffect(() => {
         const verifySession = async () => {
-            if (tableIdFromUrl || activeOrderId) { // An active order also validates the session
+            // Allow anonymous access if this is a street vendor and no other auth method is present
+            const isStreetVendorPage = restaurantData.businessType === 'street-vendor';
+            if (isStreetVendorPage && !tableIdFromUrl && !phone && !token && !activeOrderId) {
                 setIsTokenValid(true);
                 return;
             }
-            
-            if (!tableIdFromUrl && !phone && !token && !activeOrderId) {
-                setIsTokenValid(true); // Allow anonymous access for street vendors if no other auth method is present
+
+            if (tableIdFromUrl || activeOrderId) { // An active order also validates the session
+                setIsTokenValid(true);
                 return;
             }
             
@@ -714,7 +716,7 @@ const OrderPageInternal = () => {
         if (restaurantId) {
             verifySession();
         }
-    }, [restaurantId, tableIdFromUrl, phone, token, activeOrderId]);
+    }, [restaurantId, tableIdFromUrl, phone, token, activeOrderId, restaurantData.businessType]);
 
 
     const [customerLocation, setCustomerLocation] = useState(null);
@@ -1259,10 +1261,22 @@ const OrderPageInternal = () => {
 
                 <div className="sticky top-0 z-10 bg-background/95 backdrop-blur-sm py-2 border-b border-border mt-4">
                     <div className="container mx-auto px-4 flex items-center justify-between gap-2">
+                        {liveOrder && trackingUrl && (
+                            <Link href={trackingUrl}>
+                                <motion.div
+                                    className={cn("p-2 rounded-lg text-black flex items-center animate-pulse", liveOrder.status === 'Ready' || liveOrder.status === 'ready_for_pickup' ? 'bg-green-400 hover:bg-green-500' : 'bg-yellow-400 hover:bg-yellow-500')}
+                                    whileHover={{ scale: 1.05 }}
+                                >
+                                    <Navigation size={16} className="mr-2"/> 
+                                    <span className="text-sm font-bold hidden sm:inline">Track Live Order</span>
+                                </motion.div>
+                            </Link>
+                        )}
+                        <div className="flex-grow"></div> {/* This will push the next button to the right */}
                         <Popover>
                             <PopoverTrigger asChild>
                                 <Button variant="outline" className="flex items-center gap-2 flex-shrink-0">
-                                    <SlidersHorizontal size={16} /> Filter &amp; Sort
+                                    <SlidersHorizontal size={16} /> Filter & Sort
                                 </Button>
                             </PopoverTrigger>
                             <PopoverContent className="w-64">
@@ -1293,20 +1307,6 @@ const OrderPageInternal = () => {
                                 </div>
                             </PopoverContent>
                         </Popover>
-                         {liveOrder && trackingUrl && (
-                            <Link href={trackingUrl}>
-                                <motion.div
-                                    className={cn("p-2 rounded-lg text-black flex items-center animate-pulse", liveOrder.status === 'Ready' || liveOrder.status === 'ready_for_pickup' ? 'bg-green-400' : 'bg-yellow-400')}
-                                    whileHover={{ scale: 1.05 }}
-                                >
-                                    <Navigation size={16} className="mr-2"/> 
-                                    <span className="text-sm font-bold hidden sm:inline">Track Live Order</span>
-                                </motion.div>
-                            </Link>
-                        )}
-                        <Button variant="outline" className="flex-shrink-0" onClick={() => setIsMenuBrowserOpen(true)}>
-                            <BookOpen size={16} /> <span className="ml-2 hidden sm:inline">Menu</span>
-                        </Button>
                     </div>
                 </div>
 
@@ -1336,19 +1336,21 @@ const OrderPageInternal = () => {
                  <AnimatePresence>
                      {totalCartItems > 0 && (
                         <motion.div
-                            className="fixed bottom-0 left-0 right-0 p-2 md:p-4 md:bottom-4 md:left-1/2 md:-translate-x-1/2 md:w-auto z-30"
+                            className="fixed bottom-0 left-0 right-0 z-30 bg-background/80 backdrop-blur-sm border-t border-border"
                             initial={{ y: 100, opacity: 0 }}
                             animate={{ y: 0, opacity: 1 }}
-                            exit={{ y: -100, opacity: 0 }}
+                            exit={{ y: 100, opacity: 0 }}
                             style={{ paddingBottom: 'calc(0.5rem + env(safe-area-inset-bottom))' }}
                         >
-                            <Button onClick={handleCheckout} className="bg-primary hover:bg-primary/90 h-16 w-full md:w-auto md:min-w-[250px] text-lg font-bold rounded-lg md:rounded-full shadow-lg shadow-primary/30 flex justify-between items-center text-primary-foreground px-6">
-                                <span>{totalCartItems} Item{totalCartItems > 1 ? 's' : ''}</span>
-                                <div className="mx-4 h-6 w-px bg-primary-foreground/30"></div>
-                                <span className="flex items-center">
-                                    {liveOrder ? 'Add to Order' : 'View Cart'} <ArrowRight className="ml-2 h-5 w-5"/>
-                                </span>
-                            </Button>
+                             <div className="container mx-auto p-4">
+                                <Button onClick={handleCheckout} className="h-16 w-full text-lg font-bold rounded-lg shadow-lg shadow-primary/30 flex justify-between items-center text-primary-foreground px-6 bg-primary hover:bg-primary/90">
+                                    <span>{totalCartItems} Item{totalCartItems > 1 ? 's' : ''}</span>
+                                    <div className="mx-4 h-6 w-px bg-primary-foreground/30"></div>
+                                    <span className="flex items-center">
+                                        {liveOrder ? 'Add to Order' : 'View Cart'} <ArrowRight className="ml-2 h-5 w-5"/>
+                                    </span>
+                                </Button>
+                            </div>
                         </motion.div>
                      )}
                  </AnimatePresence>
