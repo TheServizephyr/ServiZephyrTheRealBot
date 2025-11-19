@@ -251,11 +251,10 @@ export default function StreetVendorDashboard() {
         try {
             await handleUpdateStatus(tempOrder.id, 'delivered');
             setInfoDialog({isOpen: true, title: 'Success', message: `Order for ${tempOrder.customerName} marked as collected!`});
-        } catch (error) {
-            setInfoDialog({ isOpen: true, title: "Error", message: `Could not mark order as collected: ${error.message}` });
-        } finally {
             // This is the fix: Close the modal after the operation completes.
             setScannedOrder(null);
+        } catch (error) {
+            setInfoDialog({ isOpen: true, title: "Error", message: `Could not mark order as collected: ${error.message}` });
         }
     };
 
