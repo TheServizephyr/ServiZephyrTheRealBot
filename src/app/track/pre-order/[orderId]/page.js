@@ -1,4 +1,3 @@
-
 'use client';
 
 import React, { useState, useEffect, useMemo, Suspense, useCallback, useRef } from 'react';
@@ -11,59 +10,6 @@ import QRCode from 'qrcode.react';
 import { db } from '@/lib/firebase';
 import { doc, onSnapshot } from 'firebase/firestore';
 import { format } from 'date-fns';
-import { useReactToPrint } from 'react-to-print';
-
-const tierColors = {
-    bronze: { base: '#CD7F32', dark: '#8B4513' },
-    silver: { base: '#C0C0C0', dark: '#757575' },
-    gold: { base: '#FFD700', dark: '#B8860B' },
-};
-
-const SimpleTimeline = ({ currentStatus }) => {
-    const isConfirmed = ['pending', 'confirmed', 'Ready', 'delivered', 'picked_up'].includes(currentStatus);
-    const isReady = ['Ready', 'delivered', 'picked_up'].includes(currentStatus);
-
-    return (
-        <div className="flex justify-between items-center w-full max-w-sm mx-auto px-4 pt-4">
-            <div className="flex flex-col items-center text-center">
-                <motion.div
-                    className={cn(
-                        "w-12 h-12 rounded-full flex items-center justify-center border-4",
-                        isConfirmed ? 'bg-primary border-primary/50 text-primary-foreground' : 'bg-card border-border text-muted-foreground'
-                    )}
-                    animate={{ scale: isConfirmed ? 1 : 0.9, opacity: isConfirmed ? 1 : 0.7 }}
-                >
-                    <Check size={24} />
-                </motion.div>
-                <p className={`mt-2 text-xs font-semibold ${isConfirmed ? 'text-foreground' : 'text-muted-foreground'}`}>Order Confirmed</p>
-            </div>
-            
-            <div className="flex-1 h-1.5 rounded-full bg-border mx-4">
-                <motion.div
-                    className="h-full rounded-full bg-primary"
-                    initial={{ width: '0%' }}
-                    animate={{ width: isReady ? '100%' : '0%' }}
-                    transition={{ duration: 0.5, delay: 0.2 }}
-                />
-            </div>
-            
-            <div className="flex flex-col items-center text-center">
-                <motion.div
-                    className={cn(
-                        "w-12 h-12 rounded-full flex items-center justify-center border-4 transition-colors duration-500",
-                        isReady ? 'bg-primary border-primary/50 text-primary-foreground' : 'bg-card border-border text-muted-foreground'
-                    )}
-                    animate={{ scale: isReady ? 1 : 0.9, opacity: isReady ? 1 : 0.7 }}
-                >
-                    <ShoppingBag size={24} />
-                </motion.div>
-                <p className={`mt-2 text-xs font-semibold ${isReady ? 'text-foreground' : 'text-muted-foreground'}`}>
-                    Ready for Pickup
-                </p>
-            </div>
-        </div>
-    );
-};
 
 function PreOrderTrackingContent() {
     const router = useRouter();
@@ -73,7 +19,14 @@ function PreOrderTrackingContent() {
     const [order, setOrder] = useState(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
+    
+    // States for animations
     const [isFlipped, setIsFlipped] = useState(false);
+    const [animationState, setAnimationState] = useState('drop'); // 'drop', 'float'
+    const [showRipple, setShowRipple] = useState(false);
+
+    // Ref for tilt effect
+    const tiltWrapperRef = useRef(null);
 
     useEffect(() => {
         if (!orderId) {
@@ -106,6 +59,38 @@ function PreOrderTrackingContent() {
         return () => unsubscribe();
     }, [orderId, tokenFromUrl]);
 
+    // Handle the drop animation and transition to float
+    useEffect(() => {
+        const timer = setTimeout(() => {
+            setAnimationState('float');
+            setShowRipple(true);
+            if(navigator.vibrate) navigator.vibrate([50, 20, 50]);
+        }, 1200);
+
+        const rippleTimer = setTimeout(() => {
+            setShowRipple(false);
+        }, 2200);
+
+        return () => {
+            clearTimeout(timer);
+            clearTimeout(rippleTimer);
+        };
+    }, []);
+
+    // Tilt effect logic
+    useEffect(() => {
+        const handleMouseMove = (e) => {
+            if (!tiltWrapperRef.current) return;
+            const x = e.clientX / window.innerWidth;
+            const y = e.clientY / window.innerHeight;
+            const rotateY = (x - 0.5) * 40;
+            const rotateX = (0.5 - y) * 40;
+            tiltWrapperRef.current.style.transform = `rotateX(${rotateX}deg) rotateY(${rotateY}deg)`;
+        };
+        document.addEventListener('mousemove', handleMouseMove);
+        return () => document.removeEventListener('mousemove', handleMouseMove);
+    }, []);
+
     const handleBackToMenu = () => {
         if (order?.restaurantId) {
             router.push(`/order/${order.restaurantId}`);
@@ -113,117 +98,82 @@ function PreOrderTrackingContent() {
             router.push('/');
         }
     };
-    
-    const getCoinTier = (amount) => {
-        if (amount > 500) return 'gold';
-        if (amount > 150) return 'silver';
-        return 'bronze';
-    };
-
-    const coinTier = useMemo(() => {
-        return getCoinTier(order?.totalAmount || 0);
-    }, [order]);
 
     if (loading) {
-        return <div className="min-h-screen bg-slate-900 flex items-center justify-center"><Loader2 className="animate-spin text-primary h-16 w-16" /></div>;
+        return <div className="fixed inset-0 bg-slate-900 flex items-center justify-center"><Loader2 className="animate-spin text-primary h-16 w-16" /></div>;
     }
     
     if (error) {
-        return <div className="min-h-screen bg-slate-900 flex items-center justify-center text-red-400 p-4 text-center">{error}</div>;
+        return <div className="fixed inset-0 bg-slate-900 flex items-center justify-center text-red-400 p-4 text-center">{error}</div>;
     }
 
     if (!order) {
-        return <div className="min-h-screen bg-slate-900 flex items-center justify-center text-slate-400 p-4 text-center">Order data not available.</div>;
+        return <div className="fixed inset-0 bg-slate-900 flex items-center justify-center text-slate-400 p-4 text-center">Order data not available.</div>;
     }
     
     const token = order?.dineInToken || '----';
     const [tokenPart1, tokenPart2] = token.includes('-') ? token.split('-') : [token, ''];
-    const tierStyle = `coin-${coinTier}`;
     const qrValue = `${window.location.origin}/street-vendor-dashboard?collect_order=${orderId}`;
-    
-    const isCompleted = ['delivered', 'picked_up'].includes(order.status);
-    
-    let statusText = "Your order is being prepared...";
-    if (order.status === 'Ready') {
-        statusText = "Your order is ready! Please flip the coin and show the QR code at the counter.";
-    } else if (isCompleted) {
-        statusText = "Your order has been collected. Thank you!";
-    }
-        
     const orderDate = order?.orderDate;
-
+    
     return (
-        <div className="min-h-screen bg-slate-900 text-white font-sans p-4 flex flex-col">
-            <header className="flex justify-between items-center mb-6">
-                <Button variant="ghost" className="text-slate-400 hover:text-white" onClick={handleBackToMenu}><ArrowLeft size={28} /></Button>
-                <h1 className="text-xl font-bold font-headline">{order?.restaurantName || 'Your Order'}</h1>
-                <Button variant="outline" className="bg-slate-800 border-slate-700 hover:bg-slate-700" onClick={handleBackToMenu}>
-                    <ClipboardList size={20} className="mr-2"/> Menu
-                </Button>
-            </header>
+        <div className="fixed inset-0 bg-slate-900 text-white font-sans p-4 flex flex-col justify-center items-center">
+            <div className="particles-container">
+                {[...Array(20)].map((_, i) => (
+                    <div key={i} className="particle" style={{
+                        left: `${Math.random() * 100}%`,
+                        animationDelay: `${Math.random() * 5}s`,
+                        animationDuration: `${(Math.random() * 3 + 3)}s`,
+                    }}></div>
+                ))}
+            </div>
+            
+            <AnimatePresence>
+              {showRipple && (
+                <motion.div
+                  className="ripple"
+                  initial={{ width: 100, height: 100, opacity: 0.8, borderWidth: 10 }}
+                  animate={{ width: 500, height: 500, opacity: 0, borderWidth: 0 }}
+                  transition={{ duration: 1, ease: "easeOut" }}
+                />
+              )}
+            </AnimatePresence>
 
-            <main className="flex-grow flex flex-col items-center justify-center text-center">
-                 <motion.div
-                    initial={{ y: -50, opacity: 0 }}
-                    animate={{ y: 0, opacity: 1 }}
-                    transition={{ type: "spring", stiffness: 150, damping: 20, delay: 0.2 }}
-                    className={cn("coin-container w-80 h-80", isFlipped && 'is-flipped')}
-                    onClick={() => setIsFlipped(f => !f)}
-                >
-                    <div className="coin-flipper">
-                        <div className={cn("coin-face coin-front", tierStyle)}>
-                             <svg className="circular-text" viewBox="0 0 300 300">
-                                <path id="curve" d="M 50, 150 a 100,100 0 1,1 200,0" fill="transparent"/>
-                                <text width="100" className="coin-text-fill"><textPath xlinkHref="#curve" startOffset="50%" textAnchor="middle">★ {order.restaurantName} ★</textPath></text>
-                             </svg>
-                             <div className="token-number">
-                                <span className="token-number-main">#{tokenPart1}-</span>
-                                <span className="token-number-sub">{tokenPart2}</span>
+            <div className="scene">
+                <div className="tilt-wrapper" ref={tiltWrapperRef}>
+                    <div className={cn("anim-wrapper", animationState === 'drop' ? 'animate-drop' : 'animate-float')}>
+                        <div className={cn("coin", isFlipped && 'flipped')} onClick={() => setIsFlipped(f => !f)}>
+                            
+                            <div className="coin-face coin-front">
+                                <div className="texture-overlay"></div>
+                                <div className="sheen"></div>
+                                <svg className="rotating-text-svg" viewBox="0 0 200 200">
+                                    <path id="frontCurve" d="M 25,100 a 75,75 0 1,1 150,0 a 75,75 0 1,1 -150,0" fill="none"/>
+                                    <text><textPath href="#frontCurve" startOffset="50%" textAnchor="middle">★ {order.restaurantName} ★ ORDER READY ★</textPath></text>
+                                </svg>
+                                <div style={{fontSize:'10px', fontWeight:'bold', color:'#5c3c00'}}>TOKEN</div>
+                                <div className="token-number">{tokenPart1}</div>
                             </div>
-                             <svg className="circular-text" viewBox="0 0 300 300">
-                                <path id="bottom-curve" d="M 250, 150 a 100,100 0 1,1 -200,0" fill="transparent"/>
-                                {orderDate && (
-                                     <text width="100" className="coin-text-fill"><textPath xlinkHref="#bottom-curve" startOffset="50%" textAnchor="middle">{format(new Date(orderDate.seconds * 1000), 'dd MMM • hh:mm a')}</textPath></text>
-                                )}
-                            </svg>
-                        </div>
-                        <div className={cn("coin-face coin-back", tierStyle)}>
-                            
-                                 <QRCode value={qrValue} size={160} fgColor={tierColors[coinTier].dark} bgColor="transparent" />
-                            
-                             <p className="mt-4 text-xs font-semibold" style={{ color: tierColors[coinTier].dark }}>Powered by ServiZephyr</p>
+
+                            <div className="coin-face coin-back">
+                                <div className="texture-overlay"></div>
+                                <div className="sheen"></div>
+                                <svg className="rotating-text-svg" viewBox="0 0 200 200">
+                                    <path id="backCurve" d="M 25,100 a 75,75 0 1,1 150,0 a 75,75 0 1,1 -150,0" fill="none"/>
+                                    <text><textPath href="#backCurve" startOffset="50%" textAnchor="middle">● POWERED BY SERVIZEPHYR ● SECURE ●</textPath></text>
+                                </svg>
+                                <div className="qr-box">
+                                     <QRCode value={qrValue} size={120} level={"H"} bgColor="transparent" fgColor="#3e2800" />
+                                </div>
+                                <div style={{marginTop:'8px', fontSize:'10px', fontWeight:'bold', opacity:'0.6'}}>SCAN TO COLLECT</div>
+                            </div>
+
                         </div>
                     </div>
-                </motion.div>
-                
-                <motion.p 
-                    key={statusText}
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    className="mt-8 text-slate-300 max-w-sm"
-                >
-                    {statusText}
-                </motion.p>
-                
-                <motion.div 
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    transition={{ delay: 0.5 }}
-                    className="w-full mt-8"
-                >
-                    {isCompleted ? (
-                        <div className="flex items-center justify-center gap-2 text-green-400 font-bold p-3 bg-green-500/10 rounded-lg">
-                            <CheckCircle />
-                             Order Completed
-                        </div>
-                    ) : (
-                        <div className="w-full">
-                            <SimpleTimeline currentStatus={order.status} />
-                        </div>
-                    )}
-                </motion.div>
-                
-            </main>
+                </div>
+            </div>
+
+            <div className="instruction">Tap to Flip • Move cursor to Tilt</div>
         </div>
     );
 }

@@ -104,123 +104,146 @@
     0% { transform: translateX(0); }
     100% { transform: translateX(-50%); }
   }
+}
 
-  /* 3D Coin Styles */
-  .coin-container {
-    perspective: 1000px;
-    cursor: pointer;
-  }
+@layer utilities {
+    /* 3D COIN STYLES FROM USER */
+    .scene {
+        width: 280px;
+        height: 280px;
+        perspective: 1000px;
+        position: relative;
+        z-index: 10;
+    }
 
-  .coin-flipper {
-    position: relative;
-    width: 100%;
-    height: 100%;
-    transition: transform 0.8s;
-    transform-style: preserve-3d;
-  }
+    .tilt-wrapper {
+        width: 100%;
+        height: 100%;
+        transform-style: preserve-3d;
+        transition: transform 0.1s ease-out; /* Smooth movement */
+    }
 
-  .coin-container.is-flipped .coin-flipper {
-    transform: rotateY(180deg);
-  }
+    .anim-wrapper {
+        width: 100%;
+        height: 100%;
+        transform-style: preserve-3d;
+    }
 
-  .coin-face {
-    position: absolute;
-    width: 100%;
-    height: 100%;
-    -webkit-backface-visibility: hidden; /* Safari */
-    backface-visibility: hidden;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    flex-direction: column;
-    border-radius: 50%;
-    box-shadow: inset 0 0 1rem rgba(0,0,0,0.3), 0 0.5rem 1.5rem rgba(0,0,0,0.2);
-    border: 8px solid rgba(0,0,0,0.2);
-    font-family: 'Copperplate', 'Palatino Linotype', 'Book Antiqua', Palatino, serif;
-    font-weight: bold;
-  }
+    .coin {
+        width: 100%;
+        height: 100%;
+        position: relative;
+        transform-style: preserve-3d;
+        transition: transform 0.6s cubic-bezier(0.4, 2.5, 0.6, 0.8);
+        border-radius: 50%;
+        cursor: pointer;
+    }
 
-  .coin-back {
-    transform: rotateY(180deg);
-  }
+    .coin.flipped {
+        transform: rotateY(180deg);
+    }
 
-  /* Bronze Coin Theme */
-  .coin-bronze {
-    background: linear-gradient(145deg, #E6AC75, #b06e33);
-    border-color: #A0522D;
-    color: #4a250a;
-    text-shadow: 1px 1px 1px rgba(255,255,255,0.1);
-  }
-  .coin-bronze .coin-text-fill {
-    fill: #8B4513;
-  }
-  .coin-bronze .token-number-main {
-    color: #4a250a;
-    text-shadow: 1px 1px 0px #e6c5a8, -1px -1px 0px #5c300a;
-  }
-  .coin-bronze .token-number-sub {
-    color: #4a250a;
-    text-shadow: 1px 1px 0px #e6c5a8, -1px -1px 0px #5c300a;
-  }
+    .animate-drop {
+        animation: dropSpin 1.5s cubic-bezier(0.25, 1.5, 0.5, 1) forwards;
+    }
+    @keyframes dropSpin {
+        0% { transform: translateY(-800px) rotateX(1080deg) scale(0.5); opacity: 0; }
+        60% { transform: translateY(30px) rotateX(0deg) scale(1); opacity: 1; }
+        80% { transform: translateY(-15px); }
+        100% { transform: translateY(0); }
+    }
 
-  /* Silver Coin Theme */
-  .coin-silver {
-    background: linear-gradient(145deg, #f0f0f0, #b0b0b0);
-    border-color: #8d8d8d;
-    color: #4a4a4a;
-    text-shadow: 1px 1px 1px rgba(255,255,255,0.5);
-  }
-   .coin-silver .coin-text-fill {
-    fill: #555;
-  }
-  .coin-silver .token-number-main, .coin-silver .token-number-sub {
-    color: #4a4a4a;
-    text-shadow: 1px 1px 0px #e0e0e0, -1px -1px 0px #606060;
-  }
+    .animate-float {
+        animation: floatCoin 3s ease-in-out infinite;
+    }
+    @keyframes floatCoin {
+        0%, 100% { transform: translateY(0px); }
+        50% { transform: translateY(-12px); }
+    }
 
-  /* Gold Coin Theme */
-  .coin-gold {
-     background: linear-gradient(145deg, #FFF8C6, #FFD700);
-     border-color: #DAA520;
-     color: #8c5b06;
-     text-shadow: 1px 1px 1px rgba(255,255,255,0.2);
-  }
-   .coin-gold .coin-text-fill {
-    fill: #b8860b;
-  }
-  .coin-gold .token-number-main, .coin-gold .token-number-sub {
-    color: #8c5b06;
-    text-shadow: 1px 1px 0px #fff8e1, -1px -1px 0px #a77c0e;
-  }
+    .ripple {
+        position: absolute;
+        top: 50%; left: 50%;
+        transform: translate(-50%, -50%);
+        width: 280px; height: 280px;
+        border-radius: 50%;
+        border: 2px solid rgba(255, 215, 0, 0.6);
+        opacity: 0;
+        z-index: 1;
+        pointer-events: none;
+    }
+    .ripple-active {
+        animation: rippleEffect 1s ease-out forwards;
+    }
+    @keyframes rippleEffect {
+        0% { width: 100px; height: 100px; opacity: 0.8; border-width: 10px; }
+        100% { width: 500px; height: 500px; opacity: 0; border-width: 0px; }
+    }
 
-  .circular-text {
-    position: absolute;
-    width: 100%;
-    height: 100%;
-    top: 0;
-    left: 0;
-  }
-  .circular-text text {
-    font-size: 24px;
-    font-weight: 800;
-    text-transform: uppercase;
-    letter-spacing: 2px;
-  }
-  
-  .token-number {
-    display: flex;
-    align-items: baseline;
-    font-family: 'Copperplate', 'Palatino Linotype', 'Book Antiqua', Palatino, serif;
-    font-weight: 900;
-  }
-  .token-number-main {
-      font-size: 2.5rem;
-      letter-spacing: 0.05em;
-  }
-  .token-number-sub {
-      font-size: 1.75rem;
-      letter-spacing: 0.1em;
-  }
+    .coin-face {
+        position: absolute;
+        width: 100%; height: 100%;
+        border-radius: 50%;
+        backface-visibility: hidden;
+        -webkit-backface-visibility: hidden;
+        display: flex; justify-content: center; align-items: center; flex-direction: column;
+        background: radial-gradient(ellipse at center, #ffd700 0%, #d4af37 50%, #aa771c 100%);
+        box-shadow: inset 0 0 15px rgba(0,0,0,0.5), inset 4px 4px 10px rgba(255,255,255,0.4), 0 20px 50px rgba(0,0,0,0.6);
+        border: 6px solid #b8860b;
+    }
+
+    .texture-overlay {
+        position: absolute; width: 100%; height: 100%; border-radius: 50%;
+        background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='1.2' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)' opacity='0.3'/%3E%3C/svg%3E");
+        opacity: 0.6;
+        pointer-events: none;
+        mix-blend-mode: overlay;
+    }
+
+    .sheen {
+        position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+        border-radius: 50%;
+        background: linear-gradient(115deg, transparent 40%, rgba(255,255,255,0.8) 50%, transparent 60%);
+        background-size: 300% 100%;
+        animation: shineMove 5s infinite linear;
+        pointer-events: none; mix-blend-mode: overlay;
+    }
+    @keyframes shineMove { 0% { background-position: 150% 0; } 100% { background-position: -150% 0; } }
+
+    .coin-front { transform: rotateY(0deg); }
+    .coin-back { transform: rotateY(180deg); }
+    
+    .token-number {
+        font-size: 75px; font-weight: 900; color: #5c3c00;
+        text-shadow: 2px 2px 0px rgba(255,255,255,0.4);
+        font-family: 'Arial Black', sans-serif; z-index: 2;
+    }
+    .rotating-text-svg { position: absolute; width: 100%; height: 100%; animation: rotateText 20s linear infinite; pointer-events: none; }
+    @keyframes rotateText { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+    .rotating-text-svg text { font-weight: bold; font-size: 14px; letter-spacing: 2px; fill: #3e2800; }
+
+    .qr-box {
+        width: 140px; height: 140px; background: rgba(60, 40, 0, 0.1);
+        border: 2px dashed rgba(92, 60, 0, 0.4); border-radius: 12px;
+        display: flex; justify-content: center; align-items: center;
+        padding: 4px;
+    }
+    
+    .instruction { position: absolute; bottom: 50px; color: #666; font-size: 12px; letter-spacing: 1px; }
+
+    .particles-container {
+        position: absolute; width: 100%; height: 100%; pointer-events: none; z-index: 5;
+    }
+    .particle {
+        position: absolute; width: 4px; height: 4px; background: #ffd700; border-radius: 50%;
+        box-shadow: 0 0 10px #ffd700; opacity: 0;
+        animation: floatUp 4s infinite linear;
+    }
+    @keyframes floatUp {
+        0% { transform: translateY(100px) scale(0); opacity: 0; }
+        50% { opacity: 0.8; }
+        100% { transform: translateY(-300px) scale(1); opacity: 0; }
+    }
 }
 
 @page {
