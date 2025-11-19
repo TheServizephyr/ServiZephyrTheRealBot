@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
@@ -184,7 +185,7 @@ export default function StreetVendorDashboard() {
     const [isScannerOpen, setScannerOpen] = useState(false);
     const [scannedOrder, setScannedOrder] = useState(null);
     const searchParams = useSearchParams();
-    const [selectedDate, setSelectedDate] = useState(null);
+    const [date, setDate] = useState(null);
     const [error, setError] = useState(null);
     const [isCalendarOpen, setIsCalendarOpen] = useState(false);
     const [searchQuery, setSearchQuery] = useState('');
@@ -283,10 +284,11 @@ export default function StreetVendorDashboard() {
 
         let q = query(collection(db, "orders"), where("restaurantId", "==", vendorId));
         
-        if (selectedDate) {
-            const start = startOfDay(selectedDate);
-            const end = endOfDay(selectedDate);
-            q = query(q, where("orderDate", ">=", Timestamp.fromDate(start)), where("orderDate", "<=", Timestamp.fromDate(end)));
+        if (date?.from) {
+            q = query(q, where("orderDate", ">=", Timestamp.fromDate(startOfDay(date.from))));
+        }
+        if (date?.to) {
+             q = query(q, where("orderDate", "<=", Timestamp.fromDate(endOfDay(date.to))));
         }
         
         const unsubscribe = onSnapshot(q, (querySnapshot) => {
@@ -305,7 +307,7 @@ export default function StreetVendorDashboard() {
         });
 
         return () => unsubscribe();
-    }, [vendorId, selectedDate]);
+    }, [vendorId, date]);
     
     const handleUpdateStatus = async (orderId, newStatus) => {
         try {
@@ -373,33 +375,47 @@ export default function StreetVendorDashboard() {
                  <Popover open={isCalendarOpen} onOpenChange={setIsCalendarOpen}>
                     <PopoverTrigger asChild>
                       <Button
-                        variant={selectedDate ? 'default' : 'outline'}
-                        className={cn("w-auto justify-start text-left font-normal", !selectedDate && "text-muted-foreground")}
+                        id="date"
+                        variant={"outline"}
+                        className={cn(
+                          "w-auto justify-start text-left font-normal",
+                          !date && "text-muted-foreground"
+                        )}
                       >
-                        <Filter className="mr-2 h-4 w-4" />
-                        <span className="hidden md:inline">{selectedDate ? format(selectedDate, "PPP") : 'Filter by Date'}</span>
-                        <CalendarIcon className="h-5 w-5 md:hidden" />
+                        <CalendarIcon className="mr-2 h-4 w-4 hidden md:inline" />
+                         <span className="hidden md:inline">
+                            {date?.from ? (
+                              date.to ? (
+                                <>
+                                  {format(date.from, "LLL dd")} - {format(date.to, "LLL dd")}
+                                </>
+                              ) : (
+                                format(date.from, "LLL dd, y")
+                              )
+                            ) : (
+                              <span>Filter by Date</span>
+                            )}
+                         </span>
+                          <Filter className="h-5 w-5 md:hidden" />
                       </Button>
                     </PopoverTrigger>
                     <PopoverContent className="w-auto p-0">
                       <div className="p-2 space-x-2 bg-muted border-b border-border">
-                        <Button variant={'ghost'} size="sm" onClick={() => {setSelectedDate(null); setIsCalendarOpen(false);}}>All Time</Button>
-                        <Button variant={selectedDate && format(selectedDate, 'yyyy-MM-dd') === format(new Date(), 'yyyy-MM-dd') ? 'default' : 'ghost'} size="sm" onClick={() => {setSelectedDate(new Date()); setIsCalendarOpen(false);}}>Today</Button>
-                        <Button variant={selectedDate && format(selectedDate, 'yyyy-MM-dd') === format(subDays(new Date(), 1), 'yyyy-MM-dd') ? 'default' : 'ghost'} size="sm" onClick={() => {setSelectedDate(subDays(new Date(), 1)); setIsCalendarOpen(false);}}>Yesterday</Button>
+                        <Button variant={!date ? 'default' : 'ghost'} size="sm" onClick={() => {setDate(null); setIsCalendarOpen(false);}}>All Time</Button>
+                        <Button variant={date && !date.to && format(date.from, 'yyyy-MM-dd') === format(new Date(), 'yyyy-MM-dd') ? 'default' : 'ghost'} size="sm" onClick={() => {setDate({from: new Date(), to: new Date()}); setIsCalendarOpen(false);}}>Today</Button>
                       </div>
                       <Calendar
-                        mode="single"
-                        selected={selectedDate}
-                        onSelect={(date) => {
-                            if (date) setSelectedDate(date);
-                            setIsCalendarOpen(false);
-                        }}
                         initialFocus
+                        mode="range"
+                        defaultMonth={date?.from}
+                        selected={date}
+                        onSelect={setDate}
+                        numberOfMonths={1}
                         disabled={(date) => date > new Date() || date < new Date("2024-01-01")}
                       />
                     </PopoverContent>
                   </Popover>
-                  {selectedDate && <Button variant="ghost" size="sm" onClick={() => setSelectedDate(null)}><X className="mr-1" size={14}/> Clear</Button>}
+                  {date && <Button variant="ghost" size="sm" onClick={() => setDate(null)}><X className="mr-1" size={14}/> Clear</Button>}
             </div>
         </div>
         
