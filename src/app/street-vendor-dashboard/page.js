@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useState, useEffect, useMemo, useCallback, useRef, Suspense } from 'react';
@@ -361,7 +362,7 @@ export default function StreetVendorDashboard() {
         
         <header className="flex justify-between items-center mb-6">
             <h1 className="text-2xl font-bold font-headline">Live Orders</h1>
-            <Button onClick={() => setScannerOpen(true)} className="bg-primary hover:bg-primary/90 text-primary-foreground">
+             <Button onClick={() => setScannerOpen(true)} className="bg-primary hover:bg-primary/90 text-primary-foreground hidden md:flex">
                 <QrCode className="mr-2" /> Scan to Collect
             </Button>
         </header>
@@ -467,6 +468,11 @@ export default function StreetVendorDashboard() {
                 </Tabs>
             )}
         </main>
+        <div className="md:hidden fixed bottom-6 right-6 z-40">
+             <Button onClick={() => setScannerOpen(true)} className="bg-primary hover:bg-primary/90 text-primary-foreground h-16 w-16 rounded-full shadow-lg">
+                <QrCode size={32} />
+            </Button>
+        </div>
     </div>
   );
 }
