@@ -7,7 +7,7 @@ import { Loader2, ArrowLeft, CheckCircle, Check, IndianRupee, ShoppingBag, User 
 import { Button } from '@/components/ui/button';
 import { useRouter, useParams, useSearchParams } from 'next/navigation';
 import { cn } from '@/lib/utils';
-import QRCode from 'qrcode.react';
+import QRCode from 'qrcode.react'; // **FIX: IMPORT THE QR CODE LIBRARY**
 import { db } from '@/lib/firebase';
 import { doc, onSnapshot } from 'firebase/firestore';
 import { format } from 'date-fns';
@@ -284,9 +284,9 @@ function PreOrderTrackingContent() {
                                     <span>₹{item.price * item.quantity}</span>
                                 </div>
                             ))}
-                            <div className="flex justify-between font-bold text-lg pt-2 border-t border-dashed">
+                            <div className="flex justify-between font-bold text-lg pt-2 border-t border-dashed text-green-600">
                                 <span>Grand Total</span>
-                                <span className="text-green-600">₹{order.totalAmount}</span>
+                                <span>₹{order.totalAmount}</span>
                             </div>
                         </div>
                      </motion.div>
@@ -304,5 +304,3 @@ export default function PreOrderTrackingPage() {
         </Suspense>
     )
 }
-
-    
