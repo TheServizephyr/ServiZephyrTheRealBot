@@ -52,7 +52,7 @@ const OrderCard = ({ order, onMarkReady, onCancel, onMarkCollected }) => {
             animate={{ scale: 1, opacity: 1 }}
             exit={{ scale: 0.8, opacity: 0 }}
             transition={{ type: 'spring', stiffness: 200, damping: 20 }}
-            className="rounded-lg p-4 flex flex-col justify-between border-l-4 bg-white border-yellow-500"
+            className="rounded-lg p-4 flex flex-col justify-between border-l-4 bg-white border-yellow-500 shadow-md"
         >
             <div>
                 <div className="flex justify-between items-start">
@@ -361,7 +361,7 @@ export default function StreetVendorDashboard() {
         {scannedOrder && <ScannedOrderModal isOpen={!!scannedOrder} onClose={() => setScannedOrder(null)} order={scannedOrder} onConfirm={confirmCollection} />}
         
         <header className="flex justify-between items-center mb-6">
-            <h1 className="text-2xl font-bold font-headline">Live Orders</h1>
+            <h1 className="text-2xl font-bold font-headline">Live Pre-Orders</h1>
              <Button onClick={() => setScannerOpen(true)} className="bg-primary hover:bg-primary/90 text-primary-foreground hidden md:flex">
                 <QrCode className="mr-2" /> Scan to Collect
             </Button>
@@ -436,33 +436,33 @@ export default function StreetVendorDashboard() {
                         <TabsTrigger value="collected">Collected ({collectedOrders.length})</TabsTrigger>
                     </TabsList>
                     <TabsContent value="new_orders" className="mt-4">
-                        <div className="space-y-4">
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
                              <AnimatePresence>
                                 {pendingOrders.map(order => (
                                     <OrderCard key={order.id} order={order} onMarkReady={handleMarkReady} onCancel={handleCancelOrder} />
                                 ))}
                             </AnimatePresence>
-                            {pendingOrders.length === 0 && <p className="text-muted-foreground text-center py-10">No new orders for the selected date.</p>}
+                            {pendingOrders.length === 0 && <p className="text-muted-foreground text-center py-10 col-span-full">No new orders for the selected date.</p>}
                         </div>
                     </TabsContent>
                     <TabsContent value="ready" className="mt-4">
-                         <div className="space-y-4">
+                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
                             <AnimatePresence>
                                 {readyOrders.map(order => (
                                     <OrderCard key={order.id} order={order} onMarkCollected={handleMarkCollected} />
                                 ))}
                             </AnimatePresence>
-                            {readyOrders.length === 0 && <p className="text-muted-foreground text-center py-10">No orders are ready for pickup.</p>}
+                            {readyOrders.length === 0 && <p className="text-muted-foreground text-center py-10 col-span-full">No orders are ready for pickup.</p>}
                         </div>
                     </TabsContent>
                     <TabsContent value="collected" className="mt-4">
-                         <div className="space-y-4">
+                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
                              <AnimatePresence>
                                 {collectedOrders.map(order => (
                                     <OrderCard key={order.id} order={order} />
                                 ))}
                             </AnimatePresence>
-                            {collectedOrders.length === 0 && <p className="text-muted-foreground text-center py-10">No orders have been collected today.</p>}
+                            {collectedOrders.length === 0 && <p className="text-muted-foreground text-center py-10 col-span-full">No orders have been collected today.</p>}
                         </div>
                     </TabsContent>
                 </Tabs>
