@@ -632,6 +632,8 @@ const BannerCarousel = ({ images, onClick, restaurantName, logoUrl }) => {
     );
   };
 
+const formatCurrency = (value) => `₹${Number(value || 0).toLocaleString('en-IN', { maximumFractionDigits: 2 })}`;
+
 const OrderPageInternal = () => {
     const router = useRouter();
     const params = useParams();
