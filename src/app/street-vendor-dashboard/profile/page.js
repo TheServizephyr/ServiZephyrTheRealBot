@@ -3,7 +3,7 @@
 
 import React, { useState, useEffect, Suspense } from 'react';
 import { motion } from 'framer-motion';
-import { User, LogOut, ChevronRight, ShoppingBag, MapPin, Settings, Edit, Save, XCircle, Trash2, KeyRound, Eye, EyeOff, FileText, Bot, Truck, Image as ImageIcon, Upload, X, IndianRupee, Wallet, ChevronsUpDown, Check, Store, ConciergeBell, Loader2, ArrowLeft, QrCode, Banknote, Mail } from 'lucide-react';
+import { User, LogOut, ChevronRight, ShoppingBag, MapPin, Settings, Edit, Save, XCircle, Trash2, KeyRound, Eye, EyeOff, FileText, Bot, Truck, Image as ImageIcon, Upload, X, IndianRupee, Wallet, ChevronsUpDown, Check, Store, ConciergeBell, Loader2, ArrowLeft, QrCode, Banknote, Mail, Phone } from 'lucide-react';
 import { auth } from '@/lib/firebase';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
