@@ -43,7 +43,7 @@ const MenuItem = ({ item, onEdit, onDelete, onToggle }) => (
     initial={{ opacity: 0 }}
     animate={{ opacity: 1 }}
     whileHover={{ y: -4, boxShadow: "0 10px 20px hsla(var(--primary), 0.2)" }}
-    className="bg-card rounded-lg p-4 grid grid-cols-3 md:grid-cols-4 gap-4 items-center border border-border shadow-md transition-all duration-300"
+    className="bg-card rounded-lg p-4 grid grid-cols-3 md:grid-cols-4 gap-4 items-center border border-border shadow-md hover:shadow-primary/20 hover:-translate-y-1 transition-all duration-300"
   >
     <div className="col-span-1 flex items-center gap-4">
         <div className="relative w-16 h-16 rounded-md overflow-hidden bg-muted flex-shrink-0">
@@ -773,3 +773,5 @@ export default function StreetVendorMenuPage() {
     </div>
   );
 }
+
+    
