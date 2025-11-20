@@ -223,13 +223,16 @@
     .rotating-text-svg text { font-weight: bold; font-size: 14px; letter-spacing: 2px; fill: var(--coin-text-color-dark); }
     
     .qr-box {
-        width: 140px; height: 140px; background: rgba(60, 40, 0, 0.1);
-        border: 2px dashed rgba(92, 60, 0, 0.4); border-radius: 12px;
+        width: 140px; height: 140px;
+        background: rgba(60, 40, 0, 0.1);
+        border: 2px dashed rgba(92, 60, 0, 0.4); 
+        border-radius: 12px;
         display: flex; justify-content: center; align-items: center; padding: 4px;
+        box-shadow: inset 0 0 10px rgba(0,0,0,0.2);
     }
     .qr-label { margin-top: 8px; font-size: 10px; font-weight: bold; opacity: 0.6; color: var(--coin-text-color-dark); }
     
-    .instruction { position: absolute; bottom: 1rem; color: #666; font-size: 12px; letter-spacing: 1px; z-index: 20; }
+    .instruction { position: absolute; bottom: 5rem; color: #666; font-size: 12px; letter-spacing: 1px; z-index: 20; }
 
     /* --- Coin Themes --- */
     .bronze-theme {
