@@ -123,8 +123,8 @@ export default function StreetVendorQrPage() {
                                     src: "/logo.png",
                                     x: undefined,
                                     y: undefined,
-                                    height: 24,
-                                    width: 24,
+                                    height: 32,
+                                    width: 32,
                                     excavate: true,
                                 }}
                             />
