@@ -34,8 +34,26 @@ async function verifyUserAndGetData(req) {
     let businessRef = null;
     let businessId = null;
 
-    if (userData.role === 'owner' || userData.role === 'restaurant-owner' || userData.role === 'shop-owner' || userData.role === 'street-vendor' || (adminUserDoc.exists && adminUserDoc.data().role === 'admin' && impersonatedOwnerId)) {
-        const collectionsToTry = ['restaurants', 'shops', 'street_vendors'];
+    const isOwnerRole = ['owner', 'restaurant-owner', 'shop-owner', 'street-vendor'].includes(userData.role);
+    const isAdminImpersonating = adminUserDoc.exists && adminUserDoc.data().role === 'admin' && impersonatedOwnerId;
+
+    if (isOwnerRole || isAdminImpersonating) {
+        // --- START FIX: Role-based collection search ---
+        let collectionsToTry = [];
+        const userBusinessType = userData.businessType; // e.g., 'restaurant', 'shop', 'street-vendor'
+
+        if (userBusinessType === 'restaurant') {
+            collectionsToTry = ['restaurants'];
+        } else if (userBusinessType === 'shop') {
+            collectionsToTry = ['shops'];
+        } else if (userBusinessType === 'street-vendor') {
+            collectionsToTry = ['street_vendors'];
+        } else {
+            // Fallback for older data or generic 'owner' roles
+            collectionsToTry = ['restaurants', 'shops', 'street_vendors'];
+        }
+        // --- END FIX ---
+        
         for (const collectionName of collectionsToTry) {
             const businessesQuery = await firestore.collection(collectionName).where('ownerId', '==', finalUserId).limit(1).get();
             if (!businessesQuery.empty) {
