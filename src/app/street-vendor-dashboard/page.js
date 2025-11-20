@@ -367,7 +367,7 @@ export default function StreetVendorDashboard() {
             </Button>
         </header>
 
-        <div className="mb-6 flex items-center gap-4">
+        <div className="flex items-center gap-4 mb-6">
             <div className="relative flex-grow">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                 <input
@@ -385,12 +385,12 @@ export default function StreetVendorDashboard() {
                         id="date"
                         variant={"outline"}
                         className={cn(
-                          "w-full md:w-auto justify-start text-left font-normal h-10",
+                          "w-auto justify-start text-left font-normal h-10",
                           !date && "text-muted-foreground"
                         )}
                       >
-                         <CalendarIcon className="md:mr-2 h-4 w-4" />
-                         <span className="truncate hidden md:inline-block">
+                         <CalendarIcon className={cn("h-4 w-4", date && "text-primary")} />
+                         <span className={cn("truncate hidden md:inline-block ml-2", date && "text-primary")}>
                             {date?.from ? (
                               date.to ? (
                                 <>
