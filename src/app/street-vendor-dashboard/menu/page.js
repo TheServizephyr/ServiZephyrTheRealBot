@@ -42,9 +42,9 @@ const MenuItem = ({ item, onEdit, onDelete, onToggle }) => (
     layout
     initial={{ opacity: 0 }}
     animate={{ opacity: 1 }}
-    className="bg-card rounded-lg p-4 flex justify-between items-center border border-border"
+    className="bg-card rounded-lg p-4 grid grid-cols-3 md:grid-cols-4 gap-4 items-center border border-border"
   >
-     <div className="flex items-center gap-4">
+    <div className="col-span-1 flex items-center gap-4">
         <div className="relative w-16 h-16 rounded-md overflow-hidden bg-muted flex-shrink-0">
             {item.imageUrl ? (
                 <Image src={item.imageUrl} alt={item.name} layout="fill" objectFit="cover" />
@@ -52,16 +52,16 @@ const MenuItem = ({ item, onEdit, onDelete, onToggle }) => (
                 <ImageIcon size={32} className="text-muted-foreground absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2" />
             )}
         </div>
-        <div>
-            <p className={`font-bold text-lg ${!item.isAvailable ? 'text-muted-foreground line-through' : 'text-foreground'}`}>{item.name}</p>
-            <p className="text-primary font-semibold">₹{item.portions?.[0]?.price || 'N/A'}</p>
-        </div>
     </div>
-    <div className="flex items-center gap-4">
-      <div className="flex items-center gap-2">
+    <div className="col-span-2 md:col-span-1">
+        <p className={`font-bold text-lg ${!item.isAvailable ? 'text-muted-foreground line-through' : 'text-foreground'}`}>{item.name}</p>
+        <p className="text-primary font-semibold">₹{item.portions?.[0]?.price || 'N/A'}</p>
+    </div>
+    <div className="col-span-3 md:col-span-1 flex items-center justify-start md:justify-center gap-2">
         <Switch id={`switch-${item.id}`} checked={item.isAvailable} onCheckedChange={(checked) => onToggle(item.id, checked)} />
-         <Label htmlFor={`switch-${item.id}`} className="text-sm font-medium text-muted-foreground">{item.isAvailable ? 'Available' : 'Out of Stock'}</Label>
-      </div>
+        <Label htmlFor={`switch-${item.id}`} className="text-sm font-medium text-muted-foreground">{item.isAvailable ? 'Available' : 'Out of Stock'}</Label>
+    </div>
+    <div className="col-span-3 md:col-span-1 flex items-center justify-end gap-2">
       <Button onClick={() => onEdit(item)} size="icon" variant="ghost" className="text-muted-foreground hover:bg-muted hover:text-foreground">
         <Edit />
       </Button>
