@@ -12,11 +12,7 @@ import { db } from '@/lib/firebase';
 import { doc, onSnapshot } from 'firebase/firestore';
 import { format } from 'date-fns';
 
-const statusConfig = [
-    { key: 'confirmed', title: 'Confirmed' },
-    { key: 'Ready', title: 'Ready' },
-    { key: 'delivered', title: 'Collected' },
-];
+const formatCurrency = (value) => `₹${Number(value || 0).toLocaleString('en-IN', { maximumFractionDigits: 2 })}`;
 
 const StatusTimeline = ({ currentStatus }) => {
     const activeIndex = useMemo(() => {
@@ -26,6 +22,12 @@ const StatusTimeline = ({ currentStatus }) => {
         if (adjustedStatus === 'confirmed') return 0;
         return -1;
     }, [currentStatus]);
+
+    const statusConfig = [
+        { key: 'confirmed', title: 'Confirmed' },
+        { key: 'Ready', title: 'Ready' },
+        { key: 'delivered', title: 'Collected' },
+    ];
 
     return (
         <div className="w-full max-w-sm relative flex justify-between items-center z-10">
@@ -153,6 +155,16 @@ function PreOrderTrackingContent() {
         return 'bronze-theme';
     }, [order]);
 
+    // THE FIX: Calculate QR color code in JS based on theme
+    const qrColor = useMemo(() => {
+        switch(coinTheme) {
+            case 'gold-theme': return '#5c3c00';
+            case 'silver-theme': return '#4a4a4a';
+            case 'bronze-theme':
+            default: return '#4a3318';
+        }
+    }, [coinTheme]);
+
 
     if (loading) {
         return <div className="fixed inset-0 bg-background flex items-center justify-center"><Loader2 className="animate-spin text-primary h-16 w-16" /></div>;
@@ -256,10 +268,9 @@ function PreOrderTrackingContent() {
                                                     size={140}
                                                     level={"H"}
                                                     bgColor="transparent"
-                                                    fgColor="var(--coin-text-color-dark)"
+                                                    fgColor={qrColor}
                                                 />
                                             </div>
-                                            <div className="qr-label">Vendor: Scan to Collect</div>
                                         </div>
                                     </div>
                                 </div>
@@ -282,12 +293,12 @@ function PreOrderTrackingContent() {
                             {order.items.map((item, index) => (
                                 <div key={index} className="flex justify-between text-muted-foreground text-sm">
                                     <span>{item.quantity} x {item.name}</span>
-                                    <span>₹{item.price * item.quantity}</span>
+                                    <span>{formatCurrency(item.price * item.quantity)}</span>
                                 </div>
                             ))}
                             <div className="flex justify-between font-bold text-lg pt-2 border-t border-dashed text-green-600">
                                 <span>Grand Total</span>
-                                <span>₹{order.totalAmount}</span>
+                                <span>{formatCurrency(order.totalAmount)}</span>
                             </div>
                         </div>
                      </motion.div>
