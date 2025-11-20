@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useState, useEffect, useMemo, useCallback, useRef, Suspense } from 'react';
@@ -10,6 +11,7 @@ import QRCode from 'qrcode.react';
 import { db } from '@/lib/firebase';
 import { doc, onSnapshot } from 'firebase/firestore';
 import { format } from 'date-fns';
+import BillToPrint from '@/components/BillToPrint';
 
 const statusConfig = [
     { key: 'confirmed', title: 'Confirmed' },
@@ -249,8 +251,8 @@ function PreOrderTrackingContent() {
                                                 <path id="backCurve" d="M 25,100 a 75,75 0 1,1 150,0 a 75,75 0 1,1 -150,0" fill="none"/>
                                                 <text><textPath href="#backCurve" startOffset="50%" textAnchor="middle">★ SECURED BY Servizephyr ★ YOUR TRUSTED PARTNER ★</textPath></text>
                                             </svg>
-                                            <div className="qr-box">
-                                                 <QRCode
+                                             <div className="qr-box">
+                                                <QRCode
                                                     value={qrValue}
                                                     size={140}
                                                     level={"H"}
@@ -258,7 +260,7 @@ function PreOrderTrackingContent() {
                                                     fgColor="var(--coin-text-color-dark)"
                                                 />
                                             </div>
-                                            <p className="qr-label">Powered by ServiZephyr</p>
+                                            <p className="qr-label">Scan to Collect</p>
                                         </div>
                                     </div>
                                 </div>
@@ -276,19 +278,7 @@ function PreOrderTrackingContent() {
                         animate={{ opacity: 1, y: 0 }}
                         className="bg-card border border-border p-4 rounded-xl shadow-lg w-full max-w-sm"
                      >
-                         <h4 className="font-bold text-lg text-foreground mb-2 flex items-center gap-2"><ShoppingBag size={18}/> Your Order</h4>
-                         <div className="space-y-1 max-h-24 overflow-y-auto pr-2">
-                            {(order.items || []).map((item, i) => (
-                                <div key={i} className="flex justify-between text-sm text-muted-foreground">
-                                    <span>{item.quantity}x {item.name}</span>
-                                    <span>₹{item.price}</span>
-                                </div>
-                            ))}
-                         </div>
-                         <div className="flex justify-between font-bold text-lg border-t border-dashed pt-2 mt-2">
-                            <span>Total</span>
-                            <span className="text-green-500">₹{order.totalAmount}</span>
-                         </div>
+                        <BillToPrint order={order} restaurant={order} billDetails={order} items={order.items} customerDetails={{name: order.customerName}} />
                      </motion.div>
                     <StatusTimeline currentStatus={order.status} />
                 </footer>

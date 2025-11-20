@@ -22,6 +22,21 @@ const BillToPrint = ({ order, restaurant, billDetails, items, customerDetails })
         address: order.customerAddress,
     };
 
+    const getItemPrice = (item) => {
+        // This function handles different ways the price might be stored
+        if (typeof item.price === 'number') return item.price;
+        if (typeof item.totalPrice === 'number') return item.totalPrice;
+        if (item.portion && typeof item.portion.price === 'number') return item.portion.price;
+        return 0; // Fallback
+    };
+    
+    const getItemTotal = (item) => {
+        const price = getItemPrice(item);
+        const qty = item.quantity || item.qty || 1;
+        return price * qty;
+    };
+
+
     return (
         <div id="bill-print-root">
             <div className="text-center mb-4 border-b-2 border-dashed border-black pb-2">
@@ -47,14 +62,20 @@ const BillToPrint = ({ order, restaurant, billDetails, items, customerDetails })
                     </tr>
                 </thead>
                 <tbody className="divide-y divide-dotted divide-black">
-                    {finalItems.map((item, index) => (
-                        <tr key={index}>
-                            <td className="py-1">{item.name}</td>
-                            <td className="text-center py-1">{item.quantity}</td>
-                            <td className="text-right py-1">{formatCurrency((item.totalPrice || item.price) / item.quantity)}</td>
-                            <td className="text-right py-1">{formatCurrency(item.totalPrice || item.price)}</td>
-                        </tr>
-                    ))}
+                    {finalItems.map((item, index) => {
+                        const pricePerUnit = getItemPrice(item);
+                        const totalItemPrice = getItemTotal(item);
+                        const quantity = item.quantity || item.qty || 1;
+                        
+                        return (
+                            <tr key={index}>
+                                <td className="py-1">{item.name}</td>
+                                <td className="text-center py-1">{quantity}</td>
+                                <td className="text-right py-1">{formatCurrency(pricePerUnit)}</td>
+                                <td className="text-right py-1">{formatCurrency(totalItemPrice)}</td>
+                            </tr>
+                        )
+                    })}
                 </tbody>
             </table>
             
@@ -87,7 +108,7 @@ const BillToPrint = ({ order, restaurant, billDetails, items, customerDetails })
             
             <div className="flex justify-between font-bold text-lg pt-1 mt-1 border-t-2 border-black">
                 <span>GRAND TOTAL</span>
-                <span>{formatCurrency(finalBillDetails.grandTotal)}</span>
+                <span className="text-green-600">{formatCurrency(finalBillDetails.grandTotal)}</span>
             </div>
 
             <div className="text-center mt-4 pt-2 border-t border-dashed border-black">
