@@ -7,6 +7,7 @@ import { Check, CookingPot, Bike, Home, Star, Phone, Navigation, RefreshCw, Load
 import { Button } from '@/components/ui/button';
 import { useRouter, useParams, useSearchParams } from 'next/navigation';
 import dynamic from 'next/dynamic';
+import GoldenCoinSpinner from '@/components/GoldenCoinSpinner';
 
 const LiveTrackingMap = dynamic(() => import('@/components/LiveTrackingMap'), { 
     ssr: false,
@@ -152,8 +153,7 @@ function OrderTrackingContent() {
     if (loading && !orderData) {
         return (
             <div className="min-h-screen bg-background flex flex-col items-center justify-center text-center p-4 green-theme">
-                <Loader2 className="w-16 h-16 text-primary animate-spin" />
-                <h1 className="text-2xl font-bold mt-4">Finding Your Order...</h1>
+                <GoldenCoinSpinner />
             </div>
         );
     }
@@ -267,7 +267,7 @@ function OrderTrackingContent() {
 
 export default function OrderTrackingPage() {
     return (
-        <Suspense fallback={<div className="min-h-screen bg-background flex items-center justify-center"><Loader2 className="w-16 h-16 animate-spin text-primary"/></div>}>
+        <Suspense fallback={<div className="min-h-screen bg-background flex items-center justify-center"><GoldenCoinSpinner /></div>}>
             <OrderTrackingContent />
         </Suspense>
     )

@@ -9,6 +9,7 @@ import { auth } from '@/lib/firebase';
 import { useRouter } from 'next/navigation';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
+import GoldenCoinSpinner from '@/components/GoldenCoinSpinner';
 
 export const dynamic = 'force-dynamic';
 
@@ -110,8 +111,7 @@ function PayoutSettingsPageContent() {
     if (loading) {
          return (
             <div className="flex flex-col items-center justify-center h-full text-center p-8">
-                <Loader2 className="h-16 w-16 text-primary animate-spin" />
-                <p className="mt-4 text-muted-foreground">Checking your account status...</p>
+                <GoldenCoinSpinner />
             </div>
         )
     }
@@ -203,7 +203,7 @@ function PayoutSettingsPageContent() {
 
 export default function PayoutSettingsPage() {
     return (
-        <Suspense fallback={<div className="flex h-screen w-full items-center justify-center"><Loader2 className="h-12 w-12 animate-spin text-primary" /></div>}>
+        <Suspense fallback={<div className="flex h-screen w-full items-center justify-center"><GoldenCoinSpinner /></div>}>
             <PayoutSettingsPageContent />
         </Suspense>
     )

@@ -14,6 +14,7 @@ import { collection, query, where, getDocs } from 'firebase/firestore';
 import { FirestorePermissionError } from '@/firebase/errors';
 import { errorEmitter } from '@/firebase/error-emitter';
 import { toPng } from 'html-to-image';
+import GoldenCoinSpinner from '@/components/GoldenCoinSpinner';
 
 
 export default function StreetVendorQrPage() {
@@ -103,7 +104,7 @@ export default function StreetVendorQrPage() {
 
         <main className="flex-grow flex flex-col items-center justify-center text-center">
             {loading ? (
-                 <Loader2 className="mx-auto animate-spin" size={48} />
+                 <GoldenCoinSpinner />
             ) : vendorId ? (
                 <>
                 <motion.div

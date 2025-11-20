@@ -22,6 +22,7 @@ import { Input } from '@/components/ui/input';
 import dynamic from 'next/dynamic';
 import { useTheme } from 'next-themes';
 import { ThemeProvider } from '@/components/ThemeProvider';
+import GoldenCoinSpinner from '@/components/GoldenCoinSpinner';
 
 
 const QrScanner = dynamic(() => import('@/components/QrScanner'), { 
@@ -1104,7 +1105,7 @@ const OrderPageInternal = () => {
     
 
     if (loading) {
-        return <div className="min-h-screen bg-background flex items-center justify-center"><Loader2 className="animate-spin text-primary h-16 w-16" /></div>;
+        return <div className="min-h-screen bg-background flex items-center justify-center"><GoldenCoinSpinner /></div>;
     }
 
     if (tokenError) {
@@ -1112,7 +1113,7 @@ const OrderPageInternal = () => {
     }
     
     if (!isTokenValid) {
-        return <div className="min-h-screen bg-background flex items-center justify-center"><Loader2 className="animate-spin text-primary h-16 w-16" /></div>;
+        return <div className="min-h-screen bg-background flex items-center justify-center"><GoldenCoinSpinner /></div>;
     }
     
     if (error || restaurantData.status === 'rejected' || restaurantData.status === 'suspended') {
@@ -1379,7 +1380,7 @@ const OrderPageInternal = () => {
 };
 
 const OrderPage = () => (
-    <Suspense fallback={<div className="min-h-screen bg-background flex items-center justify-center"><div className="animate-spin rounded-full h-16 w-16 border-b-2 border-primary"></div></div>}>
+    <Suspense fallback={<div className="min-h-screen bg-background flex items-center justify-center"><GoldenCoinSpinner /></div>}>
         <ThemeProvider
           attribute="class"
           defaultTheme="system"

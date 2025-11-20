@@ -6,6 +6,7 @@ import { motion } from 'framer-motion';
 import { Check, CookingPot, Home, Star, RefreshCw, Loader2, ArrowLeft, XCircle, Wallet, Split, ConciergeBell, ShoppingBag, Bike } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useRouter, useParams, useSearchParams } from 'next/navigation';
+import GoldenCoinSpinner from '@/components/GoldenCoinSpinner';
 
 const statusConfig = {
   pending: { title: 'Order Placed', icon: <Check size={24} />, step: 0, description: "Your order has been sent to the restaurant." },
@@ -123,8 +124,7 @@ function DineInTrackingContent() {
     if (loading && !orderData) {
         return (
             <div className="min-h-screen bg-background flex flex-col items-center justify-center text-center p-4 green-theme">
-                <Loader2 className="w-16 h-16 text-primary animate-spin" />
-                <h1 className="text-2xl font-bold mt-4">Loading Your Order Status...</h1>
+                <GoldenCoinSpinner />
             </div>
         );
     }
@@ -207,7 +207,7 @@ function DineInTrackingContent() {
 
 export default function DineInTrackingPage() {
     return (
-        <Suspense fallback={<div className="min-h-screen bg-background flex items-center justify-center"><Loader2 className="w-16 h-16 animate-spin text-primary"/></div>}>
+        <Suspense fallback={<div className="min-h-screen bg-background flex items-center justify-center"><GoldenCoinSpinner /></div>}>
             <DineInTrackingContent />
         </Suspense>
     )

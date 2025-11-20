@@ -14,6 +14,7 @@ import InfoDialog from '@/components/InfoDialog';
 import { cn } from '@/lib/utils';
 import { FirestorePermissionError } from '@/firebase/errors';
 import { errorEmitter } from '@/firebase/error-emitter';
+import GoldenCoinSpinner from '@/components/GoldenCoinSpinner';
 
 const InvitationCard = ({ invite, onAccept, onDecline }) => {
     return (
@@ -273,7 +274,7 @@ export default function RiderDashboardPage() {
     }
 
     if (loading) {
-        return <div className="min-h-screen flex items-center justify-center bg-background"><Loader2 className="animate-spin text-primary h-16 w-16" /></div>
+        return <div className="min-h-screen flex items-center justify-center bg-background"><GoldenCoinSpinner /></div>
     }
 
     if(error && !driverData){

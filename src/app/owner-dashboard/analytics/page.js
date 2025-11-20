@@ -17,6 +17,7 @@ import { format, addDays }from 'date-fns';
 import { useSearchParams } from 'next/navigation';
 import { auth } from '@/lib/firebase';
 import InfoDialog from '@/components/InfoDialog';
+import GoldenCoinSpinner from '@/components/GoldenCoinSpinner';
 
 export const dynamic = 'force-dynamic';
 
@@ -75,7 +76,7 @@ const SalesOverview = ({ data, loading }) => {
         <div className="bg-card border border-border p-5 rounded-xl h-[400px]">
             <h3 className="text-lg font-semibold mb-4 text-card-foreground">Sales Trend</h3>
             {loading ? (
-                <div className="flex items-center justify-center h-full"><Loader2 className="animate-spin text-primary" size={32}/></div>
+                <div className="flex items-center justify-center h-full"><GoldenCoinSpinner /></div>
             ) : (
                 <ResponsiveContainer width="100%" height="90%">
                     <AreaChart data={data?.salesTrend || []} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
@@ -535,7 +536,7 @@ function AnalyticsPageContent() {
 
 export default function AnalyticsPage() {
     return (
-        <Suspense fallback={<div className="flex h-full w-full items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>}>
+        <Suspense fallback={<div className="flex h-full w-full items-center justify-center"><GoldenCoinSpinner /></div>}>
             <AnalyticsPageContent />
         </Suspense>
     )

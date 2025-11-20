@@ -15,6 +15,7 @@ import { cn } from '@/lib/utils';
 import { auth } from '@/lib/firebase';
 import { useSearchParams } from 'next/navigation';
 import InfoDialog from '@/components/InfoDialog';
+import GoldenCoinSpinner from '@/components/GoldenCoinSpinner';
 
 export const dynamic = 'force-dynamic';
 
@@ -294,7 +295,7 @@ function PayoutsPageContent() {
 
 export default function PayoutsPage() {
     return (
-        <Suspense fallback={<div className="flex h-full items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>}>
+        <Suspense fallback={<div className="flex h-full items-center justify-center"><GoldenCoinSpinner /></div>}>
             <PayoutsPageContent />
         </Suspense>
     )
