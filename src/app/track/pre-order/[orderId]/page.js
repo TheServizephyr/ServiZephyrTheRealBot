@@ -10,6 +10,8 @@ import { cn } from '@/lib/utils';
 import QRCode from 'qrcode.react';
 import { db } from '@/lib/firebase';
 import { doc, onSnapshot } from 'firebase/firestore';
+import { format } from 'date-fns';
+
 
 const statusConfig = [
     { key: 'confirmed', title: 'Confirmed' },
@@ -247,31 +249,17 @@ function PreOrderTrackingContent() {
                                             <div className="texture-overlay"></div>
                                             <div className="sheen"></div>
                                             <div className="w-full h-full flex flex-col justify-center items-center text-center">
-                                                <h4 className="font-bold text-sm text-[var(--coin-text-color)] border-b-2 border-dashed border-[var(--coin-text-color-dark)] pb-1 mb-2">Order Summary</h4>
-                                                <div className="text-xs text-left w-full space-y-1 overflow-y-auto max-h-24 text-[var(--coin-text-color)] font-semibold">
-                                                  {order.items.map((item, i) => (
-                                                    <div key={i} className="flex justify-between">
-                                                      <span>{item.quantity}x {item.name}</span>
-                                                      <span>₹{item.price * item.quantity}</span>
-                                                    </div>
-                                                  ))}
-                                                </div>
-                                                <div className="flex justify-between w-full font-bold text-base mt-2 pt-2 border-t-2 border-[var(--coin-text-color-dark)] text-[var(--coin-text-color-dark)]">
-                                                  <span>Total</span>
-                                                  <span>₹{order.totalAmount.toFixed(2)}</span>
-                                                </div>
-
-                                                <div className="mt-4">
+                                                <div className="qr-box">
                                                     <QRCode
                                                         value={qrValue}
-                                                        size={80}
+                                                        size={140}
                                                         level={"H"}
-                                                        bgColor="var(--coin-color-main)"
+                                                        bgColor="#FFFFFF"
                                                         fgColor="var(--coin-text-color-dark)"
-                                                        className="rounded-md border-2 p-1 border-[var(--coin-color-border)]"
+                                                        className="rounded-md"
                                                     />
                                                 </div>
-                                                <div className="qr-label !mt-1">SCAN TO COLLECT</div>
+                                                <div className="qr-label">SCAN TO COLLECT</div>
                                             </div>
                                         </div>
                                     </div>
