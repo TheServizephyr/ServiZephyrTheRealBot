@@ -35,12 +35,16 @@ const OrderCard = ({ order, onMarkReady, onCancel, onMarkCollected }) => {
     const isReady = order.status === 'Ready';
 
     let statusClass = 'text-yellow-500 bg-yellow-500/10 border-yellow-500/20';
+    let borderClass = 'border-yellow-500';
     if (isReady) {
         statusClass = 'text-green-500 bg-green-500/10 border-green-500/20';
+        borderClass = 'border-green-500';
     } else if (order.status === 'delivered' || order.status === 'picked_up') {
         statusClass = 'text-blue-500 bg-blue-500/10 border-blue-500/20';
+        borderClass = 'border-blue-500';
     } else if (order.status === 'rejected') {
         statusClass = 'text-red-500 bg-red-500/10 border-red-500/20';
+        borderClass = 'border-red-500';
     }
     
     const isPaidOnline = order.paymentDetails?.method === 'razorpay';
@@ -52,7 +56,7 @@ const OrderCard = ({ order, onMarkReady, onCancel, onMarkCollected }) => {
             animate={{ scale: 1, opacity: 1 }}
             exit={{ scale: 0.8, opacity: 0 }}
             transition={{ type: 'spring', stiffness: 200, damping: 20 }}
-            className="rounded-lg p-4 flex flex-col justify-between border-l-4 bg-card border-yellow-500 shadow-md"
+            className={cn("rounded-lg p-4 flex flex-col justify-between border-l-4 bg-card shadow-lg hover:shadow-primary/20 hover:-translate-y-1 transition-all duration-300", borderClass)}
         >
             <div>
                 <div className="flex justify-between items-start">
