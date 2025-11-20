@@ -2,62 +2,64 @@
 import { NextResponse } from 'next/server';
 import { getFirestore } from '@/lib/firebase-admin';
 
-export const dynamic = 'force-dynamic';
-
-async function getBusinessData(firestore, restaurantId) {
-    const collectionsToTry = ['restaurants', 'shops', 'street_vendors'];
-    for (const collectionName of collectionsToTry) {
-        const docRef = firestore.collection(collectionName).doc(restaurantId);
-        const docSnap = await docRef.get();
-        if (docSnap.exists) {
-            console.log(`[API Public Menu] Found business ${restaurantId} in collection: ${collectionName}`);
-            return {
-                businessData: docSnap.data(),
-                menuRef: docSnap.ref.collection('menu'),
-                collectionName: collectionName,
-            };
-        }
-    }
-    console.warn(`[API Public Menu] Business not found with ID: ${restaurantId} in any collection.`);
-    return null;
-}
-
 export async function GET(req, { params }) {
     const { restaurantId } = params;
     const { searchParams } = new URL(req.url);
     const phone = searchParams.get('phone');
-    
+    const firestore = await getFirestore();
+
     if (!restaurantId) {
         return NextResponse.json({ message: 'Restaurant ID is required.' }, { status: 400 });
     }
 
     try {
-        const firestore = await getFirestore();
-        const businessInfo = await getBusinessData(firestore, restaurantId);
+        let businessData = null;
+        let businessRef = null;
+        let collectionName = '';
 
-        if (!businessInfo) {
-            return NextResponse.json({ message: 'This business does not exist or is not configured correctly.' }, { status: 404 });
+        const collectionsToTry = ['restaurants', 'shops', 'street_vendors'];
+        for (const name of collectionsToTry) {
+            const docRef = firestore.collection(name).doc(restaurantId);
+            const docSnap = await docRef.get();
+            if (docSnap.exists) {
+                businessData = docSnap.data();
+                businessRef = docRef;
+                collectionName = name;
+                break;
+            }
         }
-        
-        const { businessData, menuRef, collectionName } = businessInfo;
 
-        const menuSnap = await menuRef.orderBy('order', 'asc').get();
+        if (!businessData) {
+            return NextResponse.json({ message: 'Restaurant not found.' }, { status: 404 });
+        }
 
+        const menuSnap = await businessRef.collection('menu').orderBy('order', 'asc').get();
         let menuData = {};
-        const allCategories = {
-            ...(businessData.customCategories || []).reduce((acc, cat) => {
-                acc[cat.id] = { title: cat.title };
-                return acc;
-            }, {}),
-            "starters": { title: "Starters" }, "main-course": { title: "Main Course" },
-            "beverages": { title: "Beverages" }, "desserts": { title: "Desserts" },
-            "soup": { title: "Soup" }, "tandoori-item": { title: "Tandoori Items" },
-            "momos": { title: "Momos" }, "burgers": { title: "Burgers" },
-            "rolls": { title: "Rolls" }, "tandoori-khajana": { title: "Tandoori Khajana" },
-            "rice": { title: "Rice" }, "noodles": { title: "Noodles" },
-            "pasta": { title: "Pasta" }, "raita": { title: "Raita" },
-            'snacks': { title: 'Snacks' }, 'chaat': { title: 'Chaat' }, 'sweets': { title: 'Sweets' },
+        const customCategories = businessData.customCategories || [];
+        
+        const restaurantCategoryConfig = {
+          "starters": { title: "Starters" }, "main-course": { title: "Main Course" }, "beverages": { title: "Beverages" },
+          "desserts": { title: "Desserts" }, "soup": { title: "Soup" }, "tandoori-item": { title: "Tandoori Items" },
+          "momos": { title: "Momos" }, "burgers": { title: "Burgers" }, "rolls": { title: "Rolls" },
+          "tandoori-khajana": { title: "Tandoori Khajana" }, "rice": { title: "Rice" }, "noodles": { title: "Noodles" },
+          "pasta": { title: "Pasta" }, "raita": { title: "Raita" },
+          'snacks': { title: 'Snacks' }, 'chaat': { title: 'Chaat' }, 'sweets': { title: 'Sweets' },
         };
+        const shopCategoryConfig = {
+          "electronics": { title: "Electronics" }, "groceries": { title: "Groceries" }, "clothing": { title: "Clothing" },
+          "books": { title: "Books" }, "home-appliances": { title: "Home Appliances" }, "toys-games": { title: "Toys & Games" },
+          "beauty-personal-care": { title: "Beauty & Personal Care" }, "sports-outdoors": { title: "Sports & Outdoors" },
+        };
+
+        const businessType = businessData.businessType || collectionName.slice(0, -1);
+        const baseCategories = (businessType === 'restaurant' || businessType === 'street-vendor') ? restaurantCategoryConfig : shopCategoryConfig;
+        
+        const allCategories = { ...baseCategories };
+        customCategories.forEach(cat => {
+            if (!allCategories[cat.id]) {
+                allCategories[cat.id] = { title: cat.title };
+            }
+        });
         
         Object.keys(allCategories).forEach(key => {
             menuData[key] = [];
@@ -66,58 +68,60 @@ export async function GET(req, { params }) {
         menuSnap.docs.forEach(doc => {
             const item = doc.data();
             const categoryKey = item.categoryId || 'general';
-            if (item.isAvailable) {
-                if (!menuData[categoryKey]) menuData[categoryKey] = [];
+            if (menuData[categoryKey]) {
                 menuData[categoryKey].push({ id: doc.id, ...item });
+            } else {
+                 if (!menuData['general']) menuData['general'] = [];
+                 menuData['general'].push({ id: doc.id, ...item });
             }
         });
-        
-        // Filter out empty categories
-        Object.keys(menuData).forEach(key => {
-            if (menuData[key].length === 0) {
-                delete menuData[key];
-            }
-        });
-        
-        const couponsRef = firestore.collection(collectionName).doc(restaurantId).collection('coupons');
-        const now = new Date();
-        const couponsSnap = await couponsRef.where('status', '==', 'Active').where('expiryDate', '>=', now).get();
-        const availableCoupons = couponsSnap.docs.map(doc => doc.data());
-        
-        let customerCoupons = [];
+
+        let loyaltyPoints = 0;
+        let userId = null;
         if (phone) {
-            const userSnap = await firestore.collection('users').where('phone', '==', phone).limit(1).get();
-            if (!userSnap.empty) {
-                const userId = userSnap.docs[0].id;
-                const customerCouponsSnap = await couponsRef.where('customerId', '==', userId).where('status', '==', 'Active').where('expiryDate', '>=', now).get();
-                customerCoupons = customerCouponsSnap.docs.map(doc => doc.data());
+            const usersRef = firestore.collection('users');
+            const userQuery = await usersRef.where('phone', '==', phone).limit(1).get();
+            if (!userQuery.empty) {
+                userId = userQuery.docs[0].id;
+                const customerRef = businessRef.collection('customers').doc(userId);
+                const customerSnap = await customerRef.get();
+                if (customerSnap.exists) {
+                    loyaltyPoints = customerSnap.data().loyaltyPoints || 0;
+                }
             }
         }
         
-        const finalCoupons = [...availableCoupons, ...customerCoupons];
+        const couponsSnap = await businessRef.collection('coupons').where('status', '==', 'Active').get();
+        const now = new Date();
+        const coupons = couponsSnap.docs
+            .map(doc => ({ id: doc.id, ...doc.data() }))
+            .filter(coupon => {
+                const startDate = coupon.startDate?.toDate ? coupon.startDate.toDate() : new Date(coupon.startDate);
+                const expiryDate = coupon.expiryDate?.toDate ? coupon.expiryDate.toDate() : new Date(coupon.expiryDate);
+                return startDate <= now && expiryDate >= now;
+            })
+            .filter(c => !c.customerId || c.customerId === userId); // Public or for this user
 
-        const responsePayload = {
-            restaurantName: businessData.name || 'Unnamed Business',
-            logoUrl: businessData.logoUrl || null,
-            bannerUrls: businessData.bannerUrls || null,
-            deliveryCharge: businessData.deliveryCharge || 0,
-            deliveryFreeThreshold: businessData.deliveryFreeThreshold || 0,
-            businessType: businessData.businessType || collectionName.slice(0, -1),
+        return NextResponse.json({
+            restaurantName: businessData.name,
+            approvalStatus: businessData.approvalStatus || 'approved',
+            logoUrl: businessData.logoUrl,
+            bannerUrls: businessData.bannerUrls,
+            deliveryCharge: businessData.deliveryCharge,
+            deliveryFreeThreshold: businessData.deliveryFreeThreshold,
             menu: menuData,
-            coupons: finalCoupons,
-            approvalStatus: businessData.approvalStatus || 'pending',
-            isOpen: businessData.isOpen === undefined ? true : businessData.isOpen,
-            deliveryEnabled: businessData.deliveryEnabled === undefined ? true : businessData.deliveryEnabled,
-            pickupEnabled: businessData.pickupEnabled === undefined ? true : businessData.pickupEnabled,
-            dineInEnabled: businessData.dineInEnabled === undefined ? true : businessData.dineInEnabled,
-            businessAddress: businessData.address || null,
-            dineInModel: businessData.dineInModel || 'post-paid',
-        };
-
-        return NextResponse.json(responsePayload, { status: 200 });
+            coupons: coupons,
+            loyaltyPoints: loyaltyPoints,
+            deliveryEnabled: businessData.deliveryEnabled,
+            pickupEnabled: businessData.pickupEnabled,
+            dineInEnabled: businessData.dineInEnabled,
+            businessAddress: businessData.address,
+            businessType: businessType,
+            dineInModel: businessData.dineInModel,
+        }, { status: 200 });
 
     } catch (error) {
-        console.error("[API Public Menu] CRITICAL ERROR:", error);
-        return NextResponse.json({ message: `Backend Error: ${error.message}` }, { status: 500 });
+        console.error(`[API ERROR] /api/public/menu/${restaurantId}:`, error);
+        return NextResponse.json({ message: 'Internal Server Error: ' + error.message }, { status: 500 });
     }
 }
