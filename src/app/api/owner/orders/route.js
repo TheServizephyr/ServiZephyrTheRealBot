@@ -73,7 +73,7 @@ export async function GET(req) {
             // If customerId is provided, fetch customer details as well
             let customerData = null;
             if (customerId) {
-                const businessCollectionName = businessData.businessType === 'shop' ? 'shops' : 'restaurants';
+                const businessCollectionName = businessData.businessType === 'shop' ? 'shops' : (businessData.businessType === 'street-vendor' ? 'street_vendors' : 'restaurants');
                 const customerRef = firestore.collection(businessCollectionName).doc(businessId).collection('customers').doc(customerId);
                 const customerSnap = await customerRef.get();
                 if (customerSnap.exists) {
@@ -151,7 +151,7 @@ export async function PATCH(req) {
 
         if (newStatus === 'dispatched' && deliveryBoyId) {
             console.log(`[API][PATCH /orders] Dispatch logic started for riders ${deliveryBoyId}.`);
-            const businessCollectionName = businessSnap.data().businessType === 'shop' ? 'shops' : 'restaurants';
+            const businessCollectionName = businessSnap.data().businessType === 'shop' ? 'shops' : (businessSnap.data().businessType === 'street-vendor' ? 'street_vendors' : 'restaurants');
             const deliveryBoyRef = firestore.collection(businessCollectionName).doc(businessId).collection('deliveryBoys').doc(deliveryBoyId);
 
             const deliveryBoySnap = await deliveryBoyRef.get();
