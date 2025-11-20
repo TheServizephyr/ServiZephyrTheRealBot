@@ -1,5 +1,4 @@
 
-
 'use client';
 
 import { useState, useEffect, useRef } from "react";
@@ -24,6 +23,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { useUser } from '@/firebase';
 
 
 const MotionDiv = motion.div;
@@ -34,7 +34,7 @@ export default function Navbar({ isSidebarOpen, setSidebarOpen, restaurantName, 
   const { theme, setTheme } = useTheme();
   const router = useRouter();
   const [infoDialog, setInfoDialog] = useState({ isOpen: false, title: '', message: '' });
-  const { user } = auth;
+  const { user } = useUser();
 
   useEffect(() => {
     const fetchStatus = async () => {
