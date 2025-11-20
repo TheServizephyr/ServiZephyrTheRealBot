@@ -90,10 +90,10 @@ export default function StreetVendorQrPage() {
             animation: gradient-animation 10s ease infinite;
         }
     `}</style>
-    <div className="min-h-screen bg-slate-900 text-white font-body p-4 flex flex-col">
+    <div className="min-h-screen bg-background text-foreground font-body p-4 flex flex-col">
         <header className="flex justify-between items-center mb-6">
             <Link href="/street-vendor-dashboard" passHref>
-                <Button variant="ghost" className="text-slate-400 hover:text-white">
+                <Button variant="ghost" className="text-muted-foreground hover:text-foreground">
                     <ArrowLeft size={28} />
                 </Button>
             </Link>
@@ -134,12 +134,12 @@ export default function StreetVendorQrPage() {
                     </div>
                 </motion.div>
                 
-                <p className="mt-8 text-slate-400 max-w-md">
+                <p className="mt-8 text-muted-foreground max-w-md">
                     Print this QR code and display it at your stall. Customers can scan it to see your menu and place pre-paid orders.
                 </p>
 
                 <div className="mt-8 grid grid-cols-1 sm:grid-cols-2 gap-4 w-full max-w-lg">
-                    <Button onClick={handleDownload} variant="outline" className="text-lg h-14 px-8 border-2 border-slate-700 text-slate-300 hover:bg-slate-800 hover:text-white">
+                    <Button onClick={handleDownload} variant="outline" className="text-lg h-14 px-8 border-2 border-border text-foreground hover:bg-muted">
                         <Download className="mr-2"/> Download
                     </Button>
                      <Button onClick={handlePrint} className="text-lg h-14 px-8 bg-primary hover:bg-primary/90 text-primary-foreground">
