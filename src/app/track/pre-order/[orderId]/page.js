@@ -12,6 +12,7 @@ import { db } from '@/lib/firebase';
 import { doc, onSnapshot } from 'firebase/firestore';
 import { format } from 'date-fns';
 import GoldenCoinSpinner from '@/components/GoldenCoinSpinner';
+import { toPng } from 'html-to-image';
 
 const formatCurrency = (value) => `₹${Number(value || 0).toLocaleString('en-IN', { maximumFractionDigits: 2 })}`;
 
@@ -156,7 +157,6 @@ function PreOrderTrackingContent() {
         return 'bronze-theme';
     }, [order]);
 
-    // THE FIX: Calculate QR color code in JS based on theme
     const qrColor = useMemo(() => {
         switch(coinTheme) {
             case 'gold-theme': return '#5c3c00';
@@ -294,7 +294,7 @@ function PreOrderTrackingContent() {
                             {order.items.map((item, index) => (
                                 <div key={index} className="flex justify-between text-muted-foreground text-sm">
                                     <span>{item.quantity} x {item.name}</span>
-                                    <span>{formatCurrency(item.price * item.quantity)}</span>
+                                    <span>{formatCurrency(item.totalPrice)}</span>
                                 </div>
                             ))}
                             <div className="flex justify-between font-bold text-lg pt-2 border-t border-dashed text-green-600">
