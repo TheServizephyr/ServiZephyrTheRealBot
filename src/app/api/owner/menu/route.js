@@ -56,7 +56,7 @@ export async function GET(req) {
         console.log(`[API LOG] GET /api/owner/menu: Verified access for business ${businessId}.`);
 
         const menuRef = firestore.collection(collectionName).doc(businessId).collection('menu');
-        const menuSnap = await menuRef.get();
+        const menuSnap = await menuRef.orderBy('order', 'asc').get();
         console.log(`[API LOG] GET /api/owner/menu: Fetched ${menuSnap.size} items from menu subcollection.`);
 
         let menuData = {};
@@ -100,10 +100,6 @@ export async function GET(req) {
                 menuData[categoryKey] = [];
             }
             menuData[categoryKey].push({ id: doc.id, ...item });
-        });
-
-        Object.keys(menuData).forEach(key => {
-            menuData[key].sort((a, b) => (a.order || 0) - (b.order || 0));
         });
         
         console.log("[API LOG] GET /api/owner/menu: Successfully processed menu data. Responding to client.");
@@ -281,3 +277,5 @@ export async function PATCH(req) {
         return NextResponse.json({ message: `Backend Error: ${error.message}` }, { status: error.status || 500 });
     }
 }
+
+    

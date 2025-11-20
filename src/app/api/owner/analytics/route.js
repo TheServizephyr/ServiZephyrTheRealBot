@@ -6,8 +6,8 @@ import { format } from 'date-fns';
 
 export const dynamic = 'force-dynamic';
 
-async function verifyOwnerAndGetRestaurant(req, auth, firestore) {
-    const uid = await verifyAndGetUid(req); // Use the central helper
+async function verifyOwnerAndGetBusiness(req, auth, firestore) {
+    const uid = await verifyAndGetUid(req); // Use central helper
     
     const url = new URL(req.url, `http://${req.headers.host}`);
     const impersonatedOwnerId = url.searchParams.get('impersonate_owner_id');
@@ -45,7 +45,7 @@ export async function GET(req) {
     try {
         const auth = await getAuth();
         const firestore = await getFirestore();
-        const { restaurantId, restaurantData, businessType } = await verifyOwnerAndGetRestaurant(req, auth, firestore);
+        const { restaurantId, restaurantData, businessType } = await verifyOwnerAndGetBusiness(req, auth, firestore);
 
         const url = new URL(req.url, `http://${req.headers.host}`);
         const filter = url.searchParams.get('filter') || 'This Month';
@@ -200,3 +200,5 @@ export async function GET(req) {
         return NextResponse.json({ message: `Backend Error: ${error.message}` }, { status: error.status || 500 });
     }
 }
+
+    

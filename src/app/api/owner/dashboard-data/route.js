@@ -178,3 +178,5 @@ export async function GET(req) {
         return NextResponse.json({ message: `Backend Error: ${error.message}`, stats: zeroStats, liveOrders: [], salesChart: [], topItems: [] }, { status: error.status || 500 });
     }
 }
+
+    
