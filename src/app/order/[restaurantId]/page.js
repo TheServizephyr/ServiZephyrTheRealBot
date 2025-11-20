@@ -1345,27 +1345,24 @@ const OrderPageInternal = () => {
                     </main>
                 </div>
                  <AnimatePresence>
-                     {totalCartItems > 0 && (
+                    {totalCartItems > 0 && (
                         <motion.div
                             className="fixed bottom-0 left-0 right-0 z-30"
                             initial={{ y: 100, opacity: 0 }}
                             animate={{ y: 0, opacity: 1 }}
                             exit={{ y: 100, opacity: 0 }}
                         >
-                            <div className="bg-background/80 backdrop-blur-sm border-t border-border p-4">
-                                <div className="container mx-auto">
-                                    <Button onClick={handleCheckout} className="h-16 w-full text-lg font-bold rounded-lg shadow-lg shadow-primary/30 flex justify-between items-center text-primary-foreground px-6 bg-primary hover:bg-primary/90">
-                                        <span>{totalCartItems} Item{totalCartItems > 1 ? 's' : ''}</span>
-                                        <div className="mx-4 h-6 w-px bg-primary-foreground/30"></div>
-                                        <span className="flex items-center">
-                                            {(liveOrder && liveOrder.restaurantId === restaurantId) ? 'Add to Order' : 'View Cart'} <ArrowRight className="ml-2 h-5 w-5"/>
-                                        </span>
-                                    </Button>
-                                </div>
+                            <div className="bg-background/80 backdrop-blur-sm border-t border-border">
+                                <Button onClick={handleCheckout} className="h-16 w-full text-lg font-bold rounded-none shadow-lg shadow-primary/30 flex justify-between items-center text-primary-foreground px-6 bg-primary hover:bg-primary/90">
+                                    <span>{totalCartItems} Item{totalCartItems > 1 ? 's' : ''} | {formatCurrency(subtotal)}</span>
+                                    <span className="flex items-center">
+                                        {(liveOrder && liveOrder.restaurantId === restaurantId) ? 'Add to Order' : 'View Cart'} <ArrowRight className="ml-2 h-5 w-5"/>
+                                    </span>
+                                </Button>
                             </div>
                         </motion.div>
-                     )}
-                 </AnimatePresence>
+                    )}
+                </AnimatePresence>
 
                  <motion.div
                     className="fixed bottom-4 right-4 z-20"
