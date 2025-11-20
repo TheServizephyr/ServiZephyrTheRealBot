@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
@@ -57,7 +58,6 @@ export default function StreetVendorQrPage() {
                  throw new Error("No street vendor profile found for this user.");
             }
             
-            // Assuming one user has only one street vendor profile
             const vendorDoc = querySnapshot.docs[0];
             setVendorId(vendorDoc.id);
 
@@ -72,12 +72,6 @@ export default function StreetVendorQrPage() {
     fetchVendorData();
   }, [user, isUserLoading]);
   
-  const handleGenerateNew = async () => {
-      if (!vendorId) return;
-      alert("This feature is for future use.");
-  }
-
-  // --- FIX: Use the universal `/order` page instead of `/pre-order` ---
   const qrValue = vendorId ? `${window.location.origin}/order/${vendorId}` : '';
 
   return (
@@ -114,12 +108,12 @@ export default function StreetVendorQrPage() {
                     initial={{ scale: 0.8, opacity: 0 }}
                     animate={{ scale: 1, opacity: 1 }}
                     transition={{ type: "spring", stiffness: 260, damping: 20 }}
-                    className="animated-gradient p-8 rounded-3xl shadow-2xl shadow-primary/20"
+                    className="animated-gradient p-6 sm:p-8 rounded-3xl shadow-2xl shadow-primary/20 w-full max-w-xs sm:max-w-sm"
                 >
                     <div ref={printRef} className="bg-white p-4 rounded-xl">
                         <QRCode
                             value={qrValue}
-                            size={256}
+                            style={{ width: '100%', height: '100%' }}
                             level={"H"}
                             includeMargin={true}
                             imageSettings={{
@@ -131,8 +125,8 @@ export default function StreetVendorQrPage() {
                                 excavate: true,
                             }}
                         />
-                         <h2 className="text-2xl font-bold text-black mt-6 font-headline">Scan to Pre-Order</h2>
-                         <p className="text-slate-600">Powered by ServiZephyr</p>
+                         <h2 className="text-xl sm:text-2xl font-bold text-black mt-6 font-headline">Scan to Pre-Order</h2>
+                         <p className="text-slate-600 text-sm">Powered by ServiZephyr</p>
                     </div>
                 </motion.div>
                 
@@ -140,15 +134,12 @@ export default function StreetVendorQrPage() {
                     Print this QR code and display it at your stall. Customers can scan it to see your menu and place pre-paid orders.
                 </p>
 
-                <div className="mt-8 grid grid-cols-1 sm:grid-cols-3 gap-4 w-full max-w-lg">
+                <div className="mt-8 grid grid-cols-1 sm:grid-cols-2 gap-4 w-full max-w-lg">
                     <Button onClick={handleDownload} variant="outline" className="text-lg h-14 px-8 border-2 border-slate-700 text-slate-300 hover:bg-slate-800 hover:text-white">
                         <Download className="mr-2"/> Download
                     </Button>
                      <Button onClick={handlePrint} className="text-lg h-14 px-8 bg-primary hover:bg-primary/90 text-primary-foreground">
                         <Printer className="mr-2"/> Print
-                    </Button>
-                     <Button onClick={handleGenerateNew} variant="destructive" className="text-lg h-14 px-8" disabled>
-                        <RefreshCw className="mr-2"/> Generate New
                     </Button>
                 </div>
                 </>
