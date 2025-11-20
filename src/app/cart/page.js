@@ -191,13 +191,16 @@ const CartPageInternal = () => {
     const [liveOrder, setLiveOrder] = useState(null);
 
     useEffect(() => {
-        const liveOrderData = localStorage.getItem('liveOrder');
+        // --- START FIX: Use restaurant-specific key ---
+        const liveOrderKey = `liveOrder_${restaurantId}`;
+        const liveOrderData = localStorage.getItem(liveOrderKey);
+        // --- END FIX ---
         if (liveOrderData) {
             setLiveOrder(JSON.parse(liveOrderData));
         } else if (activeOrderId) {
             setLiveOrder({ orderId: activeOrderId, trackingToken: token });
         }
-    }, [activeOrderId, token]);
+    }, [activeOrderId, token, restaurantId]);
 
     useEffect(() => {
         console.log("[Cart Page] Component mounting. User loading:", isUserLoading);
@@ -374,7 +377,7 @@ const CartPageInternal = () => {
             
             console.log("[Cart Page] Post-paid order successful. Response:", data);
             localStorage.removeItem(`cart_${restaurantId}`);
-            localStorage.removeItem('liveOrder');
+            localStorage.removeItem(`liveOrder_${restaurantId}`);
             router.push(`/order/placed?orderId=${data.order_id}&whatsappNumber=${data.whatsappNumber}&token=${data.token}`);
         } catch (err) {
             console.error("[Cart Page] Post-paid checkout error:", err.message);
@@ -564,7 +567,9 @@ const CartPageInternal = () => {
     }
 
     const getTrackingUrl = () => {
-        if (!liveOrder) return null;
+        // --- START FIX: Check if liveOrder matches current restaurant ---
+        if (!liveOrder || liveOrder.restaurantId !== restaurantId) return null;
+        // --- END FIX ---
         const businessType = cartData?.businessType || 'restaurant'; 
         
         let path;
@@ -752,7 +757,7 @@ const CartPageInternal = () => {
                         </div>
                         
                          <div className="p-4 mt-4 bg-card rounded-lg border border-border">
-                            <h3 className="font-bold text-lg mb-2">Coupons &amp; Offers</h3>
+                            <h3 className="font-bold text-lg mb-2">Coupons & Offers</h3>
                              <Popover open={isCouponPopoverOpen} onOpenChange={setCouponPopoverOpen}>
                                 <PopoverTrigger asChild>
                                     <Button variant="outline" className="w-full justify-start text-left font-normal">
@@ -903,12 +908,12 @@ const CartPageInternal = () => {
                     {cart.length > 0 ? (
                         <Button onClick={handleConfirmOrder} className="flex-grow bg-primary hover:bg-primary/90 text-primary-foreground h-12 text-lg font-bold w-full" disabled={cart.length === 0 || isCheckoutFlow}>
                              {isCheckoutFlow ? <Loader2 className="animate-spin mr-2"/> : null}
-                            {activeOrderId ? <> <PlusCircle size={20} className="mr-2"/> Add to Existing Order </> : 
+                            {(liveOrder && liveOrder.restaurantId === restaurantId) ? <> <PlusCircle size={20} className="mr-2"/> Add to Existing Order </> : 
                             (deliveryType === 'dine-in' ? (cartData?.dineInModel === 'post-paid' ? 'Place Order' : 'Add to Tab') : 'Proceed to Checkout')}
                         </Button>
                     ) : deliveryType === 'dine-in' ? (
                          <Button onClick={() => router.push(`/checkout?restaurantId=${restaurantId}&phone=${phone || ''}&token=${token || ''}&table=${tableId}&tabId=${tabId}`)} className="flex-grow bg-green-600 hover:bg-green-700 text-white h-12 text-lg font-bold w-full">
-                            <Wallet className="mr-2"/> View Bill &amp; Pay
+                            <Wallet className="mr-2"/> View Bill & Pay
                         </Button>
                     ) : null}
                 </div>
@@ -925,5 +930,3 @@ const CartPage = () => (
 );
 
 export default CartPage;
-
-    

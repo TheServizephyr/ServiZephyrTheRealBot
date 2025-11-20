@@ -646,7 +646,11 @@ const OrderPageInternal = () => {
     const [liveOrder, setLiveOrder] = useState(null);
 
     useEffect(() => {
-        const liveOrderDataStr = localStorage.getItem('liveOrder');
+        // --- START FIX: Use restaurant-specific key ---
+        const liveOrderKey = `liveOrder_${restaurantId}`;
+        const liveOrderDataStr = localStorage.getItem(liveOrderKey);
+        // --- END FIX ---
+
         if (liveOrderDataStr) {
             const liveOrderData = JSON.parse(liveOrderDataStr);
             const pollStatus = async () => {
@@ -656,26 +660,26 @@ const OrderPageInternal = () => {
                         const statusData = await res.json();
                         const status = statusData.order?.status;
                         if (status === 'delivered' || status === 'picked_up' || status === 'rejected') {
-                            localStorage.removeItem('liveOrder');
+                            localStorage.removeItem(liveOrderKey);
                             setLiveOrder(null);
                         } else {
                             setLiveOrder(liveOrderData);
                         }
                     } else {
-                        localStorage.removeItem('liveOrder');
+                        localStorage.removeItem(liveOrderKey);
                         setLiveOrder(null);
                     }
                 } catch (e) {
                     console.error("Failed to poll live order status", e);
-                    localStorage.removeItem('liveOrder');
+                    localStorage.removeItem(liveOrderKey);
                     setLiveOrder(null);
                 }
             };
             pollStatus();
         } else if (activeOrderId && activeOrderToken) {
-            setLiveOrder({ orderId: activeOrderId, trackingToken: activeOrderToken });
+            setLiveOrder({ orderId: activeOrderId, trackingToken: activeOrderToken, restaurantId: restaurantId });
         }
-    }, [activeOrderId, activeOrderToken]);
+    }, [activeOrderId, activeOrderToken, restaurantId]);
 
 
     const [customerLocation, setCustomerLocation] = useState(null);
@@ -923,9 +927,12 @@ const OrderPageInternal = () => {
         };
         localStorage.setItem(`cart_${restaurantId}`, JSON.stringify(cartDataToSave));
         
+        // --- START FIX: Use restaurant-specific key ---
+        const liveOrderKey = `liveOrder_${restaurantId}`;
         if (liveOrder && liveOrder.orderId) {
-             localStorage.setItem('liveOrder', JSON.stringify(liveOrder));
+             localStorage.setItem(liveOrderKey, JSON.stringify(liveOrder));
         }
+        // --- END FIX ---
 
     }, [cart, notes, deliveryType, restaurantData, loyaltyPoints, loading, isTokenValid, restaurantId, phone, token, tableIdFromUrl, activeTabInfo, liveOrder]);
 
@@ -1069,10 +1076,12 @@ const OrderPageInternal = () => {
         if (deliveryType === 'dine-in' && activeTabInfo.id) {
             params.append('tabId', activeTabInfo.id);
         }
-        if (liveOrder) {
+        // --- START FIX: Check if liveOrder matches current restaurant ---
+        if (liveOrder && liveOrder.restaurantId === restaurantId) {
             params.append('activeOrderId', liveOrder.orderId);
             params.append('token', liveOrder.trackingToken);
         }
+        // --- END FIX ---
         
         const url = `/cart?${params.toString()}`;
         router.push(url);
@@ -1134,7 +1143,9 @@ const OrderPageInternal = () => {
     }
 
     const getTrackingUrl = () => {
-        if (!liveOrder) return null;
+        // --- START FIX: Check if liveOrder matches current restaurant ---
+        if (!liveOrder || liveOrder.restaurantId !== restaurantId) return null;
+        // --- END FIX ---
         
         const businessType = restaurantData.businessType || 'restaurant'; 
         
@@ -1343,7 +1354,7 @@ const OrderPageInternal = () => {
                                         <span>{totalCartItems} Item{totalCartItems > 1 ? 's' : ''}</span>
                                         <div className="mx-4 h-6 w-px bg-primary-foreground/30"></div>
                                         <span className="flex items-center">
-                                            {liveOrder ? 'Add to Order' : 'View Cart'} <ArrowRight className="ml-2 h-5 w-5"/>
+                                            {(liveOrder && liveOrder.restaurantId === restaurantId) ? 'Add to Order' : 'View Cart'} <ArrowRight className="ml-2 h-5 w-5"/>
                                         </span>
                                     </Button>
                                 </div>

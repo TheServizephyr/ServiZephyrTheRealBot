@@ -29,9 +29,13 @@ const OrderPlacedContent = () => {
                     localStorage.removeItem(`cart_${restaurantId}`);
                     console.log(`[Order Placed] Cleared cart for restaurant ${restaurantId}.`);
                 }
+                
+                // --- START FIX: Use restaurant-specific key ---
+                const liveOrderKey = `liveOrder_${restaurantId}`;
                 // Always clear any previous live order to prevent conflicts
-                localStorage.removeItem('liveOrder');
-                console.log(`[Order Placed] Cleared previous liveOrder from localStorage.`);
+                localStorage.removeItem(liveOrderKey);
+                console.log(`[Order Placed] Cleared previous liveOrder from localStorage for key: ${liveOrderKey}.`);
+                // --- END FIX ---
 
                 // The token might be in the URL (for COD) or we fetch it (for online).
                 let finalToken = tokenFromUrl;
@@ -54,14 +58,14 @@ const OrderPlacedContent = () => {
                 }
 
                 if (finalToken) {
-                    // **THE FIX**: Save the new live order details to localStorage BEFORE redirecting.
-                    localStorage.setItem('liveOrder', JSON.stringify({ 
+                    // **THE FIX**: Save the new live order details to localStorage with a restaurant-specific key BEFORE redirecting.
+                    localStorage.setItem(liveOrderKey, JSON.stringify({ 
                         orderId, 
                         restaurantId,
                         trackingToken: finalToken,
                         status: 'pending', // Initial status
                     }));
-                    console.log(`[Order Placed] Saved new live order to localStorage.`);
+                    console.log(`[Order Placed] Saved new live order to localStorage with key: ${liveOrderKey}`);
 
                     // Now, redirect to the correct tracking page
                     const isDineIn = !!whatsappNumber;
