@@ -388,8 +388,9 @@ export default function StreetVendorDashboard() {
                           !date && "text-muted-foreground"
                         )}
                       >
-                        <CalendarIcon className="mr-2 h-4 w-4" />
-                         <span>
+                         <span className="md:hidden"><CalendarIcon className="h-4 w-4" /></span>
+                        <CalendarIcon className="mr-2 h-4 w-4 hidden md:inline-block" />
+                         <span className="truncate hidden md:inline-block">
                             {date?.from ? (
                               date.to ? (
                                 <>
