@@ -122,18 +122,23 @@ const StreetVendorLayout = ({ children }) => {
 
   const SidebarContent = () => (
     <div className="flex flex-col h-full bg-card">
-      <nav className="flex-grow p-2 mt-4 space-y-2">
-        {navItems.map(item => (
-            <NavLink key={item.href} {...item} onClick={() => isMobile && setIsSidebarOpen(false)} isCollapsed={isCollapsed} />
-        ))}
-      </nav>
-      <footer className="p-4 border-t border-border">
-        {!isCollapsed && (
-             <Button onClick={handleLogout} variant="outline" className="w-full">
-                <LogOut className="mr-2 h-4 w-4"/> Logout
+        <div className="flex items-center justify-end h-[65px] px-4 border-b border-border">
+            <Button variant="ghost" size="icon" className="hidden md:flex" onClick={() => setIsSidebarOpen(!isSidebarOpen)}>
+                <ChevronLeft className={cn("transition-transform", isCollapsed && "rotate-180")} />
             </Button>
-        )}
-      </footer>
+        </div>
+        <nav className="flex-grow p-2 mt-4 space-y-2">
+            {navItems.map(item => (
+                <NavLink key={item.href} {...item} onClick={() => isMobile && setIsSidebarOpen(false)} isCollapsed={isCollapsed} />
+            ))}
+        </nav>
+        <footer className="p-4 border-t border-border">
+            {!isCollapsed && (
+                <Button onClick={handleLogout} variant="outline" className="w-full">
+                    <LogOut className="mr-2 h-4 w-4"/> Logout
+                </Button>
+            )}
+        </footer>
     </div>
   );
   
@@ -142,7 +147,7 @@ const StreetVendorLayout = ({ children }) => {
   }
 
   return (
-    <div className="min-h-screen bg-background text-foreground flex flex-col">
+    <div className="h-screen bg-background text-foreground flex flex-col">
         <InfoDialog
             isOpen={infoDialog.isOpen}
             onClose={() => setInfoDialog({ isOpen: false, title: '', message: '' })}
@@ -209,7 +214,6 @@ const StreetVendorLayout = ({ children }) => {
         </header>
 
         <div className="flex flex-grow overflow-hidden">
-            {/* Sidebar */}
             <AnimatePresence>
                 {isSidebarOpen && isMobile && (
                     <motion.div 
@@ -223,22 +227,13 @@ const StreetVendorLayout = ({ children }) => {
             </AnimatePresence>
             
             <motion.aside
-                className="fixed top-0 left-0 h-full bg-card z-50 flex flex-col border-r border-border md:relative md:h-auto md:top-auto md:left-auto md:z-auto"
+                className="fixed top-0 left-0 h-full bg-card z-50 flex flex-col md:relative md:h-full"
                 animate={isMobile ? { x: isSidebarOpen ? 0 : '-100%' } : { width: isSidebarOpen ? '256px' : '80px' }}
                 transition={{ type: 'spring', stiffness: 300, damping: 30 }}
             >
-                {/* --- FIX: Remove header from here --- */}
-                <div className="flex items-center justify-end h-[65px] px-4 border-b border-border">
-                    <Button variant="ghost" size="icon" className="hidden md:flex" onClick={() => setIsSidebarOpen(!isSidebarOpen)}>
-                        <ChevronLeft className={cn("transition-transform", isCollapsed && "rotate-180")} />
-                    </Button>
-                </div>
-                <div className="flex-grow overflow-y-auto">
-                  <SidebarContent />
-                </div>
+                <SidebarContent />
             </motion.aside>
 
-            {/* Main Content */}
             <main className="flex-grow overflow-y-auto">
                  <Suspense fallback={<div className="min-h-[80vh] flex items-center justify-center"><Loader2 className="animate-spin text-primary h-10 w-10"/></div>}>
                     {children}
