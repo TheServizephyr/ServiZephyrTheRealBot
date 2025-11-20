@@ -1,69 +1,81 @@
+
 'use client';
 
-import Link from 'next/link';
-import { usePathname, useRouter } from 'next/navigation';
-import { ClipboardList, BarChart3, User, Salad, LogOut, Loader2, Menu, X, QrCode, Banknote, ChevronLeft, Sun, Moon } from 'lucide-react';
-import { cn } from '@/lib/utils';
-import { Suspense, useState, useEffect } from 'react';
-import Image from 'next/image';
-import { Button } from '@/components/ui/button';
-import { useUser } from '@/firebase';
-import { auth } from '@/lib/firebase';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
-import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
-import { Switch } from '@/components/ui/switch';
-import { Label } from '@/components/ui/label';
-import InfoDialog from '@/components/InfoDialog';
-import { motion, AnimatePresence } from 'framer-motion';
-import { ThemeProvider } from '@/components/ThemeProvider';
-import { useTheme } from 'next-themes';
+import { useState, useEffect, Suspense } from "react";
+import Sidebar from "@/components/OwnerDashboard/Sidebar";
+import Navbar from "@/components/OwnerDashboard/Navbar";
+import styles from "@/components/OwnerDashboard/OwnerDashboard.module.css";
+import { motion } from "framer-motion";
+import { ThemeProvider } from "@/components/ThemeProvider";
+import "../globals.css";
+import { AlertTriangle, HardHat, ShieldOff, Salad, Lock, Mail, Phone, MessageSquare, Loader2 } from 'lucide-react';
+import { Button } from "@/components/ui/button";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { useUser } from "@/firebase";
 
-const navItems = [
-  { href: '/street-vendor-dashboard', icon: ClipboardList, label: 'Live Orders' },
-  { href: '/street-vendor-dashboard/menu', icon: Salad, label: 'My Menu' },
-  { href: '/street-vendor-dashboard/analytics', icon: BarChart3, label: 'Analytics' },
-  { href: '/street-vendor-dashboard/profile', icon: User, label: 'Profile' },
-  { href: '/street-vendor-dashboard/qr', icon: QrCode, label: 'My QR Code' },
-  { href: '/street-vendor-dashboard/payout-settings', icon: Banknote, label: 'Payouts' },
-];
+export const dynamic = 'force-dynamic';
 
-const NavLink = ({ href, icon: Icon, label, onClick, isCollapsed }) => {
-    const pathname = usePathname();
-    const isActive = pathname === href;
+function FeatureLockScreen({ remark, featureId }) {
+  const supportPhone = "919027872803";
+  const supportEmail = "contact@servizephyr.com";
 
-    return (
-        <Link href={href} onClick={onClick} passHref>
-             <div className={cn("flex items-center gap-4 p-3 rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground transition-colors", isActive && "bg-primary/10 text-primary font-semibold", isCollapsed && "justify-center")}>
-                <Icon className="h-6 w-6 flex-shrink-0" />
-                {!isCollapsed && <span className="text-base font-medium">{label}</span>}
+  const whatsappText = encodeURIComponent(`Hello ServiZephyr Team,\n\nMy access to the '${featureId}' feature has been restricted. The remark says: "${remark}".\n\nPlease help me resolve this.`);
+  const emailSubject = encodeURIComponent(`Issue: Access Restricted for '${featureId}' Feature`);
+  const emailBody = encodeURIComponent(`Hello ServiZephyr Team,\n\nI am writing to you because my access to the '${featureId}' feature on my dashboard has been restricted.\n\nThe remark provided is: "${remark}"\n\nCould you please provide more details or guide me on the steps to resolve this?\n\nThank you.`);
+
+
+  return (
+    <div className="flex flex-col items-center justify-center text-center h-full p-8 bg-card border border-border rounded-xl">
+        <Lock className="h-16 w-16 text-yellow-400" />
+        <h2 className="mt-6 text-2xl font-bold">Feature Restricted</h2>
+        <p className="mt-2 max-w-md text-muted-foreground">Access to this feature has been temporarily restricted by the platform administrator.</p>
+        {remark && (
+            <div className="mt-4 p-4 bg-muted/50 rounded-lg w-full max-w-md">
+                <p className="font-semibold">Admin Remark:</p>
+                <p className="text-muted-foreground italic">"{remark}"</p>
             </div>
-        </Link>
-    )
+        )}
+        <div className="mt-6 pt-6 border-t border-border w-full max-w-md">
+            <p className="text-sm font-semibold mb-4">Need help? Contact support.</p>
+            <div className="flex justify-center gap-4">
+                <a href={`https://wa.me/${supportPhone}?text=${whatsappText}`} target="_blank" rel="noopener noreferrer">
+                    <Button variant="outline"><MessageSquare className="mr-2 h-4 w-4"/> WhatsApp</Button>
+                </a>
+                <a href={`mailto:${supportEmail}?subject=${emailSubject}&body=${emailBody}`}>
+                    <Button variant="outline"><Mail className="mr-2 h-4 w-4"/> Email</Button>
+                </a>
+                <a href={`tel:${supportPhone}`}>
+                     <Button variant="outline"><Phone className="mr-2 h-4 w-4"/> Call Us</Button>
+                </a>
+            </div>
+        </div>
+    </div>
+  );
 }
 
-const StreetVendorLayoutContent = ({ children }) => {
-  const { user, isUserLoading } = useUser();
-  const router = useRouter();
-  const [restaurantStatus, setRestaurantStatus] = useState(true);
-  const [loadingStatus, setLoadingStatus] = useState(true);
-  const [infoDialog, setInfoDialog] = useState({ isOpen: false, title: '', message: '' });
-  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+
+function OwnerDashboardContent({ children }) {
   const [isMobile, setIsMobile] = useState(false);
-  const { theme, setTheme } = useTheme();
+  const [isSidebarOpen, setSidebarOpen] = useState(true);
+  const [restaurantStatus, setRestaurantStatus] = useState({
+      status: null,
+      restrictedFeatures: [],
+      suspensionRemark: ''
+  });
+  const [restaurantName, setRestaurantName] = useState('My Dashboard');
+  const [restaurantLogo, setRestaurantLogo] = useState(null);
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const impersonatedOwnerId = searchParams.get('impersonate_owner_id');
+
+  const { user, isUserLoading } = useUser();
 
   useEffect(() => {
     const checkScreenSize = () => {
       const mobile = window.innerWidth < 768;
       setIsMobile(mobile);
-      if(!mobile) setIsSidebarOpen(true);
-      else setIsSidebarOpen(false);
+      setSidebarOpen(!mobile);
     };
     checkScreenSize();
     window.addEventListener('resize', checkScreenSize);
@@ -71,200 +83,192 @@ const StreetVendorLayoutContent = ({ children }) => {
   }, []);
 
   useEffect(() => {
-    if (!isUserLoading && user) {
-      const fetchStatus = async () => {
-        try {
-          const idToken = await user.getIdToken();
-          const res = await fetch('/api/owner/settings', { headers: { 'Authorization': `Bearer ${idToken}` } });
-          if (res.ok) {
-            const data = await res.json();
-            setRestaurantStatus(data.isOpen);
-          }
-        } catch (error) {
-          console.error("Failed to fetch restaurant status:", error);
-        } finally {
-          setLoadingStatus(false);
-        }
-      };
-      fetchStatus();
-    } else if (!isUserLoading && !user) {
+    if (isUserLoading) {
+      return; 
+    }
+
+    if (!isUserLoading && !user) {
         router.push('/');
+        return;
     }
-  }, [user, isUserLoading, router]);
-  
-  const handleLogout = async () => {
-    await auth.signOut();
-    router.push('/');
-  };
 
-  const handleStatusToggle = async (newStatus) => {
-    setLoadingStatus(true);
-    try {
-      const user = auth.currentUser;
-      if (!user) throw new Error("Not authenticated");
-      const idToken = await user.getIdToken();
-      const res = await fetch('/api/owner/settings', {
-        method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${idToken}`
-        },
-        body: JSON.stringify({ isOpen: newStatus })
-      });
-      if (!res.ok) throw new Error("Failed to update status");
-      setRestaurantStatus(newStatus);
-    } catch (error) {
-      setInfoDialog({ isOpen: true, title: "Error", message: `Error updating status: ${error.message}` });
-    } finally {
-      setLoadingStatus(false);
+    const fetchRestaurantData = async () => {
+        try {
+            const idToken = await user.getIdToken();
+
+            let statusUrl = '/api/owner/status';
+            let settingsUrl = '/api/owner/settings';
+
+            if (impersonatedOwnerId) {
+                statusUrl += `?impersonate_owner_id=${impersonatedOwnerId}`;
+                settingsUrl += `?impersonate_owner_id=${impersonatedOwnerId}`;
+            }
+
+            const [statusRes, settingsRes] = await Promise.all([
+                fetch(statusUrl, { headers: { 'Authorization': `Bearer ${idToken}` } }),
+                fetch(settingsUrl, { headers: { 'Authorization': `Bearer ${idToken}` } })
+            ]);
+
+            if (settingsRes.ok) {
+                const settingsData = await settingsRes.json();
+                setRestaurantName(settingsData.restaurantName || 'My Dashboard');
+                setRestaurantLogo(settingsData.logoUrl || null);
+            }
+
+            if (statusRes.ok) {
+                const statusData = await statusRes.json();
+                setRestaurantStatus({
+                    status: statusData.status,
+                    restrictedFeatures: statusData.restrictedFeatures || [],
+                    suspensionRemark: statusData.suspensionRemark || '',
+                });
+            } else if (statusRes.status === 404) {
+                setRestaurantStatus({ status: 'pending', restrictedFeatures: [], suspensionRemark: '' });
+            } else {
+                const errorData = await statusRes.json();
+                console.error("Error fetching status:", errorData.message);
+                setRestaurantStatus({ status: 'error', restrictedFeatures: [], suspensionRemark: '' });
+            }
+
+        } catch (e) {
+            console.error("[DEBUG] OwnerLayout: CRITICAL error fetching owner data:", e);
+            setRestaurantStatus({ status: 'error', restrictedFeatures: [], suspensionRemark: '' });
+        }
     }
-  };
+    
+    if(user) {
+      fetchRestaurantData();
+    }
 
-  const isCollapsed = !isSidebarOpen && !isMobile;
+  }, [user, isUserLoading, impersonatedOwnerId, router]);
 
-  const SidebarContent = () => (
-    <div className="flex flex-col h-full bg-card">
-        <div className="flex items-center justify-end h-[65px] px-4 border-b border-border">
-            <Button variant="ghost" size="icon" className="hidden md:flex" onClick={() => setIsSidebarOpen(!isSidebarOpen)}>
-                <ChevronLeft className={cn("transition-transform", isCollapsed && "rotate-180")} />
-            </Button>
-        </div>
-        <nav className="flex-grow p-2 mt-4 space-y-2">
-            {navItems.map(item => (
-                <NavLink key={item.href} {...item} onClick={() => isMobile && setIsSidebarOpen(false)} isCollapsed={isCollapsed} />
-            ))}
-        </nav>
-        <footer className="p-4 border-t border-border">
-            {!isCollapsed && (
-                <Button onClick={handleLogout} variant="outline" className="w-full">
-                    <LogOut className="mr-2 h-4 w-4"/> Logout
-                </Button>
-            )}
-        </footer>
-    </div>
-  );
-  
   if (isUserLoading) {
-    return <div className="flex h-screen w-screen items-center justify-center bg-background"><Loader2 className="h-16 w-16 animate-spin text-primary" /></div>;
+    return (
+      <div className="flex h-screen items-center justify-center bg-background">
+        <Loader2 className="h-16 w-16 animate-spin text-primary" />
+        <p className="ml-4 text-lg">Verifying your dashboard...</p>
+      </div>
+    );
   }
 
-  return (
-    <div className="h-screen bg-background text-foreground flex flex-col">
-        <InfoDialog
-            isOpen={infoDialog.isOpen}
-            onClose={() => setInfoDialog({ isOpen: false, title: '', message: '' })}
-            title={infoDialog.title}
-            message={infoDialog.message}
-        />
-       
-        <header className="sticky top-0 z-30 bg-card/80 backdrop-blur-lg border-b border-border h-[65px] flex-shrink-0">
-          <div className="container mx-auto px-4 py-3 flex items-center justify-between h-full">
-            <div className="flex items-center gap-2">
-                <Button variant="ghost" size="icon" className="md:hidden" onClick={() => setIsSidebarOpen(true)}>
-                    <Menu />
-                </Button>
-                 <Link href="/" className="flex items-center justify-center">
-                    <Image src="/logo.png" alt="ServiZephyr Logo" width={140} height={35} className="h-9 w-auto" priority />
-                </Link>
-            </div>
-            <div className="flex items-center gap-4">
-                 <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
-                    className="h-10 w-10 rounded-full"
-                    >
-                    <Sun className="h-[1.2rem] w-[1.2rem] rotate-0 scale-100 transition-all dark:-rotate-90 dark:scale-0" />
-                    <Moon className="absolute h-[1.2rem] w-[1.2rem] rotate-90 scale-0 transition-all dark:rotate-0 dark:scale-100" />
-                    <span className="sr-only">Toggle theme</span>
-                </Button>
-                <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                        <Button variant="ghost" className="relative h-10 w-10 rounded-full">
-                           <Avatar>
-                                <AvatarImage src={user?.photoURL} alt={user?.displayName || 'User'} />
-                                <AvatarFallback>{user?.displayName?.charAt(0) || 'U'}</AvatarFallback>
-                            </Avatar>
-                        </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent className="w-64" align="end">
-                        <DropdownMenuLabel>
-                            <p className="font-semibold">{user?.displayName}</p>
-                            <p className="text-xs text-muted-foreground font-normal">{user?.email}</p>
-                        </DropdownMenuLabel>
-                        <DropdownMenuSeparator />
-                         <div className="p-2">
-                            <Label htmlFor="restaurant-status-header" className="flex items-center justify-between cursor-pointer">
-                                <div className="flex flex-col">
-                                    <span className="font-semibold">Stall Status</span>
-                                    <span className={cn("text-xs", restaurantStatus ? 'text-green-500' : 'text-red-500')}>
-                                        {restaurantStatus ? 'Open for orders' : 'Closed'}
-                                    </span>
-                                </div>
-                                <Switch
-                                    id="restaurant-status-header"
-                                    checked={restaurantStatus}
-                                    onCheckedChange={handleStatusToggle}
-                                    disabled={loadingStatus}
-                                    aria-label="Toggle restaurant open/closed status"
-                                />
-                            </Label>
-                         </div>
-                        <DropdownMenuSeparator />
-                        <DropdownMenuItem onClick={() => router.push('/street-vendor-dashboard/profile')} className="cursor-pointer">
-                            <User className="mr-2 h-4 w-4"/> Profile
-                        </DropdownMenuItem>
-                        <DropdownMenuSeparator />
-                        <DropdownMenuItem onClick={handleLogout} className="text-red-500 font-semibold cursor-pointer">
-                            <LogOut className="mr-2 h-4 w-4"/>
-                            <span>Logout</span>
-                        </DropdownMenuItem>
-                    </DropdownMenuContent>
-                </DropdownMenu>
-            </div>
-          </div>
-        </header>
-
-        <div className="flex flex-grow overflow-hidden">
-            <AnimatePresence>
-                {isSidebarOpen && isMobile && (
-                    <motion.div 
-                        className="fixed inset-0 bg-black/60 z-40 md:hidden"
-                        initial={{ opacity: 0 }}
-                        animate={{ opacity: 1 }}
-                        exit={{ opacity: 0 }}
-                        onClick={() => setIsSidebarOpen(false)}
-                    />
-                )}
-            </AnimatePresence>
-            
-            <motion.aside
-                className="fixed top-0 left-0 h-full bg-card z-50 flex flex-col md:relative md:h-full"
-                animate={isMobile ? { x: isSidebarOpen ? 0 : '-100%' } : { width: isSidebarOpen ? '256px' : '80px' }}
-                transition={{ type: 'spring', stiffness: 300, damping: 30 }}
-            >
-                <SidebarContent />
-            </motion.aside>
-
-            <main className="flex-grow overflow-y-auto">
-                 <Suspense fallback={<div className="min-h-[80vh] flex items-center justify-center"><Loader2 className="animate-spin text-primary h-10 w-10"/></div>}>
-                    {children}
-                </Suspense>
+  if (!user) {
+      return null;
+  }
+  
+  const renderStatusScreen = () => {
+      const featureId = pathname.split('/').pop();
+      
+      if (restaurantStatus.status === 'approved') {
+          return null;
+      }
+      
+      if (restaurantStatus.status === 'suspended') {
+        if (restaurantStatus.restrictedFeatures.includes(featureId)) {
+          return <FeatureLockScreen remark={restaurantStatus.suspensionRemark} featureId={featureId} />;
+        }
+        return null;
+      }
+      
+      if (restaurantStatus.status === 'error') {
+         return (
+            <main className={styles.mainContent} style={{padding: '1rem'}}>
+              <div className="flex flex-col items-center justify-center text-center h-full p-8 bg-card border border-border rounded-xl">
+                <AlertTriangle className="h-16 w-16 text-red-500" />
+                <h2 className="mt-6 text-2xl font-bold">Could Not Verify Status</h2>
+                <p className="mt-2 max-w-md text-muted-foreground">We couldn't verify your restaurant's status. This could be a temporary issue. Please refresh or contact support.</p>
+                <div className="mt-6 flex gap-4">
+                    <Button onClick={() => window.location.reload()} variant="default">Refresh</Button>
+                    <Button variant="default" onClick={() => router.push('/contact')}>Contact Support</Button>
+                </div>
+              </div>
             </main>
-        </div>
+         );
+      }
+      
+      const alwaysEnabled = ['menu', 'settings', 'connections', 'payout-settings', 'dine-in', 'bookings', 'whatsapp-direct', 'location', 'profile', 'qr'];
+      const isDisabled = !alwaysEnabled.includes(featureId);
+
+      if ((restaurantStatus.status === 'pending' || restaurantStatus.status === 'rejected') && isDisabled) {
+        return (
+          <main className={styles.mainContent} style={{padding: '1rem'}}>
+            <div className="flex flex-col items-center justify-center text-center h-full p-8 bg-card border border-border rounded-xl">
+              <HardHat className="h-16 w-16 text-yellow-400" />
+              <h2 className="mt-6 text-2xl font-bold">Account {restaurantStatus.status.charAt(0).toUpperCase() + restaurantStatus.status.slice(1)}</h2>
+              <p className="mt-2 max-w-md text-muted-foreground">
+                Your account is currently {restaurantStatus.status}. Full access will be granted upon approval. You can still set up your menu and settings.
+              </p>
+               <div className="mt-6 flex gap-4">
+                  <Button onClick={() => router.push('/street-vendor-dashboard/menu')}>
+                      <Salad className="mr-2 h-4 w-4"/> Go to Menu
+                  </Button>
+                   <Button variant="outline" onClick={() => router.push('/contact')}>Contact Support</Button>
+              </div>
+            </div>
+          </main>
+        )
+      }
+
+      return null;
+  }
+
+  const blockedContent = renderStatusScreen();
+  const isCollapsed = !isSidebarOpen && !isMobile;
+
+  return (
+    <div className="flex h-screen bg-background text-foreground">
+      <motion.aside 
+        className="fixed md:relative h-full z-50 bg-card border-r border-border flex flex-col"
+        animate={isMobile ? (isSidebarOpen ? { x: 0 } : { x: '-100%' }) : { width: isCollapsed ? '80px' : '260px' }}
+        transition={{ type: 'spring', stiffness: 300, damping: 30 }}
+        initial={false}
+      >
+        <Sidebar
+          isOpen={isSidebarOpen}
+          setIsOpen={setSidebarOpen}
+          isMobile={isMobile}
+          isCollapsed={isCollapsed}
+          restrictedFeatures={restaurantStatus.restrictedFeatures}
+          status={restaurantStatus.status}
+        />
+      </motion.aside>
+
+       {isMobile && isSidebarOpen && (
+          <div
+            className="fixed inset-0 bg-black/60 z-40"
+            onClick={() => setSidebarOpen(false)}
+          />
+        )}
+
+
+      <div className="flex-1 flex flex-col overflow-hidden">
+        <header className="flex items-center justify-between h-[65px] px-4 md:px-6 bg-card border-b border-border shrink-0">
+             <Navbar
+                isSidebarOpen={isSidebarOpen}
+                setSidebarOpen={setSidebarOpen}
+                restaurantName={restaurantName}
+                restaurantLogo={restaurantLogo}
+            />
+        </header>
+        <main className="flex-1 overflow-y-auto p-4 md:p-6">
+          {blockedContent || children}
+        </main>
+      </div>
     </div>
   );
 }
 
+
 export default function StreetVendorDashboardLayout({ children }) {
-    return (
-        <ThemeProvider
-            attribute="class"
-            defaultTheme="system"
-            enableSystem
-            disableTransitionOnChange
-        >
-            <StreetVendorLayoutContent>{children}</StreetVendorLayoutContent>
-        </ThemeProvider>
-    );
+  return (
+    <ThemeProvider
+      attribute="class"
+      defaultTheme="dark"
+      enableSystem
+      disableTransitionOnChange
+    >
+        <Suspense fallback={<div className="flex h-screen items-center justify-center bg-background"><Loader2 className="h-16 w-16 animate-spin text-primary" /></div>}>
+            <OwnerDashboardContent>{children}</OwnerDashboardContent>
+        </Suspense>
+    </ThemeProvider>
+  );
 }

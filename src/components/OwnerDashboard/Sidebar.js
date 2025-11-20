@@ -20,6 +20,7 @@ import {
   ConciergeBell,
   CalendarClock,
   MapPin,
+  QrCode,
 } from "lucide-react";
 import styles from "./OwnerDashboard.module.css";
 import SidebarLink from "./SidebarLink";
@@ -31,37 +32,53 @@ import Image from 'next/image';
 import Link from "next/link";
 
 
-const getMenuItems = (businessType) => [
-  { name: "Dashboard", icon: LayoutDashboard, href: "/owner-dashboard", featureId: "dashboard" },
-  { name: "Live Orders", icon: ClipboardList, href: "/owner-dashboard/live-orders", featureId: "live-orders" },
-  businessType === 'shop' 
-    ? { name: "Items", icon: PackageIcon, href: "/owner-dashboard/menu", featureId: "menu" } 
-    : { name: "Menu", icon: Salad, href: "/owner-dashboard/menu", featureId: "menu" },
-  { name: "Dine-In", icon: ConciergeBell, href: "/owner-dashboard/dine-in", featureId: "dine-in" },
-  { name: "Bookings", icon: CalendarClock, href: "/owner-dashboard/bookings", featureId: "bookings" },
-  { name: "Customers", icon: Users, href: "/owner-dashboard/customers", featureId: "customers" },
-  { name: "WhatsApp Direct", icon: MessageSquare, href: "/owner-dashboard/whatsapp-direct", featureId: "whatsapp-direct" },
-  { name: "Analytics", icon: BarChart2, href: "/owner-dashboard/analytics", featureId: "analytics" },
-  { name: "Delivery", icon: Truck, href: "/owner-dashboard/delivery", featureId: "delivery" },
-  { name: "Coupons", icon: Ticket, href: "/owner-dashboard/coupons", featureId: "coupons" },
-];
+const getMenuItems = (businessType) => {
+  if (businessType === 'street-vendor') {
+    return [
+      { name: "Live Orders", icon: ClipboardList, href: "/street-vendor-dashboard", featureId: "live-orders" },
+      { name: "My Menu", icon: Salad, href: "/street-vendor-dashboard/menu", featureId: "menu" },
+      { name: "Analytics", icon: BarChart2, href: "/street-vendor-dashboard/analytics", featureId: "analytics" },
+      { name: "My QR Code", icon: QrCode, href: "/street-vendor-dashboard/qr", featureId: "qr" },
+    ];
+  }
+  // Default for restaurant/shop
+  return [
+    { name: "Dashboard", icon: LayoutDashboard, href: "/owner-dashboard", featureId: "dashboard" },
+    { name: "Live Orders", icon: ClipboardList, href: "/owner-dashboard/live-orders", featureId: "live-orders" },
+    businessType === 'shop' 
+      ? { name: "Items", icon: PackageIcon, href: "/owner-dashboard/menu", featureId: "menu" } 
+      : { name: "Menu", icon: Salad, href: "/owner-dashboard/menu", featureId: "menu" },
+    { name: "Dine-In", icon: ConciergeBell, href: "/owner-dashboard/dine-in", featureId: "dine-in" },
+    { name: "Bookings", icon: CalendarClock, href: "/owner-dashboard/bookings", featureId: "bookings" },
+    { name: "Customers", icon: Users, href: "/owner-dashboard/customers", featureId: "customers" },
+    { name: "WhatsApp Direct", icon: MessageSquare, href: "/owner-dashboard/whatsapp-direct", featureId: "whatsapp-direct" },
+    { name: "Analytics", icon: BarChart2, href: "/owner-dashboard/analytics", featureId: "analytics" },
+    { name: "Delivery", icon: Truck, href: "/owner-dashboard/delivery", featureId: "delivery" },
+    { name: "Coupons", icon: Ticket, href: "/owner-dashboard/coupons", featureId: "coupons" },
+  ];
+};
 
-const settingsItems = [
-    { name: "Location", icon: MapPin, href: "/owner-dashboard/location", featureId: "location" },
-    { name: "Connections", icon: Bot, href: "/owner-dashboard/connections", featureId: "connections" },
-    { name: "Payouts", icon: Banknote, href: "/owner-dashboard/payouts", featureId: "payouts" },
-    { name: "Onboarding", icon: Banknote, href: "/owner-dashboard/payout-settings", featureId: "payout-settings" },
-    { name: "Settings", icon: Settings, href: "/owner-dashboard/settings", featureId: "settings" },
-];
+const getSettingsItems = (businessType) => {
+    if(businessType === 'street-vendor') {
+        return [
+            { name: "Profile", icon: Users, href: "/street-vendor-dashboard/profile", featureId: "profile" },
+            { name: "Payouts", icon: Banknote, href: "/street-vendor-dashboard/payout-settings", featureId: "payouts" },
+        ];
+    }
+    return [
+        { name: "Location", icon: MapPin, href: "/owner-dashboard/location", featureId: "location" },
+        { name: "Connections", icon: Bot, href: "/owner-dashboard/connections", featureId: "connections" },
+        { name: "Payouts", icon: Banknote, href: "/owner-dashboard/payouts", featureId: "payouts" },
+        { name: "Onboarding", icon: Banknote, href: "/owner-dashboard/payout-settings", featureId: "payout-settings" },
+        { name: "Settings", icon: Settings, href: "/owner-dashboard/settings", featureId: "settings" },
+    ];
+};
 
 
 export default function Sidebar({ isOpen, setIsOpen, isMobile, isCollapsed, restrictedFeatures = [], status }) {
-  const [businessType, setBusinessType] = useState('restaurant'); // Default to restaurant
+  const [businessType, setBusinessType] = useState('restaurant'); 
 
   useEffect(() => {
-    // --- THE FIX ---
-    // First, try to get the businessType from localStorage for a faster UI response.
-    // This is crucial after the user completes their profile and is redirected.
     const storedBusinessType = localStorage.getItem('businessType');
     if (storedBusinessType) {
       setBusinessType(storedBusinessType);
@@ -77,19 +94,16 @@ export default function Sidebar({ isOpen, setIsOpen, isMobile, isCollapsed, rest
                 const fetchedType = userDoc.data().businessType || 'restaurant';
                 if (fetchedType !== storedBusinessType) {
                   setBusinessType(fetchedType);
-                  // Also update localStorage to keep it in sync
                   localStorage.setItem('businessType', fetchedType);
                 }
             }
         } catch (error) {
             console.error("Error fetching business type from Firestore:", error);
-            // Fallback to default if Firestore fails but localStorage had a value
             if (!storedBusinessType) setBusinessType('restaurant');
         }
       }
     };
     
-    // Auth listener to trigger fetch
     const unsubscribe = auth.onAuthStateChanged((user) => {
         if (user) {
             fetchBusinessType();
@@ -100,7 +114,7 @@ export default function Sidebar({ isOpen, setIsOpen, isMobile, isCollapsed, rest
   }, []);
 
   const getIsDisabled = (featureId) => {
-    const alwaysEnabled = ['menu', 'settings', 'connections', 'payout-settings', 'dine-in', 'bookings', 'whatsapp-direct', 'location'];
+    const alwaysEnabled = ['menu', 'settings', 'connections', 'payout-settings', 'dine-in', 'bookings', 'whatsapp-direct', 'location', 'profile', 'qr'];
     if (alwaysEnabled.includes(featureId)) {
         return false;
     }
@@ -117,6 +131,8 @@ export default function Sidebar({ isOpen, setIsOpen, isMobile, isCollapsed, rest
   };
 
   const menuItems = getMenuItems(businessType);
+  const settingsItems = getSettingsItems(businessType);
+
 
   return (
     <>
