@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button';
 import { useUser } from '@/firebase';
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Card } from '@/components/ui/card';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, Suspense, React } from 'react';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import InfoDialog from '@/components/InfoDialog';
@@ -388,6 +388,8 @@ function VendorProfilePageContent() {
         return <div className="p-6 text-center h-screen flex items-center justify-center"><p>Could not load user data. Please log in again.</p></div>;
     }
 
+    const isBusinessOwner = user.role === 'owner' || user.role === 'restaurant-owner' || user.role === 'shop-owner' || user.role === 'street-vendor';
+
     return (
         <div className="p-4 md:p-6 text-foreground min-h-screen bg-background space-y-8">
             <InfoDialog isOpen={infoDialog.isOpen} onClose={() => setInfoDialog({ isOpen: false, title: '', message: '' })} title={infoDialog.title} message={infoDialog.message} />
@@ -515,3 +517,5 @@ export default function VendorProfilePage() {
         </Suspense>
     );
 }
+
+    
