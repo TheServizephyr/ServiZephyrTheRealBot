@@ -1,7 +1,7 @@
 
 'use client';
 
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import { motion } from 'framer-motion';
 import { ArrowLeft, Download, Printer, RefreshCw, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -13,6 +13,7 @@ import { db } from '@/lib/firebase';
 import { collection, query, where, getDocs } from 'firebase/firestore';
 import { FirestorePermissionError } from '@/firebase/errors';
 import { errorEmitter } from '@/firebase/error-emitter';
+import { toPng } from 'html-to-image';
 
 
 export default function StreetVendorQrPage() {
@@ -26,20 +27,21 @@ export default function StreetVendorQrPage() {
       documentTitle: "ServiZephyr_QR_Code",
   });
   
-  const handleDownload = () => {
-      const canvas = printRef.current.querySelector('canvas');
-      if (canvas) {
-          const pngUrl = canvas
-              .toDataURL("image/png")
-              .replace("image/png", "image/octet-stream");
-          let downloadLink = document.createElement("a");
-          downloadLink.href = pngUrl;
-          downloadLink.download = `ServiZephyr-QR-${vendorId}.png`;
-          document.body.appendChild(downloadLink);
-          downloadLink.click();
-          document.body.removeChild(downloadLink);
-      }
-  };
+  const handleDownload = useCallback(() => {
+    if (!printRef.current) return;
+
+    toPng(printRef.current, { cacheBust: true, pixelRatio: 2 })
+      .then((dataUrl) => {
+        const link = document.createElement('a');
+        link.download = `ServiZephyr-QR-${vendorId}.png`;
+        link.href = dataUrl;
+        link.click();
+      })
+      .catch((err) => {
+        console.error('oops, something went wrong!', err);
+      });
+  }, [vendorId]);
+
 
   useEffect(() => {
     if (isUserLoading) return;
@@ -108,25 +110,27 @@ export default function StreetVendorQrPage() {
                     initial={{ scale: 0.8, opacity: 0 }}
                     animate={{ scale: 1, opacity: 1 }}
                     transition={{ type: "spring", stiffness: 260, damping: 20 }}
-                    className="animated-gradient p-6 sm:p-8 rounded-3xl shadow-2xl shadow-primary/20 w-full max-w-xs sm:max-w-sm"
+                    className="w-full max-w-xs sm:max-w-sm"
                 >
-                    <div ref={printRef} className="bg-white p-4 rounded-xl">
-                        <QRCode
-                            value={qrValue}
-                            style={{ width: '100%', height: '100%' }}
-                            level={"H"}
-                            includeMargin={true}
-                            imageSettings={{
-                                src: "/logo.png",
-                                x: undefined,
-                                y: undefined,
-                                height: 48,
-                                width: 48,
-                                excavate: true,
-                            }}
-                        />
-                         <h2 className="text-xl sm:text-2xl font-bold text-black mt-6 font-headline">Scan to Pre-Order</h2>
-                         <p className="text-slate-600 text-sm">Powered by ServiZephyr</p>
+                    <div ref={printRef} className="animated-gradient p-6 sm:p-8 rounded-3xl shadow-2xl shadow-primary/20">
+                        <div className="bg-white p-4 rounded-xl">
+                            <QRCode
+                                value={qrValue}
+                                style={{ width: '100%', height: '100%' }}
+                                level={"H"}
+                                includeMargin={true}
+                                imageSettings={{
+                                    src: "/logo.png",
+                                    x: undefined,
+                                    y: undefined,
+                                    height: 48,
+                                    width: 48,
+                                    excavate: true,
+                                }}
+                            />
+                             <h2 className="text-xl sm:text-2xl font-bold text-black mt-6 font-headline">Scan to Pre-Order</h2>
+                             <p className="text-slate-600 text-sm">Powered by ServiZephyr</p>
+                        </div>
                     </div>
                 </motion.div>
                 
