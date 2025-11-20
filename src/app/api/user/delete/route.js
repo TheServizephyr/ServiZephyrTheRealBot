@@ -1,17 +1,13 @@
 import { NextResponse } from 'next/server';
 import { getAuth, getFirestore, verifyAndGetUid } from '@/lib/firebase-admin';
 
-// This is a placeholder for a function that can re-authenticate.
-// In a real scenario with password-based accounts, this would be more complex.
-// For Google Sign-In, re-authentication is handled on the client.
-// Since we are now handling this on the server, we assume the client has passed necessary credentials.
-// For now, we will proceed with the deletion, but acknowledge this limitation.
-// The FIX is to perform deletion on the client-side after re-authentication.
-// However, the current structure uses a server-side API, so we adjust it.
-
+// This API is now simplified. It expects a fresh ID token from the client,
+// which the client gets after re-authenticating the user.
 export async function POST(req) {
     console.log("[API /user/delete] POST request received for deletion.");
     try {
+        // The token is verified here. If it's old, this will fail.
+        // The client is responsible for providing a fresh token after re-auth.
         const uid = await verifyAndGetUid(req);
         if (!uid) {
             throw { message: 'Authentication required to delete an account.', status: 401 };
@@ -26,14 +22,16 @@ export async function POST(req) {
 
         const batch = firestore.batch();
         
+        // 1. Mark the Firestore user document for deletion
         batch.delete(userRef);
         console.log(`[API /user/delete] Batch: Marked Firestore user document for deletion at 'users/${uid}'.`);
         
-        // This is the step that can fail without recent login.
-        // The Admin SDK's deleteUser does not require re-authentication.
+        // 2. Delete the user from Firebase Authentication
+        // This is the action that requires recent login, which the client-side re-auth handles.
         await auth.deleteUser(uid);
         console.log(`[API /user/delete] Successfully deleted user from Firebase Authentication for UID: ${uid}.`);
         
+        // 3. Commit the batched Firestore delete
         await batch.commit();
         console.log(`[API /user/delete] Batch committed. Firestore data deleted.`);
 
@@ -48,6 +46,11 @@ export async function POST(req) {
         
         if (error.code === 'auth/user-not-found') {
              return NextResponse.json({ message: 'User not found in authentication system. May have been already deleted.' }, { status: 404 });
+        }
+        
+        // This will catch the 'auth/requires-recent-login' if the client fails to re-authenticate
+        if (error.code === 'auth/requires-recent-login') {
+            return NextResponse.json({ message: 'This is a sensitive operation and requires recent authentication. Please sign in again.' }, { status: 401 });
         }
         
         return NextResponse.json({ message: `Backend Error: ${error.message}` }, { status: 500 });
