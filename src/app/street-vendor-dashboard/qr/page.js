@@ -138,12 +138,9 @@ export default function StreetVendorQrPage() {
                     Print this QR code and display it at your stall. Customers can scan it to see your menu and place pre-paid orders.
                 </p>
 
-                <div className="mt-8 grid grid-cols-1 sm:grid-cols-2 gap-4 w-full max-w-lg">
+                <div className="mt-8 grid grid-cols-1 gap-4 w-full max-w-lg">
                     <Button onClick={handleDownload} variant="outline" className="text-lg h-14 px-8 border-2 border-border text-foreground hover:bg-muted">
-                        <Download className="mr-2"/> Download
-                    </Button>
-                     <Button onClick={handlePrint} className="text-lg h-14 px-8 bg-primary hover:bg-primary/90 text-primary-foreground">
-                        <Printer className="mr-2"/> Print
+                        <Download className="mr-2"/> Download PNG
                     </Button>
                 </div>
                 </>
