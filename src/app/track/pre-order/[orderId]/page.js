@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useState, useEffect, useMemo, useCallback, useRef, Suspense } from 'react';
@@ -170,7 +171,7 @@ function PreOrderTrackingContent() {
     
     const token = order?.dineInToken || '----';
     const [tokenPart1, tokenPart2] = token.includes('-') ? token.split('-') : [token, ''];
-    const qrValue = orderId ? `https://servizephyr.com/street-vendor-dashboard?collect_order=${orderId}` : '';
+    const qrValue = orderId ? `${window.location.origin}/street-vendor-dashboard?collect_order=${orderId}` : '';
     const orderDate = order.orderDate?.toDate ? order.orderDate.toDate() : new Date();
     const formattedDate = format(orderDate, 'dd MMM, p');
     
@@ -250,7 +251,7 @@ function PreOrderTrackingContent() {
                                                 <text><textPath href="#backCurve" startOffset="50%" textAnchor="middle">★ SECURED BY Servizephyr ★ YOUR TRUSTED PARTNER ★</textPath></text>
                                             </svg>
                                             <div className="qr-box">
-                                                <QRCode
+                                                 <QRCode
                                                     value={qrValue}
                                                     size={140}
                                                     level={"H"}
@@ -281,7 +282,7 @@ function PreOrderTrackingContent() {
                             {(order.items || []).map((item, i) => (
                                 <div key={i} className="flex justify-between text-sm text-muted-foreground">
                                     <span>{item.quantity}x {item.name}</span>
-                                    <span>₹{item.totalPrice || (item.price * item.quantity)}</span>
+                                    <span>₹{item.price * item.quantity}</span>
                                 </div>
                             ))}
                          </div>
