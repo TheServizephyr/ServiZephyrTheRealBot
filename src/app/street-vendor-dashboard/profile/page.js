@@ -1,14 +1,15 @@
+
 'use client';
 
+import React, { useState, useEffect, Suspense } from 'react';
 import { motion } from 'framer-motion';
-import { User, LogOut, ChevronRight, ShoppingBag, MapPin, Settings, Edit, Save, XCircle, Trash2, KeyRound, Eye, EyeOff, FileText, Bot, Truck, Image as ImageIcon, Upload, X, IndianRupee, Wallet, ChevronsUpDown, Check, Store, ConciergeBell, Loader2, ArrowLeft, QrCode, Banknote } from 'lucide-react';
+import { User, LogOut, ChevronRight, ShoppingBag, MapPin, Settings, Edit, Save, XCircle, Trash2, KeyRound, Eye, EyeOff, FileText, Bot, Truck, Image as ImageIcon, Upload, X, IndianRupee, Wallet, ChevronsUpDown, Check, Store, ConciergeBell, Loader2, ArrowLeft, QrCode, Banknote, Mail } from 'lucide-react';
 import { auth } from '@/lib/firebase';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { useUser } from '@/firebase';
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Card } from '@/components/ui/card';
-import { useState, useEffect, Suspense, React } from 'react';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import InfoDialog from '@/components/InfoDialog';
@@ -139,14 +140,13 @@ const DeleteAccountModal = ({ isOpen, setIsOpen }) => {
     };
 
     return (
-        <>
-        <InfoDialog
-            isOpen={infoDialog.isOpen}
-            onClose={() => setInfoDialog({ isOpen: false, title: '', message: '' })}
-            title={infoDialog.title}
-            message={infoDialog.message}
-        />
         <Dialog open={isOpen} onOpenChange={setIsOpen}>
+            <InfoDialog
+                isOpen={infoDialog.isOpen}
+                onClose={() => setInfoDialog({ isOpen: false, title: '', message: '' })}
+                title={infoDialog.title}
+                message={infoDialog.message}
+            />
             <DialogContent className="sm:max-w-md bg-destructive/10 border-destructive text-foreground backdrop-blur-md">
                 <DialogHeader>
                     <DialogTitle className="text-2xl text-destructive-foreground">Permanently Delete Account</DialogTitle>
@@ -177,7 +177,6 @@ const DeleteAccountModal = ({ isOpen, setIsOpen }) => {
                 </DialogFooter>
             </DialogContent>
         </Dialog>
-        </>
     );
 };
 
@@ -517,5 +516,3 @@ export default function VendorProfilePage() {
         </Suspense>
     );
 }
-
-    
