@@ -1,4 +1,3 @@
-
 'use client';
 
 import React, { useState, useEffect, useMemo, useCallback, useRef, Suspense } from 'react';
@@ -282,7 +281,7 @@ function PreOrderTrackingContent() {
                             {(order.items || []).map((item, i) => (
                                 <div key={i} className="flex justify-between text-sm text-muted-foreground">
                                     <span>{item.quantity}x {item.name}</span>
-                                    <span>₹{item.price * item.quantity}</span>
+                                    <span>₹{item.price}</span>
                                 </div>
                             ))}
                          </div>
@@ -305,5 +304,3 @@ export default function PreOrderTrackingPage() {
         </Suspense>
     )
 }
-
-    
