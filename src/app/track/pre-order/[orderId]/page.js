@@ -1,9 +1,8 @@
-
 'use client';
 
 import React, { useState, useEffect, useMemo, useCallback, useRef, Suspense } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Loader2, ArrowLeft, CheckCircle, Check } from 'lucide-react';
+import { Loader2, ArrowLeft, CheckCircle, Check, IndianRupee, ShoppingBag, User } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useRouter, useParams, useSearchParams } from 'next/navigation';
 import { cn } from '@/lib/utils';
@@ -245,29 +244,24 @@ function PreOrderTrackingContent() {
                                             </div>
                                         </div>
 
-                                        <div className="coin-face coin-back p-4">
+                                        <div className="coin-face coin-back">
                                             <div className="texture-overlay"></div>
                                             <div className="sheen"></div>
-                                            <div className="w-full h-full flex flex-col justify-between items-center text-center">
-                                                <div className="w-full overflow-hidden text-ellipsis">
-                                                    {(order.items || []).map((item, i) => (
-                                                        <p key={i} className="text-xs font-semibold" style={{color: 'var(--coin-text-color)'}}>{item.quantity}x {item.name}</p>
-                                                    ))}
-                                                     <p className="font-bold text-sm mt-1" style={{color: 'var(--coin-text-color-dark)'}}>Total: ₹{order.totalAmount}</p>
-                                                </div>
-                                                <div className="qr-box">
-                                                    <QRCode
-                                                        value={qrValue}
-                                                        size={140}
-                                                        level={"H"}
-                                                        bgColor="transparent"
-                                                        fgColor="var(--coin-text-color-dark)"
-                                                    />
-                                                </div>
-                                                <p className="text-xs font-bold" style={{color: 'var(--coin-text-color-dark)'}}>Powered by ServiZephyr</p>
+                                            <svg className="rotating-text-svg" viewBox="0 0 200 200">
+                                                <path id="backCurve" d="M 25,100 a 75,75 0 1,1 150,0 a 75,75 0 1,1 -150,0" fill="none"/>
+                                                <text><textPath href="#backCurve" startOffset="50%" textAnchor="middle">★ SCAN TO COLLECT ★ SCAN TO COLLECT ★</textPath></text>
+                                            </svg>
+                                            <div className="qr-box">
+                                                <QRCode
+                                                    value={qrValue}
+                                                    size={140}
+                                                    level={"H"}
+                                                    bgColor="transparent"
+                                                    fgColor="var(--coin-text-color-dark)"
+                                                />
                                             </div>
+                                            <p className="qr-label">Powered by ServiZephyr</p>
                                         </div>
-
                                     </div>
                                 </div>
                             </div>
@@ -278,7 +272,26 @@ function PreOrderTrackingContent() {
             </AnimatePresence>
 
             {!isOrderComplete && (
-                <footer className="w-full flex flex-col items-center gap-4 z-20 pb-8">
+                <footer className="w-full flex flex-col items-center gap-6 z-20 pb-8">
+                     <motion.div
+                        initial={{ opacity: 0, y: 10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        className="bg-card border border-border p-4 rounded-xl shadow-lg w-full max-w-sm"
+                     >
+                         <h4 className="font-bold text-lg text-foreground mb-2 flex items-center gap-2"><ShoppingBag size={18}/> Your Order</h4>
+                         <div className="space-y-1 max-h-24 overflow-y-auto pr-2">
+                            {(order.items || []).map((item, i) => (
+                                <div key={i} className="flex justify-between text-sm text-muted-foreground">
+                                    <span>{item.quantity}x {item.name}</span>
+                                    <span>₹{item.price * item.quantity}</span>
+                                </div>
+                            ))}
+                         </div>
+                         <div className="flex justify-between font-bold text-lg border-t border-dashed pt-2 mt-2">
+                            <span>Total</span>
+                            <span className="text-primary">₹{order.totalAmount}</span>
+                         </div>
+                     </motion.div>
                     <StatusTimeline currentStatus={order.status} />
                 </footer>
             )}
