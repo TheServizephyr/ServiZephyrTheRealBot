@@ -35,7 +35,7 @@ import {
 import { useWindowSize } from 'react-use';
 import { useUser } from '@/firebase';
 import InfoDialog from '@/components/InfoDialog';
-import { Loader2 } from 'lucide-react';
+import GoldenCoinSpinner from '@/components/GoldenCoinSpinner';
 
 
 const SidebarLink = ({ href, icon: Icon, children, isCollapsed }) => {
@@ -113,7 +113,7 @@ function AdminLayoutContent({ children }) {
   if (isUserLoading) {
       return (
           <div className="flex h-screen items-center justify-center bg-background">
-              <Loader2 className="h-16 w-16 animate-spin text-primary" />
+              <GoldenCoinSpinner />
           </div>
       );
   }

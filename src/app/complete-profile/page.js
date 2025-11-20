@@ -6,6 +6,7 @@ import { motion } from 'framer-motion';
 import { User, Store, Shield, ShoppingCart, Phone, Key, ArrowRight, MapPin, HelpCircle, Bike, Map } from 'lucide-react';
 import { auth, db } from '@/lib/firebase';
 import { doc, getDoc } from 'firebase/firestore';
+import GoldenCoinSpinner from '@/components/GoldenCoinSpinner';
 
 
 const cardVariants = {
@@ -289,7 +290,7 @@ export default function CompleteProfile() {
   if (loading && !error) {
     return (
         <div className="min-h-screen flex items-center justify-center bg-background">
-            <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-primary"></div>
+            <GoldenCoinSpinner/>
         </div>
     );
   }

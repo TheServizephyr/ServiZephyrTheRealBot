@@ -14,6 +14,7 @@ import QRCode from 'qrcode.react';
 import { Input } from '@/components/ui/input';
 import { useUser } from '@/firebase';
 import InfoDialog from '@/components/InfoDialog';
+import GoldenCoinSpinner from '@/components/GoldenCoinSpinner';
 
 
 const TokenVerificationLock = ({ message }) => (
@@ -409,7 +410,7 @@ const CheckoutPageInternal = () => {
     }
     
     if (loading && !cartData) {
-        return <div className="min-h-screen bg-background flex items-center justify-center"><div className="animate-spin rounded-full h-16 w-16 border-b-2 border-primary"></div></div>;
+        return <div className="min-h-screen bg-background flex items-center justify-center"><GoldenCoinSpinner/></div>;
     }
     
     if (tokenError) {
@@ -417,7 +418,7 @@ const CheckoutPageInternal = () => {
     }
 
     if (!isTokenValid) {
-        return <div className="min-h-screen bg-background flex items-center justify-center"><Loader2 className="animate-spin text-primary h-16 w-16"/></div>;
+        return <div className="min-h-screen bg-background flex items-center justify-center"><GoldenCoinSpinner/></div>;
     }
 
     const cameToPay = (!cart || cart.length === 0) && tabId;
@@ -615,7 +616,7 @@ const CheckoutPageInternal = () => {
 
 
 const CheckoutPage = () => (
-    <Suspense fallback={<div className="min-h-screen bg-background flex items-center justify-center"><div className="animate-spin rounded-full h-16 w-16 border-b-2 border-primary"></div></div>}>
+    <Suspense fallback={<div className="min-h-screen bg-background flex items-center justify-center"><GoldenCoinSpinner/></div>}>
         <CheckoutPageInternal />
     </Suspense>
 );

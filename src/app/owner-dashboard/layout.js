@@ -12,6 +12,7 @@ import { AlertTriangle, HardHat, ShieldOff, Salad, Lock, Mail, Phone, MessageSqu
 import { Button } from "@/components/ui/button";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useUser } from "@/firebase";
+import GoldenCoinSpinner from "@/components/GoldenCoinSpinner";
 
 export const dynamic = 'force-dynamic';
 
@@ -145,8 +146,7 @@ function OwnerDashboardContent({ children }) {
   if (isUserLoading) {
     return (
       <div className="flex h-screen items-center justify-center bg-background">
-        <Loader2 className="h-16 w-16 animate-spin text-primary" />
-        <p className="ml-4 text-lg">Verifying your dashboard...</p>
+        <GoldenCoinSpinner />
       </div>
     );
   }
@@ -266,7 +266,7 @@ export default function OwnerDashboardRootLayout({ children }) {
       enableSystem
       disableTransitionOnChange
     >
-        <Suspense fallback={<div className="flex h-screen items-center justify-center bg-background"><Loader2 className="h-16 w-16 animate-spin text-primary" /></div>}>
+        <Suspense fallback={<div className="flex h-screen items-center justify-center bg-background"><GoldenCoinSpinner /></div>}>
             <OwnerDashboardContent>{children}</OwnerDashboardContent>
         </Suspense>
     </ThemeProvider>

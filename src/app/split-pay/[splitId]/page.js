@@ -11,6 +11,7 @@ import Script from 'next/script';
 import { db } from '@/lib/firebase';
 import { doc, onSnapshot } from 'firebase/firestore';
 import { cn } from '@/lib/utils';
+import GoldenCoinSpinner from '@/components/GoldenCoinSpinner';
 
 const formatCurrency = (value) => `₹${Number(value || 0).toLocaleString('en-IN', { maximumFractionDigits: 2 })}`;
 
@@ -201,13 +202,13 @@ export default function SplitPayPage() {
     const myShareCard = useMemo(() => splitData?.shares.find(s => s.shareId === shareToPayId), [splitData, shareToPayId]);
 
     if (loading) {
-        return <div className="min-h-screen bg-background flex items-center justify-center"><Loader2 className="animate-spin text-primary h-16 w-16" /></div>;
+        return <div className="min-h-screen bg-background flex items-center justify-center"><GoldenCoinSpinner/></div>;
     }
     if (error) {
         return <div className="min-h-screen bg-background flex items-center justify-center text-red-500 p-4 text-center">{error}</div>;
     }
     if (!splitData) {
-        return <div className="min-h-screen bg-background flex items-center justify-center text-muted-foreground p-4 text-center">Session data not available.</div>
+        return <div className="min-h-screen bg-background flex items-center justify-center text-muted-foreground p-4 text-center">Session data not available.</div>;
     }
     if (splitData.status === 'completed') {
         return (

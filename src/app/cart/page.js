@@ -15,6 +15,7 @@ import { Input } from '@/components/ui/input';
 import InfoDialog from '@/components/InfoDialog';
 import { format, setHours, setMinutes, getHours, getMinutes, addMinutes } from 'date-fns';
 import { useUser } from '@/firebase'; // Import the useUser hook
+import GoldenCoinSpinner from '@/components/GoldenCoinSpinner';
 
 const ClearCartDialog = ({ isOpen, onClose, onConfirm }) => {
     return (
@@ -555,7 +556,7 @@ const CartPageInternal = () => {
     const isStreetVendor = deliveryType === 'street-vendor-pre-order';
     
     if (loadingPage) {
-        return <div className="min-h-screen bg-background flex items-center justify-center"><Loader2 className="animate-spin text-primary h-16 w-16"/></div>;
+        return <div className="min-h-screen bg-background flex items-center justify-center"><GoldenCoinSpinner/></div>;
     }
 
     if (tokenError) {
@@ -924,7 +925,7 @@ const CartPageInternal = () => {
 }
 
 const CartPage = () => (
-    <Suspense fallback={<div className="min-h-screen bg-background flex items-center justify-center"><div className="animate-spin rounded-full h-16 w-16 border-b-2 border-primary"></div></div>}>
+    <Suspense fallback={<div className="min-h-screen bg-background flex items-center justify-center"><GoldenCoinSpinner/></div>}>
         <CartPageInternal />
     </Suspense>
 );

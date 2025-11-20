@@ -6,12 +6,12 @@ import { usePathname, useRouter } from 'next/navigation';
 import { Home, Map, MessageSquare, User, Sun, Moon } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Suspense, useEffect } from 'react';
-import { Loader2 } from 'lucide-react';
 import { useTheme } from 'next-themes';
 import { Button } from '@/components/ui/button';
 import { ThemeProvider } from '@/components/ThemeProvider';
 import Image from 'next/image';
 import { useUser } from '@/firebase';
+import GoldenCoinSpinner from '@/components/GoldenCoinSpinner';
 
 const navItems = [
   { href: '/customer-dashboard', icon: Home, label: 'My Hub' },
@@ -46,7 +46,7 @@ const CustomerDashboardContent = ({ children }) => {
   if (isUserLoading) {
     return (
       <div className="flex h-screen items-center justify-center bg-background">
-        <Loader2 className="h-16 w-16 animate-spin text-primary" />
+        <GoldenCoinSpinner />
       </div>
     );
   }
@@ -74,7 +74,7 @@ const CustomerDashboardContent = ({ children }) => {
           </div>
         </header>
         <main className="flex-grow pb-24">
-             <Suspense fallback={<div className="min-h-[80vh] flex items-center justify-center"><Loader2 className="animate-spin text-primary h-10 w-10"/></div>}>
+             <Suspense fallback={<div className="min-h-[80vh] flex items-center justify-center"><GoldenCoinSpinner/></div>}>
                 {children}
             </Suspense>
         </main>

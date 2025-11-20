@@ -2,8 +2,8 @@
 'use client';
 
 import React, { Suspense, useEffect } from 'react';
-import { Loader2 } from 'lucide-react';
 import { useRouter, useSearchParams } from 'next/navigation';
+import GoldenCoinSpinner from '@/components/GoldenCoinSpinner';
 
 const OrderPlacedContent = () => {
     const router = useRouter();
@@ -101,7 +101,7 @@ const OrderPlacedContent = () => {
 
     return (
          <div className="min-h-screen bg-background text-foreground flex flex-col items-center justify-center text-center p-4 green-theme">
-            <Loader2 className="w-24 h-24 text-primary animate-spin" />
+            <GoldenCoinSpinner />
             <h1 className="text-4xl font-bold text-foreground mt-6">Placing Your Order...</h1>
             <p className="text-lg text-muted-foreground mt-2">Finalizing details and creating your tracking link. Please wait a moment.</p>
         </div>
@@ -111,7 +111,7 @@ const OrderPlacedContent = () => {
 
 export default function OrderPlacedPage() {
     return (
-        <Suspense fallback={<div className="min-h-screen bg-background flex items-center justify-center"><Loader2 className="w-16 h-16 text-primary animate-spin"/></div>}>
+        <Suspense fallback={<div className="min-h-screen bg-background flex items-center justify-center"><GoldenCoinSpinner/></div>}>
             <OrderPlacedContent />
         </Suspense>
     );

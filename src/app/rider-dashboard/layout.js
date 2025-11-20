@@ -10,6 +10,7 @@ import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { LayoutDashboard, Wallet, LogOut, User, Loader2 } from 'lucide-react';
 import { useUser } from '@/firebase';
+import GoldenCoinSpinner from '@/components/GoldenCoinSpinner';
 
 export default function RiderLayout({ children }) {
     const { user, isUserLoading } = useUser();
@@ -53,7 +54,7 @@ export default function RiderLayout({ children }) {
     if (isUserLoading) {
          return (
              <div className="flex h-screen items-center justify-center bg-background">
-                <Loader2 className="h-16 w-16 animate-spin text-primary" />
+                <GoldenCoinSpinner />
              </div>
          );
     }

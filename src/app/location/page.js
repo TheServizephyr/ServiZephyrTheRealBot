@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button';
 import { useUser } from '@/firebase';
 import InfoDialog from '@/components/InfoDialog';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
+import GoldenCoinSpinner from '@/components/GoldenCoinSpinner';
 
 const TokenVerificationLock = ({ message }) => (
     <div className="min-h-screen bg-background flex flex-col items-center justify-center text-center p-4">
@@ -233,7 +234,7 @@ const SelectLocationInternal = () => {
     if (!isTokenValid) {
         return (
             <div className="min-h-screen bg-background flex items-center justify-center">
-                <Loader2 className="animate-spin text-primary h-16 w-16"/>
+                <GoldenCoinSpinner/>
             </div>
         );
     }
@@ -308,7 +309,7 @@ const SelectLocationInternal = () => {
 
 export default function SelectLocationPage() {
     return (
-        <Suspense fallback={<div className="min-h-screen bg-background flex items-center justify-center"><Loader2 className="animate-spin text-primary h-16 w-16"/></div>}>
+        <Suspense fallback={<div className="min-h-screen bg-background flex items-center justify-center"><GoldenCoinSpinner/></div>}>
             <SelectLocationInternal />
         </Suspense>
     );
