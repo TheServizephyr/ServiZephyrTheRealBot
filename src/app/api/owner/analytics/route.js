@@ -1,4 +1,5 @@
 
+
 import { NextResponse } from 'next/server';
 import { getAuth, getFirestore, verifyAndGetUid } from '@/lib/firebase-admin';
 import { format } from 'date-fns';
@@ -23,20 +24,17 @@ async function verifyOwnerAndGetRestaurant(req, auth, firestore) {
     if (userRole === 'admin' && impersonatedOwnerId) {
         console.log(`[API Impersonation] Admin ${uid} is viewing analytics for owner ${impersonatedOwnerId}.`);
         targetOwnerId = impersonatedOwnerId;
-    } else if (userRole !== 'owner' && userRole !== 'restaurant-owner' && userRole !== 'shop-owner') {
+    } else if (!['owner', 'restaurant-owner', 'shop-owner', 'street-vendor'].includes(userRole)) {
         throw { message: 'Access Denied: You do not have sufficient privileges.', status: 403 };
     }
 
-    const restaurantsQuery = await firestore.collection('restaurants').where('ownerId', '==', targetOwnerId).limit(1).get();
-    if (!restaurantsQuery.empty) {
-        const restaurantDoc = restaurantsQuery.docs[0];
-        return { restaurantId: restaurantDoc.id, restaurantData: restaurantDoc.data(), businessType: 'restaurant' };
-    }
-
-    const shopsQuery = await firestore.collection('shops').where('ownerId', '==', targetOwnerId).limit(1).get();
-    if (!shopsQuery.empty) {
-        const shopDoc = shopsQuery.docs[0];
-        return { restaurantId: shopDoc.id, restaurantData: shopDoc.data(), businessType: 'shop' };
+    const collectionsToTry = ['restaurants', 'shops', 'street_vendors'];
+    for (const collectionName of collectionsToTry) {
+        const query = await firestore.collection(collectionName).where('ownerId', '==', targetOwnerId).limit(1).get();
+        if (!query.empty) {
+            const doc = query.docs[0];
+            return { restaurantId: doc.id, restaurantData: doc.data(), businessType: doc.data().businessType || collectionName.slice(0,-1) };
+        }
     }
     
     throw { message: 'No business associated with this owner.', status: 404 };
@@ -88,8 +86,12 @@ export async function GET(req) {
         endDate.setHours(23,59,59,999);
 
         const ordersRef = firestore.collection('orders').where('restaurantId', '==', restaurantId);
-        const businessCollectionName = businessType === 'restaurant' ? 'restaurants' : 'shops';
         
+        let businessCollectionName;
+        if(businessType === 'restaurant') businessCollectionName = 'restaurants';
+        else if (businessType === 'shop') businessCollectionName = 'shops';
+        else if (businessType === 'street-vendor') businessCollectionName = 'street_vendors';
+
         const [currentOrdersSnap, prevOrdersSnap, allMenuSnap, allCustomersSnap, rejectedOrdersSnap] = await Promise.all([
             ordersRef.where('orderDate', '>=', startDate).where('orderDate', '<=', endDate).where('status', '!=', 'rejected').get(),
             ordersRef.where('orderDate', '>=', prevStartDate).where('orderDate', '<', startDate).where('status', '!=', 'rejected').get(),

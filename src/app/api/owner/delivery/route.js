@@ -23,20 +23,17 @@ async function verifyOwnerAndGetBusiness(req, auth, firestore) {
     if (userRole === 'admin' && impersonatedOwnerId) {
         console.log(`[API Impersonation] Admin ${uid} is viewing data for owner ${impersonatedOwnerId}.`);
         targetOwnerId = impersonatedOwnerId;
-    } else if (userRole !== 'owner' && userRole !== 'restaurant-owner' && userRole !== 'shop-owner') {
+    } else if (!['owner', 'restaurant-owner', 'shop-owner', 'street-vendor'].includes(userRole)) {
         throw { message: 'Access Denied: You do not have sufficient privileges.', status: 403 };
     }
 
-    const restaurantsQuery = await firestore.collection('restaurants').where('ownerId', '==', targetOwnerId).limit(1).get();
-    if (!restaurantsQuery.empty) {
-        const doc = restaurantsQuery.docs[0];
-        return { uid: targetOwnerId, businessId: doc.id, collectionName: 'restaurants', isAdmin: userRole === 'admin' };
-    }
-
-    const shopsQuery = await firestore.collection('shops').where('ownerId', '==', targetOwnerId).limit(1).get();
-    if (!shopsQuery.empty) {
-        const doc = shopsQuery.docs[0];
-        return { uid: targetOwnerId, businessId: doc.id, collectionName: 'shops', isAdmin: userRole === 'admin' };
+    const collectionsToTry = ['restaurants', 'shops', 'street_vendors'];
+    for (const collectionName of collectionsToTry) {
+        const query = await firestore.collection(collectionName).where('ownerId', '==', targetOwnerId).limit(1).get();
+        if (!query.empty) {
+            const doc = query.docs[0];
+            return { uid: targetOwnerId, businessId: doc.id, collectionName: collectionName, isAdmin: userRole === 'admin' };
+        }
     }
     
     throw { message: 'No business associated with this owner.', status: 404 };
