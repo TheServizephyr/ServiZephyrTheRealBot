@@ -1,4 +1,5 @@
 
+
 'use client';
 
 import React, { useState, useEffect, Suspense, useMemo, useCallback, useRef } from 'react';
@@ -197,11 +198,13 @@ const MenuItemCard = ({ item, quantity, onAdd, onIncrement, onDecrement }) => {
     }, [item.portions]);
 
     return (
-        <motion.div 
-            className="flex gap-4 py-6 border-b border-border"
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.3 }}
+        <motion.div
+          layout
+          className="flex gap-4 py-6 border-b border-border bg-card rounded-xl p-4 shadow-md transition-all duration-300"
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.3 }}
+          whileHover={{ y: -4, boxShadow: "0 10px 20px hsla(var(--primary), 0.2)" }}
         >
             <div className="flex-grow flex flex-col">
                 <div className="flex items-center gap-2 mb-1">
