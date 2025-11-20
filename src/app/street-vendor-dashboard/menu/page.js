@@ -1,7 +1,6 @@
-
 'use client';
 
-import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ArrowLeft, PlusCircle, Trash2, IndianRupee, Loader2, Camera, FileJson, Edit, Upload, X, Plus, Image as ImageIcon, Utensils } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -55,7 +54,7 @@ const MenuItem = ({ item, onEdit, onDelete, onToggle }) => (
     </div>
     <div className="col-span-2 md:col-span-1">
         <p className={`font-bold text-lg ${!item.isAvailable ? 'text-muted-foreground line-through' : 'text-foreground'}`}>{item.name}</p>
-        <p className="text-primary font-semibold">₹{item.portions?.[0]?.price || 'N/A'}</p>
+        <p className="text-green-500 font-semibold">₹{item.portions?.[0]?.price || 'N/A'}</p>
     </div>
     <div className="col-span-3 md:col-span-1 flex items-center justify-start md:justify-center gap-2">
         <Switch id={`switch-${item.id}`} checked={item.isAvailable} onCheckedChange={(checked) => onToggle(item.id, checked)} />
@@ -714,20 +713,15 @@ export default function StreetVendorMenuPage() {
         <AddItemModal isOpen={isAddItemModalOpen} setIsOpen={setIsAddItemModalOpen} onSave={handleSaveItem} editingItem={editingItem} allCategories={allCategories} showInfoDialog={setInfoDialog} />
 
         <header className="flex justify-between items-center mb-6">
-            <Link href="/street-vendor-dashboard" passHref>
-                <Button variant="ghost" className="text-muted-foreground hover:text-foreground">
-                    <ArrowLeft size={28} />
-                </Button>
-            </Link>
-            <h1 className="text-2xl font-bold font-headline">My Menu</h1>
+            <h1 className="text-xl font-bold font-headline">My Menu</h1>
             <div className="flex gap-2">
-                 <Button onClick={() => setIsBulkModalOpen(true)} variant="outline" className="text-primary hover:text-primary">
-                     <FileJson size={20} className="mr-2"/> Bulk
+                 <Button onClick={() => setIsBulkModalOpen(true)} variant="ghost" size="icon" className="text-primary hover:text-primary hover:bg-primary/10">
+                     <FileJson size={20}/>
                 </Button>
-                <Button onClick={() => setIsAiModalOpen(true)} variant="outline" className="text-primary hover:text-primary">
-                     <Camera size={20} className="mr-2"/> AI Scan
+                <Button onClick={() => setIsAiModalOpen(true)} variant="ghost" size="icon" className="text-primary hover:text-primary hover:bg-primary/10">
+                     <Camera size={20}/>
                 </Button>
-                <Button onClick={() => { setEditingItem(null); setIsAddItemModalOpen(true); }} className="bg-primary hover:bg-primary/90 text-primary-foreground">
+                <Button onClick={() => { setEditingItem(null); setIsAddItemModalOpen(true); }} className="bg-primary hover:bg-primary/90 text-primary-foreground h-10 w-10 p-0">
                     <PlusCircle size={20} />
                 </Button>
             </div>
@@ -757,7 +751,7 @@ export default function StreetVendorMenuPage() {
                 <div className="space-y-6">
                     {Object.entries(groupedMenu).map(([category, items]) => (
                         <div key={category}>
-                            <h2 className="text-xl font-bold text-primary mb-2">{category}</h2>
+                            <h2 className="text-xl font-bold text-green-500 mb-2">{category}</h2>
                             <div className="space-y-3">
                                 {items.map(item => (
                                     <MenuItem key={item.id} item={item} onToggle={handleToggleAvailability} onDelete={handleDeleteItem} onEdit={handleEditItem} />
