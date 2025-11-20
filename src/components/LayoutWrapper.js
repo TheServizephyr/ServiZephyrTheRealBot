@@ -3,9 +3,12 @@
 import { usePathname } from 'next/navigation';
 import Header from '@/components/Header';
 import Footer from '@/components/Footer';
+import { useTheme } from 'next-themes';
+import { useEffect } from 'react';
 
 const LayoutWrapper = ({ children }) => {
   const pathname = usePathname();
+  const { setTheme } = useTheme();
 
   // Define paths where Header and Footer should NOT be shown
   const noLayoutPaths = [
@@ -30,6 +33,14 @@ const LayoutWrapper = ({ children }) => {
 
   // Check if the current path starts with any of the noLayoutPaths
   const hideLayout = noLayoutPaths.some(path => pathname.startsWith(path));
+
+  // THE FIX: If the main layout is being shown, force the light theme.
+  useEffect(() => {
+    if (!hideLayout) {
+      setTheme('light');
+    }
+  }, [hideLayout, setTheme]);
+
 
   if (hideLayout) {
     return <main className="flex-grow">{children}</main>;
