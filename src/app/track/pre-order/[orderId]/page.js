@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useState, useEffect, useMemo, useCallback, useRef, Suspense } from 'react';
@@ -247,7 +248,7 @@ function PreOrderTrackingContent() {
                                             <div className="sheen"></div>
                                             <svg className="rotating-text-svg" viewBox="0 0 200 200">
                                                 <path id="backCurve" d="M 25,100 a 75,75 0 1,1 150,0 a 75,75 0 1,1 -150,0" fill="none"/>
-                                                <text><textPath href="#backCurve" startOffset="50%" textAnchor="middle">★ SECURED BY Servizephyr ★ YOUR TRUSTED PARTNER ★</textPath></text>
+                                                <text><textPath href="#backCurve" startOffset="50%" textAnchor="middle">★ SECURED BY ServiZephyr ★ YOUR TRUSTED PARTNER ★</textPath></text>
                                             </svg>
                                              <div className="qr-box">
                                                 <QRCode
