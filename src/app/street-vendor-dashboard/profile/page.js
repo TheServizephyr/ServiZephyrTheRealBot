@@ -4,7 +4,7 @@
 import React, { useState, useEffect, Suspense } from 'react';
 import { motion } from 'framer-motion';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { User, Mail, Phone, Edit, Save, XCircle, Bell, Trash2, KeyRound, Eye, EyeOff, FileText, Bot, Image as ImageIcon, Upload, X, IndianRupee, MapPin, Wallet, ChevronsUpDown, Check, ShoppingBag, Store, ConciergeBell, Loader2, ArrowLeft, QrCode, Banknote } from 'lucide-react';
+import { User, Mail, Phone, Edit, Save, XCircle, Bell, Trash2, KeyRound, Eye, EyeOff, FileText, Bot, Truck, Image as ImageIcon, Upload, X, IndianRupee, MapPin, Wallet, ChevronsUpDown, Check, ShoppingBag, Store, ConciergeBell, Loader2, ArrowLeft, QrCode, Banknote } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
@@ -80,7 +80,7 @@ const CountrySelect = ({ value, onSelect, disabled }) => {
 
 const SectionCard = ({ title, description, children, footer, action }) => (
     <motion.div 
-        className="bg-card border border-border rounded-xl"
+        className="bg-card border border-border rounded-xl shadow-lg hover:shadow-primary/20 hover:-translate-y-1 transition-all duration-300"
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.5 }}
@@ -157,7 +157,6 @@ const DeleteAccountModal = ({ isOpen, setIsOpen }) => {
                     </Button>
                 </DialogFooter>
             </DialogContent>
-        </Dialog>
         </>
     );
 };
