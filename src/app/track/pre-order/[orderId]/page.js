@@ -245,23 +245,29 @@ function PreOrderTrackingContent() {
                                             </div>
                                         </div>
 
-                                        <div className="coin-face coin-back p-8">
+                                        <div className="coin-face coin-back p-4">
                                             <div className="texture-overlay"></div>
                                             <div className="sheen"></div>
-                                            <div className="w-full h-full flex flex-col justify-center items-center text-center">
+                                            <div className="w-full h-full flex flex-col justify-between items-center text-center">
+                                                <div className="w-full overflow-hidden text-ellipsis">
+                                                    {(order.items || []).map((item, i) => (
+                                                        <p key={i} className="text-xs font-semibold" style={{color: 'var(--coin-text-color)'}}>{item.quantity}x {item.name}</p>
+                                                    ))}
+                                                     <p className="font-bold text-sm mt-1" style={{color: 'var(--coin-text-color-dark)'}}>Total: ₹{order.totalAmount}</p>
+                                                </div>
                                                 <div className="qr-box">
                                                     <QRCode
                                                         value={qrValue}
                                                         size={140}
                                                         level={"H"}
-                                                        bgColor="#FFFFFF"
+                                                        bgColor="transparent"
                                                         fgColor="var(--coin-text-color-dark)"
-                                                        className="rounded-md"
                                                     />
                                                 </div>
-                                                <div className="qr-label">SCAN TO COLLECT</div>
+                                                <p className="text-xs font-bold" style={{color: 'var(--coin-text-color-dark)'}}>Powered by ServiZephyr</p>
                                             </div>
                                         </div>
+
                                     </div>
                                 </div>
                             </div>
