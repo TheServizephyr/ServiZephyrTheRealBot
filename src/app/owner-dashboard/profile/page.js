@@ -13,7 +13,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import InfoDialog from '@/components/InfoDialog';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose } from "@/components/ui/dialog";
-import { getAuth, updatePassword, EmailAuthProvider, reauthenticateWithCredential } from 'firebase/auth';
+import { getAuth, updatePassword, EmailAuthProvider, reauthenticateWithCredential, signInWithPopup, GoogleAuthProvider } from 'firebase/auth';
 
 
 const DeleteAccountModal = ({ isOpen, setIsOpen }) => {
@@ -25,9 +25,13 @@ const DeleteAccountModal = ({ isOpen, setIsOpen }) => {
         try {
             const user = getAuth().currentUser;
             if (user) {
-                const idToken = await user.getIdToken();
+                // Re-authenticate with Google Popup before deleting
+                const provider = new GoogleAuthProvider();
+                await signInWithPopup(user, provider);
+
+                const idToken = await user.getIdToken(true); // Force refresh token
                 const response = await fetch('/api/user/delete', {
-                    method: 'DELETE',
+                    method: 'POST', // Changed to POST as DELETE with body can be tricky
                     headers: { 'Authorization': `Bearer ${idToken}` }
                 });
 
@@ -37,12 +41,14 @@ const DeleteAccountModal = ({ isOpen, setIsOpen }) => {
                 }
 
                 setInfoDialog({ isOpen: true, title: 'Success', message: 'Account deleted successfully.' });
-                // The auth state listener in the layout will handle the redirect.
                 setTimeout(() => window.location.href = "/", 2000);
             }
         } catch (error) {
             console.error("Error deleting account:", error);
-            setInfoDialog({ isOpen: true, title: 'Error', message: `Failed to delete account: ${error.message}. You may need to sign in again to perform this action.` });
+            const errorMessage = error.code === 'auth/popup-closed-by-user' 
+                ? 'Re-authentication cancelled. Account not deleted.'
+                : `Failed to delete account: ${error.message}`;
+            setInfoDialog({ isOpen: true, title: 'Error', message: errorMessage });
         } finally {
             setIsOpen(false);
         }
@@ -61,7 +67,7 @@ const DeleteAccountModal = ({ isOpen, setIsOpen }) => {
                 <DialogHeader>
                     <DialogTitle className="text-2xl text-destructive-foreground">Permanently Delete Account</DialogTitle>
                     <DialogDescription className="text-destructive-foreground/80">
-                        This action is irreversible. All your data, including restaurants, orders, and customer information, will be permanently lost.
+                        This is a security-sensitive action. You will be asked to sign in with Google again to confirm your identity before your account is deleted. This is irreversible.
                     </DialogDescription>
                 </DialogHeader>
                 <div className="py-4">
@@ -82,11 +88,10 @@ const DeleteAccountModal = ({ isOpen, setIsOpen }) => {
                         disabled={isDeleteDisabled}
                         onClick={handleDelete}
                     >
-                        I understand, delete my account
+                        Re-authenticate & Delete
                     </Button>
                 </DialogFooter>
             </DialogContent>
-        </Dialog>
         </>
     );
 };

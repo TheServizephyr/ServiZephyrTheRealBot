@@ -1,10 +1,17 @@
 import { NextResponse } from 'next/server';
 import { getAuth, getFirestore, verifyAndGetUid } from '@/lib/firebase-admin';
 
-export async function DELETE(req) {
-    console.log("[API /user/delete] DELETE request received.");
+// This is a placeholder for a function that can re-authenticate.
+// In a real scenario with password-based accounts, this would be more complex.
+// For Google Sign-In, re-authentication is handled on the client.
+// Since we are now handling this on the server, we assume the client has passed necessary credentials.
+// For now, we will proceed with the deletion, but acknowledge this limitation.
+// The FIX is to perform deletion on the client-side after re-authentication.
+// However, the current structure uses a server-side API, so we adjust it.
+
+export async function POST(req) {
+    console.log("[API /user/delete] POST request received for deletion.");
     try {
-        // 1. Authenticate the user making the request
         const uid = await verifyAndGetUid(req);
         if (!uid) {
             throw { message: 'Authentication required to delete an account.', status: 401 };
@@ -17,34 +24,28 @@ export async function DELETE(req) {
 
         const userRef = firestore.collection('users').doc(uid);
 
-        // Start a batch to ensure atomicity
         const batch = firestore.batch();
         
-        // 2. Mark the Firestore user document for deletion
         batch.delete(userRef);
         console.log(`[API /user/delete] Batch: Marked Firestore user document for deletion at 'users/${uid}'.`);
-
-        // 3. Delete the user from Firebase Authentication
-        // This is the final step. We'll do it after the batch commit.
+        
+        // This is the step that can fail without recent login.
+        // The Admin SDK's deleteUser does not require re-authentication.
         await auth.deleteUser(uid);
         console.log(`[API /user/delete] Successfully deleted user from Firebase Authentication for UID: ${uid}.`);
-
-        // 4. Commit the Firestore deletion
+        
         await batch.commit();
         console.log(`[API /user/delete] Batch committed. Firestore data deleted.`);
-
 
         return NextResponse.json({ message: 'Account permanently deleted from all systems.' }, { status: 200 });
 
     } catch (error) {
         console.error('[API /user/delete] CRITICAL ERROR:', error);
         
-        // Handle custom errors from our helper with a status property
         if (error.status) {
             return NextResponse.json({ message: error.message }, { status: error.status });
         }
         
-        // Handle Firebase-specific errors
         if (error.code === 'auth/user-not-found') {
              return NextResponse.json({ message: 'User not found in authentication system. May have been already deleted.' }, { status: 404 });
         }
