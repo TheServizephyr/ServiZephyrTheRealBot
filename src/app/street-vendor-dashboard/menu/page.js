@@ -751,7 +751,7 @@ export default function StreetVendorMenuPage() {
                 <div className="space-y-6">
                     {Object.entries(groupedMenu).map(([category, items]) => (
                         <div key={category}>
-                            <h2 className="text-xl font-bold text-green-500 mb-2">{category}</h2>
+                            <h2 className="text-xl font-bold text-sky-500 mb-2">{category}</h2>
                             <div className="space-y-3">
                                 {items.map(item => (
                                     <MenuItem key={item.id} item={item} onToggle={handleToggleAvailability} onDelete={handleDeleteItem} onEdit={handleEditItem} />
