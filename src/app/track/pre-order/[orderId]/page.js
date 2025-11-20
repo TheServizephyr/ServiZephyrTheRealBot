@@ -11,6 +11,7 @@ import QRCode from 'qrcode.react';
 import { db } from '@/lib/firebase';
 import { doc, onSnapshot } from 'firebase/firestore';
 import { format } from 'date-fns';
+import GoldenCoinSpinner from '@/components/GoldenCoinSpinner';
 
 const formatCurrency = (value) => `₹${Number(value || 0).toLocaleString('en-IN', { maximumFractionDigits: 2 })}`;
 
@@ -167,7 +168,7 @@ function PreOrderTrackingContent() {
 
 
     if (loading) {
-        return <div className="fixed inset-0 bg-background flex items-center justify-center"><Loader2 className="animate-spin text-primary h-16 w-16" /></div>;
+        return <div className="fixed inset-0 bg-background flex items-center justify-center"><GoldenCoinSpinner /></div>;
     }
     
     if (error) {
@@ -311,7 +312,7 @@ function PreOrderTrackingContent() {
 
 export default function PreOrderTrackingPage() {
     return (
-        <Suspense fallback={<div className="fixed inset-0 bg-background flex items-center justify-center"><Loader2 className="animate-spin text-primary h-16 w-16" /></div>}>
+        <Suspense fallback={<div className="fixed inset-0 bg-background flex items-center justify-center"><GoldenCoinSpinner /></div>}>
             <PreOrderTrackingContent />
         </Suspense>
     )
