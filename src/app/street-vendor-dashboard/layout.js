@@ -3,7 +3,7 @@
 
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { ClipboardList, BarChart3, User, Salad, LogOut, Loader2, Menu, X, QrCode, Banknote } from 'lucide-react';
+import { ClipboardList, BarChart3, User, Salad, LogOut, Loader2, Menu, X, QrCode, Banknote, ChevronLeft } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Suspense, useState, useEffect } from 'react';
 import Image from 'next/image';
@@ -33,14 +33,16 @@ const navItems = [
   { href: '/street-vendor-dashboard/payout-settings', icon: Banknote, label: 'Payouts' },
 ];
 
-const NavLink = ({ href, icon: Icon, label, onClick }) => {
+const NavLink = ({ href, icon: Icon, label, onClick, isCollapsed }) => {
     const pathname = usePathname();
     const isActive = pathname === href;
 
     return (
-        <Link href={href} onClick={onClick} className={cn("flex items-center gap-4 p-3 rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground transition-colors", isActive && "bg-primary/10 text-primary font-semibold")}>
-            <Icon className="h-6 w-6" />
-            <span className="text-base font-medium">{label}</span>
+        <Link href={href} onClick={onClick} passHref>
+             <div className={cn("flex items-center gap-4 p-3 rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground transition-colors", isActive && "bg-primary/10 text-primary font-semibold", isCollapsed && "justify-center")}>
+                <Icon className="h-6 w-6 flex-shrink-0" />
+                {!isCollapsed && <span className="text-base font-medium">{label}</span>}
+            </div>
         </Link>
     )
 }
@@ -51,7 +53,19 @@ const StreetVendorLayout = ({ children }) => {
   const [restaurantStatus, setRestaurantStatus] = useState(true);
   const [loadingStatus, setLoadingStatus] = useState(true);
   const [infoDialog, setInfoDialog] = useState({ isOpen: false, title: '', message: '' });
-  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+  const [isMobile, setIsMobile] = useState(false);
+
+  useEffect(() => {
+    const checkScreenSize = () => {
+      const mobile = window.innerWidth < 768;
+      setIsMobile(mobile);
+      if(!mobile) setIsSidebarOpen(true);
+    };
+    checkScreenSize();
+    window.addEventListener('resize', checkScreenSize);
+    return () => window.removeEventListener('resize', checkScreenSize);
+  }, []);
 
   useEffect(() => {
     if (!isUserLoading && user) {
@@ -101,71 +115,64 @@ const StreetVendorLayout = ({ children }) => {
     }
   };
 
+  const isCollapsed = !isSidebarOpen && !isMobile;
+
+  const SidebarContent = () => (
+    <>
+      <header className="p-4 border-b border-border flex justify-between items-center">
+         <Link href="/" className="flex items-center justify-center">
+            {!isCollapsed && <Image src="/logo.png" alt="ServiZephyr Logo" width={140} height={35} className="h-9 w-auto" priority />}
+        </Link>
+        {!isMobile && (
+          <Button variant="ghost" size="icon" onClick={() => setIsSidebarOpen(!isSidebarOpen)}>
+            <ChevronLeft className={cn("transition-transform", isCollapsed && "rotate-180")} />
+          </Button>
+        )}
+      </header>
+      <nav className="flex-grow p-2 mt-4 space-y-2">
+        {navItems.map(item => (
+            <NavLink key={item.href} {...item} onClick={() => isMobile && setIsSidebarOpen(false)} isCollapsed={isCollapsed} />
+        ))}
+      </nav>
+      <footer className="p-4 border-t border-border">
+        {!isCollapsed && (
+             <Button onClick={handleLogout} variant="outline" className="w-full">
+                <LogOut className="mr-2 h-4 w-4"/> Logout
+            </Button>
+        )}
+      </footer>
+    </>
+  );
+
   return (
-    <div className="min-h-screen bg-background text-foreground flex flex-col md:flex-row">
+    <div className="min-h-screen bg-background text-foreground flex">
         <InfoDialog
             isOpen={infoDialog.isOpen}
             onClose={() => setInfoDialog({ isOpen: false, title: '', message: '' })}
             title={infoDialog.title}
             message={infoDialog.message}
         />
-        {/* Sidebar for Mobile */}
+        {/* Sidebar */}
         <AnimatePresence>
-            {isSidebarOpen && (
-                <>
-                    <motion.div 
-                        className="fixed inset-0 bg-black/60 z-40 md:hidden"
-                        initial={{ opacity: 0 }}
-                        animate={{ opacity: 1 }}
-                        exit={{ opacity: 0 }}
-                        onClick={() => setIsSidebarOpen(false)}
-                    />
-                    <motion.aside
-                        className="fixed top-0 left-0 h-full w-72 bg-card z-50 flex flex-col border-r border-border md:hidden"
-                        initial={{ x: '-100%' }}
-                        animate={{ x: 0 }}
-                        exit={{ x: '-100%' }}
-                        transition={{ type: 'spring', stiffness: 300, damping: 30 }}
-                    >
-                        <header className="p-4 border-b border-border flex justify-between items-center">
-                             <Link href="/" className="flex items-center justify-center">
-                                <Image src="/logo.png" alt="ServiZephyr Logo" width={140} height={35} className="h-9 w-auto" priority />
-                            </Link>
-                            <Button variant="ghost" size="icon" onClick={() => setIsSidebarOpen(false)}><X/></Button>
-                        </header>
-                         <nav className="flex-grow p-4">
-                            {navItems.map(item => (
-                                <NavLink key={item.href} {...item} onClick={() => setIsSidebarOpen(false)} />
-                            ))}
-                        </nav>
-                         <footer className="p-4 border-t border-border">
-                             <Button onClick={handleLogout} variant="outline" className="w-full">
-                                <LogOut className="mr-2 h-4 w-4"/> Logout
-                            </Button>
-                         </footer>
-                    </motion.aside>
-                </>
+            {isSidebarOpen && isMobile && (
+                <motion.div 
+                    className="fixed inset-0 bg-black/60 z-40 md:hidden"
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    onClick={() => setIsSidebarOpen(false)}
+                />
             )}
         </AnimatePresence>
         
-        {/* Static Sidebar for Desktop */}
-        <aside className="hidden md:flex md:w-64 bg-card border-r border-border p-4 flex-col flex-shrink-0">
-             <header className="p-4 border-b border-border flex justify-between items-center">
-                 <Link href="/" className="flex items-center justify-center">
-                    <Image src="/logo.png" alt="ServiZephyr Logo" width={140} height={35} className="h-9 w-auto" priority />
-                </Link>
-            </header>
-            <nav className="flex-grow mt-4">
-                {navItems.map(item => (
-                    <NavLink key={item.href} {...item} onClick={() => {}} />
-                ))}
-            </nav>
-             <footer className="p-4 border-t border-border">
-                 <Button onClick={handleLogout} variant="outline" className="w-full">
-                    <LogOut className="mr-2 h-4 w-4"/> Logout
-                </Button>
-             </footer>
-        </aside>
+        <motion.aside
+            className="fixed top-0 left-0 h-full bg-card z-50 flex flex-col border-r border-border md:relative"
+            animate={isMobile ? { x: isSidebarOpen ? 0 : '-100%' } : { width: isSidebarOpen ? '256px' : '80px' }}
+            transition={{ type: 'spring', stiffness: 300, damping: 30 }}
+        >
+            <SidebarContent />
+        </motion.aside>
+
 
         <div className="flex flex-col flex-grow">
             <header className="sticky top-0 z-30 bg-card/80 backdrop-blur-lg border-b border-border">
@@ -174,9 +181,6 @@ const StreetVendorLayout = ({ children }) => {
                     <Button variant="ghost" size="icon" className="md:hidden" onClick={() => setIsSidebarOpen(true)}>
                         <Menu />
                     </Button>
-                     <div className="hidden md:block">
-                        {/* Placeholder for breadcrumbs or page title if needed */}
-                    </div>
                 </div>
                 <div className="flex items-center gap-4">
                     <DropdownMenu>
@@ -225,7 +229,7 @@ const StreetVendorLayout = ({ children }) => {
                 </div>
               </div>
             </header>
-            <main className="flex-grow pb-4 md:pb-8">
+            <main className="flex-grow pb-4 md:pb-8 overflow-y-auto">
                  <Suspense fallback={<div className="min-h-[80vh] flex items-center justify-center"><Loader2 className="animate-spin text-primary h-10 w-10"/></div>}>
                     {children}
                 </Suspense>
