@@ -1,20 +1,23 @@
-
 'use client';
 
-import React, { useState, useEffect, Suspense } from 'react';
 import { motion } from 'framer-motion';
-import { useRouter, useSearchParams } from 'next/navigation';
-import { User, Mail, Phone, Edit, Save, XCircle, Bell, Trash2, KeyRound, Eye, EyeOff, FileText, Bot, Truck, Image as ImageIcon, Upload, X, IndianRupee, MapPin, Wallet, ChevronsUpDown, Check, ShoppingBag, Store, ConciergeBell, Loader2, ArrowLeft, QrCode, Banknote } from 'lucide-react';
+import { User, LogOut, ChevronRight, ShoppingBag, MapPin, Settings, Edit, Save, XCircle, Trash2, KeyRound, Eye, EyeOff, FileText, Bot, Truck, Image as ImageIcon, Upload, X, IndianRupee, Wallet, ChevronsUpDown, Check, Store, ConciergeBell, Loader2, ArrowLeft, QrCode, Banknote } from 'lucide-react';
+import { auth } from '@/lib/firebase';
+import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
+import { useUser } from '@/firebase';
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Card } from '@/components/ui/card';
+import { useState, useEffect } from 'react';
+import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Switch } from '@/components/ui/switch';
+import InfoDialog from '@/components/InfoDialog';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose } from "@/components/ui/dialog";
-import { getAuth, updatePassword, EmailAuthProvider, reauthenticateWithCredential } from 'firebase/auth';
+import { getAuth, updatePassword, EmailAuthProvider, reauthenticateWithCredential, signInWithPopup, GoogleAuthProvider } from 'firebase/auth';
 import Image from 'next/image';
 import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
 import { Command, CommandInput, CommandEmpty, CommandGroup, CommandItem } from '@/components/ui/command';
 import { cn } from '@/lib/utils';
-import InfoDialog from '@/components/InfoDialog';
 import Link from 'next/link';
 
 export const dynamic = 'force-dynamic';
@@ -106,14 +109,30 @@ const DeleteAccountModal = ({ isOpen, setIsOpen }) => {
         try {
             const user = getAuth().currentUser;
             if (user) {
-                await user.delete();
+                // Re-authenticate with Google Popup before deleting
+                const provider = new GoogleAuthProvider();
+                await signInWithPopup(user, provider);
+
+                const idToken = await user.getIdToken(true); // Force refresh token
+                const response = await fetch('/api/user/delete', {
+                    method: 'POST', // Changed to POST as DELETE with body can be tricky
+                    headers: { 'Authorization': `Bearer ${idToken}` }
+                });
+
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    throw new Error(errorData.message || "Failed to delete account.");
+                }
+
                 setInfoDialog({ isOpen: true, title: 'Success', message: 'Account deleted successfully.' });
-                // You would typically redirect the user to a logged-out page here.
                 setTimeout(() => window.location.href = "/", 2000);
             }
         } catch (error) {
             console.error("Error deleting account:", error);
-            setInfoDialog({ isOpen: true, title: 'Error', message: `Failed to delete account: ${error.message}. You may need to sign in again to perform this action.` });
+            const errorMessage = error.code === 'auth/popup-closed-by-user' 
+                ? 'Re-authentication cancelled. Account not deleted.'
+                : `Failed to delete account: ${error.message}`;
+            setInfoDialog({ isOpen: true, title: 'Error', message: errorMessage });
         } finally {
             setIsOpen(false);
         }
@@ -132,7 +151,7 @@ const DeleteAccountModal = ({ isOpen, setIsOpen }) => {
                 <DialogHeader>
                     <DialogTitle className="text-2xl text-destructive-foreground">Permanently Delete Account</DialogTitle>
                     <DialogDescription className="text-destructive-foreground/80">
-                        This action is irreversible. All your data, including restaurants, orders, and customer information, will be permanently lost.
+                        This is a security-sensitive action. You will be asked to sign in with Google again to confirm your identity before your account is deleted. This is irreversible.
                     </DialogDescription>
                 </DialogHeader>
                 <div className="py-4">
@@ -153,10 +172,11 @@ const DeleteAccountModal = ({ isOpen, setIsOpen }) => {
                         disabled={isDeleteDisabled}
                         onClick={handleDelete}
                     >
-                        I understand, delete my account
+                        Re-authenticate & Delete
                     </Button>
                 </DialogFooter>
             </DialogContent>
+        </Dialog>
         </>
     );
 };
@@ -259,6 +279,65 @@ function VendorProfilePageContent() {
         const [isEditing, setIsEditing] = toggles[section];
         if (isEditing) setEditedUser(user);
         setIsEditing(!isEditing);
+    };
+    
+    const handleAddressChange = (field, value) => {
+      setEditedUser(prev => ({
+          ...prev,
+          address: { ...prev.address, [field]: value }
+      }));
+    };
+
+    const handleBannerFileChange = (e) => {
+        const file = e.target.files[0];
+        if (file) {
+            const reader = new FileReader();
+            reader.onloadend = () => {
+                setEditedUser(prev => ({...prev, bannerUrls: [...(prev.bannerUrls || []), reader.result]}));
+            };
+            reader.readAsDataURL(file);
+        }
+    };
+
+    const removeBannerImage = (index) => {
+        setEditedUser(prev => ({...prev, bannerUrls: prev.bannerUrls.filter((_, i) => i !== index)}));
+    };
+
+    const handlePaymentToggle = (type, value) => {
+        setEditedUser(prev => {
+            const newState = { ...prev, [type]: value };
+            const { 
+                deliveryEnabled, pickupEnabled, dineInEnabled,
+                deliveryOnlinePaymentEnabled, deliveryCodEnabled,
+                pickupOnlinePaymentEnabled, pickupPodEnabled,
+                dineInOnlinePaymentEnabled, dineInPayAtCounterEnabled
+            } = newState;
+
+
+            // Prevent disabling all order types
+            if (!deliveryEnabled && !pickupEnabled && !dineInEnabled) {
+                setInfoDialog({ isOpen: true, title: 'Invalid Selection', message: 'At least one order type (Delivery, Pickup, or Dine-In) must be enabled.' });
+                return prev;
+            }
+
+            // Validation for Delivery
+            if (deliveryEnabled && !deliveryOnlinePaymentEnabled && !deliveryCodEnabled) {
+                setInfoDialog({ isOpen: true, title: 'Invalid Selection', message: 'At least one payment method must be enabled for Delivery.' });
+                return prev;
+            }
+            // Validation for Pickup
+            if (pickupEnabled && !pickupOnlinePaymentEnabled && !pickupPodEnabled) {
+                setInfoDialog({ isOpen: true, title: 'Invalid Selection', message: 'At least one payment method must be enabled for Pickup.' });
+                return prev;
+            }
+            // Validation for Dine-In
+             if (dineInEnabled && !dineInOnlinePaymentEnabled && !dineInPayAtCounterEnabled) {
+                setInfoDialog({ isOpen: true, title: 'Invalid Selection', message: 'At least one payment method must be enabled for Dine-In.' });
+                return prev;
+            }
+
+            return newState;
+        });
     };
 
     const handleSave = async (section) => {
