@@ -35,7 +35,7 @@
     backface-visibility: hidden;
     
     background: radial-gradient(ellipse at center, #ffebb3 0%, #d4af37 60%, #997208 100%);
-    border: 6px solid #d4af37;
+    border: 6px solid #d4af37; /* सिक्के की रिम */
     
     box-shadow: inset 0 0 15px #7a5600, 0 0 10px rgba(255, 215, 0, 0.2);
     
