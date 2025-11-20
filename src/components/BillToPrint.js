@@ -113,7 +113,6 @@ const BillToPrint = ({ order, restaurant, billDetails, items, customerDetails })
             <div className="text-center mt-4 pt-2 border-t border-dashed border-black">
                 <p className="text-xs italic">Thank you for your order!</p>
                 <p className="text-xs font-bold mt-1">Powered by ServiZephyr</p>
-                 <p className="text-xs italic mt-1">For exclusive offers and faster ordering, visit the ServiZephyr Customer Hub!</p>
             </div>
         </div>
     );

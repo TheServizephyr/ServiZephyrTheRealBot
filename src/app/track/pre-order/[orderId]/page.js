@@ -1,4 +1,3 @@
-
 'use client';
 
 import React, { useState, useEffect, useMemo, useCallback, useRef, Suspense } from 'react';
@@ -11,7 +10,6 @@ import QRCode from 'qrcode.react';
 import { db } from '@/lib/firebase';
 import { doc, onSnapshot } from 'firebase/firestore';
 import { format } from 'date-fns';
-import BillToPrint from '@/components/BillToPrint';
 
 const statusConfig = [
     { key: 'confirmed', title: 'Confirmed' },
@@ -278,7 +276,19 @@ function PreOrderTrackingContent() {
                         animate={{ opacity: 1, y: 0 }}
                         className="bg-card border border-border p-4 rounded-xl shadow-lg w-full max-w-sm"
                      >
-                        <BillToPrint order={order} restaurant={order} billDetails={order} items={order.items} customerDetails={{name: order.customerName}} />
+                        <div className="space-y-2">
+                           <p className="text-sm"><strong>Bill to:</strong> {order.customerName}</p>
+                            {order.items.map((item, index) => (
+                                <div key={index} className="flex justify-between text-muted-foreground text-sm">
+                                    <span>{item.quantity} x {item.name}</span>
+                                    <span>₹{item.price * item.quantity}</span>
+                                </div>
+                            ))}
+                            <div className="flex justify-between font-bold text-lg pt-2 border-t border-dashed">
+                                <span>Grand Total</span>
+                                <span className="text-green-600">₹{order.totalAmount}</span>
+                            </div>
+                        </div>
                      </motion.div>
                     <StatusTimeline currentStatus={order.status} />
                 </footer>
