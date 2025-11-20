@@ -31,7 +31,6 @@ const BillToPrint = ({ order, restaurant, billDetails, items, customerDetails })
     };
     
     const getItemTotal = (item) => {
-        if (typeof item.totalPrice === 'number') return item.totalPrice;
         const price = getItemPrice(item);
         const qty = item.quantity || item.qty || 1;
         return price * qty;

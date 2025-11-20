@@ -7,7 +7,7 @@ import { Loader2, ArrowLeft, CheckCircle, Check, IndianRupee, ShoppingBag, User 
 import { Button } from '@/components/ui/button';
 import { useRouter, useParams, useSearchParams } from 'next/navigation';
 import { cn } from '@/lib/utils';
-import QRCode from 'qrcode.react'; // **FIX: IMPORT THE QR CODE LIBRARY**
+import QRCode from 'qrcode.react';
 import { db } from '@/lib/firebase';
 import { doc, onSnapshot } from 'firebase/firestore';
 import { format } from 'date-fns';
@@ -259,6 +259,7 @@ function PreOrderTrackingContent() {
                                                     fgColor="var(--coin-text-color-dark)"
                                                 />
                                             </div>
+                                            <div className="qr-label">Vendor: Scan to Collect</div>
                                         </div>
                                     </div>
                                 </div>
