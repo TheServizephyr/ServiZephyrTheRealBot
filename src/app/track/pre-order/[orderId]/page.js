@@ -11,7 +11,6 @@ import { db } from '@/lib/firebase';
 import { doc, onSnapshot } from 'firebase/firestore';
 import { format } from 'date-fns';
 
-
 const statusConfig = [
     { key: 'confirmed', title: 'Confirmed' },
     { key: 'Ready', title: 'Ready' },
@@ -20,12 +19,11 @@ const statusConfig = [
 
 const StatusTimeline = ({ currentStatus }) => {
     const activeIndex = useMemo(() => {
-        // Treat pending as the same as confirmed for the initial step
         const adjustedStatus = currentStatus === 'pending' ? 'confirmed' : currentStatus;
-        if (adjustedStatus === 'delivered' || adjustedStatus === 'picked_up') return 2; // 'Collected' is the final step
+        if (adjustedStatus === 'delivered' || adjustedStatus === 'picked_up') return 2;
         if (adjustedStatus === 'Ready') return 1;
         if (adjustedStatus === 'confirmed') return 0;
-        return -1; // Default case
+        return -1;
     }, [currentStatus]);
 
     return (
@@ -249,7 +247,7 @@ function PreOrderTrackingContent() {
                                             <div className="sheen"></div>
                                             <svg className="rotating-text-svg" viewBox="0 0 200 200">
                                                 <path id="backCurve" d="M 25,100 a 75,75 0 1,1 150,0 a 75,75 0 1,1 -150,0" fill="none"/>
-                                                <text><textPath href="#backCurve" startOffset="50%" textAnchor="middle">★ SCAN TO COLLECT ★ SCAN TO COLLECT ★</textPath></text>
+                                                <text><textPath href="#backCurve" startOffset="50%" textAnchor="middle">★ SECURED BY Servizephyr ★ YOUR TRUSTED PARTNER ★</textPath></text>
                                             </svg>
                                             <div className="qr-box">
                                                 <QRCode
@@ -283,13 +281,13 @@ function PreOrderTrackingContent() {
                             {(order.items || []).map((item, i) => (
                                 <div key={i} className="flex justify-between text-sm text-muted-foreground">
                                     <span>{item.quantity}x {item.name}</span>
-                                    <span>₹{item.price * item.quantity}</span>
+                                    <span>₹{item.totalPrice || (item.price * item.quantity)}</span>
                                 </div>
                             ))}
                          </div>
                          <div className="flex justify-between font-bold text-lg border-t border-dashed pt-2 mt-2">
                             <span>Total</span>
-                            <span className="text-primary">₹{order.totalAmount}</span>
+                            <span className="text-green-500">₹{order.totalAmount}</span>
                          </div>
                      </motion.div>
                     <StatusTimeline currentStatus={order.status} />
@@ -306,3 +304,5 @@ export default function PreOrderTrackingPage() {
         </Suspense>
     )
 }
+
+    
