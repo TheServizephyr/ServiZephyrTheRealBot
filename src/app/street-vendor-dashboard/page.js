@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useState, useEffect, useMemo, useCallback, useRef, Suspense } from 'react';
@@ -366,8 +367,8 @@ export default function StreetVendorDashboard() {
             </Button>
         </header>
 
-        <div className="mb-6 flex flex-col md:flex-row items-center justify-center gap-4">
-            <div className="relative w-full flex-grow">
+        <div className="mb-6 flex items-center gap-4">
+            <div className="relative flex-grow">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                 <input
                     type="text"
@@ -377,19 +378,18 @@ export default function StreetVendorDashboard() {
                     className="w-full pl-10 pr-4 py-2 h-10 rounded-md bg-input border border-border"
                 />
             </div>
-             <div className="flex w-full md:w-auto items-center justify-center gap-2">
+            <div className="flex-shrink-0">
                  <Popover open={isCalendarOpen} onOpenChange={setIsCalendarOpen}>
                     <PopoverTrigger asChild>
                       <Button
                         id="date"
                         variant={"outline"}
                         className={cn(
-                          "w-full md:w-auto justify-start text-left font-normal",
+                          "w-full md:w-auto justify-start text-left font-normal h-10",
                           !date && "text-muted-foreground"
                         )}
                       >
-                         <span className="md:hidden"><CalendarIcon className="h-4 w-4" /></span>
-                        <CalendarIcon className="mr-2 h-4 w-4 hidden md:inline-block" />
+                         <CalendarIcon className="md:mr-2 h-4 w-4" />
                          <span className="truncate hidden md:inline-block">
                             {date?.from ? (
                               date.to ? (
@@ -416,7 +416,7 @@ export default function StreetVendorDashboard() {
                       />
                     </PopoverContent>
                   </Popover>
-                  {date && <Button variant="ghost" size="sm" onClick={() => setDate(null)}>Clear</Button>}
+                  {date && <Button variant="ghost" size="sm" onClick={() => setDate(null)} className="ml-2">Clear</Button>}
             </div>
         </div>
         
