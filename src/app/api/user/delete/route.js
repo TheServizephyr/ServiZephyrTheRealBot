@@ -19,21 +19,50 @@ export async function POST(req) {
         const auth = await getAuth();
 
         const userRef = firestore.collection('users').doc(uid);
+        const userDoc = await userRef.get();
 
+        if (!userDoc.exists) {
+            console.warn(`[API /user/delete] User document not found in Firestore for UID: ${uid}. Proceeding to delete auth record only.`);
+            await auth.deleteUser(uid);
+            return NextResponse.json({ message: 'User authentication record deleted. Firestore document was not found.' }, { status: 200 });
+        }
+        
+        const userData = userDoc.data();
+        const businessType = userData.businessType;
         const batch = firestore.batch();
         
-        // 1. Mark the Firestore user document for deletion
+        // 1. Find and mark the associated business document for deletion
+        if (businessType) {
+            let collectionName;
+            if (businessType === 'restaurant') collectionName = 'restaurants';
+            else if (businessType === 'shop') collectionName = 'shops';
+            else if (businessType === 'street-vendor') collectionName = 'street_vendors';
+
+            if (collectionName) {
+                const businessQuery = await firestore.collection(collectionName).where('ownerId', '==', uid).limit(1).get();
+                if (!businessQuery.empty) {
+                    const businessDoc = businessQuery.docs[0];
+                    batch.delete(businessDoc.ref);
+                    console.log(`[API /user/delete] Batch: Marked business document for deletion at '${businessDoc.ref.path}'.`);
+                } else {
+                    console.warn(`[API /user/delete] User had businessType '${businessType}' but no matching document was found for ownerId ${uid}.`);
+                }
+            }
+        } else {
+            console.log(`[API /user/delete] User with UID ${uid} has no associated businessType. Skipping business data deletion.`);
+        }
+
+        // 2. Mark the Firestore user document for deletion
         batch.delete(userRef);
         console.log(`[API /user/delete] Batch: Marked Firestore user document for deletion at 'users/${uid}'.`);
         
-        // 2. Delete the user from Firebase Authentication
-        // This is the action that requires recent login, which the client-side re-auth handles.
+        // 3. Delete the user from Firebase Authentication (This is done after batch commit)
         await auth.deleteUser(uid);
         console.log(`[API /user/delete] Successfully deleted user from Firebase Authentication for UID: ${uid}.`);
         
-        // 3. Commit the batched Firestore delete
+        // 4. Commit the batched Firestore deletes
         await batch.commit();
-        console.log(`[API /user/delete] Batch committed. Firestore data deleted.`);
+        console.log(`[API /user/delete] Batch committed. Firestore data deleted successfully.`);
 
         return NextResponse.json({ message: 'Account permanently deleted from all systems.' }, { status: 200 });
 
