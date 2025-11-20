@@ -1,3 +1,4 @@
+
 'use client';
 
 import React from 'react';
@@ -5,7 +6,7 @@ import React from 'react';
 const formatCurrency = (value) => `₹${Number(value || 0).toLocaleString('en-IN', { maximumFractionDigits: 2 })}`;
 
 const BillToPrint = ({ order, restaurant, billDetails, items, customerDetails }) => {
-    if (!order || !restaurant) return null;
+    if (!order) return null;
     
     const finalItems = items || order.items || [];
     const finalBillDetails = billDetails || {
@@ -23,9 +24,7 @@ const BillToPrint = ({ order, restaurant, billDetails, items, customerDetails })
     };
 
     const getItemPrice = (item) => {
-        // This function handles different ways the price might be stored
         if (typeof item.price === 'number') return item.price;
-        if (typeof item.totalPrice === 'number') return item.totalPrice;
         if (item.portion && typeof item.portion.price === 'number') return item.portion.price;
         return 0; // Fallback
     };
@@ -40,9 +39,9 @@ const BillToPrint = ({ order, restaurant, billDetails, items, customerDetails })
     return (
         <div id="bill-print-root">
             <div className="text-center mb-4 border-b-2 border-dashed border-black pb-2">
-                <h1 className="text-xl font-bold uppercase">{restaurant.name}</h1>
-                <p className="text-xs">{restaurant.address?.street}, {restaurant.address?.city}</p>
-                {restaurant.gstin && <p className="text-xs mt-1">GSTIN: {restaurant.gstin}</p>}
+                <h1 className="text-xl font-bold uppercase">{restaurant?.name}</h1>
+                <p className="text-xs">{restaurant?.address?.street}, {restaurant?.address?.city}</p>
+                {restaurant?.gstin && <p className="text-xs mt-1">GSTIN: {restaurant.gstin}</p>}
             </div>
             <div className="mb-2 text-xs">
                 <p><strong>Bill To:</strong> {finalCustomerDetails.name}</p>
