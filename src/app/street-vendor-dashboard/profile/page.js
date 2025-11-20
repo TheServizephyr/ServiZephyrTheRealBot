@@ -1,24 +1,19 @@
-
 'use client';
 
 import React, { useState, useEffect, Suspense } from 'react';
 import { motion } from 'framer-motion';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { User, LogOut, ChevronRight, ShoppingBag, MapPin, Settings, Edit, Save, XCircle, Trash2, KeyRound, Eye, EyeOff, FileText, Bot, Truck, Image as ImageIcon, Upload, X, IndianRupee, Wallet, ChevronsUpDown, Check, Store, ConciergeBell, Loader2, ArrowLeft, QrCode, Banknote, Mail, Phone } from 'lucide-react';
-import { auth } from '@/lib/firebase';
-import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
-import { useUser } from '@/firebase';
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Card } from '@/components/ui/card';
-import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import InfoDialog from '@/components/InfoDialog';
+import { Switch } from '@/components/ui/switch';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose } from "@/components/ui/dialog";
 import { getAuth, updatePassword, EmailAuthProvider, reauthenticateWithCredential, signInWithPopup, GoogleAuthProvider } from 'firebase/auth';
 import Image from 'next/image';
 import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
 import { Command, CommandInput, CommandEmpty, CommandGroup, CommandItem } from '@/components/ui/command';
 import { cn } from '@/lib/utils';
+import InfoDialog from '@/components/InfoDialog';
 import Link from 'next/link';
 
 export const dynamic = 'force-dynamic';
