@@ -1,9 +1,8 @@
-
 'use client';
 
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { ClipboardList, BarChart3, User, Salad, LogOut, Loader2, Menu, X, QrCode, Banknote, ChevronLeft } from 'lucide-react';
+import { ClipboardList, BarChart3, User, Salad, LogOut, Loader2, Menu, X, QrCode, Banknote, ChevronLeft, Sun, Moon } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Suspense, useState, useEffect } from 'react';
 import Image from 'next/image';
@@ -23,6 +22,8 @@ import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import InfoDialog from '@/components/InfoDialog';
 import { motion, AnimatePresence } from 'framer-motion';
+import { ThemeProvider } from '@/components/ThemeProvider';
+import { useTheme } from 'next-themes';
 
 const navItems = [
   { href: '/street-vendor-dashboard', icon: ClipboardList, label: 'Live Orders' },
@@ -47,7 +48,7 @@ const NavLink = ({ href, icon: Icon, label, onClick, isCollapsed }) => {
     )
 }
 
-const StreetVendorLayout = ({ children }) => {
+const StreetVendorLayoutContent = ({ children }) => {
   const { user, isUserLoading } = useUser();
   const router = useRouter();
   const [restaurantStatus, setRestaurantStatus] = useState(true);
@@ -55,6 +56,7 @@ const StreetVendorLayout = ({ children }) => {
   const [infoDialog, setInfoDialog] = useState({ isOpen: false, title: '', message: '' });
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
+  const { theme, setTheme } = useTheme();
 
   useEffect(() => {
     const checkScreenSize = () => {
@@ -166,6 +168,16 @@ const StreetVendorLayout = ({ children }) => {
                 </Link>
             </div>
             <div className="flex items-center gap-4">
+                 <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+                    className="h-10 w-10 rounded-full"
+                    >
+                    <Sun className="h-[1.2rem] w-[1.2rem] rotate-0 scale-100 transition-all dark:-rotate-90 dark:scale-0" />
+                    <Moon className="absolute h-[1.2rem] w-[1.2rem] rotate-90 scale-0 transition-all dark:rotate-0 dark:scale-100" />
+                    <span className="sr-only">Toggle theme</span>
+                </Button>
                 <DropdownMenu>
                     <DropdownMenuTrigger asChild>
                         <Button variant="ghost" className="relative h-10 w-10 rounded-full">
@@ -244,4 +256,15 @@ const StreetVendorLayout = ({ children }) => {
   );
 }
 
-export default StreetVendorLayout;
+export default function StreetVendorDashboardLayout({ children }) {
+    return (
+        <ThemeProvider
+            attribute="class"
+            defaultTheme="system"
+            enableSystem
+            disableTransitionOnChange
+        >
+            <StreetVendorLayoutContent>{children}</StreetVendorLayoutContent>
+        </ThemeProvider>
+    );
+}
