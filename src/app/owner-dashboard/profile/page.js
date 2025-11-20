@@ -1,3 +1,4 @@
+
 'use client';
 
 import { motion } from 'framer-motion';
@@ -92,6 +93,7 @@ const DeleteAccountModal = ({ isOpen, setIsOpen }) => {
                     </Button>
                 </DialogFooter>
             </DialogContent>
+        </Dialog>
         </>
     );
 };
