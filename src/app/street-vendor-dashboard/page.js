@@ -1,4 +1,3 @@
-
 'use client';
 
 import React, { useState, useEffect, useMemo, useCallback, useRef, Suspense } from 'react';
@@ -203,7 +202,7 @@ export default function StreetVendorDashboard() {
         return await response.json();
     }, [user]);
 
-    const handleScanSuccess = useCallback(async (scannedUrl) => {
+    const handleScanSuccess = async (scannedUrl) => {
         setScannerOpen(false);
         try {
             const url = new URL(scannedUrl);
@@ -218,6 +217,12 @@ export default function StreetVendorDashboard() {
             if (!orderSnap.exists()) {
                 throw new Error('Order not found in the system.');
             }
+
+            // Ensure vendorId is loaded before checking
+            if (!vendorId) {
+                 throw new Error('Vendor information not yet loaded. Please try again in a moment.');
+            }
+
             if (orderSnap.data().restaurantId !== vendorId) {
                 throw new Error('This order does not belong to your stall.');
             }
@@ -225,7 +230,7 @@ export default function StreetVendorDashboard() {
         } catch (error) {
             setInfoDialog({ isOpen: true, title: 'Invalid QR', message: error.message });
         }
-    }, [vendorId]);
+    };
 
 
     useEffect(() => {
@@ -349,20 +354,16 @@ export default function StreetVendorDashboard() {
             title={infoDialog.title} 
             message={infoDialog.message}
         />
-        {isScannerOpen && <QrScanner onClose={() => setScannerOpen(false)} onScanSuccess={handleScanSuccess} />}
+        {isScannerOpen && (
+            <QrScanner onClose={() => setScannerOpen(false)} onScanSuccess={handleScanSuccess} />
+        )}
         {scannedOrder && <ScannedOrderModal isOpen={!!scannedOrder} onClose={() => setScannedOrder(null)} order={scannedOrder} onConfirm={confirmCollection} />}
         
         <header className="flex justify-between items-center mb-6">
             <h1 className="text-2xl font-bold font-headline">Live Orders</h1>
-            {isScannerOpen ? (
-                <Button onClick={() => setScannerOpen(false)} variant="destructive">
-                    <X className="mr-2" /> Close Scanner
-                </Button>
-            ) : (
-                <Button onClick={() => setScannerOpen(true)} className="bg-primary hover:bg-primary/90 text-primary-foreground">
-                    <QrCode className="mr-2" /> Scan to Collect
-                </Button>
-            )}
+            <Button onClick={() => setScannerOpen(true)} className="bg-primary hover:bg-primary/90 text-primary-foreground">
+                <QrCode className="mr-2" /> Scan to Collect
+            </Button>
         </header>
 
         <div className="mb-6 flex flex-col md:flex-row items-center justify-center gap-4">
