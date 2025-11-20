@@ -259,7 +259,6 @@ function PreOrderTrackingContent() {
                                                     fgColor="var(--coin-text-color-dark)"
                                                 />
                                             </div>
-                                            <p className="qr-label">Scan to Collect</p>
                                         </div>
                                     </div>
                                 </div>
@@ -305,3 +304,5 @@ export default function PreOrderTrackingPage() {
         </Suspense>
     )
 }
+
+    
