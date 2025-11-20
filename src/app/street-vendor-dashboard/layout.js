@@ -53,7 +53,7 @@ const StreetVendorLayout = ({ children }) => {
   const [restaurantStatus, setRestaurantStatus] = useState(true);
   const [loadingStatus, setLoadingStatus] = useState(true);
   const [infoDialog, setInfoDialog] = useState({ isOpen: false, title: '', message: '' });
-  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
 
   useEffect(() => {
@@ -61,6 +61,7 @@ const StreetVendorLayout = ({ children }) => {
       const mobile = window.innerWidth < 768;
       setIsMobile(mobile);
       if(!mobile) setIsSidebarOpen(true);
+      else setIsSidebarOpen(false);
     };
     checkScreenSize();
     window.addEventListener('resize', checkScreenSize);
@@ -84,8 +85,10 @@ const StreetVendorLayout = ({ children }) => {
         }
       };
       fetchStatus();
+    } else if (!isUserLoading && !user) {
+        router.push('/');
     }
-  }, [user, isUserLoading]);
+  }, [user, isUserLoading, router]);
   
   const handleLogout = async () => {
     await auth.signOut();
@@ -118,17 +121,7 @@ const StreetVendorLayout = ({ children }) => {
   const isCollapsed = !isSidebarOpen && !isMobile;
 
   const SidebarContent = () => (
-    <>
-      <header className="p-4 border-b border-border flex justify-between items-center">
-         <Link href="/" className="flex items-center justify-center">
-            {!isCollapsed && <Image src="/logo.png" alt="ServiZephyr Logo" width={140} height={35} className="h-9 w-auto" priority />}
-        </Link>
-        {!isMobile && (
-          <Button variant="ghost" size="icon" onClick={() => setIsSidebarOpen(!isSidebarOpen)}>
-            <ChevronLeft className={cn("transition-transform", isCollapsed && "rotate-180")} />
-          </Button>
-        )}
-      </header>
+    <div className="flex flex-col h-full bg-card">
       <nav className="flex-grow p-2 mt-4 space-y-2">
         {navItems.map(item => (
             <NavLink key={item.href} {...item} onClick={() => isMobile && setIsSidebarOpen(false)} isCollapsed={isCollapsed} />
@@ -141,95 +134,112 @@ const StreetVendorLayout = ({ children }) => {
             </Button>
         )}
       </footer>
-    </>
+    </div>
   );
+  
+  if (isUserLoading) {
+    return <div className="flex h-screen w-screen items-center justify-center bg-background"><Loader2 className="h-16 w-16 animate-spin text-primary" /></div>;
+  }
 
   return (
-    <div className="min-h-screen bg-background text-foreground flex">
+    <div className="min-h-screen bg-background text-foreground flex flex-col">
         <InfoDialog
             isOpen={infoDialog.isOpen}
             onClose={() => setInfoDialog({ isOpen: false, title: '', message: '' })}
             title={infoDialog.title}
             message={infoDialog.message}
         />
-        {/* Sidebar */}
-        <AnimatePresence>
-            {isSidebarOpen && isMobile && (
-                <motion.div 
-                    className="fixed inset-0 bg-black/60 z-40 md:hidden"
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    exit={{ opacity: 0 }}
-                    onClick={() => setIsSidebarOpen(false)}
-                />
-            )}
-        </AnimatePresence>
-        
-        <motion.aside
-            className="fixed top-0 left-0 h-full bg-card z-50 flex flex-col border-r border-border md:relative"
-            animate={isMobile ? { x: isSidebarOpen ? 0 : '-100%' } : { width: isSidebarOpen ? '256px' : '80px' }}
-            transition={{ type: 'spring', stiffness: 300, damping: 30 }}
-        >
-            <SidebarContent />
-        </motion.aside>
+       
+        <header className="sticky top-0 z-30 bg-card/80 backdrop-blur-lg border-b border-border h-[65px] flex-shrink-0">
+          <div className="container mx-auto px-4 py-3 flex items-center justify-between h-full">
+            <div className="flex items-center gap-2">
+                <Button variant="ghost" size="icon" className="md:hidden" onClick={() => setIsSidebarOpen(true)}>
+                    <Menu />
+                </Button>
+                 <Link href="/" className="flex items-center justify-center">
+                    <Image src="/logo.png" alt="ServiZephyr Logo" width={140} height={35} className="h-9 w-auto" priority />
+                </Link>
+            </div>
+            <div className="flex items-center gap-4">
+                <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                        <Button variant="ghost" className="relative h-10 w-10 rounded-full">
+                           <Avatar>
+                                <AvatarImage src={user?.photoURL} alt={user?.displayName || 'User'} />
+                                <AvatarFallback>{user?.displayName?.charAt(0) || 'U'}</AvatarFallback>
+                            </Avatar>
+                        </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent className="w-64" align="end">
+                        <DropdownMenuLabel>
+                            <p className="font-semibold">{user?.displayName}</p>
+                            <p className="text-xs text-muted-foreground font-normal">{user?.email}</p>
+                        </DropdownMenuLabel>
+                        <DropdownMenuSeparator />
+                         <div className="p-2">
+                            <Label htmlFor="restaurant-status-header" className="flex items-center justify-between cursor-pointer">
+                                <div className="flex flex-col">
+                                    <span className="font-semibold">Stall Status</span>
+                                    <span className={cn("text-xs", restaurantStatus ? 'text-green-500' : 'text-red-500')}>
+                                        {restaurantStatus ? 'Open for orders' : 'Closed'}
+                                    </span>
+                                </div>
+                                <Switch
+                                    id="restaurant-status-header"
+                                    checked={restaurantStatus}
+                                    onCheckedChange={handleStatusToggle}
+                                    disabled={loadingStatus}
+                                    aria-label="Toggle restaurant open/closed status"
+                                />
+                            </Label>
+                         </div>
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem onClick={() => router.push('/street-vendor-dashboard/profile')} className="cursor-pointer">
+                            <User className="mr-2 h-4 w-4"/> Profile
+                        </DropdownMenuItem>
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem onClick={handleLogout} className="text-red-500 font-semibold cursor-pointer">
+                            <LogOut className="mr-2 h-4 w-4"/>
+                            <span>Logout</span>
+                        </DropdownMenuItem>
+                    </DropdownMenuContent>
+                </DropdownMenu>
+            </div>
+          </div>
+        </header>
 
-
-        <div className="flex flex-col flex-grow">
-            <header className="sticky top-0 z-30 bg-card/80 backdrop-blur-lg border-b border-border">
-              <div className="container mx-auto px-4 py-3 flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                    <Button variant="ghost" size="icon" className="md:hidden" onClick={() => setIsSidebarOpen(true)}>
-                        <Menu />
+        <div className="flex flex-grow overflow-hidden">
+            {/* Sidebar */}
+            <AnimatePresence>
+                {isSidebarOpen && isMobile && (
+                    <motion.div 
+                        className="fixed inset-0 bg-black/60 z-40 md:hidden"
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        onClick={() => setIsSidebarOpen(false)}
+                    />
+                )}
+            </AnimatePresence>
+            
+            <motion.aside
+                className="fixed top-0 left-0 h-full bg-card z-50 flex flex-col border-r border-border md:relative md:h-auto md:top-auto md:left-auto md:z-auto"
+                animate={isMobile ? { x: isSidebarOpen ? 0 : '-100%' } : { width: isSidebarOpen ? '256px' : '80px' }}
+                transition={{ type: 'spring', stiffness: 300, damping: 30 }}
+            >
+                {/* --- FIX: Remove header from here --- */}
+                <div className="flex items-center justify-end h-[65px] px-4 border-b border-border">
+                    <Button variant="ghost" size="icon" className="hidden md:flex" onClick={() => setIsSidebarOpen(!isSidebarOpen)}>
+                        <ChevronLeft className={cn("transition-transform", isCollapsed && "rotate-180")} />
                     </Button>
                 </div>
-                <div className="flex items-center gap-4">
-                    <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                            <Button variant="ghost" className="relative h-10 w-10 rounded-full">
-                               <Avatar>
-                                    <AvatarImage src={user?.photoURL} alt={user?.displayName || 'User'} />
-                                    <AvatarFallback>{user?.displayName?.charAt(0) || 'U'}</AvatarFallback>
-                                </Avatar>
-                            </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent className="w-64" align="end">
-                            <DropdownMenuLabel>
-                                <p className="font-semibold">{user?.displayName}</p>
-                                <p className="text-xs text-muted-foreground font-normal">{user?.email}</p>
-                            </DropdownMenuLabel>
-                            <DropdownMenuSeparator />
-                             <div className="p-2">
-                                <Label htmlFor="restaurant-status-header" className="flex items-center justify-between cursor-pointer">
-                                    <div className="flex flex-col">
-                                        <span className="font-semibold">Stall Status</span>
-                                        <span className={cn("text-xs", restaurantStatus ? 'text-green-500' : 'text-red-500')}>
-                                            {restaurantStatus ? 'Open for orders' : 'Closed'}
-                                        </span>
-                                    </div>
-                                    <Switch
-                                        id="restaurant-status-header"
-                                        checked={restaurantStatus}
-                                        onCheckedChange={handleStatusToggle}
-                                        disabled={loadingStatus}
-                                        aria-label="Toggle restaurant open/closed status"
-                                    />
-                                </Label>
-                             </div>
-                            <DropdownMenuSeparator />
-                            <DropdownMenuItem onClick={() => router.push('/street-vendor-dashboard/profile')} className="cursor-pointer">
-                                <User className="mr-2 h-4 w-4"/> Profile
-                            </DropdownMenuItem>
-                            <DropdownMenuSeparator />
-                            <DropdownMenuItem onClick={handleLogout} className="text-red-500 font-semibold cursor-pointer">
-                                <LogOut className="mr-2 h-4 w-4"/>
-                                <span>Logout</span>
-                            </DropdownMenuItem>
-                        </DropdownMenuContent>
-                    </DropdownMenu>
+                <div className="flex-grow overflow-y-auto">
+                  <SidebarContent />
                 </div>
-              </div>
-            </header>
-            <main className="flex-grow pb-4 md:pb-8 overflow-y-auto">
+            </motion.aside>
+
+            {/* Main Content */}
+            <main className="flex-grow overflow-y-auto">
                  <Suspense fallback={<div className="min-h-[80vh] flex items-center justify-center"><Loader2 className="animate-spin text-primary h-10 w-10"/></div>}>
                     {children}
                 </Suspense>
