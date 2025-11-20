@@ -130,6 +130,12 @@ export default function Sidebar({ isOpen, setIsOpen, isMobile, isCollapsed, rest
     return false;
   };
 
+  const handleLinkClick = () => {
+    if (isMobile) {
+      setIsOpen(false);
+    }
+  };
+
   const menuItems = getMenuItems(businessType);
   const settingsItems = getSettingsItems(businessType);
 
@@ -152,25 +158,27 @@ export default function Sidebar({ isOpen, setIsOpen, isMobile, isCollapsed, rest
         <div className={styles.menuGroup}>
             <span className={`${styles.menuGroupTitle} ${isCollapsed ? styles.collapsedText : ''}`}>Menu</span>
             {menuItems.map((item) => (
-              <SidebarLink 
-                key={item.name} 
-                item={item} 
-                isCollapsed={isCollapsed} 
-                isDisabled={getIsDisabled(item.featureId)}
-                disabledIcon={Lock}
-              />
+              <div key={item.name} onClick={handleLinkClick}>
+                <SidebarLink 
+                  item={item} 
+                  isCollapsed={isCollapsed} 
+                  isDisabled={getIsDisabled(item.featureId)}
+                  disabledIcon={Lock}
+                />
+              </div>
             ))}
         </div>
         <div className={styles.menuGroup}>
             <span className={`${styles.menuGroupTitle} ${isCollapsed ? styles.collapsedText : ''}`}>General</span>
             {settingsItems.map((item) => (
-                 <SidebarLink 
-                    key={item.name}
-                    item={item} 
-                    isCollapsed={isCollapsed} 
-                    isDisabled={getIsDisabled(item.featureId)}
-                    disabledIcon={Lock}
-                />
+                 <div key={item.name} onClick={handleLinkClick}>
+                    <SidebarLink 
+                        item={item} 
+                        isCollapsed={isCollapsed} 
+                        isDisabled={getIsDisabled(item.featureId)}
+                        disabledIcon={Lock}
+                    />
+                 </div>
             ))}
         </div>
       </nav>
