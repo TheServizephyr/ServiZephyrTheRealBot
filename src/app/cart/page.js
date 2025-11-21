@@ -1,5 +1,4 @@
 
-
 'use client';
 
 import React, { useState, useEffect, useMemo, Suspense, useCallback } from 'react';
@@ -194,9 +193,7 @@ const CartPageInternal = () => {
     const activeOrderId = searchParams.get('activeOrderId');
     const [liveOrder, setLiveOrder] = useState(null);
 
-    // --- START FIX: State for out-of-stock items ---
     const [outOfStockItems, setOutOfStockItems] = useState([]);
-    // --- END FIX ---
 
     useEffect(() => {
         const liveOrderKey = `liveOrder_${restaurantId}`;
@@ -261,7 +258,6 @@ const CartPageInternal = () => {
         }
     }, [phone, token, tableId, user, isUserLoading, restaurantId, router, activeOrderId]);
     
-    // --- START FIX: Cross-reference cart with menu availability ---
     useEffect(() => {
         if (isTokenValid && restaurantId) {
             console.log("[Cart Page] Token is valid. Loading cart data from localStorage for restaurant:", restaurantId);
@@ -277,8 +273,7 @@ const CartPageInternal = () => {
                 } else {
                     console.log("[Cart Page] Found valid cart data:", parsedData);
 
-                    // --- NEW VALIDATION LOGIC ---
-                    const fullMenu = parsedData.menu || {}; // Assuming full menu is stored in cartData from order page
+                    const fullMenu = parsedData.menu || {};
                     const availableItems = [];
                     const unavailableItemIds = [];
                     (parsedData.cart || []).forEach(cartItem => {
@@ -297,10 +292,9 @@ const CartPageInternal = () => {
                         }
                     });
                     setOutOfStockItems(unavailableItemIds);
-                    // --- END NEW VALIDATION LOGIC ---
 
                     setCartData(parsedData);
-                    setCart(parsedData.cart || []);
+                    setCart(availableItems); // Only set available items in cart
                     setNotes(parsedData.notes || '');
                     setAppliedCoupons(parsedData.appliedCoupons || []);
                     setTipAmount(parsedData.tipAmount || 0);
@@ -313,7 +307,6 @@ const CartPageInternal = () => {
             }
         }
     }, [isTokenValid, restaurantId]);
-    // --- END FIX ---
 
 
     const deliveryType = useMemo(() => {
@@ -700,7 +693,7 @@ const CartPageInternal = () => {
                         <AlertTriangle className="h-4 w-4" />
                         <AlertTitle>Items Out of Stock</AlertTitle>
                         <AlertDescription>
-                            Some items in your cart are no longer available. Please remove them to proceed.
+                            Some items in your cart are no longer available and have been automatically removed. Please review your updated cart.
                         </AlertDescription>
                     </Alert>
                 )}
@@ -721,40 +714,36 @@ const CartPageInternal = () => {
                                  <Button variant="destructive" size="sm" onClick={() => setIsClearCartDialogOpen(true)}><Trash2 className="mr-2 h-4 w-4"/> Clear</Button>
                             </div>
                             <div className="space-y-4">
-                                {cart.map(item => {
-                                    const isOutOfStock = outOfStockItems.includes(item.cartItemId);
-                                    return (
-                                        <motion.div 
-                                            layout
-                                            key={item.cartItemId}
-                                            className={cn("flex items-center gap-4 relative p-3 rounded-md", isOutOfStock && "bg-destructive/10 ring-1 ring-destructive")}
-                                        >
-                                            <div className={`w-4 h-4 border ${item.isVeg ? 'border-green-500' : 'border-red-500'} flex items-center justify-center flex-shrink-0`}>
-                                                <div className={`w-2 h-2 ${item.isVeg ? 'bg-green-500' : 'bg-red-500'} rounded-full`}></div>
-                                            </div>
-                                            <div className="flex-grow">
-                                              <p className={cn("font-semibold text-foreground", isOutOfStock && "line-through")}>{item.name}</p>
-                                              <p className="text-xs text-muted-foreground">{item.portion.name}</p>
-                                              {item.selectedAddOns && item.selectedAddOns.length > 0 && (
-                                                <ul className="mt-1 pl-4">
-                                                    {item.selectedAddOns.map(addon => (
-                                                        <li key={addon.name} className="text-xs text-muted-foreground list-disc list-inside">
-                                                            {addon.name} (+₹{addon.price})
-                                                        </li>
-                                                    ))}
-                                                </ul>
-                                              )}
-                                              {isOutOfStock && <p className="text-xs font-bold text-destructive mt-1">Out of Stock</p>}
-                                            </div>
-                                            <div className="flex items-center gap-2">
-                                                <Button size="icon" variant="outline" className="h-7 w-7 hover:bg-red-500/10 hover:text-red-500 hover:border-red-500" onClick={() => handleUpdateCart(item, 'decrement')}>-</Button>
-                                                <span className="font-bold w-5 text-center">{item.quantity}</span>
-                                                <Button size="icon" variant="outline" className="h-7 w-7 hover:bg-green-500/10 hover:text-green-500 hover:border-green-500" onClick={() => handleUpdateCart(item, 'increment')} disabled={isOutOfStock}>+</Button>
-                                            </div>
-                                            <p className={cn("w-20 text-right font-bold", isOutOfStock && "line-through text-muted-foreground")}>₹{item.totalPrice * item.quantity}</p>
-                                        </motion.div>
-                                    )
-                                })}
+                                {cart.map(item => (
+                                    <motion.div 
+                                        layout
+                                        key={item.cartItemId}
+                                        className={cn("flex items-center gap-4 relative p-3 rounded-md")}
+                                    >
+                                        <div className={`w-4 h-4 border ${item.isVeg ? 'border-green-500' : 'border-red-500'} flex items-center justify-center flex-shrink-0`}>
+                                            <div className={`w-2 h-2 ${item.isVeg ? 'bg-green-500' : 'bg-red-500'} rounded-full`}></div>
+                                        </div>
+                                        <div className="flex-grow">
+                                          <p className={cn("font-semibold text-foreground")}>{item.name}</p>
+                                          <p className="text-xs text-muted-foreground">{item.portion.name}</p>
+                                          {item.selectedAddOns && item.selectedAddOns.length > 0 && (
+                                            <ul className="mt-1 pl-4">
+                                                {item.selectedAddOns.map(addon => (
+                                                    <li key={addon.name} className="text-xs text-muted-foreground list-disc list-inside">
+                                                        {addon.name} (+₹{addon.price})
+                                                    </li>
+                                                ))}
+                                            </ul>
+                                          )}
+                                        </div>
+                                        <div className="flex items-center gap-2">
+                                            <Button size="icon" variant="outline" className="h-7 w-7 hover:bg-red-500/10 hover:text-red-500 hover:border-red-500" onClick={() => handleUpdateCart(item, 'decrement')}>-</Button>
+                                            <span className="font-bold w-5 text-center">{item.quantity}</span>
+                                            <Button size="icon" variant="outline" className="h-7 w-7 hover:bg-green-500/10 hover:text-green-500 hover:border-green-500" onClick={() => handleUpdateCart(item, 'increment')}>+</Button>
+                                        </div>
+                                        <p className={cn("w-20 text-right font-bold")}>₹{item.totalPrice * item.quantity}</p>
+                                    </motion.div>
+                                ))}
                             </div>
 
                             <Button variant="outline" onClick={handleGoBack} className="w-full mt-4 border-green-500 text-green-500 bg-green-500/10 hover:bg-green-500/20 hover:text-green-500">

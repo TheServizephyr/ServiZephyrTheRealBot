@@ -1,5 +1,4 @@
 
-
 'use client';
 
 import React, { useState, useEffect, Suspense, useMemo, useCallback, useRef } from 'react';
@@ -197,14 +196,18 @@ const MenuItemCard = ({ item, quantity, onAdd, onIncrement, onDecrement }) => {
         return item.portions.reduce((min, p) => p.price < min.price ? p : min, item.portions[0]);
     }, [item.portions]);
 
+    const isOutOfStock = item.isAvailable === false;
+
     return (
         <motion.div
           layout
-          className="flex gap-4 py-6 border-b border-border bg-card rounded-xl p-4 shadow-md transition-all duration-300"
+          className={cn(
+            "flex gap-4 py-6 border-b border-border bg-card rounded-xl p-4 shadow-md transition-all duration-300",
+            isOutOfStock ? "opacity-40 grayscale" : "hover:-translate-y-1 hover:shadow-primary/20"
+          )}
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.3 }}
-          whileHover={{ y: -4, boxShadow: "0 10px 20px hsla(var(--primary), 0.2)" }}
         >
             <div className="flex-grow flex flex-col">
                 <div className="flex items-center gap-2 mb-1">
@@ -232,7 +235,11 @@ const MenuItemCard = ({ item, quantity, onAdd, onIncrement, onDecrement }) => {
                     <Image src={item.imageUrl} alt={item.name} layout="fill" objectFit="cover" data-ai-hint="food item" />
                 </div>
                 <div className="absolute -bottom-3 left-1/2 -translate-x-1/2 w-[90%]">
-                    {quantity > 0 ? (
+                    {isOutOfStock ? (
+                         <div className="flex items-center justify-center bg-destructive text-destructive-foreground rounded-lg shadow-lg h-10 font-bold text-sm">
+                            Out of Stock
+                         </div>
+                    ) : quantity > 0 ? (
                         <div className="flex items-center justify-center bg-background border-2 border-border rounded-lg shadow-lg h-10">
                             <Button variant="ghost" size="icon" className="h-full w-10 text-primary rounded-r-none" onClick={() => onDecrement(item.id)}>
                                 <Minus size={16}/>
@@ -918,7 +925,8 @@ const OrderPageInternal = () => {
             deliveryFreeThreshold: restaurantData.deliveryFreeThreshold,
             businessType: restaurantData.businessType,
             dineInModel: restaurantData.dineInModel,
-            loyaltyPoints, expiryTimestamp
+            loyaltyPoints, expiryTimestamp,
+            menu: restaurantData.menu, // Save the full menu for availability check
         };
         localStorage.setItem(`cart_${restaurantId}`, JSON.stringify(cartDataToSave));
         
@@ -939,9 +947,6 @@ const OrderPageInternal = () => {
 
         for (const category in newMenu) {
             let items = newMenu[category];
-            // --- START FIX: Filter out unavailable items ---
-            items = items.filter(item => item.isAvailable === true);
-            // --- END FIX ---
             if (lowercasedQuery) items = items.filter(item => item.name.toLowerCase().includes(lowercasedQuery));
             if (filters.veg) items = items.filter(item => item.isVeg);
             if (filters.nonVeg) items = items.filter(item => !item.isVeg);
