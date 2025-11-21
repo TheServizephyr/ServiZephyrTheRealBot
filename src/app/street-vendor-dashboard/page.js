@@ -1,9 +1,8 @@
-
 'use client';
 
 import React, { useState, useEffect, useMemo, useCallback, useRef, Suspense } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ClipboardList, QrCode, CookingPot, PackageCheck, Check, X, Loader2, User, Phone, History, Wallet, IndianRupee, Calendar as CalendarIcon, Search, Filter } from 'lucide-react';
+import { ClipboardList, QrCode, CookingPot, PackageCheck, Check, X, Loader2, User, Phone, History, Wallet, IndianRupee, Calendar as CalendarIcon, Search, Filter, AlertTriangle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import Link from 'next/link';
 import { useUser, useMemoFirebase, useCollection } from '@/firebase';
@@ -13,13 +12,15 @@ import { startOfDay, endOfDay, format, addDays } from 'date-fns';
 import { FirestorePermissionError } from '@/firebase/errors';
 import { errorEmitter } from '@/firebase/error-emitter';
 import InfoDialog from '@/components/InfoDialog';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose } from "@/components/ui/dialog";
 import { useSearchParams } from 'next/navigation';
 import { cn } from '@/lib/utils';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
 import QrScanner from '@/components/QrScanner';
+import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
 
 
 const formatCurrency = (value) => `₹${Number(value || 0).toLocaleString('en-IN', { maximumFractionDigits: 2 })}`;
@@ -29,7 +30,175 @@ const formatDateTime = (timestamp) => {
     return format(date, 'dd/MM, p'); // e.g., 25/12, 1:33 PM
 };
 
-const OrderCard = ({ order, onMarkReady, onCancel, onMarkCollected }) => {
+const RejectOrderModal = ({ order, isOpen, onClose, onConfirm, onMarkOutOfStock, showInfoDialog }) => {
+    const [reason, setReason] = useState('');
+    const [otherReason, setOtherReason] = useState('');
+    const [isSubmitting, setIsSubmitting] = useState(false);
+    
+    const [isOutOfStockModalOpen, setIsOutOfStockModalOpen] = useState(false);
+
+    useEffect(() => {
+        if (isOpen) {
+            setReason('');
+            setOtherReason('');
+            setIsSubmitting(false);
+            setIsOutOfStockModalOpen(false);
+        }
+    }, [isOpen]);
+
+    const handleConfirm = async () => {
+        if (reason === 'item_unavailable') {
+            setIsOutOfStockModalOpen(true);
+            return;
+        }
+
+        const finalReason = reason === 'other' ? otherReason : reason;
+        if (!finalReason) {
+            showInfoDialog({ isOpen: true, title: 'Validation Error', message: 'Please select or enter a reason for rejection.' });
+            return;
+        }
+        setIsSubmitting(true);
+        try {
+            await onConfirm(order.id, finalReason);
+            onClose();
+        } catch (error) {
+            showInfoDialog({ isOpen: true, title: 'Error', message: `Could not reject order: ${error.message}` });
+        } finally {
+            setIsSubmitting(false);
+        }
+    };
+    
+    const handleOutOfStockConfirm = async (outOfStockItems) => {
+        setIsSubmitting(true);
+        try {
+            for (const itemId of outOfStockItems) {
+                await onMarkOutOfStock(itemId);
+            }
+            await onConfirm(order.id, "Item(s) out of stock");
+            setIsOutOfStockModalOpen(false);
+            onClose();
+            showInfoDialog({isOpen: true, title: 'Success', message: 'Item(s) marked as out of stock and order rejected.'});
+
+        } catch (error) {
+             showInfoDialog({ isOpen: true, title: 'Error', message: `Could not perform action: ${error.message}` });
+        } finally {
+            setIsSubmitting(false);
+        }
+    };
+
+    const rejectionReasons = [
+        { value: "item_unavailable", label: "Item(s) out of stock" },
+        { value: "customer_request", label: "Customer requested cancellation" },
+        { value: "other", label: "Other" },
+    ];
+    
+    if (!isOpen) return null;
+
+    return (
+        <>
+            <Dialog open={isOpen && !isOutOfStockModalOpen} onOpenChange={onClose}>
+                <DialogContent className="bg-background border-border text-foreground">
+                    <DialogHeader>
+                        <DialogTitle>Reject Order #{order?.id.substring(0, 5)}</DialogTitle>
+                        <DialogDescription>
+                            Are you sure you want to reject this order? This action cannot be undone. The customer will be notified.
+                        </DialogDescription>
+                    </DialogHeader>
+                    <div className="py-4 space-y-4">
+                        <div>
+                            <Label htmlFor="rejection-reason">Reason for Rejection</Label>
+                            <select
+                                id="rejection-reason"
+                                value={reason}
+                                onChange={(e) => setReason(e.target.value)}
+                                className="mt-1 w-full p-2 border rounded-md bg-input border-border focus:ring-primary focus:border-primary"
+                            >
+                                <option value="" disabled>Select a reason...</option>
+                                {rejectionReasons.map(r => (
+                                    <option key={r.value} value={r.value}>{r.label}</option>
+                                ))}
+                            </select>
+                        </div>
+                        {reason === 'other' && (
+                            <motion.div
+                                initial={{ opacity: 0, height: 0 }}
+                                animate={{ opacity: 1, height: 'auto' }}
+                            >
+                                <Label htmlFor="other-reason">Please specify the reason</Label>
+                                <Textarea
+                                    id="other-reason"
+                                    value={otherReason}
+                                    onChange={(e) => setOtherReason(e.target.value)}
+                                    className="mt-1"
+                                    placeholder="e.g., Unable to process payment, weather conditions, etc."
+                                />
+                            </motion.div>
+                        )}
+                    </div>
+                    <DialogFooter>
+                        <DialogClose asChild><Button variant="secondary" disabled={isSubmitting}>Cancel</Button></DialogClose>
+                        <Button variant="destructive" onClick={handleConfirm} disabled={isSubmitting || !reason || (reason === 'other' && !otherReason.trim())}>
+                            {isSubmitting ? "Rejecting..." : (reason === 'item_unavailable' ? "Next" : "Confirm Rejection")}
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+            {order && <OutOfStockModal isOpen={isOutOfStockModalOpen} onClose={() => setIsOutOfStockModalOpen(false)} orderItems={order.items} onConfirm={handleOutOfStockConfirm} />}
+        </>
+    );
+};
+
+const OutOfStockModal = ({ isOpen, onClose, orderItems, onConfirm }) => {
+    const [selectedItems, setSelectedItems] = useState([]);
+    const [isConfirming, setIsConfirming] = useState(false);
+
+    const handleToggleItem = (itemId) => {
+        setSelectedItems(prev => 
+            prev.includes(itemId) ? prev.filter(id => id !== itemId) : [...prev, itemId]
+        );
+    };
+
+    const handleConfirm = async () => {
+        setIsConfirming(true);
+        await onConfirm(selectedItems);
+        setIsConfirming(false);
+    };
+
+    return (
+        <Dialog open={isOpen} onOpenChange={onClose}>
+            <DialogContent className="bg-card border-border text-foreground">
+                <DialogHeader>
+                    <DialogTitle>Mark Items Out of Stock</DialogTitle>
+                    <DialogDescription>
+                        Select the items that are out of stock. This will update your menu automatically.
+                    </DialogDescription>
+                </DialogHeader>
+                <div className="py-4 space-y-2 max-h-60 overflow-y-auto">
+                    {orderItems.map(item => (
+                        <div key={item.id || item.name} className="flex items-center space-x-3 p-3 rounded-lg bg-muted border border-border">
+                            <Checkbox 
+                                id={`stock-${item.id}`} 
+                                checked={selectedItems.includes(item.id)}
+                                onCheckedChange={() => handleToggleItem(item.id)}
+                            />
+                            <Label htmlFor={`stock-${item.id}`} className="font-semibold text-foreground cursor-pointer flex-grow">
+                                {item.name}
+                            </Label>
+                        </div>
+                    ))}
+                </div>
+                <DialogFooter>
+                     <Button variant="secondary" onClick={onClose} disabled={isConfirming}>Cancel</Button>
+                     <Button variant="destructive" onClick={handleConfirm} disabled={selectedItems.length === 0 || isConfirming}>
+                        {isConfirming ? "Updating..." : `Mark ${selectedItems.length} Item(s) Out of Stock`}
+                    </Button>
+                </DialogFooter>
+            </DialogContent>
+        </Dialog>
+    )
+}
+
+const OrderCard = ({ order, onMarkReady, onCancelClick, onMarkCollected }) => {
     const token = order.dineInToken;
     const isPending = order.status === 'pending';
     const isReady = order.status === 'Ready';
@@ -103,7 +272,7 @@ const OrderCard = ({ order, onMarkReady, onCancel, onMarkCollected }) => {
             <div className="mt-4">
                 {isPending && (
                     <div className="grid grid-cols-2 gap-2">
-                         <Button onClick={() => onCancel(order.id)} variant="destructive" className="h-12 text-base">
+                         <Button onClick={() => onCancelClick(order)} variant="destructive" className="h-12 text-base">
                             <X className="mr-2" /> Cancel
                         </Button>
                         <Button onClick={() => onMarkReady(order.id)} className="bg-green-600 hover:bg-green-700 h-12 text-base">
@@ -188,6 +357,8 @@ export default function StreetVendorDashboard() {
     const [error, setError] = useState(null);
     const [isCalendarOpen, setIsCalendarOpen] = useState(false);
     const [searchQuery, setSearchQuery] = useState('');
+    const [rejectModalState, setRejectModalState] = useState({ isOpen: false, order: null });
+
 
     const handleApiCall = useCallback(async (endpoint, method = 'PATCH', body = {}) => {
         if (!user) throw new Error('Authentication Error');
@@ -223,7 +394,6 @@ export default function StreetVendorDashboard() {
                 throw new Error('Order not found in the system.');
             }
 
-            // Ensure vendorId is loaded before checking
             if (!vendorId) {
                  throw new Error('Vendor information not yet loaded. Please try again in a moment.');
             }
@@ -313,20 +483,34 @@ export default function StreetVendorDashboard() {
         return () => unsubscribe();
     }, [vendorId, date]);
 
-    const handleUpdateStatus = async (orderId, newStatus) => {
+    const handleUpdateStatus = async (orderId, newStatus, reason = null) => {
         try {
             await handleApiCall('/api/owner/orders', 'PATCH', {
                 orderIds: [orderId],
-                newStatus
+                newStatus,
+                rejectionReason: reason,
             });
         } catch (error) {
              setInfoDialog({isOpen: true, title: "Error", message: error.message});
+             throw error;
+        }
+    };
+    
+    const handleMarkOutOfStock = async (itemId) => {
+        if (!vendorId) return;
+        try {
+            await handleApiCall('/api/owner/menu', 'PATCH', {
+                updates: { id: itemId, isAvailable: false }
+            });
+        } catch(error) {
+            setInfoDialog({ isOpen: true, title: 'Error', message: `Could not mark item as out of stock: ${error.message}` });
+            throw error;
         }
     };
 
     const handleMarkReady = (orderId) => handleUpdateStatus(orderId, 'Ready');
-    const handleCancelOrder = (orderId) => handleUpdateStatus(orderId, 'rejected');
     const handleMarkCollected = (orderId) => handleUpdateStatus(orderId, 'delivered');
+    const handleOpenRejectModal = (order) => setRejectModalState({ isOpen: true, order });
     
     const filteredOrders = useMemo(() => {
         if (!searchQuery) return orders;
@@ -359,6 +543,15 @@ export default function StreetVendorDashboard() {
             title={infoDialog.title} 
             message={infoDialog.message}
         />
+        <RejectOrderModal
+            isOpen={rejectModalState.isOpen}
+            onClose={() => setRejectModalState({ isOpen: false, order: null })}
+            order={rejectModalState.order}
+            onConfirm={handleUpdateStatus}
+            onMarkOutOfStock={handleMarkOutOfStock}
+            showInfoDialog={setInfoDialog}
+        />
+
         {isScannerOpen && (
             <QrScanner onClose={() => setScannerOpen(false)} onScanSuccess={handleScanSuccess} />
         )}
@@ -443,7 +636,7 @@ export default function StreetVendorDashboard() {
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
                              <AnimatePresence>
                                 {pendingOrders.map(order => (
-                                    <OrderCard key={order.id} order={order} onMarkReady={handleMarkReady} onCancel={handleCancelOrder} />
+                                    <OrderCard key={order.id} order={order} onMarkReady={handleMarkReady} onCancelClick={handleOpenRejectModal} />
                                 ))}
                             </AnimatePresence>
                             {pendingOrders.length === 0 && <p className="text-muted-foreground text-center py-10 col-span-full">No new orders for the selected date.</p>}
@@ -480,3 +673,9 @@ export default function StreetVendorDashboard() {
     </div>
   );
 }
+
+```
+- src/lib/firebase.js
+- `src/app/api/owner/orders/route.js`
+- `src/app/street-vendor-dashboard/menu/page.js`
+- `src/app/api/owner/menu/route.js`
