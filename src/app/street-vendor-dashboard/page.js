@@ -1,4 +1,3 @@
-
 'use client';
 
 import React, { useState, useEffect, useMemo, useCallback, useRef, Suspense } from 'react';
@@ -281,6 +280,12 @@ const OrderCard = ({ order, onMarkReady, onCancelClick, onMarkCollected }) => {
                         })}
                     </ul>
                 </div>
+                 {order.status === 'rejected' && order.rejectionReason && (
+                    <div className="mt-3 pt-3 border-t border-dashed border-red-500/30">
+                        <p className="font-semibold text-red-400">Rejection Reason:</p>
+                        <p className="text-sm text-red-400/90">{order.rejectionReason}</p>
+                    </div>
+                )}
             </div>
             <div className="mt-4">
                 {isPending && (
@@ -555,6 +560,7 @@ const StreetVendorDashboardContent = () => {
     const pendingOrders = useMemo(() => filteredOrders.filter(o => o.status === 'pending'), [filteredOrders]);
     const readyOrders = useMemo(() => filteredOrders.filter(o => o.status === 'Ready'), [filteredOrders]);
     const collectedOrders = useMemo(() => filteredOrders.filter(o => o.status === 'delivered' || o.status === 'picked_up'), [filteredOrders]);
+    const cancelledOrders = useMemo(() => filteredOrders.filter(o => o.status === 'rejected'), [filteredOrders]);
     
      const handleSetDateFilter = (selectedRange) => {
         setDate(selectedRange);
@@ -575,7 +581,7 @@ const StreetVendorDashboardContent = () => {
             isOpen={rejectModalState.isOpen}
             onClose={() => setRejectModalState({ isOpen: false, order: null })}
             order={rejectModalState.order}
-            onConfirm={(orderId, reason) => handleUpdateStatus(orderId, 'rejected', reason)}
+            onConfirm={handleUpdateStatus}
             onMarkOutOfStock={handleMarkOutOfStock}
             showInfoDialog={setInfoDialog}
         />
@@ -655,10 +661,11 @@ const StreetVendorDashboardContent = () => {
                  <div className="text-center py-20 text-red-500">{error}</div>
             ) : (
                 <Tabs defaultValue="new_orders" className="w-full">
-                    <TabsList className="grid w-full grid-cols-3">
+                    <TabsList className="grid w-full grid-cols-4">
                         <TabsTrigger value="new_orders">New ({pendingOrders.length})</TabsTrigger>
                         <TabsTrigger value="ready">Ready ({readyOrders.length})</TabsTrigger>
                         <TabsTrigger value="collected">Collected ({collectedOrders.length})</TabsTrigger>
+                        <TabsTrigger value="cancelled">Cancelled ({cancelledOrders.length})</TabsTrigger>
                     </TabsList>
                     <TabsContent value="new_orders" className="mt-4">
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
@@ -688,6 +695,16 @@ const StreetVendorDashboardContent = () => {
                                 ))}
                             </AnimatePresence>
                             {collectedOrders.length === 0 && <p className="text-muted-foreground text-center py-10 col-span-full">No orders have been collected for the selected date.</p>}
+                        </div>
+                    </TabsContent>
+                    <TabsContent value="cancelled" className="mt-4">
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                             <AnimatePresence>
+                                {cancelledOrders.map(order => (
+                                    <OrderCard key={order.id} order={order} />
+                                ))}
+                            </AnimatePresence>
+                            {cancelledOrders.length === 0 && <p className="text-muted-foreground text-center py-10 col-span-full">No cancelled orders for the selected date.</p>}
                         </div>
                     </TabsContent>
                 </Tabs>
