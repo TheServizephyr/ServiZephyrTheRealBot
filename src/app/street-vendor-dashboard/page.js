@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useState, useEffect, useMemo, useCallback, useRef, Suspense } from 'react';
@@ -272,7 +273,7 @@ const OrderCard = ({ order, onMarkReady, onCancelClick, onMarkCollected }) => {
 
                             return (
                                 <li key={index}>
-                                    {item.quantity}x {item.name} 
+                                    {item.quantity || item.qty}x {item.name} 
                                     {portionName && portionName.toLowerCase() !== 'full' && ` - ${portionName}`}
                                     {addOns && <span className="text-xs text-primary block pl-4">({addOns})</span>}
                                 </li>
@@ -348,7 +349,7 @@ const ScannedOrderModal = ({ order, isOpen, onClose, onConfirm }) => {
 
                                 return (
                                     <li key={index}>
-                                        {item.quantity}x {item.name} 
+                                        {item.quantity || item.qty}x {item.name} 
                                         {portionName && portionName.toLowerCase() !== 'full' && ` - ${portionName}`}
                                         {addOns && <span className="text-xs text-primary block pl-4">({addOns})</span>}
                                     </li>
@@ -704,7 +705,7 @@ const StreetVendorDashboardContent = () => {
 const StreetVendorDashboard = () => (
     <Suspense fallback={<div className="flex h-full w-full items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>}>
         <StreetVendorDashboardContent />
-    </Suspense
+    </Suspense>
 );
 
 export default StreetVendorDashboard;
