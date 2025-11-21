@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useState, useEffect, useMemo, useCallback, useRef, Suspense } from 'react';
@@ -21,6 +22,7 @@ import { Calendar } from "@/components/ui/calendar";
 import QrScanner from '@/components/QrScanner';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
+import { Checkbox } from '@/components/ui/checkbox';
 
 
 const formatCurrency = (value) => `₹${Number(value || 0).toLocaleString('en-IN', { maximumFractionDigits: 2 })}`;
@@ -344,7 +346,7 @@ const ScannedOrderModal = ({ order, isOpen, onClose, onConfirm }) => {
 };
 
 
-export default function StreetVendorDashboard() {
+const StreetVendorDashboardContent = () => {
     const { user, isUserLoading } = useUser();
     const [vendorId, setVendorId] = useState(null);
     const [orders, setOrders] = useState([]);
@@ -378,7 +380,7 @@ export default function StreetVendorDashboard() {
         return await response.json();
     }, [user]);
 
-    const handleScanSuccess = async (scannedUrl) => {
+    const handleScanSuccess = useCallback(async (scannedUrl) => {
         setScannerOpen(false);
         try {
             const url = new URL(scannedUrl);
@@ -405,7 +407,7 @@ export default function StreetVendorDashboard() {
         } catch (error) {
             setInfoDialog({ isOpen: true, title: 'Invalid QR', message: error.message });
         }
-    };
+    }, [vendorId]);
 
 
     useEffect(() => {
@@ -534,7 +536,6 @@ export default function StreetVendorDashboard() {
         }
     };
 
-
   return (
     <div className="min-h-screen bg-background text-foreground font-body p-4 pb-24">
         <InfoDialog 
@@ -659,7 +660,7 @@ export default function StreetVendorDashboard() {
                                     <OrderCard key={order.id} order={order} />
                                 ))}
                             </AnimatePresence>
-                            {collectedOrders.length === 0 && <p className="text-muted-foreground text-center py-10 col-span-full">No orders have been collected today.</p>}
+                            {collectedOrders.length === 0 && <p className="text-muted-foreground text-center py-10 col-span-full">No orders have been collected for the selected date.</p>}
                         </div>
                     </TabsContent>
                 </Tabs>
@@ -674,8 +675,10 @@ export default function StreetVendorDashboard() {
   );
 }
 
-```
-- src/lib/firebase.js
-- `src/app/api/owner/orders/route.js`
-- `src/app/street-vendor-dashboard/menu/page.js`
-- `src/app/api/owner/menu/route.js`
+export default function StreetVendorDashboard() {
+    return (
+        <Suspense fallback={<div className="flex h-full w-full items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>}>
+            <StreetVendorDashboardContent />
+        </Suspense>
+    );
+}
