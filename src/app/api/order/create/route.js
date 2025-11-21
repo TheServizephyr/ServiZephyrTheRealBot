@@ -325,91 +325,39 @@ export async function POST(req) {
 
 
         // --- "Pay at Counter" logic for Street Vendor ---
-         console.log("[API /order/create] Handling 'Pay at Counter' flow for Street Vendor.");
-        const batch = firestore.batch();
-        
-        if (isNewUser && normalizedPhone && businessType !== 'street-vendor') {
-            console.log(`[API /order/create] New user detected (${normalizedPhone}), creating unclaimed profile.`);
-            const unclaimedUserRef = firestore.collection('unclaimed_profiles').doc(normalizedPhone);
-            const newOrderedFrom = { restaurantId, restaurantName: businessData.name, businessType };
-            const addressesToSave = (deliveryType === 'delivery' && address) ? [{ ...address, full: address.full }] : []; 
-            batch.set(unclaimedUserRef, {
-                name: name, phone: normalizedPhone, addresses: addressesToSave,
-                createdAt: FieldValue.serverTimestamp(),
-                orderedFrom: FieldValue.arrayUnion(newOrderedFrom)
-            }, { merge: true });
-        }
-        
-        const couponDiscountAmount = coupon?.discount || 0;
-        const finalLoyaltyDiscount = loyaltyDiscount || 0;
-        const finalDiscount = couponDiscountAmount + finalLoyaltyDiscount;
-        
-        const pointsEarned = Math.floor(subtotal / 100) * 10;
-        const pointsSpent = finalLoyaltyDiscount > 0 ? finalLoyaltyDiscount / 0.5 : 0;
-        
-        if (normalizedPhone && businessType !== 'street-vendor') {
-            console.log(`[API /order/create] Updating customer stats for ${normalizedPhone} at business ${restaurantId}`);
-            const restaurantCustomerRef = businessRef.collection('customers').doc(userId);
-            batch.set(restaurantCustomerRef, {
-                name: name, phone: normalizedPhone, status: isNewUser ? 'unclaimed' : 'verified',
-                totalSpend: FieldValue.increment(subtotal),
-                loyaltyPoints: FieldValue.increment(pointsEarned - pointsSpent),
-                lastOrderDate: FieldValue.serverTimestamp(),
-                totalOrders: FieldValue.increment(1),
-            }, { merge: true });
-        
-            if (!isNewUser) {
-                 const usersRef = firestore.collection('users');
-                const userRestaurantLinkRef = usersRef.doc(userId).collection('joined_restaurants').doc(restaurantId);
-                
-                batch.set(userRestaurantLinkRef, {
-                    restaurantName: businessData.name, 
-                    joinedAt: FieldValue.serverTimestamp() 
-                }, { merge: true });
-
-                batch.update(userRestaurantLinkRef, {
-                    totalSpend: FieldValue.increment(subtotal),
-                    loyaltyPoints: FieldValue.increment(pointsEarned - pointsSpent),
-                    lastOrderDate: FieldValue.serverTimestamp(),
-                    totalOrders: FieldValue.increment(1),
-                });
-            }
-        }
-        
-        if (coupon && coupon.id) {
-             console.log(`[API /order/create] Incrementing usage count for coupon ${coupon.id}`);
-            const couponRef = businessRef.collection('coupons').doc(coupon.id);
-            batch.update(couponRef, { timesUsed: FieldValue.increment(1) });
-        }
-        
+        console.log("[API /order/create] Handling 'Pay at Counter' flow for Street Vendor.");
         const newOrderRef = firestore.collection('orders').doc();
         const trackingToken = await generateSecureToken(firestore, normalizedPhone || newOrderRef.id);
-        console.log(`[API /order/create] Creating final order document with ID ${newOrderRef.id}`);
 
-        let dineInToken = null;
+        let dineInToken;
         if (isStreetVendorOrder) {
             console.log(`[API /order/create] Generating token for street vendor order.`);
             const vendorRef = firestore.collection('street_vendors').doc(restaurantId);
+            
             try {
-                const vendorDoc = await vendorRef.get(); // Not in transaction, as it's a read before write
-                if (vendorDoc.exists) {
+                dineInToken = await firestore.runTransaction(async (transaction) => {
+                    const vendorDoc = await transaction.get(vendorRef);
+                    if (!vendorDoc.exists) {
+                        console.warn(`[API /order/create] Street vendor document ${restaurantId} not found, cannot generate token.`);
+                        throw new Error("Vendor profile not found.");
+                    }
                     const vendorData = vendorDoc.data();
                     const lastToken = vendorData.lastOrderToken || 0;
                     const newTokenNumber = lastToken + 1;
-                    
+
                     const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
                     const randomChar1 = alphabet[Math.floor(Math.random() * alphabet.length)];
                     const randomChar2 = alphabet[Math.floor(Math.random() * alphabet.length)];
-                    
-                    dineInToken = `${newTokenNumber}-${randomChar1}${randomChar2}`;
-                    
-                    batch.update(vendorRef, { lastOrderToken: newTokenNumber });
-                    console.log(`[API /order/create] Generated Street Vendor Token: ${dineInToken}`);
-                } else {
-                    console.warn(`[API /order/create] Street vendor document ${restaurantId} not found, cannot generate token.`);
-                }
+                    const token = `${String(newTokenNumber).padStart(4, '0')}-${randomChar1}${randomChar2}`;
+
+                    transaction.update(vendorRef, { lastOrderToken: newTokenNumber });
+                    console.log(`[API /order/create] Generated Street Vendor Token in transaction: ${token}`);
+                    return token;
+                });
             } catch (e) {
-                console.error(`[API /order/create] Error fetching street vendor doc to generate token:`, e);
+                console.error(`[API /order/create] Error in token generation transaction:`, e);
+                // Fail gracefully, order can still be placed without a token.
+                dineInToken = null;
             }
         }
         
@@ -423,21 +371,19 @@ export async function POST(req) {
             subtotal: subtotal || 0,
             coupon: coupon || null,
             loyaltyDiscount: loyaltyDiscount || 0,
-            discount: finalDiscount || 0,
+            discount: (coupon?.discount || 0) + (loyaltyDiscount || 0),
             cgst: cgst || 0,
             sgst: sgst || 0,
             deliveryCharge: deliveryCharge || 0,
             totalAmount: grandTotal,
-            status: 'pending', // Always start as pending
+            status: 'pending',
             orderDate: FieldValue.serverTimestamp(),
             notes: notes || null,
             trackingToken: trackingToken,
             paymentDetails: { method: paymentMethod }
         };
         
-        batch.set(newOrderRef, finalOrderData);
-        
-        await batch.commit();
+        await newOrderRef.set(finalOrderData);
         console.log(`[API /order/create] Batch committed successfully. Order ${newOrderRef.id} created.`);
 
         if (businessData.ownerPhone && businessData.botPhoneNumberId) {

@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button';
 import Link from 'next/link';
 import { useUser, useMemoFirebase, useCollection } from '@/firebase';
 import { db, auth } from '@/lib/firebase';
-import { collection, query, where, onSnapshot, doc, Timestamp, getDocs, updateDoc, deleteDoc, getDoc } from 'firebase/firestore';
+import { collection, query, where, onSnapshot, doc, Timestamp, getDocs, updateDoc, deleteDoc, getDoc, limit } from 'firebase/firestore';
 import { startOfDay, endOfDay, format, addDays } from 'date-fns';
 import { FirestorePermissionError } from '@/firebase/errors';
 import { errorEmitter } from '@/firebase/error-emitter';
@@ -388,7 +388,11 @@ const StreetVendorDashboardContent = () => {
     const [isCalendarOpen, setIsCalendarOpen] = useState(false);
     const [searchQuery, setSearchQuery] = useState('');
     const [rejectModalState, setRejectModalState] = useState({ isOpen: false, order: null });
+    const audioRef = useRef(null);
 
+    const playNotificationSound = () => {
+        audioRef.current?.play().catch(err => console.error("Audio play failed:", err));
+    };
 
     const handleApiCall = useCallback(async (endpoint, method = 'PATCH', body = {}) => {
         if (!user) throw new Error('Authentication Error');
@@ -487,7 +491,7 @@ const StreetVendorDashboardContent = () => {
         
         setLoading(true);
 
-        let q = query(collection(db, "orders"), where("restaurantId", "==", vendorId));
+        let q = query(collection(db, "orders"), where("restaurantId", "==", vendorId), limit(50));
         
         if (date?.from) {
             const start = startOfDay(date.from);
@@ -496,10 +500,23 @@ const StreetVendorDashboardContent = () => {
         }
         
         const unsubscribe = onSnapshot(q, (querySnapshot) => {
+            let hasNewPendingOrder = false;
             const fetchedOrders = [];
+            
+            querySnapshot.docChanges().forEach((change) => {
+                if(change.type === 'added' && change.doc.data().status === 'pending') {
+                    hasNewPendingOrder = true;
+                }
+            });
+
+            if(hasNewPendingOrder) {
+                playNotificationSound();
+            }
+
             querySnapshot.forEach((doc) => {
                 fetchedOrders.push({ id: doc.id, ...doc.data() });
             });
+            
             fetchedOrders.sort((a,b) => (b.orderDate?.seconds || 0) - (a.orderDate?.seconds || 0));
             setOrders(fetchedOrders);
             setLoading(false);
@@ -576,6 +593,7 @@ const StreetVendorDashboardContent = () => {
 
   return (
     <div className="min-h-screen bg-background text-foreground font-body p-4 pb-24">
+        <audio ref={audioRef} src="/notification.mp3" preload="auto" />
         <InfoDialog 
             isOpen={infoDialog.isOpen} 
             onClose={() => setInfoDialog({isOpen: false, title: '', message: ''})} 
