@@ -141,7 +141,7 @@ export async function PATCH(req) {
             return NextResponse.json({ message: 'Order ID(s) and new status are required.' }, { status: 400 });
         }
         
-        const validStatuses = ["pending", "confirmed", "preparing", "dispatched", "delivered", "rejected", "ready_for_pickup", "picked_up", "Ready", "Cancelled"];
+        const validStatuses = ["pending", "confirmed", "preparing", "dispatched", "delivered", "rejected", "ready_for_pickup", "picked_up", "Ready"];
         if(!validStatuses.includes(newStatus)) {
             return NextResponse.json({ message: 'Invalid status provided.' }, { status: 400 });
         }

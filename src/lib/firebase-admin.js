@@ -1,5 +1,4 @@
 
-
 import admin from 'firebase-admin';
 
 // --- START: SINGLETON PATTERN ---
@@ -87,15 +86,15 @@ const GeoPoint = admin.firestore.GeoPoint;
  * Verifies the authorization token from a request and returns the user's UID.
  * This is the central point for all API authentication checks.
  * @param {Request} req The incoming Next.js request object.
- * @returns {Promise<string|null>} The user's UID or null if no token is present.
- * @throws Will throw an error with a status code if the token is present but invalid.
+ * @returns {Promise<string>} The user's UID.
+ * @throws Will throw an error with a status code if the token is missing or invalid.
  */
 const verifyAndGetUid = async (req) => {
   const auth = await getAuth();
   const authHeader = req.headers.get('authorization');
 
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
-    return null;
+    throw { message: 'Authorization token is missing or malformed.', status: 401 };
   }
   const token = authHeader.split('Bearer ')[1];
   
