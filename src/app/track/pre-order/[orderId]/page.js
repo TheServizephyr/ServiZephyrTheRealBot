@@ -234,7 +234,9 @@ function PreOrderTrackingContent() {
                         animate={{ scale: 1, opacity: 1 }}
                         className="flex-grow flex flex-col items-center justify-center text-center"
                     >
-                        <XCircle size={80} className="text-destructive mb-6" />
+                         <motion.div initial={{ scale: 0.5 }} animate={{ scale: 1, rotate: [0, -10, 10, -5, 5, 0] }} transition={{ type: 'spring', stiffness: 500, damping: 15, delay: 0.2 }}>
+                            <XCircle size={80} className="text-destructive mb-6" />
+                         </motion.div>
                         <h2 className="text-4xl font-bold text-foreground">Order Cancelled</h2>
                         <p className="mt-2 text-muted-foreground">We're sorry, your order could not be processed.</p>
                         <p className="mt-4 text-sm font-semibold bg-destructive/10 text-destructive p-2 rounded-md">Reason: {order.rejectionReason || 'Not specified'}</p>

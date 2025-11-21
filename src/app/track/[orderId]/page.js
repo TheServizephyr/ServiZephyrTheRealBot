@@ -1,4 +1,3 @@
-
 'use client';
 
 import React, { useState, useEffect, useMemo, Suspense, useCallback, useRef } from 'react';
@@ -183,7 +182,8 @@ function OrderTrackingContent() {
         riderLocation: orderData.deliveryBoy?.location,
     };
     
-    const isCompleted = ['delivered', 'picked_up', 'rejected'].includes(orderData.order.status);
+    const isCompleted = ['delivered', 'picked_up'].includes(orderData.order.status);
+    const isRejected = orderData.order.status === 'rejected';
 
     return (
         <div className="min-h-screen bg-background text-foreground flex flex-col md:flex-row green-theme">
@@ -211,23 +211,27 @@ function OrderTrackingContent() {
                     <StatusTimeline currentStatus={orderData.order.status} deliveryType={orderData.order.deliveryType}/>
                 </div>
                 
-                {isCompleted ? (
+                {(isCompleted || isRejected) ? (
                     <motion.div
                         initial={{ opacity: 0, scale: 0.9 }}
                         animate={{ opacity: 1, scale: 1 }}
-                        className={`text-center bg-card p-6 rounded-lg border-2 ${orderData.order.status === 'rejected' ? 'border-destructive' : 'border-primary'}`}
+                        className={`text-center bg-card p-6 rounded-lg border-2 ${isRejected ? 'border-destructive' : 'border-primary'}`}
                     >
-                         {orderData.order.status === 'rejected' ? (
-                            <XCircle size={40} className="mx-auto text-destructive" />
+                         {isRejected ? (
+                            <motion.div initial={{ scale: 0.5 }} animate={{ scale: 1, rotate: [0, -10, 10, -10, 0] }} transition={{ type: 'spring', stiffness: 500, damping: 15 }}>
+                                <XCircle size={40} className="mx-auto text-destructive" />
+                            </motion.div>
                          ) : (
-                            <CheckCircle size={40} className="mx-auto text-primary" />
+                            <motion.div initial={{ scale: 0.5 }} animate={{ scale: 1 }}>
+                                <CheckCircle size={40} className="mx-auto text-primary" />
+                            </motion.div>
                          )}
                          <h3 className="text-2xl font-bold mt-4">{currentStatusInfo.title}</h3>
                          <p className="mt-2 text-muted-foreground">
-                            {orderData.order.status === 'rejected' ? `Reason: ${orderData.order.rejectionReason || currentStatusInfo.description}` : currentStatusInfo.description}
+                            {isRejected ? `Reason: ${orderData.order.rejectionReason || currentStatusInfo.description}` : currentStatusInfo.description}
                          </p>
                          <Button onClick={handleBackToMenu} className="mt-6 bg-primary hover:bg-primary/90">
-                            Order Something Else
+                            {isRejected ? 'Try Ordering Again' : 'Order Something Else'}
                          </Button>
                     </motion.div>
                 ) : (
