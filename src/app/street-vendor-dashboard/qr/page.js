@@ -115,20 +115,23 @@ export default function StreetVendorQrPage() {
                 >
                     <div ref={printRef} className="animated-gradient p-6 sm:p-8 rounded-3xl shadow-2xl shadow-primary/20">
                         <div className="bg-white p-4 rounded-xl">
-                            <QRCode
-                                value={qrValue}
-                                size={512}
-                                level={"H"}
-                                includeMargin={true}
-                                imageSettings={{
-                                    src: "/logo.png",
-                                    x: undefined,
-                                    y: undefined,
-                                    height: 64,
-                                    width: 64,
-                                    excavate: true,
-                                }}
-                            />
+                            <div style={{ width: '100%', height: 'auto' }}>
+                                <QRCode
+                                    value={qrValue}
+                                    size={256} // Base size for quality, will be scaled by CSS
+                                    level={"H"}
+                                    includeMargin={true}
+                                    imageSettings={{
+                                        src: "/logo.png",
+                                        x: undefined,
+                                        y: undefined,
+                                        height: 48,
+                                        width: 48,
+                                        excavate: true,
+                                    }}
+                                    style={{ width: '100%', height: 'auto' }}
+                                />
+                            </div>
                              <h2 className="text-xl sm:text-2xl font-bold text-black mt-6 font-headline">Scan to Pre-Order</h2>
                              <p className="text-slate-600 text-sm">Powered by ServiZephyr</p>
                         </div>
