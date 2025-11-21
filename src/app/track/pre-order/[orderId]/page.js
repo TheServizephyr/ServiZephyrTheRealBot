@@ -3,7 +3,7 @@
 
 import React, { useState, useEffect, useMemo, useCallback, useRef, Suspense } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Loader2, ArrowLeft, CheckCircle, Check, IndianRupee, ShoppingBag, User } from 'lucide-react';
+import { Loader2, ArrowLeft, CheckCircle, Check, IndianRupee, ShoppingBag, User, XCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useRouter, useParams, useSearchParams } from 'next/navigation';
 import { cn } from '@/lib/utils';
@@ -84,6 +84,7 @@ function PreOrderTrackingContent() {
     const tiltWrapperRef = useRef(null);
 
     const isOrderComplete = order?.status === 'delivered' || order?.status === 'picked_up';
+    const isOrderRejected = order?.status === 'rejected';
 
     useEffect(() => {
         if (!orderId) {
@@ -226,6 +227,21 @@ function PreOrderTrackingContent() {
                            Order Again
                         </Button>
                     </motion.div>
+                ) : isOrderRejected ? (
+                    <motion.div
+                        key="rejection-screen"
+                        initial={{ scale: 0.8, opacity: 0 }}
+                        animate={{ scale: 1, opacity: 1 }}
+                        className="flex-grow flex flex-col items-center justify-center text-center"
+                    >
+                        <XCircle size={80} className="text-destructive mb-6" />
+                        <h2 className="text-4xl font-bold text-foreground">Order Cancelled</h2>
+                        <p className="mt-2 text-muted-foreground">We're sorry, your order could not be processed.</p>
+                        <p className="mt-4 text-sm font-semibold bg-destructive/10 text-destructive p-2 rounded-md">Reason: {order.rejectionReason || 'Not specified'}</p>
+                        <Button onClick={handleBackToMenu} className="mt-8 bg-primary text-primary-foreground hover:bg-primary/90">
+                           Try Again
+                        </Button>
+                    </motion.div>
                 ) : (
                     <motion.div 
                         key="coin-view"
@@ -282,7 +298,7 @@ function PreOrderTrackingContent() {
                 )}
             </AnimatePresence>
 
-            {!isOrderComplete && (
+            {!(isOrderComplete || isOrderRejected) && (
                 <footer className="w-full flex flex-col items-center gap-6 z-20 pb-8">
                      <motion.div
                         initial={{ opacity: 0, y: 10 }}

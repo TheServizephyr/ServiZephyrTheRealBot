@@ -22,7 +22,7 @@ const statusConfig = {
   preparing: { title: 'Preparing Your Order', icon: <CookingPot size={24} />, step: 2, description: "Your meal is being prepared." },
   dispatched: { title: 'Out for Delivery', icon: <Bike size={24} />, step: 3, description: "Our delivery hero is on their way." },
   delivered: { title: 'Delivered', icon: <Home size={24} />, step: 4, description: "Enjoy your meal!" },
-  rejected: { title: 'Order Rejected', icon: <XCircle size={24} />, step: 4, isError: true, description: "The restaurant could not accept your order." },
+  rejected: { title: 'Order Cancelled', icon: <XCircle size={24} />, step: 4, isError: true, description: "The restaurant could not accept your order." },
   picked_up: { title: 'Picked Up', icon: <ShoppingBag size={24} />, step: 4, description: "You have picked up your order." },
   ready_for_pickup: { title: 'Ready for Pickup', icon: <PackageCheck size={24}/>, step: 3, description: 'Your order is ready for pickup.' }
 };
@@ -107,12 +107,11 @@ function OrderTrackingContent() {
             }
             const data = await res.json();
             
-            // --- START FIX: Clear localStorage if order is complete ---
             const status = data.order?.status;
             if (status === 'delivered' || status === 'picked_up' || status === 'rejected') {
-                localStorage.removeItem('liveOrder');
+                const liveOrderKey = `liveOrder_${data.restaurant?.id}`;
+                localStorage.removeItem(liveOrderKey);
             }
-            // --- END FIX ---
             
             setOrderData(data);
         } catch (err) {
@@ -140,7 +139,6 @@ function OrderTrackingContent() {
         }
     };
     
-    // --- START FIX: Function to handle going back to the menu ---
     const handleBackToMenu = () => {
         if (orderData?.restaurant?.id) {
             router.push(`/order/${orderData.restaurant.id}`);
@@ -148,7 +146,6 @@ function OrderTrackingContent() {
             router.push('/');
         }
     };
-    // --- END FIX ---
 
     if (loading && !orderData) {
         return (
@@ -186,7 +183,6 @@ function OrderTrackingContent() {
         riderLocation: orderData.deliveryBoy?.location,
     };
     
-    // --- START FIX: Check if the order is completed ---
     const isCompleted = ['delivered', 'picked_up', 'rejected'].includes(orderData.order.status);
 
     return (
@@ -201,7 +197,7 @@ function OrderTrackingContent() {
                         <p className="text-xs text-muted-foreground">Order from</p>
                         <h1 className="font-bold text-2xl">{orderData.restaurant.name}</h1>
                     </div>
-                    <Button onClick={fetchData} variant="outline" size="icon" disabled={loading}>
+                    <Button onClick={() => fetchData(true)} variant="outline" size="icon" disabled={loading}>
                         <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
                     </Button>
                 </div>
@@ -215,16 +211,21 @@ function OrderTrackingContent() {
                     <StatusTimeline currentStatus={orderData.order.status} deliveryType={orderData.order.deliveryType}/>
                 </div>
                 
-                {/* --- START FIX: Conditional rendering for status/completion message --- */}
                 {isCompleted ? (
                     <motion.div
                         initial={{ opacity: 0, scale: 0.9 }}
                         animate={{ opacity: 1, scale: 1 }}
-                        className="text-center bg-card p-6 rounded-lg border-2 border-primary"
+                        className={`text-center bg-card p-6 rounded-lg border-2 ${orderData.order.status === 'rejected' ? 'border-destructive' : 'border-primary'}`}
                     >
-                         <CheckCircle size={40} className="mx-auto text-primary" />
+                         {orderData.order.status === 'rejected' ? (
+                            <XCircle size={40} className="mx-auto text-destructive" />
+                         ) : (
+                            <CheckCircle size={40} className="mx-auto text-primary" />
+                         )}
                          <h3 className="text-2xl font-bold mt-4">{currentStatusInfo.title}</h3>
-                         <p className="mt-2 text-muted-foreground">{currentStatusInfo.description}</p>
+                         <p className="mt-2 text-muted-foreground">
+                            {orderData.order.status === 'rejected' ? `Reason: ${orderData.order.rejectionReason || currentStatusInfo.description}` : currentStatusInfo.description}
+                         </p>
                          <Button onClick={handleBackToMenu} className="mt-6 bg-primary hover:bg-primary/90">
                             Order Something Else
                          </Button>
@@ -241,7 +242,6 @@ function OrderTrackingContent() {
                          <p className="mt-2 text-muted-foreground text-sm">{currentStatusInfo.description}</p>
                     </motion.div>
                 )}
-                {/* --- END FIX --- */}
 
                 {orderData.deliveryBoy && (
                     <div className="bg-card p-4 rounded-lg border border-border">
