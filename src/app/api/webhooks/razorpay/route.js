@@ -302,7 +302,7 @@ export async function POST(req) {
                         const randomChar1 = alphabet[Math.floor(Math.random() * alphabet.length)];
                         const randomChar2 = alphabet[Math.floor(Math.random() * alphabet.length)];
                         
-                        dineInToken = `#${String(newTokenNumber).padStart(4, '0')}-${randomChar1}${randomChar2}`;
+                        dineInToken = `${newTokenNumber}-${randomChar1}${randomChar2}`;
                         
                         batch.update(vendorRef, { lastOrderToken: newTokenNumber });
                         console.log(`[Webhook RZP] Generated Street Vendor Token: ${dineInToken}`);
