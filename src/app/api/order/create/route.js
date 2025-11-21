@@ -324,22 +324,73 @@ export async function POST(req) {
         }
 
 
-        // --- "Pay at Counter" logic for Street Vendor ---
-        console.log("[API /order/create] Handling 'Pay at Counter' flow for Street Vendor.");
+        // --- START: "Pay at Counter" logic for All types (restored) ---
+        console.log("[API /order/create] Handling 'Pay at Counter' or 'COD' flow.");
         const newOrderRef = firestore.collection('orders').doc();
         const trackingToken = await generateSecureToken(firestore, normalizedPhone || newOrderRef.id);
+        
+        const batch = firestore.batch();
 
-        let dineInToken;
+        if (isNewUser && normalizedPhone && businessType !== 'street-vendor') {
+            console.log(`[API /order/create] New user detected (${normalizedPhone}), creating unclaimed profile.`);
+            const unclaimedUserRef = firestore.collection('unclaimed_profiles').doc(normalizedPhone);
+            const newOrderedFrom = { restaurantId, restaurantName: businessData.name, businessType };
+            const addressesToSave = (deliveryType === 'delivery' && address) ? [{ ...address, full: address.full }] : [];
+            batch.set(unclaimedUserRef, {
+                name: name, phone: normalizedPhone, addresses: addressesToSave,
+                createdAt: FieldValue.serverTimestamp(),
+                orderedFrom: FieldValue.arrayUnion(newOrderedFrom)
+            }, { merge: true });
+        }
+        
+        const couponDiscountAmount = coupon?.discount || 0;
+        const finalLoyaltyDiscount = loyaltyDiscount || 0;
+        const finalDiscount = couponDiscountAmount + finalLoyaltyDiscount;
+
+        const pointsEarned = Math.floor(subtotal / 100) * 10;
+        const pointsSpent = finalLoyaltyDiscount > 0 ? finalLoyaltyDiscount / 0.5 : 0;
+        
+        if (normalizedPhone && businessType !== 'street-vendor') {
+            console.log(`[API /order/create] Updating customer stats for ${normalizedPhone} at business ${restaurantId}`);
+            const restaurantCustomerRef = businessRef.collection('customers').doc(userId);
+            batch.set(restaurantCustomerRef, {
+                name: name, phone: normalizedPhone, status: isNewUser ? 'unclaimed' : 'verified',
+                totalSpend: FieldValue.increment(subtotal),
+                loyaltyPoints: FieldValue.increment(pointsEarned - pointsSpent),
+                lastOrderDate: FieldValue.serverTimestamp(),
+                totalOrders: FieldValue.increment(1),
+            }, { merge: true });
+        
+            if (!isNewUser) {
+                const userRestaurantLinkRef = firestore.collection('users').doc(userId).collection('joined_restaurants').doc(restaurantId);
+                batch.set(userRestaurantLinkRef, {
+                    restaurantName: businessData.name, 
+                    joinedAt: FieldValue.serverTimestamp() 
+                }, { merge: true });
+                batch.update(userRestaurantLinkRef, {
+                    totalSpend: FieldValue.increment(subtotal),
+                    loyaltyPoints: FieldValue.increment(pointsEarned - pointsSpent),
+                    lastOrderDate: FieldValue.serverTimestamp(),
+                    totalOrders: FieldValue.increment(1),
+                });
+            }
+        }
+        
+        if (coupon && coupon.id) {
+            const couponRef = businessRef.collection('coupons').doc(coupon.id);
+            batch.update(couponRef, { timesUsed: FieldValue.increment(1) });
+        }
+
+        let dineInToken = null;
         if (isStreetVendorOrder) {
             console.log(`[API /order/create] Generating token for street vendor order.`);
             const vendorRef = firestore.collection('street_vendors').doc(restaurantId);
-            
             try {
                 dineInToken = await firestore.runTransaction(async (transaction) => {
                     const vendorDoc = await transaction.get(vendorRef);
                     if (!vendorDoc.exists) {
                         console.warn(`[API /order/create] Street vendor document ${restaurantId} not found, cannot generate token.`);
-                        throw new Error("Vendor profile not found.");
+                        return null; // Return null inside transaction
                     }
                     const vendorData = vendorDoc.data();
                     const lastToken = vendorData.lastOrderToken || 0;
@@ -356,8 +407,7 @@ export async function POST(req) {
                 });
             } catch (e) {
                 console.error(`[API /order/create] Error in token generation transaction:`, e);
-                // Fail gracefully, order can still be placed without a token.
-                dineInToken = null;
+                dineInToken = null; // Fail gracefully
             }
         }
         
@@ -371,23 +421,23 @@ export async function POST(req) {
             subtotal: subtotal || 0,
             coupon: coupon || null,
             loyaltyDiscount: loyaltyDiscount || 0,
-            discount: (coupon?.discount || 0) + (loyaltyDiscount || 0),
+            discount: finalDiscount || 0,
             cgst: cgst || 0,
             sgst: sgst || 0,
             deliveryCharge: deliveryCharge || 0,
             totalAmount: grandTotal,
-            status: 'pending',
+            status: 'pending', // Always start as pending
             orderDate: FieldValue.serverTimestamp(),
             notes: notes || null,
             trackingToken: trackingToken,
             paymentDetails: { method: paymentMethod }
         };
         
-        await newOrderRef.set(finalOrderData);
+        batch.set(newOrderRef, finalOrderData);
+        await batch.commit();
         console.log(`[API /order/create] Batch committed successfully. Order ${newOrderRef.id} created.`);
-
+        
         if (businessData.ownerPhone && businessData.botPhoneNumberId) {
-            console.log(`[API /order/create] Sending new order notification to owner.`);
             await sendNewOrderToOwner({
                 ownerPhone: businessData.ownerPhone, botPhoneNumberId: businessData.botPhoneNumberId,
                 customerName: name, totalAmount: grandTotal, orderId: newOrderRef.id, restaurantName: businessData.name
@@ -399,6 +449,8 @@ export async function POST(req) {
             firestore_order_id: newOrderRef.id,
             token: trackingToken
         }, { status: 200 });
+        // --- END: "Pay at Counter" logic ---
+
 
     } catch (error) {
         console.error("CREATE ORDER API CRITICAL ERROR:", error);
@@ -409,3 +461,5 @@ export async function POST(req) {
         return NextResponse.json({ message: `Backend Error: ${error.message}` }, { status: 500 });
     }
 }
+
+    
