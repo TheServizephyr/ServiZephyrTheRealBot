@@ -1,4 +1,3 @@
-
 'use client';
 
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
@@ -36,6 +35,45 @@ const ConfirmationModal = ({ isOpen, onClose, onConfirm, itemName }) => (
         </DialogContent>
     </Dialog>
 );
+
+const AiScanModal = ({ isOpen, onClose, onScan }) => {
+    const [file, setFile] = useState(null);
+    const fileInputRef = useRef(null);
+
+    const handleFileChange = (e) => {
+        setFile(e.target.files[0]);
+    };
+
+    const handleScanClick = () => {
+        if (file) {
+            onScan(file);
+        }
+    };
+
+    return (
+        <Dialog open={isOpen} onOpenChange={onClose}>
+            <DialogContent className="bg-card border-border text-foreground">
+                <DialogHeader>
+                    <DialogTitle className="flex items-center gap-2 text-2xl"><Camera /> Scan Menu with AI</DialogTitle>
+                    <DialogDescription>Take a clear picture of your physical menu, upload it, and let our AI digitize it for you instantly.</DialogDescription>
+                </DialogHeader>
+                <div className="py-4 space-y-4">
+                    <input type="file" ref={fileInputRef} onChange={handleFileChange} accept="image/*" className="hidden" />
+                    <Button variant="outline" className="w-full h-24 border-dashed" onClick={() => fileInputRef.current?.click()}>
+                        <Upload className="mr-2" /> {file ? `Selected: ${file.name}` : 'Click to Upload Image'}
+                    </Button>
+                    <p className="text-xs text-muted-foreground text-center">For best results, use a clear, well-lit photo with readable text.</p>
+                </div>
+                <DialogFooter>
+                    <DialogClose asChild><Button type="button" variant="secondary">Cancel</Button></DialogClose>
+                    <Button onClick={handleScanClick} disabled={!file} className="bg-primary hover:bg-primary/90 text-primary-foreground">
+                        Scan with AI
+                    </Button>
+                </DialogFooter>
+            </DialogContent>
+        </Dialog>
+    );
+};
 
 
 const MenuItem = ({ item, onEdit, onDelete, onToggle, onSelectItem, isSelected }) => (
