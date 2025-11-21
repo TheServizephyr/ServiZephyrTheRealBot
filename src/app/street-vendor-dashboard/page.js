@@ -1,4 +1,3 @@
-
 'use client';
 
 import React, { useState, useEffect, useMemo, useCallback, useRef, Suspense } from 'react';
@@ -575,7 +574,7 @@ const StreetVendorDashboardContent = () => {
             isOpen={rejectModalState.isOpen}
             onClose={() => setRejectModalState({ isOpen: false, order: null })}
             order={rejectModalState.order}
-            onConfirm={handleUpdateStatus}
+            onConfirm={(orderId, reason) => handleUpdateStatus(orderId, 'rejected', reason)}
             onMarkOutOfStock={handleMarkOutOfStock}
             showInfoDialog={setInfoDialog}
         />
@@ -705,7 +704,7 @@ const StreetVendorDashboardContent = () => {
 const StreetVendorDashboard = () => (
     <Suspense fallback={<div className="flex h-full w-full items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>}>
         <StreetVendorDashboardContent />
-    </Suspense>
+    </Suspense
 );
 
 export default StreetVendorDashboard;
