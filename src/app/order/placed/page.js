@@ -30,19 +30,17 @@ const OrderPlacedContent = () => {
                     console.log(`[Order Placed] Cleared cart for restaurant ${restaurantId}.`);
                 }
                 
-                // --- START FIX: Use restaurant-specific key ---
                 const liveOrderKey = `liveOrder_${restaurantId}`;
-                // Always clear any previous live order to prevent conflicts
                 localStorage.removeItem(liveOrderKey);
                 console.log(`[Order Placed] Cleared previous liveOrder from localStorage for key: ${liveOrderKey}.`);
-                // --- END FIX ---
 
                 // The token might be in the URL (for COD) or we fetch it (for online).
                 let finalToken = tokenFromUrl;
 
                 if (!finalToken) {
                     console.log(`[Order Placed] Token not in URL for ${orderId}, fetching from API...`);
-                    await new Promise(resolve => setTimeout(resolve, 1000));
+                    // Add a small delay to allow Firestore to be consistent
+                    await new Promise(resolve => setTimeout(resolve, 1500));
                     const res = await fetch(`/api/order/status/${orderId}`);
                     if (res.ok) {
                         const data = await res.json();
@@ -58,12 +56,11 @@ const OrderPlacedContent = () => {
                 }
 
                 if (finalToken) {
-                    // **THE FIX**: Save the new live order details to localStorage with a restaurant-specific key BEFORE redirecting.
                     localStorage.setItem(liveOrderKey, JSON.stringify({ 
                         orderId, 
                         restaurantId,
                         trackingToken: finalToken,
-                        status: 'pending', // Initial status
+                        status: 'pending',
                     }));
                     console.log(`[Order Placed] Saved new live order to localStorage with key: ${liveOrderKey}`);
 
@@ -90,7 +87,6 @@ const OrderPlacedContent = () => {
 
             } catch(error) {
                 console.error("[Order Placed] CRITICAL ERROR:", error);
-                // Fallback to home to prevent getting stuck
                 router.replace('/');
             }
         };
