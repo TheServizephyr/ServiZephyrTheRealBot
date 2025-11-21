@@ -501,10 +501,15 @@ const StreetVendorDashboardContent = () => {
     const handleMarkOutOfStock = async (itemIds) => {
         if (!vendorId || itemIds.length === 0) return;
         try {
-            await handleApiCall('/api/owner/menu', 'PATCH', {
-                itemIds: itemIds, action: 'outOfStock'
+            const user = auth.currentUser;
+            if (!user) throw new Error("Authentication failed");
+            const idToken = await user.getIdToken();
+            await fetch('/api/owner/menu', {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${idToken}` },
+                body: JSON.stringify({ itemIds: itemIds, action: 'outOfStock' })
             });
-        } catch(error) {
+        } catch (error) {
             setInfoDialog({ isOpen: true, title: 'Error', message: `Could not mark item as out of stock: ${error.message}` });
             throw error;
         }
