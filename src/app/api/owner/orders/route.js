@@ -7,7 +7,7 @@ import { sendOrderStatusUpdateToCustomer } from '@/lib/notifications';
 
 async function verifyOwnerAndGetBusiness(req, auth, firestore) {
     const uid = await verifyAndGetUid(req); // Use central helper
-    
+
     const url = new URL(req.url, `http://${req.headers.host}`);
     const impersonatedOwnerId = url.searchParams.get('impersonate_owner_id');
     const userDoc = await firestore.collection('users').doc(uid).get();
@@ -35,7 +35,7 @@ async function verifyOwnerAndGetBusiness(req, auth, firestore) {
             return { uid: targetOwnerId, businessId: doc.id, businessSnap: doc, isAdmin: userRole === 'admin' };
         }
     }
-    
+
     throw { message: 'No business associated with this owner.', status: 404 };
 }
 
@@ -44,13 +44,13 @@ export async function GET(req) {
     try {
         const auth = await getAuth();
         const firestore = await getFirestore();
-        
+
         const { uid, businessId, businessSnap } = await verifyOwnerAndGetBusiness(req, auth, firestore);
-        
+
         const { searchParams } = new URL(req.url);
         const orderId = searchParams.get('id');
         const customerId = searchParams.get('customerId');
-        
+
         if (orderId) {
             const orderRef = firestore.collection('orders').doc(orderId);
             const orderDoc = await orderRef.get();
@@ -58,18 +58,18 @@ export async function GET(req) {
             if (!orderDoc.exists) {
                 return NextResponse.json({ message: 'Order not found.' }, { status: 404 });
             }
-            
+
             let orderData = orderDoc.data();
             if (orderData.restaurantId !== businessId) {
                 return NextResponse.json({ message: 'Access denied to this order.' }, { status: 403 });
             }
-            
+
             if (orderData.orderDate && typeof orderData.orderDate.toDate === 'function') {
                 orderData = { ...orderData, orderDate: orderData.orderDate.toDate().toISOString() };
             }
 
             const businessData = businessSnap.data();
-            
+
             // If customerId is provided, fetch customer details as well
             let customerData = null;
             if (customerId) {
@@ -86,7 +86,7 @@ export async function GET(req) {
         }
 
         const ordersRef = firestore.collection('orders');
-        const ordersSnap = await ordersRef.where('restaurantId', '==', businessId).orderBy('orderDate', 'desc').get();
+        const ordersSnap = await ordersRef.where('restaurantId', '==', businessId).orderBy('orderDate', 'desc').limit(50).get();
 
         const orders = ordersSnap.docs.map(doc => {
             const data = doc.data();
@@ -94,19 +94,19 @@ export async function GET(req) {
                 ...h,
                 timestamp: h.timestamp && typeof h.timestamp.toDate === 'function' ? h.timestamp.toDate().toISOString() : h.timestamp,
             }));
-            
+
             // Correctly map quantity to items
             const itemsWithQty = (data.items || []).map(item => ({
                 name: item.name,
                 price: item.price,
-                qty: item.quantity, 
+                qty: item.quantity,
             }));
-            
 
-            return { 
-                id: doc.id, 
+
+            return {
+                id: doc.id,
                 ...data,
-                items: itemsWithQty, 
+                items: itemsWithQty,
                 orderDate: data.orderDate?.toDate ? data.orderDate.toDate().toISOString() : data.orderDate,
                 customer: data.customerName,
                 amount: data.totalAmount,
@@ -132,20 +132,20 @@ export async function PATCH(req) {
 
         const body = await req.json();
         console.log(`[API][PATCH /orders] Body:`, body);
-        
+
         const { orderId, orderIds, newStatus, deliveryBoyId, rejectionReason } = body;
-        
+
         const idsToUpdate = orderIds && orderIds.length > 0 ? orderIds : (orderId ? [orderId] : []);
 
         if (idsToUpdate.length === 0 || !newStatus) {
             return NextResponse.json({ message: 'Order ID(s) and new status are required.' }, { status: 400 });
         }
-        
+
         const validStatuses = ["pending", "confirmed", "preparing", "dispatched", "delivered", "rejected", "ready_for_pickup", "picked_up", "Ready"];
-        if(!validStatuses.includes(newStatus)) {
+        if (!validStatuses.includes(newStatus)) {
             return NextResponse.json({ message: 'Invalid status provided.' }, { status: 400 });
         }
-        
+
         const batch = firestore.batch();
         let deliveryBoyData = null;
 
@@ -165,12 +165,12 @@ export async function PATCH(req) {
             const orderRef = firestore.collection('orders').doc(id);
             const orderDoc = await orderRef.get();
             if (!orderDoc.exists || orderDoc.data().restaurantId !== businessId) {
-                 console.warn(`[API][PATCH /orders] Skipping order ${id}: Not found or access denied.`);
+                console.warn(`[API][PATCH /orders] Skipping order ${id}: Not found or access denied.`);
                 continue; // Skip this order
             }
             const orderData = orderDoc.data();
 
-            const updateData = { 
+            const updateData = {
                 status: newStatus,
                 statusHistory: FieldValue.arrayUnion({
                     status: newStatus,
@@ -184,16 +184,16 @@ export async function PATCH(req) {
             if (newStatus === 'dispatched' && deliveryBoyId) {
                 updateData.deliveryBoyId = deliveryBoyId;
             }
-            
+
             if (orderData.deliveryType === 'dine-in' && newStatus === 'confirmed') {
                 const newTabId = `tab_${Date.now()}`;
                 updateData.dineInTabId = newTabId;
             }
-            
+
             batch.update(orderRef, updateData);
 
             const businessData = businessSnap.data();
-            
+
             if (orderData.customerPhone) {
                 console.log(`[API LOG] Preparing to send notification for status '${newStatus}' for order ${id}.`);
                 const notificationPayload = {
@@ -206,18 +206,18 @@ export async function PATCH(req) {
                     deliveryBoy: deliveryBoyData,
                     businessType: businessData.businessType || 'restaurant',
                 };
-    
-                sendOrderStatusUpdateToCustomer(notificationPayload).catch(e => 
+
+                sendOrderStatusUpdateToCustomer(notificationPayload).catch(e =>
                     console.error(`[API LOG] CRITICAL: Failed to send WhatsApp notification for order ${id}. Error:`, e.message)
                 );
             } else {
-                 console.warn(`[API LOG] No customer phone for order ${id}, skipping notification.`);
+                console.warn(`[API LOG] No customer phone for order ${id}, skipping notification.`);
             }
         }
-        
+
         await batch.commit();
         console.log(`[API][PATCH /orders] Batch update completed successfully for ${idsToUpdate.length} orders.`);
-        
+
         return NextResponse.json({ message: 'Order status updated successfully.' }, { status: 200 });
 
     } catch (error) {
