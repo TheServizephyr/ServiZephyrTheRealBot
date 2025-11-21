@@ -951,9 +951,22 @@ const OrderPageInternal = () => {
             if (filters.veg) items = items.filter(item => item.isVeg);
             if (filters.nonVeg) items = items.filter(item => !item.isVeg);
             if (filters.recommended) items = items.filter(item => item.isRecommended);
-            if (sortBy === 'price-asc') items.sort((a, b) => (a.portions?.[0]?.price || 0) - (b.portions?.[0]?.price || 0));
-            else if (sortBy === 'price-desc') items.sort((a, b) => (b.portions?.[0]?.price || 0) - (a.portions?.[0]?.price || 0));
-            else if (sortBy === 'rating-desc') items.sort((a,b) => (b.rating || 0) - (a.rating || 0));
+
+            // --- START FIX: Sort by availability first, then by the selected criteria ---
+            items.sort((a, b) => {
+                // Out of stock items go to the bottom
+                if (a.isAvailable && !b.isAvailable) return -1;
+                if (!a.isAvailable && b.isAvailable) return 1;
+
+                // Then apply the user's selected sort
+                if (sortBy === 'price-asc') return (a.portions?.[0]?.price || 0) - (b.portions?.[0]?.price || 0);
+                if (sortBy === 'price-desc') return (b.portions?.[0]?.price || 0) - (a.portions?.[0]?.price || 0);
+                if (sortBy === 'rating-desc') return (b.rating || 0) - (a.rating || 0);
+                
+                return 0; // Default order
+            });
+            // --- END FIX ---
+            
             newMenu[category] = items;
         }
         return newMenu;
