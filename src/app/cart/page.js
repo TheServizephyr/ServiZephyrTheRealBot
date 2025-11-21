@@ -1,10 +1,11 @@
 
+
 'use client';
 
 import React, { useState, useEffect, useMemo, Suspense, useCallback } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Utensils, Plus, Minus, X, Home, User, ShoppingCart, CookingPot, Ticket, Gift, ArrowLeft, Sparkles, Check, PlusCircle, Trash2, ChevronDown, Tag as TagIcon, RadioGroup, IndianRupee, HardHat, Bike, Store, Heart, Wallet, Clock, ChevronUp, Edit2, Lock, Loader2, Navigation, BookOpen, ArrowRight } from 'lucide-react';
+import { Utensils, Plus, Minus, X, Home, User, ShoppingCart, CookingPot, Ticket, Gift, ArrowLeft, Sparkles, Check, PlusCircle, Trash2, ChevronDown, Tag as TagIcon, RadioGroup, IndianRupee, HardHat, Bike, Store, Heart, Wallet, Clock, ChevronUp, Edit2, Lock, Loader2, Navigation, BookOpen, ArrowRight, AlertTriangle } from 'lucide-react';
 import Script from 'next/script';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose } from "@/components/ui/dialog";
@@ -14,8 +15,10 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Input } from '@/components/ui/input';
 import InfoDialog from '@/components/InfoDialog';
 import { format, setHours, setMinutes, getHours, getMinutes, addMinutes } from 'date-fns';
-import { useUser } from '@/firebase'; // Import the useUser hook
+import { useUser } from '@/firebase';
 import GoldenCoinSpinner from '@/components/GoldenCoinSpinner';
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+
 
 const ClearCartDialog = ({ isOpen, onClose, onConfirm }) => {
     return (
@@ -163,7 +166,7 @@ const TokenVerificationLock = ({ message }) => (
 const CartPageInternal = () => {
     const router = useRouter();
     const searchParams = useSearchParams();
-    const { user, isUserLoading } = useUser(); // Get user from Firebase
+    const { user, isUserLoading } = useUser();
     
     const restaurantId = searchParams.get('restaurantId');
     
@@ -191,11 +194,13 @@ const CartPageInternal = () => {
     const activeOrderId = searchParams.get('activeOrderId');
     const [liveOrder, setLiveOrder] = useState(null);
 
+    // --- START FIX: State for out-of-stock items ---
+    const [outOfStockItems, setOutOfStockItems] = useState([]);
+    // --- END FIX ---
+
     useEffect(() => {
-        // --- START FIX: Use restaurant-specific key ---
         const liveOrderKey = `liveOrder_${restaurantId}`;
         const liveOrderData = localStorage.getItem(liveOrderKey);
-        // --- END FIX ---
         if (liveOrderData) {
             setLiveOrder(JSON.parse(liveOrderData));
         } else if (activeOrderId) {
@@ -212,7 +217,6 @@ const CartPageInternal = () => {
             const isLoggedInUser = !!user;
             const isWhatsAppSession = !!phone && !!token;
 
-            // --- START: Anonymous Pre-Order Check ---
             let isAnonymousPreOrder = false;
             try {
                 const savedCart = JSON.parse(localStorage.getItem(`cart_${restaurantId}`) || '{}');
@@ -220,7 +224,6 @@ const CartPageInternal = () => {
             } catch (e) {
                 // Ignore parsing errors, isAnonymousPreOrder will remain false
             }
-            // --- END: Anonymous Pre-Order Check ---
             
             if (isDineIn || isLoggedInUser || isAnonymousPreOrder || activeOrderId) {
                 console.log(`[Cart Page] Session validated. Reason: ${isDineIn ? 'Dine-in' : isLoggedInUser ? 'Logged in' : activeOrderId ? 'Add-on Order' : 'Anonymous Pre-order'}`);
@@ -258,6 +261,7 @@ const CartPageInternal = () => {
         }
     }, [phone, token, tableId, user, isUserLoading, restaurantId, router, activeOrderId]);
     
+    // --- START FIX: Cross-reference cart with menu availability ---
     useEffect(() => {
         if (isTokenValid && restaurantId) {
             console.log("[Cart Page] Token is valid. Loading cart data from localStorage for restaurant:", restaurantId);
@@ -272,6 +276,29 @@ const CartPageInternal = () => {
                     setAppliedCoupons([]); setTipAmount(0);
                 } else {
                     console.log("[Cart Page] Found valid cart data:", parsedData);
+
+                    // --- NEW VALIDATION LOGIC ---
+                    const fullMenu = parsedData.menu || {}; // Assuming full menu is stored in cartData from order page
+                    const availableItems = [];
+                    const unavailableItemIds = [];
+                    (parsedData.cart || []).forEach(cartItem => {
+                        let isAvailable = false;
+                        for (const category in fullMenu) {
+                            const menuItem = fullMenu[category].find(m => m.id === cartItem.id);
+                            if (menuItem && menuItem.isAvailable) {
+                                isAvailable = true;
+                                break;
+                            }
+                        }
+                        if(isAvailable) {
+                            availableItems.push(cartItem);
+                        } else {
+                            unavailableItemIds.push(cartItem.cartItemId);
+                        }
+                    });
+                    setOutOfStockItems(unavailableItemIds);
+                    // --- END NEW VALIDATION LOGIC ---
+
                     setCartData(parsedData);
                     setCart(parsedData.cart || []);
                     setNotes(parsedData.notes || '');
@@ -286,6 +313,8 @@ const CartPageInternal = () => {
             }
         }
     }, [isTokenValid, restaurantId]);
+    // --- END FIX ---
+
 
     const deliveryType = useMemo(() => {
         if (tableId) return 'dine-in';
@@ -367,7 +396,6 @@ const CartPageInternal = () => {
             };
             
             console.log("[Cart Page] Sending post-paid order to /api/order/create:", orderData);
-            // This API now returns orderId, botDisplayNumber, and a tracking token
             const res = await fetch('/api/order/create', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -568,9 +596,7 @@ const CartPageInternal = () => {
     }
 
     const getTrackingUrl = () => {
-        // --- START FIX: Check if liveOrder matches current restaurant ---
         if (!liveOrder || liveOrder.restaurantId !== restaurantId) return null;
-        // --- END FIX ---
         const businessType = cartData?.businessType || 'restaurant'; 
         
         let path;
@@ -669,6 +695,15 @@ const CartPageInternal = () => {
             </header>
 
             <main className="flex-grow p-4 container mx-auto pb-40">
+                {outOfStockItems.length > 0 && (
+                    <Alert variant="destructive" className="mb-4">
+                        <AlertTriangle className="h-4 w-4" />
+                        <AlertTitle>Items Out of Stock</AlertTitle>
+                        <AlertDescription>
+                            Some items in your cart are no longer available. Please remove them to proceed.
+                        </AlertDescription>
+                    </Alert>
+                )}
                 {cart.length === 0 ? (
                     <div className="h-full flex flex-col items-center justify-center text-muted-foreground">
                         <ShoppingCart size={48} className="mb-4" />
@@ -686,36 +721,40 @@ const CartPageInternal = () => {
                                  <Button variant="destructive" size="sm" onClick={() => setIsClearCartDialogOpen(true)}><Trash2 className="mr-2 h-4 w-4"/> Clear</Button>
                             </div>
                             <div className="space-y-4">
-                                {cart.map(item => (
-                                    <motion.div 
-                                        layout
-                                        key={item.cartItemId}
-                                        className="flex items-center gap-4"
-                                    >
-                                        <div className={`w-4 h-4 border ${item.isVeg ? 'border-green-500' : 'border-red-500'} flex items-center justify-center flex-shrink-0`}>
-                                            <div className={`w-2 h-2 ${item.isVeg ? 'bg-green-500' : 'bg-red-500'} rounded-full`}></div>
-                                        </div>
-                                        <div className="flex-grow">
-                                          <p className="font-semibold text-foreground">{item.name}</p>
-                                          <p className="text-xs text-muted-foreground">{item.portion.name}</p>
-                                          {item.selectedAddOns && item.selectedAddOns.length > 0 && (
-                                            <ul className="mt-1 pl-4">
-                                                {item.selectedAddOns.map(addon => (
-                                                    <li key={addon.name} className="text-xs text-muted-foreground list-disc list-inside">
-                                                        {addon.name} (+₹{addon.price})
-                                                    </li>
-                                                ))}
-                                            </ul>
-                                          )}
-                                        </div>
-                                        <div className="flex items-center gap-2">
-                                            <Button size="icon" variant="outline" className="h-7 w-7 hover:bg-red-500/10 hover:text-red-500 hover:border-red-500" onClick={() => handleUpdateCart(item, 'decrement')}>-</Button>
-                                            <span className="font-bold w-5 text-center">{item.quantity}</span>
-                                            <Button size="icon" variant="outline" className="h-7 w-7 hover:bg-green-500/10 hover:text-green-500 hover:border-green-500" onClick={() => handleUpdateCart(item, 'increment')}>+</Button>
-                                        </div>
-                                        <p className="w-20 text-right font-bold">₹{item.totalPrice * item.quantity}</p>
-                                    </motion.div>
-                                ))}
+                                {cart.map(item => {
+                                    const isOutOfStock = outOfStockItems.includes(item.cartItemId);
+                                    return (
+                                        <motion.div 
+                                            layout
+                                            key={item.cartItemId}
+                                            className={cn("flex items-center gap-4 relative p-3 rounded-md", isOutOfStock && "bg-destructive/10 ring-1 ring-destructive")}
+                                        >
+                                            <div className={`w-4 h-4 border ${item.isVeg ? 'border-green-500' : 'border-red-500'} flex items-center justify-center flex-shrink-0`}>
+                                                <div className={`w-2 h-2 ${item.isVeg ? 'bg-green-500' : 'bg-red-500'} rounded-full`}></div>
+                                            </div>
+                                            <div className="flex-grow">
+                                              <p className={cn("font-semibold text-foreground", isOutOfStock && "line-through")}>{item.name}</p>
+                                              <p className="text-xs text-muted-foreground">{item.portion.name}</p>
+                                              {item.selectedAddOns && item.selectedAddOns.length > 0 && (
+                                                <ul className="mt-1 pl-4">
+                                                    {item.selectedAddOns.map(addon => (
+                                                        <li key={addon.name} className="text-xs text-muted-foreground list-disc list-inside">
+                                                            {addon.name} (+₹{addon.price})
+                                                        </li>
+                                                    ))}
+                                                </ul>
+                                              )}
+                                              {isOutOfStock && <p className="text-xs font-bold text-destructive mt-1">Out of Stock</p>}
+                                            </div>
+                                            <div className="flex items-center gap-2">
+                                                <Button size="icon" variant="outline" className="h-7 w-7 hover:bg-red-500/10 hover:text-red-500 hover:border-red-500" onClick={() => handleUpdateCart(item, 'decrement')}>-</Button>
+                                                <span className="font-bold w-5 text-center">{item.quantity}</span>
+                                                <Button size="icon" variant="outline" className="h-7 w-7 hover:bg-green-500/10 hover:text-green-500 hover:border-green-500" onClick={() => handleUpdateCart(item, 'increment')} disabled={isOutOfStock}>+</Button>
+                                            </div>
+                                            <p className={cn("w-20 text-right font-bold", isOutOfStock && "line-through text-muted-foreground")}>₹{item.totalPrice * item.quantity}</p>
+                                        </motion.div>
+                                    )
+                                })}
                             </div>
 
                             <Button variant="outline" onClick={handleGoBack} className="w-full mt-4 border-green-500 text-green-500 bg-green-500/10 hover:bg-green-500/20 hover:text-green-500">
@@ -907,7 +946,7 @@ const CartPageInternal = () => {
             <div className="fixed bottom-0 left-0 w-full z-30 bg-background/80 backdrop-blur-sm border-t border-border">
                 <div className="container mx-auto p-4">
                     {cart.length > 0 ? (
-                        <Button onClick={handleConfirmOrder} className="flex-grow bg-primary hover:bg-primary/90 text-primary-foreground h-12 text-lg font-bold w-full" disabled={cart.length === 0 || isCheckoutFlow}>
+                        <Button onClick={handleConfirmOrder} className="flex-grow bg-primary hover:bg-primary/90 text-primary-foreground h-12 text-lg font-bold w-full" disabled={cart.length === 0 || isCheckoutFlow || outOfStockItems.length > 0}>
                              {isCheckoutFlow ? <Loader2 className="animate-spin mr-2"/> : null}
                             {(liveOrder && liveOrder.restaurantId === restaurantId) ? <> <PlusCircle size={20} className="mr-2"/> Add to Existing Order </> : 
                             (deliveryType === 'dine-in' ? (cartData?.dineInModel === 'post-paid' ? 'Place Order' : 'Add to Tab') : 'Proceed to Checkout')}

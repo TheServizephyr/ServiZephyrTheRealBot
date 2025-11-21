@@ -652,10 +652,8 @@ const OrderPageInternal = () => {
     const [liveOrder, setLiveOrder] = useState(null);
 
     useEffect(() => {
-        // --- START FIX: Use restaurant-specific key ---
         const liveOrderKey = `liveOrder_${restaurantId}`;
         const liveOrderDataStr = localStorage.getItem(liveOrderKey);
-        // --- END FIX ---
 
         if (liveOrderDataStr) {
             const liveOrderData = JSON.parse(liveOrderDataStr);
@@ -757,9 +755,6 @@ const OrderPageInternal = () => {
         setIsDineInModalOpen(false);
     };
 
-    // --- START: Reordered useEffect hooks ---
-
-    // Effect 1: Fetch initial restaurant data first.
     useEffect(() => {
         const fetchInitialData = async () => {
             if (!restaurantId || restaurantId === 'undefined') {
@@ -814,7 +809,6 @@ const OrderPageInternal = () => {
     }, [restaurantId, phone]);
 
 
-    // Effect 2: Verify the session *after* restaurantData is available.
     useEffect(() => {
         const verifySession = async () => {
             const isStreetVendorPage = restaurantData.businessType === 'street-vendor';
@@ -841,17 +835,14 @@ const OrderPageInternal = () => {
                 }
                 return;
             }
-            // This is the final check, if no other condition is met, the session is invalid.
             setTokenError("No valid session information found. Please start a new session.");
         };
 
-        // Don't run this effect until we have the businessType
         if (!loading && restaurantData.businessType) {
             verifySession();
         }
     }, [restaurantId, tableIdFromUrl, phone, token, activeOrderId, restaurantData.businessType, loading]);
 
-    // Effect 3: Load cart and handle dine-in state after token is validated.
     useEffect(() => {
         const handleDineInSetup = async () => {
             if (tableIdFromUrl) {
@@ -910,8 +901,6 @@ const OrderPageInternal = () => {
         }
     }, [isTokenValid, restaurantId, tableIdFromUrl, tabIdFromUrl, restaurantData.businessType, restaurantData.deliveryEnabled, restaurantData.pickupEnabled]);
     
-    // --- END: Reordered useEffect hooks ---
-    
     useEffect(() => {
         if (!restaurantId || loading || !isTokenValid) return;
 
@@ -933,12 +922,10 @@ const OrderPageInternal = () => {
         };
         localStorage.setItem(`cart_${restaurantId}`, JSON.stringify(cartDataToSave));
         
-        // --- START FIX: Use restaurant-specific key ---
         const liveOrderKey = `liveOrder_${restaurantId}`;
         if (liveOrder && liveOrder.orderId) {
              localStorage.setItem(liveOrderKey, JSON.stringify(liveOrder));
         }
-        // --- END FIX ---
 
     }, [cart, notes, deliveryType, restaurantData, loyaltyPoints, loading, isTokenValid, restaurantId, phone, token, tableIdFromUrl, activeTabInfo, liveOrder]);
 
@@ -952,6 +939,9 @@ const OrderPageInternal = () => {
 
         for (const category in newMenu) {
             let items = newMenu[category];
+            // --- START FIX: Filter out unavailable items ---
+            items = items.filter(item => item.isAvailable === true);
+            // --- END FIX ---
             if (lowercasedQuery) items = items.filter(item => item.name.toLowerCase().includes(lowercasedQuery));
             if (filters.veg) items = items.filter(item => item.isVeg);
             if (filters.nonVeg) items = items.filter(item => !item.isVeg);
@@ -1082,12 +1072,10 @@ const OrderPageInternal = () => {
         if (deliveryType === 'dine-in' && activeTabInfo.id) {
             params.append('tabId', activeTabInfo.id);
         }
-        // --- START FIX: Check if liveOrder matches current restaurant ---
         if (liveOrder && liveOrder.restaurantId === restaurantId) {
             params.append('activeOrderId', liveOrder.orderId);
             params.append('token', liveOrder.trackingToken);
         }
-        // --- END FIX ---
         
         const url = `/cart?${params.toString()}`;
         router.push(url);
@@ -1149,9 +1137,7 @@ const OrderPageInternal = () => {
     }
 
     const getTrackingUrl = () => {
-        // --- START FIX: Check if liveOrder matches current restaurant ---
         if (!liveOrder || liveOrder.restaurantId !== restaurantId) return null;
-        // --- END FIX ---
         
         const businessType = restaurantData.businessType || 'restaurant'; 
         
