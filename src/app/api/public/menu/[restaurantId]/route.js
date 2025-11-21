@@ -33,34 +33,34 @@ export async function GET(req, { params }) {
             return NextResponse.json({ message: 'Restaurant not found.' }, { status: 404 });
         }
 
-        const menuSnap = await businessRef.collection('menu').orderBy('order', 'asc').get();
+        const menuSnap = await businessRef.collection('menu').get();
         let menuData = {};
         const customCategories = businessData.customCategories || [];
-        
+
         const restaurantCategoryConfig = {
-          "starters": { title: "Starters" }, "main-course": { title: "Main Course" }, "beverages": { title: "Beverages" },
-          "desserts": { title: "Desserts" }, "soup": { title: "Soup" }, "tandoori-item": { title: "Tandoori Items" },
-          "momos": { title: "Momos" }, "burgers": { title: "Burgers" }, "rolls": { title: "Rolls" },
-          "tandoori-khajana": { title: "Tandoori Khajana" }, "rice": { title: "Rice" }, "noodles": { title: "Noodles" },
-          "pasta": { title: "Pasta" }, "raita": { title: "Raita" },
-          'snacks': { title: 'Snacks' }, 'chaat': { title: 'Chaat' }, 'sweets': { title: 'Sweets' },
+            "starters": { title: "Starters" }, "main-course": { title: "Main Course" }, "beverages": { title: "Beverages" },
+            "desserts": { title: "Desserts" }, "soup": { title: "Soup" }, "tandoori-item": { title: "Tandoori Items" },
+            "momos": { title: "Momos" }, "burgers": { title: "Burgers" }, "rolls": { title: "Rolls" },
+            "tandoori-khajana": { title: "Tandoori Khajana" }, "rice": { title: "Rice" }, "noodles": { title: "Noodles" },
+            "pasta": { title: "Pasta" }, "raita": { title: "Raita" },
+            'snacks': { title: 'Snacks' }, 'chaat': { title: 'Chaat' }, 'sweets': { title: 'Sweets' },
         };
         const shopCategoryConfig = {
-          "electronics": { title: "Electronics" }, "groceries": { title: "Groceries" }, "clothing": { title: "Clothing" },
-          "books": { title: "Books" }, "home-appliances": { title: "Home Appliances" }, "toys-games": { title: "Toys & Games" },
-          "beauty-personal-care": { title: "Beauty & Personal Care" }, "sports-outdoors": { title: "Sports & Outdoors" },
+            "electronics": { title: "Electronics" }, "groceries": { title: "Groceries" }, "clothing": { title: "Clothing" },
+            "books": { title: "Books" }, "home-appliances": { title: "Home Appliances" }, "toys-games": { title: "Toys & Games" },
+            "beauty-personal-care": { title: "Beauty & Personal Care" }, "sports-outdoors": { title: "Sports & Outdoors" },
         };
 
         const businessType = businessData.businessType || collectionName.slice(0, -1);
         const baseCategories = (businessType === 'restaurant' || businessType === 'street-vendor') ? restaurantCategoryConfig : shopCategoryConfig;
-        
+
         const allCategories = { ...baseCategories };
         customCategories.forEach(cat => {
             if (!allCategories[cat.id]) {
                 allCategories[cat.id] = { title: cat.title };
             }
         });
-        
+
         Object.keys(allCategories).forEach(key => {
             menuData[key] = [];
         });
@@ -71,9 +71,14 @@ export async function GET(req, { params }) {
             if (menuData[categoryKey]) {
                 menuData[categoryKey].push({ id: doc.id, ...item });
             } else {
-                 if (!menuData['general']) menuData['general'] = [];
-                 menuData['general'].push({ id: doc.id, ...item });
+                if (!menuData['general']) menuData['general'] = [];
+                menuData['general'].push({ id: doc.id, ...item });
             }
+        });
+
+        // Sort items in memory by order field
+        Object.keys(menuData).forEach(key => {
+            menuData[key].sort((a, b) => (a.order || 999) - (b.order || 999));
         });
 
         let loyaltyPoints = 0;
@@ -90,7 +95,7 @@ export async function GET(req, { params }) {
                 }
             }
         }
-        
+
         const couponsSnap = await businessRef.collection('coupons').where('status', '==', 'Active').get();
         const now = new Date();
         const coupons = couponsSnap.docs
