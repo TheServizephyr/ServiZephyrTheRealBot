@@ -73,8 +73,8 @@ const RejectOrderModal = ({ order, isOpen, onClose, onConfirm, onMarkOutOfStock,
     const handleOutOfStockConfirm = async (outOfStockItems) => {
         setIsSubmitting(true);
         try {
-            for (const itemId of outOfStockItems) {
-                await onMarkOutOfStock(itemId);
+            if (outOfStockItems.length > 0) {
+              await onMarkOutOfStock(outOfStockItems);
             }
             await onConfirm(order.id, "Item(s) out of stock");
             setIsOutOfStockModalOpen(false);
@@ -190,9 +190,9 @@ const OutOfStockModal = ({ isOpen, onClose, orderItems, onConfirm }) => {
                     ))}
                 </div>
                 <DialogFooter>
-                     <Button variant="secondary" onClick={onClose} disabled={isConfirming}>Cancel</Button>
-                     <Button variant="destructive" onClick={handleConfirm} disabled={selectedItems.length === 0 || isConfirming}>
-                        {isConfirming ? "Updating..." : `Mark ${selectedItems.length} Item(s) Out of Stock`}
+                     <Button variant="secondary" onClick={onClose} disabled={isConfirming}>Skip</Button>
+                     <Button variant="destructive" onClick={handleConfirm} disabled={isConfirming}>
+                        {isConfirming ? "Updating..." : `Confirm & Reject Order`}
                     </Button>
                 </DialogFooter>
             </DialogContent>
@@ -498,11 +498,11 @@ const StreetVendorDashboardContent = () => {
         }
     };
     
-    const handleMarkOutOfStock = async (itemId) => {
-        if (!vendorId) return;
+    const handleMarkOutOfStock = async (itemIds) => {
+        if (!vendorId || itemIds.length === 0) return;
         try {
             await handleApiCall('/api/owner/menu', 'PATCH', {
-                updates: { id: itemId, isAvailable: false }
+                itemIds: itemIds, action: 'outOfStock'
             });
         } catch(error) {
             setInfoDialog({ isOpen: true, title: 'Error', message: `Could not mark item as out of stock: ${error.message}` });

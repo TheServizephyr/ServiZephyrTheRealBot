@@ -3,7 +3,7 @@
 
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ArrowLeft, PlusCircle, Trash2, IndianRupee, Loader2, Camera, FileJson, Edit, Upload, X, Plus, Image as ImageIcon, Utensils } from 'lucide-react';
+import { ArrowLeft, PlusCircle, Trash2, IndianRupee, Loader2, Camera, FileJson, Edit, Upload, X, Plus, Image as ImageIcon, Utensils, XCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import Link from 'next/link';
 import { useUser, useMemoFirebase, useCollection } from '@/firebase';
@@ -17,6 +17,7 @@ import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import Image from 'next/image';
 import { cn } from '@/lib/utils';
+import { Checkbox } from '@/components/ui/checkbox';
 
 
 const ConfirmationModal = ({ isOpen, onClose, onConfirm, itemName }) => (
@@ -37,15 +38,20 @@ const ConfirmationModal = ({ isOpen, onClose, onConfirm, itemName }) => (
 );
 
 
-const MenuItem = ({ item, onEdit, onDelete, onToggle }) => (
+const MenuItem = ({ item, onEdit, onDelete, onToggle, onSelectItem, isSelected }) => (
   <motion.div
     layout
     initial={{ opacity: 0 }}
     animate={{ opacity: 1 }}
     whileHover={{ y: -4, boxShadow: "0 10px 20px hsla(var(--primary), 0.2)" }}
-    className="bg-card rounded-lg p-4 grid grid-cols-3 md:grid-cols-4 gap-4 items-center border border-border shadow-md hover:shadow-primary/20 hover:-translate-y-1 transition-all duration-300"
+    className={cn("bg-card rounded-lg p-4 grid grid-cols-4 md:grid-cols-5 gap-4 items-center border border-border shadow-md hover:shadow-primary/20 hover:-translate-y-1 transition-all duration-300", isSelected && "bg-primary/10 border-primary ring-2 ring-primary")}
   >
     <div className="col-span-1 flex items-center gap-4">
+        <Checkbox
+            checked={isSelected}
+            onCheckedChange={() => onSelectItem(item.id)}
+            aria-label={`Select ${item.name}`}
+        />
         <div className="relative w-16 h-16 rounded-md overflow-hidden bg-muted flex-shrink-0">
             {item.imageUrl ? (
                 <Image src={item.imageUrl} alt={item.name} layout="fill" objectFit="cover" />
@@ -54,15 +60,15 @@ const MenuItem = ({ item, onEdit, onDelete, onToggle }) => (
             )}
         </div>
     </div>
-    <div className="col-span-2 md:col-span-1">
+    <div className="col-span-3 md:col-span-2">
         <p className={`font-bold text-lg ${!item.isAvailable ? 'text-muted-foreground line-through' : 'text-foreground'}`}>{item.name}</p>
         <p className="text-green-500 font-semibold">₹{item.portions?.[0]?.price || 'N/A'}</p>
     </div>
-    <div className="col-span-3 md:col-span-1 flex items-center justify-start md:justify-center gap-2">
+    <div className="col-span-2 md:col-span-1 flex items-center justify-start md:justify-center gap-2">
         <Switch id={`switch-${item.id}`} checked={item.isAvailable} onCheckedChange={(checked) => onToggle(item.id, checked)} />
         <Label htmlFor={`switch-${item.id}`} className="text-sm font-medium text-muted-foreground">{item.isAvailable ? 'Available' : 'Out of Stock'}</Label>
     </div>
-    <div className="col-span-3 md:col-span-1 flex items-center justify-end gap-2">
+    <div className="col-span-2 md:col-span-1 flex items-center justify-end gap-2">
       <Button onClick={() => onEdit(item)} size="icon" variant="ghost" className="text-muted-foreground hover:bg-muted hover:text-foreground">
         <Edit />
       </Button>
@@ -315,74 +321,6 @@ const AddItemModal = ({ isOpen, setIsOpen, onSave, editingItem, allCategories, s
     );
 };
 
-
-const AiScanModal = ({ isOpen, onClose, onScan }) => {
-    const [selectedFile, setSelectedFile] = useState(null);
-    const [previewUrl, setPreviewUrl] = useState(null);
-    const [isScanning, setIsScanning] = useState(false);
-    const inputRef = useRef(null);
-
-    useEffect(() => {
-        if (!isOpen) {
-            setSelectedFile(null);
-            setPreviewUrl(null);
-            setIsScanning(false);
-        }
-    }, [isOpen]);
-
-    const handleFileChange = (e) => {
-        const file = e.target.files[0];
-        if (file) {
-            setSelectedFile(file);
-            setPreviewUrl(URL.createObjectURL(file));
-        }
-    };
-
-    const handleScan = async () => {
-        if (selectedFile) {
-            setIsScanning(true);
-            await onScan(selectedFile);
-            // Don't close automatically, let the parent handle it
-        }
-    };
-
-    return (
-        <Dialog open={isOpen} onOpenChange={onClose}>
-            <DialogContent className="bg-card border-border text-foreground">
-                <DialogHeader>
-                    <DialogTitle>Scan Menu with AI</DialogTitle>
-                    <DialogDescription>Upload an image of your menu, and our AI will automatically add the items for you.</DialogDescription>
-                </DialogHeader>
-                <div className="py-4 space-y-4">
-                    <input type="file" ref={inputRef} onChange={handleFileChange} className="hidden" accept="image/*" />
-                    <div
-                        onClick={() => inputRef.current?.click()}
-                        className="relative w-full h-48 border-2 border-dashed border-border rounded-lg flex flex-col items-center justify-center cursor-pointer hover:border-primary hover:bg-muted transition-colors"
-                    >
-                        {previewUrl ? (
-                             <div className="relative w-full h-full">
-                                <Image src={previewUrl} alt="Menu preview" layout="fill" objectFit="contain" className="p-2 rounded-lg"/>
-                             </div>
-                        ) : (
-                            <>
-                                <Camera size={48} className="text-muted-foreground" />
-                                <p className="mt-2 text-muted-foreground">Click to Upload Image</p>
-                            </>
-                        )}
-                    </div>
-                </div>
-                <DialogFooter>
-                    <Button variant="secondary" onClick={onClose} disabled={isScanning}>Cancel</Button>
-                    <Button onClick={handleScan} disabled={!selectedFile || isScanning} className="bg-primary hover:bg-primary/80">
-                        {isScanning ? <Loader2 className="animate-spin mr-2"/> : null}
-                        {isScanning ? 'Scanning...' : 'Start AI Scan'}
-                    </Button>
-                </DialogFooter>
-            </DialogContent>
-        </Dialog>
-    );
-};
-
 const BulkAddModal = ({ isOpen, setIsOpen, onSave, businessType, showInfoDialog }) => {
     const [jsonText, setJsonText] = useState('');
     const [isSaving, setIsSaving] = useState(false);
@@ -513,6 +451,7 @@ export default function StreetVendorMenuPage() {
     const [isScanning, setIsScanning] = useState(false);
     const [customCategories, setCustomCategories] = useState([]);
     const [itemToDelete, setItemToDelete] = useState(null);
+    const [selectedItems, setSelectedItems] = useState([]);
 
     const vendorQuery = useMemoFirebase(() => {
         if (!user) return null;
@@ -674,6 +613,31 @@ export default function StreetVendorMenuPage() {
         setEditingItem(item);
         setIsAddItemModalOpen(true);
     };
+
+    const handleBulkAction = async (action) => {
+        if (selectedItems.length === 0) return;
+        const confirmMessage = action === 'delete'
+            ? `Are you sure you want to delete ${selectedItems.length} items? This action cannot be undone.`
+            : `Are you sure you want to mark ${selectedItems.length} items as out of stock?`;
+
+        if (window.confirm(confirmMessage)) {
+            try {
+                const user = auth.currentUser;
+                if (!user) throw new Error("Authentication failed");
+                const idToken = await user.getIdToken();
+                await fetch('/api/owner/menu', {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${idToken}` },
+                    body: JSON.stringify({ itemIds: selectedItems, action })
+                });
+                setInfoDialog({ isOpen: true, title: 'Success', message: `Successfully completed bulk action.` });
+                setSelectedItems([]);
+                fetchMenu();
+            } catch (error) {
+                 setInfoDialog({ isOpen: true, title: 'Error', message: `Could not perform bulk action: ${error.message}` });
+            }
+        }
+    };
     
     const allCategories = {
         'snacks': { title: 'Snacks' },
@@ -742,6 +706,20 @@ export default function StreetVendorMenuPage() {
                 </motion.div>
             )}
         </AnimatePresence>
+        
+        {selectedItems.length > 0 && (
+            <div className="sticky top-0 z-10 bg-background/80 backdrop-blur-sm p-3 border rounded-lg flex items-center justify-between gap-4 mb-4">
+                <p className="font-semibold">{selectedItems.length} items selected</p>
+                <div className="flex gap-2">
+                    <Button size="sm" variant="outline" onClick={() => handleBulkAction('outOfStock')}>
+                        <XCircle size={16} className="mr-2"/> Mark Out of Stock
+                    </Button>
+                    <Button size="sm" variant="destructive" onClick={() => handleBulkAction('delete')}>
+                        <Trash2 size={16} className="mr-2"/> Delete
+                    </Button>
+                </div>
+            </div>
+        )}
 
         <main>
             {(loading || isUserLoading || isVendorLoading) ? (
@@ -756,7 +734,15 @@ export default function StreetVendorMenuPage() {
                             <h2 className="text-xl font-bold text-sky-500 mb-2">{category}</h2>
                             <div className="space-y-3">
                                 {items.map(item => (
-                                    <MenuItem key={item.id} item={item} onToggle={handleToggleAvailability} onDelete={handleDeleteItem} onEdit={handleEditItem} />
+                                    <MenuItem 
+                                        key={item.id} 
+                                        item={item} 
+                                        onToggle={handleToggleAvailability} 
+                                        onDelete={handleDeleteItem} 
+                                        onEdit={handleEditItem}
+                                        onSelectItem={setSelectedItems}
+                                        isSelected={selectedItems.includes(item.id)}
+                                    />
                                 ))}
                             </div>
                         </div>
@@ -773,5 +759,3 @@ export default function StreetVendorMenuPage() {
     </div>
   );
 }
-
-    
