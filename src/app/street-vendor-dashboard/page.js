@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useState, useEffect, useMemo, useCallback, useRef, Suspense } from 'react';
@@ -546,6 +547,10 @@ const StreetVendorDashboardContent = () => {
     const handleMarkCollected = (orderId) => handleUpdateStatus(orderId, 'delivered');
     const handleOpenRejectModal = (order) => setRejectModalState({ isOpen: true, order });
     
+    const handleRejectOrder = (orderId, reason) => {
+        handleUpdateStatus(orderId, 'rejected', reason);
+    };
+
     const filteredOrders = useMemo(() => {
         if (!searchQuery) return orders;
         const lowerQuery = searchQuery.toLowerCase();
@@ -581,7 +586,7 @@ const StreetVendorDashboardContent = () => {
             isOpen={rejectModalState.isOpen}
             onClose={() => setRejectModalState({ isOpen: false, order: null })}
             order={rejectModalState.order}
-            onConfirm={handleUpdateStatus}
+            onConfirm={handleRejectOrder}
             onMarkOutOfStock={handleMarkOutOfStock}
             showInfoDialog={setInfoDialog}
         />
