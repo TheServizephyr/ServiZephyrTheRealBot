@@ -117,15 +117,15 @@ export default function StreetVendorQrPage() {
                         <div className="bg-white p-4 rounded-xl">
                             <QRCode
                                 value={qrValue}
-                                style={{ width: '100%', height: '100%' }}
+                                size={512}
                                 level={"H"}
                                 includeMargin={true}
                                 imageSettings={{
                                     src: "/logo.png",
                                     x: undefined,
                                     y: undefined,
-                                    height: 32,
-                                    width: 32,
+                                    height: 64,
+                                    width: 64,
                                     excavate: true,
                                 }}
                             />
