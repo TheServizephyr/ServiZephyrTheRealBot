@@ -264,10 +264,21 @@ const OrderCard = ({ order, onMarkReady, onCancelClick, onMarkCollected }) => {
                 </div>
                 <div className="mt-3 pt-3 border-t border-dashed border-border">
                     <p className="font-semibold text-foreground">Items:</p>
-                    <ul className="list-disc list-inside text-muted-foreground text-sm">
-                        {order.items.map(item => (
-                            <li key={item.name}>{item.quantity}x {item.name}</li>
-                        ))}
+                    <ul className="list-disc list-inside text-muted-foreground text-sm space-y-1">
+                         {order.items.map((item, index) => {
+                            const portionName = item.portion?.name;
+                            const addOns = (item.selectedAddOns || [])
+                                .map(addon => `${addon.quantity}x ${addon.name}`)
+                                .join(', ');
+
+                            return (
+                                <li key={index}>
+                                    {item.quantity}x {item.name} 
+                                    {portionName && portionName.toLowerCase() !== 'full' && ` - ${portionName}`}
+                                    {addOns && <span className="text-xs text-primary block pl-4">({addOns})</span>}
+                                </li>
+                            );
+                        })}
                     </ul>
                 </div>
             </div>
@@ -330,9 +341,20 @@ const ScannedOrderModal = ({ order, isOpen, onClose, onConfirm }) => {
                      <div>
                         <h4 className="font-semibold text-muted-foreground mb-2">Items:</h4>
                         <ul className="list-disc list-inside text-muted-foreground text-sm space-y-1">
-                           {order.items.map(item => (
-                                <li key={item.name}>{item.quantity}x {item.name}</li>
-                            ))}
+                           {order.items.map((item, index) => {
+                                const portionName = item.portion?.name;
+                                const addOns = (item.selectedAddOns || [])
+                                    .map(addon => `${addon.quantity}x ${addon.name}`)
+                                    .join(', ');
+
+                                return (
+                                    <li key={index}>
+                                        {item.quantity}x {item.name} 
+                                        {portionName && portionName.toLowerCase() !== 'full' && ` - ${portionName}`}
+                                        {addOns && <span className="text-xs text-primary block pl-4">({addOns})</span>}
+                                    </li>
+                                );
+                            })}
                         </ul>
                     </div>
                 </div>
