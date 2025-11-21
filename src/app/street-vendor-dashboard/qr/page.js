@@ -115,10 +115,10 @@ export default function StreetVendorQrPage() {
                 >
                     <div ref={printRef} className="animated-gradient p-6 sm:p-8 rounded-3xl shadow-2xl shadow-primary/20">
                         <div className="bg-white p-4 rounded-xl">
-                            <div style={{ width: '100%', height: 'auto' }}>
+                            <div className="w-full h-auto">
                                 <QRCode
                                     value={qrValue}
-                                    size={256} // Base size for quality, will be scaled by CSS
+                                    size={256} 
                                     level={"H"}
                                     includeMargin={true}
                                     imageSettings={{
