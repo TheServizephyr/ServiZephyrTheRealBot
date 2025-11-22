@@ -51,7 +51,27 @@ export async function POST(req) {
         
         const isStreetVendorOrder = deliveryType === 'street-vendor-pre-order';
 
-        // --- START: ADD-ON ORDER LOGIC ---
+        // --- VALIDATION ---
+        if (isStreetVendorOrder && !name) {
+            console.error("[API /order/create] Validation Error: Name is required for street-vendor orders.");
+            return NextResponse.json({ message: 'Name is required for pre-orders.' }, { status: 400 });
+        }
+        if (deliveryType !== 'dine-in' && !isStreetVendorOrder && !name) {
+             return NextResponse.json({ message: 'Name is required.' }, { status: 400 });
+        }
+        if (!restaurantId || !items || grandTotal === undefined || subtotal === undefined) {
+             const missingFields = `Missing fields: restaurantId=${!!restaurantId}, items=${!!items}, grandTotal=${grandTotal !== undefined}, subtotal=${subtotal !== undefined}`;
+             return NextResponse.json({ message: `Missing required fields. Details: ${missingFields}` }, { status: 400 });
+        }
+        if (deliveryType === 'delivery' && (!address || !address.full)) {
+            return NextResponse.json({ message: 'A full, structured address is required for delivery orders.' }, { status: 400 });
+        }
+        const normalizedPhone = phone ? (phone.length > 10 ? phone.slice(-10) : phone) : null;
+        if (normalizedPhone && !/^\d{10}$/.test(normalizedPhone)) {
+            return NextResponse.json({ message: 'Invalid phone number format. Must be 10 digits.' }, { status: 400 });
+        }
+        
+        // --- ADD-ON ORDER LOGIC ---
         if (existingOrderId && items && items.length > 0) {
             console.log(`[API /order/create] ADD-ON FLOW: Adding to order ${existingOrderId}`);
             const orderRef = firestore.collection('orders').doc(existingOrderId);
@@ -65,14 +85,15 @@ export async function POST(req) {
                     
                     const newItems = [...orderData.items, ...items];
                     const newSubtotal = orderData.subtotal + subtotal;
-                    const newCgst = orderData.cgst + cgst;
-                    const newSgst = orderData.sgst + sgst;
+                    const newCgst = (orderData.cgst || 0) + (cgst || 0);
+                    const newSgst = (orderData.sgst || 0) + (sgst || 0);
                     const newGrandTotal = orderData.totalAmount + grandTotal;
 
                     const newPaymentDetail = {
                         method: paymentMethod,
                         amount: grandTotal,
-                        timestamp: FieldValue.serverTimestamp()
+                        timestamp: FieldValue.serverTimestamp(),
+                        status: paymentMethod === 'cod' ? 'pending' : 'awaiting_confirmation'
                     };
                     
                     const updatePayload = {
@@ -102,24 +123,6 @@ export async function POST(req) {
                 return NextResponse.json({ message: error.message }, { status: 400 });
             }
         }
-        // --- END: ADD-ON ORDER LOGIC ---
-
-        // --- VALIDATION ---
-        if ((deliveryType !== 'dine-in' || isStreetVendorOrder) && !name) {
-            console.error("[API /order/create] Validation Error: Name is required for non-dine-in/street-vendor orders.");
-            return NextResponse.json({ message: 'Name is required.' }, { status: 400 });
-        }
-        if (!restaurantId || !items || grandTotal === undefined || subtotal === undefined) {
-             const missingFields = `Missing fields: restaurantId=${!!restaurantId}, items=${!!items}, grandTotal=${grandTotal !== undefined}, subtotal=${subtotal !== undefined}`;
-             return NextResponse.json({ message: `Missing required fields. Details: ${missingFields}` }, { status: 400 });
-        }
-        if (deliveryType === 'delivery' && (!address || !address.full)) {
-            return NextResponse.json({ message: 'A full, structured address is required for delivery orders.' }, { status: 400 });
-        }
-        const normalizedPhone = phone ? (phone.length > 10 ? phone.slice(-10) : phone) : null;
-        if (normalizedPhone && !/^\d{10}$/.test(normalizedPhone)) {
-            return NextResponse.json({ message: 'Invalid phone number format. Must be 10 digits.' }, { status: 400 });
-        }
         
         let businessRef;
         const collectionsToTry = ['restaurants', 'shops', 'street_vendors'];
@@ -143,7 +146,6 @@ export async function POST(req) {
             
             const razorpay = new Razorpay({ key_id: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID, key_secret: process.env.RAZORPAY_KEY_SECRET });
             
-            // --- A-GRADE FIX: Create an incomplete order first to get a tracking token ---
             const newOrderRef = firestore.collection('orders').doc();
             const trackingToken = await generateSecureToken(firestore, normalizedPhone || newOrderRef.id);
             
@@ -157,7 +159,7 @@ export async function POST(req) {
             console.log(`[API /order/create] Created incomplete order ${newOrderRef.id} with tracking token.`);
 
             const servizephyrOrderPayload = {
-                order_id: newOrderRef.id, // Use the pre-generated Firestore ID
+                order_id: newOrderRef.id,
                 user_id: normalizedPhone || `anon_${nanoid(10)}`,
                 restaurant_id: restaurantId,
                 business_type: businessType,
@@ -180,8 +182,8 @@ export async function POST(req) {
             return NextResponse.json({ 
                 message: 'Razorpay order created.',
                 razorpay_order_id: razorpayOrder.id,
-                firestore_order_id: newOrderRef.id, // Send back the pre-generated ID
-                token: trackingToken, // Send back the pre-generated token
+                firestore_order_id: newOrderRef.id,
+                token: trackingToken,
             }, { status: 200 });
         }
 
@@ -249,7 +251,7 @@ export async function POST(req) {
                 method: paymentMethod,
                 amount: grandTotal,
                 timestamp: FieldValue.serverTimestamp(),
-                status: 'pending' // For COD, it's pending until collected
+                status: 'pending'
             }]
         };
         
@@ -274,4 +276,3 @@ export async function POST(req) {
         return NextResponse.json({ message: `Backend Error: ${error.message}` }, { status: 500 });
     }
 }
-

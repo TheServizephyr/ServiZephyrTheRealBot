@@ -71,7 +71,7 @@ const handleSplitPayment = async (firestore, paymentEntity) => {
                 const baseOrderRef = firestore.collection('orders').doc(splitData.baseOrderId);
                 const baseOrderSnap = await transaction.get(baseOrderRef);
                  if(baseOrderSnap.exists){
-                    transaction.update(baseOrderRef, { paymentDetails: { ...paymentEntity, method: 'razorpay_split' }, status: 'pending' });
+                    transaction.update(baseOrderRef, { paymentDetails: FieldValue.arrayUnion({ method: 'razorpay_split', status: 'paid', ...paymentEntity }) , status: 'pending' });
                  }
             }
             transaction.update(splitRef, updateData);
@@ -120,8 +120,6 @@ export async function POST(req) {
                 return NextResponse.json({ status: 'ok', message: 'Split payment processed.' });
             }
 
-            // --- A-GRADE FIX: New logic for completing orders ---
-            
             const key_id = process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID;
             const key_secret = process.env.RAZORPAY_KEY_SECRET;
             const credentials = Buffer.from(`${key_id}:${key_secret}`).toString('base64');
@@ -132,9 +130,9 @@ export async function POST(req) {
             });
 
             const payloadString = rzpOrder.notes?.servizephyr_payload;
+            
+            // --- ADD-ON PAYMENT LOGIC ---
             if (!payloadString) {
-                console.error(`[Webhook RZP] CRITICAL: servizephyr_payload not found for RZP Order ${razorpayOrderId}`);
-                // If it's an add-on order, the payload might not be there. Let's find the base order.
                 const orderSnapshot = await firestore.collection('orders').where('paymentDetails', 'array-contains', { razorpay_order_id: razorpayOrderId }).limit(1).get();
                 if (!orderSnapshot.empty) {
                     const orderDoc = orderSnapshot.docs[0];
@@ -147,6 +145,7 @@ export async function POST(req) {
                 return NextResponse.json({ status: 'error', message: 'Order payload not found.' });
             }
             
+            // --- NEW ORDER PAYMENT LOGIC ---
             const { 
                 order_id: firestoreOrderId, user_id: userId, restaurant_id: restaurantId, business_type: businessType,
                 customer_details: customerDetailsString, items: itemsString, bill_details: billDetailsString, notes: customNotes 
@@ -160,7 +159,6 @@ export async function POST(req) {
             const orderItems = JSON.parse(itemsString);
             const billDetails = JSON.parse(billDetailsString);
             
-            // --- The order to update is the one created in the 'order/create' API ---
             const orderRef = firestore.collection('orders').doc(firestoreOrderId);
 
             let dineInToken = null;
@@ -178,7 +176,6 @@ export async function POST(req) {
                  } catch (e) { console.error(`[Webhook RZP] Error generating street vendor token:`, e); }
             }
             
-            // --- Update the incomplete order with full details ---
             const fullOrderData = {
                 customerName: customerDetails.name,
                 customerId: userId,
@@ -198,8 +195,8 @@ export async function POST(req) {
                 sgst: billDetails.sgst, 
                 deliveryCharge: billDetails.deliveryCharge || 0,
                 totalAmount: billDetails.grandTotal,
-                status: 'pending', // Now it's a real pending order
-                orderDate: FieldValue.serverTimestamp(), // Update with final time
+                status: 'pending',
+                orderDate: FieldValue.serverTimestamp(),
                 notes: customNotes || null,
                 dineInToken: dineInToken,
                 paymentDetails: [{
@@ -215,7 +212,8 @@ export async function POST(req) {
             await orderRef.update(fullOrderData);
             console.log(`[Webhook RZP] Successfully completed order ${firestoreOrderId} from RZP Order ${razorpayOrderId}.`);
 
-            const businessDoc = await firestore.collection(businessType === 'shop' ? 'shops' : 'restaurants').doc(restaurantId).get();
+            const collectionForBusinessLookup = businessType === 'street-vendor' ? 'street_vendors' : (businessType === 'shop' ? 'shops' : 'restaurants');
+            const businessDoc = await firestore.collection(collectionForBusinessLookup).doc(restaurantId).get();
 
             if (businessDoc.exists) {
                 const businessData = businessDoc.data();

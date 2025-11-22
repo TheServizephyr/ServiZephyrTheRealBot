@@ -9,7 +9,7 @@ import Link from 'next/link';
 import { useUser, useMemoFirebase, useCollection } from '@/firebase';
 import { db, auth } from '@/lib/firebase';
 import { collection, query, where, onSnapshot, doc, Timestamp, getDocs, updateDoc, deleteDoc, getDoc, limit, orderBy } from 'firebase/firestore';
-import { startOfDay, endOfDay, format, addDays } from 'date-fns';
+import { startOfDay, endOfDay, format } from 'date-fns';
 import { FirestorePermissionError } from '@/firebase/errors';
 import { errorEmitter } from '@/firebase/error-emitter';
 import InfoDialog from '@/components/InfoDialog';
@@ -218,7 +218,7 @@ const OrderCard = ({ order, onMarkReady, onCancelClick, onMarkCollected }) => {
         borderClass = 'border-red-500';
     }
     
-    const isPaidOnline = order.paymentDetails?.method === 'razorpay';
+    const isPaidOnline = (order.paymentDetails || []).some(p => p.method === 'razorpay' && p.status === 'paid');
 
     return (
         <motion.div
@@ -311,7 +311,7 @@ const OrderCard = ({ order, onMarkReady, onCancelClick, onMarkCollected }) => {
 
 const ScannedOrderModal = ({ order, isOpen, onClose, onConfirm }) => {
     if (!order) return null;
-    const isPaidOnline = order.paymentDetails?.method === 'razorpay';
+    const isPaidOnline = (order.paymentDetails || []).some(p => p.method === 'razorpay' && p.status === 'paid');
     const orderDate = order?.orderDate;
 
     return (

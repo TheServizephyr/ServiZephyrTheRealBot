@@ -160,7 +160,7 @@ const CheckoutPageInternal = () => {
             
             console.log(`[Checkout Page] Verification checks: isDineIn=${isDineIn}, isLoggedInUser=${isLoggedInUser}, isWhatsAppSession=${isWhatsAppSession}, isAnonymousPreOrder=${isAnonymousPreOrder}, activeOrderId=${!!activeOrderId}`);
 
-            if (isDineIn || isLoggedInUser || activeOrderId || isAnonymousPreOrder) {
+            if (isDineIn || isLoggedInUser || activeOrderId) {
                 console.log("[Checkout Page] Session validated (Direct).");
                 setIsTokenValid(true);
             } else if (isWhatsAppSession) {
@@ -171,18 +171,21 @@ const CheckoutPageInternal = () => {
                 } catch (err) {
                     setTokenError(err.message); setLoading(false); return;
                 }
-            } else {
+            } else if (isAnonymousPreOrder) {
+                // Anonymous pre-order for street vendors doesn't need token verification at this stage
+                setIsTokenValid(true);
+            }
+            else {
                 if (!isUserLoading) {
                     setTokenError("No session information found."); setLoading(false); return;
                 }
             }
             
-            if (isLoggedInUser || activeOrderId || isDineIn) {
-                console.log("[Checkout Page] Auto-confirming details for non-interactive session.");
-                setDetailsConfirmed(true);
+            // Logic to show/hide the details form
+            if (deliveryType === 'street-vendor-pre-order' || (deliveryType === 'delivery' && !isLoggedInUser)) {
+                setDetailsConfirmed(false);
             } else {
-                 console.log("[Checkout Page] Interactive session detected. Will ask for details.");
-                 setDetailsConfirmed(false);
+                 setDetailsConfirmed(true);
             }
 
 
