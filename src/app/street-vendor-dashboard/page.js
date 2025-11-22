@@ -218,10 +218,13 @@ const OrderCard = ({ order, onMarkReady, onCancelClick, onMarkCollected }) => {
         borderClass = 'border-red-500';
     }
     
-    // --- START FIX ---
-    const paymentDetailsArray = Array.isArray(order.paymentDetails) ? order.paymentDetails : [order.paymentDetails];
-    const isPaidOnline = paymentDetailsArray.some(p => p && p.method === 'razorpay' && p.status === 'paid');
-    // --- END FIX ---
+    const paymentDetailsArray = Array.isArray(order.paymentDetails) ? order.paymentDetails : [order.paymentDetails].filter(Boolean);
+    const amountPaidOnline = paymentDetailsArray.filter(p => p.method === 'razorpay' && p.status === 'paid').reduce((sum, p) => sum + p.amount, 0);
+    const amountDueAtCounter = paymentDetailsArray.filter(p => p.method === 'cod' || p.method === 'pay_at_counter').reduce((sum, p) => sum + p.amount, 0);
+    
+    const isFullyPaidOnline = amountPaidOnline >= order.totalAmount;
+    const isFullyCOD = amountDueAtCounter >= order.totalAmount;
+    const isPartiallyPaid = amountPaidOnline > 0 && amountPaidOnline < order.totalAmount;
 
     return (
         <motion.div
@@ -242,9 +245,18 @@ const OrderCard = ({ order, onMarkReady, onCancelClick, onMarkCollected }) => {
                 </div>
                  <div className="flex justify-between items-center mt-2 border-b border-dashed border-border pb-3 mb-3">
                     <p className="text-3xl font-bold text-green-500">{formatCurrency(order.totalAmount)}</p>
-                    {isPaidOnline ? (
+                    {isFullyPaidOnline ? (
                          <div className="flex items-center gap-1 text-xs font-semibold px-2 py-1 rounded-full bg-green-500/10 text-green-500 border border-green-500/20">
                             <Wallet size={14}/> PAID ONLINE
+                        </div>
+                    ) : isFullyCOD ? (
+                         <div className="flex items-center gap-1 text-xs font-semibold px-2 py-1 rounded-full bg-yellow-500/10 text-yellow-400 border border-yellow-500/20">
+                            <IndianRupee size={14}/> PAY AT COUNTER
+                        </div>
+                    ) : isPartiallyPaid ? (
+                        <div className="text-right">
+                            <span className="text-xs font-semibold text-green-500">Paid: {formatCurrency(amountPaidOnline)}</span>
+                             <span className="block text-xs font-semibold text-yellow-500">Due: {formatCurrency(order.totalAmount - amountPaidOnline)}</span>
                         </div>
                     ) : (
                          <div className="flex items-center gap-1 text-xs font-semibold px-2 py-1 rounded-full bg-yellow-500/10 text-yellow-400 border border-yellow-500/20">
@@ -314,8 +326,9 @@ const OrderCard = ({ order, onMarkReady, onCancelClick, onMarkCollected }) => {
 
 const ScannedOrderModal = ({ order, isOpen, onClose, onConfirm }) => {
     if (!order) return null;
-    const paymentDetailsArray = Array.isArray(order.paymentDetails) ? order.paymentDetails : [order.paymentDetails];
-    const isPaidOnline = paymentDetailsArray.some(p => p && p.method === 'razorpay' && p.status === 'paid');
+    const paymentDetailsArray = Array.isArray(order.paymentDetails) ? order.paymentDetails : [order.paymentDetails].filter(Boolean);
+    const amountPaidOnline = paymentDetailsArray.filter(p => p.method === 'razorpay' && p.status === 'paid').reduce((sum, p) => sum + p.amount, 0);
+    const amountDueAtCounter = order.totalAmount - amountPaidOnline;
     const orderDate = order?.orderDate;
 
     return (
@@ -334,11 +347,11 @@ const ScannedOrderModal = ({ order, isOpen, onClose, onConfirm }) => {
                             <span className="text-2xl text-primary">{formatCurrency(order.totalAmount)}</span>
                         </div>
                         <div className="flex justify-between items-center text-xs mt-1">
-                            <span>Payment Status:</span>
-                             {isPaidOnline ? (
-                                <span className="font-semibold text-green-500">PAID ONLINE</span>
+                             <span>Payment Status:</span>
+                             {amountDueAtCounter <= 0 ? (
+                                <span className="font-semibold text-green-500">FULLY PAID ONLINE</span>
                             ) : (
-                                <span className="font-semibold text-yellow-400">TO BE COLLECTED AT COUNTER</span>
+                                <span className="font-semibold text-yellow-400">COLLECT {formatCurrency(amountDueAtCounter)} AT COUNTER</span>
                             )}
                         </div>
                     </div>
