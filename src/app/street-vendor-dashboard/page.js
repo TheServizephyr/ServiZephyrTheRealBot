@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button';
 import Link from 'next/link';
 import { useUser, useMemoFirebase, useCollection } from '@/firebase';
 import { db, auth } from '@/lib/firebase';
-import { collection, query, where, onSnapshot, doc, Timestamp, getDocs, updateDoc, deleteDoc, getDoc, limit } from 'firebase/firestore';
+import { collection, query, where, onSnapshot, doc, Timestamp, getDocs, updateDoc, deleteDoc, getDoc, limit, orderBy } from 'firebase/firestore';
 import { startOfDay, endOfDay, format, addDays } from 'date-fns';
 import { FirestorePermissionError } from '@/firebase/errors';
 import { errorEmitter } from '@/firebase/error-emitter';
@@ -491,12 +491,23 @@ const StreetVendorDashboardContent = () => {
         
         setLoading(true);
 
-        let q = query(collection(db, "orders"), where("restaurantId", "==", vendorId), limit(50));
+        let q = query(
+            collection(db, "orders"), 
+            where("restaurantId", "==", vendorId),
+            orderBy("orderDate", "desc"),
+            limit(50)
+        );
         
         if (date?.from) {
             const start = startOfDay(date.from);
             const end = date.to ? endOfDay(date.to) : endOfDay(date.from);
-            q = query(q, where("orderDate", ">=", Timestamp.fromDate(start)), where("orderDate", "<=", Timestamp.fromDate(end)));
+            q = query(
+                collection(db, "orders"), 
+                where("restaurantId", "==", vendorId),
+                where("orderDate", ">=", Timestamp.fromDate(start)), 
+                where("orderDate", "<=", Timestamp.fromDate(end)),
+                orderBy("orderDate", "desc")
+            );
         }
         
         const unsubscribe = onSnapshot(q, (querySnapshot) => {
@@ -517,7 +528,6 @@ const StreetVendorDashboardContent = () => {
                 fetchedOrders.push({ id: doc.id, ...doc.data() });
             });
             
-            fetchedOrders.sort((a,b) => (b.orderDate?.seconds || 0) - (a.orderDate?.seconds || 0));
             setOrders(fetchedOrders);
             setLoading(false);
         }, (err) => {

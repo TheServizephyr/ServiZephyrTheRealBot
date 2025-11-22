@@ -154,46 +154,37 @@ const CheckoutPageInternal = () => {
             const isLoggedInUser = !!user;
             const isWhatsAppSession = !!phoneFromUrl && !!token;
 
-            // --- START: Anonymous Pre-Order Check ---
-            let isAnonymousPreOrder = false;
-            try {
-                const savedCart = JSON.parse(localStorage.getItem(`cart_${restaurantId}`) || '{}');
-                isAnonymousPreOrder = savedCart.deliveryType === 'street-vendor-pre-order' && !isDineIn && !isLoggedInUser && !isWhatsAppSession;
-            } catch (e) {
-                // Ignore parsing errors, isAnonymousPreOrder will remain false
-            }
-            // --- END: Anonymous Pre-Order Check ---
-
+            const savedCart = JSON.parse(localStorage.getItem(`cart_${restaurantId}`) || '{}');
+            const deliveryType = tableId ? 'dine-in' : (savedCart.deliveryType || 'delivery');
+            const isAnonymousPreOrder = deliveryType === 'street-vendor-pre-order' && !isDineIn && !isLoggedInUser && !isWhatsAppSession;
+            
             console.log(`[Checkout Page] Verification checks: isDineIn=${isDineIn}, isLoggedInUser=${isLoggedInUser}, isWhatsAppSession=${isWhatsAppSession}, isAnonymousPreOrder=${isAnonymousPreOrder}, activeOrderId=${!!activeOrderId}`);
 
-            if (isDineIn || isLoggedInUser || activeOrderId) {
+            if (isDineIn || isLoggedInUser || activeOrderId || isAnonymousPreOrder) {
                 console.log("[Checkout Page] Session validated (Direct).");
                 setIsTokenValid(true);
             } else if (isWhatsAppSession) {
                 try {
-                    console.log("[Checkout Page] Verifying WhatsApp session via API...");
                     const res = await fetch('/api/auth/verify-token', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ phone: phoneFromUrl, token }) });
                     if (!res.ok) throw new Error((await res.json()).message || "Session validation failed.");
-                    console.log("[Checkout Page] Session validated (API).");
                     setIsTokenValid(true);
                 } catch (err) {
-                    console.error("[Checkout Page] Token verification failed:", err.message);
                     setTokenError(err.message); setLoading(false); return;
                 }
-            } else if (isAnonymousPreOrder) {
-                console.log("[Checkout Page] Session validated (Anonymous Pre-Order).");
-                setIsTokenValid(true);
             } else {
                 if (!isUserLoading) {
-                    console.error("[Checkout Page] No session info found and user is not loading.");
                     setTokenError("No session information found."); setLoading(false); return;
                 }
             }
-
-            if (isLoggedInUser || activeOrderId) {
+            
+            if (isLoggedInUser || activeOrderId || isDineIn) {
                 console.log("[Checkout Page] Auto-confirming details for non-interactive session.");
                 setDetailsConfirmed(true);
+            } else {
+                 console.log("[Checkout Page] Interactive session detected. Will ask for details.");
+                 setDetailsConfirmed(false);
             }
+
 
             const phoneToLookup = phoneFromUrl || user?.phoneNumber || '';
             setOrderPhone(phoneToLookup);
@@ -201,11 +192,7 @@ const CheckoutPageInternal = () => {
             if (!restaurantId) { router.push('/'); return; }
             setError('');
 
-            const savedCart = JSON.parse(localStorage.getItem(`cart_${restaurantId}`) || '{}');
-            const parsedData = savedCart;
-
-            const deliveryType = tableId ? 'dine-in' : (parsedData.deliveryType || 'delivery');
-            const updatedData = { ...parsedData, phone: phoneToLookup, token, tableId, dineInTabId: tabId, deliveryType };
+            const updatedData = { ...savedCart, phone: phoneToLookup, token, tableId, dineInTabId: tabId, deliveryType };
 
             console.log("[Checkout Page] Setting cart data from localStorage:", updatedData);
             setCart(updatedData.cart || []);
@@ -213,28 +200,22 @@ const CheckoutPageInternal = () => {
             setCartData(updatedData);
 
             try {
-                setOrderName(user?.displayName || parsedData.tab_name || '');
+                setOrderName(user?.displayName || savedCart.tab_name || '');
                 if (phoneToLookup) {
-                    console.log(`[Checkout Page] Looking up customer details for phone: ${phoneToLookup}`);
                     const lookupRes = await fetch('/api/customer/lookup', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ phone: phoneToLookup }) });
                     if (lookupRes.ok) {
                         const data = await lookupRes.json();
-                        console.log("[Checkout Page] Customer lookup successful:", data);
                         setOrderName(prev => prev || data.name || '');
                         if (deliveryType === 'delivery') {
                             setUserAddresses(data.addresses || []);
                             setSelectedAddress(prev => prev || data.addresses?.[0] || null);
                         }
-                    } else {
-                        console.warn("[Checkout Page] Customer lookup failed or user not found.");
                     }
                 }
 
-                console.log(`[Checkout Page] Fetching payment settings for restaurant: ${restaurantId}`);
                 const paymentSettingsRes = await fetch(`/api/owner/settings?restaurantId=${restaurantId}`);
                 if (paymentSettingsRes.ok) {
                     const paymentData = await paymentSettingsRes.json();
-                    console.log("[Checkout Page] Payment settings fetched:", paymentData);
                     if (deliveryType === 'delivery') {
                         setCodEnabled(paymentData.deliveryCodEnabled);
                         setOnlinePaymentEnabled(paymentData.deliveryOnlinePaymentEnabled);
@@ -250,7 +231,6 @@ const CheckoutPageInternal = () => {
                     }
                 }
             } catch (err) {
-                console.error("[Checkout Page] Error fetching initial data:", err);
                 setError('Failed to load checkout details. Please try again.');
             } finally {
                 setLoading(false);
@@ -530,10 +510,12 @@ const CheckoutPageInternal = () => {
                             <Input id="phone" value={orderPhone} onChange={(e) => setOrderPhone(e.target.value)} disabled={loading || !!phoneFromUrl} placeholder="For order updates via WhatsApp" />
                         </div>
                     ) : (
-                        <div>
-                            <Label htmlFor="phone" className="flex items-center gap-2"><Phone size={16} /> Phone Number</Label>
-                            <Input id="phone" value={orderPhone} onChange={(e) => setOrderPhone(e.target.value)} disabled={loading || !!phoneFromUrl} />
-                        </div>
+                        deliveryType !== 'delivery' && (
+                            <div>
+                                <Label htmlFor="phone" className="flex items-center gap-2"><Phone size={16} /> Phone Number</Label>
+                                <Input id="phone" value={orderPhone} onChange={(e) => setOrderPhone(e.target.value)} disabled={loading || !!phoneFromUrl} />
+                            </div>
+                        )
                     )}
                 </div>
                 <Button onClick={handleConfirmDetails} className="w-full mt-4 bg-primary text-primary-foreground">
