@@ -1,4 +1,3 @@
-
 'use client';
 
 import React, { useState, useEffect, useMemo, useCallback, useRef, Suspense } from 'react';
@@ -218,14 +217,17 @@ const OrderCard = ({ order, onMarkReady, onCancelClick, onMarkCollected }) => {
         borderClass = 'border-red-500';
     }
     
-    // THE FIX: Make paymentDetails an array and calculate paid/due amounts
+    // --- START: PAYMENT BREAKDOWN LOGIC ---
     const paymentDetailsArray = Array.isArray(order.paymentDetails) ? order.paymentDetails : [order.paymentDetails].filter(Boolean);
-    const amountPaidOnline = paymentDetailsArray.filter(p => p.method === 'razorpay' && p.status === 'paid').reduce((sum, p) => sum + p.amount, 0);
-    const isCOD = paymentDetailsArray.some(p => p.method === 'cod' || p.method === 'pay_at_counter');
-    const amountDueAtCounter = order.totalAmount - amountPaidOnline;
+    const amountPaidOnline = paymentDetailsArray
+        .filter(p => p.method === 'razorpay' && p.status === 'paid')
+        .reduce((sum, p) => sum + (p.amount || 0), 0);
+        
+    const amountDueAtCounter = (order.totalAmount || 0) - amountPaidOnline;
 
-    const isFullyPaidOnline = amountPaidOnline >= order.totalAmount;
-    const isPartiallyPaid = amountPaidOnline > 0 && amountDueAtCounter > 0;
+    const isFullyPaidOnline = amountPaidOnline >= (order.totalAmount || 0);
+    const isPartiallyPaid = amountPaidOnline > 0 && amountDueAtCounter > 0.01; // Use a small threshold for float issues
+    // --- END: PAYMENT BREAKDOWN LOGIC ---
 
     return (
         <motion.div
@@ -246,20 +248,22 @@ const OrderCard = ({ order, onMarkReady, onCancelClick, onMarkCollected }) => {
                 </div>
                  <div className="flex justify-between items-center mt-2 border-b border-dashed border-border pb-3 mb-3">
                     <p className="text-3xl font-bold text-green-500">{formatCurrency(order.totalAmount)}</p>
+                     {/* --- START: UPDATED PAYMENT UI --- */}
                      {isFullyPaidOnline ? (
                          <div className="flex items-center gap-1 text-xs font-semibold px-2 py-1 rounded-full bg-green-500/10 text-green-500 border border-green-500/20">
                             <Wallet size={14}/> PAID ONLINE
                         </div>
                     ) : isPartiallyPaid ? (
                          <div className="text-right">
-                            <span className="text-xs font-semibold text-green-500">Paid: {formatCurrency(amountPaidOnline)}</span>
-                             <span className="block text-xs font-semibold text-yellow-400">Due: {formatCurrency(amountDueAtCounter)}</span>
+                            <span className="block text-xs font-semibold text-green-500">Paid: {formatCurrency(amountPaidOnline)}</span>
+                            <span className="block text-xs font-semibold text-yellow-400">Due: {formatCurrency(amountDueAtCounter)}</span>
                         </div>
                     ) : (
                          <div className="flex items-center gap-1 text-xs font-semibold px-2 py-1 rounded-full bg-yellow-500/10 text-yellow-400 border border-yellow-500/20">
                             <IndianRupee size={14}/> PAY AT COUNTER
                         </div>
                     )}
+                    {/* --- END: UPDATED PAYMENT UI --- */}
                 </div>
 
                 <div className="mt-2 text-muted-foreground space-y-1">
