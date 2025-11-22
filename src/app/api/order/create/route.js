@@ -282,6 +282,8 @@ export async function POST(req) {
             const firestoreOrderId = firestore.collection('orders').doc().id;
             console.log(`[API /order/create] Generated Firestore Order ID: ${firestoreOrderId}`);
 
+            const trackingToken = await generateSecureToken(firestore, normalizedPhone || firestoreOrderId);
+
             const servizephyrOrderPayload = {
                 customerDetails: { name, phone: normalizedPhone, address },
                 billDetails: { subtotal, loyaltyDiscount, grandTotal },
