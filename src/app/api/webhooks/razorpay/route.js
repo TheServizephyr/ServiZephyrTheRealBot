@@ -118,9 +118,9 @@ const handleSplitPayment = async (firestore, paymentEntity) => {
                     const restaurantId = baseOrderData.restaurantId;
                     const businessType = baseOrderData.businessType;
 
-                    // Generate dineInToken for street vendors
-                    let dineInToken = null;
-                    if (businessType === 'street-vendor') {
+                    // Generate dineInToken for street vendors ONLY if order doesn't have one yet
+                    let dineInToken = baseOrderData.dineInToken || null;
+                    if (!dineInToken && businessType === 'street-vendor') {
                         const vendorRef = firestore.collection('street_vendors').doc(restaurantId);
                         const vendorDoc = await transaction.get(vendorRef);
                         if (vendorDoc.exists) {
