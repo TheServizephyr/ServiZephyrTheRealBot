@@ -105,7 +105,7 @@ export async function POST(req) {
                     const rzpOrder = await razorpay.orders.create({
                         amount: Math.round(remainingAmount * 100),
                         currency: "INR",
-                        receipt: `remaining_${splitSessionId}_${Date.now()}`,
+                        receipt: `rem_${nanoid(15)}`,
                         notes: {
                             split_session_id: splitSessionId,
                             type: 'pay_remaining'
