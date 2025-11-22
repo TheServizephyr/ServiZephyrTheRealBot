@@ -491,26 +491,14 @@ const StreetVendorDashboardContent = () => {
         
         setLoading(true);
 
-        let q = query(
+        const ordersQuery = query(
             collection(db, "orders"), 
             where("restaurantId", "==", vendorId),
             orderBy("orderDate", "desc"),
             limit(50)
         );
         
-        if (date?.from) {
-            const start = startOfDay(date.from);
-            const end = date.to ? endOfDay(date.to) : endOfDay(date.from);
-            q = query(
-                collection(db, "orders"), 
-                where("restaurantId", "==", vendorId),
-                where("orderDate", ">=", Timestamp.fromDate(start)), 
-                where("orderDate", "<=", Timestamp.fromDate(end)),
-                orderBy("orderDate", "desc")
-            );
-        }
-        
-        const unsubscribe = onSnapshot(q, (querySnapshot) => {
+        const unsubscribe = onSnapshot(ordersQuery, (querySnapshot) => {
             let hasNewPendingOrder = false;
             const fetchedOrders = [];
             
@@ -538,7 +526,7 @@ const StreetVendorDashboardContent = () => {
         });
 
         return () => unsubscribe();
-    }, [vendorId, date]);
+    }, [vendorId]);
 
     const handleUpdateStatus = async (orderId, newStatus, reason = null) => {
         try {
@@ -579,15 +567,29 @@ const StreetVendorDashboardContent = () => {
     };
 
     const filteredOrders = useMemo(() => {
-        if (!searchQuery) return orders;
-        const lowerQuery = searchQuery.toLowerCase();
-        return orders.filter(order => 
-            order.dineInToken?.toLowerCase().includes(lowerQuery) ||
-            order.customerName?.toLowerCase().includes(lowerQuery) ||
-            order.customerPhone?.includes(lowerQuery) ||
-            order.totalAmount?.toString().includes(lowerQuery)
-        );
-    }, [orders, searchQuery]);
+        let items = [...orders];
+
+        if (date?.from) {
+             const start = startOfDay(date.from);
+             const end = date.to ? endOfDay(date.to) : endOfDay(date.from);
+             items = items.filter(order => {
+                const orderDate = order.orderDate.toDate();
+                return orderDate >= start && orderDate <= end;
+             });
+        }
+        
+        if (searchQuery) {
+            const lowerQuery = searchQuery.toLowerCase();
+            items = items.filter(order => 
+                order.dineInToken?.toLowerCase().includes(lowerQuery) ||
+                order.customerName?.toLowerCase().includes(lowerQuery) ||
+                order.customerPhone?.includes(lowerQuery) ||
+                order.totalAmount?.toString().includes(lowerQuery)
+            );
+        }
+
+        return items;
+    }, [orders, searchQuery, date]);
 
     const pendingOrders = useMemo(() => filteredOrders.filter(o => o.status === 'pending'), [filteredOrders]);
     const readyOrders = useMemo(() => filteredOrders.filter(o => o.status === 'Ready'), [filteredOrders]);

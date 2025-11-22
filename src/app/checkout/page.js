@@ -172,7 +172,6 @@ const CheckoutPageInternal = () => {
                     setTokenError(err.message); setLoading(false); return;
                 }
             } else if (isAnonymousPreOrder) {
-                // Anonymous pre-order for street vendors doesn't need token verification at this stage
                 setIsTokenValid(true);
             }
             else {
@@ -181,7 +180,6 @@ const CheckoutPageInternal = () => {
                 }
             }
             
-            // Logic to show/hide the details form
             if (deliveryType === 'street-vendor-pre-order' || (deliveryType === 'delivery' && !isLoggedInUser)) {
                 setDetailsConfirmed(false);
             } else {
@@ -203,7 +201,9 @@ const CheckoutPageInternal = () => {
             setCartData(updatedData);
 
             try {
-                setOrderName(user?.displayName || savedCart.tab_name || '');
+                const customerNameFromStorage = localStorage.getItem('customerName');
+                setOrderName(customerNameFromStorage || user?.displayName || savedCart.tab_name || '');
+
                 if (phoneToLookup) {
                     const lookupRes = await fetch('/api/customer/lookup', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ phone: phoneToLookup }) });
                     if (lookupRes.ok) {
@@ -395,6 +395,7 @@ const CheckoutPageInternal = () => {
 
     const handleConfirmDetails = () => {
         if (validateOrderDetails()) {
+            localStorage.setItem('customerName', orderName);
             setDetailsConfirmed(true);
         }
     }
