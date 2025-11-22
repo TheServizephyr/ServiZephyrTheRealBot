@@ -7,6 +7,8 @@ import { User, Store, Shield, ShoppingCart, Phone, Key, ArrowRight, MapPin, Help
 import { auth, db } from '@/lib/firebase';
 import { doc, getDoc } from 'firebase/firestore';
 import GoldenCoinSpinner from '@/components/GoldenCoinSpinner';
+import InfoDialog from '@/components/InfoDialog';
+import { cn } from '@/lib/utils';
 
 
 const cardVariants = {
@@ -29,6 +31,29 @@ export default function CompleteProfile() {
   const [secretKey, setSecretKey] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [infoDialog, setInfoDialog] = useState({ isOpen: false, title: '', message: '' });
+
+  const roles = [
+      {id: 'street-vendor', label: 'Street Vendor', icon: Map, enabled: true},
+      {id: 'customer', label: 'Customer', icon: User, enabled: false},
+      {id: 'restaurant-owner', label: 'Restaurant Owner', icon: Store, enabled: false},
+      {id: 'shop-owner', label: 'Shop Owner', icon: ShoppingCart, enabled: false},
+      {id: 'rider', label: 'Rider', icon: Bike, enabled: false},
+      {id: 'admin', label: 'Admin', icon: Shield, enabled: false}
+  ];
+
+  const handleRoleClick = (roleConfig) => {
+    if (roleConfig.enabled) {
+      setRole(roleConfig.id);
+    } else {
+      setInfoDialog({
+        isOpen: true,
+        title: 'Coming Soon!',
+        message: `The dashboard for "${roleConfig.label}" will be launched soon. Stay tuned!`
+      });
+    }
+  };
+
 
   useEffect(() => {
     console.log("[DEBUG] complete-profile: useEffect running.");
@@ -296,6 +321,13 @@ export default function CompleteProfile() {
   }
 
   return (
+    <>
+    <InfoDialog
+        isOpen={infoDialog.isOpen}
+        onClose={() => setInfoDialog({ isOpen: false, title: '', message: '' })}
+        title={infoDialog.title}
+        message={infoDialog.message}
+      />
     <div className="min-h-screen flex items-center justify-center bg-background p-4">
       <motion.div
         className="w-full max-w-2xl p-8 space-y-6 bg-card rounded-xl shadow-2xl shadow-primary/10 border border-border"
@@ -312,24 +344,19 @@ export default function CompleteProfile() {
           <div>
             <label className="block text-sm font-medium text-muted-foreground mb-2">I am a...</label>
             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
-              {[
-                {id: 'customer', label: 'Customer', icon: User},
-                {id: 'restaurant-owner', label: 'Restaurant Owner', icon: Store},
-                {id: 'shop-owner', label: 'Shop Owner', icon: ShoppingCart},
-                {id: 'street-vendor', label: 'Street Vendor', icon: Map},
-                {id: 'rider', label: 'Rider', icon: Bike},
-                {id: 'admin', label: 'Admin', icon: Shield}
-              ].map((r) => (
+              {roles.map((r) => (
                 <button
                   key={r.id}
                   type="button"
-                  onClick={() => setRole(r.id)}
-                  className={`flex flex-col items-center justify-center p-4 rounded-md border-2 transition-all duration-200 ${
-                    role === r.id ? 'border-primary bg-primary/10 shadow-lg' : 'border-border hover:border-primary/50'
-                  }`}
+                  onClick={() => handleRoleClick(r)}
+                  className={cn(`relative flex flex-col items-center justify-center p-4 rounded-md border-2 transition-all duration-200`,
+                    role === r.id ? 'border-primary bg-primary/10 shadow-lg' : 'border-border hover:border-primary/50',
+                    !r.enabled && 'opacity-50 cursor-not-allowed grayscale'
+                  )}
                 >
-                  <r.icon className={`h-8 w-8 mb-2 ${role === r.id ? 'text-primary' : ''}`} />
+                  <r.icon className={cn(`h-8 w-8 mb-2`, role === r.id ? 'text-primary' : 'text-foreground')} />
                   <span className="font-semibold text-sm text-center">{r.label}</span>
+                   {!r.enabled && <span className="absolute top-1 right-1 text-[9px] font-bold bg-muted text-muted-foreground px-1.5 py-0.5 rounded-full">Soon</span>}
                 </button>
               ))}
             </div>
@@ -364,5 +391,6 @@ export default function CompleteProfile() {
         </form>
       </motion.div>
     </div>
+    </>
   );
 }
