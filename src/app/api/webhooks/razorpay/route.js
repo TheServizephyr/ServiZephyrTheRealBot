@@ -36,13 +36,13 @@ async function makeRazorpayRequest(options, payload) {
                         reject(parsedData);
                     }
                 } catch (e) {
-                     reject({ error: { description: `Failed to parse Razorpay response. Raw data: ${data}` } });
+                    reject({ error: { description: `Failed to parse Razorpay response. Raw data: ${data}` } });
                 }
             });
         });
         req.on('error', (e) => reject({ error: { description: e.message } }));
-        if(payload) {
-          req.write(payload);
+        if (payload) {
+            req.write(payload);
         }
         req.end();
     });
@@ -56,10 +56,10 @@ const handleSplitPayment = async (firestore, paymentEntity) => {
         console.log(`[Webhook RZP] Not a split payment. No split_session_id found in notes for order ${razorpayOrderId}.`);
         return false;
     }
-    
+
     console.log(`[Webhook RZP] Detected split payment for session ${splitId}.`);
     const splitRef = firestore.collection('split_payments').doc(splitId);
-    
+
     try {
         await firestore.runTransaction(async (transaction) => {
             console.log(`[Webhook RZP] Starting Firestore transaction for split payment.`);
@@ -72,22 +72,22 @@ const handleSplitPayment = async (firestore, paymentEntity) => {
             const splitData = splitDoc.data();
             const shares = splitData.shares || [];
             console.log(`[Webhook RZP] Found ${shares.length} shares in session ${splitId}.`);
-            
+
             // --- FIX FOR PAY REMAINING ---
             const isPayRemaining = notes.type === 'pay_remaining';
             let sharesToUpdate = [];
 
-            if(isPayRemaining) {
-                 console.log(`[Webhook RZP] 'Pay Remaining' webhook detected. Updating all pending shares.`);
-                 sharesToUpdate = shares.map((s, index) => s.status !== 'paid' ? index : -1).filter(index => index !== -1);
+            if (isPayRemaining) {
+                console.log(`[Webhook RZP] 'Pay Remaining' webhook detected. Updating all pending shares.`);
+                sharesToUpdate = shares.map((s, index) => s.status !== 'paid' ? index : -1).filter(index => index !== -1);
             } else {
                 const shareIndex = shares.findIndex(s => s.razorpay_order_id === razorpayOrderId);
                 if (shareIndex !== -1) {
                     sharesToUpdate.push(shareIndex);
                 }
             }
-            
-            if(sharesToUpdate.length === 0){
+
+            if (sharesToUpdate.length === 0) {
                 console.error(`[Webhook RZP] CRITICAL: No matching shares found for Razorpay order ${razorpayOrderId} in split ${splitId}.`);
                 return; // Abort transaction
             }
@@ -107,30 +107,30 @@ const handleSplitPayment = async (firestore, paymentEntity) => {
             if (isFullyPaid) {
                 console.log(`[Webhook RZP] All shares paid. Marking session ${splitId} as completed.`);
                 updateData.status = 'completed';
-                
-                 const baseOrderRef = firestore.collection('orders').doc(splitData.baseOrderId);
-                 const baseOrderSnap = await transaction.get(baseOrderRef);
-                 
-                 if(baseOrderSnap.exists){
+
+                const baseOrderRef = firestore.collection('orders').doc(splitData.baseOrderId);
+                const baseOrderSnap = await transaction.get(baseOrderRef);
+
+                if (baseOrderSnap.exists) {
                     console.log(`[Webhook RZP] Base order ${splitData.baseOrderId} found. Updating its status.`);
-                    transaction.update(baseOrderRef, { 
-                        paymentDetails: FieldValue.arrayUnion({ method: 'razorpay_split', amount: paymentEntity.amount / 100, razorpay_payment_id: paymentEntity.id, timestamp: FieldValue.serverTimestamp(), status: 'paid' }), 
-                        status: 'pending' 
+                    transaction.update(baseOrderRef, {
+                        paymentDetails: FieldValue.arrayUnion({ method: 'razorpay_split', amount: paymentEntity.amount / 100, razorpay_payment_id: paymentEntity.id, timestamp: new Date(), status: 'paid' }),
+                        status: 'pending'
                     });
-                 } else {
+                } else {
                     console.warn(`[Webhook RZP] Base order ${splitData.baseOrderId} not found for split payment. Cannot update status.`);
-                 }
+                }
             }
-            
+
             transaction.update(splitRef, updateData);
             console.log(`[Webhook RZP] Transaction update prepared for split session.`);
         });
         console.log(`[Webhook RZP] Firestore transaction for split payment ${splitId} successful.`);
     } catch (error) {
-         console.error(`[Webhook RZP] CRITICAL ERROR during split payment transaction for ${splitId}:`, error);
+        console.error(`[Webhook RZP] CRITICAL ERROR during split payment transaction for ${splitId}:`, error);
     }
 
-    return true; 
+    return true;
 };
 
 
@@ -159,31 +159,31 @@ export async function POST(req) {
 
         const eventData = JSON.parse(body);
         console.log(`[Webhook RZP] Event received: ${eventData.event}`);
-        
+
         if (eventData.event === 'payment.captured') {
             const paymentEntity = eventData.payload.payment.entity;
             const razorpayOrderId = paymentEntity.order_id;
             const paymentId = paymentEntity.id;
-            const paymentAmount = paymentEntity.amount; 
-            
+            const paymentAmount = paymentEntity.amount;
+
             if (!razorpayOrderId) {
                 console.warn("[Webhook RZP] 'order_id' not found in payment entity. Skipping.");
                 return NextResponse.json({ status: 'ok' });
             }
             console.log(`[Webhook RZP] Processing payment for Razorpay Order ID: ${razorpayOrderId}`);
-            
+
             const firestore = await getFirestore();
-            
+
             const isSplitPayment = await handleSplitPayment(firestore, paymentEntity);
             if (isSplitPayment) {
                 console.log(`[Webhook RZP] Split payment for order ${razorpayOrderId} handled. Ending request.`);
                 return NextResponse.json({ status: 'ok', message: 'Split payment processed.' });
             }
-            
+
             const key_id = process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID;
             const key_secret = process.env.RAZORPAY_KEY_SECRET;
             const credentials = Buffer.from(`${key_id}:${key_secret}`).toString('base64');
-            
+
             const rzpOrder = await makeRazorpayRequest({
                 hostname: 'api.razorpay.com', port: 443, path: `/v1/orders/${razorpayOrderId}`, method: 'GET',
                 headers: { 'Authorization': `Basic ${credentials}` }
@@ -198,12 +198,12 @@ export async function POST(req) {
                 });
                 return NextResponse.json({ status: 'ok', message: 'Add-on payment processed.' });
             }
-            
+
             const payloadString = rzpOrder.notes.servizephyr_payload;
-            const { 
+            const {
                 order_id: firestoreOrderId,
                 user_id: userId, restaurant_id: restaurantId, business_type: businessType,
-                customer_details: customerDetailsString, items: itemsString, bill_details: billDetailsString, notes: customNotes 
+                customer_details: customerDetailsString, items: itemsString, bill_details: billDetailsString, notes: customNotes
             } = JSON.parse(payloadString);
 
             const customerDetails = JSON.parse(customerDetailsString);
@@ -227,15 +227,15 @@ export async function POST(req) {
                         orderedFrom: FieldValue.arrayUnion({ restaurantId: restaurantId, restaurantName: rzpOrder.notes?.restaurantName || 'Unknown', businessType: businessType })
                     }, { merge: true });
                 }
-            
+
                 const subtotal = billDetails.subtotal || 0;
                 const loyaltyDiscount = billDetails.loyaltyDiscount || 0;
                 const pointsEarned = Math.floor(subtotal / 100) * 10;
                 const pointsSpent = loyaltyDiscount > 0 ? loyaltyDiscount / 0.5 : 0;
-            
+
                 const businessCollectionNameForCustomer = businessType === 'shop' ? 'shops' : 'restaurants';
                 const restaurantCustomerRef = firestore.collection(businessCollectionNameForCustomer).doc(restaurantId).collection('customers').doc(userId);
-            
+
                 batch.set(restaurantCustomerRef, {
                     name: customerDetails.name, phone: customerDetails.phone, status: isNewUser ? 'unclaimed' : 'verified',
                     totalSpend: FieldValue.increment(subtotal),
@@ -287,7 +287,7 @@ export async function POST(req) {
                     amount: paymentAmount / 100,
                     razorpay_payment_id: paymentId,
                     razorpay_order_id: razorpayOrderId,
-                    timestamp: FieldValue.serverTimestamp(),
+                    timestamp: new Date(),
                     status: 'paid'
                 }]
             });
@@ -316,7 +316,7 @@ export async function POST(req) {
                         console.error(`[Webhook RZP] CRITICAL: Failed to transfer payment ${paymentId}. Error:`, JSON.stringify(transferError, null, 2));
                     }
                 }
-                
+
                 if (businessData.ownerPhone && businessData.botPhoneNumberId) {
                     await sendNewOrderToOwner({
                         ownerPhone: businessData.ownerPhone, botPhoneNumberId: businessData.botPhoneNumberId,
