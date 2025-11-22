@@ -271,6 +271,7 @@ export async function POST(req) {
                 tipAmount: billDetails.tipAmount,
                 items: orderItems,
                 dineInToken: dineInToken,
+                trackingToken: await generateSecureToken(firestore, customerDetails.phone),
                 subtotal: billDetails.subtotal,
                 coupon: billDetails.coupon,
                 loyaltyDiscount: billDetails.loyaltyDiscount,
