@@ -350,11 +350,13 @@ export default function CompleteProfile() {
                   type="button"
                   onClick={() => handleRoleClick(r)}
                   className={cn(`relative flex flex-col items-center justify-center p-4 rounded-md border-2 transition-all duration-200`,
-                    role === r.id ? 'border-primary bg-primary/10 shadow-lg' : 'border-border hover:border-primary/50',
-                    !r.enabled && 'opacity-50 cursor-not-allowed grayscale'
+                    role === r.id ? 'border-primary bg-primary/10 shadow-lg' : 'border-border',
+                    r.enabled ? 'cursor-pointer hover:border-primary/50' : 'opacity-50 cursor-not-allowed grayscale',
+                    r.enabled && role !== r.id ? 'hover:border-primary/50' : '',
+                    r.enabled && role === '' ? 'border-primary bg-primary/10 shadow-lg' : '' // Highlight enabled if no selection
                   )}
                 >
-                  <r.icon className={cn(`h-8 w-8 mb-2`, role === r.id ? 'text-primary' : 'text-foreground')} />
+                  <r.icon className={cn(`h-8 w-8 mb-2`, (r.enabled && (role === r.id || (role === '' && r.id === 'street-vendor'))) ? 'text-primary' : 'text-foreground')} />
                   <span className="font-semibold text-sm text-center">{r.label}</span>
                    {!r.enabled && <span className="absolute top-1 right-1 text-[9px] font-bold bg-muted text-muted-foreground px-1.5 py-0.5 rounded-full">Soon</span>}
                 </button>
