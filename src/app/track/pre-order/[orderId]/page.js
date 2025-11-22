@@ -33,17 +33,17 @@ const StatusTimeline = ({ currentStatus }) => {
     return (
         <div className="w-full max-w-sm relative flex justify-between items-center z-10">
             <div className="absolute top-1/2 left-0 w-full h-1 bg-border -translate-y-1/2">
-                 <motion.div
+                <motion.div
                     className="h-full bg-primary"
                     initial={{ width: '0%' }}
-                    animate={{ width: activeIndex > 0 ? `${(activeIndex / (statusConfig.length -1)) * 100}%` : '0%' }}
+                    animate={{ width: activeIndex > 0 ? `${(activeIndex / (statusConfig.length - 1)) * 100}%` : '0%' }}
                     transition={{ duration: 0.5, delay: 0.2 }}
                 />
             </div>
             {statusConfig.map((status, index) => {
                 const isCompleted = index <= activeIndex;
                 return (
-                     <div key={status.key} className="flex flex-col items-center text-center w-24 z-10">
+                    <div key={status.key} className="flex flex-col items-center text-center w-24 z-10">
                         <motion.div
                             className={cn(
                                 "w-6 h-6 rounded-full flex items-center justify-center border-2 transition-all duration-500",
@@ -75,9 +75,9 @@ function PreOrderTrackingContent() {
     const [order, setOrder] = useState(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
-    
+
     const [isFlipped, setIsFlipped] = useState(false);
-    const [animationState, setAnimationState] = useState('drop'); 
+    const [animationState, setAnimationState] = useState('drop');
     const [showRipple, setShowRipple] = useState(false);
 
     const tiltWrapperRef = useRef(null);
@@ -120,7 +120,7 @@ function PreOrderTrackingContent() {
         const timer = setTimeout(() => {
             setAnimationState('float');
             setShowRipple(true);
-            if(navigator.vibrate) navigator.vibrate([50, 20, 50]);
+            if (navigator.vibrate) navigator.vibrate([50, 20, 50]);
         }, 1200);
 
         const rippleTimer = setTimeout(() => setShowRipple(false), 2200);
@@ -148,7 +148,7 @@ function PreOrderTrackingContent() {
             router.push('/');
         }
     };
-    
+
     const coinTheme = useMemo(() => {
         if (!order) return 'bronze-theme';
         const amount = order.totalAmount || 0;
@@ -158,7 +158,7 @@ function PreOrderTrackingContent() {
     }, [order]);
 
     const qrColor = useMemo(() => {
-        switch(coinTheme) {
+        switch (coinTheme) {
             case 'gold-theme': return '#5c3c00';
             case 'silver-theme': return '#4a4a4a';
             case 'bronze-theme':
@@ -170,27 +170,27 @@ function PreOrderTrackingContent() {
     if (loading) {
         return <div className="fixed inset-0 bg-background flex items-center justify-center"><GoldenCoinSpinner /></div>;
     }
-    
+
     if (error) {
         return <div className="fixed inset-0 bg-background flex flex-col items-center justify-center text-red-500 p-4 text-center">
             <p>{error}</p>
-            <Button onClick={handleBackToMenu} className="mt-4"><ArrowLeft size={16} className="mr-2"/> Back to Menu</Button>
+            <Button onClick={handleBackToMenu} className="mt-4"><ArrowLeft size={16} className="mr-2" /> Back to Menu</Button>
         </div>;
     }
 
     if (!order) {
         return <div className="fixed inset-0 bg-background flex items-center justify-center text-muted-foreground p-4 text-center">Order data not available.</div>;
     }
-    
+
     const token = order?.dineInToken || '----';
     const [tokenPart1, tokenPart2] = token.includes('-') ? token.split('-') : [token, ''];
     const qrValue = orderId ? `${window.location.origin}/street-vendor-dashboard?collect_order=${orderId}` : '';
     const orderDate = order.orderDate?.toDate ? order.orderDate.toDate() : new Date();
     const formattedDate = format(orderDate, 'dd MMM, p');
-    
+
     return (
         <div className={cn("fixed inset-0 bg-background text-foreground font-sans p-4 flex flex-col justify-between items-center", coinTheme)}>
-             <AnimatePresence>
+            <AnimatePresence>
                 {isOrderComplete && (
                     <div className="confetti-container">
                         {[...Array(100)].map((_, i) => {
@@ -204,26 +204,33 @@ function PreOrderTrackingContent() {
                         })}
                     </div>
                 )}
-             </AnimatePresence>
+            </AnimatePresence>
+            {/* Layer 1 Security: Only show Back to Menu if order is pending */}
             <header className="absolute top-0 left-0 right-0 p-4 flex justify-between items-center w-full z-20">
-                <Button onClick={handleBackToMenu} variant="ghost" className="text-foreground hover:bg-muted">
-                    <ArrowLeft className="mr-2"/> Back to Menu
-                </Button>
+                {order?.status === 'pending' ? (
+                    <Button onClick={handleBackToMenu} variant="ghost" className="text-foreground hover:bg-muted">
+                        <ArrowLeft className="mr-2" /> Back to Menu
+                    </Button>
+                ) : (
+                    <div className="text-sm text-yellow-600 bg-yellow-500/10 px-3 py-2 rounded-md">
+                        Order is {order?.status}. Cannot add items.
+                    </div>
+                )}
             </header>
 
             <AnimatePresence>
                 {isOrderComplete ? (
-                     <motion.div 
+                    <motion.div
                         key="completion-screen"
                         initial={{ scale: 0.8, opacity: 0 }}
                         animate={{ scale: 1, opacity: 1 }}
                         className="flex-grow flex flex-col items-center justify-center text-center"
-                     >
+                    >
                         <CheckCircle size={80} className="text-green-500 mb-6" />
                         <h2 className="text-4xl font-bold text-foreground">Order Collected!</h2>
                         <p className="mt-2 text-muted-foreground">Thank you for your order. Enjoy your meal!</p>
                         <Button onClick={handleBackToMenu} className="mt-8 bg-primary text-primary-foreground hover:bg-primary/90">
-                           Order Again
+                            Order Again
                         </Button>
                     </motion.div>
                 ) : isOrderRejected ? (
@@ -233,37 +240,37 @@ function PreOrderTrackingContent() {
                         animate={{ scale: 1, opacity: 1 }}
                         className="flex-grow flex flex-col items-center justify-center text-center"
                     >
-                         <motion.div initial={{ scale: 0.5 }} animate={{ scale: 1, rotate: [0, -10, 10, -5, 5, 0] }} transition={{ type: 'spring', stiffness: 500, damping: 15, delay: 0.2 }}>
+                        <motion.div initial={{ scale: 0.5 }} animate={{ scale: 1, rotate: [0, -10, 10, -5, 5, 0] }} transition={{ type: 'spring', stiffness: 500, damping: 15, delay: 0.2 }}>
                             <XCircle size={80} className="text-destructive mb-6" />
-                         </motion.div>
+                        </motion.div>
                         <h2 className="text-4xl font-bold text-foreground">Order Cancelled</h2>
                         <p className="mt-2 text-muted-foreground">We're sorry, your order could not be processed.</p>
                         <p className="mt-4 text-sm font-semibold bg-destructive/10 text-destructive p-2 rounded-md">Reason: {order.rejectionReason || 'Not specified'}</p>
                         <Button onClick={handleBackToMenu} className="mt-8 bg-primary text-primary-foreground hover:bg-primary/90">
-                           Try Again
+                            Try Again
                         </Button>
                     </motion.div>
                 ) : (
-                    <motion.div 
+                    <motion.div
                         key="coin-view"
                         initial={{ scale: 1, opacity: 1 }}
                         exit={{ scale: 0.8, opacity: 0 }}
                         className="flex-grow flex flex-col items-center justify-center"
                     >
                         <AnimatePresence>
-                          {showRipple && <motion.div className="ripple" initial={{ width: 100, height: 100, opacity: 0.8, borderWidth: 10 }} animate={{ width: 500, height: 500, opacity: 0, borderWidth: 0 }} transition={{ duration: 1, ease: "easeOut" }} />}
+                            {showRipple && <motion.div className="ripple" initial={{ width: 100, height: 100, opacity: 0.8, borderWidth: 10 }} animate={{ width: 500, height: 500, opacity: 0, borderWidth: 0 }} transition={{ duration: 1, ease: "easeOut" }} />}
                         </AnimatePresence>
 
                         <div className="scene">
                             <div className="tilt-wrapper" ref={tiltWrapperRef}>
                                 <div className={cn("anim-wrapper", animationState === 'drop' ? 'animate-drop' : 'animate-float')}>
                                     <div className={cn("coin", isFlipped && 'flipped')} onClick={() => setIsFlipped(f => !f)}>
-                                        
+
                                         <div className="coin-face coin-front">
                                             <div className="texture-overlay"></div>
                                             <div className="sheen"></div>
                                             <svg className="rotating-text-svg" viewBox="0 0 200 200">
-                                                <path id="frontCurve" d="M 25,100 a 75,75 0 1,1 150,0 a 75,75 0 1,1 -150,0" fill="none"/>
+                                                <path id="frontCurve" d="M 25,100 a 75,75 0 1,1 150,0 a 75,75 0 1,1 -150,0" fill="none" />
                                                 <text><textPath href="#frontCurve" startOffset="50%" textAnchor="middle">★ {order.restaurantName} ★ {formattedDate} ★</textPath></text>
                                             </svg>
                                             <div className="token-label">TOKEN</div>
@@ -277,10 +284,10 @@ function PreOrderTrackingContent() {
                                             <div className="texture-overlay"></div>
                                             <div className="sheen"></div>
                                             <svg className="rotating-text-svg" viewBox="0 0 200 200">
-                                                <path id="backCurve" d="M 25,100 a 75,75 0 1,1 150,0 a 75,75 0 1,1 -150,0" fill="none"/>
+                                                <path id="backCurve" d="M 25,100 a 75,75 0 1,1 150,0 a 75,75 0 1,1 -150,0" fill="none" />
                                                 <text><textPath href="#backCurve" startOffset="50%" textAnchor="middle">★ SECURED BY ServiZephyr ★ YOUR TRUSTED PARTNER ★</textPath></text>
                                             </svg>
-                                             <div className="qr-box">
+                                            <div className="qr-box">
                                                 <QRCode
                                                     value={qrValue}
                                                     size={140}
@@ -300,13 +307,13 @@ function PreOrderTrackingContent() {
 
             {!(isOrderComplete || isOrderRejected) && (
                 <footer className="w-full flex flex-col items-center gap-6 z-20 pb-8">
-                     <motion.div
+                    <motion.div
                         initial={{ opacity: 0, y: 10 }}
                         animate={{ opacity: 1, y: 0 }}
                         className="bg-card border border-border p-4 rounded-xl shadow-lg w-full max-w-sm"
-                     >
+                    >
                         <div className="space-y-2">
-                           <p className="text-sm"><strong>Bill to:</strong> {order.customerName}</p>
+                            <p className="text-sm"><strong>Bill to:</strong> {order.customerName}</p>
                             {order.items.map((item, index) => (
                                 <div key={index} className="flex justify-between text-muted-foreground text-sm">
                                     <span>{item.quantity} x {item.name}</span>
@@ -318,7 +325,7 @@ function PreOrderTrackingContent() {
                                 <span>{formatCurrency(order.totalAmount)}</span>
                             </div>
                         </div>
-                     </motion.div>
+                    </motion.div>
                     <StatusTimeline currentStatus={order.status} />
                 </footer>
             )}

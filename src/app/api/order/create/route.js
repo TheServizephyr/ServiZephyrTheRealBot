@@ -62,6 +62,11 @@ export async function POST(req) {
 
                     const orderData = orderDoc.data();
 
+                    // Layer 3 Security: Block adding items to non-pending orders
+                    if (orderData.status !== 'pending') {
+                        throw new Error(`Cannot add items. Your order is ${orderData.status === 'Ready' ? 'being prepared' : orderData.status}. Please complete your current order first.`);
+                    }
+
                     const newItems = [...orderData.items, ...items];
                     const newSubtotal = orderData.subtotal + subtotal;
                     const newCgst = orderData.cgst + cgst;
