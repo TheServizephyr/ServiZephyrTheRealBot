@@ -1,5 +1,7 @@
+
 import Link from 'next/link'
 import { Twitter, Linkedin, Instagram } from 'lucide-react'
+import Image from 'next/image'
 
 const Footer = () => {
   return (
@@ -7,7 +9,10 @@ const Footer = () => {
       <div className="container mx-auto px-4 md:px-6">
         <div className="grid grid-cols-2 gap-8 md:grid-cols-4">
           <div>
-            <h3 className="text-lg font-bold text-foreground">ServiZephyr</h3>
+            <div className="flex items-center gap-2">
+                <Image src="/logo.png" alt="ServiZephyr Logo" width={40} height={40} className="h-10 w-auto" />
+                <h3 className="text-lg font-bold text-foreground">ServiZephyr</h3>
+            </div>
             <p className="mt-2 text-sm text-muted-foreground">Your own WhatsApp ordering bot & growth toolkit.</p>
           </div>
           <div>
@@ -33,9 +38,9 @@ const Footer = () => {
                <li><Link href="/contact" className="text-sm text-muted-foreground hover:text-primary">Contact Us</Link></li>
             </ul>
             <div className="mt-4 flex space-x-4">
-              <a href="#" className="text-muted-foreground hover:text-primary" aria-label="Twitter"><Twitter /></a>
-              <a href="#" className="text-muted-foreground hover:text-primary" aria-label="LinkedIn"><Linkedin /></a>
-              <a href="#" className="text-muted-foreground hover:text-primary" aria-label="Instagram"><Instagram /></a>
+              <a href="https://x.com/servizephyr" target="_blank" rel="noopener noreferrer" className="text-muted-foreground hover:text-primary" aria-label="Twitter"><Twitter /></a>
+              <a href="https://www.linkedin.com/company/servizephyr/" target="_blank" rel="noopener noreferrer" className="text-muted-foreground hover:text-primary" aria-label="LinkedIn"><Linkedin /></a>
+              <a href="https://www.instagram.com/servizephyr?igsh=amdtNWtnOHA0Zmho" target="_blank" rel="noopener noreferrer" className="text-muted-foreground hover:text-primary" aria-label="Instagram"><Instagram /></a>
             </div>
           </div>
         </div>
