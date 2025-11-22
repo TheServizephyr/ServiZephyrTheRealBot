@@ -218,7 +218,10 @@ const OrderCard = ({ order, onMarkReady, onCancelClick, onMarkCollected }) => {
         borderClass = 'border-red-500';
     }
     
-    const isPaidOnline = (order.paymentDetails || []).some(p => p.method === 'razorpay' && p.status === 'paid');
+    // --- START FIX ---
+    const paymentDetailsArray = Array.isArray(order.paymentDetails) ? order.paymentDetails : [order.paymentDetails];
+    const isPaidOnline = paymentDetailsArray.some(p => p && p.method === 'razorpay' && p.status === 'paid');
+    // --- END FIX ---
 
     return (
         <motion.div
@@ -311,7 +314,8 @@ const OrderCard = ({ order, onMarkReady, onCancelClick, onMarkCollected }) => {
 
 const ScannedOrderModal = ({ order, isOpen, onClose, onConfirm }) => {
     if (!order) return null;
-    const isPaidOnline = (order.paymentDetails || []).some(p => p.method === 'razorpay' && p.status === 'paid');
+    const paymentDetailsArray = Array.isArray(order.paymentDetails) ? order.paymentDetails : [order.paymentDetails];
+    const isPaidOnline = paymentDetailsArray.some(p => p && p.method === 'razorpay' && p.status === 'paid');
     const orderDate = order?.orderDate;
 
     return (
@@ -761,4 +765,3 @@ const StreetVendorDashboard = () => (
 );
 
 export default StreetVendorDashboard;
-
