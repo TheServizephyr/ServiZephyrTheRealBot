@@ -286,10 +286,12 @@ export async function POST(req) {
 
             const servizephyrOrderPayload = {
                 customerDetails: { name, phone: normalizedPhone, address },
-                billDetails: { subtotal, loyaltyDiscount, grandTotal },
+                billDetails: { subtotal, loyaltyDiscount, grandTotal, cgst, sgst, deliveryCharge, tipAmount, coupon },
+                items,
                 restaurantId,
                 userId,
                 businessType,
+                deliveryType,
                 isStreetVendorOrder: businessType === 'street-vendor',
                 customNotes: notes,
                 trackingToken,
