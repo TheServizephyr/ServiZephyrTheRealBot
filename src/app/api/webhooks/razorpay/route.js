@@ -72,17 +72,32 @@ const handleSplitPayment = async (firestore, paymentEntity) => {
             const splitData = splitDoc.data();
             const shares = splitData.shares || [];
             console.log(`[Webhook RZP] Found ${shares.length} shares in session ${splitId}.`);
-            const shareIndex = shares.findIndex(s => s.razorpay_order_id === razorpayOrderId);
+            
+            // --- FIX FOR PAY REMAINING ---
+            const isPayRemaining = notes.type === 'pay_remaining';
+            let sharesToUpdate = [];
 
-            if (shareIndex === -1) {
-                console.error(`[Webhook RZP] CRITICAL: Razorpay order ${razorpayOrderId} not found in shares for split ${splitId}.`);
-                return;
+            if(isPayRemaining) {
+                 console.log(`[Webhook RZP] 'Pay Remaining' webhook detected. Updating all pending shares.`);
+                 sharesToUpdate = shares.map((s, index) => s.status !== 'paid' ? index : -1).filter(index => index !== -1);
+            } else {
+                const shareIndex = shares.findIndex(s => s.razorpay_order_id === razorpayOrderId);
+                if (shareIndex !== -1) {
+                    sharesToUpdate.push(shareIndex);
+                }
             }
-            console.log(`[Webhook RZP] Matched Razorpay Order ID to share index ${shareIndex}.`);
+            
+            if(sharesToUpdate.length === 0){
+                console.error(`[Webhook RZP] CRITICAL: No matching shares found for Razorpay order ${razorpayOrderId} in split ${splitId}.`);
+                return; // Abort transaction
+            }
+            console.log(`[Webhook RZP] Matched Razorpay Order ID to share indices: ${sharesToUpdate.join(', ')}.`);
 
-            shares[shareIndex].status = 'paid';
-            shares[shareIndex].razorpay_payment_id = paymentEntity.id;
-            console.log(`[Webhook RZP] Share index ${shareIndex} marked as paid.`);
+            sharesToUpdate.forEach(index => {
+                shares[index].status = 'paid';
+                shares[index].razorpay_payment_id = paymentEntity.id;
+            });
+            console.log(`[Webhook RZP] Shares marked as paid.`);
 
             const paidShares = shares.filter(s => s.status === 'paid');
             const isFullyPaid = paidShares.length === splitData.splitCount;
@@ -98,7 +113,10 @@ const handleSplitPayment = async (firestore, paymentEntity) => {
                  
                  if(baseOrderSnap.exists){
                     console.log(`[Webhook RZP] Base order ${splitData.baseOrderId} found. Updating its status.`);
-                    transaction.update(baseOrderRef, { paymentDetails: FieldValue.arrayUnion({ method: 'razorpay_split', amount: paymentEntity.amount / 100, razorpay_payment_id: paymentEntity.id, timestamp: FieldValue.serverTimestamp(), status: 'paid' }), status: 'pending' });
+                    transaction.update(baseOrderRef, { 
+                        paymentDetails: FieldValue.arrayUnion({ method: 'razorpay_split', amount: paymentEntity.amount / 100, razorpay_payment_id: paymentEntity.id, timestamp: FieldValue.serverTimestamp(), status: 'paid' }), 
+                        status: 'pending' 
+                    });
                  } else {
                     console.warn(`[Webhook RZP] Base order ${splitData.baseOrderId} not found for split payment. Cannot update status.`);
                  }
@@ -171,8 +189,20 @@ export async function POST(req) {
                 headers: { 'Authorization': `Basic ${credentials}` }
             });
 
-            const firestoreOrderId = rzpOrder.receipt;
+            const firestoreOrderId = rzpOrder.notes?.firestore_order_id;
+            
+            if (!firestoreOrderId) {
+                console.error(`[Webhook RZP] CRITICAL: firestore_order_id not found in Razorpay Order Notes for RZP Order ${razorpayOrderId}`);
+                return NextResponse.json({ status: 'error', message: 'Servizephyr Order ID not found in Razorpay notes.' }, { status: 400 });
+            }
+            
             const orderRef = firestore.collection('orders').doc(firestoreOrderId);
+            const orderDoc = await orderRef.get();
+
+            if (!orderDoc.exists) {
+                console.error(`[Webhook RZP] CRITICAL: Firestore order document ${firestoreOrderId} not found.`);
+                return NextResponse.json({ status: 'error', message: 'Order document does not exist in Firestore.' }, { status: 404 });
+            }
             
             const payloadString = rzpOrder.notes?.servizephyr_payload;
 
@@ -238,7 +268,8 @@ export async function POST(req) {
                     const lastToken = vendorData.lastOrderToken || 0;
                     const newTokenNumber = lastToken + 1;
                     const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
-                    dineInToken = `${String(newTokenNumber)}-${alphabet[Math.floor(Math.random() * 26)]}${alphabet[Math.floor(Math.random() * 26)]}`;
+                    // THE FIX: Do not pad with leading zeros
+                    dineInToken = `${newTokenNumber}-${alphabet[Math.floor(Math.random() * 26)]}${alphabet[Math.floor(Math.random() * 26)]}`;
                     batch.update(vendorRef, { lastOrderToken: newTokenNumber });
                 }
             }
@@ -319,5 +350,3 @@ export async function POST(req) {
         return NextResponse.json({ status: 'error', message: 'Internal server error' }, { status: 200 });
     }
 }
-
-    
