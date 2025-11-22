@@ -1,3 +1,4 @@
+
 "use client";
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
@@ -268,10 +269,7 @@ const ActionButton = ({ status, onNext, onRevert, order, onRejectClick, isUpdati
     
     const currentIndex = statusFlow.indexOf(status);
     
-    // --- START FIX: Correctly handle dine-in final status ---
     const isFinalStatus = status === 'delivered' || status === 'rejected' || status === 'picked_up';
-    // --- END FIX ---
-
 
     if (isUpdating) {
         return (
@@ -860,7 +858,6 @@ export default function LiveOrdersPage() {
                                         >
                                             {order.customer}
                                         </div>
-                                        {/* --- START FIX: Smart Badge Display --- */}
                                         <div className="mt-1 flex items-center gap-2">
                                             {order.deliveryType === 'delivery' && (
                                                 <div title="Delivery Order" className="flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full bg-blue-500/20 text-blue-400 border border-blue-500/30 w-fit"><Bike size={12}/> Delivery</div>
@@ -884,7 +881,6 @@ export default function LiveOrdersPage() {
                                                 </div>
                                             )}
                                         </div>
-                                        {/* --- END FIX --- */}
                                     </td>
                                     <td className="p-4 align-top hidden md:table-cell">
                                         {(order.items || []).slice(0, 2).map((item, index) => (
@@ -954,3 +950,5 @@ export default function LiveOrdersPage() {
     </div>
   );
 }
+
+    

@@ -190,7 +190,7 @@ function PreOrderTrackingContent() {
     const formattedDate = format(orderDate, 'dd MMM, p');
     
     return (
-        <div className={cn("fixed inset-0 bg-white text-foreground font-sans p-4 flex flex-col justify-between items-center", coinTheme)}>
+        <div className={cn("fixed inset-0 bg-background text-foreground font-sans p-4 flex flex-col justify-between items-center", coinTheme)}>
              <AnimatePresence>
                 {isOrderComplete && (
                     <div className="confetti-container">
@@ -335,3 +335,5 @@ export default function PreOrderTrackingPage() {
         </Suspense>
     )
 }
+
+    
