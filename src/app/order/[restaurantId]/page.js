@@ -25,7 +25,7 @@ import { ThemeProvider } from '@/components/ThemeProvider';
 import GoldenCoinSpinner from '@/components/GoldenCoinSpinner';
 
 
-const QrScanner = dynamic(() => import('@/components/QrScanner'), { 
+const QrScanner = dynamic(() => import('@/components/QrScanner'), {
     ssr: false,
     loading: () => <div className="min-h-screen bg-background flex items-center justify-center"><div className="animate-spin rounded-full h-16 w-16 border-b-2 border-primary"></div></div>
 });
@@ -48,9 +48,9 @@ const CustomizationDrawer = ({ item, isOpen, onClose, onAddToCart }) => {
         if (item) {
             const minPricePortion = item.portions?.reduce((min, p) => p.price < min.price ? p : min, item.portions[0]) || null;
             setSelectedPortion(minPricePortion);
-            
+
             const initialQuantities = {};
-             (item.addOnGroups || []).forEach(group => {
+            (item.addOnGroups || []).forEach(group => {
                 group.options.forEach(option => {
                     initialQuantities[`${group.title}-${option.name}`] = 0;
                 });
@@ -71,7 +71,7 @@ const CustomizationDrawer = ({ item, isOpen, onClose, onAddToCart }) => {
     const totalPrice = useMemo(() => {
         if (!selectedPortion || !item) return 0;
         let total = selectedPortion.price;
-        
+
         (item.addOnGroups || []).forEach(group => {
             group.options.forEach(option => {
                 const key = `${group.title}-${option.name}`;
@@ -79,7 +79,7 @@ const CustomizationDrawer = ({ item, isOpen, onClose, onAddToCart }) => {
                 total += quantity * option.price;
             });
         });
-        
+
         return total;
     }, [selectedPortion, addOnQuantities, item]);
 
@@ -99,19 +99,19 @@ const CustomizationDrawer = ({ item, isOpen, onClose, onAddToCart }) => {
     };
 
     if (!item) return null;
-    
+
     const sortedPortions = item.portions ? [...item.portions].sort((a, b) => a.price - b.price) : [];
     const showPortions = sortedPortions.length > 1;
 
     return (
         <AnimatePresence>
             {isOpen && (
-                <motion.div 
-                  className="fixed inset-0 bg-black/60 z-40"
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  exit={{ opacity: 0 }}
-                  onClick={onClose}
+                <motion.div
+                    className="fixed inset-0 bg-black/60 z-40"
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    onClick={onClose}
                 >
                     <motion.div
                         className="fixed bottom-0 left-0 right-0 bg-background rounded-t-2xl p-6 flex flex-col max-h-[85vh]"
@@ -123,8 +123,8 @@ const CustomizationDrawer = ({ item, isOpen, onClose, onAddToCart }) => {
                     >
                         <div className="flex-shrink-0">
                             <h3 className="text-2xl font-bold">{item.name}</h3>
-                             {(item.addOnGroups?.length > 0) && <p className="text-sm font-semibold text-muted-foreground mt-1">Customize your dish</p>}
-                             {(!showPortions && item.description) && <p className="text-sm text-muted-foreground mt-1">{item.description}</p>}
+                            {(item.addOnGroups?.length > 0) && <p className="text-sm font-semibold text-muted-foreground mt-1">Customize your dish</p>}
+                            {(!showPortions && item.description) && <p className="text-sm text-muted-foreground mt-1">{item.description}</p>}
                         </div>
 
                         <div className="py-4 space-y-6 overflow-y-auto flex-grow">
@@ -146,14 +146,14 @@ const CustomizationDrawer = ({ item, isOpen, onClose, onAddToCart }) => {
                                     ))}
                                 </div>
                             )}
-                            
+
                             {(item.addOnGroups || []).map(group => (
                                 <div key={group.title} className="space-y-2 pt-4 border-t border-dashed border-border">
                                     <h4 className="font-semibold text-lg">{group.title}</h4>
-                                     {group.options.map(option => {
+                                    {group.options.map(option => {
                                         const key = `${group.title}-${option.name}`;
                                         const quantity = addOnQuantities[key] || 0;
-                                        
+
                                         return (
                                             <div
                                                 key={option.name}
@@ -170,11 +170,11 @@ const CustomizationDrawer = ({ item, isOpen, onClose, onAddToCart }) => {
                                                 </div>
                                             </div>
                                         );
-                                     })}
+                                    })}
                                 </div>
                             ))}
                         </div>
-                        
+
                         <div className="flex-shrink-0 pt-4 border-t border-border">
                             <Button onClick={handleFinalAddToCart} className="w-full h-14 text-lg bg-primary hover:bg-primary/90 text-primary-foreground" disabled={!selectedPortion}>
                                 {selectedPortion ? `Add item for ₹${totalPrice}` : 'Please select a size'}
@@ -200,14 +200,14 @@ const MenuItemCard = ({ item, quantity, onAdd, onIncrement, onDecrement }) => {
 
     return (
         <motion.div
-          layout
-          className={cn(
-            "flex gap-4 py-6 border-b border-border bg-card rounded-xl p-4 shadow-md transition-all duration-300",
-            isOutOfStock ? "opacity-40 grayscale" : "hover:-translate-y-1 hover:shadow-primary/20"
-          )}
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.3 }}
+            layout
+            className={cn(
+                "flex gap-4 py-6 border-b border-border bg-card rounded-xl p-4 shadow-md transition-all duration-300",
+                isOutOfStock ? "opacity-40 grayscale" : "hover:-translate-y-1 hover:shadow-primary/20"
+            )}
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.3 }}
         >
             <div className="flex-grow flex flex-col">
                 <div className="flex items-center gap-2 mb-1">
@@ -224,29 +224,35 @@ const MenuItemCard = ({ item, quantity, onAdd, onIncrement, onDecrement }) => {
                         </span>
                     ))}
                 </div>
-                
+
                 <p className="font-bold text-md text-foreground">₹{minPricePortion.price}</p>
-                
+
                 <p className="text-sm text-muted-foreground mt-2 flex-grow">{item.description}</p>
             </div>
 
             <div className="w-32 flex-shrink-0 relative">
                 <div className="relative w-full h-32 rounded-md overflow-hidden bg-muted">
-                    <Image src={item.imageUrl} alt={item.name} layout="fill" objectFit="cover" data-ai-hint="food item" />
+                    {item.imageUrl ? (
+                        <Image src={item.imageUrl} alt={item.name} layout="fill" objectFit="cover" data-ai-hint="food item" />
+                    ) : (
+                        <div className="w-full h-full flex items-center justify-center bg-muted text-muted-foreground">
+                            <Utensils size={32} />
+                        </div>
+                    )}
                 </div>
                 <div className="absolute -bottom-3 left-1/2 -translate-x-1/2 w-[90%]">
                     {isOutOfStock ? (
-                         <div className="flex items-center justify-center bg-destructive text-destructive-foreground rounded-lg shadow-lg h-10 font-bold text-sm">
+                        <div className="flex items-center justify-center bg-destructive text-destructive-foreground rounded-lg shadow-lg h-10 font-bold text-sm">
                             Out of Stock
-                         </div>
+                        </div>
                     ) : quantity > 0 ? (
                         <div className="flex items-center justify-center bg-background border-2 border-border rounded-lg shadow-lg h-10">
                             <Button variant="ghost" size="icon" className="h-full w-10 text-primary rounded-r-none" onClick={() => onDecrement(item.id)}>
-                                <Minus size={16}/>
+                                <Minus size={16} />
                             </Button>
                             <span className="font-bold text-lg text-primary flex-grow text-center">{quantity}</span>
                             <Button variant="ghost" size="icon" className="h-full w-10 text-primary rounded-l-none" onClick={() => onIncrement(item)}>
-                                <Plus size={16}/>
+                                <Plus size={16} />
                             </Button>
                         </div>
                     ) : (
@@ -265,38 +271,38 @@ const MenuItemCard = ({ item, quantity, onAdd, onIncrement, onDecrement }) => {
 };
 
 const MenuBrowserModal = ({ isOpen, onClose, categories, onCategoryClick }) => {
-  return (
-    <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="bg-background border-border text-foreground">
-        <DialogHeader>
-          <DialogTitle className="text-2xl">Browse Menu</DialogTitle>
-          <DialogDescription>Quickly jump to any category.</DialogDescription>
-        </DialogHeader>
-        <div className="py-4 grid grid-cols-2 gap-4 max-h-[60vh] overflow-y-auto">
-          {categories.map(category => (
-            <button
-              key={category.key}
-              onClick={() => {
-                onCategoryClick(category.key);
-                onClose();
-              }}
-              className="p-4 rounded-lg text-left bg-card hover:bg-muted border border-border transition-colors"
-            >
-              <h4 className="font-semibold text-foreground">{category.title}</h4>
-              <p className="text-sm text-muted-foreground">{category.count} items</p>
-            </button>
-          ))}
-        </div>
-      </DialogContent>
-    </Dialog>
-  );
+    return (
+        <Dialog open={isOpen} onOpenChange={onClose}>
+            <DialogContent className="bg-background border-border text-foreground">
+                <DialogHeader>
+                    <DialogTitle className="text-2xl">Browse Menu</DialogTitle>
+                    <DialogDescription>Quickly jump to any category.</DialogDescription>
+                </DialogHeader>
+                <div className="py-4 grid grid-cols-2 gap-4 max-h-[60vh] overflow-y-auto">
+                    {categories.map(category => (
+                        <button
+                            key={category.key}
+                            onClick={() => {
+                                onCategoryClick(category.key);
+                                onClose();
+                            }}
+                            className="p-4 rounded-lg text-left bg-card hover:bg-muted border border-border transition-colors"
+                        >
+                            <h4 className="font-semibold text-foreground">{category.title}</h4>
+                            <p className="text-sm text-muted-foreground">{category.count} items</p>
+                        </button>
+                    ))}
+                </div>
+            </DialogContent>
+        </Dialog>
+    );
 };
 
 const DineInModal = ({ isOpen, onClose, onBookTable, tableStatus, onStartNewTab, onJoinTab, setIsQrScannerOpen, setInfoDialog }) => {
     const [activeModal, setActiveModal] = useState('main');
     const [bookingDetails, setBookingDetails] = useState({ name: '', phone: '', guests: 2, date: new Date(), time: '19:00' });
     const [isSaving, setIsSaving] = useState(false);
-    
+
     const [hour, setHour] = useState(19);
     const [minute, setMinute] = useState(0);
 
@@ -304,7 +310,7 @@ const DineInModal = ({ isOpen, onClose, onBookTable, tableStatus, onStartNewTab,
         if (isOpen) {
             const now = new Date();
             const initialTime = new Date(now.getTime() + 30 * 60000);
-            
+
             setHour(initialTime.getHours());
             setMinute(Math.ceil(getMinutes(initialTime) / 15) * 15 % 60);
 
@@ -315,7 +321,7 @@ const DineInModal = ({ isOpen, onClose, onBookTable, tableStatus, onStartNewTab,
         }
     }, [isOpen]);
 
-     useEffect(() => {
+    useEffect(() => {
         if (!bookingDetails.date) return;
         const dateWithTime = setHours(setMinutes(bookingDetails.date, minute), hour);
         setBookingDetails(prev => ({
@@ -338,7 +344,7 @@ const DineInModal = ({ isOpen, onClose, onBookTable, tableStatus, onStartNewTab,
             } else if (tableStatus?.state === 'occupied') {
                 setActiveModal('join_or_new');
             } else if (tableStatus?.state === 'full') {
-                 setActiveModal('full');
+                setActiveModal('full');
             } else {
                 setActiveModal('main');
             }
@@ -346,7 +352,7 @@ const DineInModal = ({ isOpen, onClose, onBookTable, tableStatus, onStartNewTab,
     }, [isOpen, tableStatus]);
 
     const handleBookingChange = (field, value) => {
-        setBookingDetails(prev => ({...prev, [field]: value}));
+        setBookingDetails(prev => ({ ...prev, [field]: value }));
     };
 
     const handleConfirmBooking = async () => {
@@ -355,7 +361,7 @@ const DineInModal = ({ isOpen, onClose, onBookTable, tableStatus, onStartNewTab,
             return;
         }
         if (!/^\d{10}$/.test(bookingDetails.phone.trim())) {
-             setInfoDialog({ isOpen: true, title: 'Error', message: 'Please enter a valid 10-digit phone number.' });
+            setInfoDialog({ isOpen: true, title: 'Error', message: 'Please enter a valid 10-digit phone number.' });
             return;
         }
 
@@ -363,17 +369,17 @@ const DineInModal = ({ isOpen, onClose, onBookTable, tableStatus, onStartNewTab,
         try {
             await onBookTable(bookingDetails);
             setActiveModal('success');
-        } catch(error) {
-            setInfoDialog({isOpen: true, title: "Booking Failed", message: error.message});
+        } catch (error) {
+            setInfoDialog({ isOpen: true, title: "Booking Failed", message: error.message });
         } finally {
             setIsSaving(false);
         }
     };
-    
+
     const today = new Date();
     const maxDate = new Date();
     maxDate.setDate(today.getDate() + 30);
-    
+
     const [newTabPax, setNewTabPax] = useState(1);
     const [newTabName, setNewTabName] = useState('');
 
@@ -385,15 +391,15 @@ const DineInModal = ({ isOpen, onClose, onBookTable, tableStatus, onStartNewTab,
             return;
         }
         if (!name) {
-             setInfoDialog({ isOpen: true, title: "Input Error", message: "Please enter a name for your tab." });
+            setInfoDialog({ isOpen: true, title: "Input Error", message: "Please enter a name for your tab." });
             return;
         }
         const availableCapacity = tableStatus.max_capacity - (tableStatus.current_pax || 0);
         if (pax > availableCapacity) {
-             setInfoDialog({ isOpen: true, title: "Capacity Exceeded", message: `This table can only accommodate ${availableCapacity} more guest(s).` });
+            setInfoDialog({ isOpen: true, title: "Capacity Exceeded", message: `This table can only accommodate ${availableCapacity} more guest(s).` });
             return;
         }
-        
+
         onStartNewTab(pax, name);
     };
 
@@ -403,168 +409,168 @@ const DineInModal = ({ isOpen, onClose, onBookTable, tableStatus, onStartNewTab,
             <Dialog open={isOpen} onOpenChange={onClose}>
                 <DialogContent className="bg-background border-border text-foreground p-0 max-w-lg">
                     <AnimatePresence mode="wait">
-                    {activeModal === 'main' && (
-                         <motion.div key="main">
-                            <DialogHeader className="p-6 text-center">
-                                <DialogTitle className="text-2xl">Dine-In Options</DialogTitle>
-                                <DialogDescription>To dine in, please scan a QR code at your table or book a table in advance.</DialogDescription>
-                            </DialogHeader>
-                            <div className="grid md:grid-cols-2 gap-4 px-6 pb-8">
-                                <button
-                                    onClick={() => setActiveModal('book')}
-                                    className="p-6 border-2 border-border rounded-lg text-center flex flex-col items-center justify-center gap-3 hover:bg-muted hover:border-primary transition-all group"
-                                >
-                                    <CalendarClock className="w-12 h-12 text-foreground transition-colors group-hover:text-primary" />
-                                    <div>
-                                        <h4 className="font-bold text-lg text-foreground">Book a Table</h4>
-                                        <p className="text-sm text-muted-foreground">Reserve for a future date or time.</p>
-                                    </div>
-                                </button>
-                                 <button
-                                    onClick={() => {
-                                        onClose();
-                                        setIsQrScannerOpen(true);
-                                    }}
-                                    className="p-6 border-2 border-border rounded-lg text-center flex flex-col items-center justify-center gap-3 hover:bg-muted hover:border-primary transition-all group"
-                                >
-                                    <QrCode className="w-12 h-12 text-foreground transition-colors group-hover:text-primary" />
-                                    <div>
-                                        <h4 className="font-bold text-lg text-foreground">I'm at the Restaurant</h4>
-                                        <p className="text-sm text-muted-foreground">Scan the QR code on your table.</p>
-                                    </div>
-                                </button>
-                            </div>
-                        </motion.div>
-                    )}
-                    {activeModal === 'book' && (
-                         <motion.div key="book">
-                             <DialogHeader className="p-6 pb-4">
-                                <DialogTitle>Book a Table</DialogTitle>
-                                <DialogDescription>Reserve your table in advance to avoid waiting.</DialogDescription>
-                            </DialogHeader>
-                            <div className="px-6 pb-6 space-y-4">
-                               <Input placeholder="Your Name" value={bookingDetails.name} onChange={(e) => handleBookingChange('name', e.target.value)} />
-                               <div className="grid grid-cols-2 gap-4">
-                                   <div>
-                                       <Label>Guests</Label>
-                                       <div className="flex items-center gap-2 mt-1 border border-input rounded-md p-1">
-                                           <Button type="button" variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleBookingChange('guests', Math.max(1, bookingDetails.guests - 1))}>-</Button>
-                                           <span className="font-bold text-lg w-8 text-center">{bookingDetails.guests}</span>
-                                           <Button type="button" variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleBookingChange('guests', bookingDetails.guests + 1)}>+</Button>
-                                       </div>
-                                   </div>
-                                   <div>
-                                       <Label>Phone Number</Label>
-                                       <Input type="tel" placeholder="10-digit number" value={bookingDetails.phone} onChange={(e) => handleBookingChange('phone', e.target.value)} className="mt-1 h-10"/>
-                                   </div>
-                               </div>
-                                <div className="grid grid-cols-1 gap-4">
-                                   <div>
-                                       <Label>Date</Label>
-                                       <Popover>
-                                           <PopoverTrigger asChild>
-                                               <Button variant="outline" className="w-full justify-start font-normal mt-1">
-                                                   <CalendarIcon className="mr-2 h-4 w-4" />
-                                                   {bookingDetails.date ? format(bookingDetails.date, 'PPP') : <span>Pick a date</span>}
-                                               </Button>
-                                           </PopoverTrigger>
-                                           <PopoverContent className="w-auto p-0">
-                                               <CalendarUI mode="single" selected={bookingDetails.date} onSelect={(d) => handleBookingChange('date', d)} fromDate={today} toDate={maxDate}/>
-                                           </PopoverContent>
-                                       </Popover>
-                                   </div>
-                                   <div>
-                                       <Label>Time</Label>
-                                       <div className="flex justify-center gap-4 mt-2">
-                                            <div className="flex flex-col items-center">
-                                                <Button variant="ghost" size="icon" onClick={() => setHour(prev => (prev === 0 ? 23 : (prev || 1) - 1))}><ChevronUp/></Button>
-                                                <span className="text-4xl font-bold w-20 text-center">{hour !== null ? String(hour % 12 === 0 ? 12 : hour % 12).padStart(2, '0') : '--'}</span>
-                                                <Button variant="ghost" size="icon" onClick={() => setHour(prev => ((prev || 0) + 1) % 24)}><ChevronDown/></Button>
-                                            </div>
-                                            <span className="text-4xl font-bold">:</span>
-                                            <div className="flex flex-col items-center">
-                                                <Button variant="ghost" size="icon" onClick={() => setMinute(prev => (prev + 45) % 60)}><ChevronUp/></Button>
-                                                <span className="text-4xl font-bold w-20 text-center">{minute !== null ? String(minute).padStart(2, '0') : '--'}</span>
-                                                <Button variant="ghost" size="icon" onClick={() => setMinute(prev => (prev + 15) % 60)}><ChevronDown/></Button>
-                                            </div>
-                                            <div className="flex flex-col items-center justify-center text-2xl font-semibold">
-                                                <span>{hour !== null && hour >= 12 ? 'PM' : 'AM'}</span>
+                        {activeModal === 'main' && (
+                            <motion.div key="main">
+                                <DialogHeader className="p-6 text-center">
+                                    <DialogTitle className="text-2xl">Dine-In Options</DialogTitle>
+                                    <DialogDescription>To dine in, please scan a QR code at your table or book a table in advance.</DialogDescription>
+                                </DialogHeader>
+                                <div className="grid md:grid-cols-2 gap-4 px-6 pb-8">
+                                    <button
+                                        onClick={() => setActiveModal('book')}
+                                        className="p-6 border-2 border-border rounded-lg text-center flex flex-col items-center justify-center gap-3 hover:bg-muted hover:border-primary transition-all group"
+                                    >
+                                        <CalendarClock className="w-12 h-12 text-foreground transition-colors group-hover:text-primary" />
+                                        <div>
+                                            <h4 className="font-bold text-lg text-foreground">Book a Table</h4>
+                                            <p className="text-sm text-muted-foreground">Reserve for a future date or time.</p>
+                                        </div>
+                                    </button>
+                                    <button
+                                        onClick={() => {
+                                            onClose();
+                                            setIsQrScannerOpen(true);
+                                        }}
+                                        className="p-6 border-2 border-border rounded-lg text-center flex flex-col items-center justify-center gap-3 hover:bg-muted hover:border-primary transition-all group"
+                                    >
+                                        <QrCode className="w-12 h-12 text-foreground transition-colors group-hover:text-primary" />
+                                        <div>
+                                            <h4 className="font-bold text-lg text-foreground">I'm at the Restaurant</h4>
+                                            <p className="text-sm text-muted-foreground">Scan the QR code on your table.</p>
+                                        </div>
+                                    </button>
+                                </div>
+                            </motion.div>
+                        )}
+                        {activeModal === 'book' && (
+                            <motion.div key="book">
+                                <DialogHeader className="p-6 pb-4">
+                                    <DialogTitle>Book a Table</DialogTitle>
+                                    <DialogDescription>Reserve your table in advance to avoid waiting.</DialogDescription>
+                                </DialogHeader>
+                                <div className="px-6 pb-6 space-y-4">
+                                    <Input placeholder="Your Name" value={bookingDetails.name} onChange={(e) => handleBookingChange('name', e.target.value)} />
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <div>
+                                            <Label>Guests</Label>
+                                            <div className="flex items-center gap-2 mt-1 border border-input rounded-md p-1">
+                                                <Button type="button" variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleBookingChange('guests', Math.max(1, bookingDetails.guests - 1))}>-</Button>
+                                                <span className="font-bold text-lg w-8 text-center">{bookingDetails.guests}</span>
+                                                <Button type="button" variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleBookingChange('guests', bookingDetails.guests + 1)}>+</Button>
                                             </div>
                                         </div>
-                                   </div>
-                               </div>
-                                <Button onClick={handleConfirmBooking} disabled={isSaving} className="w-full h-12 text-lg">
-                                    {isSaving ? 'Booking...' : 'Confirm Booking'}
-                                </Button>
-                            </div>
-                         </motion.div>
-                    )}
-                    {activeModal === 'success' && (
-                         <motion.div key="success" className="p-8 text-center">
-                            <DialogHeader>
-                              <DialogTitle className="text-2xl">Booking Confirmed!</DialogTitle>
-                              <DialogDescription>Your table has been requested. You will receive a confirmation on WhatsApp shortly.</DialogDescription>
-                            </DialogHeader>
-                             <DialogFooter className="mt-6">
-                                <Button onClick={onClose} className="w-full">Done</Button>
-                             </DialogFooter>
-                         </motion.div>
-                    )}
-                    {activeModal === 'new_tab' && (
-                        <motion.div key="new_tab">
-                             <DialogHeader className="p-6 pb-4">
-                                <DialogTitle>Start a New Tab</DialogTitle>
-                                <DialogDescription>Welcome to Table {tableStatus?.tableId}! (Capacity: {tableStatus?.max_capacity}). Let's get your tab started.</DialogDescription>
-                            </DialogHeader>
-                            <div className="px-6 pb-6 space-y-4">
-                                <div>
-                                    <Label>How many people are in your group?</Label>
-                                    <Input type="number" value={newTabPax} onChange={e => setNewTabPax(parseInt(e.target.value))} min="1" max={tableStatus?.max_capacity - (tableStatus?.current_pax || 0)} className="mt-1" />
-                                </div>
-                                <div>
-                                    <Label>What's a name for your tab?</Label>
-                                    <Input value={newTabName} onChange={e => setNewTabName(e.target.value)} placeholder="e.g., Rohan's Group" className="mt-1" />
-                                </div>
-                                <Button onClick={handleStartTab} className="w-full">Start Ordering</Button>
-                            </div>
-                        </motion.div>
-                    )}
-                    {activeModal === 'join_or_new' && (
-                         <motion.div key="join_or_new">
-                             <DialogHeader className="p-6 pb-4">
-                                <DialogTitle>Welcome to Table {tableStatus?.tableId}</DialogTitle>
-                                <DialogDescription>This table has {tableStatus?.current_pax} of {tableStatus?.max_capacity} seats taken. Join an existing tab or start a new one.</DialogDescription>
-                            </DialogHeader>
-                            <div className="px-6 pb-6 space-y-4">
-                                <h4 className="font-semibold text-sm text-muted-foreground">Active Tabs:</h4>
-                                <div className="space-y-2">
-                                {(tableStatus.activeTabs || []).map(tab => (
-                                    <Button key={tab.id} variant="outline" className="w-full justify-between h-14" onClick={() => onJoinTab(tab.id)}>
-                                        <span>{tab.tab_name}</span>
-                                        <span className="flex items-center gap-1 text-xs bg-muted px-2 py-1 rounded-full"><Users size={12} /> {tab.pax_count}</span>
+                                        <div>
+                                            <Label>Phone Number</Label>
+                                            <Input type="tel" placeholder="10-digit number" value={bookingDetails.phone} onChange={(e) => handleBookingChange('phone', e.target.value)} className="mt-1 h-10" />
+                                        </div>
+                                    </div>
+                                    <div className="grid grid-cols-1 gap-4">
+                                        <div>
+                                            <Label>Date</Label>
+                                            <Popover>
+                                                <PopoverTrigger asChild>
+                                                    <Button variant="outline" className="w-full justify-start font-normal mt-1">
+                                                        <CalendarIcon className="mr-2 h-4 w-4" />
+                                                        {bookingDetails.date ? format(bookingDetails.date, 'PPP') : <span>Pick a date</span>}
+                                                    </Button>
+                                                </PopoverTrigger>
+                                                <PopoverContent className="w-auto p-0">
+                                                    <CalendarUI mode="single" selected={bookingDetails.date} onSelect={(d) => handleBookingChange('date', d)} fromDate={today} toDate={maxDate} />
+                                                </PopoverContent>
+                                            </Popover>
+                                        </div>
+                                        <div>
+                                            <Label>Time</Label>
+                                            <div className="flex justify-center gap-4 mt-2">
+                                                <div className="flex flex-col items-center">
+                                                    <Button variant="ghost" size="icon" onClick={() => setHour(prev => (prev === 0 ? 23 : (prev || 1) - 1))}><ChevronUp /></Button>
+                                                    <span className="text-4xl font-bold w-20 text-center">{hour !== null ? String(hour % 12 === 0 ? 12 : hour % 12).padStart(2, '0') : '--'}</span>
+                                                    <Button variant="ghost" size="icon" onClick={() => setHour(prev => ((prev || 0) + 1) % 24)}><ChevronDown /></Button>
+                                                </div>
+                                                <span className="text-4xl font-bold">:</span>
+                                                <div className="flex flex-col items-center">
+                                                    <Button variant="ghost" size="icon" onClick={() => setMinute(prev => (prev + 45) % 60)}><ChevronUp /></Button>
+                                                    <span className="text-4xl font-bold w-20 text-center">{minute !== null ? String(minute).padStart(2, '0') : '--'}</span>
+                                                    <Button variant="ghost" size="icon" onClick={() => setMinute(prev => (prev + 15) % 60)}><ChevronDown /></Button>
+                                                </div>
+                                                <div className="flex flex-col items-center justify-center text-2xl font-semibold">
+                                                    <span>{hour !== null && hour >= 12 ? 'PM' : 'AM'}</span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <Button onClick={handleConfirmBooking} disabled={isSaving} className="w-full h-12 text-lg">
+                                        {isSaving ? 'Booking...' : 'Confirm Booking'}
                                     </Button>
-                                ))}
                                 </div>
-                                <div className="flex items-center gap-4 my-4">
-                                    <div className="flex-grow h-px bg-border"></div>
-                                    <span className="text-xs text-muted-foreground">OR</span>
-                                    <div className="flex-grow h-px bg-border"></div>
+                            </motion.div>
+                        )}
+                        {activeModal === 'success' && (
+                            <motion.div key="success" className="p-8 text-center">
+                                <DialogHeader>
+                                    <DialogTitle className="text-2xl">Booking Confirmed!</DialogTitle>
+                                    <DialogDescription>Your table has been requested. You will receive a confirmation on WhatsApp shortly.</DialogDescription>
+                                </DialogHeader>
+                                <DialogFooter className="mt-6">
+                                    <Button onClick={onClose} className="w-full">Done</Button>
+                                </DialogFooter>
+                            </motion.div>
+                        )}
+                        {activeModal === 'new_tab' && (
+                            <motion.div key="new_tab">
+                                <DialogHeader className="p-6 pb-4">
+                                    <DialogTitle>Start a New Tab</DialogTitle>
+                                    <DialogDescription>Welcome to Table {tableStatus?.tableId}! (Capacity: {tableStatus?.max_capacity}). Let's get your tab started.</DialogDescription>
+                                </DialogHeader>
+                                <div className="px-6 pb-6 space-y-4">
+                                    <div>
+                                        <Label>How many people are in your group?</Label>
+                                        <Input type="number" value={newTabPax} onChange={e => setNewTabPax(parseInt(e.target.value))} min="1" max={tableStatus?.max_capacity - (tableStatus?.current_pax || 0)} className="mt-1" />
+                                    </div>
+                                    <div>
+                                        <Label>What's a name for your tab?</Label>
+                                        <Input value={newTabName} onChange={e => setNewTabName(e.target.value)} placeholder="e.g., Rohan's Group" className="mt-1" />
+                                    </div>
+                                    <Button onClick={handleStartTab} className="w-full">Start Ordering</Button>
                                 </div>
-                                <Button onClick={() => setActiveModal('new_tab')} className="w-full">Start a New, Separate Tab</Button>
-                            </div>
-                        </motion.div>
-                    )}
-                    {activeModal === 'full' && (
-                         <motion.div key="full" className="p-8 text-center">
-                            <DialogHeader>
-                                <DialogTitle className="text-2xl text-destructive">Table is Full</DialogTitle>
-                                <DialogDescription>Sorry, all {tableStatus?.max_capacity} seats at this table are occupied. Please see the host for another available table.</DialogDescription>
-                            </DialogHeader>
-                             <DialogFooter className="mt-6">
-                                <Button onClick={onClose} className="w-full">Okay</Button>
-                             </DialogFooter>
-                         </motion.div>
-                    )}
+                            </motion.div>
+                        )}
+                        {activeModal === 'join_or_new' && (
+                            <motion.div key="join_or_new">
+                                <DialogHeader className="p-6 pb-4">
+                                    <DialogTitle>Welcome to Table {tableStatus?.tableId}</DialogTitle>
+                                    <DialogDescription>This table has {tableStatus?.current_pax} of {tableStatus?.max_capacity} seats taken. Join an existing tab or start a new one.</DialogDescription>
+                                </DialogHeader>
+                                <div className="px-6 pb-6 space-y-4">
+                                    <h4 className="font-semibold text-sm text-muted-foreground">Active Tabs:</h4>
+                                    <div className="space-y-2">
+                                        {(tableStatus.activeTabs || []).map(tab => (
+                                            <Button key={tab.id} variant="outline" className="w-full justify-between h-14" onClick={() => onJoinTab(tab.id)}>
+                                                <span>{tab.tab_name}</span>
+                                                <span className="flex items-center gap-1 text-xs bg-muted px-2 py-1 rounded-full"><Users size={12} /> {tab.pax_count}</span>
+                                            </Button>
+                                        ))}
+                                    </div>
+                                    <div className="flex items-center gap-4 my-4">
+                                        <div className="flex-grow h-px bg-border"></div>
+                                        <span className="text-xs text-muted-foreground">OR</span>
+                                        <div className="flex-grow h-px bg-border"></div>
+                                    </div>
+                                    <Button onClick={() => setActiveModal('new_tab')} className="w-full">Start a New, Separate Tab</Button>
+                                </div>
+                            </motion.div>
+                        )}
+                        {activeModal === 'full' && (
+                            <motion.div key="full" className="p-8 text-center">
+                                <DialogHeader>
+                                    <DialogTitle className="text-2xl text-destructive">Table is Full</DialogTitle>
+                                    <DialogDescription>Sorry, all {tableStatus?.max_capacity} seats at this table are occupied. Please see the host for another available table.</DialogDescription>
+                                </DialogHeader>
+                                <DialogFooter className="mt-6">
+                                    <Button onClick={onClose} className="w-full">Okay</Button>
+                                </DialogFooter>
+                            </motion.div>
+                        )}
                     </AnimatePresence>
                 </DialogContent>
             </Dialog>
@@ -576,68 +582,68 @@ const DineInModal = ({ isOpen, onClose, onBookTable, tableStatus, onStartNewTab,
 const BannerCarousel = ({ images, onClick, restaurantName, logoUrl }) => {
     const [index, setIndex] = useState(0);
     const { theme, setTheme } = useTheme();
-  
+
     useEffect(() => {
-      if (images.length <= 1) return;
-      const interval = setInterval(() => {
-        setIndex(prev => (prev + 1) % images.length);
-      }, 5000);
-      return () => clearInterval(interval);
+        if (images.length <= 1) return;
+        const interval = setInterval(() => {
+            setIndex(prev => (prev + 1) % images.length);
+        }, 5000);
+        return () => clearInterval(interval);
     }, [images.length]);
-  
+
     return (
-      <div className="relative h-48 w-full group">
-        <div className="absolute inset-0 overflow-hidden cursor-pointer" onClick={onClick}>
-            <AnimatePresence initial={false}>
-            <motion.div
-                key={index}
-                className="absolute inset-0"
-                initial={{ x: '100%', opacity: 0 }}
-                animate={{ x: 0, opacity: 1 }}
-                exit={{ x: '-100%', opacity: 0 }}
-                transition={{ duration: 0.8, ease: 'easeInOut' }}
-            >
-                <Image
-                src={images[index]}
-                alt={`Banner ${index + 1}`}
-                layout="fill"
-                objectFit="cover"
-                unoptimized
-                />
-            </motion.div>
-            </AnimatePresence>
-        </div>
-        <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-black/20 to-transparent"></div>
-        <div className="absolute bottom-[-0.5rem] left-0 right-0 px-4">
-             <div className="container mx-auto bg-card shadow-lg border border-border rounded-xl p-3 flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                    {logoUrl && (
-                        <div className="relative w-16 h-16 rounded-lg overflow-hidden border-2 border-border shadow-md flex-shrink-0">
-                            <Image src={logoUrl} alt={`${restaurantName} logo`} layout="fill" objectFit="cover" />
-                        </div>
-                    )}
-                    <Button
-                        variant="outline"
-                        size="icon"
-                        onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
-                        className="h-10 w-10 rounded-full"
+        <div className="relative h-48 w-full group">
+            <div className="absolute inset-0 overflow-hidden cursor-pointer" onClick={onClick}>
+                <AnimatePresence initial={false}>
+                    <motion.div
+                        key={index}
+                        className="absolute inset-0"
+                        initial={{ x: '100%', opacity: 0 }}
+                        animate={{ x: 0, opacity: 1 }}
+                        exit={{ x: '-100%', opacity: 0 }}
+                        transition={{ duration: 0.8, ease: 'easeInOut' }}
                     >
-                        <Sun className="h-[1.2rem] w-[1.2rem] rotate-0 scale-100 transition-all dark:-rotate-90 dark:scale-0" />
-                        <Moon className="absolute h-[1.2rem] w-[1.2rem] rotate-90 scale-0 transition-all dark:rotate-0 dark:scale-100" />
-                        <span className="sr-only">Toggle theme</span>
-                    </Button>
-                </div>
-                <div className="text-right">
-                    <span className="block text-sm font-normal text-muted-foreground">Ordering from</span>
-                    <h1 className="font-sans text-2xl md:text-3xl font-bold text-foreground">
-                        {restaurantName}
-                    </h1>
+                        <Image
+                            src={images[index]}
+                            alt={`Banner ${index + 1}`}
+                            layout="fill"
+                            objectFit="cover"
+                            unoptimized
+                        />
+                    </motion.div>
+                </AnimatePresence>
+            </div>
+            <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-black/20 to-transparent"></div>
+            <div className="absolute bottom-[-0.5rem] left-0 right-0 px-4">
+                <div className="container mx-auto bg-card shadow-lg border border-border rounded-xl p-3 flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                        {logoUrl && (
+                            <div className="relative w-16 h-16 rounded-lg overflow-hidden border-2 border-border shadow-md flex-shrink-0">
+                                <Image src={logoUrl} alt={`${restaurantName} logo`} layout="fill" objectFit="cover" />
+                            </div>
+                        )}
+                        <Button
+                            variant="outline"
+                            size="icon"
+                            onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
+                            className="h-10 w-10 rounded-full"
+                        >
+                            <Sun className="h-[1.2rem] w-[1.2rem] rotate-0 scale-100 transition-all dark:-rotate-90 dark:scale-0" />
+                            <Moon className="absolute h-[1.2rem] w-[1.2rem] rotate-90 scale-0 transition-all dark:rotate-0 dark:scale-100" />
+                            <span className="sr-only">Toggle theme</span>
+                        </Button>
+                    </div>
+                    <div className="text-right">
+                        <span className="block text-sm font-normal text-muted-foreground">Ordering from</span>
+                        <h1 className="font-sans text-2xl md:text-3xl font-bold text-foreground">
+                            {restaurantName}
+                        </h1>
+                    </div>
                 </div>
             </div>
         </div>
-      </div>
     );
-  };
+};
 
 const formatCurrency = (value) => `₹${Number(value || 0).toLocaleString('en-IN', { maximumFractionDigits: 2 })}`;
 
@@ -646,7 +652,7 @@ const OrderPageInternal = () => {
     const params = useParams();
     const searchParams = useSearchParams();
     const { restaurantId } = params;
-    
+
     const [isTokenValid, setIsTokenValid] = useState(false);
     const [tokenError, setTokenError] = useState('');
     const phone = searchParams.get('phone');
@@ -719,7 +725,7 @@ const OrderPageInternal = () => {
     const [isDineInModalOpen, setIsDineInModalOpen] = useState(false);
     const [isQrScannerOpen, setIsQrScannerOpen] = useState(false);
     const [infoDialog, setInfoDialog] = useState({ isOpen: false, title: '', message: '' });
-    
+
     const [dineInState, setDineInState] = useState('loading');
     const [activeTabInfo, setActiveTabInfo] = useState({ id: null, name: '', total: 0 });
 
@@ -728,14 +734,14 @@ const OrderPageInternal = () => {
 
     const handleStartNewTab = async (paxCount, tabName) => {
         try {
-            const payload = { 
-                action: 'create_tab', 
-                tableId: tableIdFromUrl, 
+            const payload = {
+                action: 'create_tab',
+                tableId: tableIdFromUrl,
                 restaurantId,
-                pax_count: paxCount, 
+                pax_count: paxCount,
                 tab_name: tabName,
             };
-            
+
             const res = await fetch('/api/owner/dine-in-tables', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -750,8 +756,8 @@ const OrderPageInternal = () => {
             setIsDineInModalOpen(false);
 
         } catch (error) {
-             setInfoDialog({ isOpen: true, title: "Error Creating Tab", message: error.message });
-             throw error;
+            setInfoDialog({ isOpen: true, title: "Error Creating Tab", message: error.message });
+            throw error;
         }
     };
 
@@ -769,20 +775,20 @@ const OrderPageInternal = () => {
                 setLoading(false);
                 return;
             }
-            
+
             let locationStr = localStorage.getItem('customerLocation');
-            if(locationStr) { try { setCustomerLocation(JSON.parse(locationStr)); } catch (e) {} }
+            if (locationStr) { try { setCustomerLocation(JSON.parse(locationStr)); } catch (e) { } }
 
             try {
-                const url = `/api/public/menu/${restaurantId}${phone ? `?phone=${phone}`: ''}`;
+                const url = `/api/public/menu/${restaurantId}${phone ? `?phone=${phone}` : ''}`;
                 const menuRes = await fetch(url);
                 const menuData = await menuRes.json();
-                
+
                 if (!menuRes.ok) throw new Error(menuData.message || 'Failed to fetch menu');
-                
+
                 const settingsRes = await fetch(`/api/owner/settings?restaurantId=${restaurantId}`);
                 const settingsData = settingsRes.ok ? await settingsRes.json() : {};
-                
+
                 const onlinePaymentEnabled = settingsData?.onlinePaymentEnabled ?? true;
                 const codEnabled = settingsData?.codEnabled ?? true;
 
@@ -828,7 +834,7 @@ const OrderPageInternal = () => {
                 setIsTokenValid(true);
                 return;
             }
-            
+
             if (phone && token) {
                 try {
                     const res = await fetch('/api/auth/verify-token', {
@@ -868,7 +874,7 @@ const OrderPageInternal = () => {
                         const occupiedSeats = tableData.current_pax || 0;
                         if (occupiedSeats >= tableData.max_capacity) state = 'full';
                         else if (occupiedSeats > 0) state = 'occupied';
-                        
+
                         setTableStatus({ ...tableData, tableId: tableIdFromUrl, state });
                         setDineInState('needs_setup');
                         setIsDineInModalOpen(true);
@@ -907,12 +913,12 @@ const OrderPageInternal = () => {
             handleDineInSetup();
         }
     }, [isTokenValid, restaurantId, tableIdFromUrl, tabIdFromUrl, restaurantData.businessType, restaurantData.deliveryEnabled, restaurantData.pickupEnabled]);
-    
+
     useEffect(() => {
         if (!restaurantId || loading || !isTokenValid) return;
 
         const expiryTimestamp = new Date().getTime() + (24 * 60 * 60 * 1000);
-        
+
         const cartDataToSave = {
             cart, notes, deliveryType, restaurantId,
             restaurantName: restaurantData.name,
@@ -929,10 +935,10 @@ const OrderPageInternal = () => {
             menu: restaurantData.menu, // Save the full menu for availability check
         };
         localStorage.setItem(`cart_${restaurantId}`, JSON.stringify(cartDataToSave));
-        
+
         const liveOrderKey = `liveOrder_${restaurantId}`;
         if (liveOrder && liveOrder.orderId) {
-             localStorage.setItem(liveOrderKey, JSON.stringify(liveOrder));
+            localStorage.setItem(liveOrderKey, JSON.stringify(liveOrder));
         }
 
     }, [cart, notes, deliveryType, restaurantData, loyaltyPoints, loading, isTokenValid, restaurantId, phone, token, tableIdFromUrl, activeTabInfo, liveOrder]);
@@ -962,11 +968,11 @@ const OrderPageInternal = () => {
                 if (sortBy === 'price-asc') return (a.portions?.[0]?.price || 0) - (b.portions?.[0]?.price || 0);
                 if (sortBy === 'price-desc') return (b.portions?.[0]?.price || 0) - (a.portions?.[0]?.price || 0);
                 if (sortBy === 'rating-desc') return (b.rating || 0) - (a.rating || 0);
-                
+
                 return 0; // Default order
             });
             // --- END FIX ---
-            
+
             newMenu[category] = items;
         }
         return newMenu;
@@ -989,13 +995,13 @@ const OrderPageInternal = () => {
             return newFilters;
         });
     };
-    
+
     const handleSortChange = (sortValue) => {
         setSortBy(prev => prev === sortValue ? 'default' : sortValue);
     }
-    
+
     const subtotal = useMemo(() => cart.reduce((sum, item) => sum + item.totalPrice * item.quantity, 0), [cart]);
-    
+
     const handleAddToCart = useCallback((item, portion, selectedAddOns, totalPrice) => {
         const cartItemId = `${item.id}-${portion.name}-${(selectedAddOns || []).map(a => `${a.name}x${a.quantity}`).sort().join('-')}`;
         setCart(currentCart => {
@@ -1027,7 +1033,7 @@ const OrderPageInternal = () => {
         else newCart[lastMatchingItemIndex].quantity--;
         setCart(newCart);
     };
-    
+
     const handleDeliveryTypeChange = (type) => {
         if (type === 'dine-in' && !tableIdFromUrl) {
             setDineInState('needs_setup');
@@ -1040,10 +1046,10 @@ const OrderPageInternal = () => {
     const handleBookTable = async (bookingDetails) => {
         const { date, time } = bookingDetails;
         let localDate;
-        if(date){
+        if (date) {
             localDate = setMinutes(setHours(date, parseInt(time.split(':')[0])), parseInt(time.split(':')[1]));
         } else {
-            setInfoDialog({isOpen: true, title: "Booking Failed", message: "Please select a date."});
+            setInfoDialog({ isOpen: true, title: "Booking Failed", message: "Please select a date." });
             return;
         }
         const payload = { restaurantId, name: bookingDetails.name, phone: bookingDetails.phone, guests: bookingDetails.guests, bookingDateTime: localDate.toISOString() };
@@ -1061,7 +1067,7 @@ const OrderPageInternal = () => {
         });
         return quantities;
     }, [cart]);
-    
+
     const handleCallWaiter = async () => {
         try {
             await fetch('/api/owner/service-requests', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ restaurantId, tableId: tableIdFromUrl, dineInTabId: activeTabInfo.id }) });
@@ -1073,10 +1079,10 @@ const OrderPageInternal = () => {
 
     const handleCategoryClick = (categoryId) => {
         const section = document.getElementById(categoryId);
-        if(section) {
+        if (section) {
             const yOffset = -120;
             const y = section.getBoundingClientRect().top + window.pageYOffset + yOffset;
-            window.scrollTo({top: y, behavior: 'smooth'});
+            window.scrollTo({ top: y, behavior: 'smooth' });
         }
     }
 
@@ -1086,7 +1092,7 @@ const OrderPageInternal = () => {
         if (phone) params.append('phone', phone);
         if (token) params.append('token', token);
         if (tableIdFromUrl) params.append('table', tableIdFromUrl);
-        
+
         if (deliveryType === 'dine-in' && activeTabInfo.id) {
             params.append('tabId', activeTabInfo.id);
         }
@@ -1094,16 +1100,16 @@ const OrderPageInternal = () => {
             params.append('activeOrderId', liveOrder.orderId);
             params.append('token', liveOrder.trackingToken);
         }
-        
+
         const url = `/cart?${params.toString()}`;
         router.push(url);
     };
-    
+
     const handleCloseDineInModal = () => {
         setIsDineInModalOpen(false);
         if (dineInState === 'needs_setup') {
-            setDeliveryType('delivery'); 
-            setDineInState('ready'); 
+            setDeliveryType('delivery');
+            setDineInState('ready');
         }
     }
 
@@ -1113,7 +1119,7 @@ const OrderPageInternal = () => {
             return () => clearTimeout(timer);
         }
     }, [isQrScannerOpen]);
-    
+
 
     if (loading) {
         return <div className="min-h-screen bg-background flex items-center justify-center"><GoldenCoinSpinner /></div>;
@@ -1122,26 +1128,26 @@ const OrderPageInternal = () => {
     if (tokenError) {
         return <TokenVerificationLock message={tokenError} />;
     }
-    
+
     if (!isTokenValid) {
         return <div className="min-h-screen bg-background flex items-center justify-center"><GoldenCoinSpinner /></div>;
     }
-    
+
     if (error || restaurantData.status === 'rejected' || restaurantData.status === 'suspended') {
-       return (
-         <div className="min-h-screen bg-background flex flex-col items-center justify-center text-center text-destructive p-4">
-            <HardHat size={48} className="mb-4" />
-            <h1 className="text-2xl font-bold">Restaurant Currently Unavailable</h1>
-            <p className="mt-2 text-muted-foreground">{error || "This restaurant is not accepting orders at the moment. Please check back later."}</p>
-         </div>
-       );
+        return (
+            <div className="min-h-screen bg-background flex flex-col items-center justify-center text-center text-destructive p-4">
+                <HardHat size={48} className="mb-4" />
+                <h1 className="text-2xl font-bold">Restaurant Currently Unavailable</h1>
+                <p className="mt-2 text-muted-foreground">{error || "This restaurant is not accepting orders at the moment. Please check back later."}</p>
+            </div>
+        );
     }
 
     if (dineInState === 'needs_setup') {
-         return (
+        return (
             <div className="min-h-screen bg-background">
-                 <DineInModal 
-                    isOpen={isDineInModalOpen} 
+                <DineInModal
+                    isOpen={isDineInModalOpen}
                     onClose={handleCloseDineInModal}
                     tableStatus={tableStatus}
                     onStartNewTab={handleStartNewTab}
@@ -1151,14 +1157,14 @@ const OrderPageInternal = () => {
                     setInfoDialog={setInfoDialog}
                 />
             </div>
-         )
+        )
     }
 
     const getTrackingUrl = () => {
         if (!liveOrder || liveOrder.restaurantId !== restaurantId) return null;
-        
-        const businessType = restaurantData.businessType || 'restaurant'; 
-        
+
+        const businessType = restaurantData.businessType || 'restaurant';
+
         let path;
         if (businessType === 'street-vendor') {
             path = `/track/pre-order/${liveOrder.orderId}`;
@@ -1167,47 +1173,47 @@ const OrderPageInternal = () => {
         } else {
             path = `/track/${liveOrder.orderId}`;
         }
-        
+
         return `${path}?token=${liveOrder.trackingToken}`;
     };
 
     const trackingUrl = getTrackingUrl();
-    
+
     return (
         <>
-            <InfoDialog isOpen={infoDialog.isOpen} onClose={() => setInfoDialog({isOpen: false, title: '', message: ''})} title={infoDialog.title} message={infoDialog.message} />
-            
+            <InfoDialog isOpen={infoDialog.isOpen} onClose={() => setInfoDialog({ isOpen: false, title: '', message: '' })} title={infoDialog.title} message={infoDialog.message} />
+
             {isQrScannerOpen && <QrScanner onClose={() => setIsQrScannerOpen(false)} onScanSuccess={(decodedText) => { setIsQrScannerOpen(false); window.location.href = decodedText; }} />}
 
             <AnimatePresence>
                 {isBannerExpanded && (
-                     <motion.div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setIsBannerExpanded(false)}>
+                    <motion.div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setIsBannerExpanded(false)}>
                         <motion.div className="relative w-full max-w-4xl" style={{ aspectRatio: '16 / 9' }} onClick={(e) => e.stopPropagation()}>
                             <Image src={restaurantData.bannerUrls[0]} alt="Banner Expanded" layout="fill" objectFit="contain" unoptimized />
                         </motion.div>
-                         <Button variant="ghost" size="icon" className="absolute top-4 right-4 text-white bg-black/50 hover:bg-black/70 hover:text-white" onClick={() => setIsBannerExpanded(false)}><X /></Button>
+                        <Button variant="ghost" size="icon" className="absolute top-4 right-4 text-white bg-black/50 hover:bg-black/70 hover:text-white" onClick={() => setIsBannerExpanded(false)}><X /></Button>
                     </motion.div>
                 )}
             </AnimatePresence>
             <div className="min-h-screen bg-background text-foreground green-theme">
-                 <DineInModal 
-                    isOpen={isDineInModalOpen} 
-                    onClose={handleCloseDineInModal} 
-                    onBookTable={handleBookTable} 
-                    tableStatus={tableStatus} 
+                <DineInModal
+                    isOpen={isDineInModalOpen}
+                    onClose={handleCloseDineInModal}
+                    onBookTable={handleBookTable}
+                    tableStatus={tableStatus}
                     onStartNewTab={handleStartNewTab}
-                    onJoinTab={handleJoinTab} 
-                    setIsQrScannerOpen={setIsQrScannerOpen} 
+                    onJoinTab={handleJoinTab}
+                    setIsQrScannerOpen={setIsQrScannerOpen}
                     setInfoDialog={setInfoDialog} />
                 <CustomizationDrawer item={customizationItem} isOpen={!!customizationItem} onClose={() => setCustomizationItem(null)} onAddToCart={handleAddToCart} />
                 <MenuBrowserModal isOpen={isMenuBrowserOpen} onClose={() => setIsMenuBrowserOpen(false)} categories={menuCategories} onCategoryClick={handleCategoryClick} />
 
-                 <header>
+                <header>
                     <BannerCarousel images={restaurantData.bannerUrls} onClick={() => setIsBannerExpanded(true)} restaurantName={restaurantData.name} logoUrl={restaurantData.logoUrl} />
                 </header>
 
                 <div className="container mx-auto px-4 mt-6 space-y-4">
-                     
+
                     {restaurantData.businessType !== 'street-vendor' && !tableIdFromUrl && (
                         <div className="bg-card p-4 rounded-lg border border-border">
                             <div className="flex bg-muted p-1 rounded-lg">
@@ -1231,7 +1237,7 @@ const OrderPageInternal = () => {
                                 {deliveryType === 'delivery' ? (
                                     <>
                                         <div className="flex items-center gap-3 overflow-hidden">
-                                            <MapPin className="text-primary flex-shrink-0" size={20}/>
+                                            <MapPin className="text-primary flex-shrink-0" size={20} />
                                             <p className="text-sm text-muted-foreground truncate">{customerLocation?.full || 'No location set'}</p>
                                         </div>
                                         <Link href={`/location?returnUrl=${encodeURIComponent(window.location.pathname + window.location.search)}&phone=${phone || ''}&token=${token || ''}`}>
@@ -1240,11 +1246,11 @@ const OrderPageInternal = () => {
                                     </>
                                 ) : deliveryType === 'pickup' ? (
                                     <div className="flex items-center gap-3 overflow-hidden">
-                                        <Store className="text-primary flex-shrink-0" size={20}/>
+                                        <Store className="text-primary flex-shrink-0" size={20} />
                                         <div>
                                             <p className="text-xs text-muted-foreground">Pick your order from</p>
                                             <a href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(restaurantData.businessAddress?.full || restaurantData.name)}`} target="_blank" rel="noopener noreferrer" className="text-sm font-semibold text-foreground truncate flex items-center gap-1 hover:underline text-primary">
-                                                {restaurantData.businessAddress?.full || 'N/A'} <ExternalLink size={12}/>
+                                                {restaurantData.businessAddress?.full || 'N/A'} <ExternalLink size={12} />
                                             </a>
                                         </div>
                                     </div>
@@ -1253,13 +1259,13 @@ const OrderPageInternal = () => {
                         </div>
                     )}
                     {tableIdFromUrl && (
-                         <div className="bg-card p-4 rounded-lg border border-border flex justify-between items-center">
+                        <div className="bg-card p-4 rounded-lg border border-border flex justify-between items-center">
                             <div className="flex items-center gap-2">
-                                <ConciergeBell className="text-primary"/>
+                                <ConciergeBell className="text-primary" />
                                 <h2 className="text-lg font-bold text-foreground">Ordering for: Table {tableIdFromUrl}</h2>
                             </div>
                             <Button onClick={handleCallWaiter} variant="outline" className="flex items-center gap-2 text-base font-semibold">
-                                <Bell size={20} className="text-primary"/> Call Waiter
+                                <Bell size={20} className="text-primary" /> Call Waiter
                             </Button>
                         </div>
                     )}
@@ -1284,7 +1290,7 @@ const OrderPageInternal = () => {
                                     className={cn("p-2 rounded-lg text-black flex items-center animate-pulse", liveOrder.status === 'Ready' || liveOrder.status === 'ready_for_pickup' ? 'bg-green-400 hover:bg-green-500' : 'bg-yellow-400 hover:bg-yellow-500')}
                                     whileHover={{ scale: 1.05 }}
                                 >
-                                    <Navigation size={16} className="mr-2"/> 
+                                    <Navigation size={16} className="mr-2" />
                                     <span className="text-sm font-bold hidden sm:inline">Track Live Order</span>
                                 </motion.div>
                             </Link>
@@ -1298,7 +1304,7 @@ const OrderPageInternal = () => {
                             </PopoverTrigger>
                             <PopoverContent className="w-64">
                                 <div className="grid gap-4">
-                                   <div className="space-y-2">
+                                    <div className="space-y-2">
                                         <h4 className="font-medium leading-none">Sort by</h4>
                                         <div className="flex flex-wrap gap-2">
                                             <Button variant={sortBy === 'price-asc' ? 'default' : 'outline'} size="sm" onClick={() => handleSortChange('price-asc')} className={cn(sortBy === 'price-asc' && 'bg-primary hover:bg-primary/90 text-primary-foreground')}>Price: Low to High</Button>
@@ -1330,14 +1336,14 @@ const OrderPageInternal = () => {
                 <div className="container mx-auto px-4 mt-6 pb-40">
                     <main>
                         <div className="space-y-8">
-                            {menuCategories.map(({key, title}) => (
+                            {menuCategories.map(({ key, title }) => (
                                 <section id={key} key={key} className="scroll-mt-24">
                                     <h3 className="text-2xl font-bold mb-4">{title}</h3>
                                     <div className="flex flex-col">
                                         {processedMenu[key].map(item => (
-                                            <MenuItemCard 
-                                                key={item.id} 
-                                                item={item} 
+                                            <MenuItemCard
+                                                key={item.id}
+                                                item={item}
                                                 quantity={cartItemQuantities[item.id] || 0}
                                                 onAdd={handleIncrement}
                                                 onIncrement={handleIncrement}
@@ -1350,7 +1356,7 @@ const OrderPageInternal = () => {
                         </div>
                     </main>
                 </div>
-                 <AnimatePresence>
+                <AnimatePresence>
                     {totalCartItems > 0 && (
                         <motion.div
                             className="fixed bottom-0 left-0 right-0 z-30"
@@ -1362,7 +1368,7 @@ const OrderPageInternal = () => {
                                 <Button onClick={handleCheckout} className="h-16 w-full text-lg font-bold rounded-none shadow-lg shadow-primary/30 flex justify-between items-center text-primary-foreground px-6 bg-primary hover:bg-primary/90">
                                     <span>{totalCartItems} Item{totalCartItems > 1 ? 's' : ''} | {formatCurrency(subtotal)}</span>
                                     <span className="flex items-center">
-                                        {(liveOrder && liveOrder.restaurantId === restaurantId) ? 'Add to Order' : 'View Cart'} <ArrowRight className="ml-2 h-5 w-5"/>
+                                        {(liveOrder && liveOrder.restaurantId === restaurantId) ? 'Add to Order' : 'View Cart'} <ArrowRight className="ml-2 h-5 w-5" />
                                     </span>
                                 </Button>
                             </div>
@@ -1370,15 +1376,15 @@ const OrderPageInternal = () => {
                     )}
                 </AnimatePresence>
 
-                 <motion.div
+                <motion.div
                     className="fixed bottom-4 right-4 z-20"
                     animate={{ y: totalCartItems > 0 ? -80 : 0 }}
                     transition={{ type: 'spring', stiffness: 200, damping: 20 }}
                 >
-                     <Button size="icon" className="w-16 h-16 rounded-full bg-green-600 hover:bg-green-700 text-white shadow-lg" onClick={() => setIsMenuBrowserOpen(true)}>
-                         <BookOpen size={28}/>
-                     </Button>
-                 </motion.div>
+                    <Button size="icon" className="w-16 h-16 rounded-full bg-green-600 hover:bg-green-700 text-white shadow-lg" onClick={() => setIsMenuBrowserOpen(true)}>
+                        <BookOpen size={28} />
+                    </Button>
+                </motion.div>
 
             </div>
         </>
@@ -1388,10 +1394,10 @@ const OrderPageInternal = () => {
 const OrderPage = () => (
     <Suspense fallback={<div className="min-h-screen bg-background flex items-center justify-center"><GoldenCoinSpinner /></div>}>
         <ThemeProvider
-          attribute="class"
-          defaultTheme="system"
-          enableSystem
-          disableTransitionOnChange
+            attribute="class"
+            defaultTheme="system"
+            enableSystem
+            disableTransitionOnChange
         >
             <OrderPageInternal />
         </ThemeProvider>
