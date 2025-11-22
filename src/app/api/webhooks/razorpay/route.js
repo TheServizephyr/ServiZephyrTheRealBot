@@ -289,11 +289,10 @@ export async function POST(req) {
             });
         }
     }
-}
 
-return NextResponse.json({ status: 'ok' });
+    return NextResponse.json({ status: 'ok' });
 
-    } catch (error) {
+} catch (error) {
     console.error('[Webhook RZP] CRITICAL Error processing webhook:', error);
     return NextResponse.json({ status: 'error', message: 'Internal server error' }, { status: 200 });
 }
