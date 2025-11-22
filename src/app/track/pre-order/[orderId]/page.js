@@ -1,4 +1,3 @@
-
 'use client';
 
 import React, { useState, useEffect, useMemo, useCallback, useRef, Suspense } from 'react';
@@ -295,7 +294,6 @@ function PreOrderTrackingContent() {
                                 </div>
                             </div>
                         </div>
-                         <div className="instruction text-muted-foreground mt-4">Tap to Flip • Move cursor to Tilt</div>
                     </motion.div>
                 )}
             </AnimatePresence>
@@ -335,5 +333,3 @@ export default function PreOrderTrackingPage() {
         </Suspense>
     )
 }
-
-    
