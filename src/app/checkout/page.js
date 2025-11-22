@@ -44,7 +44,6 @@ const SplitBillInterface = ({ totalAmount, onBack, orderDetails, onPlaceOrder })
         try {
             let baseOrderId = orderDetails.firestore_order_id;
 
-            // If order ID is temporary, we must create the order first
             if (!baseOrderId || baseOrderId.startsWith('temp_')) {
                 console.log("[SplitBillInterface] Creating base order before splitting...");
                 const orderResult = await onPlaceOrder('split_bill');
@@ -160,7 +159,7 @@ const CheckoutPageInternal = () => {
             
             console.log(`[Checkout Page] Verification checks: isDineIn=${isDineIn}, isLoggedInUser=${isLoggedInUser}, isWhatsAppSession=${isWhatsAppSession}, isAnonymousPreOrder=${isAnonymousPreOrder}, activeOrderId=${!!activeOrderId}`);
 
-            if (isDineIn || isLoggedInUser || activeOrderId) {
+            if (isDineIn || isLoggedInUser || activeOrderId || isAnonymousPreOrder) {
                 console.log("[Checkout Page] Session validated (Direct).");
                 setIsTokenValid(true);
             } else if (isWhatsAppSession) {
@@ -171,8 +170,6 @@ const CheckoutPageInternal = () => {
                 } catch (err) {
                     setTokenError(err.message); setLoading(false); return;
                 }
-            } else if (isAnonymousPreOrder) {
-                setIsTokenValid(true);
             }
             else {
                 if (!isUserLoading) {
@@ -180,7 +177,7 @@ const CheckoutPageInternal = () => {
                 }
             }
             
-            if (deliveryType === 'street-vendor-pre-order' || (deliveryType === 'delivery' && !isLoggedInUser)) {
+            if (isAnonymousPreOrder || (deliveryType === 'delivery' && !isLoggedInUser)) {
                 setDetailsConfirmed(false);
             } else {
                  setDetailsConfirmed(true);
@@ -385,7 +382,7 @@ const CheckoutPageInternal = () => {
             setError("Please select or add a delivery address.");
             return false;
         }
-        if ((deliveryType === 'street-vendor-pre-order' || deliveryType === 'pickup') && (!orderName || orderName.trim().length === 0)) {
+        if (deliveryType === 'street-vendor-pre-order' && (!orderName || orderName.trim().length === 0)) {
             setError("Please provide a name for the order.");
             return false;
         }

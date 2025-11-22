@@ -147,7 +147,6 @@ export async function POST(req) {
             return NextResponse.json({ message: 'This business does not exist.' }, { status: 404 });
         }
         
-        const businessDoc = await businessRef.get();
         const businessData = businessDoc.data();
 
         // --- Post-paid Dine-In ---
@@ -186,7 +185,6 @@ export async function POST(req) {
 
             const razorpay = new Razorpay({ key_id: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID, key_secret: process.env.RAZORPAY_KEY_SECRET });
             
-            // Create an incomplete order first to get an ID and tracking token
             const newOrderRef = firestore.collection('orders').doc();
             const trackingToken = await generateSecureToken(firestore, normalizedPhone || newOrderRef.id);
             
@@ -242,8 +240,7 @@ export async function POST(req) {
             console.log(`[API /order/create] Generating token for street vendor order.`);
             const vendorRef = firestore.collection('street_vendors').doc(restaurantId);
             try {
-                // Not in transaction, as it's a read before write
-                 const vendorDoc = await vendorRef.get();
+                const vendorDoc = await vendorRef.get();
                 if (vendorDoc.exists) {
                     dineInToken = await firestore.runTransaction(async (transaction) => {
                         const freshVendorDoc = await transaction.get(vendorRef);
@@ -259,6 +256,9 @@ export async function POST(req) {
                         transaction.update(vendorRef, { lastOrderToken: newTokenNumber });
                         return token;
                     });
+                     console.log(`[API /order/create] Generated Street Vendor Token: ${dineInToken}`);
+                } else {
+                     console.warn(`[API /order/create] Street vendor document ${restaurantId} not found, cannot generate token.`);
                 }
             } catch (e) {
                 console.error(`[API /order/create] Error in token generation transaction:`, e);

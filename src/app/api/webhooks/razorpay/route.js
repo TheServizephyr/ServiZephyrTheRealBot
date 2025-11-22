@@ -48,7 +48,6 @@ async function makeRazorpayRequest(options, payload) {
     });
 }
 
-// --- NEW HELPER FOR SPLIT PAYMENTS ---
 const handleSplitPayment = async (firestore, paymentEntity) => {
     const { order_id: razorpayOrderId, notes } = paymentEntity;
     const splitId = notes?.split_session_id;
@@ -67,7 +66,7 @@ const handleSplitPayment = async (firestore, paymentEntity) => {
             const splitDoc = await transaction.get(splitRef);
             if (!splitDoc.exists) {
                 console.error(`[Webhook RZP] CRITICAL: Split session ${splitId} not found in Firestore. Cannot process payment.`);
-                return; // Abort transaction
+                return;
             }
 
             const splitData = splitDoc.data();
@@ -77,11 +76,10 @@ const handleSplitPayment = async (firestore, paymentEntity) => {
 
             if (shareIndex === -1) {
                 console.error(`[Webhook RZP] CRITICAL: Razorpay order ${razorpayOrderId} not found in shares for split ${splitId}.`);
-                return; // Abort transaction
+                return;
             }
             console.log(`[Webhook RZP] Matched Razorpay Order ID to share index ${shareIndex}.`);
 
-            // Update the specific share that was paid
             shares[shareIndex].status = 'paid';
             shares[shareIndex].razorpay_payment_id = paymentEntity.id;
             console.log(`[Webhook RZP] Share index ${shareIndex} marked as paid.`);
@@ -98,10 +96,9 @@ const handleSplitPayment = async (firestore, paymentEntity) => {
                  const baseOrderRef = firestore.collection('orders').doc(splitData.baseOrderId);
                  const baseOrderSnap = await transaction.get(baseOrderRef);
                  
-                 // If the base order exists, update it. If not, this part is skipped.
                  if(baseOrderSnap.exists){
                     console.log(`[Webhook RZP] Base order ${splitData.baseOrderId} found. Updating its status.`);
-                    transaction.update(baseOrderRef, { paymentDetails: { ...paymentEntity, method: 'razorpay_split' }, status: 'pending' });
+                    transaction.update(baseOrderRef, { paymentDetails: FieldValue.arrayUnion({ method: 'razorpay_split', amount: paymentEntity.amount / 100, razorpay_payment_id: paymentEntity.id, timestamp: FieldValue.serverTimestamp(), status: 'paid' }), status: 'pending' });
                  } else {
                     console.warn(`[Webhook RZP] Base order ${splitData.baseOrderId} not found for split payment. Cannot update status.`);
                  }
@@ -115,7 +112,7 @@ const handleSplitPayment = async (firestore, paymentEntity) => {
          console.error(`[Webhook RZP] CRITICAL ERROR during split payment transaction for ${splitId}:`, error);
     }
 
-    return true; // Indicates this was a split payment and was handled
+    return true; 
 };
 
 
@@ -130,9 +127,7 @@ export async function POST(req) {
 
     try {
         const body = await req.text();
-        console.log("[Webhook RZP] Raw body:", body);
         const signature = req.headers.get('x-razorpay-signature');
-        console.log(`[Webhook RZP] Received signature: ${signature}`);
 
         const shasum = crypto.createHmac('sha256', secret);
         shasum.update(body);
@@ -178,100 +173,63 @@ export async function POST(req) {
 
             const payloadString = rzpOrder.notes?.servizephyr_payload;
             
-            if (!payloadString) {
-                // --- START ADD-ON PAYMENT LOGIC ---
-                const orderSnapshot = await firestore.collection('orders').where('paymentDetails', 'array-contains', { razorpay_order_id: razorpayOrderId }).limit(1).get();
-                if (!orderSnapshot.empty) {
-                    const orderDoc = orderSnapshot.docs[0];
-                    console.log(`[Webhook RZP] Found add-on payment for existing order ${orderDoc.id}`);
-                    await orderDoc.ref.update({
-                        paymentDetails: FieldValue.arrayUnion({ method: 'razorpay', amount: paymentAmount / 100, timestamp: new Date(), razorpay_payment_id: paymentId, status: 'paid' })
-                    });
-                     return NextResponse.json({ status: 'ok', message: 'Add-on payment processed.' });
-                }
-                console.error(`[Webhook RZP] CRITICAL: servizephyr_payload not found for Razorpay Order ${razorpayOrderId}`);
-                return NextResponse.json({ status: 'error', message: 'Order payload not found.' });
-                 // --- END ADD-ON PAYMENT LOGIC ---
+            const orderRef = firestore.collection('orders').doc(rzpOrder.receipt);
+            const orderSnap = await orderRef.get();
+
+            if (!orderSnap.exists) {
+                console.error(`[Webhook RZP] CRITICAL: Incomplete order ${rzpOrder.receipt} not found in Firestore for RZP order ${razorpayOrderId}.`);
+                return NextResponse.json({ status: 'error', message: `Order with ID ${rzpOrder.receipt} not found.` });
             }
 
-            // --- START RE-INTEGRATED LOGIC FOR NEW ORDERS ---
+            if (!payloadString) {
+                console.log(`[Webhook RZP] No servizephyr_payload found. Assuming add-on payment for existing order ${orderSnap.id}.`);
+                await orderRef.update({
+                    paymentDetails: FieldValue.arrayUnion({ method: 'razorpay', amount: paymentAmount / 100, timestamp: FieldValue.serverTimestamp(), razorpay_payment_id: paymentId, status: 'paid' })
+                });
+                return NextResponse.json({ status: 'ok', message: 'Add-on payment processed.' });
+            }
+            
             const { 
-                order_id: firestoreOrderId, user_id: userId, restaurant_id: restaurantId, business_type: businessType,
+                user_id: userId, restaurant_id: restaurantId, business_type: businessType,
                 customer_details: customerDetailsString, items: itemsString, bill_details: billDetailsString, notes: customNotes 
             } = JSON.parse(payloadString);
-            
-            if (!firestoreOrderId || !userId || !restaurantId || !businessType) {
-                console.error(`[Webhook RZP] CRITICAL: Missing key identifiers in payload for RZP Order ${razorpayOrderId}`);
-                return NextResponse.json({ status: 'error', message: 'Order identifier notes missing.' });
-            }
 
             const customerDetails = JSON.parse(customerDetailsString);
             const orderItems = JSON.parse(itemsString);
             const billDetails = JSON.parse(billDetailsString);
-            const isStreetVendorOrder = billDetails.deliveryType === 'street-vendor-pre-order';
-
-            const batch = firestore.batch();
-
-            if (!isStreetVendorOrder && customerDetails.phone) {
-                const usersRef = firestore.collection('users');
-                const existingUserQuery = await usersRef.where('phone', '==', customerDetails.phone).limit(1).get();
-                const isNewUser = existingUserQuery.empty;
-
-                if (isNewUser) {
-                    const unclaimedUserRef = firestore.collection('unclaimed_profiles').doc(customerDetails.phone);
-                    batch.set(unclaimedUserRef, {
-                        name: customerDetails.name, phone: customerDetails.phone, addresses: [customerDetails.address],
-                        createdAt: FieldValue.serverTimestamp(),
-                        orderedFrom: FieldValue.arrayUnion({ restaurantId: restaurantId, restaurantName: rzpOrder.notes?.restaurantName || 'Unknown', businessType: businessType })
-                    }, { merge: true });
-                }
-            
-                const subtotal = billDetails.subtotal || 0;
-                const loyaltyDiscount = billDetails.loyaltyDiscount || 0;
-                const pointsEarned = Math.floor(subtotal / 100) * 10;
-                const pointsSpent = loyaltyDiscount > 0 ? loyaltyDiscount / 0.5 : 0;
-            
-                const businessCollectionNameForCustomer = businessType === 'shop' ? 'shops' : 'restaurants';
-                const restaurantCustomerRef = firestore.collection(businessCollectionNameForCustomer).doc(restaurantId).collection('customers').doc(userId);
-            
-                batch.set(restaurantCustomerRef, {
-                    name: customerDetails.name, phone: customerDetails.phone, status: isNewUser ? 'unclaimed' : 'verified',
-                    totalSpend: FieldValue.increment(subtotal),
-                    loyaltyPoints: FieldValue.increment(pointsEarned - pointsSpent),
-                    lastOrderDate: FieldValue.serverTimestamp(),
-                    totalOrders: FieldValue.increment(1),
-                }, { merge: true });
-            }
-
-            const orderRef = firestore.collection('orders').doc(firestoreOrderId);
-            
-            let dineInToken = null;
-            if (isStreetVendorOrder) {
-                const vendorRef = firestore.collection('street_vendors').doc(restaurantId);
-                const vendorData = (await vendorRef.get()).data();
-                if (vendorData) {
-                    const lastToken = vendorData.lastOrderToken || 0;
-                    const newTokenNumber = lastToken + 1;
-                    const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
-                    dineInToken = `${String(newTokenNumber)}-${alphabet[Math.floor(Math.random() * 26)]}${alphabet[Math.floor(Math.random() * 26)]}`;
-                    batch.update(vendorRef, { lastOrderToken: newTokenNumber });
-                }
-            }
 
             const fullOrderData = {
-                customerName: customerDetails.name, customerId: userId, customerAddress: customerDetails.address.full, customerPhone: customerDetails.phone,
-                restaurantId: restaurantId, businessType: businessType, deliveryType: billDetails.deliveryType, pickupTime: billDetails.pickupTime,
-                tipAmount: billDetails.tipAmount, items: orderItems, subtotal: billDetails.subtotal, coupon: billDetails.coupon || null,
-                loyaltyDiscount: billDetails.loyaltyDiscount || 0, discount: (billDetails.coupon?.discount || 0) + (billDetails.loyaltyDiscount || 0), 
-                cgst: billDetails.cgst, sgst: billDetails.sgst, deliveryCharge: billDetails.deliveryCharge || 0, totalAmount: billDetails.grandTotal,
-                status: 'pending', notes: customNotes || null, dineInToken: dineInToken,
-                paymentDetails: FieldValue.arrayUnion({ method: 'razorpay', amount: paymentAmount / 100, razorpay_payment_id: paymentId, razorpay_order_id: razorpayOrderId, timestamp: FieldValue.serverTimestamp(), status: 'paid' })
+                customerName: customerDetails.name,
+                customerId: userId,
+                customerAddress: customerDetails.address?.full,
+                customerPhone: customerDetails.phone,
+                restaurantId: restaurantId,
+                businessType: businessType,
+                deliveryType: billDetails.deliveryType,
+                pickupTime: billDetails.pickupTime,
+                tipAmount: billDetails.tipAmount,
+                items: orderItems,
+                subtotal: billDetails.subtotal,
+                coupon: billDetails.coupon,
+                loyaltyDiscount: billDetails.loyaltyDiscount,
+                discount: (billDetails.coupon?.discount || 0) + (billDetails.loyaltyDiscount || 0),
+                cgst: billDetails.cgst,
+                sgst: billDetails.sgst,
+                deliveryCharge: billDetails.deliveryCharge,
+                totalAmount: billDetails.grandTotal,
+                status: 'pending',
+                notes: customNotes,
+                paymentDetails: [{
+                    method: 'razorpay',
+                    amount: paymentAmount / 100,
+                    razorpay_payment_id: paymentId,
+                    razorpay_order_id: razorpayOrderId,
+                    timestamp: FieldValue.serverTimestamp(),
+                    status: 'paid'
+                }]
             };
-            
-            // Using update to merge with the existing incomplete order document
-            batch.update(orderRef, fullOrderData);
-            
-            await batch.commit();
+
+            await orderRef.update(fullOrderData);
             console.log(`[Webhook RZP] Successfully completed order ${orderRef.id} from RZP Order ${razorpayOrderId}.`);
 
             const collectionForBusinessLookup = businessType === 'street-vendor' ? 'street_vendors' : (businessType === 'shop' ? 'shops' : 'restaurants');
@@ -303,7 +261,6 @@ export async function POST(req) {
                     });
                 }
             }
-             // --- END RE-INTEGRATED LOGIC ---
         }
 
         return NextResponse.json({ status: 'ok' });
