@@ -89,10 +89,23 @@ export async function POST(req) {
                             timestamp: new Date(),
                         });
                     }
+                    // For split_bill, don't add payment details here - webhook will handle it
 
                     transaction.update(orderRef, updatePayload);
                 });
                 console.log(`[API /order/create] ADD-ON FLOW: Successfully added items to order ${existingOrderId}.`);
+
+                // For split_bill, return the existing order's tracking token
+                if (paymentMethod === 'split_bill') {
+                    const orderDoc = await firestore.collection('orders').doc(existingOrderId).get();
+                    const orderData = orderDoc.data();
+                    return NextResponse.json({
+                        message: 'Items added to existing order for split payment.',
+                        firestore_order_id: existingOrderId,
+                        token: orderData.trackingToken,
+                    }, { status: 200 });
+                }
+
                 return NextResponse.json({
                     message: 'Items added to your existing order successfully!',
                     order_id: existingOrderId,

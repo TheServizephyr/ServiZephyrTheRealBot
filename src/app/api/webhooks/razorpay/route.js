@@ -134,7 +134,7 @@ const handleSplitPayment = async (firestore, paymentEntity) => {
                     }
 
                     const orderUpdate = {
-                        paymentDetails: FieldValue.arrayUnion({ method: 'razorpay_split', amount: paymentEntity.amount / 100, razorpay_payment_id: paymentEntity.id, timestamp: new Date(), status: 'paid' }),
+                        paymentDetails: FieldValue.arrayUnion({ method: 'razorpay', amount: paymentEntity.amount / 100, razorpay_payment_id: paymentEntity.id, timestamp: new Date(), status: 'paid' }),
                         status: 'pending'
                     };
                     if (dineInToken) {
