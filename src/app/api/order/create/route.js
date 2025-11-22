@@ -282,12 +282,27 @@ export async function POST(req) {
             const firestoreOrderId = firestore.collection('orders').doc().id;
             console.log(`[API /order/create] Generated Firestore Order ID: ${firestoreOrderId}`);
 
-            const customerDetailsForPayload = {
+            const servizephyrOrderPayload = {
+                customerDetails: { name, phone: normalizedPhone, address },
+                billDetails: { subtotal, loyaltyDiscount, grandTotal },
+                restaurantId,
+                userId,
+                businessType,
+                isStreetVendorOrder: businessType === 'street-vendor',
+                customNotes: notes,
+                trackingToken,
+                isNewUser
+            };
+
+            const razorpayOrderOptions = {
+                amount: Math.round(grandTotal * 100),
+                currency: 'INR',
+                receipt: firestoreOrderId,
                 notes: {
-                    servizephyr_payload: JSON.stringify(servizephyrOrderPayload)
+                    servizephyr_payload: JSON.stringify(servizephyrOrderPayload),
+                    restaurantName: businessData.name
                 }
             };
-            console.log("[API /order/create] Razorpay Order Options:", JSON.stringify(razorpayOrderOptions, null, 2));
 
             const razorpayOrder = await razorpay.orders.create(razorpayOrderOptions);
             console.log(`[API /order/create] Razorpay order created: ${razorpayOrder.id}`);
