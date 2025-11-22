@@ -62,8 +62,9 @@ export async function POST(req) {
 
                     const orderData = orderDoc.data();
 
-                    // Layer 3 Security: Block adding items to non-pending orders
-                    if (orderData.status !== 'pending') {
+                    // Layer 3 Security: Block adding items to non-pending/awaiting_payment orders
+                    const allowedStatuses = ['pending', 'awaiting_payment'];
+                    if (!allowedStatuses.includes(orderData.status)) {
                         throw new Error(`Cannot add items. Your order is ${orderData.status === 'Ready' ? 'being prepared' : orderData.status}. Please complete your current order first.`);
                     }
 
@@ -93,6 +94,9 @@ export async function POST(req) {
                             status: 'pending',
                             timestamp: new Date(),
                         });
+                    } else if (paymentMethod === 'split_bill') {
+                        // Set status to awaiting_payment to hide from dashboard until payment completes
+                        updatePayload.status = 'awaiting_payment';
                     }
                     // For split_bill, don't add payment details here - webhook will handle it
 

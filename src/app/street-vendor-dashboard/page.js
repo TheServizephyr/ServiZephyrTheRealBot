@@ -35,7 +35,7 @@ const RejectOrderModal = ({ order, isOpen, onClose, onConfirm, onMarkOutOfStock,
     const [reason, setReason] = useState('');
     const [otherReason, setOtherReason] = useState('');
     const [isSubmitting, setIsSubmitting] = useState(false);
-    
+
     const [isOutOfStockModalOpen, setIsOutOfStockModalOpen] = useState(false);
 
     useEffect(() => {
@@ -68,20 +68,20 @@ const RejectOrderModal = ({ order, isOpen, onClose, onConfirm, onMarkOutOfStock,
             setIsSubmitting(false);
         }
     };
-    
+
     const handleOutOfStockConfirm = async (outOfStockItems) => {
         setIsSubmitting(true);
         try {
             if (outOfStockItems.length > 0) {
-              await onMarkOutOfStock(outOfStockItems);
+                await onMarkOutOfStock(outOfStockItems);
             }
             await onConfirm(order.id, "Item(s) out of stock");
             setIsOutOfStockModalOpen(false);
             onClose();
-            showInfoDialog({isOpen: true, title: 'Success', message: 'Item(s) marked as out of stock and order rejected.'});
+            showInfoDialog({ isOpen: true, title: 'Success', message: 'Item(s) marked as out of stock and order rejected.' });
 
         } catch (error) {
-             showInfoDialog({ isOpen: true, title: 'Error', message: `Could not perform action: ${error.message}` });
+            showInfoDialog({ isOpen: true, title: 'Error', message: `Could not perform action: ${error.message}` });
         } finally {
             setIsSubmitting(false);
         }
@@ -92,7 +92,7 @@ const RejectOrderModal = ({ order, isOpen, onClose, onConfirm, onMarkOutOfStock,
         { value: "customer_request", label: "Customer requested cancellation" },
         { value: "other", label: "Other" },
     ];
-    
+
     if (!isOpen) return null;
 
     return (
@@ -154,7 +154,7 @@ const OutOfStockModal = ({ isOpen, onClose, orderItems, onConfirm }) => {
     const [isConfirming, setIsConfirming] = useState(false);
 
     const handleToggleItem = (itemId) => {
-        setSelectedItems(prev => 
+        setSelectedItems(prev =>
             prev.includes(itemId) ? prev.filter(id => id !== itemId) : [...prev, itemId]
         );
     };
@@ -177,8 +177,8 @@ const OutOfStockModal = ({ isOpen, onClose, orderItems, onConfirm }) => {
                 <div className="py-4 space-y-2 max-h-60 overflow-y-auto">
                     {orderItems.map(item => (
                         <div key={item.id || item.name} className="flex items-center space-x-3 p-3 rounded-lg bg-muted border border-border">
-                            <Checkbox 
-                                id={`stock-${item.id}`} 
+                            <Checkbox
+                                id={`stock-${item.id}`}
                                 checked={selectedItems.includes(item.id)}
                                 onCheckedChange={() => handleToggleItem(item.id)}
                             />
@@ -189,8 +189,8 @@ const OutOfStockModal = ({ isOpen, onClose, orderItems, onConfirm }) => {
                     ))}
                 </div>
                 <DialogFooter>
-                     <Button variant="secondary" onClick={onClose} disabled={isConfirming}>Skip</Button>
-                     <Button variant="destructive" onClick={handleConfirm} disabled={isConfirming}>
+                    <Button variant="secondary" onClick={onClose} disabled={isConfirming}>Skip</Button>
+                    <Button variant="destructive" onClick={handleConfirm} disabled={isConfirming}>
                         {isConfirming ? "Updating..." : `Confirm & Reject Order`}
                     </Button>
                 </DialogFooter>
@@ -216,13 +216,13 @@ const OrderCard = ({ order, onMarkReady, onCancelClick, onMarkCollected }) => {
         statusClass = 'text-red-500 bg-red-500/10 border-red-500/20';
         borderClass = 'border-red-500';
     }
-    
+
     // --- START: PAYMENT BREAKDOWN LOGIC ---
     const paymentDetailsArray = Array.isArray(order.paymentDetails) ? order.paymentDetails : [order.paymentDetails].filter(Boolean);
     const amountPaidOnline = paymentDetailsArray
         .filter(p => p.method === 'razorpay' && p.status === 'paid')
         .reduce((sum, p) => sum + (p.amount || 0), 0);
-        
+
     const amountDueAtCounter = (order.totalAmount || 0) - amountPaidOnline;
 
     const isFullyPaidOnline = amountPaidOnline >= (order.totalAmount || 0);
@@ -246,21 +246,21 @@ const OrderCard = ({ order, onMarkReady, onCancelClick, onMarkCollected }) => {
                         <p className="text-xs text-muted-foreground mt-1">{formatDateTime(order.orderDate)}</p>
                     </div>
                 </div>
-                 <div className="flex justify-between items-center mt-2 border-b border-dashed border-border pb-3 mb-3">
+                <div className="flex justify-between items-center mt-2 border-b border-dashed border-border pb-3 mb-3">
                     <p className="text-3xl font-bold text-green-500">{formatCurrency(order.totalAmount)}</p>
-                     {/* --- START: UPDATED PAYMENT UI --- */}
-                     {isFullyPaidOnline ? (
-                         <div className="flex items-center gap-1 text-xs font-semibold px-2 py-1 rounded-full bg-green-500/10 text-green-500 border border-green-500/20">
-                            <Wallet size={14}/> PAID ONLINE
+                    {/* --- START: UPDATED PAYMENT UI --- */}
+                    {isFullyPaidOnline ? (
+                        <div className="flex items-center gap-1 text-xs font-semibold px-2 py-1 rounded-full bg-green-500/10 text-green-500 border border-green-500/20">
+                            <Wallet size={14} /> PAID ONLINE
                         </div>
                     ) : isPartiallyPaid ? (
-                         <div className="text-right">
+                        <div className="text-right">
                             <span className="block text-xs font-semibold text-green-500">Paid: {formatCurrency(amountPaidOnline)}</span>
                             <span className="block text-xs font-semibold text-yellow-400">Due: {formatCurrency(amountDueAtCounter)}</span>
                         </div>
                     ) : (
-                         <div className="flex items-center gap-1 text-xs font-semibold px-2 py-1 rounded-full bg-yellow-500/10 text-yellow-400 border border-yellow-500/20">
-                            <IndianRupee size={14}/> PAY AT COUNTER
+                        <div className="flex items-center gap-1 text-xs font-semibold px-2 py-1 rounded-full bg-yellow-500/10 text-yellow-400 border border-yellow-500/20">
+                            <IndianRupee size={14} /> PAY AT COUNTER
                         </div>
                     )}
                     {/* --- END: UPDATED PAYMENT UI --- */}
@@ -268,12 +268,12 @@ const OrderCard = ({ order, onMarkReady, onCancelClick, onMarkCollected }) => {
 
                 <div className="mt-2 text-muted-foreground space-y-1">
                     <div className="flex items-center gap-2">
-                        <User size={16}/>
+                        <User size={16} />
                         <span className="font-semibold text-foreground text-lg">{order.customerName}</span>
                     </div>
                     {order.customerPhone && (
                         <div className="flex items-center gap-2 text-sm">
-                            <Phone size={14}/>
+                            <Phone size={14} />
                             <span>{order.customerPhone}</span>
                         </div>
                     )}
@@ -281,7 +281,7 @@ const OrderCard = ({ order, onMarkReady, onCancelClick, onMarkCollected }) => {
                 <div className="mt-3 pt-3 border-t border-dashed border-border">
                     <p className="font-semibold text-foreground">Items:</p>
                     <ul className="list-disc list-inside text-muted-foreground text-sm space-y-1">
-                         {order.items.map((item, index) => {
+                        {order.items.map((item, index) => {
                             const portionName = item.portion?.name;
                             const addOns = (item.selectedAddOns || [])
                                 .map(addon => `${addon.quantity}x ${addon.name}`)
@@ -289,7 +289,7 @@ const OrderCard = ({ order, onMarkReady, onCancelClick, onMarkCollected }) => {
 
                             return (
                                 <li key={index}>
-                                    {item.quantity || item.qty}x {item.name} 
+                                    {item.quantity || item.qty}x {item.name}
                                     {portionName && portionName.toLowerCase() !== 'full' && ` - ${portionName}`}
                                     {addOns && <span className="text-xs text-primary block pl-4">({addOns})</span>}
                                 </li>
@@ -297,7 +297,7 @@ const OrderCard = ({ order, onMarkReady, onCancelClick, onMarkCollected }) => {
                         })}
                     </ul>
                 </div>
-                 {order.status === 'rejected' && order.rejectionReason && (
+                {order.status === 'rejected' && order.rejectionReason && (
                     <div className="mt-3 pt-3 border-t border-dashed border-red-500/30">
                         <p className="font-semibold text-red-400">Rejection Reason:</p>
                         <p className="text-sm text-red-400/90">{order.rejectionReason}</p>
@@ -307,7 +307,7 @@ const OrderCard = ({ order, onMarkReady, onCancelClick, onMarkCollected }) => {
             <div className="mt-4">
                 {isPending && (
                     <div className="grid grid-cols-2 gap-2">
-                         <Button onClick={() => onCancelClick(order)} variant="destructive" className="h-12 text-base">
+                        <Button onClick={() => onCancelClick(order)} variant="destructive" className="h-12 text-base">
                             <X className="mr-2" /> Cancel
                         </Button>
                         <Button onClick={() => onMarkReady(order.id)} className="bg-green-600 hover:bg-green-700 h-12 text-base">
@@ -316,7 +316,7 @@ const OrderCard = ({ order, onMarkReady, onCancelClick, onMarkCollected }) => {
                     </div>
                 )}
                 {isReady && (
-                     <Button onClick={() => onMarkCollected(order.id)} className="w-full bg-green-600 hover:bg-green-700 text-white font-bold text-lg h-12">
+                    <Button onClick={() => onMarkCollected(order.id)} className="w-full bg-green-600 hover:bg-green-700 text-white font-bold text-lg h-12">
                         <PackageCheck className="mr-2" /> Mark as Collected
                     </Button>
                 )}
@@ -342,14 +342,14 @@ const ScannedOrderModal = ({ order, isOpen, onClose, onConfirm }) => {
                     </DialogDescription>
                 </DialogHeader>
                 <div className="py-4 space-y-4">
-                     <div className="p-4 bg-muted rounded-lg border border-border">
+                    <div className="p-4 bg-muted rounded-lg border border-border">
                         <div className="flex justify-between items-center font-bold">
                             <span>TOTAL BILL:</span>
                             <span className="text-2xl text-primary">{formatCurrency(order.totalAmount)}</span>
                         </div>
                         <div className="flex justify-between items-center text-xs mt-1">
-                             <span>Payment Status:</span>
-                             {amountDueAtCounter <= 0 ? (
+                            <span>Payment Status:</span>
+                            {amountDueAtCounter <= 0 ? (
                                 <span className="font-semibold text-green-500">FULLY PAID ONLINE</span>
                             ) : (
                                 <span className="font-semibold text-yellow-400">COLLECT {formatCurrency(amountDueAtCounter)} AT COUNTER</span>
@@ -362,10 +362,10 @@ const ScannedOrderModal = ({ order, isOpen, onClose, onConfirm }) => {
                         {order.customerPhone && <p><strong>Phone:</strong> {order.customerPhone}</p>}
                         {orderDate && <p><strong>Time:</strong> {format(new Date(orderDate.seconds * 1000), 'hh:mm a')}</p>}
                     </div>
-                     <div>
+                    <div>
                         <h4 className="font-semibold text-muted-foreground mb-2">Items:</h4>
                         <ul className="list-disc list-inside text-muted-foreground text-sm space-y-1">
-                           {order.items.map((item, index) => {
+                            {order.items.map((item, index) => {
                                 const portionName = item.portion?.name;
                                 const addOns = (item.selectedAddOns || [])
                                     .map(addon => `${addon.quantity}x ${addon.name}`)
@@ -373,7 +373,7 @@ const ScannedOrderModal = ({ order, isOpen, onClose, onConfirm }) => {
 
                                 return (
                                     <li key={index}>
-                                        {item.quantity || item.qty}x {item.name} 
+                                        {item.quantity || item.qty}x {item.name}
                                         {portionName && portionName.toLowerCase() !== 'full' && ` - ${portionName}`}
                                         {addOns && <span className="text-xs text-primary block pl-4">({addOns})</span>}
                                     </li>
@@ -417,10 +417,10 @@ const StreetVendorDashboardContent = () => {
         const idToken = await user.getIdToken();
         const response = await fetch(endpoint, {
             method,
-            headers: { 
+            headers: {
                 'Authorization': `Bearer ${idToken}`,
                 'Content-Type': 'application/json'
-             },
+            },
             body: JSON.stringify(body)
         });
         if (!response.ok) {
@@ -435,11 +435,11 @@ const StreetVendorDashboardContent = () => {
         try {
             const url = new URL(scannedUrl);
             const orderId = url.searchParams.get('collect_order');
-    
+
             if (!orderId) {
                 throw new Error('This QR code does not contain a valid order ID.');
             }
-    
+
             const orderRef = doc(db, 'orders', orderId);
             const orderSnap = await getDoc(orderRef);
             if (!orderSnap.exists()) {
@@ -447,7 +447,7 @@ const StreetVendorDashboardContent = () => {
             }
 
             if (!vendorId) {
-                 throw new Error('Vendor information not yet loaded. Please try again in a moment.');
+                throw new Error('Vendor information not yet loaded. Please try again in a moment.');
             }
 
             if (orderSnap.data().restaurantId !== vendorId) {
@@ -473,7 +473,7 @@ const StreetVendorDashboardContent = () => {
         const tempOrder = { ...scannedOrder };
         try {
             await handleUpdateStatus(tempOrder.id, 'delivered');
-            setInfoDialog({isOpen: true, title: 'Success', message: `Order for ${tempOrder.customerName} marked as collected!`});
+            setInfoDialog({ isOpen: true, title: 'Success', message: `Order for ${tempOrder.customerName} marked as collected!` });
             setScannedOrder(null);
         } catch (error) {
             setInfoDialog({ isOpen: true, title: "Error", message: `Could not mark order as collected: ${error.message}` });
@@ -482,7 +482,7 @@ const StreetVendorDashboardContent = () => {
 
     useEffect(() => {
         if (isUserLoading || !user) {
-            if(!isUserLoading) setLoading(false);
+            if (!isUserLoading) setLoading(false);
             return;
         }
 
@@ -506,34 +506,38 @@ const StreetVendorDashboardContent = () => {
 
     useEffect(() => {
         if (!vendorId) return;
-        
+
         setLoading(true);
 
         const ordersQuery = query(
-            collection(db, "orders"), 
+            collection(db, "orders"),
             where("restaurantId", "==", vendorId),
             orderBy("orderDate", "desc"),
             limit(50)
         );
-        
+
         const unsubscribe = onSnapshot(ordersQuery, (querySnapshot) => {
             let hasNewPendingOrder = false;
             const fetchedOrders = [];
-            
+
             querySnapshot.docChanges().forEach((change) => {
-                if(change.type === 'added' && change.doc.data().status === 'pending') {
+                if (change.type === 'added' && change.doc.data().status === 'pending') {
                     hasNewPendingOrder = true;
                 }
             });
 
-            if(hasNewPendingOrder) {
+            if (hasNewPendingOrder) {
                 playNotificationSound();
             }
 
             querySnapshot.forEach((doc) => {
-                fetchedOrders.push({ id: doc.id, ...doc.data() });
+                const orderData = { id: doc.id, ...doc.data() };
+                // Filter out awaiting_payment orders (unpaid split bills)
+                if (orderData.status !== 'awaiting_payment') {
+                    fetchedOrders.push(orderData);
+                }
             });
-            
+
             setOrders(fetchedOrders);
             setLoading(false);
         }, (err) => {
@@ -554,11 +558,11 @@ const StreetVendorDashboardContent = () => {
                 rejectionReason: reason,
             });
         } catch (error) {
-             setInfoDialog({isOpen: true, title: "Error", message: error.message});
-             throw error;
+            setInfoDialog({ isOpen: true, title: "Error", message: error.message });
+            throw error;
         }
     };
-    
+
     const handleMarkOutOfStock = async (itemIds) => {
         if (!vendorId || itemIds.length === 0) return;
         try {
@@ -579,7 +583,7 @@ const StreetVendorDashboardContent = () => {
     const handleMarkReady = (orderId) => handleUpdateStatus(orderId, 'Ready');
     const handleMarkCollected = (orderId) => handleUpdateStatus(orderId, 'delivered');
     const handleOpenRejectModal = (order) => setRejectModalState({ isOpen: true, order });
-    
+
     const handleRejectOrder = (orderId, reason) => {
         handleUpdateStatus(orderId, 'rejected', reason);
     };
@@ -588,17 +592,17 @@ const StreetVendorDashboardContent = () => {
         let items = [...orders];
 
         if (date?.from) {
-             const start = startOfDay(date.from);
-             const end = date.to ? endOfDay(date.to) : endOfDay(date.from);
-             items = items.filter(order => {
+            const start = startOfDay(date.from);
+            const end = date.to ? endOfDay(date.to) : endOfDay(date.from);
+            items = items.filter(order => {
                 const orderDate = order.orderDate.toDate();
                 return orderDate >= start && orderDate <= end;
-             });
+            });
         }
-        
+
         if (searchQuery) {
             const lowerQuery = searchQuery.toLowerCase();
-            items = items.filter(order => 
+            items = items.filter(order =>
                 order.dineInToken?.toLowerCase().includes(lowerQuery) ||
                 order.customerName?.toLowerCase().includes(lowerQuery) ||
                 order.customerPhone?.includes(lowerQuery) ||
@@ -613,163 +617,163 @@ const StreetVendorDashboardContent = () => {
     const readyOrders = useMemo(() => filteredOrders.filter(o => o.status === 'Ready'), [filteredOrders]);
     const collectedOrders = useMemo(() => filteredOrders.filter(o => o.status === 'delivered' || o.status === 'picked_up'), [filteredOrders]);
     const cancelledOrders = useMemo(() => filteredOrders.filter(o => o.status === 'rejected'), [filteredOrders]);
-    
-     const handleSetDateFilter = (selectedRange) => {
+
+    const handleSetDateFilter = (selectedRange) => {
         setDate(selectedRange);
         if (selectedRange?.to || !selectedRange?.from) {
             setIsCalendarOpen(false);
         }
     };
 
-  return (
-    <div className="min-h-screen bg-background text-foreground font-body p-4 pb-24">
-        <audio ref={audioRef} src="/notification.mp3" preload="auto" />
-        <InfoDialog 
-            isOpen={infoDialog.isOpen} 
-            onClose={() => setInfoDialog({isOpen: false, title: '', message: ''})} 
-            title={infoDialog.title} 
-            message={infoDialog.message}
-        />
-        <RejectOrderModal
-            isOpen={rejectModalState.isOpen}
-            onClose={() => setRejectModalState({ isOpen: false, order: null })}
-            order={rejectModalState.order}
-            onConfirm={handleRejectOrder}
-            onMarkOutOfStock={handleMarkOutOfStock}
-            showInfoDialog={setInfoDialog}
-        />
+    return (
+        <div className="min-h-screen bg-background text-foreground font-body p-4 pb-24">
+            <audio ref={audioRef} src="/notification.mp3" preload="auto" />
+            <InfoDialog
+                isOpen={infoDialog.isOpen}
+                onClose={() => setInfoDialog({ isOpen: false, title: '', message: '' })}
+                title={infoDialog.title}
+                message={infoDialog.message}
+            />
+            <RejectOrderModal
+                isOpen={rejectModalState.isOpen}
+                onClose={() => setRejectModalState({ isOpen: false, order: null })}
+                order={rejectModalState.order}
+                onConfirm={handleRejectOrder}
+                onMarkOutOfStock={handleMarkOutOfStock}
+                showInfoDialog={setInfoDialog}
+            />
 
-        {isScannerOpen && (
-            <QrScanner onClose={() => setScannerOpen(false)} onScanSuccess={handleScanSuccess} />
-        )}
-        {scannedOrder && <ScannedOrderModal isOpen={!!scannedOrder} onClose={() => setScannedOrder(null)} order={scannedOrder} onConfirm={confirmCollection} />}
-        
-        <header className="flex justify-between items-center mb-6">
-            <h1 className="text-2xl font-bold font-headline">Live Pre-Orders</h1>
-             <Button onClick={() => setScannerOpen(true)} className="bg-primary hover:bg-primary/90 text-primary-foreground hidden md:flex">
-                <QrCode className="mr-2" /> Scan to Collect
-            </Button>
-        </header>
-
-        <div className="flex items-center gap-4 mb-6">
-            <div className="relative flex-grow">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                <input
-                    type="text"
-                    placeholder="Search by token, name, phone..."
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    className="w-full pl-10 pr-4 py-2 h-10 rounded-md bg-input border border-border"
-                />
-            </div>
-            <div className="flex-shrink-0">
-                 <Popover open={isCalendarOpen} onOpenChange={setIsCalendarOpen}>
-                    <PopoverTrigger asChild>
-                      <Button
-                        id="date"
-                        variant={"outline"}
-                        className={cn(
-                          "w-auto justify-start text-left font-normal h-10",
-                          !date && "text-muted-foreground"
-                        )}
-                      >
-                         <CalendarIcon className={cn("h-4 w-4", date && "text-primary")} />
-                         <span className={cn("truncate hidden md:inline-block ml-2", date && "text-primary")}>
-                            {date?.from ? (
-                              date.to ? (
-                                <>
-                                  {format(date.from, "LLL dd")} - {format(date.to, "LLL dd, y")}
-                                </>
-                              ) : (
-                                format(date.from, "LLL dd, y")
-                              )
-                            ) : (
-                              "Filter by Date"
-                            )}
-                         </span>
-                      </Button>
-                    </PopoverTrigger>
-                    <PopoverContent className="w-auto p-0" align="end">
-                       <Calendar
-                        initialFocus
-                        mode="range"
-                        selected={date}
-                        onSelect={handleSetDateFilter}
-                        numberOfMonths={1}
-                        disabled={(d) => d > new Date() || d < new Date("2024-01-01")}
-                      />
-                    </PopoverContent>
-                  </Popover>
-                  {date && <Button variant="ghost" size="sm" onClick={() => setDate(null)} className="ml-2">Clear</Button>}
-            </div>
-        </div>
-        
-        <main>
-            {(loading || isUserLoading || !vendorId) && !error ? (
-                 <div className="text-center py-20 text-muted-foreground">
-                    <Loader2 className="mx-auto animate-spin" size={48} />
-                    <p className="mt-4">Loading your dashboard...</p>
-                 </div>
-            ) : error ? (
-                 <div className="text-center py-20 text-red-500">{error}</div>
-            ) : (
-                <Tabs defaultValue="new_orders" className="w-full">
-                    <TabsList className="grid w-full grid-cols-4">
-                        <TabsTrigger value="new_orders">New ({pendingOrders.length})</TabsTrigger>
-                        <TabsTrigger value="ready">Ready ({readyOrders.length})</TabsTrigger>
-                        <TabsTrigger value="collected">Collected ({collectedOrders.length})</TabsTrigger>
-                        <TabsTrigger value="cancelled">Cancelled ({cancelledOrders.length})</TabsTrigger>
-                    </TabsList>
-                    <TabsContent value="new_orders" className="mt-4">
-                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-                             <AnimatePresence>
-                                {pendingOrders.map(order => (
-                                    <OrderCard key={order.id} order={order} onMarkReady={handleMarkReady} onCancelClick={handleOpenRejectModal} />
-                                ))}
-                            </AnimatePresence>
-                            {pendingOrders.length === 0 && <p className="text-muted-foreground text-center py-10 col-span-full">No new orders for the selected date.</p>}
-                        </div>
-                    </TabsContent>
-                    <TabsContent value="ready" className="mt-4">
-                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-                            <AnimatePresence>
-                                {readyOrders.map(order => (
-                                    <OrderCard key={order.id} order={order} onMarkCollected={handleMarkCollected} />
-                                ))}
-                            </AnimatePresence>
-                            {readyOrders.length === 0 && <p className="text-muted-foreground text-center py-10 col-span-full">No orders are ready for pickup.</p>}
-                        </div>
-                    </TabsContent>
-                    <TabsContent value="collected" className="mt-4">
-                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-                             <AnimatePresence>
-                                {collectedOrders.map(order => (
-                                    <OrderCard key={order.id} order={order} />
-                                ))}
-                            </AnimatePresence>
-                            {collectedOrders.length === 0 && <p className="text-muted-foreground text-center py-10 col-span-full">No orders have been collected for the selected date.</p>}
-                        </div>
-                    </TabsContent>
-                    <TabsContent value="cancelled" className="mt-4">
-                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-                             <AnimatePresence>
-                                {cancelledOrders.map(order => (
-                                    <OrderCard key={order.id} order={order} />
-                                ))}
-                            </AnimatePresence>
-                            {cancelledOrders.length === 0 && <p className="text-muted-foreground text-center py-10 col-span-full">No cancelled orders for the selected date.</p>}
-                        </div>
-                    </TabsContent>
-                </Tabs>
+            {isScannerOpen && (
+                <QrScanner onClose={() => setScannerOpen(false)} onScanSuccess={handleScanSuccess} />
             )}
-        </main>
-        <div className="md:hidden fixed bottom-6 right-6 z-40">
-             <Button onClick={() => setScannerOpen(true)} className="bg-primary hover:bg-primary/90 text-primary-foreground h-16 w-16 rounded-full shadow-lg">
-                <QrCode size={32} />
-            </Button>
+            {scannedOrder && <ScannedOrderModal isOpen={!!scannedOrder} onClose={() => setScannedOrder(null)} order={scannedOrder} onConfirm={confirmCollection} />}
+
+            <header className="flex justify-between items-center mb-6">
+                <h1 className="text-2xl font-bold font-headline">Live Pre-Orders</h1>
+                <Button onClick={() => setScannerOpen(true)} className="bg-primary hover:bg-primary/90 text-primary-foreground hidden md:flex">
+                    <QrCode className="mr-2" /> Scan to Collect
+                </Button>
+            </header>
+
+            <div className="flex items-center gap-4 mb-6">
+                <div className="relative flex-grow">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                    <input
+                        type="text"
+                        placeholder="Search by token, name, phone..."
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                        className="w-full pl-10 pr-4 py-2 h-10 rounded-md bg-input border border-border"
+                    />
+                </div>
+                <div className="flex-shrink-0">
+                    <Popover open={isCalendarOpen} onOpenChange={setIsCalendarOpen}>
+                        <PopoverTrigger asChild>
+                            <Button
+                                id="date"
+                                variant={"outline"}
+                                className={cn(
+                                    "w-auto justify-start text-left font-normal h-10",
+                                    !date && "text-muted-foreground"
+                                )}
+                            >
+                                <CalendarIcon className={cn("h-4 w-4", date && "text-primary")} />
+                                <span className={cn("truncate hidden md:inline-block ml-2", date && "text-primary")}>
+                                    {date?.from ? (
+                                        date.to ? (
+                                            <>
+                                                {format(date.from, "LLL dd")} - {format(date.to, "LLL dd, y")}
+                                            </>
+                                        ) : (
+                                            format(date.from, "LLL dd, y")
+                                        )
+                                    ) : (
+                                        "Filter by Date"
+                                    )}
+                                </span>
+                            </Button>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-auto p-0" align="end">
+                            <Calendar
+                                initialFocus
+                                mode="range"
+                                selected={date}
+                                onSelect={handleSetDateFilter}
+                                numberOfMonths={1}
+                                disabled={(d) => d > new Date() || d < new Date("2024-01-01")}
+                            />
+                        </PopoverContent>
+                    </Popover>
+                    {date && <Button variant="ghost" size="sm" onClick={() => setDate(null)} className="ml-2">Clear</Button>}
+                </div>
+            </div>
+
+            <main>
+                {(loading || isUserLoading || !vendorId) && !error ? (
+                    <div className="text-center py-20 text-muted-foreground">
+                        <Loader2 className="mx-auto animate-spin" size={48} />
+                        <p className="mt-4">Loading your dashboard...</p>
+                    </div>
+                ) : error ? (
+                    <div className="text-center py-20 text-red-500">{error}</div>
+                ) : (
+                    <Tabs defaultValue="new_orders" className="w-full">
+                        <TabsList className="grid w-full grid-cols-4">
+                            <TabsTrigger value="new_orders">New ({pendingOrders.length})</TabsTrigger>
+                            <TabsTrigger value="ready">Ready ({readyOrders.length})</TabsTrigger>
+                            <TabsTrigger value="collected">Collected ({collectedOrders.length})</TabsTrigger>
+                            <TabsTrigger value="cancelled">Cancelled ({cancelledOrders.length})</TabsTrigger>
+                        </TabsList>
+                        <TabsContent value="new_orders" className="mt-4">
+                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                                <AnimatePresence>
+                                    {pendingOrders.map(order => (
+                                        <OrderCard key={order.id} order={order} onMarkReady={handleMarkReady} onCancelClick={handleOpenRejectModal} />
+                                    ))}
+                                </AnimatePresence>
+                                {pendingOrders.length === 0 && <p className="text-muted-foreground text-center py-10 col-span-full">No new orders for the selected date.</p>}
+                            </div>
+                        </TabsContent>
+                        <TabsContent value="ready" className="mt-4">
+                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                                <AnimatePresence>
+                                    {readyOrders.map(order => (
+                                        <OrderCard key={order.id} order={order} onMarkCollected={handleMarkCollected} />
+                                    ))}
+                                </AnimatePresence>
+                                {readyOrders.length === 0 && <p className="text-muted-foreground text-center py-10 col-span-full">No orders are ready for pickup.</p>}
+                            </div>
+                        </TabsContent>
+                        <TabsContent value="collected" className="mt-4">
+                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                                <AnimatePresence>
+                                    {collectedOrders.map(order => (
+                                        <OrderCard key={order.id} order={order} />
+                                    ))}
+                                </AnimatePresence>
+                                {collectedOrders.length === 0 && <p className="text-muted-foreground text-center py-10 col-span-full">No orders have been collected for the selected date.</p>}
+                            </div>
+                        </TabsContent>
+                        <TabsContent value="cancelled" className="mt-4">
+                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                                <AnimatePresence>
+                                    {cancelledOrders.map(order => (
+                                        <OrderCard key={order.id} order={order} />
+                                    ))}
+                                </AnimatePresence>
+                                {cancelledOrders.length === 0 && <p className="text-muted-foreground text-center py-10 col-span-full">No cancelled orders for the selected date.</p>}
+                            </div>
+                        </TabsContent>
+                    </Tabs>
+                )}
+            </main>
+            <div className="md:hidden fixed bottom-6 right-6 z-40">
+                <Button onClick={() => setScannerOpen(true)} className="bg-primary hover:bg-primary/90 text-primary-foreground h-16 w-16 rounded-full shadow-lg">
+                    <QrCode size={32} />
+                </Button>
+            </div>
         </div>
-    </div>
-  );
+    );
 }
 
 const StreetVendorDashboard = () => (
