@@ -149,6 +149,7 @@ export async function POST(req) {
             return NextResponse.json({ message: 'This business does not exist.' }, { status: 404 });
         }
         
+        const businessDoc = await businessRef.get();
         const businessData = businessDoc.data();
 
         // --- Post-paid Dine-In ---
