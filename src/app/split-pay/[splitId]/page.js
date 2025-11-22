@@ -108,9 +108,20 @@ export default function SplitPayPage() {
                 if (docSnap.exists()) {
                     const data = { ...docSnap.data(), id: docSnap.id };
                     setSplitData(data);
-                    setError(`Could not load the payment session. Error: ${err.message}.`);
-                    setLoading(false);
+                    if (data.status === 'completed' && data.trackingToken) {
+                        const redirectUrl = `/order/placed?orderId=${data.baseOrderId}&token=${data.trackingToken}${data.restaurantId ? `&restaurantId=${data.restaurantId}` : ''}`;
+                        setTimeout(() => router.push(redirectUrl), 2500);
+                    }
+                } else {
+                    setError("This payment session could not be found.");
                 }
+                setLoading(false);
+            },
+            (err) => {
+                console.error("Firestore onSnapshot error:", err);
+                setError(`Could not load the payment session. Error: ${err.message}.`);
+                setLoading(false);
+            }
         );
 
         return () => unsubscribe();
