@@ -191,7 +191,7 @@ function OrderTrackingContent() {
                 <LiveTrackingMap {...mapLocations} mapRef={mapRef}/>
                 <Button onClick={handleRecenter} variant="secondary" size="icon" className="absolute top-4 right-4 z-10 h-12 w-12 rounded-full shadow-lg" aria-label="Recenter map"><Navigation /></Button>
             </div>
-            <div className="w-full md:w-1/2 lg:w-1/3 flex-shrink-0 p-4 md:p-8 space-y-6 overflow-y-auto">
+            <motion.div initial={{opacity: 0}} animate={{opacity: 1}} className="w-full md:w-1/2 lg:w-1/3 flex-shrink-0 p-4 md:p-8 space-y-6 overflow-y-auto">
                 <div className="flex justify-between items-center">
                     <div>
                         <p className="text-xs text-muted-foreground">Order from</p>
@@ -218,7 +218,7 @@ function OrderTrackingContent() {
                         className={`text-center bg-card p-6 rounded-lg border-2 ${isRejected ? 'border-destructive' : 'border-primary'}`}
                     >
                          {isRejected ? (
-                            <motion.div initial={{ scale: 0.5 }} animate={{ scale: 1, rotate: [0, -10, 10, -10, 0] }} transition={{ type: 'spring', stiffness: 500, damping: 15 }}>
+                            <motion.div initial={{ scale: 0.5 }} animate={{ scale: 1, rotate: [0, -10, 10, -5, 5, 0] }} transition={{ type: 'spring', stiffness: 500, damping: 15 }}>
                                 <XCircle size={40} className="mx-auto text-destructive" />
                             </motion.div>
                          ) : (
@@ -264,7 +264,14 @@ function OrderTrackingContent() {
                         </div>
                     </div>
                 )}
-            </div>
+                 {!isCompleted && !isRejected && (
+                    <div className="pt-4 text-center">
+                        <Button onClick={handleBackToMenu} variant="ghost" className="text-muted-foreground">
+                           <ArrowLeft className="mr-2 h-4 w-4"/> Back to Menu
+                        </Button>
+                    </div>
+                )}
+            </motion.div>
         </div>
     );
 }
