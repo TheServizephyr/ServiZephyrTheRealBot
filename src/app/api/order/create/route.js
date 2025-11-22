@@ -94,11 +94,9 @@ export async function POST(req) {
                             status: 'pending',
                             timestamp: new Date(),
                         });
-                    } else if (paymentMethod === 'split_bill') {
-                        // Set status to awaiting_payment to hide from dashboard until payment completes
-                        updatePayload.status = 'awaiting_payment';
                     }
-                    // For split_bill, don't add payment details here - webhook will handle it
+                    // For split_bill, don't change status - keep 'pending' so order stays visible
+                    // Webhook will add payment details when split payment completes
 
                     transaction.update(orderRef, updatePayload);
                 });
