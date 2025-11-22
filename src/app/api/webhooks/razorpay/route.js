@@ -262,12 +262,12 @@ export async function POST(req) {
             batch.set(orderRef, {
                 customerName: customerDetails.name,
                 customerId: userId,
-                customerAddress: customerDetails.address?.full,
+                customerAddress: customerDetails.address?.full || null,
                 customerPhone: customerDetails.phone,
                 totalAmount: billDetails.grandTotal,
                 status: 'pending',
                 orderDate: FieldValue.serverTimestamp(),
-                notes: customNotes,
+                notes: customNotes || null,
                 paymentDetails: [{
                     method: 'razorpay',
                     amount: paymentAmount / 100,
