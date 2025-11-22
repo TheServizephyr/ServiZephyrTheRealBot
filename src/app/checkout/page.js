@@ -44,14 +44,17 @@ const SplitBillInterface = ({ totalAmount, onBack, orderDetails, onPlaceOrder })
         try {
             let baseOrderId = orderDetails.firestore_order_id;
 
+            // Only create new order if there's NO order ID or it's a temp ID
             if (!baseOrderId || baseOrderId.startsWith('temp_')) {
-                console.log("[SplitBillInterface] Creating base order before splitting...");
+                console.log("[SplitBillInterface] No existing order. Creating base order before splitting...");
                 const orderResult = await onPlaceOrder('split_bill');
                 if (!orderResult || !orderResult.firestore_order_id) {
                     throw new Error("Failed to create base order.");
                 }
                 baseOrderId = orderResult.firestore_order_id;
                 console.log(`[SplitBillInterface] Base order created with ID: ${baseOrderId}`);
+            } else {
+                console.log(`[SplitBillInterface] Using existing order ID: ${baseOrderId}`);
             }
 
             const payload = {
