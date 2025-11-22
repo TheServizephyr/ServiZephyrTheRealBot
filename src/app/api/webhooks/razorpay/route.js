@@ -116,11 +116,31 @@ const handleSplitPayment = async (firestore, paymentEntity) => {
                     const baseOrderData = baseOrderSnap.data();
                     const trackingToken = baseOrderData.trackingToken;
                     const restaurantId = baseOrderData.restaurantId;
+                    const businessType = baseOrderData.businessType;
 
-                    transaction.update(baseOrderRef, {
+                    // Generate dineInToken for street vendors
+                    let dineInToken = null;
+                    if (businessType === 'street-vendor') {
+                        const vendorRef = firestore.collection('street_vendors').doc(restaurantId);
+                        const vendorDoc = await transaction.get(vendorRef);
+                        if (vendorDoc.exists) {
+                            const vendorData = vendorDoc.data();
+                            const lastToken = vendorData.lastOrderToken || 0;
+                            const newTokenNumber = lastToken + 1;
+                            const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+                            dineInToken = `${String(newTokenNumber)}-${alphabet[Math.floor(Math.random() * 26)]}${alphabet[Math.floor(Math.random() * 26)]}`;
+                            transaction.update(vendorRef, { lastOrderToken: newTokenNumber });
+                        }
+                    }
+
+                    const orderUpdate = {
                         paymentDetails: FieldValue.arrayUnion({ method: 'razorpay_split', amount: paymentEntity.amount / 100, razorpay_payment_id: paymentEntity.id, timestamp: new Date(), status: 'paid' }),
                         status: 'pending'
-                    });
+                    };
+                    if (dineInToken) {
+                        orderUpdate.dineInToken = dineInToken;
+                    }
+                    transaction.update(baseOrderRef, orderUpdate);
 
                     if (trackingToken) {
                         updateData.trackingToken = trackingToken;

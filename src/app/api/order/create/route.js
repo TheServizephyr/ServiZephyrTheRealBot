@@ -336,15 +336,15 @@ export async function POST(req) {
                 subtotal: subtotal || 0,
                 coupon: coupon || null,
                 loyaltyDiscount: loyaltyDiscount || 0,
-                discount: 0, // Will be calculated if needed
+                discount: 0,
                 cgst: cgst || 0,
                 sgst: sgst || 0,
                 deliveryCharge: deliveryCharge || 0,
                 totalAmount: grandTotal,
-                status: 'pending',
+                status: 'awaiting_payment', // Hidden from dashboard until payment completes
                 orderDate: FieldValue.serverTimestamp(),
                 notes: notes || null,
-                paymentDetails: [], // No payment yet
+                paymentDetails: [],
                 trackingToken: trackingToken,
             };
 
