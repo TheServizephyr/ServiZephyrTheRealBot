@@ -189,34 +189,19 @@ export async function POST(req) {
                 headers: { 'Authorization': `Basic ${credentials}` }
             });
 
-            const firestoreOrderId = rzpOrder.notes?.firestore_order_id;
-            
-            if (!firestoreOrderId) {
-                console.error(`[Webhook RZP] CRITICAL: firestore_order_id not found in Razorpay Order Notes for RZP Order ${razorpayOrderId}`);
-                return NextResponse.json({ status: 'error', message: 'Servizephyr Order ID not found in Razorpay notes.' }, { status: 400 });
-            }
-            
-            const orderRef = firestore.collection('orders').doc(firestoreOrderId);
-            const orderDoc = await orderRef.get();
-
-            if (!orderDoc.exists) {
-                console.error(`[Webhook RZP] CRITICAL: Firestore order document ${firestoreOrderId} not found.`);
-                return NextResponse.json({ status: 'error', message: 'Order document does not exist in Firestore.' }, { status: 404 });
-            }
-            
-            const payloadString = rzpOrder.notes?.servizephyr_payload;
-
-            // This is now an add-on payment to an existing order
-            if (!payloadString) {
-                console.log(`[Webhook RZP] No servizephyr_payload found. Assuming add-on payment for existing order ${firestoreOrderId}.`);
+            // If servizephyr_payload is missing, it's an add-on payment
+            if (!rzpOrder.notes?.servizephyr_payload) {
+                const orderRef = firestore.collection('orders').doc(rzpOrder.receipt);
+                console.log(`[Webhook RZP] No servizephyr_payload. Assuming add-on payment for existing order ${rzpOrder.receipt}.`);
                 await orderRef.update({
-                    paymentDetails: FieldValue.arrayUnion({ method: 'razorpay', amount: paymentAmount / 100, timestamp: FieldValue.serverTimestamp(), razorpay_payment_id: paymentId, status: 'paid' })
+                    paymentDetails: FieldValue.arrayUnion({ method: 'razorpay', amount: paymentAmount / 100, timestamp: new Date(), razorpay_payment_id: paymentId, status: 'paid' })
                 });
                 return NextResponse.json({ status: 'ok', message: 'Add-on payment processed.' });
             }
             
-            // This is the completion of a new order
+            const payloadString = rzpOrder.notes.servizephyr_payload;
             const { 
+                order_id: firestoreOrderId,
                 user_id: userId, restaurant_id: restaurantId, business_type: businessType,
                 customer_details: customerDetailsString, items: itemsString, bill_details: billDetailsString, notes: customNotes 
             } = JSON.parse(payloadString);
@@ -227,6 +212,7 @@ export async function POST(req) {
 
             const isStreetVendorOrder = billDetails.deliveryType === 'street-vendor-pre-order';
             const batch = firestore.batch();
+            const orderRef = firestore.collection('orders').doc(firestoreOrderId);
 
             if (!isStreetVendorOrder && customerDetails.phone) {
                 const usersRef = firestore.collection('users');
@@ -268,13 +254,12 @@ export async function POST(req) {
                     const lastToken = vendorData.lastOrderToken || 0;
                     const newTokenNumber = lastToken + 1;
                     const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
-                    // THE FIX: Do not pad with leading zeros
-                    dineInToken = `${newTokenNumber}-${alphabet[Math.floor(Math.random() * 26)]}${alphabet[Math.floor(Math.random() * 26)]}`;
+                    dineInToken = `${String(newTokenNumber)}-${alphabet[Math.floor(Math.random() * 26)]}${alphabet[Math.floor(Math.random() * 26)]}`;
                     batch.update(vendorRef, { lastOrderToken: newTokenNumber });
                 }
             }
 
-            const fullOrderData = {
+            batch.set(orderRef, {
                 customerName: customerDetails.name,
                 customerId: userId,
                 customerAddress: customerDetails.address?.full,
@@ -295,6 +280,7 @@ export async function POST(req) {
                 deliveryCharge: billDetails.deliveryCharge,
                 totalAmount: billDetails.grandTotal,
                 status: 'pending',
+                orderDate: FieldValue.serverTimestamp(),
                 notes: customNotes,
                 paymentDetails: [{
                     method: 'razorpay',
@@ -304,10 +290,8 @@ export async function POST(req) {
                     timestamp: FieldValue.serverTimestamp(),
                     status: 'paid'
                 }]
-            };
-
-            batch.update(orderRef, fullOrderData);
-            console.log(`[Webhook RZP] Successfully prepared update for order ${orderRef.id} from RZP Order ${razorpayOrderId}.`);
+            });
+            console.log(`[Webhook RZP] Successfully prepared creation for order ${orderRef.id} from RZP Order ${razorpayOrderId}.`);
 
             await batch.commit();
             console.log(`[Webhook RZP] Batch committed successfully.`);

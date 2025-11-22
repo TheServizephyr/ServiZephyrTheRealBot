@@ -80,6 +80,15 @@ export async function POST(req) {
                             notes: `Added ${items.length} new item(s).`
                         })
                     };
+                    
+                    if (paymentMethod === 'cod') {
+                        updatePayload.paymentDetails = FieldValue.arrayUnion({
+                            method: 'cod',
+                            amount: grandTotal,
+                            status: 'pending',
+                            timestamp: new Date(),
+                        });
+                    }
 
                     transaction.update(orderRef, updatePayload);
                 });
@@ -140,7 +149,6 @@ export async function POST(req) {
             return NextResponse.json({ message: 'This business does not exist.' }, { status: 404 });
         }
         
-        const businessDoc = await businessRef.get();
         const businessData = businessDoc.data();
 
         // --- Post-paid Dine-In ---
@@ -401,7 +409,7 @@ export async function POST(req) {
                     const randomChar1 = alphabet[Math.floor(Math.random() * alphabet.length)];
                     const randomChar2 = alphabet[Math.floor(Math.random() * alphabet.length)];
                     
-                    dineInToken = `${String(newTokenNumber).padStart(4, '0')}-${randomChar1}${randomChar2}`;
+                    dineInToken = `${String(newTokenNumber)}-${randomChar1}${randomChar2}`;
                     
                     batch.update(vendorRef, { lastOrderToken: newTokenNumber });
                     console.log(`[API /order/create] Generated Street Vendor Token: ${dineInToken}`);
@@ -431,8 +439,13 @@ export async function POST(req) {
             status: 'pending', // Always start as pending
             orderDate: FieldValue.serverTimestamp(),
             notes: notes || null,
+            paymentDetails: [{
+                method: 'cod',
+                amount: grandTotal,
+                status: 'pending',
+                timestamp: FieldValue.serverTimestamp()
+            }],
             trackingToken: trackingToken,
-            paymentDetails: { method: paymentMethod }
         };
         
         batch.set(newOrderRef, finalOrderData);
