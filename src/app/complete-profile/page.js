@@ -280,19 +280,19 @@ export default function CompleteProfile() {
             </div>
             
             <div className="space-y-3 pt-4 border-t border-border">
-                <h4 className="font-semibold text-foreground">Terms of Service & Vendor Policy</h4>
+                <h4 className="font-semibold text-foreground">Terms of Service &amp; Vendor Policy</h4>
                 <div className="h-40 overflow-y-auto p-3 bg-muted/50 border border-border rounded-md text-xs text-muted-foreground space-y-2">
-                    <p><strong>1. Our Role:</strong> ServiZephyr provides a technology platform to connect you (the "Vendor") with customers. We are responsible for the digital infrastructure, including the WhatsApp bot, order management dashboard, and payment processing integration. We are not responsible for food/product quality, preparation, or delivery.</p>
+                    <p><strong>1. Our Role:</strong> ServiZephyr provides a technology platform to connect you (the "Vendor") with customers. We are responsible for the digital infrastructure, including the order management dashboard and payment processing integration. We are not responsible for food quality, preparation, or delivery.</p>
                     <p><strong>2. Vendor Responsibilities:</strong> You are solely responsible for: a) Keeping your menu, pricing, and item availability updated. b) The quality, safety, and preparation of all items sold. c) Fulfilling orders accepted through the platform in a timely manner. d) Complying with all local laws and regulations, including food safety standards (FSSAI) and taxation (GST).</p>
-                    <p><strong>3. Payments & Payouts:</strong> For online payments, funds will be settled to your linked bank account via our payment partner (Razorpay) after deducting applicable transaction fees. The payout schedule will be as per the payment partner's policy (typically T+2 working days). We are not liable for any delays from the bank's end.</p>
+                    <p><strong>3. Payments &amp; Payouts:</strong> For online payments, funds will be settled to your linked bank account via our payment partner (Razorpay) after deducting applicable transaction fees. The payout schedule will be as per the payment partner's policy (typically T+2 working days). We are not liable for any delays from the bank's end.</p>
                     <p><strong>4. Data Usage:</strong> You own your customer data. ServiZephyr will not sell or share your customer list with third parties. We will use anonymized, aggregate data to improve our services. By using our platform, you agree to our Privacy Policy.</p>
-                    <p><strong>5. Account Termination & Fraud:</strong> We reserve the right to suspend or permanently terminate your account without notice if we detect fraudulent activities, including but not limited to: creating fake orders, manipulating prices, providing false information, or receiving excessive customer complaints about quality or service. Engaging in any activity that harms the platform's reputation or its users will lead to immediate termination.</p>
+                    <p><strong>5. Account Termination &amp; Fraud:</strong> We reserve the right to suspend or permanently terminate your account without notice if we detect fraudulent activities, including but not limited to: creating fake orders, manipulating prices, providing false information, or receiving excessive customer complaints about quality or service. Engaging in any activity that harms the platform's reputation or its users will lead to immediate termination.</p>
                     <p><strong>6. Service Fees:</strong> You agree to the subscription fees as outlined in our pricing plan. Failure to pay subscription fees may result in the suspension of your services.</p>
                 </div>
                  <div className="flex items-center space-x-2">
                     <Checkbox id="terms" checked={termsAccepted} onCheckedChange={setTermsAccepted} />
                     <label htmlFor="terms" className="text-sm font-medium leading-none text-muted-foreground peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
-                        I have read and agree to the Terms of Service & Vendor Policy.
+                        I have read and agree to the Terms of Service &amp; Vendor Policy.
                     </label>
                 </div>
             </div>
@@ -425,3 +425,5 @@ export default function CompleteProfile() {
     </>
   );
 }
+
+    
