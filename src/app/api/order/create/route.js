@@ -398,27 +398,20 @@ export async function POST(req) {
         let dineInToken = null;
         if (isStreetVendorOrder) {
             console.log(`[API /order/create] Generating token for street vendor order.`);
-            const vendorRef = firestore.collection('street_vendors').doc(restaurantId);
             try {
-                const vendorDoc = await vendorRef.get(); // Not in transaction, as it's a read before write
-                if (vendorDoc.exists) {
-                    const vendorData = vendorDoc.data();
-                    const lastToken = vendorData.lastOrderToken || 0;
-                    const newTokenNumber = lastToken + 1;
-                    
-                    const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
-                    const randomChar1 = alphabet[Math.floor(Math.random() * alphabet.length)];
-                    const randomChar2 = alphabet[Math.floor(Math.random() * alphabet.length)];
-                    
-                    dineInToken = `${String(newTokenNumber)}-${randomChar1}${randomChar2}`;
-                    
-                    batch.update(vendorRef, { lastOrderToken: newTokenNumber });
-                    console.log(`[API /order/create] Generated Street Vendor Token: ${dineInToken}`);
-                } else {
-                    console.warn(`[API /order/create] Street vendor document ${restaurantId} not found, cannot generate token.`);
-                }
+                const lastToken = businessData.lastOrderToken || 0;
+                const newTokenNumber = lastToken + 1;
+                
+                const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+                const randomChar1 = alphabet[Math.floor(Math.random() * alphabet.length)];
+                const randomChar2 = alphabet[Math.floor(Math.random() * alphabet.length)];
+                
+                dineInToken = `${String(newTokenNumber)}-${randomChar1}${randomChar2}`;
+                
+                batch.update(businessRef, { lastOrderToken: newTokenNumber });
+                console.log(`[API /order/create] Generated Street Vendor Token: ${dineInToken}`);
             } catch (e) {
-                console.error(`[API /order/create] Error fetching street vendor doc to generate token:`, e);
+                console.error(`[API /order/create] Error generating street vendor token:`, e);
             }
         }
         
@@ -444,7 +437,7 @@ export async function POST(req) {
                 method: 'cod',
                 amount: grandTotal,
                 status: 'pending',
-                timestamp: FieldValue.serverTimestamp()
+                timestamp: new Date()
             }],
             trackingToken: trackingToken,
         };
