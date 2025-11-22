@@ -115,6 +115,7 @@ const handleSplitPayment = async (firestore, paymentEntity) => {
                     console.log(`[Webhook RZP] Base order ${splitData.baseOrderId} found. Updating its status.`);
                     const baseOrderData = baseOrderSnap.data();
                     const trackingToken = baseOrderData.trackingToken;
+                    const restaurantId = baseOrderData.restaurantId;
 
                     transaction.update(baseOrderRef, {
                         paymentDetails: FieldValue.arrayUnion({ method: 'razorpay_split', amount: paymentEntity.amount / 100, razorpay_payment_id: paymentEntity.id, timestamp: new Date(), status: 'paid' }),
@@ -123,6 +124,9 @@ const handleSplitPayment = async (firestore, paymentEntity) => {
 
                     if (trackingToken) {
                         updateData.trackingToken = trackingToken;
+                    }
+                    if (restaurantId) {
+                        updateData.restaurantId = restaurantId;
                     }
                 } else {
                     console.warn(`[Webhook RZP] Base order ${splitData.baseOrderId} not found for split payment. Cannot update status.`);
