@@ -198,140 +198,103 @@ export async function POST(req) {
                 });
                 return NextResponse.json({ status: 'ok', message: 'Add-on payment processed.' });
             }
+            const unclaimedUserRef = firestore.collection('unclaimed_profiles').doc(customerDetails.phone);
+            batch.set(unclaimedUserRef, {
+                name: customerDetails.name, phone: customerDetails.phone, addresses: [customerDetails.address],
+                createdAt: FieldValue.serverTimestamp(),
+                orderedFrom: FieldValue.arrayUnion({ restaurantId: restaurantId, restaurantName: rzpOrder.notes?.restaurantName || 'Unknown', businessType: businessType })
+            }, { merge: true });
+        }
 
-            const payloadString = rzpOrder.notes.servizephyr_payload;
-            const {
-                order_id: firestoreOrderId,
-                user_id: userId, restaurant_id: restaurantId, business_type: businessType,
-                customer_details: customerDetailsString, items: itemsString, bill_details: billDetailsString, notes: customNotes
-            } = JSON.parse(payloadString);
+        const subtotal = billDetails.subtotal || 0;
+        const loyaltyDiscount = billDetails.loyaltyDiscount || 0;
+        const pointsEarned = Math.floor(subtotal / 100) * 10;
+        const pointsSpent = loyaltyDiscount > 0 ? loyaltyDiscount / 0.5 : 0;
 
-            const customerDetails = JSON.parse(customerDetailsString);
-            const orderItems = JSON.parse(itemsString);
-            const billDetails = JSON.parse(billDetailsString);
+        const businessCollectionNameForCustomer = businessType === 'shop' ? 'shops' : 'restaurants';
+        const restaurantCustomerRef = firestore.collection(businessCollectionNameForCustomer).doc(restaurantId).collection('customers').doc(userId);
 
-            const isStreetVendorOrder = billDetails.deliveryType === 'street-vendor-pre-order';
-            const batch = firestore.batch();
-            const orderRef = firestore.collection('orders').doc(firestoreOrderId);
-
-            if (!isStreetVendorOrder && customerDetails.phone) {
-                const usersRef = firestore.collection('users');
-                const existingUserQuery = await usersRef.where('phone', '==', customerDetails.phone).limit(1).get();
-                const isNewUser = existingUserQuery.empty;
-
-                if (isNewUser) {
-                    const unclaimedUserRef = firestore.collection('unclaimed_profiles').doc(customerDetails.phone);
-                    batch.set(unclaimedUserRef, {
-                        name: customerDetails.name, phone: customerDetails.phone, addresses: [customerDetails.address],
-                        createdAt: FieldValue.serverTimestamp(),
-                        orderedFrom: FieldValue.arrayUnion({ restaurantId: restaurantId, restaurantName: rzpOrder.notes?.restaurantName || 'Unknown', businessType: businessType })
-                    }, { merge: true });
-                }
-
-                const subtotal = billDetails.subtotal || 0;
-                const loyaltyDiscount = billDetails.loyaltyDiscount || 0;
-                const pointsEarned = Math.floor(subtotal / 100) * 10;
-                const pointsSpent = loyaltyDiscount > 0 ? loyaltyDiscount / 0.5 : 0;
-
-                const businessCollectionNameForCustomer = businessType === 'shop' ? 'shops' : 'restaurants';
-                const restaurantCustomerRef = firestore.collection(businessCollectionNameForCustomer).doc(restaurantId).collection('customers').doc(userId);
-
-                batch.set(restaurantCustomerRef, {
-                    name: customerDetails.name, phone: customerDetails.phone, status: isNewUser ? 'unclaimed' : 'verified',
-                    totalSpend: FieldValue.increment(subtotal),
-                    loyaltyPoints: FieldValue.increment(pointsEarned - pointsSpent),
-                    lastOrderDate: FieldValue.serverTimestamp(),
-                    totalOrders: FieldValue.increment(1),
-                }, { merge: true });
-            }
+        batch.set(restaurantCustomerRef, {
+            name: customerDetails.name, phone: customerDetails.phone, status: isNewUser ? 'unclaimed' : 'verified',
+            totalSpend: FieldValue.increment(subtotal),
+            loyaltyPoints: FieldValue.increment(pointsEarned - pointsSpent),
+            lastOrderDate: FieldValue.serverTimestamp(),
+            totalOrders: FieldValue.increment(1),
+        }, { merge: true });
+    }
 
             let dineInToken = null;
-            if (isStreetVendorOrder) {
-                const vendorRef = firestore.collection('street_vendors').doc(restaurantId);
-                const vendorDoc = await vendorRef.get();
-                if (vendorDoc.exists) {
-                    const vendorData = vendorDoc.data();
-                    const lastToken = vendorData.lastOrderToken || 0;
-                    const newTokenNumber = lastToken + 1;
-                    const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
-                    dineInToken = `${String(newTokenNumber)}-${alphabet[Math.floor(Math.random() * 26)]}${alphabet[Math.floor(Math.random() * 26)]}`;
-                    batch.update(vendorRef, { lastOrderToken: newTokenNumber });
-                }
-            }
+    if (isStreetVendorOrder) {
+        const vendorRef = firestore.collection('street_vendors').doc(restaurantId);
+        const vendorDoc = await vendorRef.get();
+        if (vendorDoc.exists) {
+            const vendorData = vendorDoc.data();
+            const lastToken = vendorData.lastOrderToken || 0;
+            const newTokenNumber = lastToken + 1;
+            const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+            dineInToken = `${String(newTokenNumber)}-${alphabet[Math.floor(Math.random() * 26)]}${alphabet[Math.floor(Math.random() * 26)]}`;
+            batch.update(vendorRef, { lastOrderToken: newTokenNumber });
+        }
+    }
 
-            batch.set(orderRef, {
-                customerName: customerDetails.name,
-                customerId: userId,
-                customerAddress: customerDetails.address?.full,
-                customerPhone: customerDetails.phone,
-                restaurantId: restaurantId,
-                businessType: businessType,
-                deliveryType: billDetails.deliveryType,
-                pickupTime: billDetails.pickupTime,
-                tipAmount: billDetails.tipAmount,
-                items: orderItems,
-                dineInToken: dineInToken,
-                trackingToken: await generateSecureToken(firestore, customerDetails.phone),
-                subtotal: billDetails.subtotal,
-                coupon: billDetails.coupon,
-                loyaltyDiscount: billDetails.loyaltyDiscount,
-                discount: (billDetails.coupon?.discount || 0) + (billDetails.loyaltyDiscount || 0),
-                cgst: billDetails.cgst,
-                sgst: billDetails.sgst,
-                deliveryCharge: billDetails.deliveryCharge,
-                totalAmount: billDetails.grandTotal,
-                status: 'pending',
-                orderDate: FieldValue.serverTimestamp(),
-                notes: customNotes,
-                paymentDetails: [{
-                    method: 'razorpay',
-                    amount: paymentAmount / 100,
-                    razorpay_payment_id: paymentId,
-                    razorpay_order_id: razorpayOrderId,
-                    timestamp: new Date(),
-                    status: 'paid'
-                }]
-            });
-            console.log(`[Webhook RZP] Successfully prepared creation for order ${orderRef.id} from RZP Order ${razorpayOrderId}.`);
+    batch.set(orderRef, {
+        customerName: customerDetails.name,
+        customerId: userId,
+        customerAddress: customerDetails.address?.full,
+        customerPhone: customerDetails.phone,
+        totalAmount: billDetails.grandTotal,
+        status: 'pending',
+        orderDate: FieldValue.serverTimestamp(),
+        notes: customNotes,
+        paymentDetails: [{
+            method: 'razorpay',
+            amount: paymentAmount / 100,
+            razorpay_payment_id: paymentId,
+            razorpay_order_id: razorpayOrderId,
+            timestamp: new Date(),
+            status: 'paid'
+        }]
+    });
+    console.log(`[Webhook RZP] Successfully prepared creation for order ${orderRef.id} from RZP Order ${razorpayOrderId}.`);
 
-            await batch.commit();
-            console.log(`[Webhook RZP] Batch committed successfully.`);
+    await batch.commit();
+    console.log(`[Webhook RZP] Batch committed successfully.`);
 
-            const collectionForBusinessLookup = businessType === 'street-vendor' ? 'street_vendors' : (businessType === 'shop' ? 'shops' : 'restaurants');
-            const businessDoc = await firestore.collection(collectionForBusinessLookup).doc(restaurantId).get();
+    const collectionForBusinessLookup = businessType === 'street-vendor' ? 'street_vendors' : (businessType === 'shop' ? 'shops' : 'restaurants');
+    const businessDoc = await firestore.collection(collectionForBusinessLookup).doc(restaurantId).get();
 
-            if (businessDoc.exists) {
-                const businessData = businessDoc.data();
-                await orderRef.update({ restaurantName: businessData.name || "Unnamed Business" });
+    if (businessDoc.exists) {
+        const businessData = businessDoc.data();
+        await orderRef.update({ restaurantName: businessData.name || "Unnamed Business" });
 
-                const linkedAccountId = businessData.razorpayAccountId;
-                if (linkedAccountId && linkedAccountId.startsWith('acc_')) {
-                    const transferPayload = JSON.stringify({ transfers: [{ account: linkedAccountId, amount: paymentAmount, currency: "INR" }] });
-                    const transferOptions = {
-                        hostname: 'api.razorpay.com', port: 443, path: `/v1/payments/${paymentId}/transfers`, method: 'POST',
-                        headers: { 'Content-Type': 'application/json', 'Authorization': `Basic ${credentials}` }
-                    };
-                    try {
-                        await makeRazorpayRequest(transferOptions, transferPayload);
-                    } catch (transferError) {
-                        console.error(`[Webhook RZP] CRITICAL: Failed to transfer payment ${paymentId}. Error:`, JSON.stringify(transferError, null, 2));
-                    }
-                }
-
-                if (businessData.ownerPhone && businessData.botPhoneNumberId) {
-                    await sendNewOrderToOwner({
-                        ownerPhone: businessData.ownerPhone, botPhoneNumberId: businessData.botPhoneNumberId,
-                        customerName: customerDetails.name, totalAmount: billDetails.grandTotal,
-                        orderId: orderRef.id, restaurantName: businessData.name
-                    });
-                }
+        const linkedAccountId = businessData.razorpayAccountId;
+        if (linkedAccountId && linkedAccountId.startsWith('acc_')) {
+            const transferPayload = JSON.stringify({ transfers: [{ account: linkedAccountId, amount: paymentAmount, currency: "INR" }] });
+            const transferOptions = {
+                hostname: 'api.razorpay.com', port: 443, path: `/v1/payments/${paymentId}/transfers`, method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Basic ${credentials}` }
+            };
+            try {
+                await makeRazorpayRequest(transferOptions, transferPayload);
+            } catch (transferError) {
+                console.error(`[Webhook RZP] CRITICAL: Failed to transfer payment ${paymentId}. Error:`, JSON.stringify(transferError, null, 2));
             }
         }
 
-        return NextResponse.json({ status: 'ok' });
+        if (businessData.ownerPhone && businessData.botPhoneNumberId) {
+            await sendNewOrderToOwner({
+                ownerPhone: businessData.ownerPhone, botPhoneNumberId: businessData.botPhoneNumberId,
+                customerName: customerDetails.name, totalAmount: billDetails.grandTotal,
+                orderId: orderRef.id, restaurantName: businessData.name
+            });
+        }
+    }
+}
+
+return NextResponse.json({ status: 'ok' });
 
     } catch (error) {
-        console.error('[Webhook RZP] CRITICAL Error processing webhook:', error);
-        return NextResponse.json({ status: 'error', message: 'Internal server error' }, { status: 200 });
-    }
+    console.error('[Webhook RZP] CRITICAL Error processing webhook:', error);
+    return NextResponse.json({ status: 'error', message: 'Internal server error' }, { status: 200 });
+}
 }
