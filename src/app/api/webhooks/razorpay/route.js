@@ -137,6 +137,28 @@ const handleSplitPayment = async (firestore, paymentEntity) => {
                         paymentDetails: FieldValue.arrayUnion({ method: 'razorpay', amount: paymentEntity.amount / 100, razorpay_payment_id: paymentEntity.id, timestamp: new Date(), status: 'paid' }),
                         status: 'pending'
                     };
+
+                    // Add pending items if this is an add-on order
+                    if (splitData.pendingItems && splitData.pendingItems.length > 0) {
+                        console.log(`[Webhook RZP] Adding ${splitData.pendingItems.length} pending items to order ${splitData.baseOrderId}`);
+                        const newItems = [...baseOrderData.items, ...splitData.pendingItems];
+                        const newSubtotal = baseOrderData.subtotal + (splitData.pendingSubtotal || 0);
+                        const newCgst = baseOrderData.cgst + (splitData.pendingCgst || 0);
+                        const newSgst = baseOrderData.sgst + (splitData.pendingSgst || 0);
+                        const newGrandTotal = baseOrderData.totalAmount + (splitData.pendingSubtotal + splitData.pendingCgst + splitData.pendingSgst);
+
+                        orderUpdate.items = newItems;
+                        orderUpdate.subtotal = newSubtotal;
+                        orderUpdate.cgst = newCgst;
+                        orderUpdate.sgst = newSgst;
+                        orderUpdate.totalAmount = newGrandTotal;
+                        orderUpdate.statusHistory = FieldValue.arrayUnion({
+                            status: 'updated',
+                            timestamp: new Date(),
+                            notes: `Added ${splitData.pendingItems.length} item(s) via split payment`
+                        });
+                    }
+
                     if (dineInToken) {
                         orderUpdate.dineInToken = dineInToken;
                     }

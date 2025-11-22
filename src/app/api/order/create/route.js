@@ -94,26 +94,31 @@ export async function POST(req) {
                             status: 'pending',
                             timestamp: new Date(),
                         });
+
+                        // For COD, add items immediately
+                        transaction.update(orderRef, updatePayload);
                     }
-                    // For split_bill, don't change status - keep 'pending' so order stays visible
-                    // Webhook will add payment details when split payment completes
-
-                    transaction.update(orderRef, updatePayload);
+                    // For split_bill, DON'T add items here - webhook will handle it after payment
                 });
-                console.log(`[API /order/create] ADD-ON FLOW: Transaction committed successfully for order ${existingOrderId}.`);
 
-                // For split_bill, return the existing order's tracking token
                 if (paymentMethod === 'split_bill') {
-                    console.log(`[API /order/create] ADD-ON FLOW: Fetching updated order data for split_bill response...`);
+                    // Items will be added by webhook after payment confirmation
+                    console.log(`[API /order/create] ADD-ON FLOW: Split bill - items will be added after payment`);
                     const orderDoc = await firestore.collection('orders').doc(existingOrderId).get();
                     const orderData = orderDoc.data();
-                    console.log(`[API /order/create] ADD-ON FLOW: Updated order data - items count: ${orderData.items?.length}, totalAmount: ${orderData.totalAmount}`);
                     return NextResponse.json({
-                        message: 'Items added to existing order for split payment.',
+                        message: 'Items will be added after payment confirmation.',
                         firestore_order_id: existingOrderId,
                         token: orderData.trackingToken,
+                        pendingItems: items, // Return pending items for split session
+                        pendingSubtotal: subtotal,
+                        pendingCgst: cgst,
+                        pendingSgst: sgst,
+                        pendingTotal: grandTotal,
                     }, { status: 200 });
                 }
+
+                console.log(`[API /order/create] ADD-ON FLOW: Transaction committed successfully for order ${existingOrderId}.`);
 
                 return NextResponse.json({
                     message: 'Items added to your existing order successfully!',

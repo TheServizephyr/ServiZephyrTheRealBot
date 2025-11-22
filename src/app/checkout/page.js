@@ -56,6 +56,11 @@ const SplitBillInterface = ({ totalAmount, onBack, orderDetails, onPlaceOrder })
                 splitCount,
                 baseOrderId: baseOrderId,
                 restaurantId: orderDetails.restaurantId,
+                // Pass pending items if this is an add-on order
+                pendingItems: orderResult.pendingItems || [],
+                pendingSubtotal: orderResult.pendingSubtotal || 0,
+                pendingCgst: orderResult.pendingCgst || 0,
+                pendingSgst: orderResult.pendingSgst || 0,
             };
             console.log("[SplitBillInterface] Calling /api/payment/create-order with payload:", payload);
 

@@ -72,7 +72,12 @@ export async function POST(req) {
                 shares,
                 status: 'pending',
                 createdAt: FieldValue.serverTimestamp(),
-                isPublic: true
+                isPublic: true,
+                // Store pending items for add-on orders (will be added after payment)
+                pendingItems: body.pendingItems || [],
+                pendingSubtotal: body.pendingSubtotal || 0,
+                pendingCgst: body.pendingCgst || 0,
+                pendingSgst: body.pendingSgst || 0,
             };
             console.log("[API /payment/create-order] Saving split session to Firestore:", JSON.stringify(firestorePayload, null, 2));
             await splitRef.set(firestorePayload);
