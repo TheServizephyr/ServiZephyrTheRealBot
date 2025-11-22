@@ -1,4 +1,5 @@
 
+
 import { getFirestore, FieldValue, GeoPoint } from '@/lib/firebase-admin';
 import { NextResponse } from 'next/server';
 import Razorpay from 'razorpay';
@@ -70,7 +71,7 @@ export async function POST(req) {
                     const newPaymentDetail = {
                         method: paymentMethod,
                         amount: grandTotal,
-                        timestamp: FieldValue.serverTimestamp(),
+                        timestamp: new Date(), // FIX: Use new Date() instead of FieldValue.serverTimestamp()
                         status: paymentMethod === 'cod' ? 'pending' : 'awaiting_confirmation'
                     };
 
@@ -149,33 +150,6 @@ export async function POST(req) {
         
         const businessData = businessDoc.data();
 
-        // --- Post-paid Dine-In ---
-        if (deliveryType === 'dine-in' && businessData.dineInModel === 'post-paid') {
-            console.log("[API /order/create] Handling post-paid dine-in order.");
-            const newOrderRef = firestore.collection('orders').doc();
-            const trackingToken = await generateSecureToken(firestore, `dine-in-${newOrderRef.id}`);
-
-            await newOrderRef.set({
-                restaurantId, businessType, tableId,
-                items: items, notes: notes || null,
-                subtotal, cgst, sgst, totalAmount: grandTotal,
-                deliveryType,
-                pax_count: pax_count, tab_name: tab_name,
-                status: 'pending', 
-                dineInTabId: dineInTabId || null,
-                orderDate: FieldValue.serverTimestamp(),
-                trackingToken: trackingToken,
-            });
-            
-             console.log(`[API /order/create] Post-paid dine-in order created with ID: ${newOrderRef.id}`);
-            return NextResponse.json({ 
-                message: "Order placed. Awaiting WhatsApp confirmation.",
-                order_id: newOrderRef.id,
-                whatsappNumber: businessData.botDisplayNumber || businessData.ownerPhone,
-                token: trackingToken
-            }, { status: 200 });
-        }
-        
         // --- ONLINE PAYMENT FLOW (Razorpay) ---
         if (paymentMethod === 'razorpay') {
             console.log("[API /order/create] Razorpay flow initiated.");

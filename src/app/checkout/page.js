@@ -177,10 +177,15 @@ const CheckoutPageInternal = () => {
                 }
             }
             
-            if (isAnonymousPreOrder || (deliveryType === 'delivery' && !isLoggedInUser)) {
-                setDetailsConfirmed(false);
+            // --- FIX: Logic to determine if details form is needed ---
+            if (activeOrderId) {
+                setDetailsConfirmed(true); // Don't ask for name on add-on orders
+            } else if (deliveryType === 'street-vendor-pre-order') {
+                setDetailsConfirmed(false); // ALWAYS ask for name for new pre-orders
+            } else if (deliveryType === 'delivery' && !isLoggedInUser) {
+                setDetailsConfirmed(false); // Ask for details for guest delivery
             } else {
-                 setDetailsConfirmed(true);
+                setDetailsConfirmed(true); // Otherwise, assume details are known (dine-in, logged-in user)
             }
 
 
