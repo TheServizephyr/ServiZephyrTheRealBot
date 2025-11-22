@@ -93,12 +93,14 @@ export async function POST(req) {
 
                     transaction.update(orderRef, updatePayload);
                 });
-                console.log(`[API /order/create] ADD-ON FLOW: Successfully added items to order ${existingOrderId}.`);
+                console.log(`[API /order/create] ADD-ON FLOW: Transaction committed successfully for order ${existingOrderId}.`);
 
                 // For split_bill, return the existing order's tracking token
                 if (paymentMethod === 'split_bill') {
+                    console.log(`[API /order/create] ADD-ON FLOW: Fetching updated order data for split_bill response...`);
                     const orderDoc = await firestore.collection('orders').doc(existingOrderId).get();
                     const orderData = orderDoc.data();
+                    console.log(`[API /order/create] ADD-ON FLOW: Updated order data - items count: ${orderData.items?.length}, totalAmount: ${orderData.totalAmount}`);
                     return NextResponse.json({
                         message: 'Items added to existing order for split payment.',
                         firestore_order_id: existingOrderId,
