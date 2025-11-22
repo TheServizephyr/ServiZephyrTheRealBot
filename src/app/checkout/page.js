@@ -156,7 +156,7 @@ const CheckoutPageInternal = () => {
             const savedCart = JSON.parse(localStorage.getItem(`cart_${restaurantId}`) || '{}');
             const deliveryType = tableId ? 'dine-in' : (savedCart.deliveryType || 'delivery');
             const isAnonymousPreOrder = deliveryType === 'street-vendor-pre-order' && !isDineIn && !isLoggedInUser && !isWhatsAppSession;
-            
+
             console.log(`[Checkout Page] Verification checks: isDineIn=${isDineIn}, isLoggedInUser=${isLoggedInUser}, isWhatsAppSession=${isWhatsAppSession}, isAnonymousPreOrder=${isAnonymousPreOrder}, activeOrderId=${!!activeOrderId}`);
 
             if (isDineIn || isLoggedInUser || activeOrderId || isAnonymousPreOrder) {
@@ -176,7 +176,7 @@ const CheckoutPageInternal = () => {
                     setTokenError("No session information found."); setLoading(false); return;
                 }
             }
-            
+
             // --- FIX: Logic to determine if details form is needed ---
             if (activeOrderId) {
                 setDetailsConfirmed(true); // Don't ask for name on add-on orders
@@ -322,6 +322,12 @@ const CheckoutPageInternal = () => {
             if (!res.ok) throw new Error(data.message || "Failed to place order.");
 
             console.log("[Checkout Page] Order API response received:", data);
+
+            // If split_bill, return the response for SplitBillInterface
+            if (paymentMethod === 'split_bill') {
+                setIsProcessingPayment(false);
+                return data;
+            }
 
             if (activeOrderId) {
                 router.push(`/track/pre-order/${activeOrderId}?token=${token}`);

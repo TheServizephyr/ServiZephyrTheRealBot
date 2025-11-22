@@ -311,10 +311,48 @@ export async function POST(req) {
             const razorpayOrder = await razorpay.orders.create(razorpayOrderOptions);
             console.log(`[API /order/create] Razorpay order created: ${razorpayOrder.id}`);
 
-            // const trackingToken = await generateSecureToken(firestore, normalizedPhone || firestoreOrderId); // Moved up
             return NextResponse.json({
                 message: 'Razorpay order created. Awaiting payment confirmation.',
                 razorpay_order_id: razorpayOrder.id,
+                firestore_order_id: firestoreOrderId,
+                token: trackingToken,
+            }, { status: 200 });
+        }
+
+        if (paymentMethod === 'split_bill') {
+            console.log("[API /order/create] Payment method is Split Bill. Creating pending order.");
+            const firestoreOrderId = firestore.collection('orders').doc().id;
+            const trackingToken = await generateSecureToken(firestore, normalizedPhone || firestoreOrderId);
+
+            const batch = firestore.batch();
+            const newOrderRef = firestore.collection('orders').doc(firestoreOrderId);
+
+            const finalOrderData = {
+                customerName: name, customerId: userId, customerAddress: address?.full || null, customerPhone: normalizedPhone,
+                customerLocation: customerLocation,
+                restaurantId: restaurantId, restaurantName: businessData.name,
+                businessType, deliveryType, pickupTime: pickupTime || '', tipAmount: tipAmount || 0,
+                items: items,
+                subtotal: subtotal || 0,
+                coupon: coupon || null,
+                loyaltyDiscount: loyaltyDiscount || 0,
+                discount: 0, // Will be calculated if needed
+                cgst: cgst || 0,
+                sgst: sgst || 0,
+                deliveryCharge: deliveryCharge || 0,
+                totalAmount: grandTotal,
+                status: 'pending',
+                orderDate: FieldValue.serverTimestamp(),
+                notes: notes || null,
+                paymentDetails: [], // No payment yet
+                trackingToken: trackingToken,
+            };
+
+            batch.set(newOrderRef, finalOrderData);
+            await batch.commit();
+
+            return NextResponse.json({
+                message: 'Split bill order initialized.',
                 firestore_order_id: firestoreOrderId,
                 token: trackingToken,
             }, { status: 200 });
