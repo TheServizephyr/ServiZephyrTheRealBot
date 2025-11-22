@@ -3,12 +3,13 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
-import { User, Store, Shield, ShoppingCart, Phone, Key, ArrowRight, MapPin, HelpCircle, Bike, Map } from 'lucide-react';
+import { User, Store, Shield, ShoppingCart, Phone, Key, ArrowRight, MapPin, HelpCircle, Bike, Map, Check } from 'lucide-react';
 import { auth, db } from '@/lib/firebase';
 import { doc, getDoc } from 'firebase/firestore';
 import GoldenCoinSpinner from '@/components/GoldenCoinSpinner';
 import InfoDialog from '@/components/InfoDialog';
 import { cn } from '@/lib/utils';
+import { Checkbox } from '@/components/ui/checkbox';
 
 
 const cardVariants = {
@@ -32,6 +33,7 @@ export default function CompleteProfile() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [infoDialog, setInfoDialog] = useState({ isOpen: false, title: '', message: '' });
+  const [termsAccepted, setTermsAccepted] = useState(false);
 
   const roles = [
       {id: 'street-vendor', label: 'Street Vendor', icon: Map, enabled: true},
@@ -129,6 +131,13 @@ export default function CompleteProfile() {
       return;
     }
     
+    const isBusinessOwner = role === 'restaurant-owner' || role === 'shop-owner' || role === 'street-vendor';
+    if(isBusinessOwner && !termsAccepted) {
+        setError('You must agree to the Terms of Service to continue.');
+        setLoading(false);
+        return;
+    }
+
     const normalizedPhone = phone.slice(-10);
 
     if (!validatePhoneNumber(normalizedPhone)) {
@@ -149,7 +158,6 @@ export default function CompleteProfile() {
           throw new Error("User not authenticated. Please login again.");
         }
         
-        const isBusinessOwner = role === 'restaurant-owner' || role === 'shop-owner' || role === 'street-vendor';
         let businessType = null;
         if (role === 'restaurant-owner') businessType = 'restaurant';
         else if (role === 'shop-owner') businessType = 'shop';
@@ -181,7 +189,7 @@ export default function CompleteProfile() {
                 ownerId: user.uid,
                 ownerPhone: normalizedPhone,
                 approvalStatus: 'pending',
-                botPhoneNumberId: null, // Set to null instead of placeholder
+                botPhoneNumberId: null,
                 businessType: finalUserData.businessType,
              };
         }
@@ -270,6 +278,24 @@ export default function CompleteProfile() {
                 <input type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} required className="w-full pl-10 pr-4 py-2 rounded-md bg-input border border-border focus:ring-primary focus:border-primary" />
               </div>
             </div>
+            
+            <div className="space-y-3 pt-4 border-t border-border">
+                <h4 className="font-semibold text-foreground">Terms of Service & Vendor Policy</h4>
+                <div className="h-40 overflow-y-auto p-3 bg-muted/50 border border-border rounded-md text-xs text-muted-foreground space-y-2">
+                    <p><strong>1. Our Role:</strong> ServiZephyr provides a technology platform to connect you (the "Vendor") with customers. We are responsible for the digital infrastructure, including the WhatsApp bot, order management dashboard, and payment processing integration. We are not responsible for food/product quality, preparation, or delivery.</p>
+                    <p><strong>2. Vendor Responsibilities:</strong> You are solely responsible for: a) Keeping your menu, pricing, and item availability updated. b) The quality, safety, and preparation of all items sold. c) Fulfilling orders accepted through the platform in a timely manner. d) Complying with all local laws and regulations, including food safety standards (FSSAI) and taxation (GST).</p>
+                    <p><strong>3. Payments & Payouts:</strong> For online payments, funds will be settled to your linked bank account via our payment partner (Razorpay) after deducting applicable transaction fees. The payout schedule will be as per the payment partner's policy (typically T+2 working days). We are not liable for any delays from the bank's end.</p>
+                    <p><strong>4. Data Usage:</strong> You own your customer data. ServiZephyr will not sell or share your customer list with third parties. We will use anonymized, aggregate data to improve our services. By using our platform, you agree to our Privacy Policy.</p>
+                    <p><strong>5. Account Termination & Fraud:</strong> We reserve the right to suspend or permanently terminate your account without notice if we detect fraudulent activities, including but not limited to: creating fake orders, manipulating prices, providing false information, or receiving excessive customer complaints about quality or service. Engaging in any activity that harms the platform's reputation or its users will lead to immediate termination.</p>
+                    <p><strong>6. Service Fees:</strong> You agree to the subscription fees as outlined in our pricing plan. Failure to pay subscription fees may result in the suspension of your services.</p>
+                </div>
+                 <div className="flex items-center space-x-2">
+                    <Checkbox id="terms" checked={termsAccepted} onCheckedChange={setTermsAccepted} />
+                    <label htmlFor="terms" className="text-sm font-medium leading-none text-muted-foreground peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
+                        I have read and agree to the Terms of Service & Vendor Policy.
+                    </label>
+                </div>
+            </div>
           </motion.div>
         );
     }
@@ -349,14 +375,17 @@ export default function CompleteProfile() {
                   key={r.id}
                   type="button"
                   onClick={() => handleRoleClick(r)}
-                  className={cn(`relative flex flex-col items-center justify-center p-4 rounded-md border-2 transition-all duration-200`,
-                    role === r.id ? 'border-primary bg-primary/10 shadow-lg' : 'border-border',
-                    r.enabled ? 'cursor-pointer hover:border-primary/50' : 'opacity-50 cursor-not-allowed grayscale',
-                    r.enabled && role !== r.id ? 'hover:border-primary/50' : '',
-                    r.enabled && role === '' ? 'border-primary bg-primary/10 shadow-lg' : '' // Highlight enabled if no selection
+                  className={cn(
+                      'relative flex flex-col items-center justify-center p-4 rounded-md border-2 transition-all duration-200',
+                      role === r.id ? 'border-primary bg-primary/10 shadow-lg' : 'border-border',
+                      r.enabled ? 'cursor-pointer hover:border-primary/50' : 'opacity-50 cursor-not-allowed grayscale',
+                      r.enabled && role !== r.id ? 'hover:border-primary/50' : ''
                   )}
                 >
-                  <r.icon className={cn(`h-8 w-8 mb-2`, (r.enabled && (role === r.id || (role === '' && r.id === 'street-vendor'))) ? 'text-primary' : 'text-foreground')} />
+                  {r.enabled && role === r.id && (
+                    <motion.div layoutId="activeRole" className="absolute inset-0 bg-primary/10 rounded-md"></motion.div>
+                  )}
+                  <r.icon className={cn(`h-8 w-8 mb-2`, (r.enabled && role === r.id) ? 'text-primary' : 'text-foreground')} />
                   <span className="font-semibold text-sm text-center">{r.label}</span>
                    {!r.enabled && <span className="absolute top-1 right-1 text-[9px] font-bold bg-muted text-muted-foreground px-1.5 py-0.5 rounded-full">Soon</span>}
                 </button>
@@ -371,7 +400,7 @@ export default function CompleteProfile() {
           <div className="flex flex-col sm:flex-row items-center gap-4">
             <button
                 type="submit"
-                disabled={loading || !role}
+                disabled={loading || !role || (role === 'street-vendor' && !termsAccepted)}
                 className="w-full flex justify-center items-center py-3 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-primary-foreground bg-primary hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-transform"
             >
                 {loading ? (
