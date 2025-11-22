@@ -217,7 +217,7 @@ export async function POST(req) {
                 }, { merge: true });
             }
 
-            if (isNewUser) {
+            if (isNewUser && customerDetails.phone) {
                 const unclaimedUserRef = firestore.collection('unclaimed_profiles').doc(customerDetails.phone);
                 batch.set(unclaimedUserRef, {
                     name: customerDetails.name, phone: customerDetails.phone, addresses: [customerDetails.address],
@@ -231,16 +231,18 @@ export async function POST(req) {
             const pointsEarned = Math.floor(subtotal / 100) * 10;
             const pointsSpent = loyaltyDiscount > 0 ? loyaltyDiscount / 0.5 : 0;
 
-            const businessCollectionNameForCustomer = businessType === 'shop' ? 'shops' : 'restaurants';
-            const restaurantCustomerRef = firestore.collection(businessCollectionNameForCustomer).doc(restaurantId).collection('customers').doc(userId);
+            if (userId && userId !== 'guest') {
+                const businessCollectionNameForCustomer = businessType === 'shop' ? 'shops' : 'restaurants';
+                const restaurantCustomerRef = firestore.collection(businessCollectionNameForCustomer).doc(restaurantId).collection('customers').doc(userId);
 
-            batch.set(restaurantCustomerRef, {
-                name: customerDetails.name, phone: customerDetails.phone, status: isNewUser ? 'unclaimed' : 'verified',
-                totalSpend: FieldValue.increment(subtotal),
-                loyaltyPoints: FieldValue.increment(pointsEarned - pointsSpent),
-                lastOrderDate: FieldValue.serverTimestamp(),
-                totalOrders: FieldValue.increment(1),
-            }, { merge: true });
+                batch.set(restaurantCustomerRef, {
+                    name: customerDetails.name, phone: customerDetails.phone, status: isNewUser ? 'unclaimed' : 'verified',
+                    totalSpend: FieldValue.increment(subtotal),
+                    loyaltyPoints: FieldValue.increment(pointsEarned - pointsSpent),
+                    lastOrderDate: FieldValue.serverTimestamp(),
+                    totalOrders: FieldValue.increment(1),
+                }, { merge: true });
+            }
         }
 
         let dineInToken = null;
