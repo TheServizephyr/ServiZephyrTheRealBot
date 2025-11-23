@@ -145,8 +145,11 @@ function PreOrderTrackingContent() {
     useEffect(() => {
         if (!order) return;
 
-        // Push a dummy state to the history stack
-        window.history.pushState(null, '', window.location.href);
+        // Add delay to prevent race condition with Next.js router after navigation
+        const historyTimer = setTimeout(() => {
+            // Push a dummy state to the history stack
+            window.history.pushState(null, '', window.location.href);
+        }, 300);
 
         const handlePopState = (event) => {
             // When user presses back, redirect to Menu instead of previous page (Checkout/Cart)
@@ -167,9 +170,10 @@ function PreOrderTrackingContent() {
         window.addEventListener('popstate', handlePopState);
 
         return () => {
+            clearTimeout(historyTimer);
             window.removeEventListener('popstate', handlePopState);
         };
-    }, [order, router]);
+    }, [order, router, tokenFromUrl]);
 
     const handleBackToMenu = () => {
         if (order?.restaurantId) {
