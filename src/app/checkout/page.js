@@ -138,7 +138,7 @@ const CheckoutPageInternal = () => {
     // Convenience Fee States
     const [selectedPaymentMethod, setSelectedPaymentMethod] = useState(null); // 'online' or 'counter'
     const [selectedOnlinePaymentType, setSelectedOnlinePaymentType] = useState(null); // 'full' or 'split'
-    const [convenienceFeeRate] = useState(2.5); // 2.5% default
+    const [vendorCharges, setVendorCharges] = useState(null); // Vendor's add-on charges configuration
 
     const activeOrderId = searchParams.get('activeOrderId');
 
@@ -241,6 +241,17 @@ const CheckoutPageInternal = () => {
                         setCodEnabled(true);
                         setOnlinePaymentEnabled(true);
                     }
+
+                    // Store vendor's add-on charges configuration
+                    setVendorCharges({
+                        gstEnabled: paymentData.gstEnabled || false,
+                        gstRate: paymentData.gstRate || 5,
+                        gstMinAmount: paymentData.gstMinAmount || 0,
+                        convenienceFeeEnabled: paymentData.convenienceFeeEnabled || false,
+                        convenienceFeeRate: paymentData.convenienceFeeRate || 2.5,
+                        convenienceFeePaidBy: paymentData.convenienceFeePaidBy || 'customer',
+                        convenienceFeeLabel: paymentData.convenienceFeeLabel || 'Payment Processing Fee',
+                    });
                 }
             } catch (err) {
                 setError('Failed to load checkout details. Please try again.');
@@ -285,14 +296,31 @@ const CheckoutPageInternal = () => {
         const tip = (isStreetVendor || deliveryType !== 'delivery' || activeOrderId) ? 0 : (cartData.tipAmount || 0);
         const taxableAmount = currentSubtotal - couponDiscountValue;
 
-        const tax = (isStreetVendor || taxableAmount <= 0) ? 0 : taxableAmount * 0.05;
+        // Apply GST based on vendor configuration
+        let tax = 0;
+        if (vendorCharges?.gstEnabled && !isStreetVendor && taxableAmount > 0) {
+            // Check if order amount meets minimum threshold
+            if (taxableAmount >= (vendorCharges.gstMinAmount || 0)) {
+                const gstRate = vendorCharges.gstRate || 5;
+                tax = taxableAmount * (gstRate / 100);
+            }
+        } else if (isStreetVendor || !vendorCharges?.gstEnabled) {
+            // Fallback to default 5% GST for street vendors or if GST is not configured
+            tax = (isStreetVendor || taxableAmount <= 0) ? 0 : taxableAmount * 0.05;
+        }
 
         const subtotalWithTaxAndCharges = taxableAmount + deliveryCharge + (tax * 2) + tip;
 
-        // Calculate convenience fee ONLY if online payment is selected
-        const calculatedConvenienceFee = selectedPaymentMethod === 'online'
-            ? Math.ceil(subtotalWithTaxAndCharges * (convenienceFeeRate / 100))
-            : 0;
+        // Calculate convenience fee based on vendor configuration
+        let calculatedConvenienceFee = 0;
+        if (selectedPaymentMethod === 'online' && vendorCharges?.convenienceFeeEnabled) {
+            // Only charge customer if vendor configured it that way
+            if (vendorCharges.convenienceFeePaidBy === 'customer') {
+                const feeRate = vendorCharges.convenienceFeeRate || 2.5;
+                calculatedConvenienceFee = Math.ceil(subtotalWithTaxAndCharges * (feeRate / 100));
+            }
+            // If vendor absorbs the fee, it's 0 for the customer
+        }
 
         const finalGrandTotal = subtotalWithTaxAndCharges + calculatedConvenienceFee;
         return {
@@ -304,8 +332,7 @@ const CheckoutPageInternal = () => {
             convenienceFee: calculatedConvenienceFee,
             grandTotal: finalGrandTotal
         };
-    }, [cartData, cart, appliedCoupons, deliveryType, activeOrderId, selectedPaymentMethod, convenienceFeeRate]);
-
+    }, [cart, cartData, appliedCoupons, deliveryType, selectedPaymentMethod, vendorCharges, activeOrderId]);
 
     const handleAddMoreToTab = () => {
         const params = new URLSearchParams({
