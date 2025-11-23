@@ -135,6 +135,11 @@ const CheckoutPageInternal = () => {
 
     const [infoDialog, setInfoDialog] = useState({ isOpen: false, title: '', message: '' });
 
+    // Convenience Fee States
+    const [selectedPaymentMethod, setSelectedPaymentMethod] = useState(null); // 'online' or 'counter'
+    const [selectedOnlinePaymentType, setSelectedOnlinePaymentType] = useState(null); // 'full' or 'split'
+    const [convenienceFeeRate] = useState(2.5); // 2.5% default
+
     const activeOrderId = searchParams.get('activeOrderId');
 
     useEffect(() => {
@@ -259,9 +264,9 @@ const CheckoutPageInternal = () => {
         router.push(`/add-address?${params.toString()}`);
     };
 
-    const { subtotal, totalDiscount, finalDeliveryCharge, cgst, sgst, grandTotal } = useMemo(() => {
+    const { subtotal, totalDiscount, finalDeliveryCharge, cgst, sgst, convenienceFee, grandTotal } = useMemo(() => {
         const currentSubtotal = cart.reduce((sum, item) => sum + item.totalPrice * item.quantity, 0);
-        if (!cartData) return { subtotal: currentSubtotal, totalDiscount: 0, finalDeliveryCharge: 0, cgst: 0, sgst: 0, grandTotal: currentSubtotal };
+        if (!cartData) return { subtotal: currentSubtotal, totalDiscount: 0, finalDeliveryCharge: 0, cgst: 0, sgst: 0, convenienceFee: 0, grandTotal: currentSubtotal };
 
         const isStreetVendor = deliveryType === 'street-vendor-pre-order';
         const isFreeDeliveryApplied = appliedCoupons.some(c => c.type === 'free_delivery' && currentSubtotal >= c.minOrder);
@@ -282,9 +287,24 @@ const CheckoutPageInternal = () => {
 
         const tax = (isStreetVendor || taxableAmount <= 0) ? 0 : taxableAmount * 0.05;
 
-        const finalGrandTotal = taxableAmount + deliveryCharge + (tax * 2) + tip;
-        return { subtotal: currentSubtotal, totalDiscount: couponDiscountValue, finalDeliveryCharge: deliveryCharge, cgst: tax, sgst: tax, grandTotal: finalGrandTotal };
-    }, [cartData, cart, appliedCoupons, deliveryType, activeOrderId]);
+        const subtotalWithTaxAndCharges = taxableAmount + deliveryCharge + (tax * 2) + tip;
+
+        // Calculate convenience fee ONLY if online payment is selected
+        const calculatedConvenienceFee = selectedPaymentMethod === 'online'
+            ? Math.ceil(subtotalWithTaxAndCharges * (convenienceFeeRate / 100))
+            : 0;
+
+        const finalGrandTotal = subtotalWithTaxAndCharges + calculatedConvenienceFee;
+        return {
+            subtotal: currentSubtotal,
+            totalDiscount: couponDiscountValue,
+            finalDeliveryCharge: deliveryCharge,
+            cgst: tax,
+            sgst: tax,
+            convenienceFee: calculatedConvenienceFee,
+            grandTotal: finalGrandTotal
+        };
+    }, [cartData, cart, appliedCoupons, deliveryType, activeOrderId, selectedPaymentMethod, convenienceFeeRate]);
 
 
     const handleAddMoreToTab = () => {
@@ -582,41 +602,255 @@ const CheckoutPageInternal = () => {
 
                         {detailsConfirmed && (
                             <>
+                                {/* BILL SUMMARY WITH BREAKDOWN */}
                                 <div className="bg-card p-4 rounded-lg border border-border mb-6">
-                                    <div className="flex justify-between items-center text-lg font-bold">
-                                        <span>{activeOrderId ? 'Amount to Add:' : 'Total Amount Payable'}</span>
-                                        <span>₹{grandTotal > 0 ? grandTotal.toFixed(2) : '0.00'}</span>
+                                    <h3 className="font-bold text-lg mb-4">Bill Summary</h3>
+                                    <div className="space-y-2">
+                                        <div className="flex justify-between text-sm">
+                                            <span>Subtotal</span>
+                                            <span>₹{subtotal.toFixed(2)}</span>
+                                        </div>
+                                        {cgst > 0 && (
+                                            <>
+                                                <div className="flex justify-between text-sm">
+                                                    <span>CGST (5%)</span>
+                                                    <span>₹{cgst.toFixed(2)}</span>
+                                                </div>
+                                                <div className="flex justify-between text-sm">
+                                                    <span>SGST (5%)</span>
+                                                    <span>₹{sgst.toFixed(2)}</span>
+                                                </div>
+                                            </>
+                                        )}
+                                        <div className="border-t border-dashed pt-2 mt-2" />
+                                        <div className="flex justify-between text-sm">
+                                            <span>Order Total</span>
+                                            <span className="font-semibold">₹{(subtotal + cgst + sgst).toFixed(2)}</span>
+                                        </div>
+                                        {convenienceFee > 0 && (
+                                            <>
+                                                <div className="flex justify-between text-sm text-orange-600">
+                                                    <span>Payment Processing Fee ({convenienceFeeRate}%)</span>
+                                                    <span>₹{convenienceFee.toFixed(2)}</span>
+                                                </div>
+                                            </>
+                                        )}
+                                        <div className="border-t border-border pt-2 mt-2" />
+                                        <div className="flex justify-between text-xl font-bold">
+                                            <span>You Pay</span>
+                                            <span className="text-primary">₹{grandTotal.toFixed(2)}</span>
+                                        </div>
                                     </div>
                                 </div>
 
-                                {isOnlinePaymentFlow ? renderPaymentOptions() : (
-                                    <div className="space-y-4">
-                                        {onlinePaymentEnabled &&
-                                            <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} onClick={() => setIsOnlinePaymentFlow(true)} disabled={isProcessingPayment} className="w-full text-left p-6 bg-card border-2 border-border rounded-lg flex items-center gap-6 hover:border-primary transition-all disabled:opacity-50">
-                                                {isProcessingPayment ? <Loader2 className="animate-spin h-10 w-10 text-primary flex-shrink-0" /> : <Landmark size={40} className="text-primary flex-shrink-0" />}
-                                                <div>
-                                                    <h3 className="text-xl font-bold">Pay Online</h3>
-                                                    <p className="text-muted-foreground">UPI, Credit/Debit Card, Netbanking</p>
-                                                </div>
-                                            </motion.button>
-                                        }
-                                        {codEnabled ? (
-                                            <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} onClick={handlePayAtCounter} disabled={isProcessingPayment} className="w-full text-left p-6 bg-card border-2 border-border rounded-lg flex items-center gap-6 hover:border-primary transition-all disabled:opacity-50">
-                                                {isProcessingPayment ? <Loader2 className="animate-spin h-10 w-10 text-primary flex-shrink-0" /> : <IndianRupee size={40} className="text-primary flex-shrink-0" />}
-                                                <div>
-                                                    <h3 className="text-xl font-bold">{deliveryType === 'pickup' ? 'Pay at Store' : (deliveryType === 'dine-in' || deliveryType === 'street-vendor-pre-order') ? 'Pay at Counter' : 'Pay on Delivery'}</h3>
-                                                    <p className="text-muted-foreground">Pay with cash or UPI when you receive your order</p>
-                                                </div>
-                                            </motion.button>
-                                        ) : (
-                                            <div className="w-full text-left p-6 bg-muted/50 border-2 border-dashed border-border rounded-lg flex items-center gap-6 opacity-60">
-                                                <IndianRupee size={40} className="text-muted-foreground flex-shrink-0" />
-                                                <div>
-                                                    <h3 className="text-xl font-bold text-muted-foreground">{deliveryType === 'pickup' ? 'Pay at Store' : (deliveryType === 'dine-in' || deliveryType === 'street-vendor-pre-order') ? 'Pay at Counter' : 'Pay on Delivery'}</h3>
-                                                    <p className="text-muted-foreground">This payment method is not available right now.</p>
+                                {/* INLINE PAYMENT METHOD SELECTION */}
+                                <div className="bg-card p-4 rounded-lg border border-border mb-6">
+                                    <h3 className="font-bold text-lg mb-3">💳 Select Payment Method</h3>
+                                    <div className="space-y-3">
+                                        {/* Pay at Counter Option */}
+                                        {codEnabled && (
+                                            <div
+                                                onClick={() => {
+                                                    setSelectedPaymentMethod('counter');
+                                                    setSelectedOnlinePaymentType(null);
+                                                }}
+                                                className={cn(
+                                                    "p-4 rounded-lg border-2 cursor-pointer transition-all",
+                                                    selectedPaymentMethod === 'counter'
+                                                        ? "border-primary bg-primary/5"
+                                                        : "border-border hover:border-primary/50"
+                                                )}
+                                            >
+                                                <div className="flex items-center gap-3">
+                                                    <div className={cn(
+                                                        "w-5 h-5 rounded-full border-2 flex items-center justify-center",
+                                                        selectedPaymentMethod === 'counter' ? "border-primary" : "border-border"
+                                                    )}>
+                                                        {selectedPaymentMethod === 'counter' && (
+                                                            <div className="w-3 h-3 rounded-full bg-primary" />
+                                                        )}
+                                                    </div>
+                                                    <IndianRupee size={24} className="text-primary" />
+                                                    <div className="flex-1">
+                                                        <p className="font-bold">
+                                                            {deliveryType === 'pickup' ? 'Pay at Store' : (deliveryType === 'dine-in' || deliveryType === 'street-vendor-pre-order') ? 'Pay at Counter' : 'Pay on Delivery'}
+                                                        </p>
+                                                        <p className="text-xs text-muted-foreground">Cash or UPI at the counter</p>
+                                                    </div>
                                                 </div>
                                             </div>
                                         )}
+
+                                        {/* Pay Online Option */}
+                                        {onlinePaymentEnabled && (
+                                            <div
+                                                onClick={() => setSelectedPaymentMethod('online')}
+                                                className={cn(
+                                                    "p-4 rounded-lg border-2 cursor-pointer transition-all",
+                                                    selectedPaymentMethod === 'online'
+                                                        ? "border-primary bg-primary/5"
+                                                        : "border-border hover:border-primary/50"
+                                                )}
+                                            >
+                                                <div className="flex items-center gap-3 mb-2">
+                                                    <div className={cn(
+                                                        "w-5 h-5 rounded-full border-2 flex items-center justify-center",
+                                                        selectedPaymentMethod === 'online' ? "border-primary" : "border-border"
+                                                    )}>
+                                                        {selectedPaymentMethod === 'online' && (
+                                                            <div className="w-3 h-3 rounded-full bg-primary" />
+                                                        )}
+                                                    </div>
+                                                    <Landmark size={24} className="text-primary" />
+                                                    <div className="flex-1">
+                                                        <p className="font-bold">Pay Online</p>
+                                                        <p className="text-xs text-muted-foreground">UPI, Cards, Netbanking</p>
+                                                    </div>
+                                                </div>
+
+                                                {/* Convenience Fee Warning */}
+                                                {selectedPaymentMethod === 'online' && (
+                                                    <div className="ml-11 mt-2 p-2 bg-orange-50 dark:bg-orange-900/20 border border-orange-200 dark:border-orange-800 rounded text-xs text-orange-700 dark:text-orange-400">
+                                                        ⚠️ +₹{convenienceFee.toFixed(2)} payment processing fee will be added
+                                                    </div>
+                                                )}
+
+                                                {/* Online Payment Sub-options */}
+                                                {selectedPaymentMethod === 'online' && (
+                                                    <div className="ml-11 mt-3 space-y-2 pl-3 border-l-2 border-primary/30">
+                                                        <div
+                                                            onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                setSelectedOnlinePaymentType('full');
+                                                            }}
+                                                            className={cn(
+                                                                "p-3 rounded border cursor-pointer",
+                                                                selectedOnlinePaymentType === 'full'
+                                                                    ? "border-primary bg-background"
+                                                                    : "border-border/50 hover:border-primary/50"
+                                                            )}
+                                                        >
+                                                            <div className="flex items-center gap-2">
+                                                                <div className={cn(
+                                                                    "w-4 h-4 rounded-full border flex items-center justify-center",
+                                                                    selectedOnlinePaymentType === 'full' ? "border-primary" : "border-border"
+                                                                )}>
+                                                                    {selectedOnlinePaymentType === 'full' && (
+                                                                        <div className="w-2 h-2 rounded-full bg-primary" />
+                                                                    )}
+                                                                </div>
+                                                                <Wallet size={16} />
+                                                                <span className="text-sm font-medium">Pay Full Bill</span>
+                                                            </div>
+                                                        </div>
+
+                                                        <div
+                                                            onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                setSelectedOnlinePaymentType('split');
+                                                            }}
+                                                            className={cn(
+                                                                "p-3 rounded border cursor-pointer",
+                                                                selectedOnlinePaymentType === 'split'
+                                                                    ? "border-primary bg-background"
+                                                                    : "border-border/50 hover:border-primary/50"
+                                                            )}
+                                                        >
+                                                            <div className="flex items-center gap-2">
+                                                                <div className={cn(
+                                                                    "w-4 h-4 rounded-full border flex items-center justify-center",
+                                                                    selectedOnlinePaymentType === 'split' ? "border-primary" : "border-border"
+                                                                )}>
+                                                                    {selectedOnlinePaymentType === 'split' && (
+                                                                        <div className="w-2 h-2 rounded-full bg-primary" />
+                                                                    )}
+                                                                </div>
+                                                                <Split size={16} />
+                                                                <span className="text-sm font-medium">Split with Friends</span>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+
+                                {/* CUSTOMER DETAILS (Conditional based on payment method) */}
+                                {selectedPaymentMethod && (
+                                    <div className="bg-card p-4 rounded-lg border border-border mb-6">
+                                        <h3 className="font-bold text-lg mb-3">📝 Your Details</h3>
+                                        <div className="space-y-3">
+                                            <div>
+                                                <Label htmlFor="customer-name" className="flex items-center gap-2">
+                                                    <User size={16} /> Name *
+                                                </Label>
+                                                <Input
+                                                    id="customer-name"
+                                                    value={orderName}
+                                                    onChange={(e) => setOrderName(e.target.value)}
+                                                    placeholder="Enter your name"
+                                                    disabled={loading}
+                                                    required
+                                                />
+                                            </div>
+                                            <div>
+                                                <Label htmlFor="customer-phone" className="flex items-center gap-2">
+                                                    <Phone size={16} /> Phone Number {selectedPaymentMethod === 'counter' ? '*' : '(Optional)'}
+                                                </Label>
+                                                <Input
+                                                    id="customer-phone"
+                                                    value={orderPhone}
+                                                    onChange={(e) => setOrderPhone(e.target.value)}
+                                                    placeholder="10-digit mobile number"
+                                                    disabled={loading || !!phoneFromUrl}
+                                                    required={selectedPaymentMethod === 'counter'}
+                                                />
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
+
+                                {/* PLACE ORDER BUTTON */}
+                                {selectedPaymentMethod && (
+                                    selectedPaymentMethod === 'counter' ? (
+                                        <Button
+                                            onClick={handlePayAtCounter}
+                                            disabled={isProcessingPayment || !orderName.trim() || (selectedPaymentMethod === 'counter' && !orderPhone.trim())}
+                                            className="w-full h-14 text-lg"
+                                        >
+                                            {isProcessingPayment ? <Loader2 className="animate-spin" /> : 'Place Order'}
+                                        </Button>
+                                    ) : (
+                                        selectedOnlinePaymentType && (
+                                            <Button
+                                                onClick={() => {
+                                                    if (selectedOnlinePaymentType === 'full') {
+                                                        placeOrder('online');
+                                                    } else if (selectedOnlinePaymentType === 'split') {
+                                                        setIsSplitBillActive(true);
+                                                    }
+                                                }}
+                                                disabled={isProcessingPayment || !orderName.trim()}
+                                                className="w-full h-14 text-lg"
+                                            >
+                                                {isProcessingPayment ? <Loader2 className="animate-spin" /> :
+                                                    selectedOnlinePaymentType === 'full' ? 'Proceed to Pay' : 'Create Split Session'
+                                                }
+                                            </Button>
+                                        )
+                                    )
+                                )}
+
+                                {/* SPLIT BILL INTERFACE (if active) */}
+                                {isSplitBillActive && (
+                                    <div className="mt-6">
+                                        <SplitBillInterface
+                                            totalAmount={grandTotal}
+                                            onBack={() => setIsSplitBillActive(false)}
+                                            orderDetails={fullOrderDetailsForSplit}
+                                            onPlaceOrder={placeOrder}
+                                        />
                                     </div>
                                 )}
                             </>
