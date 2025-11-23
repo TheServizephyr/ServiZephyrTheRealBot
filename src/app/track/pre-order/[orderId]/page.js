@@ -141,6 +141,30 @@ function PreOrderTrackingContent() {
         return () => document.removeEventListener('mousemove', handleMouseMove);
     }, []);
 
+    // Intercept Back Button to prevent going back to Checkout
+    useEffect(() => {
+        if (!order) return;
+
+        // Push a dummy state to the history stack
+        window.history.pushState(null, '', window.location.href);
+
+        const handlePopState = (event) => {
+            // When user presses back, redirect to Menu instead of previous page (Checkout)
+            event.preventDefault();
+            if (order.restaurantId) {
+                router.replace(`/order/${order.restaurantId}`);
+            } else {
+                router.replace('/');
+            }
+        };
+
+        window.addEventListener('popstate', handlePopState);
+
+        return () => {
+            window.removeEventListener('popstate', handlePopState);
+        };
+    }, [order, router]);
+
     const handleBackToMenu = () => {
         if (order?.restaurantId) {
             router.push(`/order/${order.restaurantId}`);
