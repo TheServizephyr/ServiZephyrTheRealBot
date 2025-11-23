@@ -80,15 +80,20 @@ const handleSplitPayment = async (firestore, paymentEntity) => {
             if (isPayRemaining) {
                 console.log(`[Webhook RZP] 'Pay Remaining' webhook detected. Updating all pending shares.`);
                 sharesToUpdate = shares.map((s, index) => s.status !== 'paid' ? index : -1).filter(index => index !== -1);
+                console.log(`[Webhook RZP] Pay Remaining: Found ${sharesToUpdate.length} pending shares to update.`);
             } else {
+                console.log(`[Webhook RZP] Searching for share with razorpay_order_id: ${razorpayOrderId}`);
                 const shareIndex = shares.findIndex(s => s.razorpay_order_id === razorpayOrderId);
                 if (shareIndex !== -1) {
+                    console.log(`[Webhook RZP] Found matching share at index ${shareIndex}.`);
                     sharesToUpdate.push(shareIndex);
+                } else {
+                    console.warn(`[Webhook RZP] No share found for razorpay_order_id: ${razorpayOrderId}. Available IDs: ${shares.map(s => s.razorpay_order_id).join(', ')}`);
                 }
             }
 
             if (sharesToUpdate.length === 0) {
-                console.error(`[Webhook RZP] CRITICAL: No matching shares found for Razorpay order ${razorpayOrderId} in split ${splitId}.`);
+                console.error(`[Webhook RZP] CRITICAL: No matching shares found for Razorpay order ${razorpayOrderId} in split ${splitId}. Aborting transaction.`);
                 return; // Abort transaction
             }
             console.log(`[Webhook RZP] Matched Razorpay Order ID to share indices: ${sharesToUpdate.join(', ')}.`);
@@ -96,6 +101,7 @@ const handleSplitPayment = async (firestore, paymentEntity) => {
             sharesToUpdate.forEach(index => {
                 shares[index].status = 'paid';
                 shares[index].razorpay_payment_id = paymentEntity.id;
+                console.log(`[Webhook RZP] Marked share ${index} as paid.`);
             });
             console.log(`[Webhook RZP] Shares marked as paid.`);
 
@@ -241,8 +247,10 @@ export async function POST(req) {
 
             const isSplitPayment = await handleSplitPayment(firestore, paymentEntity);
             if (isSplitPayment) {
-                console.log(`[Webhook RZP] Split payment for order ${razorpayOrderId} handled. Ending request.`);
+                console.log(`[Webhook RZP] Split payment for order ${razorpayOrderId} handled successfully.`);
                 return NextResponse.json({ status: 'ok', message: 'Split payment processed.' });
+            } else {
+                console.log(`[Webhook RZP] handleSplitPayment returned false for order ${razorpayOrderId}. Proceeding to normal flow.`);
             }
 
             const key_id = process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID;
