@@ -342,11 +342,17 @@ export async function POST(req) {
             // Helper to parse if string, otherwise return as is
             const parseIfString = (val) => (typeof val === 'string' ? JSON.parse(val) : val);
 
-            const customerDetails = parseIfString(payload.customerDetails);
-            const billDetails = parseIfString(payload.billDetails);
+            // Normalize keys (handle both camelCase and snake_case)
+            const customerDetails = parseIfString(payload.customerDetails || payload.customer_details);
+            const billDetails = parseIfString(payload.billDetails || payload.bill_details);
             const items = parseIfString(payload.items);
 
-            const { restaurantId, userId, businessType, isStreetVendorOrder, customNotes, trackingToken } = payload;
+            const restaurantId = payload.restaurantId || payload.restaurant_id;
+            const userId = payload.userId || payload.user_id;
+            const businessType = payload.businessType || payload.business_type;
+            const isStreetVendorOrder = payload.isStreetVendorOrder || (businessType === 'street-vendor');
+            const customNotes = payload.customNotes || payload.notes;
+            const trackingToken = payload.trackingToken || payload.tracking_token;
             const isNewUser = payload.isNewUser;
 
             const orderRef = firestore.collection('orders').doc(rzpOrder.receipt);
@@ -413,7 +419,7 @@ export async function POST(req) {
                 restaurantId: restaurantId,
                 businessType: businessType,
                 deliveryType: payload.deliveryType,
-                items: payload.items || [],
+                items: items || [],
                 totalAmount: billDetails.grandTotal,
                 subtotal: billDetails.subtotal,
                 loyaltyDiscount: billDetails.loyaltyDiscount || 0,
