@@ -4,7 +4,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { Button } from '@/components/ui/button';
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { format, startOfDay, endOfDay } from 'date-fns';
+import { format, startOfDay, endOfDay, isToday } from 'date-fns';
 import { Calendar as CalendarIcon, ArrowLeft, Loader2, Search, Wallet, IndianRupee, User, Phone } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { db, auth } from '@/lib/firebase';
@@ -45,16 +45,40 @@ export default function OrderHistoryPage() {
         fetchVendorId();
     }, [user, isUserLoading]);
 
-    const fetchHistory = async (selectedDate = date) => {
-        if (!vendorId || !selectedDate?.from) return;
+    // Auto-load today's data on page load
+    useEffect(() => {
+        if (!vendorId) return;
+
+        const loadTodayData = () => {
+            // Check if today's data is in localStorage
+            const cachedData = localStorage.getItem('history_today_cache');
+            const cacheDate = localStorage.getItem('history_cache_date');
+            const todayStr = format(new Date(), 'yyyy-MM-dd');
+
+            if (cachedData && cacheDate === todayStr) {
+                // Use cached data
+                console.log("Loading today's data from cache");
+                setOrders(JSON.parse(cachedData));
+            } else {
+                // Fetch fresh data for today
+                console.log("Fetching fresh data for today");
+                fetchTodayHistory();
+            }
+        };
+
+        loadTodayData();
+    }, [vendorId]);
+
+    const fetchTodayHistory = async () => {
+        if (!vendorId) return;
 
         setLoading(true);
         setError(null);
-        setOrders([]);
 
         try {
-            const start = startOfDay(selectedDate.from);
-            const end = selectedDate.to ? endOfDay(selectedDate.to) : endOfDay(selectedDate.from);
+            const today = new Date();
+            const start = startOfDay(today);
+            const end = endOfDay(today);
 
             const q = query(
                 collection(db, 'orders'),
@@ -68,18 +92,54 @@ export default function OrderHistoryPage() {
             const fetchedOrders = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 
             setOrders(fetchedOrders);
+
+            // Cache today's data in localStorage
+            const todayStr = format(new Date(), 'yyyy-MM-dd');
+            localStorage.setItem('history_today_cache', JSON.stringify(fetchedOrders));
+            localStorage.setItem('history_cache_date', todayStr);
         } catch (err) {
-            console.error("Error fetching history:", err);
-            setError("Failed to load history. Please try again.");
+            console.error("Error fetching today's history:", err);
+            setError("Failed to load today's history. Please try again.");
         } finally {
             setLoading(false);
         }
     };
 
-    const handleDateSelect = (newDate) => {
-        setDate(newDate);
-        if (newDate?.from) {
-            fetchHistory(newDate);
+    const fetchHistory = async () => {
+        if (!vendorId || !date?.from) return;
+
+        setLoading(true);
+        setError(null);
+        setOrders([]);
+
+        try {
+            const start = startOfDay(date.from);
+            const end = date.to ? endOfDay(date.to) : endOfDay(date.from);
+
+            const q = query(
+                collection(db, 'orders'),
+                where('restaurantId', '==', vendorId),
+                where('orderDate', '>=', Timestamp.fromDate(start)),
+                where('orderDate', '<=', Timestamp.fromDate(end)),
+                orderBy('orderDate', 'desc')
+            );
+
+            const snapshot = await getDocs(q);
+            const fetchedOrders = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+
+            setOrders(fetchedOrders);
+
+            // If fetching today's data, update cache
+            if (isToday(date.from) && (!date.to || isToday(date.to))) {
+                const todayStr = format(new Date(), 'yyyy-MM-dd');
+                localStorage.setItem('history_today_cache', JSON.stringify(fetchedOrders));
+                localStorage.setItem('history_cache_date', todayStr);
+            }
+        } catch (err) {
+            console.error("Error fetching history:", err);
+            setError("Failed to load history. Please try again.");
+        } finally {
+            setLoading(false);
         }
     };
 
@@ -228,35 +288,31 @@ export default function OrderHistoryPage() {
                         <Button
                             variant={"outline"}
                             className={cn(
-                                "w-full justify-start text-left font-normal h-12 text-lg",
-                                !date && "text-muted-foreground"
+                                "w-full justify-start text-left font-normal h-12 text-lg"
                             )}
                         >
                             <CalendarIcon className="mr-2 h-5 w-5" />
-                            {date?.from ? (
-                                date.to ? (
-                                    <>
-                                        {format(date.from, "LLL dd, y")} -{" "}
-                                        {format(date.to, "LLL dd, y")}
-                                    </>
-                                ) : (
-                                    format(date.from, "LLL dd, y")
-                                )
-                            ) : (
-                                <span>Fetch History</span>
-                            )}
+                            <span>Fetch History</span>
                         </Button>
                     </PopoverTrigger>
                     <PopoverContent className="w-auto p-0" align="start">
-                        <div className="p-3">
+                        <div className="p-3 space-y-3">
                             <Calendar
                                 initialFocus
                                 mode="range"
                                 defaultMonth={date?.from}
                                 selected={date}
-                                onSelect={handleDateSelect}
+                                onSelect={setDate}
                                 numberOfMonths={1}
                             />
+                            <Button
+                                onClick={fetchHistory}
+                                disabled={loading || !vendorId || !date?.from}
+                                className="w-full"
+                            >
+                                {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Search className="mr-2 h-4 w-4" />}
+                                Search History
+                            </Button>
                         </div>
                     </PopoverContent>
                 </Popover>
