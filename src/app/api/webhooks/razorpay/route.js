@@ -110,19 +110,41 @@ const handleSplitPayment = async (firestore, paymentEntity) => {
             console.log(`[Webhook RZP] ${paidShares.length}/${splitData.splitCount} shares are now paid.`);
 
             const updateData = { shares };
-            if (isFullyPaid) {
-                console.log(`[Webhook RZP] All shares paid. Marking session ${splitId} as completed.`);
-                updateData.status = 'completed';
 
-                const baseOrderRef = firestore.collection('orders').doc(splitData.baseOrderId);
-                const baseOrderSnap = await transaction.get(baseOrderRef);
+            // Always update base order with payment details
+            const baseOrderRef = firestore.collection('orders').doc(splitData.baseOrderId);
+            const baseOrderSnap = await transaction.get(baseOrderRef);
 
-                if (baseOrderSnap.exists) {
-                    console.log(`[Webhook RZP] Base order ${splitData.baseOrderId} found. Updating its status.`);
-                    const baseOrderData = baseOrderSnap.data();
-                    const trackingToken = baseOrderData.trackingToken;
+            if (baseOrderSnap.exists) {
+                console.log(`[Webhook RZP] Base order ${splitData.baseOrderId} found. Updating payment details.`);
+                const baseOrderData = baseOrderSnap.data();
+
+                // Add separate payment details for each paid share
+                const paymentDetailsToAdd = sharesToUpdate.map(index => ({
+                    method: 'razorpay',
+                    amount: shares[index].amount,
+                    razorpay_payment_id: paymentEntity.id,
+                    razorpay_order_id: shares[index].razorpay_order_id,
+                    timestamp: new Date(),
+                    status: 'paid',
+                    split_share_index: index,
+                    payer_name: shares[index].name || `Person ${index + 1}`
+                }));
+
+                const orderUpdate = {
+                    paymentDetails: FieldValue.arrayUnion(...paymentDetailsToAdd)
+                };
+
+                if (isFullyPaid) {
+                    console.log(`[Webhook RZP] All shares paid. Marking session ${splitId} as completed.`);
+                    updateData.status = 'completed';
+
+                    // Only update status to pending when fully paid
+                    orderUpdate.status = 'pending';
+
                     const restaurantId = baseOrderData.restaurantId;
                     const businessType = baseOrderData.businessType;
+                    const trackingToken = baseOrderData.trackingToken;
 
                     // Generate dineInToken for street vendors ONLY if order doesn't have one yet
                     let dineInToken = baseOrderData.dineInToken || null;
@@ -139,22 +161,9 @@ const handleSplitPayment = async (firestore, paymentEntity) => {
                         }
                     }
 
-                    // Add separate payment details for each paid share
-                    const paymentDetailsToAdd = sharesToUpdate.map(index => ({
-                        method: 'razorpay',
-                        amount: shares[index].amount,
-                        razorpay_payment_id: paymentEntity.id,
-                        razorpay_order_id: shares[index].razorpay_order_id,
-                        timestamp: new Date(),
-                        status: 'paid',
-                        split_share_index: index,
-                        payer_name: shares[index].name || `Person ${index + 1}`
-                    }));
-
-                    const orderUpdate = {
-                        paymentDetails: FieldValue.arrayUnion(...paymentDetailsToAdd),
-                        status: 'pending'
-                    };
+                    if (dineInToken) {
+                        orderUpdate.dineInToken = dineInToken;
+                    }
 
                     // Add pending items if this is an add-on order
                     if (splitData.pendingItems && splitData.pendingItems.length > 0) {
@@ -177,20 +186,17 @@ const handleSplitPayment = async (firestore, paymentEntity) => {
                         });
                     }
 
-                    if (dineInToken) {
-                        orderUpdate.dineInToken = dineInToken;
-                    }
-                    transaction.update(baseOrderRef, orderUpdate);
-
                     if (trackingToken) {
                         updateData.trackingToken = trackingToken;
                     }
                     if (restaurantId) {
                         updateData.restaurantId = restaurantId;
                     }
-                } else {
-                    console.warn(`[Webhook RZP] Base order ${splitData.baseOrderId} not found for split payment. Cannot update status.`);
                 }
+
+                transaction.update(baseOrderRef, orderUpdate);
+            } else {
+                console.warn(`[Webhook RZP] Base order ${splitData.baseOrderId} not found for split payment. Cannot update status.`);
             }
 
             transaction.update(splitRef, updateData);
