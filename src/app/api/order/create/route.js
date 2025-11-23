@@ -437,6 +437,75 @@ export async function POST(req) {
             }, { status: 200 });
         }
 
+        // --- NEW: Handle Online Payment for Standard Orders ---
+        if (paymentMethod === 'online' || paymentMethod === 'razorpay') {
+            console.log("[API /order/create] Handling Online Payment for standard order.");
+
+            if (!process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID || !process.env.RAZORPAY_KEY_SECRET) {
+                console.error("[API /order/create] Razorpay credentials not configured.");
+                return NextResponse.json({ message: 'Payment gateway is not configured.' }, { status: 500 });
+            }
+
+            const firestoreOrderId = firestore.collection('orders').doc().id;
+            const trackingToken = await generateSecureToken(firestore, normalizedPhone || firestoreOrderId);
+
+            // Create payload for Razorpay notes (to be used by webhook to create order)
+            // Note: We are NOT creating the Firestore order yet. The webhook will create it upon payment success.
+            // This prevents "ghost orders" where user clicks pay but cancels.
+
+            const servizephyrOrderPayload = {
+                order_id: firestoreOrderId,
+                user_id: userId || `guest_${normalizedPhone || Date.now()}`,
+                restaurant_id: restaurantId,
+                business_type: businessType,
+                customer_details: JSON.stringify({
+                    name: name,
+                    address: address || null,
+                    phone: normalizedPhone,
+                    location: customerLocation || null
+                }),
+                items: JSON.stringify(items),
+                bill_details: JSON.stringify({
+                    subtotal,
+                    coupon: coupon || null,
+                    loyaltyDiscount: loyaltyDiscount || 0,
+                    grandTotal,
+                    deliveryType,
+                    tipAmount: tipAmount || 0,
+                    pickupTime: pickupTime || '',
+                    cgst: cgst || 0,
+                    sgst: sgst || 0,
+                    deliveryCharge: deliveryCharge || 0
+                }),
+                notes: notes || null,
+                trackingToken: trackingToken // Pass token to be saved
+            };
+
+            const razorpay = new Razorpay({ key_id: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID, key_secret: process.env.RAZORPAY_KEY_SECRET });
+            const razorpayOrderOptions = {
+                amount: Math.round(grandTotal * 100),
+                currency: 'INR',
+                receipt: firestoreOrderId,
+                notes: {
+                    servizephyr_payload: JSON.stringify(servizephyrOrderPayload)
+                }
+            };
+
+            try {
+                const razorpayOrder = await razorpay.orders.create(razorpayOrderOptions);
+                console.log(`[API /order/create] Razorpay order created: ${razorpayOrder.id}`);
+
+                return NextResponse.json({
+                    message: 'Razorpay order created.',
+                    razorpay_order_id: razorpayOrder.id,
+                    firestore_order_id: firestoreOrderId,
+                    token: trackingToken,
+                }, { status: 200 });
+            } catch (err) {
+                console.error("[API /order/create] Failed to create Razorpay order:", err);
+                return NextResponse.json({ message: 'Failed to initiate payment.' }, { status: 500 });
+            }
+        }
 
         // --- "Pay at Counter" logic for Street Vendor ---
         console.log("[API /order/create] Handling 'Pay at Counter' flow for Street Vendor.");
