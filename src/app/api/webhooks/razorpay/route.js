@@ -260,10 +260,18 @@ export async function POST(req) {
             }
 
             // Handle Add-on Payment
+            const notes = paymentEntity.notes;
             if (notes && notes.type === 'addon') {
                 console.log(`[Webhook RZP] Add-on payment detected for order ${notes.orderId}`);
                 const orderId = notes.orderId;
-                const itemsToAdd = JSON.parse(notes.items);
+
+                let itemsToAdd = [];
+                try {
+                    itemsToAdd = JSON.parse(notes.items);
+                } catch (e) {
+                    console.error("[Webhook RZP] Failed to parse items from notes:", e);
+                }
+
                 const addOnAmount = paymentEntity.amount / 100; // Amount in rupees
 
                 const orderRef = firestore.collection('orders').doc(orderId);
@@ -273,7 +281,7 @@ export async function POST(req) {
                     if (!orderDoc.exists) throw new Error("Order not found for add-on.");
 
                     const orderData = orderDoc.data();
-                    const newItems = [...orderData.items, ...itemsToAdd];
+                    const newItems = [...(orderData.items || []), ...itemsToAdd];
 
                     // Update totals
                     const newSubtotal = (orderData.subtotal || 0) + (parseFloat(notes.subtotal) || 0);
