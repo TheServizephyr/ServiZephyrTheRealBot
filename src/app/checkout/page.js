@@ -330,22 +330,14 @@ const CheckoutPageInternal = () => {
             }
             if (!res.ok) throw new Error(data.message || "Failed to place order.");
 
-            console.log("[Checkout Page] Order API response received:", data);
-
             // If split_bill, return the response for SplitBillInterface
             if (paymentMethod === 'split_bill') {
                 setIsProcessingPayment(false);
                 return data;
             }
 
-            if (activeOrderId) {
-                router.push(`/track/pre-order/${activeOrderId}?token=${token}`);
-                return;
-            }
-
             if (data.razorpay_order_id) {
                 console.log("[Checkout Page] Razorpay order ID found. Opening payment gateway.");
-                const redirectUrl = `${window.location.origin}/checkout?restaurantId=${restaurantId}&table=${tableId}&tabId=${data.dine_in_tab_id || tabId}&payment_confirmed=true`;
                 const options = {
                     key: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID, amount: grandTotal * 100, currency: "INR", name: cartData.restaurantName,
                     description: `Order from ${cartData.restaurantName}`, order_id: data.razorpay_order_id,
@@ -376,7 +368,14 @@ const CheckoutPageInternal = () => {
                 });
                 rzp.open();
             } else {
+                console.warn(`[Checkout Page] NO Razorpay ID found in response!`);
                 console.log("[Checkout Page] No Razorpay ID. Clearing cart and handling redirection.");
+
+                if (activeOrderId) {
+                    router.push(`/track/pre-order/${activeOrderId}?token=${token}`);
+                    return;
+                }
+
                 localStorage.removeItem(`cart_${restaurantId}`);
                 if (orderData.deliveryType === 'dine-in') {
                     setInfoDialog({ isOpen: true, title: 'Success', message: 'Tab settled at counter. Thank you!' });
@@ -421,46 +420,6 @@ const CheckoutPageInternal = () => {
         if (validateOrderDetails()) {
             placeOrder('cod');
         }
-    }
-
-    if (loading && !cartData) {
-        return <div className="min-h-screen bg-background flex items-center justify-center"><GoldenCoinSpinner /></div>;
-    }
-
-    if (tokenError) {
-        return <TokenVerificationLock message={tokenError} />;
-    }
-
-    if (!isTokenValid) {
-        return <div className="min-h-screen bg-background flex items-center justify-center"><GoldenCoinSpinner /></div>;
-    }
-
-    const cameToPay = (!cart || cart.length === 0) && tabId;
-
-    if (deliveryType === 'dine-in' && cartData?.dineInModel === 'post-paid' && cart.length > 0) {
-        return (
-            <div className="min-h-screen bg-background flex flex-col items-center justify-center text-center p-4 green-theme">
-                <Lock size={48} className="text-destructive mb-4" />
-                <h1 className="text-2xl font-bold text-foreground">Payment Not Required</h1>
-                <p className="mt-2 text-muted-foreground max-w-md">This is a post-paid order. Please place your order from the cart to get a WhatsApp confirmation.</p>
-                <Button onClick={() => router.push(`/cart?restaurantId=${restaurantId}&${searchParams.toString()}`)} className="mt-6">
-                    <ArrowLeft className="mr-2 h-4 w-4" /> Go Back to Cart
-                </Button>
-            </div>
-        );
-    }
-
-    if (isPaymentConfirmed) {
-        return (
-            <div className="min-h-screen bg-background flex flex-col items-center justify-center text-center p-4 green-theme">
-                <CheckCircle className="w-24 h-24 text-primary mx-auto" />
-                <h1 className="text-4xl font-bold text-foreground mt-6">Payment Successful!</h1>
-                <p className="mt-4 text-lg text-muted-foreground max-w-md">Thank you for dining with us. Your bill has been settled.</p>
-                <Button onClick={() => router.push(`/order/${restaurantId}?table=${tableId}`)} className="mt-8">
-                    Back to Menu
-                </Button>
-            </div>
-        )
     }
 
     const fullOrderDetailsForSplit = {
@@ -541,6 +500,46 @@ const CheckoutPageInternal = () => {
                 </div>
                 <Button onClick={handleConfirmDetails} className="w-full mt-4 bg-primary text-primary-foreground">
                     Confirm & Choose Payment
+                </Button>
+            </div>
+        )
+    }
+
+    if (loading && !cartData) {
+        return <div className="min-h-screen bg-background flex items-center justify-center"><GoldenCoinSpinner /></div>;
+    }
+
+    if (tokenError) {
+        return <TokenVerificationLock message={tokenError} />;
+    }
+
+    if (!isTokenValid) {
+        return <div className="min-h-screen bg-background flex items-center justify-center"><GoldenCoinSpinner /></div>;
+    }
+
+    const cameToPay = (!cart || cart.length === 0) && tabId;
+
+    if (deliveryType === 'dine-in' && cartData?.dineInModel === 'post-paid' && cart.length > 0) {
+        return (
+            <div className="min-h-screen bg-background flex flex-col items-center justify-center text-center p-4 green-theme">
+                <Lock size={48} className="text-destructive mb-4" />
+                <h1 className="text-2xl font-bold text-foreground">Payment Not Required</h1>
+                <p className="mt-2 text-muted-foreground max-w-md">This is a post-paid order. Please place your order from the cart to get a WhatsApp confirmation.</p>
+                <Button onClick={() => router.push(`/cart?restaurantId=${restaurantId}&${searchParams.toString()}`)} className="mt-6">
+                    <ArrowLeft className="mr-2 h-4 w-4" /> Go Back to Cart
+                </Button>
+            </div>
+        );
+    }
+
+    if (isPaymentConfirmed) {
+        return (
+            <div className="min-h-screen bg-background flex flex-col items-center justify-center text-center p-4 green-theme">
+                <CheckCircle className="w-24 h-24 text-primary mx-auto" />
+                <h1 className="text-4xl font-bold text-foreground mt-6">Payment Successful!</h1>
+                <p className="mt-4 text-lg text-muted-foreground max-w-md">Thank you for dining with us. Your bill has been settled.</p>
+                <Button onClick={() => router.push(`/order/${restaurantId}?table=${tableId}`)} className="mt-8">
+                    Back to Menu
                 </Button>
             </div>
         )
