@@ -149,10 +149,16 @@ function PreOrderTrackingContent() {
         window.history.pushState(null, '', window.location.href);
 
         const handlePopState = (event) => {
-            // When user presses back, redirect to Menu instead of previous page (Checkout)
+            // When user presses back, redirect to Menu instead of previous page (Checkout/Cart)
             event.preventDefault();
             if (order.restaurantId) {
-                router.replace(`/order/${order.restaurantId}`);
+                // Construct URL with query params to maintain session
+                const params = new URLSearchParams();
+                params.set('restaurantId', order.restaurantId);
+                if (tokenFromUrl) params.set('token', tokenFromUrl);
+                if (order.id) params.set('activeOrderId', order.id);
+
+                router.replace(`/order/${order.restaurantId}?${params.toString()}`);
             } else {
                 router.replace('/');
             }
@@ -167,7 +173,12 @@ function PreOrderTrackingContent() {
 
     const handleBackToMenu = () => {
         if (order?.restaurantId) {
-            router.push(`/order/${order.restaurantId}`);
+            const params = new URLSearchParams();
+            params.set('restaurantId', order.restaurantId);
+            if (tokenFromUrl) params.set('token', tokenFromUrl);
+            if (order.id) params.set('activeOrderId', order.id);
+
+            router.push(`/order/${order.restaurantId}?${params.toString()}`);
         } else {
             router.push('/');
         }
