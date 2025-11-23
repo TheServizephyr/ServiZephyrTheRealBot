@@ -640,11 +640,11 @@ const CheckoutPageInternal = () => {
                                         {cgst > 0 && (
                                             <>
                                                 <div className="flex justify-between text-sm">
-                                                    <span>CGST (5%)</span>
+                                                    <span>CGST ({vendorCharges?.gstEnabled ? (vendorCharges.gstRate / 2) : 2.5}%)</span>
                                                     <span>₹{cgst.toFixed(2)}</span>
                                                 </div>
                                                 <div className="flex justify-between text-sm">
-                                                    <span>SGST (5%)</span>
+                                                    <span>SGST ({vendorCharges?.gstEnabled ? (vendorCharges.gstRate / 2) : 2.5}%)</span>
                                                     <span>₹{sgst.toFixed(2)}</span>
                                                 </div>
                                             </>
@@ -657,7 +657,7 @@ const CheckoutPageInternal = () => {
                                         {convenienceFee > 0 && (
                                             <>
                                                 <div className="flex justify-between text-sm text-orange-600">
-                                                    <span>Payment Processing Fee ({convenienceFeeRate}%)</span>
+                                                    <span>{vendorCharges?.convenienceFeeLabel || 'Payment Processing Fee'} ({vendorCharges?.convenienceFeeRate || 2.5}%)</span>
                                                     <span>₹{convenienceFee.toFixed(2)}</span>
                                                 </div>
                                             </>
@@ -736,9 +736,9 @@ const CheckoutPageInternal = () => {
                                                 </div>
 
                                                 {/* Convenience Fee Warning */}
-                                                {selectedPaymentMethod === 'online' && (
+                                                {selectedPaymentMethod === 'online' && convenienceFee > 0 && (
                                                     <div className="ml-11 mt-2 p-2 bg-orange-50 dark:bg-orange-900/20 border border-orange-200 dark:border-orange-800 rounded text-xs text-orange-700 dark:text-orange-400">
-                                                        ⚠️ +₹{convenienceFee.toFixed(2)} payment processing fee will be added
+                                                        ⚠️ +₹{convenienceFee.toFixed(2)} {vendorCharges?.convenienceFeeLabel?.toLowerCase() || 'payment processing fee'} will be added
                                                     </div>
                                                 )}
 
