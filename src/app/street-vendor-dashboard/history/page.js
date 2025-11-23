@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { format, startOfDay, endOfDay } from 'date-fns';
-import { Calendar as CalendarIcon, ArrowLeft, Loader2, Search } from 'lucide-react';
+import { Calendar as CalendarIcon, ArrowLeft, Loader2, Search, Wallet, IndianRupee, User, Phone } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { db, auth } from '@/lib/firebase';
 import { collection, query, where, getDocs, orderBy, Timestamp } from 'firebase/firestore';
@@ -89,64 +89,6 @@ export default function OrderHistoryPage() {
             );
         }
         return items;
-    }, [orders, searchQuery]);
-
-    const completedOrders = useMemo(() => filteredOrders.filter(o => ['delivered', 'picked_up'].includes(o.status)), [filteredOrders]);
-    const cancelledOrders = useMemo(() => filteredOrders.filter(o => ['rejected', 'cancelled'].includes(o.status)), [filteredOrders]);
-
-    const OrderList = ({ items, emptyMessage }) => (
-        <div className="space-y-4">
-            {items.length === 0 && (
-                <div className="text-center text-muted-foreground py-10">
-                    {emptyMessage}
-                </div>
-            )}
-            <AnimatePresence>
-                {items.map((order) => (
-                    <motion.div
-                        key={order.id}
-                        initial={{ opacity: 0, y: 10 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        exit={{ opacity: 0, scale: 0.95 }}
-                        className="bg-card border border-border p-4 rounded-xl shadow-sm"
-                    >
-                        <div className="flex justify-between items-start mb-2">
-                            <div>
-                                <h3 className="font-bold text-lg">{order.customerName || 'Guest'}</h3>
-                                <p className="text-xs text-muted-foreground">
-                                    {order.orderDate ? format(order.orderDate.toDate(), 'dd MMM, p') : ''}
-                                </p>
-                                <p className="text-xs text-muted-foreground mt-1">Token: {order.trackingToken || 'N/A'}</p>
-                            </div>
-                            <div className={cn(
-                                "px-2 py-1 rounded text-xs font-bold uppercase",
-                                order.status === 'delivered' || order.status === 'picked_up' ? "bg-green-100 text-green-700" :
-                                    order.status === 'rejected' || order.status === 'cancelled' ? "bg-red-100 text-red-700" :
-                                        "bg-gray-100 text-gray-700"
-                            )}>
-                                {order.status}
-                            </div>
-                        </div>
-                        <div className="space-y-1 mb-3">
-                            {order.items.map((item, idx) => (
-                                <div key={idx} className="flex justify-between text-sm">
-                                    <span>{item.quantity}x {item.name}</span>
-                                    <span className="text-muted-foreground">{formatCurrency(item.totalPrice)}</span>
-                                </div>
-                            ))}
-                        </div>
-                        <div className="flex justify-between items-center pt-2 border-t border-dashed">
-                            <span className="font-bold">Total</span>
-                            <span className="font-bold text-primary">{formatCurrency(order.totalAmount)}</span>
-                        </div>
-                    </motion.div>
-                ))}
-            </AnimatePresence>
-        </div>
-    );
-
-    return (
-        <div className="min-h-screen bg-background text-foreground font-body p-4 pb-24">
             <header className="flex items-center gap-4 mb-6">
                 <Link href="/street-vendor-dashboard">
                     <Button variant="ghost" size="icon">
@@ -201,7 +143,8 @@ export default function OrderHistoryPage() {
                 </Button>
             </div>
 
-            {orders.length > 0 && (
+        {
+            orders.length > 0 && (
                 <div className="relative mb-6">
                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                     <input
@@ -212,15 +155,19 @@ export default function OrderHistoryPage() {
                         className="w-full pl-10 pr-4 py-2 h-10 rounded-md bg-input border border-border"
                     />
                 </div>
-            )}
+            )
+        }
 
-            {error && (
+        {
+            error && (
                 <div className="bg-destructive/10 text-destructive p-4 rounded-lg mb-6 text-center">
                     {error}
                 </div>
-            )}
+            )
+        }
 
-            {!loading && !error && (
+        {
+            !loading && !error && (
                 <Tabs defaultValue="completed" className="w-full">
                     <TabsList className="grid w-full grid-cols-2 mb-4">
                         <TabsTrigger value="completed">Completed ({completedOrders.length})</TabsTrigger>
@@ -233,7 +180,8 @@ export default function OrderHistoryPage() {
                         <OrderList items={cancelledOrders} emptyMessage="No cancelled orders found." />
                     </TabsContent>
                 </Tabs>
-            )}
-        </div>
+            )
+        }
+        </div >
     );
 }
