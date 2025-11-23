@@ -117,15 +117,12 @@ export async function POST(req) {
                         }
                     });
 
-                    // Update ALL pending shares to have this new Razorpay Order ID
-                    const updatedShares = shares.map(s => {
-                        if (s.status !== 'paid') {
-                            return { ...s, razorpay_order_id: rzpOrder.id };
-                        }
-                        return s;
-                    });
+                    // DO NOT update razorpay_order_id on shares. 
+                    // The 'Pay Remaining' webhook uses notes.type='pay_remaining' to identify the transaction
+                    // and updates all pending shares. We must preserve the individual order IDs 
+                    // so that individual payments still work if the user chooses that route.
 
-                    transaction.update(splitRef, { shares: updatedShares });
+                    // transaction.update(splitRef, { shares: updatedShares }); // <-- REMOVED THIS
                     return rzpOrder;
                 });
 
