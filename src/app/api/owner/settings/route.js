@@ -10,7 +10,7 @@ export const dynamic = 'force-dynamic';
 async function verifyUserAndGetData(req) {
     const firestore = await getFirestore();
     const uid = await verifyAndGetUid(req); // Use central helper
-    
+
     // Admin impersonation logic
     const url = new URL(req.url, `http://${req.headers.host}`);
     const impersonatedOwnerId = url.searchParams.get('impersonate_owner_id');
@@ -21,14 +21,14 @@ async function verifyUserAndGetData(req) {
         console.log(`[API Impersonation] Admin ${uid} is viewing data for owner ${impersonatedOwnerId}.`);
         finalUserId = impersonatedOwnerId;
     }
-    
+
     const userRef = firestore.collection('users').doc(finalUserId);
     const userDoc = await userRef.get();
 
     if (!userDoc.exists) {
         throw { message: "User profile not found.", status: 404 };
     }
-    
+
     const userData = userDoc.data();
     let businessData = null;
     let businessRef = null;
@@ -53,7 +53,7 @@ async function verifyUserAndGetData(req) {
             collectionsToTry = ['restaurants', 'shops', 'street_vendors'];
         }
         // --- END FIX ---
-        
+
         for (const collectionName of collectionsToTry) {
             const businessesQuery = await firestore.collection(collectionName).where('ownerId', '==', finalUserId).limit(1).get();
             if (!businessesQuery.empty) {
@@ -65,7 +65,7 @@ async function verifyUserAndGetData(req) {
             }
         }
     }
-    
+
     return { uid: finalUserId, userRef, userData, businessRef, businessData, businessId };
 }
 
@@ -73,7 +73,7 @@ export async function GET(req) {
     try {
         const { searchParams } = new URL(req.url);
         const businessIdFromQuery = searchParams.get('restaurantId') || searchParams.get('businessId');
-        
+
         // This block is for public-facing queries that only need payment settings.
         if (businessIdFromQuery) {
             const firestore = await getFirestore();
@@ -90,18 +90,26 @@ export async function GET(req) {
             }
             const businessData = businessDoc.data();
             // This is the public response, only contains necessary info.
-            return NextResponse.json({ 
+            return NextResponse.json({
                 deliveryCodEnabled: businessData.deliveryCodEnabled === undefined ? true : businessData.deliveryCodEnabled,
                 pickupPodEnabled: businessData.pickupPodEnabled === undefined ? true : businessData.pickupPodEnabled,
                 dineInPayAtCounterEnabled: businessData.dineInPayAtCounterEnabled === undefined ? true : businessData.dineInPayAtCounterEnabled,
                 botPhoneNumberId: businessData.botPhoneNumberId || null,
                 botDisplayNumber: businessData.botDisplayNumber || null,
+                // Add-on Charges Configuration
+                gstEnabled: businessData.gstEnabled || false,
+                gstRate: businessData.gstRate || 5,
+                gstMinAmount: businessData.gstMinAmount || 0,
+                convenienceFeeEnabled: businessData.convenienceFeeEnabled || false,
+                convenienceFeeRate: businessData.convenienceFeeRate || 2.5,
+                convenienceFeePaidBy: businessData.convenienceFeePaidBy || 'customer',
+                convenienceFeeLabel: businessData.convenienceFeeLabel || 'Payment Processing Fee',
             }, { status: 200 });
         }
-        
+
         // This block is for authenticated owner dashboard queries.
         const { uid, userData, businessData, businessId } = await verifyUserAndGetData(req);
-        
+
         const profileData = {
             name: userData.name || 'No Name',
             email: userData.email || 'No Email',
@@ -115,7 +123,7 @@ export async function GET(req) {
             fssai: businessData?.fssai || '',
             botPhoneNumberId: businessData?.botPhoneNumberId || '',
             botDisplayNumber: businessData?.botDisplayNumber || '',
-            razorpayAccountId: businessData?.razorpayAccountId || '', 
+            razorpayAccountId: businessData?.razorpayAccountId || '',
             logoUrl: businessData?.logoUrl || '',
             bannerUrls: businessData?.bannerUrls || [],
             // Delivery Settings
@@ -136,6 +144,14 @@ export async function GET(req) {
             dineInPayAtCounterEnabled: businessData?.dineInPayAtCounterEnabled === undefined ? true : businessData.dineInPayAtCounterEnabled,
             isOpen: businessData?.isOpen === undefined ? true : businessData.isOpen,
             dineInModel: businessData?.dineInModel || 'post-paid',
+            // Add-on Charges Configuration
+            gstEnabled: businessData?.gstEnabled || false,
+            gstRate: businessData?.gstRate || 5,
+            gstMinAmount: businessData?.gstMinAmount || 0,
+            convenienceFeeEnabled: businessData?.convenienceFeeEnabled || false,
+            convenienceFeeRate: businessData?.convenienceFeeRate || 2.5,
+            convenienceFeePaidBy: businessData?.convenienceFeePaidBy || 'customer',
+            convenienceFeeLabel: businessData?.convenienceFeeLabel || 'Payment Processing Fee',
             businessId: businessId
         };
 
@@ -150,7 +166,7 @@ export async function GET(req) {
 export async function PATCH(req) {
     try {
         const { userRef, userData, businessRef, businessData, businessId } = await verifyUserAndGetData(req);
-        
+
         const updates = await req.json();
 
         const userUpdateData = {};
@@ -172,8 +188,8 @@ export async function PATCH(req) {
             if (updates.razorpayAccountId !== undefined) businessUpdateData.razorpayAccountId = updates.razorpayAccountId;
             if (updates.logoUrl !== undefined) businessUpdateData.logoUrl = updates.logoUrl;
             if (updates.bannerUrls !== undefined) businessUpdateData.bannerUrls = updates.bannerUrls;
-            if (updates.address !== undefined) businessUpdateData.address = updates.address; 
-            
+            if (updates.address !== undefined) businessUpdateData.address = updates.address;
+
             // Order and Payment Settings
             if (updates.deliveryEnabled !== undefined) businessUpdateData.deliveryEnabled = updates.deliveryEnabled;
             if (updates.pickupEnabled !== undefined) businessUpdateData.pickupEnabled = updates.pickupEnabled;
@@ -184,7 +200,7 @@ export async function PATCH(req) {
             if (updates.pickupPodEnabled !== undefined) businessUpdateData.pickupPodEnabled = updates.pickupPodEnabled;
             if (updates.dineInOnlinePaymentEnabled !== undefined) businessUpdateData.dineInOnlinePaymentEnabled = updates.dineInOnlinePaymentEnabled;
             if (updates.dineInPayAtCounterEnabled !== undefined) businessUpdateData.dineInPayAtCounterEnabled = updates.dineInPayAtCounterEnabled;
-            
+
             if (updates.dineInModel !== undefined) businessUpdateData.dineInModel = updates.dineInModel;
 
 
@@ -195,10 +211,19 @@ export async function PATCH(req) {
             if (updates.deliveryPerKmFee !== undefined) businessUpdateData.deliveryPerKmFee = updates.deliveryPerKmFee;
             if (updates.deliveryFreeThreshold !== undefined) businessUpdateData.deliveryFreeThreshold = updates.deliveryFreeThreshold;
 
+            // Add-on Charges Configuration
+            if (updates.gstEnabled !== undefined) businessUpdateData.gstEnabled = updates.gstEnabled;
+            if (updates.gstRate !== undefined) businessUpdateData.gstRate = updates.gstRate;
+            if (updates.gstMinAmount !== undefined) businessUpdateData.gstMinAmount = updates.gstMinAmount;
+            if (updates.convenienceFeeEnabled !== undefined) businessUpdateData.convenienceFeeEnabled = updates.convenienceFeeEnabled;
+            if (updates.convenienceFeeRate !== undefined) businessUpdateData.convenienceFeeRate = updates.convenienceFeeRate;
+            if (updates.convenienceFeePaidBy !== undefined) businessUpdateData.convenienceFeePaidBy = updates.convenienceFeePaidBy;
+            if (updates.convenienceFeeLabel !== undefined) businessUpdateData.convenienceFeeLabel = updates.convenienceFeeLabel;
+
 
             if (updates.isOpen !== undefined && updates.isOpen !== businessData?.isOpen) {
                 businessUpdateData.isOpen = updates.isOpen;
-                
+
                 sendRestaurantStatusChangeNotification({
                     ownerPhone: businessData.ownerPhone,
                     botPhoneNumberId: businessData.botPhoneNumberId,
@@ -210,14 +235,14 @@ export async function PATCH(req) {
             if (updates.phone !== undefined && updates.phone !== businessData?.ownerPhone) {
                 businessUpdateData.ownerPhone = updates.phone;
             }
-            
+
             if (Object.keys(businessUpdateData).length > 0) {
                 await businessRef.update(businessUpdateData);
             }
         }
-        
+
         const { userData: finalUserData, businessData: finalBusinessData, businessId: finalBusinessId } = await verifyUserAndGetData(req);
-        
+
         const responseData = {
             name: finalUserData.name, email: finalUserData.email, phone: finalUserData.phone,
             role: finalUserData.role, restaurantName: finalBusinessData?.name || '',
@@ -244,6 +269,14 @@ export async function PATCH(req) {
             isOpen: finalBusinessData?.isOpen === undefined ? true : finalBusinessData.isOpen,
             dineInModel: finalBusinessData?.dineInModel || 'post-paid',
             address: finalBusinessData?.address || { street: '', city: '', state: '', postalCode: '', country: 'IN' },
+            // Add-on Charges Configuration
+            gstEnabled: finalBusinessData?.gstEnabled || false,
+            gstRate: finalBusinessData?.gstRate || 5,
+            gstMinAmount: finalBusinessData?.gstMinAmount || 0,
+            convenienceFeeEnabled: finalBusinessData?.convenienceFeeEnabled || false,
+            convenienceFeeRate: finalBusinessData?.convenienceFeeRate || 2.5,
+            convenienceFeePaidBy: finalBusinessData?.convenienceFeePaidBy || 'customer',
+            convenienceFeeLabel: finalBusinessData?.convenienceFeeLabel || 'Payment Processing Fee',
             businessId: finalBusinessId,
         };
 
