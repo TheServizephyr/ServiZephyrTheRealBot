@@ -45,16 +45,16 @@ export default function OrderHistoryPage() {
         fetchVendorId();
     }, [user, isUserLoading]);
 
-    const fetchHistory = async () => {
-        if (!vendorId || !date?.from) return;
+    const fetchHistory = async (selectedDate = date) => {
+        if (!vendorId || !selectedDate?.from) return;
 
         setLoading(true);
         setError(null);
         setOrders([]);
 
         try {
-            const start = startOfDay(date.from);
-            const end = date.to ? endOfDay(date.to) : endOfDay(date.from);
+            const start = startOfDay(selectedDate.from);
+            const end = selectedDate.to ? endOfDay(selectedDate.to) : endOfDay(selectedDate.from);
 
             const q = query(
                 collection(db, 'orders'),
@@ -76,6 +76,13 @@ export default function OrderHistoryPage() {
         }
     };
 
+    const handleDateSelect = (newDate) => {
+        setDate(newDate);
+        if (newDate?.from) {
+            fetchHistory(newDate);
+        }
+    };
+
     // Filter Logic
     const filteredOrders = useMemo(() => {
         let items = [...orders];
@@ -89,6 +96,123 @@ export default function OrderHistoryPage() {
             );
         }
         return items;
+    }, [orders, searchQuery]);
+
+    const completedOrders = useMemo(() => filteredOrders.filter(o => ['delivered', 'picked_up'].includes(o.status)), [filteredOrders]);
+    const cancelledOrders = useMemo(() => filteredOrders.filter(o => ['rejected', 'cancelled'].includes(o.status)), [filteredOrders]);
+
+    const OrderList = ({ items, emptyMessage }) => (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+            {items.length === 0 && (
+                <div className="text-center text-muted-foreground py-10 col-span-full">
+                    {emptyMessage}
+                </div>
+            )}
+            <AnimatePresence>
+                {items.map((order) => {
+                    const token = order.dineInToken || order.trackingToken || 'N/A';
+
+                    let statusClass = 'text-yellow-500 bg-yellow-500/10 border-yellow-500/20';
+                    let borderClass = 'border-yellow-500';
+                    if (order.status === 'delivered' || order.status === 'picked_up') {
+                        statusClass = 'text-blue-500 bg-blue-500/10 border-blue-500/20';
+                        borderClass = 'border-blue-500';
+                    } else if (order.status === 'rejected' || order.status === 'cancelled') {
+                        statusClass = 'text-red-500 bg-red-500/10 border-red-500/20';
+                        borderClass = 'border-red-500';
+                    }
+
+                    // Payment Logic
+                    const paymentDetailsArray = Array.isArray(order.paymentDetails) ? order.paymentDetails : [order.paymentDetails].filter(Boolean);
+                    const amountPaidOnline = paymentDetailsArray
+                        .filter(p => p.method === 'razorpay' && p.status === 'paid')
+                        .reduce((sum, p) => sum + (p.amount || 0), 0);
+                    const amountDueAtCounter = (order.totalAmount || 0) - amountPaidOnline;
+                    const isFullyPaidOnline = amountPaidOnline >= (order.totalAmount || 0);
+                    const isPartiallyPaid = amountPaidOnline > 0 && amountDueAtCounter > 0.01;
+
+                    return (
+                        <motion.div
+                            key={order.id}
+                            layout
+                            initial={{ scale: 0.9, opacity: 0 }}
+                            animate={{ scale: 1, opacity: 1 }}
+                            exit={{ scale: 0.8, opacity: 0 }}
+                            transition={{ type: 'spring', stiffness: 200, damping: 20 }}
+                            className={cn("rounded-lg p-4 flex flex-col justify-between border-l-4 bg-card shadow-lg hover:shadow-primary/20 hover:-translate-y-1 transition-all duration-300", borderClass)}
+                        >
+                            <div>
+                                <div className="flex justify-between items-start">
+                                    <p className="text-4xl font-bold text-foreground">{token}</p>
+                                    <div className="text-right">
+                                        <div className={cn('px-2 py-1 text-xs font-semibold rounded-full border bg-opacity-20 capitalize', statusClass)}>{order.status}</div>
+                                        <p className="text-xs text-muted-foreground mt-1">{order.orderDate ? format(order.orderDate.toDate(), 'dd/MM, p') : ''}</p>
+                                    </div>
+                                </div>
+                                <div className="flex justify-between items-center mt-2 border-b border-dashed border-border pb-3 mb-3">
+                                    <p className="text-3xl font-bold text-green-500">{formatCurrency(order.totalAmount)}</p>
+                                    {isFullyPaidOnline ? (
+                                        <div className="flex items-center gap-1 text-xs font-semibold px-2 py-1 rounded-full bg-green-500/10 text-green-500 border border-green-500/20">
+                                            <Wallet size={14} /> PAID ONLINE
+                                        </div>
+                                    ) : isPartiallyPaid ? (
+                                        <div className="text-right">
+                                            <span className="block text-xs font-semibold text-green-500">Paid: {formatCurrency(amountPaidOnline)}</span>
+                                            <span className="block text-xs font-semibold text-yellow-400">Due: {formatCurrency(amountDueAtCounter)}</span>
+                                        </div>
+                                    ) : (
+                                        <div className="flex items-center gap-1 text-xs font-semibold px-2 py-1 rounded-full bg-yellow-500/10 text-yellow-400 border border-yellow-500/20">
+                                            <IndianRupee size={14} /> PAY AT COUNTER
+                                        </div>
+                                    )}
+                                </div>
+
+                                <div className="mt-2 text-muted-foreground space-y-1">
+                                    <div className="flex items-center gap-2">
+                                        <User size={16} />
+                                        <span className="font-semibold text-foreground text-lg">{order.customerName || 'Guest'}</span>
+                                    </div>
+                                    {order.customerPhone && (
+                                        <div className="flex items-center gap-2 text-sm">
+                                            <Phone size={14} />
+                                            <span>{order.customerPhone}</span>
+                                        </div>
+                                    )}
+                                </div>
+                                <div className="mt-3 pt-3 border-t border-dashed border-border">
+                                    <p className="font-semibold text-foreground">Items:</p>
+                                    <ul className="list-disc list-inside text-muted-foreground text-sm space-y-1">
+                                        {order.items.map((item, idx) => {
+                                            const portionName = item.portion?.name;
+                                            const addOns = (item.selectedAddOns || [])
+                                                .map(addon => `${addon.quantity}x ${addon.name}`)
+                                                .join(', ');
+                                            return (
+                                                <li key={idx}>
+                                                    {item.quantity || item.qty}x {item.name}
+                                                    {portionName && portionName.toLowerCase() !== 'full' && ` - ${portionName}`}
+                                                    {addOns && <span className="text-xs text-primary block pl-4">({addOns})</span>}
+                                                </li>
+                                            );
+                                        })}
+                                    </ul>
+                                </div>
+                                {order.status === 'rejected' && order.rejectionReason && (
+                                    <div className="mt-3 pt-3 border-t border-dashed border-border text-red-500 text-sm">
+                                        <p className="font-bold">Reason for Rejection:</p>
+                                        <p>{order.rejectionReason}</p>
+                                    </div>
+                                )}
+                            </div>
+                        </motion.div>
+                    );
+                })}
+            </AnimatePresence>
+        </div>
+    );
+
+    return (
+        <div className="min-h-screen bg-background text-foreground font-body p-4 pb-24">
             <header className="flex items-center gap-4 mb-6">
                 <Link href="/street-vendor-dashboard">
                     <Button variant="ghost" size="icon">
@@ -98,53 +222,47 @@ export default function OrderHistoryPage() {
                 <h1 className="text-2xl font-bold font-headline">Order History</h1>
             </header>
 
-            <div className="bg-card border border-border p-4 rounded-xl shadow-sm mb-6 space-y-4">
-                <div className="flex flex-col gap-2">
-                    <label className="text-sm font-medium text-muted-foreground">Select Date Range</label>
-                    <Popover>
-                        <PopoverTrigger asChild>
-                            <Button
-                                variant={"outline"}
-                                className={cn(
-                                    "w-full justify-start text-left font-normal",
-                                    !date && "text-muted-foreground"
-                                )}
-                            >
-                                <CalendarIcon className="mr-2 h-4 w-4" />
-                                {date?.from ? (
-                                    date.to ? (
-                                        <>
-                                            {format(date.from, "LLL dd, y")} -{" "}
-                                            {format(date.to, "LLL dd, y")}
-                                        </>
-                                    ) : (
-                                        format(date.from, "LLL dd, y")
-                                    )
+            <div className="bg-card border border-border p-4 rounded-xl shadow-sm mb-6">
+                <Popover>
+                    <PopoverTrigger asChild>
+                        <Button
+                            variant={"outline"}
+                            className={cn(
+                                "w-full justify-start text-left font-normal h-12 text-lg",
+                                !date && "text-muted-foreground"
+                            )}
+                        >
+                            <CalendarIcon className="mr-2 h-5 w-5" />
+                            {date?.from ? (
+                                date.to ? (
+                                    <>
+                                        {format(date.from, "LLL dd, y")} -{" "}
+                                        {format(date.to, "LLL dd, y")}
+                                    </>
                                 ) : (
-                                    <span>Pick a date</span>
-                                )}
-                            </Button>
-                        </PopoverTrigger>
-                        <PopoverContent className="w-auto p-0" align="start">
+                                    format(date.from, "LLL dd, y")
+                                )
+                            ) : (
+                                <span>Fetch History</span>
+                            )}
+                        </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-auto p-0" align="start">
+                        <div className="p-3">
                             <Calendar
                                 initialFocus
                                 mode="range"
                                 defaultMonth={date?.from}
                                 selected={date}
-                                onSelect={setDate}
+                                onSelect={handleDateSelect}
                                 numberOfMonths={1}
                             />
-                        </PopoverContent>
-                    </Popover>
-                </div>
-                <Button onClick={fetchHistory} disabled={loading || !vendorId} className="w-full">
-                    {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Search className="mr-2 h-4 w-4" />}
-                    Fetch History
-                </Button>
+                        </div>
+                    </PopoverContent>
+                </Popover>
             </div>
 
-        {
-            orders.length > 0 && (
+            {orders.length > 0 && (
                 <div className="relative mb-6">
                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                     <input
@@ -155,19 +273,15 @@ export default function OrderHistoryPage() {
                         className="w-full pl-10 pr-4 py-2 h-10 rounded-md bg-input border border-border"
                     />
                 </div>
-            )
-        }
+            )}
 
-        {
-            error && (
+            {error && (
                 <div className="bg-destructive/10 text-destructive p-4 rounded-lg mb-6 text-center">
                     {error}
                 </div>
-            )
-        }
+            )}
 
-        {
-            !loading && !error && (
+            {!loading && !error && (
                 <Tabs defaultValue="completed" className="w-full">
                     <TabsList className="grid w-full grid-cols-2 mb-4">
                         <TabsTrigger value="completed">Completed ({completedOrders.length})</TabsTrigger>
@@ -180,8 +294,7 @@ export default function OrderHistoryPage() {
                         <OrderList items={cancelledOrders} emptyMessage="No cancelled orders found." />
                     </TabsContent>
                 </Tabs>
-            )
-        }
-        </div >
+            )}
+        </div>
     );
 }
