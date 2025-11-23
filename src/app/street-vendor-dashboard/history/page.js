@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Button } from '@/components/ui/button';
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -11,7 +11,8 @@ import { db, auth } from '@/lib/firebase';
 import { collection, query, where, getDocs, orderBy, Timestamp } from 'firebase/firestore';
 import { useUser } from '@/firebase';
 import Link from 'next/link';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 const formatCurrency = (value) => `₹${Number(value || 0).toLocaleString('en-IN', { maximumFractionDigits: 2 })}`;
 
@@ -22,6 +23,7 @@ export default function OrderHistoryPage() {
     const [orders, setOrders] = useState([]);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState(null);
+    const [searchQuery, setSearchQuery] = useState('');
 
     // Fetch Vendor ID
     useEffect(() => {
@@ -54,9 +56,6 @@ export default function OrderHistoryPage() {
             const start = startOfDay(date.from);
             const end = date.to ? endOfDay(date.to) : endOfDay(date.from);
 
-            // Query for ALL orders in date range (client-side filter for status if needed)
-            // We specifically want delivered/rejected/cancelled, but fetching all is safer for indexing
-            // and allows seeing everything for that day.
             const q = query(
                 collection(db, 'orders'),
                 where('restaurantId', '==', vendorId),
@@ -68,9 +67,6 @@ export default function OrderHistoryPage() {
             const snapshot = await getDocs(q);
             const fetchedOrders = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 
-            // Optional: Filter client-side if we ONLY want history statuses
-            // const historyOrders = fetchedOrders.filter(o => ['delivered', 'picked_up', 'rejected', 'cancelled'].includes(o.status));
-
             setOrders(fetchedOrders);
         } catch (err) {
             console.error("Error fetching history:", err);
@@ -79,6 +75,75 @@ export default function OrderHistoryPage() {
             setLoading(false);
         }
     };
+
+    // Filter Logic
+    const filteredOrders = useMemo(() => {
+        let items = [...orders];
+
+        if (searchQuery) {
+            const lowerQuery = searchQuery.toLowerCase();
+            items = items.filter(order =>
+                order.customerName?.toLowerCase().includes(lowerQuery) ||
+                order.trackingToken?.toLowerCase().includes(lowerQuery) ||
+                order.id.toLowerCase().includes(lowerQuery)
+            );
+        }
+        return items;
+    }, [orders, searchQuery]);
+
+    const completedOrders = useMemo(() => filteredOrders.filter(o => ['delivered', 'picked_up'].includes(o.status)), [filteredOrders]);
+    const cancelledOrders = useMemo(() => filteredOrders.filter(o => ['rejected', 'cancelled'].includes(o.status)), [filteredOrders]);
+
+    const OrderList = ({ items, emptyMessage }) => (
+        <div className="space-y-4">
+            {items.length === 0 && (
+                <div className="text-center text-muted-foreground py-10">
+                    {emptyMessage}
+                </div>
+            )}
+            <AnimatePresence>
+                {items.map((order) => (
+                    <motion.div
+                        key={order.id}
+                        initial={{ opacity: 0, y: 10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, scale: 0.95 }}
+                        className="bg-card border border-border p-4 rounded-xl shadow-sm"
+                    >
+                        <div className="flex justify-between items-start mb-2">
+                            <div>
+                                <h3 className="font-bold text-lg">{order.customerName || 'Guest'}</h3>
+                                <p className="text-xs text-muted-foreground">
+                                    {order.orderDate ? format(order.orderDate.toDate(), 'dd MMM, p') : ''}
+                                </p>
+                                <p className="text-xs text-muted-foreground mt-1">Token: {order.trackingToken || 'N/A'}</p>
+                            </div>
+                            <div className={cn(
+                                "px-2 py-1 rounded text-xs font-bold uppercase",
+                                order.status === 'delivered' || order.status === 'picked_up' ? "bg-green-100 text-green-700" :
+                                    order.status === 'rejected' || order.status === 'cancelled' ? "bg-red-100 text-red-700" :
+                                        "bg-gray-100 text-gray-700"
+                            )}>
+                                {order.status}
+                            </div>
+                        </div>
+                        <div className="space-y-1 mb-3">
+                            {order.items.map((item, idx) => (
+                                <div key={idx} className="flex justify-between text-sm">
+                                    <span>{item.quantity}x {item.name}</span>
+                                    <span className="text-muted-foreground">{formatCurrency(item.totalPrice)}</span>
+                                </div>
+                            ))}
+                        </div>
+                        <div className="flex justify-between items-center pt-2 border-t border-dashed">
+                            <span className="font-bold">Total</span>
+                            <span className="font-bold text-primary">{formatCurrency(order.totalAmount)}</span>
+                        </div>
+                    </motion.div>
+                ))}
+            </AnimatePresence>
+        </div>
+    );
 
     return (
         <div className="min-h-screen bg-background text-foreground font-body p-4 pb-24">
@@ -136,57 +201,39 @@ export default function OrderHistoryPage() {
                 </Button>
             </div>
 
+            {orders.length > 0 && (
+                <div className="relative mb-6">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                    <input
+                        type="text"
+                        placeholder="Search by Name or Token..."
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                        className="w-full pl-10 pr-4 py-2 h-10 rounded-md bg-input border border-border"
+                    />
+                </div>
+            )}
+
             {error && (
                 <div className="bg-destructive/10 text-destructive p-4 rounded-lg mb-6 text-center">
                     {error}
                 </div>
             )}
 
-            <div className="space-y-4">
-                {orders.length === 0 && !loading && !error && (
-                    <div className="text-center text-muted-foreground py-10">
-                        No orders found for the selected date range.
-                    </div>
-                )}
-
-                {orders.map((order) => (
-                    <motion.div
-                        key={order.id}
-                        initial={{ opacity: 0, y: 10 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        className="bg-card border border-border p-4 rounded-xl shadow-sm"
-                    >
-                        <div className="flex justify-between items-start mb-2">
-                            <div>
-                                <h3 className="font-bold text-lg">{order.customerName || 'Guest'}</h3>
-                                <p className="text-xs text-muted-foreground">
-                                    {order.orderDate ? format(order.orderDate.toDate(), 'dd MMM, p') : ''}
-                                </p>
-                            </div>
-                            <div className={cn(
-                                "px-2 py-1 rounded text-xs font-bold uppercase",
-                                order.status === 'delivered' ? "bg-green-100 text-green-700" :
-                                    order.status === 'rejected' ? "bg-red-100 text-red-700" :
-                                        "bg-gray-100 text-gray-700"
-                            )}>
-                                {order.status}
-                            </div>
-                        </div>
-                        <div className="space-y-1 mb-3">
-                            {order.items.map((item, idx) => (
-                                <div key={idx} className="flex justify-between text-sm">
-                                    <span>{item.quantity}x {item.name}</span>
-                                    <span className="text-muted-foreground">{formatCurrency(item.totalPrice)}</span>
-                                </div>
-                            ))}
-                        </div>
-                        <div className="flex justify-between items-center pt-2 border-t border-dashed">
-                            <span className="font-bold">Total</span>
-                            <span className="font-bold text-primary">{formatCurrency(order.totalAmount)}</span>
-                        </div>
-                    </motion.div>
-                ))}
-            </div>
+            {!loading && !error && (
+                <Tabs defaultValue="completed" className="w-full">
+                    <TabsList className="grid w-full grid-cols-2 mb-4">
+                        <TabsTrigger value="completed">Completed ({completedOrders.length})</TabsTrigger>
+                        <TabsTrigger value="cancelled">Cancelled ({cancelledOrders.length})</TabsTrigger>
+                    </TabsList>
+                    <TabsContent value="completed">
+                        <OrderList items={completedOrders} emptyMessage="No completed orders found." />
+                    </TabsContent>
+                    <TabsContent value="cancelled">
+                        <OrderList items={cancelledOrders} emptyMessage="No cancelled orders found." />
+                    </TabsContent>
+                </Tabs>
+            )}
         </div>
     );
 }
