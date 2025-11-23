@@ -512,6 +512,7 @@ const StreetVendorDashboardContent = () => {
         const ordersQuery = query(
             collection(db, "orders"),
             where("restaurantId", "==", vendorId),
+            where("status", "in", ['pending', 'confirmed', 'preparing', 'Ready', 'awaiting_payment']),
             orderBy("orderDate", "desc")
         );
 
@@ -645,9 +646,16 @@ const StreetVendorDashboardContent = () => {
 
             <header className="flex justify-between items-center mb-6">
                 <h1 className="text-2xl font-bold font-headline">Live Pre-Orders</h1>
-                <Button onClick={() => setScannerOpen(true)} className="bg-primary hover:bg-primary/90 text-primary-foreground hidden md:flex">
-                    <QrCode className="mr-2" /> Scan to Collect
-                </Button>
+                <div className="flex gap-2">
+                    <Link href="/street-vendor-dashboard/history">
+                        <Button variant="outline" className="hidden md:flex">
+                            <History className="mr-2" /> History
+                        </Button>
+                    </Link>
+                    <Button onClick={() => setScannerOpen(true)} className="bg-primary hover:bg-primary/90 text-primary-foreground hidden md:flex">
+                        <QrCode className="mr-2" /> Scan to Collect
+                    </Button>
+                </div>
             </header>
 
             <div className="flex items-center gap-4 mb-6">
@@ -767,7 +775,7 @@ const StreetVendorDashboardContent = () => {
                     <QrCode size={32} />
                 </Button>
             </div>
-        </div>
+        </div >
     );
 }
 
