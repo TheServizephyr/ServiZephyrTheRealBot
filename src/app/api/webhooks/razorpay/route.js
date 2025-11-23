@@ -259,6 +259,57 @@ export async function POST(req) {
                 console.log(`[Webhook RZP] handleSplitPayment returned false for order ${razorpayOrderId}. Proceeding to normal flow.`);
             }
 
+            // Handle Add-on Payment
+            if (notes && notes.type === 'addon') {
+                console.log(`[Webhook RZP] Add-on payment detected for order ${notes.orderId}`);
+                const orderId = notes.orderId;
+                const itemsToAdd = JSON.parse(notes.items);
+                const addOnAmount = paymentEntity.amount / 100; // Amount in rupees
+
+                const orderRef = firestore.collection('orders').doc(orderId);
+
+                await firestore.runTransaction(async (transaction) => {
+                    const orderDoc = await transaction.get(orderRef);
+                    if (!orderDoc.exists) throw new Error("Order not found for add-on.");
+
+                    const orderData = orderDoc.data();
+                    const newItems = [...orderData.items, ...itemsToAdd];
+
+                    // Update totals
+                    const newSubtotal = (orderData.subtotal || 0) + (parseFloat(notes.subtotal) || 0);
+                    const newCgst = (orderData.cgst || 0) + (parseFloat(notes.cgst) || 0);
+                    const newSgst = (orderData.sgst || 0) + (parseFloat(notes.sgst) || 0);
+                    const newGrandTotal = (orderData.totalAmount || 0) + (parseFloat(notes.grandTotal) || 0);
+
+                    const paymentDetail = {
+                        method: 'razorpay',
+                        amount: addOnAmount,
+                        razorpay_payment_id: paymentEntity.id,
+                        razorpay_order_id: razorpayOrderId,
+                        timestamp: new Date(),
+                        status: 'paid',
+                        notes: 'Add-on payment'
+                    };
+
+                    transaction.update(orderRef, {
+                        items: newItems,
+                        subtotal: newSubtotal,
+                        cgst: newCgst,
+                        sgst: newSgst,
+                        totalAmount: newGrandTotal,
+                        paymentDetails: FieldValue.arrayUnion(paymentDetail),
+                        statusHistory: FieldValue.arrayUnion({
+                            status: 'updated',
+                            timestamp: new Date(),
+                            notes: `Added ${itemsToAdd.length} item(s) via online add-on`
+                        })
+                    });
+                });
+
+                console.log(`[Webhook RZP] Add-on items added to order ${orderId} successfully.`);
+                return NextResponse.json({ status: 'ok', message: 'Add-on processed.' });
+            }
+
             const key_id = process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID;
             const key_secret = process.env.RAZORPAY_KEY_SECRET;
             const credentials = Buffer.from(`${key_id}:${key_secret}`).toString('base64');

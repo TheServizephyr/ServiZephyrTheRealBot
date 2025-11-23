@@ -53,6 +53,57 @@ export async function POST(req) {
         // --- START: ADD-ON ORDER LOGIC ---
         if (existingOrderId && items && items.length > 0) {
             console.log(`[API /order/create] ADD-ON FLOW: Adding items to existing order ${existingOrderId}`);
+
+            // Handle Online Payment for Add-ons
+            if (paymentMethod === 'online') {
+                try {
+                    if (!process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID || !process.env.RAZORPAY_KEY_SECRET) {
+                        throw new Error("Razorpay credentials not configured.");
+                    }
+
+                    const razorpay = new Razorpay({
+                        key_id: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID,
+                        key_secret: process.env.RAZORPAY_KEY_SECRET,
+                    });
+
+                    // Create Razorpay Order with items in notes
+                    // Note: Razorpay notes have a size limit. For very large orders, this might need a different approach (e.g. pendingAddons collection).
+                    // But for typical food orders, it's fine.
+                    const razorpayOrderOptions = {
+                        amount: Math.round(grandTotal * 100),
+                        currency: 'INR',
+                        receipt: `addon_${existingOrderId}_${Date.now()}`,
+                        notes: {
+                            type: 'addon',
+                            orderId: existingOrderId,
+                            items: JSON.stringify(items), // Store items to add upon payment
+                            subtotal: subtotal,
+                            cgst: cgst,
+                            sgst: sgst,
+                            grandTotal: grandTotal
+                        }
+                    };
+
+                    const razorpayOrder = await razorpay.orders.create(razorpayOrderOptions);
+                    console.log(`[API /order/create] ADD-ON FLOW: Razorpay order created: ${razorpayOrder.id}`);
+
+                    // Fetch token to return (optional, but good for consistency)
+                    const orderDoc = await firestore.collection('orders').doc(existingOrderId).get();
+                    const trackingToken = orderDoc.exists ? orderDoc.data().trackingToken : null;
+
+                    return NextResponse.json({
+                        message: 'Razorpay order created for add-ons. Awaiting payment.',
+                        razorpay_order_id: razorpayOrder.id,
+                        firestore_order_id: existingOrderId,
+                        token: trackingToken,
+                    }, { status: 200 });
+
+                } catch (error) {
+                    console.error(`[API /order/create] ADD-ON FLOW: Razorpay creation failed:`, error);
+                    return NextResponse.json({ message: error.message }, { status: 500 });
+                }
+            }
+
             const orderRef = firestore.collection('orders').doc(existingOrderId);
 
             try {
