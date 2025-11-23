@@ -318,9 +318,16 @@ const CheckoutPageInternal = () => {
         setError('');
 
         try {
-            console.log("[Checkout Page] Sending order to /api/order/create with payload:", orderData);
+            console.log(`[Checkout Page] Sending order to /api/order/create. PaymentMethod: ${paymentMethod}, ExistingOrderId: ${orderData.existingOrderId}`);
             const res = await fetch('/api/order/create', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(orderData) });
             const data = await res.json();
+            console.log("[Checkout Page] Order API response received:", data);
+
+            if (data.razorpay_order_id) {
+                console.log(`[Checkout Page] Razorpay ID found: ${data.razorpay_order_id}`);
+            } else {
+                console.warn(`[Checkout Page] NO Razorpay ID found in response!`);
+            }
             if (!res.ok) throw new Error(data.message || "Failed to place order.");
 
             console.log("[Checkout Page] Order API response received:", data);

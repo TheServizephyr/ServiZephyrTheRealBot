@@ -53,6 +53,7 @@ export async function POST(req) {
         // --- START: ADD-ON ORDER LOGIC ---
         if (existingOrderId && items && items.length > 0) {
             console.log(`[API /order/create] ADD-ON FLOW: Adding items to existing order ${existingOrderId}`);
+            console.log(`[API /order/create] ADD-ON FLOW: Payment Method: ${paymentMethod}`);
 
             // Handle Online Payment for Add-ons
             if (paymentMethod === 'online') {
