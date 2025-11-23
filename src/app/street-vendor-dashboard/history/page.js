@@ -206,7 +206,12 @@ export default function OrderHistoryPage() {
                                     <p className="text-4xl font-bold text-foreground">{token}</p>
                                     <div className="text-right">
                                         <div className={cn('px-2 py-1 text-xs font-semibold rounded-full border bg-opacity-20 capitalize', statusClass)}>{order.status}</div>
-                                        <p className="text-xs text-muted-foreground mt-1">{order.orderDate ? format(order.orderDate.toDate(), 'dd/MM, p') : ''}</p>
+                                        <p className="text-xs text-muted-foreground mt-1">
+                                            {order.orderDate ? format(
+                                                order.orderDate.toDate ? order.orderDate.toDate() : new Date(order.orderDate.seconds * 1000 || order.orderDate),
+                                                'dd/MM, p'
+                                            ) : ''}
+                                        </p>
                                     </div>
                                 </div>
                                 <div className="flex justify-between items-center mt-2 border-b border-dashed border-border pb-3 mb-3">
