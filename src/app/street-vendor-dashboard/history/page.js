@@ -286,9 +286,8 @@ export default function OrderHistoryPage() {
                 <Popover>
                     <PopoverTrigger asChild>
                         <Button
-                            variant={"outline"}
                             className={cn(
-                                "w-full justify-start text-left font-normal h-12 text-lg"
+                                "w-full justify-start text-left font-normal h-12 text-lg bg-green-600 hover:bg-green-700 text-white"
                             )}
                         >
                             <CalendarIcon className="mr-2 h-5 w-5" />
