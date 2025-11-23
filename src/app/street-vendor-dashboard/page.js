@@ -721,11 +721,9 @@ const StreetVendorDashboardContent = () => {
                     <div className="text-center py-20 text-red-500">{error}</div>
                 ) : (
                     <Tabs defaultValue="new_orders" className="w-full">
-                        <TabsList className="grid w-full grid-cols-4">
+                        <TabsList className="grid w-full grid-cols-2">
                             <TabsTrigger value="new_orders">New ({pendingOrders.length})</TabsTrigger>
                             <TabsTrigger value="ready">Ready ({readyOrders.length})</TabsTrigger>
-                            <TabsTrigger value="collected">Collected ({collectedOrders.length})</TabsTrigger>
-                            <TabsTrigger value="cancelled">Cancelled ({cancelledOrders.length})</TabsTrigger>
                         </TabsList>
                         <TabsContent value="new_orders" className="mt-4">
                             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
@@ -745,26 +743,6 @@ const StreetVendorDashboardContent = () => {
                                     ))}
                                 </AnimatePresence>
                                 {readyOrders.length === 0 && <p className="text-muted-foreground text-center py-10 col-span-full">No orders are ready for pickup.</p>}
-                            </div>
-                        </TabsContent>
-                        <TabsContent value="collected" className="mt-4">
-                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-                                <AnimatePresence>
-                                    {collectedOrders.map(order => (
-                                        <OrderCard key={order.id} order={order} />
-                                    ))}
-                                </AnimatePresence>
-                                {collectedOrders.length === 0 && <p className="text-muted-foreground text-center py-10 col-span-full">No orders have been collected for the selected date.</p>}
-                            </div>
-                        </TabsContent>
-                        <TabsContent value="cancelled" className="mt-4">
-                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-                                <AnimatePresence>
-                                    {cancelledOrders.map(order => (
-                                        <OrderCard key={order.id} order={order} />
-                                    ))}
-                                </AnimatePresence>
-                                {cancelledOrders.length === 0 && <p className="text-muted-foreground text-center py-10 col-span-full">No cancelled orders for the selected date.</p>}
                             </div>
                         </TabsContent>
                     </Tabs>
