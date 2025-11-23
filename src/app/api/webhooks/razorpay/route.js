@@ -133,8 +133,20 @@ const handleSplitPayment = async (firestore, paymentEntity) => {
                         }
                     }
 
+                    // Add separate payment details for each paid share
+                    const paymentDetailsToAdd = sharesToUpdate.map(index => ({
+                        method: 'razorpay',
+                        amount: shares[index].amount,
+                        razorpay_payment_id: paymentEntity.id,
+                        razorpay_order_id: shares[index].razorpay_order_id,
+                        timestamp: new Date(),
+                        status: 'paid',
+                        split_share_index: index,
+                        payer_name: shares[index].name || `Person ${index + 1}`
+                    }));
+
                     const orderUpdate = {
-                        paymentDetails: FieldValue.arrayUnion({ method: 'razorpay', amount: paymentEntity.amount / 100, razorpay_payment_id: paymentEntity.id, timestamp: new Date(), status: 'paid' }),
+                        paymentDetails: FieldValue.arrayUnion(...paymentDetailsToAdd),
                         status: 'pending'
                     };
 
