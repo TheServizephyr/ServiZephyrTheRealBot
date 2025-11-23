@@ -21,11 +21,11 @@ export const dynamic = 'force-dynamic';
 // --- Sub-components for better structure ---
 
 const countries = [
-  { value: 'IN', label: 'India', flag: '🇮🇳' },
-  { value: 'US', label: 'United States', flag: '🇺🇸' },
-  { value: 'AE', label: 'United Arab Emirates', flag: '🇦🇪' },
-  { value: 'GB', label: 'United Kingdom', flag: '🇬🇧' },
-  { value: 'CA', label: 'Canada', flag: '🇨🇦' },
+    { value: 'IN', label: 'India', flag: '🇮🇳' },
+    { value: 'US', label: 'United States', flag: '🇺🇸' },
+    { value: 'AE', label: 'United Arab Emirates', flag: '🇦🇪' },
+    { value: 'GB', label: 'United Kingdom', flag: '🇬🇧' },
+    { value: 'CA', label: 'Canada', flag: '🇨🇦' },
 ];
 
 const CountrySelect = ({ value, onSelect, disabled }) => {
@@ -78,7 +78,7 @@ const CountrySelect = ({ value, onSelect, disabled }) => {
 
 
 const SectionCard = ({ title, description, children, footer, action }) => (
-    <motion.div 
+    <motion.div
         className="bg-card border border-border rounded-xl shadow-lg hover:shadow-primary/20 hover:-translate-y-1 transition-all duration-300"
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
@@ -125,7 +125,7 @@ const DeleteAccountModal = ({ isOpen, setIsOpen }) => {
             }
         } catch (error) {
             console.error("Error deleting account:", error);
-            const errorMessage = error.code === 'auth/popup-closed-by-user' 
+            const errorMessage = error.code === 'auth/popup-closed-by-user'
                 ? 'Re-authentication cancelled. Account not deleted.'
                 : `Failed to delete account: ${error.message}`;
             setInfoDialog({ isOpen: true, title: 'Error', message: errorMessage });
@@ -162,7 +162,7 @@ const DeleteAccountModal = ({ isOpen, setIsOpen }) => {
                 </div>
                 <DialogFooter>
                     <DialogClose asChild><Button variant="secondary">Cancel</Button></DialogClose>
-                    <Button 
+                    <Button
                         variant="destructive"
                         disabled={isDeleteDisabled}
                         onClick={handleDelete}
@@ -178,39 +178,39 @@ const DeleteAccountModal = ({ isOpen, setIsOpen }) => {
 
 const ImageUpload = ({ label, currentImage, onFileSelect, isEditing }) => {
     const fileInputRef = React.useRef(null);
-  
+
     const handleFileChange = (e) => {
-      const file = e.target.files[0];
-      if (file) {
-        const reader = new FileReader();
-        reader.onloadend = () => {
-          onFileSelect(reader.result);
-        };
-        reader.readAsDataURL(file);
-      }
+        const file = e.target.files[0];
+        if (file) {
+            const reader = new FileReader();
+            reader.onloadend = () => {
+                onFileSelect(reader.result);
+            };
+            reader.readAsDataURL(file);
+        }
     };
-  
+
     return (
-      <div>
-        <Label className="flex items-center gap-2"><ImageIcon size={14}/> {label}</Label>
-        <div className="mt-2 flex items-center gap-4">
-          <div className="relative w-20 h-20 rounded-lg border-2 border-dashed border-border flex items-center justify-center bg-muted/50 overflow-hidden">
-            {currentImage ? (
-                <Image src={currentImage} alt={label} layout="fill" objectFit="cover" />
-            ) : (
-                <ImageIcon size={24} className="text-muted-foreground" />
-            )}
-          </div>
-          {isEditing && (
-            <>
-              <input type="file" accept="image/*" ref={fileInputRef} onChange={handleFileChange} className="hidden" />
-              <Button type="button" variant="outline" onClick={() => fileInputRef.current?.click()}>
-                <Upload size={16} className="mr-2"/> Upload
-              </Button>
-            </>
-          )}
+        <div>
+            <Label className="flex items-center gap-2"><ImageIcon size={14} /> {label}</Label>
+            <div className="mt-2 flex items-center gap-4">
+                <div className="relative w-20 h-20 rounded-lg border-2 border-dashed border-border flex items-center justify-center bg-muted/50 overflow-hidden">
+                    {currentImage ? (
+                        <Image src={currentImage} alt={label} layout="fill" objectFit="cover" />
+                    ) : (
+                        <ImageIcon size={24} className="text-muted-foreground" />
+                    )}
+                </div>
+                {isEditing && (
+                    <>
+                        <input type="file" accept="image/*" ref={fileInputRef} onChange={handleFileChange} className="hidden" />
+                        <Button type="button" variant="outline" onClick={() => fileInputRef.current?.click()}>
+                            <Upload size={16} className="mr-2" /> Upload
+                        </Button>
+                    </>
+                )}
+            </div>
         </div>
-      </div>
     );
 };
 
@@ -224,6 +224,7 @@ function VendorProfilePageContent() {
     const [isEditingProfile, setIsEditingProfile] = useState(false);
     const [isEditingMedia, setIsEditingMedia] = useState(false);
     const [isEditingPayment, setIsEditingPayment] = useState(false);
+    const [isEditingCharges, setIsEditingCharges] = useState(false); // For Add-on Charges section
     const [isDeleteModalOpen, setDeleteModalOpen] = useState(false);
     const [infoDialog, setInfoDialog] = useState({ isOpen: false, title: '', message: '' });
 
@@ -244,7 +245,7 @@ function VendorProfilePageContent() {
                 });
 
                 if (!response.ok) throw new Error((await response.json()).message || 'Failed to fetch user data');
-                
+
                 const data = await response.json();
                 const userData = { ...data, address: data.address || defaultAddress };
                 setUser(userData);
@@ -269,17 +270,18 @@ function VendorProfilePageContent() {
             profile: [isEditingProfile, setIsEditingProfile],
             media: [isEditingMedia, setIsEditingMedia],
             payment: [isEditingPayment, setIsEditingPayment],
+            charges: [isEditingCharges, setIsEditingCharges],
         };
         const [isEditing, setIsEditing] = toggles[section];
         if (isEditing) setEditedUser(user);
         setIsEditing(!isEditing);
     };
-    
+
     const handleAddressChange = (field, value) => {
-      setEditedUser(prev => ({
-          ...prev,
-          address: { ...prev.address, [field]: value }
-      }));
+        setEditedUser(prev => ({
+            ...prev,
+            address: { ...prev.address, [field]: value }
+        }));
     };
 
     const handleBannerFileChange = (e) => {
@@ -287,20 +289,20 @@ function VendorProfilePageContent() {
         if (file) {
             const reader = new FileReader();
             reader.onloadend = () => {
-                setEditedUser(prev => ({...prev, bannerUrls: [...(prev.bannerUrls || []), reader.result]}));
+                setEditedUser(prev => ({ ...prev, bannerUrls: [...(prev.bannerUrls || []), reader.result] }));
             };
             reader.readAsDataURL(file);
         }
     };
 
     const removeBannerImage = (index) => {
-        setEditedUser(prev => ({...prev, bannerUrls: prev.bannerUrls.filter((_, i) => i !== index)}));
+        setEditedUser(prev => ({ ...prev, bannerUrls: prev.bannerUrls.filter((_, i) => i !== index) }));
     };
 
     const handlePaymentToggle = (type, value) => {
         setEditedUser(prev => {
             const newState = { ...prev, [type]: value };
-            const { 
+            const {
                 deliveryEnabled, pickupEnabled, dineInEnabled,
                 deliveryOnlinePaymentEnabled, deliveryCodEnabled,
                 pickupOnlinePaymentEnabled, pickupPodEnabled,
@@ -325,7 +327,7 @@ function VendorProfilePageContent() {
                 return prev;
             }
             // Validation for Dine-In
-             if (dineInEnabled && !dineInOnlinePaymentEnabled && !dineInPayAtCounterEnabled) {
+            if (dineInEnabled && !dineInOnlinePaymentEnabled && !dineInPayAtCounterEnabled) {
                 setInfoDialog({ isOpen: true, title: 'Invalid Selection', message: 'At least one payment method must be enabled for Dine-In.' });
                 return prev;
             }
@@ -337,7 +339,7 @@ function VendorProfilePageContent() {
     const handleSave = async (section) => {
         const currentUser = getAuth().currentUser;
         if (!currentUser || !editedUser) return;
-        
+
         let payload = {};
         if (section === 'profile') {
             payload = { name: editedUser.name, restaurantName: editedUser.restaurantName, phone: editedUser.phone };
@@ -348,6 +350,16 @@ function VendorProfilePageContent() {
                 isOpen: editedUser.isOpen,
                 dineInOnlinePaymentEnabled: editedUser.dineInOnlinePaymentEnabled,
                 dineInPayAtCounterEnabled: editedUser.dineInPayAtCounterEnabled,
+            };
+        } else if (section === 'charges') {
+            payload = {
+                gstEnabled: editedUser.gstEnabled || false,
+                gstRate: editedUser.gstRate || 5,
+                gstMinAmount: editedUser.gstMinAmount || 0,
+                convenienceFeeEnabled: editedUser.convenienceFeeEnabled || false,
+                convenienceFeeRate: editedUser.convenienceFeeRate || 2.5,
+                convenienceFeePaidBy: editedUser.convenienceFeePaidBy || 'customer',
+                convenienceFeeLabel: editedUser.convenienceFeeLabel || 'Payment Processing Fee',
             };
         }
 
@@ -360,7 +372,7 @@ function VendorProfilePageContent() {
             });
 
             if (!response.ok) throw new Error((await response.json()).message || 'Failed to update settings');
-            
+
             const updatedUser = await response.json();
             const finalUser = { ...updatedUser, address: updatedUser.address || defaultAddress };
             setUser(finalUser);
@@ -368,16 +380,17 @@ function VendorProfilePageContent() {
             if (section === 'profile') setIsEditingProfile(false);
             if (section === 'media') setIsEditingMedia(false);
             if (section === 'payment') setIsEditingPayment(false);
+            if (section === 'charges') setIsEditingCharges(false);
             setInfoDialog({ isOpen: true, title: 'Success', message: 'Updated Successfully!' });
         } catch (error) {
             setInfoDialog({ isOpen: true, title: 'Error', message: error.message });
         }
     };
-    
+
     if (loading) {
-        return <div className="p-6 text-center h-screen flex items-center justify-center"><Loader2 className="animate-spin h-16 w-16 text-primary"/></div>;
+        return <div className="p-6 text-center h-screen flex items-center justify-center"><Loader2 className="animate-spin h-16 w-16 text-primary" /></div>;
     }
-    
+
     if (!user || !editedUser) {
         return <div className="p-6 text-center h-screen flex items-center justify-center"><p>Could not load user data. Please log in again.</p></div>;
     }
@@ -388,42 +401,42 @@ function VendorProfilePageContent() {
         <div className="p-4 md:p-6 text-foreground min-h-screen bg-background space-y-8">
             <InfoDialog isOpen={infoDialog.isOpen} onClose={() => setInfoDialog({ isOpen: false, title: '', message: '' })} title={infoDialog.title} message={infoDialog.message} />
             <DeleteAccountModal isOpen={isDeleteModalOpen} setIsOpen={setDeleteModalOpen} />
-            
+
             <h1 className="text-3xl font-bold tracking-tight">Stall Profile & Settings</h1>
 
-            <SectionCard 
+            <SectionCard
                 title="Your Details"
                 description="Manage your personal and business details."
                 action={isEditingProfile ? (
                     <div className="flex gap-2">
-                         <Button variant="ghost" onClick={() => handleEditToggle('profile')}><XCircle className="mr-2 h-4 w-4"/> Cancel</Button>
-                         <Button onClick={() => handleSave('profile')} className="bg-primary hover:bg-primary/90 text-primary-foreground"><Save className="mr-2 h-4 w-4"/> Save</Button>
+                        <Button variant="ghost" onClick={() => handleEditToggle('profile')}><XCircle className="mr-2 h-4 w-4" /> Cancel</Button>
+                        <Button onClick={() => handleSave('profile')} className="bg-primary hover:bg-primary/90 text-primary-foreground"><Save className="mr-2 h-4 w-4" /> Save</Button>
                     </div>
                 ) : (
-                    <Button onClick={() => handleEditToggle('profile')}><Edit className="mr-2 h-4 w-4"/> Edit</Button>
+                    <Button onClick={() => handleEditToggle('profile')}><Edit className="mr-2 h-4 w-4" /> Edit</Button>
                 )}
             >
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-8 items-start">
                     <div className="space-y-6">
                         <div>
-                            <Label htmlFor="ownerName" className="flex items-center gap-2"><User size={14}/> Your Name</Label>
-                            <input id="ownerName" value={editedUser.name} onChange={e => setEditedUser({...editedUser, name: e.target.value})} disabled={!isEditingProfile} className="mt-1 w-full p-2 border rounded-md bg-input border-border disabled:opacity-70" />
+                            <Label htmlFor="ownerName" className="flex items-center gap-2"><User size={14} /> Your Name</Label>
+                            <input id="ownerName" value={editedUser.name} onChange={e => setEditedUser({ ...editedUser, name: e.target.value })} disabled={!isEditingProfile} className="mt-1 w-full p-2 border rounded-md bg-input border-border disabled:opacity-70" />
                         </div>
                         <div>
-                            <Label htmlFor="restaurantName" className="flex items-center gap-2"><Store size={14}/> Stall/Business Name</Label>
-                            <input id="restaurantName" value={editedUser.restaurantName} onChange={e => setEditedUser({...editedUser, restaurantName: e.target.value})} disabled={!isEditingProfile} className="mt-1 w-full p-2 border rounded-md bg-input border-border disabled:opacity-70" />
+                            <Label htmlFor="restaurantName" className="flex items-center gap-2"><Store size={14} /> Stall/Business Name</Label>
+                            <input id="restaurantName" value={editedUser.restaurantName} onChange={e => setEditedUser({ ...editedUser, restaurantName: e.target.value })} disabled={!isEditingProfile} className="mt-1 w-full p-2 border rounded-md bg-input border-border disabled:opacity-70" />
                         </div>
                     </div>
-                     <div className="space-y-6">
-                         <div>
-                            <Label htmlFor="email" className="flex items-center gap-2"><Mail size={14}/> Email Address</Label>
+                    <div className="space-y-6">
+                        <div>
+                            <Label htmlFor="email" className="flex items-center gap-2"><Mail size={14} /> Email Address</Label>
                             <input id="email" value={user.email} disabled className="mt-1 w-full p-2 border rounded-md bg-input border-border disabled:opacity-50" />
                         </div>
                         <div>
-                            <Label htmlFor="phone" className="flex items-center gap-2"><Phone size={14}/> Phone Number</Label>
-                            <input id="phone" value={editedUser.phone} onChange={e => setEditedUser({...editedUser, phone: e.target.value})} disabled={!isEditingProfile} className="mt-1 w-full p-2 border rounded-md bg-input border-border disabled:opacity-70" />
+                            <Label htmlFor="phone" className="flex items-center gap-2"><Phone size={14} /> Phone Number</Label>
+                            <input id="phone" value={editedUser.phone} onChange={e => setEditedUser({ ...editedUser, phone: e.target.value })} disabled={!isEditingProfile} className="mt-1 w-full p-2 border rounded-md bg-input border-border disabled:opacity-70" />
                         </div>
-                     </div>
+                    </div>
                 </div>
             </SectionCard>
 
@@ -432,72 +445,223 @@ function VendorProfilePageContent() {
                 description="Upload your stall's logo and a banner for your order page."
                 action={isEditingMedia ? (
                     <div className="flex gap-2">
-                        <Button variant="ghost" onClick={() => handleEditToggle('media')}><XCircle className="mr-2 h-4 w-4"/> Cancel</Button>
-                        <Button onClick={() => handleSave('media')} className="bg-primary hover:bg-primary/90 text-primary-foreground"><Save className="mr-2 h-4 w-4"/> Save</Button>
+                        <Button variant="ghost" onClick={() => handleEditToggle('media')}><XCircle className="mr-2 h-4 w-4" /> Cancel</Button>
+                        <Button onClick={() => handleSave('media')} className="bg-primary hover:bg-primary/90 text-primary-foreground"><Save className="mr-2 h-4 w-4" /> Save</Button>
                     </div>
                 ) : (
-                    <Button onClick={() => handleEditToggle('media')}><Edit className="mr-2 h-4 w-4"/> Edit</Button>
+                    <Button onClick={() => handleEditToggle('media')}><Edit className="mr-2 h-4 w-4" /> Edit</Button>
                 )}
             >
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                    <ImageUpload label="Logo" currentImage={editedUser.logoUrl} onFileSelect={(url) => setEditedUser({...editedUser, logoUrl: url})} isEditing={isEditingMedia} />
-                    <ImageUpload label="Banner" currentImage={editedUser.bannerUrls?.[0]} onFileSelect={(url) => setEditedUser({...editedUser, bannerUrls: [url]})} isEditing={isEditingMedia} />
+                    <ImageUpload label="Logo" currentImage={editedUser.logoUrl} onFileSelect={(url) => setEditedUser({ ...editedUser, logoUrl: url })} isEditing={isEditingMedia} />
+                    <ImageUpload label="Banner" currentImage={editedUser.bannerUrls?.[0]} onFileSelect={(url) => setEditedUser({ ...editedUser, bannerUrls: [url] })} isEditing={isEditingMedia} />
                 </div>
             </SectionCard>
 
-             <SectionCard
+            <SectionCard
                 title="Operational Settings"
                 description="Control your stall's availability and payment methods."
                 action={isEditingPayment ? (
                     <div className="flex gap-2">
-                        <Button variant="ghost" onClick={() => handleEditToggle('payment')}><XCircle className="mr-2 h-4 w-4"/> Cancel</Button>
-                        <Button onClick={() => handleSave('payment')} className="bg-primary hover:bg-primary/90 text-primary-foreground"><Save className="mr-2 h-4 w-4"/> Save</Button>
+                        <Button variant="ghost" onClick={() => handleEditToggle('payment')}><XCircle className="mr-2 h-4 w-4" /> Cancel</Button>
+                        <Button onClick={() => handleSave('payment')} className="bg-primary hover:bg-primary/90 text-primary-foreground"><Save className="mr-2 h-4 w-4" /> Save</Button>
                     </div>
                 ) : (
-                    <Button onClick={() => handleEditToggle('payment')}><Edit className="mr-2 h-4 w-4"/> Edit</Button>
+                    <Button onClick={() => handleEditToggle('payment')}><Edit className="mr-2 h-4 w-4" /> Edit</Button>
                 )}
             >
-                 <div className="space-y-6">
+                <div className="space-y-6">
                     <div className="flex items-center justify-between p-4 bg-muted/50 rounded-lg">
                         <Label htmlFor="isOpen" className="flex flex-col">
                             <span className="font-bold text-lg">Stall Status</span>
                             <span className="text-sm text-muted-foreground">Turn this off to temporarily stop all new orders.</span>
                         </Label>
-                        <Switch id="isOpen" checked={editedUser.isOpen} onCheckedChange={(val) => setEditedUser({...editedUser, isOpen: val})} disabled={!isEditingPayment} />
+                        <Switch id="isOpen" checked={editedUser.isOpen} onCheckedChange={(val) => setEditedUser({ ...editedUser, isOpen: val })} disabled={!isEditingPayment} />
                     </div>
-                     <div className="grid md:grid-cols-2 gap-6 pt-6 border-t border-border">
+                    <div className="grid md:grid-cols-2 gap-6 pt-6 border-t border-border">
                         <div className="space-y-4 p-4 border rounded-lg bg-muted/50">
-                             <h4 className="font-bold">Payment Methods</h4>
-                              <div className="flex items-center justify-between">
+                            <h4 className="font-bold">Payment Methods</h4>
+                            <div className="flex items-center justify-between">
                                 <Label htmlFor="dineInOnlinePaymentEnabled" className="text-sm">Online Payments</Label>
-                                <Switch id="dineInOnlinePaymentEnabled" checked={editedUser.dineInOnlinePaymentEnabled} onCheckedChange={(val) => setEditedUser({...editedUser, dineInOnlinePaymentEnabled: val})} disabled={!isEditingPayment} />
+                                <Switch id="dineInOnlinePaymentEnabled" checked={editedUser.dineInOnlinePaymentEnabled} onCheckedChange={(val) => setEditedUser({ ...editedUser, dineInOnlinePaymentEnabled: val })} disabled={!isEditingPayment} />
                             </div>
-                             <div className="flex items-center justify-between">
+                            <div className="flex items-center justify-between">
                                 <Label htmlFor="dineInPayAtCounterEnabled" className="text-sm">Pay at Counter</Label>
-                                <Switch id="dineInPayAtCounterEnabled" checked={editedUser.dineInPayAtCounterEnabled} onCheckedChange={(val) => setEditedUser({...editedUser, dineInPayAtCounterEnabled: val})} disabled={!isEditingPayment} />
+                                <Switch id="dineInPayAtCounterEnabled" checked={editedUser.dineInPayAtCounterEnabled} onCheckedChange={(val) => setEditedUser({ ...editedUser, dineInPayAtCounterEnabled: val })} disabled={!isEditingPayment} />
                             </div>
                         </div>
                     </div>
                 </div>
             </SectionCard>
-            
-             <SectionCard
+
+            <SectionCard
+                title="⚙️ Add-on Charges Configuration"
+                description="Configure additional charges for your orders: GST, payment fees, and custom charges."
+                action={isEditingCharges ? (
+                    <div className="flex gap-2">
+                        <Button variant="ghost" onClick={() => handleEditToggle('charges')}><XCircle className="mr-2 h-4 w-4" /> Cancel</Button>
+                        <Button onClick={() => handleSave('charges')} className="bg-primary hover:bg-primary/90 text-primary-foreground"><Save className="mr-2 h-4 w-4" /> Save</Button>
+                    </div>
+                ) : (
+                    <Button onClick={() => handleEditToggle('charges')}><Edit className="mr-2 h-4 w-4" /> Edit</Button>
+                )}
+            >
+                <div className="space-y-8">
+                    {/* GST Configuration */}
+                    <div className="space-y-4">
+                        <div className="flex items-center justify-between p-4 bg-muted/50 rounded-lg">
+                            <Label htmlFor="gstEnabled" className="flex flex-col">
+                                <span className="font-bold text-lg flex items-center gap-2"><IndianRupee size={18} />Enable GST</span>
+                                <span className="text-sm text-muted-foreground">Apply Goods & Services Tax to orders</span>
+                            </Label>
+                            <Switch
+                                id="gstEnabled"
+                                checked={editedUser.gstEnabled || false}
+                                onCheckedChange={(val) => setEditedUser({ ...editedUser, gstEnabled: val })}
+                                disabled={!isEditingCharges}
+                            />
+                        </div>
+
+                        {editedUser.gstEnabled && (
+                            <div className="ml-6 p-4 border-l-4 border-primary/50 space-y-4 bg-muted/30 rounded">
+                                <div>
+                                    <Label className="font-semibold">GST Rate (%)</Label>
+                                    <div className="flex gap-2 mt-2">
+                                        {[5, 12, 18, 28].map(rate => (
+                                            <Button
+                                                key={rate}
+                                                type="button"
+                                                variant={editedUser.gstRate === rate ? "default" : "outline"}
+                                                onClick={() => setEditedUser({ ...editedUser, gstRate: rate })}
+                                                disabled={!isEditingCharges}
+                                                className="flex-1"
+                                            >
+                                                {rate}%
+                                            </Button>
+                                        ))}
+                                    </div>
+                                </div>
+                                <div>
+                                    <Label htmlFor="gstMinAmount">Apply only to orders above (₹)</Label>
+                                    <input
+                                        id="gstMinAmount"
+                                        type="number"
+                                        value={editedUser.gstMinAmount || 0}
+                                        onChange={e => setEditedUser({ ...editedUser, gstMinAmount: parseFloat(e.target.value) || 0 })}
+                                        disabled={!isEditingCharges}
+                                        className="mt-1 w-full p-2 border rounded-md bg-input border-border disabled:opacity-70"
+                                        placeholder="0 (applies to all orders)"
+                                    />
+                                </div>
+                            </div>
+                        )}
+                    </div>
+
+                    {/* Online Payment Convenience Fee */}
+                    <div className="space-y-4 pt-4 border-t">
+                        <div className="flex items-center justify-between p-4 bg-muted/50 rounded-lg">
+                            <Label htmlFor="convenienceFeeEnabled" className="flex flex-col">
+                                <span className="font-bold text-lg flex items-center gap-2"><Wallet size={18} />Online Payment Fee</span>
+                                <span className="text-sm text-muted-foreground">Charge a processing fee for online payments</span>
+                            </Label>
+                            <Switch
+                                id="convenienceFeeEnabled"
+                                checked={editedUser.convenienceFeeEnabled || false}
+                                onCheckedChange={(val) => setEditedUser({ ...editedUser, convenienceFeeEnabled: val })}
+                                disabled={!isEditingCharges}
+                            />
+                        </div>
+
+                        {editedUser.convenienceFeeEnabled && (
+                            <div className="ml-6 p-4 border-l-4 border-primary/50 space-y-4 bg-muted/30 rounded">
+                                <div>
+                                    <Label htmlFor="convenienceFeeRate">Fee Rate (%)</Label>
+                                    <input
+                                        id="convenienceFeeRate"
+                                        type="number"
+                                        step="0.1"
+                                        value={editedUser.convenienceFeeRate || 2.5}
+                                        onChange={e => setEditedUser({ ...editedUser, convenienceFeeRate: parseFloat(e.target.value) || 0 })}
+                                        disabled={!isEditingCharges}
+                                        className="mt-1 w-full p-2 border rounded-md bg-input border-border disabled:opacity-70"
+                                        placeholder="2.5"
+                                    />
+                                    <p className="text-xs text-muted-foreground mt-1">
+                                        Recommended: 2-3% to cover Razorpay's fees
+                                    </p>
+                                </div>
+                                <div>
+                                    <Label className="font-semibold">Who pays the fee?</Label>
+                                    <div className="flex gap-3 mt-2">
+                                        <Button
+                                            type="button"
+                                            variant={editedUser.convenienceFeePaidBy === 'customer' ? "default" : "outline"}
+                                            onClick={() => setEditedUser({ ...editedUser, convenienceFeePaidBy: 'customer' })}
+                                            disabled={!isEditingCharges}
+                                            className="flex-1"
+                                        >
+                                            Customer Pays
+                                        </Button>
+                                        <Button
+                                            type="button"
+                                            variant={editedUser.convenienceFeePaidBy === 'vendor' ? "default" : "outline"}
+                                            onClick={() => setEditedUser({ ...editedUser, convenienceFeePaidBy: 'vendor' })}
+                                            disabled={!isEditingCharges}
+                                            className="flex-1"
+                                        >
+                                            I'll Absorb
+                                        </Button>
+                                    </div>
+                                    {editedUser.convenienceFeePaidBy === 'customer' && (
+                                        <div className="mt-2 p-2 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded text-xs text-green-700 dark:text-green-400">
+                                            ✅ Recommended: Vendor receives full order amount
+                                        </div>
+                                    )}
+                                </div>
+                                <div>
+                                    <Label htmlFor="convenienceFeeLabel">Custom Label (shown to customer)</Label>
+                                    <input
+                                        id="convenienceFeeLabel"
+                                        type="text"
+                                        value={editedUser.convenienceFeeLabel || 'Payment Processing Fee'}
+                                        onChange={e => setEditedUser({ ...editedUser, convenienceFeeLabel: e.target.value })}
+                                        disabled={!isEditingCharges}
+                                        className="mt-1 w-full p-2 border rounded-md bg-input border-border disabled:opacity-70"
+                                        placeholder="e.g., Payment Processing Fee"
+                                    />
+                                </div>
+                            </div>
+                        )}
+                    </div>
+
+                    {/* Custom Charges - Placeholder for future */}
+                    <div className="pt-4 border-t">
+                        <div className="p-4 bg-muted/30 rounded-lg border-2 border-dashed">
+                            <p className="text-sm text-muted-foreground text-center">
+                                📦 <strong>Custom Charges</strong> (Packaging, Delivery, etc.) - Coming Soon!
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            </SectionCard>
+
+            <SectionCard
                 title="Tools & Links"
                 description="Access important tools for your business."
             >
                 <div className="grid md:grid-cols-2 gap-4">
                     <Link href="/street-vendor-dashboard/qr" passHref>
-                        <Button variant="outline" className="w-full h-16 text-lg"><QrCode className="mr-2"/> My QR Code</Button>
+                        <Button variant="outline" className="w-full h-16 text-lg"><QrCode className="mr-2" /> My QR Code</Button>
                     </Link>
                     <Link href="/street-vendor-dashboard/payout-settings" passHref>
-                        <Button variant="outline" className="w-full h-16 text-lg"><Banknote className="mr-2"/> Payout Settings</Button>
+                        <Button variant="outline" className="w-full h-16 text-lg"><Banknote className="mr-2" /> Payout Settings</Button>
                     </Link>
                 </div>
             </SectionCard>
 
             <SectionCard title="Account Security">
                 <Button variant="destructive" onClick={() => setDeleteModalOpen(true)}>
-                    <Trash2 className="mr-2 h-4 w-4"/> Delete My Account
+                    <Trash2 className="mr-2 h-4 w-4" /> Delete My Account
                 </Button>
             </SectionCard>
         </div>
@@ -506,7 +670,7 @@ function VendorProfilePageContent() {
 
 export default function VendorProfilePage() {
     return (
-        <Suspense fallback={<div className="p-6 text-center h-screen flex items-center justify-center"><Loader2 className="animate-spin h-16 w-16 text-primary"/></div>}>
+        <Suspense fallback={<div className="p-6 text-center h-screen flex items-center justify-center"><Loader2 className="animate-spin h-16 w-16 text-primary" /></div>}>
             <VendorProfilePageContent />
         </Suspense>
     );
