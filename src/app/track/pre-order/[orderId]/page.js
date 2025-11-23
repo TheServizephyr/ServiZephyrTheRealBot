@@ -207,14 +207,10 @@ function PreOrderTrackingContent() {
             </AnimatePresence>
             {/* Layer 1 Security: Only show Back to Menu if order is pending */}
             <header className="absolute top-0 left-0 right-0 p-4 flex justify-between items-center w-full z-20">
-                {order?.status === 'pending' ? (
+                {order?.status === 'pending' && (
                     <Button onClick={handleBackToMenu} variant="ghost" className="text-foreground hover:bg-muted">
                         <ArrowLeft className="mr-2" /> Back to Menu
                     </Button>
-                ) : (
-                    <div className="text-sm text-yellow-600 bg-yellow-500/10 px-3 py-2 rounded-md">
-                        Order is {order?.status}. Cannot add items.
-                    </div>
                 )}
             </header>
 
