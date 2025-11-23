@@ -338,7 +338,15 @@ export async function POST(req) {
             }
 
             const payload = JSON.parse(rzpOrder.notes.servizephyr_payload);
-            const { customerDetails, billDetails, restaurantId, userId, businessType, isStreetVendorOrder, customNotes, trackingToken } = payload;
+
+            // Helper to parse if string, otherwise return as is
+            const parseIfString = (val) => (typeof val === 'string' ? JSON.parse(val) : val);
+
+            const customerDetails = parseIfString(payload.customerDetails);
+            const billDetails = parseIfString(payload.billDetails);
+            const items = parseIfString(payload.items);
+
+            const { restaurantId, userId, businessType, isStreetVendorOrder, customNotes, trackingToken } = payload;
             const isNewUser = payload.isNewUser;
 
             const orderRef = firestore.collection('orders').doc(rzpOrder.receipt);
