@@ -512,8 +512,7 @@ const StreetVendorDashboardContent = () => {
         const ordersQuery = query(
             collection(db, "orders"),
             where("restaurantId", "==", vendorId),
-            orderBy("orderDate", "desc"),
-            limit(50)
+            orderBy("orderDate", "desc")
         );
 
         const unsubscribe = onSnapshot(ordersQuery, (querySnapshot) => {
