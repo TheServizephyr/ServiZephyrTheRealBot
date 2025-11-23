@@ -282,12 +282,12 @@ export default function OrderHistoryPage() {
                 <h1 className="text-2xl font-bold font-headline">Order History</h1>
             </header>
 
-            <div className="bg-card border border-border p-4 rounded-xl shadow-sm mb-6">
+            <div className="bg-card border border-border p-4 rounded-xl shadow-sm mb-6 flex justify-center">
                 <Popover>
                     <PopoverTrigger asChild>
                         <Button
                             className={cn(
-                                "w-full justify-start text-left font-normal h-12 text-lg bg-green-600 hover:bg-green-700 text-white"
+                                "justify-start text-left font-normal h-12 text-lg bg-green-600 hover:bg-green-700 text-white px-6"
                             )}
                         >
                             <CalendarIcon className="mr-2 h-5 w-5" />
