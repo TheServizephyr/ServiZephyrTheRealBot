@@ -418,7 +418,7 @@ export async function POST(req) {
                 customerPhone: customerDetails.phone,
                 restaurantId: restaurantId,
                 businessType: businessType,
-                deliveryType: payload.deliveryType,
+                deliveryType: billDetails.deliveryType,
                 items: items || [],
                 totalAmount: billDetails.grandTotal,
                 subtotal: billDetails.subtotal,
