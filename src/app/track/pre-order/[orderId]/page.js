@@ -310,7 +310,12 @@ function PreOrderTrackingContent() {
                     <motion.div
                         initial={{ opacity: 0, y: 10 }}
                         animate={{ opacity: 1, y: 0 }}
-                        className="bg-card border border-border p-4 rounded-xl shadow-lg w-full max-w-sm"
+                        className={cn(
+                            "border p-4 rounded-xl shadow-lg w-full max-w-sm transition-colors duration-500",
+                            (order.status === 'pending' || order.status === 'confirmed') && "bg-yellow-100 border-yellow-300 dark:bg-yellow-900/30 dark:border-yellow-700",
+                            order.status === 'Ready' && "bg-green-100 border-green-300 dark:bg-green-900/30 dark:border-green-700",
+                            !['pending', 'confirmed', 'Ready'].includes(order.status) && "bg-card border-border"
+                        )}
                     >
                         <div className="space-y-2">
                             <p className="text-sm"><strong>Bill to:</strong> {order.customerName}</p>
