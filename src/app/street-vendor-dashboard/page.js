@@ -531,11 +531,7 @@ const StreetVendorDashboardContent = () => {
             }
 
             querySnapshot.forEach((doc) => {
-                const orderData = { id: doc.id, ...doc.data() };
-                // Filter out awaiting_payment orders (unpaid split bills)
-                if (orderData.status !== 'awaiting_payment') {
-                    fetchedOrders.push(orderData);
-                }
+                fetchedOrders.push({ id: doc.id, ...doc.data() });
             });
 
             setOrders(fetchedOrders);
