@@ -178,112 +178,121 @@ export async function PATCH(req) {
             await userRef.update(userUpdateData);
         }
 
-        if (businessRef) {
-            const businessUpdateData = {};
-            if (updates.restaurantName !== undefined) businessUpdateData.name = updates.restaurantName;
-            if (updates.gstin !== undefined) businessUpdateData.gstin = updates.gstin;
-            if (updates.fssai !== undefined) businessUpdateData.fssai = updates.fssai;
-            if (updates.botPhoneNumberId !== undefined) businessUpdateData.botPhoneNumberId = updates.botPhoneNumberId;
-            if (updates.botDisplayNumber !== undefined) businessUpdateData.botDisplayNumber = updates.botDisplayNumber;
-            if (updates.razorpayAccountId !== undefined) businessUpdateData.razorpayAccountId = updates.razorpayAccountId;
-            if (updates.logoUrl !== undefined) businessUpdateData.logoUrl = updates.logoUrl;
-            if (updates.bannerUrls !== undefined) businessUpdateData.bannerUrls = updates.bannerUrls;
-            if (updates.address !== undefined) businessUpdateData.address = updates.address;
-
-            // Order and Payment Settings
-            if (updates.deliveryEnabled !== undefined) businessUpdateData.deliveryEnabled = updates.deliveryEnabled;
-            if (updates.pickupEnabled !== undefined) businessUpdateData.pickupEnabled = updates.pickupEnabled;
-            if (updates.dineInEnabled !== undefined) businessUpdateData.dineInEnabled = updates.dineInEnabled;
-            if (updates.deliveryOnlinePaymentEnabled !== undefined) businessUpdateData.deliveryOnlinePaymentEnabled = updates.deliveryOnlinePaymentEnabled;
-            if (updates.deliveryCodEnabled !== undefined) businessUpdateData.deliveryCodEnabled = updates.deliveryCodEnabled;
-            if (updates.pickupOnlinePaymentEnabled !== undefined) businessUpdateData.pickupOnlinePaymentEnabled = updates.pickupOnlinePaymentEnabled;
-            if (updates.pickupPodEnabled !== undefined) businessUpdateData.pickupPodEnabled = updates.pickupPodEnabled;
-            if (updates.dineInOnlinePaymentEnabled !== undefined) businessUpdateData.dineInOnlinePaymentEnabled = updates.dineInOnlinePaymentEnabled;
-            if (updates.dineInPayAtCounterEnabled !== undefined) businessUpdateData.dineInPayAtCounterEnabled = updates.dineInPayAtCounterEnabled;
-
-            if (updates.dineInModel !== undefined) businessUpdateData.dineInModel = updates.dineInModel;
-
-
-            // Delivery Settings
-            if (updates.deliveryRadius !== undefined) businessUpdateData.deliveryRadius = updates.deliveryRadius;
-            if (updates.deliveryFeeType !== undefined) businessUpdateData.deliveryFeeType = updates.deliveryFeeType;
-            if (updates.deliveryFixedFee !== undefined) businessUpdateData.deliveryFixedFee = updates.deliveryFixedFee;
-            if (updates.deliveryPerKmFee !== undefined) businessUpdateData.deliveryPerKmFee = updates.deliveryPerKmFee;
-            if (updates.deliveryFreeThreshold !== undefined) businessUpdateData.deliveryFreeThreshold = updates.deliveryFreeThreshold;
-
-            // Add-on Charges Configuration
-            if (updates.gstEnabled !== undefined) businessUpdateData.gstEnabled = updates.gstEnabled;
-            if (updates.gstRate !== undefined) businessUpdateData.gstRate = updates.gstRate;
-            if (updates.gstMinAmount !== undefined) businessUpdateData.gstMinAmount = updates.gstMinAmount;
-            if (updates.convenienceFeeEnabled !== undefined) businessUpdateData.convenienceFeeEnabled = updates.convenienceFeeEnabled;
-            if (updates.convenienceFeeRate !== undefined) businessUpdateData.convenienceFeeRate = updates.convenienceFeeRate;
-            if (updates.convenienceFeePaidBy !== undefined) businessUpdateData.convenienceFeePaidBy = updates.convenienceFeePaidBy;
-            if (updates.convenienceFeeLabel !== undefined) businessUpdateData.convenienceFeeLabel = updates.convenienceFeeLabel;
-
-
-            if (updates.isOpen !== undefined && updates.isOpen !== businessData?.isOpen) {
-                businessUpdateData.isOpen = updates.isOpen;
-
-                sendRestaurantStatusChangeNotification({
-                    ownerPhone: businessData.ownerPhone,
-                    botPhoneNumberId: businessData.botPhoneNumberId,
-                    newStatus: updates.isOpen,
-                    restaurantId: businessId,
-                }).catch(e => console.error("Failed to send status change notification:", e));
-            }
-
-            if (updates.phone !== undefined && updates.phone !== businessData?.ownerPhone) {
-                businessUpdateData.ownerPhone = updates.phone;
-            }
-
-            if (Object.keys(businessUpdateData).length > 0) {
-                await businessRef.update(businessUpdateData);
+        // Validate Dine-In payment method toggles: at least one must be enabled
+        if (updates.dineInOnlinePaymentEnabled !== undefined || updates.dineInPayAtCounterEnabled !== undefined) {
+            const newOnline = updates.dineInOnlinePaymentEnabled !== undefined ? updates.dineInOnlinePaymentEnabled : businessData?.dineInOnlinePaymentEnabled;
+            const newCounter = updates.dineInPayAtCounterEnabled !== undefined ? updates.dineInPayAtCounterEnabled : businessData?.dineInPayAtCounterEnabled;
+            if (!newOnline && !newCounter) {
+                return NextResponse.json({ message: 'At least one payment method must be enabled for Dine-In.' }, { status: 400 });
             }
         }
+        // Existing businessUpdateData construction continues below
+
+        const businessUpdateData = {};
+        if (updates.restaurantName !== undefined) businessUpdateData.name = updates.restaurantName;
+        if (updates.gstin !== undefined) businessUpdateData.gstin = updates.gstin;
+        if (updates.fssai !== undefined) businessUpdateData.fssai = updates.fssai;
+        if (updates.botPhoneNumberId !== undefined) businessUpdateData.botPhoneNumberId = updates.botPhoneNumberId;
+        if (updates.botDisplayNumber !== undefined) businessUpdateData.botDisplayNumber = updates.botDisplayNumber;
+        if (updates.razorpayAccountId !== undefined) businessUpdateData.razorpayAccountId = updates.razorpayAccountId;
+        if (updates.logoUrl !== undefined) businessUpdateData.logoUrl = updates.logoUrl;
+        if (updates.bannerUrls !== undefined) businessUpdateData.bannerUrls = updates.bannerUrls;
+        if (updates.address !== undefined) businessUpdateData.address = updates.address;
+
+        // Order and Payment Settings
+        if (updates.deliveryEnabled !== undefined) businessUpdateData.deliveryEnabled = updates.deliveryEnabled;
+        if (updates.pickupEnabled !== undefined) businessUpdateData.pickupEnabled = updates.pickupEnabled;
+        if (updates.dineInEnabled !== undefined) businessUpdateData.dineInEnabled = updates.dineInEnabled;
+        if (updates.deliveryOnlinePaymentEnabled !== undefined) businessUpdateData.deliveryOnlinePaymentEnabled = updates.deliveryOnlinePaymentEnabled;
+        if (updates.deliveryCodEnabled !== undefined) businessUpdateData.deliveryCodEnabled = updates.deliveryCodEnabled;
+        if (updates.pickupOnlinePaymentEnabled !== undefined) businessUpdateData.pickupOnlinePaymentEnabled = updates.pickupOnlinePaymentEnabled;
+        if (updates.pickupPodEnabled !== undefined) businessUpdateData.pickupPodEnabled = updates.pickupPodEnabled;
+        if (updates.dineInOnlinePaymentEnabled !== undefined) businessUpdateData.dineInOnlinePaymentEnabled = updates.dineInOnlinePaymentEnabled;
+        if (updates.dineInPayAtCounterEnabled !== undefined) businessUpdateData.dineInPayAtCounterEnabled = updates.dineInPayAtCounterEnabled;
+
+        if (updates.dineInModel !== undefined) businessUpdateData.dineInModel = updates.dineInModel;
+
+
+        // Delivery Settings
+        if (updates.deliveryRadius !== undefined) businessUpdateData.deliveryRadius = updates.deliveryRadius;
+        if (updates.deliveryFeeType !== undefined) businessUpdateData.deliveryFeeType = updates.deliveryFeeType;
+        if (updates.deliveryFixedFee !== undefined) businessUpdateData.deliveryFixedFee = updates.deliveryFixedFee;
+        if (updates.deliveryPerKmFee !== undefined) businessUpdateData.deliveryPerKmFee = updates.deliveryPerKmFee;
+        if (updates.deliveryFreeThreshold !== undefined) businessUpdateData.deliveryFreeThreshold = updates.deliveryFreeThreshold;
+
+        // Add-on Charges Configuration
+        if (updates.gstEnabled !== undefined) businessUpdateData.gstEnabled = updates.gstEnabled;
+        if (updates.gstRate !== undefined) businessUpdateData.gstRate = updates.gstRate;
+        if (updates.gstMinAmount !== undefined) businessUpdateData.gstMinAmount = updates.gstMinAmount;
+        if (updates.convenienceFeeEnabled !== undefined) businessUpdateData.convenienceFeeEnabled = updates.convenienceFeeEnabled;
+        if (updates.convenienceFeeRate !== undefined) businessUpdateData.convenienceFeeRate = updates.convenienceFeeRate;
+        if (updates.convenienceFeePaidBy !== undefined) businessUpdateData.convenienceFeePaidBy = updates.convenienceFeePaidBy;
+        if (updates.convenienceFeeLabel !== undefined) businessUpdateData.convenienceFeeLabel = updates.convenienceFeeLabel;
+
+
+        if (updates.isOpen !== undefined && updates.isOpen !== businessData?.isOpen) {
+            businessUpdateData.isOpen = updates.isOpen;
+
+            sendRestaurantStatusChangeNotification({
+                ownerPhone: businessData.ownerPhone,
+                botPhoneNumberId: businessData.botPhoneNumberId,
+                newStatus: updates.isOpen,
+                restaurantId: businessId,
+            }).catch(e => console.error("Failed to send status change notification:", e));
+        }
+
+        if (updates.phone !== undefined && updates.phone !== businessData?.ownerPhone) {
+            businessUpdateData.ownerPhone = updates.phone;
+        }
+
+        if (Object.keys(businessUpdateData).length > 0) {
+            await businessRef.update(businessUpdateData);
+        }
+    }
 
         const { userData: finalUserData, businessData: finalBusinessData, businessId: finalBusinessId } = await verifyUserAndGetData(req);
 
-        const responseData = {
-            name: finalUserData.name, email: finalUserData.email, phone: finalUserData.phone,
-            role: finalUserData.role, restaurantName: finalBusinessData?.name || '',
-            profilePicture: finalUserData.profilePictureUrl, notifications: finalUserData.notifications,
-            gstin: finalBusinessData?.gstin || '', fssai: finalBusinessData?.fssai || '',
-            botPhoneNumberId: finalBusinessData?.botPhoneNumberId || '',
-            botDisplayNumber: finalBusinessData?.botDisplayNumber || '',
-            razorpayAccountId: finalBusinessData?.razorpayAccountId || '',
-            logoUrl: finalBusinessData?.logoUrl || '', bannerUrls: finalBusinessData?.bannerUrls || [],
-            deliveryEnabled: finalBusinessData?.deliveryEnabled === undefined ? true : finalBusinessData.deliveryEnabled,
-            deliveryRadius: finalBusinessData?.deliveryRadius === undefined ? 5 : finalBusinessData.deliveryRadius,
-            deliveryFeeType: finalBusinessData?.deliveryFeeType || 'fixed',
-            deliveryFixedFee: finalBusinessData?.deliveryFixedFee === undefined ? 30 : finalBusinessData.deliveryFixedFee,
-            deliveryPerKmFee: finalBusinessData?.deliveryPerKmFee === undefined ? 5 : finalBusinessData.deliveryPerKmFee,
-            deliveryFreeThreshold: finalBusinessData?.deliveryFreeThreshold === undefined ? 500 : finalBusinessData.deliveryFreeThreshold,
-            pickupEnabled: finalBusinessData?.pickupEnabled === undefined ? false : finalBusinessData.pickupEnabled,
-            dineInEnabled: finalBusinessData?.dineInEnabled === undefined ? true : finalBusinessData.dineInEnabled,
-            deliveryOnlinePaymentEnabled: finalBusinessData?.deliveryOnlinePaymentEnabled === undefined ? true : finalBusinessData.deliveryOnlinePaymentEnabled,
-            deliveryCodEnabled: finalBusinessData?.deliveryCodEnabled === undefined ? true : finalBusinessData.deliveryCodEnabled,
-            pickupOnlinePaymentEnabled: finalBusinessData?.pickupOnlinePaymentEnabled === undefined ? true : finalBusinessData.pickupOnlinePaymentEnabled,
-            pickupPodEnabled: finalBusinessData?.pickupPodEnabled === undefined ? true : finalBusinessData.pickupPodEnabled,
-            dineInOnlinePaymentEnabled: finalBusinessData?.dineInOnlinePaymentEnabled === undefined ? true : finalBusinessData.dineInOnlinePaymentEnabled,
-            dineInPayAtCounterEnabled: finalBusinessData?.dineInPayAtCounterEnabled === undefined ? true : finalBusinessData.dineInPayAtCounterEnabled,
-            isOpen: finalBusinessData?.isOpen === undefined ? true : finalBusinessData.isOpen,
-            dineInModel: finalBusinessData?.dineInModel || 'post-paid',
-            address: finalBusinessData?.address || { street: '', city: '', state: '', postalCode: '', country: 'IN' },
-            // Add-on Charges Configuration
-            gstEnabled: finalBusinessData?.gstEnabled || false,
-            gstRate: finalBusinessData?.gstRate || 5,
-            gstMinAmount: finalBusinessData?.gstMinAmount || 0,
-            convenienceFeeEnabled: finalBusinessData?.convenienceFeeEnabled || false,
-            convenienceFeeRate: finalBusinessData?.convenienceFeeRate || 2.5,
-            convenienceFeePaidBy: finalBusinessData?.convenienceFeePaidBy || 'customer',
-            convenienceFeeLabel: finalBusinessData?.convenienceFeeLabel || 'Payment Processing Fee',
-            businessId: finalBusinessId,
-        };
+    const responseData = {
+        name: finalUserData.name, email: finalUserData.email, phone: finalUserData.phone,
+        role: finalUserData.role, restaurantName: finalBusinessData?.name || '',
+        profilePicture: finalUserData.profilePictureUrl, notifications: finalUserData.notifications,
+        gstin: finalBusinessData?.gstin || '', fssai: finalBusinessData?.fssai || '',
+        botPhoneNumberId: finalBusinessData?.botPhoneNumberId || '',
+        botDisplayNumber: finalBusinessData?.botDisplayNumber || '',
+        razorpayAccountId: finalBusinessData?.razorpayAccountId || '',
+        logoUrl: finalBusinessData?.logoUrl || '', bannerUrls: finalBusinessData?.bannerUrls || [],
+        deliveryEnabled: finalBusinessData?.deliveryEnabled === undefined ? true : finalBusinessData.deliveryEnabled,
+        deliveryRadius: finalBusinessData?.deliveryRadius === undefined ? 5 : finalBusinessData.deliveryRadius,
+        deliveryFeeType: finalBusinessData?.deliveryFeeType || 'fixed',
+        deliveryFixedFee: finalBusinessData?.deliveryFixedFee === undefined ? 30 : finalBusinessData.deliveryFixedFee,
+        deliveryPerKmFee: finalBusinessData?.deliveryPerKmFee === undefined ? 5 : finalBusinessData.deliveryPerKmFee,
+        deliveryFreeThreshold: finalBusinessData?.deliveryFreeThreshold === undefined ? 500 : finalBusinessData.deliveryFreeThreshold,
+        pickupEnabled: finalBusinessData?.pickupEnabled === undefined ? false : finalBusinessData.pickupEnabled,
+        dineInEnabled: finalBusinessData?.dineInEnabled === undefined ? true : finalBusinessData.dineInEnabled,
+        deliveryOnlinePaymentEnabled: finalBusinessData?.deliveryOnlinePaymentEnabled === undefined ? true : finalBusinessData.deliveryOnlinePaymentEnabled,
+        deliveryCodEnabled: finalBusinessData?.deliveryCodEnabled === undefined ? true : finalBusinessData.deliveryCodEnabled,
+        pickupOnlinePaymentEnabled: finalBusinessData?.pickupOnlinePaymentEnabled === undefined ? true : finalBusinessData.pickupOnlinePaymentEnabled,
+        pickupPodEnabled: finalBusinessData?.pickupPodEnabled === undefined ? true : finalBusinessData.pickupPodEnabled,
+        dineInOnlinePaymentEnabled: finalBusinessData?.dineInOnlinePaymentEnabled === undefined ? true : finalBusinessData.dineInOnlinePaymentEnabled,
+        dineInPayAtCounterEnabled: finalBusinessData?.dineInPayAtCounterEnabled === undefined ? true : finalBusinessData.dineInPayAtCounterEnabled,
+        isOpen: finalBusinessData?.isOpen === undefined ? true : finalBusinessData.isOpen,
+        dineInModel: finalBusinessData?.dineInModel || 'post-paid',
+        address: finalBusinessData?.address || { street: '', city: '', state: '', postalCode: '', country: 'IN' },
+        // Add-on Charges Configuration
+        gstEnabled: finalBusinessData?.gstEnabled || false,
+        gstRate: finalBusinessData?.gstRate || 5,
+        gstMinAmount: finalBusinessData?.gstMinAmount || 0,
+        convenienceFeeEnabled: finalBusinessData?.convenienceFeeEnabled || false,
+        convenienceFeeRate: finalBusinessData?.convenienceFeeRate || 2.5,
+        convenienceFeePaidBy: finalBusinessData?.convenienceFeePaidBy || 'customer',
+        convenienceFeeLabel: finalBusinessData?.convenienceFeeLabel || 'Payment Processing Fee',
+        businessId: finalBusinessId,
+    };
 
-        return NextResponse.json(responseData, { status: 200 });
+    return NextResponse.json(responseData, { status: 200 });
 
-    } catch (error) {
-        console.error("PATCH SETTINGS ERROR:", error);
-        return NextResponse.json({ message: `Backend Error: ${error.message}` }, { status: error.status || 500 });
-    }
+} catch (error) {
+    console.error("PATCH SETTINGS ERROR:", error);
+    return NextResponse.json({ message: `Backend Error: ${error.message}` }, { status: error.status || 500 });
+}
 }
