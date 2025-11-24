@@ -256,8 +256,9 @@ const CheckoutPageInternal = () => {
                         setCodEnabled(paymentData.dineInPayAtCounterEnabled);
                         setOnlinePaymentEnabled(paymentData.dineInOnlinePaymentEnabled);
                     } else if (deliveryType === 'street-vendor-pre-order') {
-                        setCodEnabled(true);
-                        setOnlinePaymentEnabled(true);
+                        // Street vendors use Dine-In settings for payment toggles
+                        setCodEnabled(paymentData.dineInPayAtCounterEnabled);
+                        setOnlinePaymentEnabled(paymentData.dineInOnlinePaymentEnabled);
                     }
 
                     // Store vendor's add-on charges configuration
