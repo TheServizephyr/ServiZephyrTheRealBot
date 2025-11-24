@@ -97,8 +97,7 @@ export default function StreetVendorAnalyticsPage() {
         .slice(0, 5);
 
     const lowPerformers = menuPerformance
-        .filter(item => item.unitsSold === 0)
-        .slice(0, 5);
+        .filter(item => item.unitsSold === 0);
 
     const bestSeller = topPerformers[0];
     const mostProfitable = menuPerformance

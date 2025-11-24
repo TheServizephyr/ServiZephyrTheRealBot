@@ -8,7 +8,7 @@ export const dynamic = 'force-dynamic';
 
 async function verifyOwnerAndGetBusiness(req, auth, firestore) {
     const uid = await verifyAndGetUid(req); // Use central helper
-    
+
     const url = new URL(req.url, `http://${req.headers.host}`);
     const impersonatedOwnerId = url.searchParams.get('impersonate_owner_id');
     const userDoc = await firestore.collection('users').doc(uid).get();
@@ -33,10 +33,10 @@ async function verifyOwnerAndGetBusiness(req, auth, firestore) {
         const query = await firestore.collection(collectionName).where('ownerId', '==', targetOwnerId).limit(1).get();
         if (!query.empty) {
             const doc = query.docs[0];
-            return { restaurantId: doc.id, restaurantData: doc.data(), businessType: doc.data().businessType || collectionName.slice(0,-1) };
+            return { restaurantId: doc.id, restaurantData: doc.data(), businessType: doc.data().businessType || collectionName.slice(0, -1) };
         }
     }
-    
+
     throw { message: 'No business associated with this owner.', status: 404 };
 }
 
@@ -66,8 +66,8 @@ export async function GET(req) {
                     prevStartDate = new Date(new Date().setDate(startDate.getDate() - 7));
                     break;
                 case 'This Year':
-                     startDate = new Date(now.getFullYear(), 0, 1);
-                     prevStartDate = new Date(now.getFullYear() - 1, 0, 1);
+                    startDate = new Date(now.getFullYear(), 0, 1);
+                    prevStartDate = new Date(now.getFullYear() - 1, 0, 1);
                     break;
                 case 'Today':
                     startDate = new Date(now.setHours(0, 0, 0, 0));
@@ -80,15 +80,15 @@ export async function GET(req) {
                     break;
             }
         }
-        startDate.setHours(0,0,0,0);
+        startDate.setHours(0, 0, 0, 0);
 
         const endDate = (filter === 'Custom Range' && toDate) ? new Date(toDate) : new Date();
-        endDate.setHours(23,59,59,999);
+        endDate.setHours(23, 59, 59, 999);
 
         const ordersRef = firestore.collection('orders').where('restaurantId', '==', restaurantId);
-        
+
         let businessCollectionName;
-        if(businessType === 'restaurant') businessCollectionName = 'restaurants';
+        if (businessType === 'restaurant') businessCollectionName = 'restaurants';
         else if (businessType === 'shop') businessCollectionName = 'shops';
         else if (businessType === 'street-vendor') businessCollectionName = 'street_vendors';
 
@@ -99,10 +99,10 @@ export async function GET(req) {
             firestore.collection(businessCollectionName).doc(restaurantId).collection('customers').get(),
             ordersRef.where('orderDate', '>=', startDate).where('orderDate', '<=', endDate).where('status', '==', 'rejected').get(),
         ]);
-        
+
         let currentSales = 0, currentOrdersCount = 0, salesByDay = {};
         const paymentMethodCounts = { Online: 0, COD: 0 };
-        
+
         currentOrdersSnap.forEach(doc => {
             const data = doc.data();
             currentSales += data.totalAmount || 0;
@@ -117,14 +117,14 @@ export async function GET(req) {
                 paymentMethodCounts.COD++;
             }
         });
-        
+
         const salesTrend = Object.entries(salesByDay).map(([day, sales]) => ({ day, sales }));
         const paymentMethods = Object.entries(paymentMethodCounts).map(([name, value]) => ({ name, value }));
 
 
         let prevSales = 0;
         prevOrdersSnap.forEach(doc => { prevSales += doc.data().totalAmount || 0; });
-        
+
         const calcChange = (current, previous) => {
             if (previous === 0) return current > 0 ? 100 : 0;
             return ((current - previous) / previous) * 100;
@@ -149,56 +149,25 @@ export async function GET(req) {
                 ordersChange: calcChange(currentOrdersCount, prevOrdersSnap.size),
                 avgValueChange: calcChange(currentOrdersCount > 0 ? currentSales / currentOrdersCount : 0, prevOrdersSnap.size > 0 ? prevSales / prevOrdersSnap.size : 0),
                 totalRejections,
-            },
-            salesTrend,
-            paymentMethods: paymentMethods,
-            rejectionReasons: rejectionReasonsData,
-        };
+                const allCustomers = allCustomersSnap.docs.map(doc => doc.data());
+                const newThisMonth = allCustomers.filter(c => c.joinedAt && c.joinedAt.toDate() > new Date(now.getFullYear(), now.getMonth(), 1));
+                const repeatCustomers = allCustomers.filter(c => (c.totalOrders || 0) > 1);
 
-        const menuItems = allMenuSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-        const itemSales = {};
-        currentOrdersSnap.forEach(doc => {
-            (doc.data().items || []).forEach(item => {
-                const baseName = item.name.split(' (')[0];
-                if (!itemSales[baseName]) itemSales[baseName] = 0;
-                itemSales[baseName] += item.qty;
-            });
-        });
+                const customerStats = {
+                    totalCustomers: allCustomers.length,
+                    newThisMonth: newThisMonth.length,
+                    repeatRate: allCustomers.length > 0 ? Math.round((repeatCustomers.length / allCustomers.length) * 100) : 0,
+                };
 
-        const menuPerformance = menuItems.map(item => {
-            const unitsSold = itemSales[item.name] || 0;
-            const price = item.portions?.[0]?.price || 0;
-            const foodCost = price * 0.4;
-            const revenue = unitsSold * price;
-            const totalCost = unitsSold * foodCost;
-            const totalProfit = revenue - totalCost;
-            const profitMargin = revenue > 0 ? (totalProfit / revenue) * 100 : 0;
-            return {
-                ...item, unitsSold, revenue, totalCost, totalProfit, profitMargin,
-                popularity: unitsSold, profitability: profitMargin
-            };
-        });
+                return NextResponse.json({
+                    salesData,
+                    menuPerformance,
+                    customerStats,
+                }, { status: 200 });
 
-        const allCustomers = allCustomersSnap.docs.map(doc => doc.data());
-        const newThisMonth = allCustomers.filter(c => c.joinedAt && c.joinedAt.toDate() > new Date(now.getFullYear(), now.getMonth(), 1));
-        const repeatCustomers = allCustomers.filter(c => (c.totalOrders || 0) > 1);
+            } catch(error) {
+                console.error("ANALYTICS API ERROR:", error);
+                return NextResponse.json({ message: `Backend Error: ${error.message}` }, { status: error.status || 500 });
+            }
+        }
 
-        const customerStats = {
-            totalCustomers: allCustomers.length,
-            newThisMonth: newThisMonth.length,
-            repeatRate: allCustomers.length > 0 ? Math.round((repeatCustomers.length / allCustomers.length) * 100) : 0,
-        };
-
-        return NextResponse.json({ 
-            salesData,
-            menuPerformance,
-            customerStats,
-        }, { status: 200 });
-
-    } catch (error) {
-        console.error("ANALYTICS API ERROR:", error);
-        return NextResponse.json({ message: `Backend Error: ${error.message}` }, { status: error.status || 500 });
-    }
-}
-
-    
