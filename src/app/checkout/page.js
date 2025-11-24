@@ -833,8 +833,8 @@ const CheckoutPageInternal = () => {
                                     </div>
                                 </div>
 
-                                {/* CUSTOMER DETAILS (Conditional based on payment method) */}
-                                {selectedPaymentMethod && (
+                                {/* CUSTOMER DETAILS (Conditional based on payment method) - Hidden for Add-on Orders */}
+                                {selectedPaymentMethod && !activeOrderId && (
                                     <div className="bg-card p-4 rounded-lg border border-border mb-6">
                                         <h3 className="font-bold text-lg mb-3">📝 Your Details</h3>
                                         <div className="space-y-3">
@@ -873,7 +873,7 @@ const CheckoutPageInternal = () => {
                                     selectedPaymentMethod === 'counter' ? (
                                         <Button
                                             onClick={handlePayAtCounter}
-                                            disabled={isProcessingPayment || !orderName.trim() || (selectedPaymentMethod === 'counter' && !orderPhone.trim())}
+                                            disabled={isProcessingPayment || (!activeOrderId && (!orderName.trim() || (selectedPaymentMethod === 'counter' && !orderPhone.trim())))}
                                             className="w-full h-14 text-lg"
                                         >
                                             {isProcessingPayment ? <Loader2 className="animate-spin" /> : 'Place Order'}
@@ -888,7 +888,7 @@ const CheckoutPageInternal = () => {
                                                         setIsSplitBillActive(true);
                                                     }
                                                 }}
-                                                disabled={isProcessingPayment || !orderName.trim()}
+                                                disabled={isProcessingPayment || (!activeOrderId && !orderName.trim())}
                                                 className="w-full h-14 text-lg"
                                             >
                                                 {isProcessingPayment ? <Loader2 className="animate-spin" /> :
