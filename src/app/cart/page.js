@@ -293,12 +293,43 @@ const CartPageInternal = () => {
                     });
                     setOutOfStockItems(unavailableItemIds);
 
-                    setCartData(parsedData);
-                    setCart(availableItems); // Only set available items in cart
-                    setNotes(parsedData.notes || '');
-                    setAppliedCoupons(parsedData.appliedCoupons || []);
-                    setTipAmount(parsedData.tipAmount || 0);
-                    setPickupTime(parsedData.pickupTime || '');
+                    // Fetch fresh vendor settings (GST, payment toggles) and merge
+                    fetch(`/api/owner/settings?restaurantId=${restaurantId}`)
+                        .then(res => res.json())
+                        .then(freshSettings => {
+                            console.log("[Cart Page] Fetched fresh vendor settings:", freshSettings);
+                            const updatedData = {
+                                ...parsedData,
+                                // Update with fresh settings
+                                gstEnabled: freshSettings.gstEnabled,
+                                gstRate: freshSettings.gstRate,
+                                gstMinAmount: freshSettings.gstMinAmount,
+                                convenienceFeeEnabled: freshSettings.convenienceFeeEnabled,
+                                convenienceFeeRate: freshSettings.convenienceFeeRate,
+                                convenienceFeePaidBy: freshSettings.convenienceFeePaidBy,
+                                convenienceFeeLabel: freshSettings.convenienceFeeLabel,
+                            };
+
+                            setCartData(updatedData);
+                            setCart(availableItems); // Only set available items in cart
+                            setNotes(parsedData.notes || '');
+                            setAppliedCoupons(parsedData.appliedCoupons || []);
+                            setTipAmount(parsedData.tipAmount || 0);
+                            setPickupTime(parsedData.pickupTime || '');
+
+                            // Update localStorage with fresh settings
+                            localStorage.setItem(`cart_${restaurantId}`, JSON.stringify(updatedData));
+                        })
+                        .catch(err => {
+                            console.error("[Cart Page] Failed to fetch fresh settings:", err);
+                            // Fallback to cached data if API fails
+                            setCartData(parsedData);
+                            setCart(availableItems);
+                            setNotes(parsedData.notes || '');
+                            setAppliedCoupons(parsedData.appliedCoupons || []);
+                            setTipAmount(parsedData.tipAmount || 0);
+                            setPickupTime(parsedData.pickupTime || '');
+                        });
                 }
             } else {
                 console.log("[Cart Page] No cart data found in localStorage.");
