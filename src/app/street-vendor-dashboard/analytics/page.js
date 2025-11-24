@@ -6,20 +6,39 @@ import { TrendingUp, TrendingDown, DollarSign, ShoppingBag, Award, AlertTriangle
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
+import { auth } from '@/lib/firebase';
+import { useRouter } from 'next/navigation';
 
 export default function StreetVendorAnalyticsPage() {
     const [loading, setLoading] = useState(true);
     const [analyticsData, setAnalyticsData] = useState(null);
     const [dateFilter, setDateFilter] = useState('This Month');
+    const router = useRouter();
 
     useEffect(() => {
-        fetchAnalytics();
-    }, [dateFilter]);
+        const unsubscribe = auth.onAuthStateChanged(user => {
+            if (user) {
+                fetchAnalytics();
+            } else {
+                router.push('/');
+            }
+        });
+        return () => unsubscribe();
+    }, [dateFilter, router]);
 
     const fetchAnalytics = async () => {
         setLoading(true);
         try {
-            const res = await fetch(`/api/owner/analytics?filter=${encodeURIComponent(dateFilter)}`);
+            const user = auth.currentUser;
+            if (!user) {
+                throw new Error('Please log in to view analytics');
+            }
+
+            const idToken = await user.getIdToken();
+            const res = await fetch(`/api/owner/analytics?filter=${encodeURIComponent(dateFilter)}`, {
+                headers: { 'Authorization': `Bearer ${idToken}` }
+            });
+
             if (!res.ok) {
                 const errorData = await res.json().catch(() => ({ message: 'Failed to fetch analytics' }));
                 throw new Error(errorData.message || `HTTP ${res.status}: ${res.statusText}`);
