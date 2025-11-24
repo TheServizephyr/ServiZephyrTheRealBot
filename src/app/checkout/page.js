@@ -297,17 +297,21 @@ const CheckoutPageInternal = () => {
         const taxableAmount = currentSubtotal - couponDiscountValue;
 
         // Apply GST based on vendor configuration
-        let tax = 0;
+        let cgstAmount = 0;
+        let sgstAmount = 0;
         if (vendorCharges?.gstEnabled && taxableAmount > 0) {
             // Check if order amount meets minimum threshold
             if (taxableAmount >= (vendorCharges.gstMinAmount || 0)) {
-                const gstRate = vendorCharges.gstRate || 5;
-                tax = taxableAmount * (gstRate / 100);
+                // GST rate is total (e.g., 12%), split equally between CGST and SGST
+                const totalGstRate = vendorCharges.gstRate || 5;
+                const halfGstRate = totalGstRate / 2;
+                cgstAmount = taxableAmount * (halfGstRate / 100);
+                sgstAmount = taxableAmount * (halfGstRate / 100);
             }
         }
         // If vendor hasn't enabled GST, tax remains 0
 
-        const subtotalWithTaxAndCharges = taxableAmount + deliveryCharge + (tax * 2) + tip;
+        const subtotalWithTaxAndCharges = taxableAmount + deliveryCharge + cgstAmount + sgstAmount + tip;
 
         // Calculate convenience fee based on vendor configuration
         let calculatedConvenienceFee = 0;
@@ -315,7 +319,8 @@ const CheckoutPageInternal = () => {
             // Only charge customer if vendor configured it that way
             if (vendorCharges.convenienceFeePaidBy === 'customer') {
                 const feeRate = vendorCharges.convenienceFeeRate || 2.5;
-                calculatedConvenienceFee = Math.ceil(subtotalWithTaxAndCharges * (feeRate / 100));
+                // Fixed: Use proper rounding instead of Math.ceil to avoid overcharging
+                calculatedConvenienceFee = parseFloat((subtotalWithTaxAndCharges * (feeRate / 100)).toFixed(2));
             }
             // If vendor absorbs the fee, it's 0 for the customer
         }
@@ -325,8 +330,8 @@ const CheckoutPageInternal = () => {
             subtotal: currentSubtotal,
             totalDiscount: couponDiscountValue,
             finalDeliveryCharge: deliveryCharge,
-            cgst: tax,
-            sgst: tax,
+            cgst: cgstAmount,
+            sgst: sgstAmount,
             convenienceFee: calculatedConvenienceFee,
             grandTotal: finalGrandTotal
         };

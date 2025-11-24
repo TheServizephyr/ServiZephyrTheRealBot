@@ -541,20 +541,24 @@ const CartPageInternal = () => {
         }
 
         const taxableAmount = subtotal - totalDiscount;
-        let tax = 0;
+        let cgstAmount = 0;
+        let sgstAmount = 0;
 
         // Apply GST based on vendor configuration (from cartData)
         if (cartData?.gstEnabled && taxableAmount > 0) {
             // Check if order amount meets minimum threshold
             if (taxableAmount >= (cartData.gstMinAmount || 0)) {
-                const gstRate = cartData.gstRate || 5;
-                tax = taxableAmount * (gstRate / 100);
+                // GST rate is total (e.g., 12%), split equally between CGST and SGST
+                const totalGstRate = cartData.gstRate || 5;
+                const halfGstRate = totalGstRate / 2;
+                cgstAmount = taxableAmount * (halfGstRate / 100);
+                sgstAmount = taxableAmount * (halfGstRate / 100);
             }
         }
 
         const finalTip = deliveryType === 'delivery' ? tipAmount : 0;
-        const total = taxableAmount + finalDeliveryCharge + (tax * 2) + finalTip;
-        return { cgst: tax, sgst: tax, grandTotal: total };
+        const total = taxableAmount + finalDeliveryCharge + cgstAmount + sgstAmount + finalTip;
+        return { cgst: cgstAmount, sgst: sgstAmount, grandTotal: total };
     }, [subtotal, totalDiscount, finalDeliveryCharge, tipAmount, deliveryType, cartData]);
 
 

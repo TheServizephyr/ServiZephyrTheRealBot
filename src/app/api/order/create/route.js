@@ -231,6 +231,49 @@ export async function POST(req) {
         const businessDoc = await businessRef.get();
         const businessData = businessDoc.data();
 
+        // --- PAYMENT METHOD VALIDATION ---
+        console.log(`[API /order/create] Validating payment method: ${paymentMethod} for deliveryType: ${deliveryType}`);
+
+        if (paymentMethod === 'cod' || paymentMethod === 'counter') {
+            let isCodeEnabled = false;
+
+            if (deliveryType === 'delivery') {
+                isCodeEnabled = businessData.deliveryCodEnabled;
+            } else if (deliveryType === 'pickup') {
+                isCodeEnabled = businessData.pickupPodEnabled;
+            } else if (deliveryType === 'dine-in') {
+                isCodeEnabled = businessData.dineInPayAtCounterEnabled;
+            } else if (deliveryType === 'street-vendor-pre-order') {
+                isCodeEnabled = true; // Street vendors always allow cash
+            }
+
+            if (!isCodeEnabled) {
+                console.error(`[API /order/create] Payment method validation failed: COD/Pay at Counter is disabled for ${deliveryType}`);
+                return NextResponse.json({
+                    message: 'The selected payment method is not available. Please choose a different payment method.'
+                }, { status: 400 });
+            }
+        } else if (paymentMethod === 'online' || paymentMethod === 'split_bill') {
+            let isOnlineEnabled = false;
+
+            if (deliveryType === 'delivery') {
+                isOnlineEnabled = businessData.deliveryOnlinePaymentEnabled;
+            } else if (deliveryType === 'pickup') {
+                isOnlineEnabled = businessData.pickupOnlinePaymentEnabled;
+            } else if (deliveryType === 'dine-in') {
+                isOnlineEnabled = businessData.dineInOnlinePaymentEnabled;
+            } else if (deliveryType === 'street-vendor-pre-order') {
+                isOnlineEnabled = true; // Street vendors always allow online
+            }
+
+            if (!isOnlineEnabled) {
+                console.error(`[API /order/create] Payment method validation failed: Online payment is disabled for ${deliveryType}`);
+                return NextResponse.json({
+                    message: 'The selected payment method is not available. Please choose a different payment method.'
+                }, { status: 400 });
+            }
+        }
+
         // --- Post-paid Dine-In ---
         if (deliveryType === 'dine-in' && businessData.dineInModel === 'post-paid') {
             console.log("[API /order/create] Handling post-paid dine-in order.");
