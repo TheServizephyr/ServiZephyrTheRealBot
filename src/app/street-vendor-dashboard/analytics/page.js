@@ -5,7 +5,6 @@ import { motion } from 'framer-motion';
 import { TrendingUp, TrendingDown, DollarSign, ShoppingBag, Award, AlertTriangle, Calendar, BarChart3, PieChart } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { cn } from '@/lib/utils';
 
 export default function StreetVendorAnalyticsPage() {
@@ -69,18 +68,19 @@ export default function StreetVendorAnalyticsPage() {
                     <h1 className="text-3xl font-bold">Analytics Dashboard</h1>
                     <p className="text-muted-foreground mt-1">Track your sales and item performance</p>
                 </div>
-                <Select value={dateFilter} onValueChange={setDateFilter}>
-                    <SelectTrigger className="w-[180px]">
-                        <Calendar className="mr-2 h-4 w-4" />
-                        <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                        <SelectItem value="Today">Today</SelectItem>
-                        <SelectItem value="This Week">This Week</SelectItem>
-                        <SelectItem value="This Month">This Month</SelectItem>
-                        <SelectItem value="This Year">This Year</SelectItem>
-                    </SelectContent>
-                </Select>
+                <div className="flex items-center gap-2 px-3 py-2 border border-border rounded-lg bg-card">
+                    <Calendar className="h-4 w-4 text-muted-foreground" />
+                    <select
+                        value={dateFilter}
+                        onChange={(e) => setDateFilter(e.target.value)}
+                        className="bg-transparent border-none outline-none text-sm font-medium cursor-pointer"
+                    >
+                        <option value="Today">Today</option>
+                        <option value="This Week">This Week</option>
+                        <option value="This Month">This Month</option>
+                        <option value="This Year">This Year</option>
+                    </select>
+                </div>
             </div>
 
             <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
