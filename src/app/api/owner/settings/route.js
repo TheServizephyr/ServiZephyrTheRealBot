@@ -248,51 +248,51 @@ export async function PATCH(req) {
         if (Object.keys(businessUpdateData).length > 0) {
             await businessRef.update(businessUpdateData);
         }
-    }
+
 
         const { userData: finalUserData, businessData: finalBusinessData, businessId: finalBusinessId } = await verifyUserAndGetData(req);
 
-    const responseData = {
-        name: finalUserData.name, email: finalUserData.email, phone: finalUserData.phone,
-        role: finalUserData.role, restaurantName: finalBusinessData?.name || '',
-        profilePicture: finalUserData.profilePictureUrl, notifications: finalUserData.notifications,
-        gstin: finalBusinessData?.gstin || '', fssai: finalBusinessData?.fssai || '',
-        botPhoneNumberId: finalBusinessData?.botPhoneNumberId || '',
-        botDisplayNumber: finalBusinessData?.botDisplayNumber || '',
-        razorpayAccountId: finalBusinessData?.razorpayAccountId || '',
-        logoUrl: finalBusinessData?.logoUrl || '', bannerUrls: finalBusinessData?.bannerUrls || [],
-        deliveryEnabled: finalBusinessData?.deliveryEnabled === undefined ? true : finalBusinessData.deliveryEnabled,
-        deliveryRadius: finalBusinessData?.deliveryRadius === undefined ? 5 : finalBusinessData.deliveryRadius,
-        deliveryFeeType: finalBusinessData?.deliveryFeeType || 'fixed',
-        deliveryFixedFee: finalBusinessData?.deliveryFixedFee === undefined ? 30 : finalBusinessData.deliveryFixedFee,
-        deliveryPerKmFee: finalBusinessData?.deliveryPerKmFee === undefined ? 5 : finalBusinessData.deliveryPerKmFee,
-        deliveryFreeThreshold: finalBusinessData?.deliveryFreeThreshold === undefined ? 500 : finalBusinessData.deliveryFreeThreshold,
-        pickupEnabled: finalBusinessData?.pickupEnabled === undefined ? false : finalBusinessData.pickupEnabled,
-        dineInEnabled: finalBusinessData?.dineInEnabled === undefined ? true : finalBusinessData.dineInEnabled,
-        deliveryOnlinePaymentEnabled: finalBusinessData?.deliveryOnlinePaymentEnabled === undefined ? true : finalBusinessData.deliveryOnlinePaymentEnabled,
-        deliveryCodEnabled: finalBusinessData?.deliveryCodEnabled === undefined ? true : finalBusinessData.deliveryCodEnabled,
-        pickupOnlinePaymentEnabled: finalBusinessData?.pickupOnlinePaymentEnabled === undefined ? true : finalBusinessData.pickupOnlinePaymentEnabled,
-        pickupPodEnabled: finalBusinessData?.pickupPodEnabled === undefined ? true : finalBusinessData.pickupPodEnabled,
-        dineInOnlinePaymentEnabled: finalBusinessData?.dineInOnlinePaymentEnabled === undefined ? true : finalBusinessData.dineInOnlinePaymentEnabled,
-        dineInPayAtCounterEnabled: finalBusinessData?.dineInPayAtCounterEnabled === undefined ? true : finalBusinessData.dineInPayAtCounterEnabled,
-        isOpen: finalBusinessData?.isOpen === undefined ? true : finalBusinessData.isOpen,
-        dineInModel: finalBusinessData?.dineInModel || 'post-paid',
-        address: finalBusinessData?.address || { street: '', city: '', state: '', postalCode: '', country: 'IN' },
-        // Add-on Charges Configuration
-        gstEnabled: finalBusinessData?.gstEnabled || false,
-        gstRate: finalBusinessData?.gstRate || 5,
-        gstMinAmount: finalBusinessData?.gstMinAmount || 0,
-        convenienceFeeEnabled: finalBusinessData?.convenienceFeeEnabled || false,
-        convenienceFeeRate: finalBusinessData?.convenienceFeeRate || 2.5,
-        convenienceFeePaidBy: finalBusinessData?.convenienceFeePaidBy || 'customer',
-        convenienceFeeLabel: finalBusinessData?.convenienceFeeLabel || 'Payment Processing Fee',
-        businessId: finalBusinessId,
-    };
+        const responseData = {
+            name: finalUserData.name, email: finalUserData.email, phone: finalUserData.phone,
+            role: finalUserData.role, restaurantName: finalBusinessData?.name || '',
+            profilePicture: finalUserData.profilePictureUrl, notifications: finalUserData.notifications,
+            gstin: finalBusinessData?.gstin || '', fssai: finalBusinessData?.fssai || '',
+            botPhoneNumberId: finalBusinessData?.botPhoneNumberId || '',
+            botDisplayNumber: finalBusinessData?.botDisplayNumber || '',
+            razorpayAccountId: finalBusinessData?.razorpayAccountId || '',
+            logoUrl: finalBusinessData?.logoUrl || '', bannerUrls: finalBusinessData?.bannerUrls || [],
+            deliveryEnabled: finalBusinessData?.deliveryEnabled === undefined ? true : finalBusinessData.deliveryEnabled,
+            deliveryRadius: finalBusinessData?.deliveryRadius === undefined ? 5 : finalBusinessData.deliveryRadius,
+            deliveryFeeType: finalBusinessData?.deliveryFeeType || 'fixed',
+            deliveryFixedFee: finalBusinessData?.deliveryFixedFee === undefined ? 30 : finalBusinessData.deliveryFixedFee,
+            deliveryPerKmFee: finalBusinessData?.deliveryPerKmFee === undefined ? 5 : finalBusinessData.deliveryPerKmFee,
+            deliveryFreeThreshold: finalBusinessData?.deliveryFreeThreshold === undefined ? 500 : finalBusinessData.deliveryFreeThreshold,
+            pickupEnabled: finalBusinessData?.pickupEnabled === undefined ? false : finalBusinessData.pickupEnabled,
+            dineInEnabled: finalBusinessData?.dineInEnabled === undefined ? true : finalBusinessData.dineInEnabled,
+            deliveryOnlinePaymentEnabled: finalBusinessData?.deliveryOnlinePaymentEnabled === undefined ? true : finalBusinessData.deliveryOnlinePaymentEnabled,
+            deliveryCodEnabled: finalBusinessData?.deliveryCodEnabled === undefined ? true : finalBusinessData.deliveryCodEnabled,
+            pickupOnlinePaymentEnabled: finalBusinessData?.pickupOnlinePaymentEnabled === undefined ? true : finalBusinessData.pickupOnlinePaymentEnabled,
+            pickupPodEnabled: finalBusinessData?.pickupPodEnabled === undefined ? true : finalBusinessData.pickupPodEnabled,
+            dineInOnlinePaymentEnabled: finalBusinessData?.dineInOnlinePaymentEnabled === undefined ? true : finalBusinessData.dineInOnlinePaymentEnabled,
+            dineInPayAtCounterEnabled: finalBusinessData?.dineInPayAtCounterEnabled === undefined ? true : finalBusinessData.dineInPayAtCounterEnabled,
+            isOpen: finalBusinessData?.isOpen === undefined ? true : finalBusinessData.isOpen,
+            dineInModel: finalBusinessData?.dineInModel || 'post-paid',
+            address: finalBusinessData?.address || { street: '', city: '', state: '', postalCode: '', country: 'IN' },
+            // Add-on Charges Configuration
+            gstEnabled: finalBusinessData?.gstEnabled || false,
+            gstRate: finalBusinessData?.gstRate || 5,
+            gstMinAmount: finalBusinessData?.gstMinAmount || 0,
+            convenienceFeeEnabled: finalBusinessData?.convenienceFeeEnabled || false,
+            convenienceFeeRate: finalBusinessData?.convenienceFeeRate || 2.5,
+            convenienceFeePaidBy: finalBusinessData?.convenienceFeePaidBy || 'customer',
+            convenienceFeeLabel: finalBusinessData?.convenienceFeeLabel || 'Payment Processing Fee',
+            businessId: finalBusinessId,
+        };
 
-    return NextResponse.json(responseData, { status: 200 });
+        return NextResponse.json(responseData, { status: 200 });
 
-} catch (error) {
-    console.error("PATCH SETTINGS ERROR:", error);
-    return NextResponse.json({ message: `Backend Error: ${error.message}` }, { status: error.status || 500 });
-}
+    } catch (error) {
+        console.error("PATCH SETTINGS ERROR:", error);
+        return NextResponse.json({ message: `Backend Error: ${error.message}` }, { status: error.status || 500 });
+    }
 }
