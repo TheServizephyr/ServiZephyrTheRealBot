@@ -806,6 +806,14 @@ const OrderPageInternal = () => {
                     dineInPayAtCounterEnabled: settingsData.dineInPayAtCounterEnabled !== false,
                     onlinePaymentEnabled: onlinePaymentEnabled,
                     codEnabled: codEnabled,
+                    // Add-on Charges
+                    gstEnabled: settingsData.gstEnabled,
+                    gstRate: settingsData.gstRate,
+                    gstMinAmount: settingsData.gstMinAmount,
+                    convenienceFeeEnabled: settingsData.convenienceFeeEnabled,
+                    convenienceFeeRate: settingsData.convenienceFeeRate,
+                    convenienceFeePaidBy: settingsData.convenienceFeePaidBy,
+                    convenienceFeeLabel: settingsData.convenienceFeeLabel,
                 };
 
                 setRestaurantData(fetchedSettings);
@@ -933,6 +941,14 @@ const OrderPageInternal = () => {
             dineInModel: restaurantData.dineInModel,
             loyaltyPoints, expiryTimestamp,
             menu: restaurantData.menu, // Save the full menu for availability check
+            // Add-on Charges
+            gstEnabled: restaurantData.gstEnabled,
+            gstRate: restaurantData.gstRate,
+            gstMinAmount: restaurantData.gstMinAmount,
+            convenienceFeeEnabled: restaurantData.convenienceFeeEnabled,
+            convenienceFeeRate: restaurantData.convenienceFeeRate,
+            convenienceFeePaidBy: restaurantData.convenienceFeePaidBy,
+            convenienceFeeLabel: restaurantData.convenienceFeeLabel,
         };
         localStorage.setItem(`cart_${restaurantId}`, JSON.stringify(cartDataToSave));
 
