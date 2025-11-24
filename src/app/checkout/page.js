@@ -161,10 +161,23 @@ const CheckoutPageInternal = () => {
             const isWhatsAppSession = !!phoneFromUrl && !!token;
 
             const savedCart = JSON.parse(localStorage.getItem(`cart_${restaurantId}`) || '{}');
-            const deliveryType = tableId ? 'dine-in' : (savedCart.deliveryType || 'delivery');
+
+            // Fix: If adding to an existing order (activeOrderId), default to 'dine-in' if not specified
+            // This ensures we use Dine-In payment settings (where online might be disabled) instead of Delivery settings
+            let derivedDeliveryType = 'delivery';
+            if (tableId) {
+                derivedDeliveryType = 'dine-in';
+            } else if (activeOrderId) {
+                // For add-ons, prefer dine-in unless cart explicitly says otherwise
+                derivedDeliveryType = savedCart.deliveryType || 'dine-in';
+            } else {
+                derivedDeliveryType = savedCart.deliveryType || 'delivery';
+            }
+
+            const deliveryType = derivedDeliveryType;
             const isAnonymousPreOrder = deliveryType === 'street-vendor-pre-order' && !isDineIn && !isLoggedInUser && !isWhatsAppSession;
 
-            console.log(`[Checkout Page] Verification checks: isDineIn=${isDineIn}, isLoggedInUser=${isLoggedInUser}, isWhatsAppSession=${isWhatsAppSession}, isAnonymousPreOrder=${isAnonymousPreOrder}, activeOrderId=${!!activeOrderId}`);
+            console.log(`[Checkout Page] Verification checks: isDineIn=${isDineIn}, isLoggedInUser=${isLoggedInUser}, isWhatsAppSession=${isWhatsAppSession}, isAnonymousPreOrder=${isAnonymousPreOrder}, activeOrderId=${!!activeOrderId}, deliveryType=${deliveryType}`);
 
             if (isDineIn || isLoggedInUser || activeOrderId || isAnonymousPreOrder) {
                 console.log("[Checkout Page] Session validated (Direct).");
