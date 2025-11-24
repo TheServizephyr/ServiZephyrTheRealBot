@@ -228,6 +228,9 @@ const CheckoutPageInternal = () => {
                 const paymentSettingsRes = await fetch(`/api/owner/settings?restaurantId=${restaurantId}`);
                 if (paymentSettingsRes.ok) {
                     const paymentData = await paymentSettingsRes.json();
+                    console.log('[Checkout] Payment settings fetched:', paymentData);
+                    console.log('[Checkout] Delivery type:', deliveryType);
+
                     if (deliveryType === 'delivery') {
                         setCodEnabled(paymentData.deliveryCodEnabled);
                         setOnlinePaymentEnabled(paymentData.deliveryOnlinePaymentEnabled);
@@ -235,6 +238,8 @@ const CheckoutPageInternal = () => {
                         setCodEnabled(paymentData.pickupPodEnabled);
                         setOnlinePaymentEnabled(paymentData.pickupOnlinePaymentEnabled);
                     } else if (deliveryType === 'dine-in') {
+                        console.log('[Checkout] Dine-In - Setting COD:', paymentData.dineInPayAtCounterEnabled);
+                        console.log('[Checkout] Dine-In - Setting Online:', paymentData.dineInOnlinePaymentEnabled);
                         setCodEnabled(paymentData.dineInPayAtCounterEnabled);
                         setOnlinePaymentEnabled(paymentData.dineInOnlinePaymentEnabled);
                     } else if (deliveryType === 'street-vendor-pre-order') {
@@ -251,6 +256,10 @@ const CheckoutPageInternal = () => {
                         convenienceFeeRate: paymentData.convenienceFeeRate || 2.5,
                         convenienceFeePaidBy: paymentData.convenienceFeePaidBy || 'customer',
                         convenienceFeeLabel: paymentData.convenienceFeeLabel || 'Payment Processing Fee',
+                    });
+                    console.log('[Checkout] Vendor charges set:', {
+                        gstEnabled: paymentData.gstEnabled,
+                        gstRate: paymentData.gstRate,
                     });
                 }
             } catch (err) {
