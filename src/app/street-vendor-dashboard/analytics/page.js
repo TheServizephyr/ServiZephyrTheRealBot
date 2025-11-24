@@ -20,11 +20,15 @@ export default function StreetVendorAnalyticsPage() {
         setLoading(true);
         try {
             const res = await fetch(`/api/owner/analytics?filter=${encodeURIComponent(dateFilter)}`);
-            if (!res.ok) throw new Error('Failed to fetch analytics');
+            if (!res.ok) {
+                const errorData = await res.json().catch(() => ({ message: 'Failed to fetch analytics' }));
+                throw new Error(errorData.message || `HTTP ${res.status}: ${res.statusText}`);
+            }
             const data = await res.json();
             setAnalyticsData(data);
         } catch (error) {
             console.error('Error fetching analytics:', error);
+            setAnalyticsData({ error: error.message });
         } finally {
             setLoading(false);
         }
@@ -42,6 +46,21 @@ export default function StreetVendorAnalyticsPage() {
         return (
             <div className="p-4 md:p-6 flex items-center justify-center h-full">
                 <p className="text-muted-foreground">No data available</p>
+            </div>
+        );
+    }
+
+    if (analyticsData.error) {
+        return (
+            <div className="p-4 md:p-6 flex flex-col items-center justify-center h-full gap-4">
+                <div className="text-center">
+                    <h2 className="text-xl font-bold text-destructive mb-2">Error Loading Analytics</h2>
+                    <p className="text-muted-foreground">{analyticsData.error}</p>
+                    {analyticsData.error.includes('401') || analyticsData.error.includes('Unauthorized') ? (
+                        <p className="text-sm text-muted-foreground mt-2">Please log in again to view analytics</p>
+                    ) : null}
+                </div>
+                <Button onClick={fetchAnalytics}>Retry</Button>
             </div>
         );
     }
