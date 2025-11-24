@@ -1344,91 +1344,73 @@ const OrderPageInternal = () => {
                             <button
                                 onClick={() => handleFilterChange('nonVeg')}
                                 className={cn("flex items-center gap-1 px-3 py-1.5 rounded-lg border text-sm font-medium whitespace-nowrap shadow-sm transition-colors flex-shrink-0", filters.nonVeg ? "bg-red-50 border-red-500 text-red-700" : "bg-card border-border hover:bg-muted")}
-                            >
-                                <div className="w-4 h-4 border border-red-500 flex items-center justify-center rounded-[2px]"><div className="w-2 h-2 bg-red-500 rounded-full"></div></div>
-                                Non-veg
-                            </button>
-
-                            <button
-                                onClick={() => handleFilterChange('recommended')}
-                                className={cn("flex items-center gap-1 px-3 py-1.5 rounded-lg border text-sm font-medium whitespace-nowrap shadow-sm transition-colors flex-shrink-0", filters.recommended ? "bg-yellow-50 border-yellow-500 text-yellow-700" : "bg-card border-border hover:bg-muted")}
-                            >
-                                <Sparkles size={14} className={filters.recommended ? "text-yellow-600" : "text-yellow-500"} />
-                                Highly reordered
-                            </button>
-                        </div>
-                    </div>
-                </div>
-
-                <div className="container mx-auto px-4 mt-6 pb-40">
-                    <main>
                         <div className="space-y-8">
-                            {menuCategories.map(({ key, title }) => (
-                                <section id={key} key={key} className="scroll-mt-24">
-                                    <h3 className="text-2xl font-bold mb-4">{title}</h3>
-                                    <div className="flex flex-col">
-                                        {processedMenu[key].map(item => (
-                                            <MenuItemCard
-                                                key={item.id}
-                                                item={item}
-                                                quantity={cartItemQuantities[item.id] || 0}
-                                                onAdd={handleIncrement}
-                                                onIncrement={handleIncrement}
-                                                onDecrement={handleDecrement}
-                                            />
-                                        ))}
-                                    </div>
-                                </section>
-                            ))}
-                        </div>
-                    </main>
-                </div>
-                <AnimatePresence>
-                    {totalCartItems > 0 && (
-                        <motion.div
-                            className="fixed bottom-0 left-0 right-0 z-30"
-                            initial={{ y: 100, opacity: 0 }}
-                            animate={{ y: 0, opacity: 1 }}
-                            exit={{ y: 100, opacity: 0 }}
-                        >
-                            <div className="bg-background/80 backdrop-blur-sm border-t border-border">
-                                <Button onClick={handleCheckout} className="h-16 w-full text-lg font-bold rounded-none shadow-lg shadow-primary/30 flex justify-between items-center text-primary-foreground px-6 bg-primary hover:bg-primary/90">
-                                    <span>{totalCartItems} Item{totalCartItems > 1 ? 's' : ''} | {formatCurrency(subtotal)}</span>
-                                    <span className="flex items-center">
-                                        {(liveOrder && liveOrder.restaurantId === restaurantId) ? 'Add to Order' : 'View Cart'} <ArrowRight className="ml-2 h-5 w-5" />
-                                    </span>
-                                </Button>
+                                {menuCategories.map(({ key, title }) => (
+                                    <section id={key} key={key} className="scroll-mt-24">
+                                        <h3 className="text-2xl font-bold mb-4">{title}</h3>
+                                        <div className="flex flex-col">
+                                            {processedMenu[key].map(item => (
+                                                <MenuItemCard
+                                                    key={item.id}
+                                                    item={item}
+                                                    quantity={cartItemQuantities[item.id] || 0}
+                                                    onAdd={handleIncrement}
+                                                    onIncrement={handleIncrement}
+                                                    onDecrement={handleDecrement}
+                                                />
+                                            ))}
+                                        </div>
+                                    </section>
+                                ))}
                             </div>
-                        </motion.div>
-                    )}
-                </AnimatePresence>
+                        </main>
+                    </div>
+                    <AnimatePresence>
+                        {totalCartItems > 0 && (
+                            <motion.div
+                                className="fixed bottom-0 left-0 right-0 z-30"
+                                initial={{ y: 100, opacity: 0 }}
+                                animate={{ y: 0, opacity: 1 }}
+                                exit={{ y: 100, opacity: 0 }}
+                            >
+                                <div className="bg-background/80 backdrop-blur-sm border-t border-border">
+                                    <Button onClick={handleCheckout} className="h-16 w-full text-lg font-bold rounded-none shadow-lg shadow-primary/30 flex justify-between items-center text-primary-foreground px-6 bg-primary hover:bg-primary/90">
+                                        <span>{totalCartItems} Item{totalCartItems > 1 ? 's' : ''} | {formatCurrency(subtotal)}</span>
+                                        <span className="flex items-center">
+                                            {(liveOrder && liveOrder.restaurantId === restaurantId) ? 'Add to Order' : 'View Cart'} <ArrowRight className="ml-2 h-5 w-5" />
+                                        </span>
+                                    </Button>
+                                </div>
+                            </motion.div>
+                        )}
+                    </AnimatePresence>
 
-                <motion.div
-                    className="fixed bottom-4 right-4 z-20"
-                    animate={{ y: totalCartItems > 0 ? -80 : 0 }}
-                    transition={{ type: 'spring', stiffness: 200, damping: 20 }}
-                >
-                    <Button size="icon" className="w-16 h-16 rounded-full bg-green-600 hover:bg-green-700 text-white shadow-lg" onClick={() => setIsMenuBrowserOpen(true)}>
-                        <BookOpen size={28} />
-                    </Button>
-                </motion.div>
+                    <motion.div
+                        className="fixed bottom-4 right-4 z-20"
+                        animate={{ y: totalCartItems > 0 ? -80 : 0 }}
+                        transition={{ type: 'spring', stiffness: 200, damping: 20 }}
+                    >
+                        <Button size="icon" className="w-16 h-16 rounded-full bg-green-600 hover:bg-green-700 text-white shadow-lg" onClick={() => setIsMenuBrowserOpen(true)}>
+                            <BookOpen size={28} />
+                        </Button>
+                    </motion.div>
 
-            </div>
-        </>
-    );
+                </div>
+            </>
+            );
 };
 
 const OrderPage = () => (
-    <Suspense fallback={<div className="min-h-screen bg-background flex items-center justify-center"><GoldenCoinSpinner /></div>}>
-        <ThemeProvider
-            attribute="class"
-            defaultTheme="system"
-            enableSystem
-            disableTransitionOnChange
-        >
-            <OrderPageInternal />
-        </ThemeProvider>
-    </Suspense>
-);
+            <Suspense fallback={<div className="min-h-screen bg-background flex items-center justify-center"><GoldenCoinSpinner /></div>}>
+                <ThemeProvider
+                    attribute="class"
+                    defaultTheme="system"
+                    enableSystem
+                    disableTransitionOnChange
+                >
+                    <OrderPageInternal />
+                </ThemeProvider>
+            </Suspense>
+            );
 
-export default OrderPage;
+            export default OrderPage;
