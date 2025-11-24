@@ -1298,54 +1298,65 @@ const OrderPageInternal = () => {
                     </div>
                 </div>
 
-                <div className="sticky top-0 z-10 bg-background/95 backdrop-blur-sm py-2 border-b border-border mt-4">
-                    <div className="container mx-auto px-4 flex items-center justify-between gap-2">
-                        {liveOrder && trackingUrl && (
-                            <Link href={trackingUrl}>
-                                <motion.div
-                                    className={cn("p-2 rounded-lg text-black flex items-center animate-pulse", liveOrder.status === 'Ready' || liveOrder.status === 'ready_for_pickup' ? 'bg-green-400 hover:bg-green-500' : 'bg-yellow-400 hover:bg-yellow-500')}
-                                    whileHover={{ scale: 1.05 }}
-                                >
-                                    <Navigation size={16} className="mr-2" />
-                                    <span className="text-sm font-bold hidden sm:inline">Track Live Order</span>
-                                </motion.div>
-                            </Link>
-                        )}
-                        <div className="flex-grow"></div>
-                        <Popover>
-                            <PopoverTrigger asChild>
-                                <Button variant="outline" className="flex items-center gap-2 flex-shrink-0">
-                                    <SlidersHorizontal size={16} /> Filter & Sort
-                                </Button>
-                            </PopoverTrigger>
-                            <PopoverContent className="w-64">
-                                <div className="grid gap-4">
-                                    <div className="space-y-2">
-                                        <h4 className="font-medium leading-none">Sort by</h4>
-                                        <div className="flex flex-wrap gap-2">
-                                            <Button variant={sortBy === 'price-asc' ? 'default' : 'outline'} size="sm" onClick={() => handleSortChange('price-asc')} className={cn(sortBy === 'price-asc' && 'bg-primary hover:bg-primary/90 text-primary-foreground')}>Price: Low to High</Button>
-                                            <Button variant={sortBy === 'price-desc' ? 'default' : 'outline'} size="sm" onClick={() => handleSortChange('price-desc')} className={cn(sortBy === 'price-desc' && 'bg-primary hover:bg-primary/90 text-primary-foreground')}>Price: High to Low</Button>
-                                            <Button variant={sortBy === 'rating-desc' ? 'default' : 'outline'} size="sm" onClick={() => handleSortChange('rating-desc')} className={cn(sortBy === 'rating-desc' && 'bg-primary hover:bg-primary/90 text-primary-foreground')}>Top Rated</Button>
-                                        </div>
-                                    </div>
+                <div className="sticky top-0 z-10 bg-background/95 backdrop-blur-sm py-2 border-b border-border mt-4 shadow-sm">
+                    <div className="container mx-auto px-4">
+                        <div className="flex items-center gap-3 overflow-x-auto no-scrollbar pb-1">
+                            {liveOrder && trackingUrl && (
+                                <Link href={trackingUrl} className="flex-shrink-0">
+                                    <motion.div
+                                        className={cn("p-2 rounded-lg text-black flex items-center animate-pulse", liveOrder.status === 'Ready' || liveOrder.status === 'ready_for_pickup' ? 'bg-green-400 hover:bg-green-500' : 'bg-yellow-400 hover:bg-yellow-500')}
+                                        whileHover={{ scale: 1.05 }}
+                                    >
+                                        <Navigation size={16} className="mr-2" />
+                                        <span className="text-sm font-bold hidden sm:inline">Track</span>
+                                    </motion.div>
+                                </Link>
+                            )}
 
-                                    <div className="space-y-2">
-                                        <h4 className="font-medium leading-none">Filter By</h4>
-                                        <div className="flex flex-wrap gap-2">
-                                            <Button variant={filters.veg ? 'default' : 'outline'} size="sm" onClick={() => handleFilterChange('veg')} className={cn("flex items-center gap-2", filters.veg && 'bg-primary hover:bg-primary/90 text-primary-foreground')}>
-                                                <Utensils size={16} className={cn(filters.veg ? '' : 'text-green-500')} />Veg Only
-                                            </Button>
-                                            <Button variant={filters.nonVeg ? 'default' : 'outline'} size="sm" onClick={() => handleFilterChange('nonVeg')} className={cn("flex items-center gap-2", filters.nonVeg && 'bg-primary hover:bg-primary/90 text-primary-foreground')}>
-                                                <Flame size={16} className={cn(filters.nonVeg ? '' : 'text-red-500')} />Non-Veg Only
-                                            </Button>
-                                            <Button variant={filters.recommended ? 'default' : 'outline'} size="sm" onClick={() => handleFilterChange('recommended')} className={cn("flex items-center gap-2", filters.recommended && 'bg-primary hover:bg-primary/90 text-primary-foreground')}>
-                                                <Sparkles size={16} className={cn(filters.recommended ? '' : 'text-yellow-500')} />Highly reordered
-                                            </Button>
+                            <Popover>
+                                <PopoverTrigger asChild>
+                                    <button className="flex items-center gap-1 px-3 py-1.5 rounded-lg border border-border bg-card whitespace-nowrap text-sm font-medium shadow-sm flex-shrink-0 hover:bg-muted transition-colors">
+                                        <SlidersHorizontal size={14} /> Filters <ChevronDown size={14} />
+                                    </button>
+                                </PopoverTrigger>
+                                <PopoverContent className="w-64">
+                                    <div className="grid gap-4">
+                                        <div className="space-y-2">
+                                            <h4 className="font-medium leading-none">Sort by</h4>
+                                            <div className="flex flex-wrap gap-2">
+                                                <Button variant={sortBy === 'price-asc' ? 'default' : 'outline'} size="sm" onClick={() => handleSortChange('price-asc')} className={cn(sortBy === 'price-asc' && 'bg-primary hover:bg-primary/90 text-primary-foreground')}>Price: Low to High</Button>
+                                                <Button variant={sortBy === 'price-desc' ? 'default' : 'outline'} size="sm" onClick={() => handleSortChange('price-desc')} className={cn(sortBy === 'price-desc' && 'bg-primary hover:bg-primary/90 text-primary-foreground')}>Price: High to Low</Button>
+                                                <Button variant={sortBy === 'rating-desc' ? 'default' : 'outline'} size="sm" onClick={() => handleSortChange('rating-desc')} className={cn(sortBy === 'rating-desc' && 'bg-primary hover:bg-primary/90 text-primary-foreground')}>Top Rated</Button>
+                                            </div>
                                         </div>
                                     </div>
-                                </div>
-                            </PopoverContent>
-                        </Popover>
+                                </PopoverContent>
+                            </Popover>
+
+                            <button
+                                onClick={() => handleFilterChange('veg')}
+                                className={cn("flex items-center gap-1 px-3 py-1.5 rounded-lg border text-sm font-medium whitespace-nowrap shadow-sm transition-colors flex-shrink-0", filters.veg ? "bg-green-50 border-green-500 text-green-700" : "bg-card border-border hover:bg-muted")}
+                            >
+                                <div className="w-4 h-4 border border-green-500 flex items-center justify-center rounded-[2px]"><div className="w-2 h-2 bg-green-500 rounded-full"></div></div>
+                                Veg
+                            </button>
+
+                            <button
+                                onClick={() => handleFilterChange('nonVeg')}
+                                className={cn("flex items-center gap-1 px-3 py-1.5 rounded-lg border text-sm font-medium whitespace-nowrap shadow-sm transition-colors flex-shrink-0", filters.nonVeg ? "bg-red-50 border-red-500 text-red-700" : "bg-card border-border hover:bg-muted")}
+                            >
+                                <div className="w-4 h-4 border border-red-500 flex items-center justify-center rounded-[2px]"><div className="w-2 h-2 bg-red-500 rounded-full"></div></div>
+                                Non-veg
+                            </button>
+
+                            <button
+                                onClick={() => handleFilterChange('recommended')}
+                                className={cn("flex items-center gap-1 px-3 py-1.5 rounded-lg border text-sm font-medium whitespace-nowrap shadow-sm transition-colors flex-shrink-0", filters.recommended ? "bg-yellow-50 border-yellow-500 text-yellow-700" : "bg-card border-border hover:bg-muted")}
+                            >
+                                <Sparkles size={14} className={filters.recommended ? "text-yellow-600" : "text-yellow-500"} />
+                                Highly reordered
+                            </button>
+                        </div>
                     </div>
                 </div>
 
