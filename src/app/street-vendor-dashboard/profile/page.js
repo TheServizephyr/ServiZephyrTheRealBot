@@ -483,11 +483,11 @@ function VendorProfilePageContent() {
                             <h4 className="font-bold">Payment Methods</h4>
                             <div className="flex items-center justify-between">
                                 <Label htmlFor="dineInOnlinePaymentEnabled" className="text-sm">Online Payments</Label>
-                                <Switch id="dineInOnlinePaymentEnabled" checked={editedUser.dineInOnlinePaymentEnabled} onCheckedChange={(val) => setEditedUser({ ...editedUser, dineInOnlinePaymentEnabled: val })} disabled={!isEditingPayment} />
+                                <Switch id="dineInOnlinePaymentEnabled" checked={editedUser.dineInOnlinePaymentEnabled} onCheckedChange={(val) => handlePaymentToggle('dineInOnlinePaymentEnabled', val)} disabled={!isEditingPayment} />
                             </div>
                             <div className="flex items-center justify-between">
                                 <Label htmlFor="dineInPayAtCounterEnabled" className="text-sm">Pay at Counter</Label>
-                                <Switch id="dineInPayAtCounterEnabled" checked={editedUser.dineInPayAtCounterEnabled} onCheckedChange={(val) => setEditedUser({ ...editedUser, dineInPayAtCounterEnabled: val })} disabled={!isEditingPayment} />
+                                <Switch id="dineInPayAtCounterEnabled" checked={editedUser.dineInPayAtCounterEnabled} onCheckedChange={(val) => handlePaymentToggle('dineInPayAtCounterEnabled', val)} disabled={!isEditingPayment} />
                             </div>
                         </div>
                     </div>

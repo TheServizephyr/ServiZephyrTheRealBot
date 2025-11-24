@@ -298,16 +298,14 @@ const CheckoutPageInternal = () => {
 
         // Apply GST based on vendor configuration
         let tax = 0;
-        if (vendorCharges?.gstEnabled && !isStreetVendor && taxableAmount > 0) {
+        if (vendorCharges?.gstEnabled && taxableAmount > 0) {
             // Check if order amount meets minimum threshold
             if (taxableAmount >= (vendorCharges.gstMinAmount || 0)) {
                 const gstRate = vendorCharges.gstRate || 5;
                 tax = taxableAmount * (gstRate / 100);
             }
-        } else if (isStreetVendor || !vendorCharges?.gstEnabled) {
-            // Fallback to default 5% GST for street vendors or if GST is not configured
-            tax = (isStreetVendor || taxableAmount <= 0) ? 0 : taxableAmount * 0.05;
         }
+        // If vendor hasn't enabled GST, tax remains 0
 
         const subtotalWithTaxAndCharges = taxableAmount + deliveryCharge + (tax * 2) + tip;
 
