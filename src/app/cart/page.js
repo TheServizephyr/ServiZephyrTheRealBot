@@ -564,12 +564,8 @@ const CartPageInternal = () => {
         return isDeliveryFree ? 0 : (cartData.deliveryCharge || 0);
     }, [isDeliveryFree, cartData, deliveryType]);
 
-
     const { cgst, sgst, grandTotal } = useMemo(() => {
-        const isStreetVendor = deliveryType === 'street-vendor-pre-order';
-        if (isStreetVendor) {
-            return { cgst: 0, sgst: 0, grandTotal: subtotal - totalDiscount };
-        }
+        // Removed hardcoded 0 tax for street vendors. Now respects cartData.gstEnabled.
 
         const taxableAmount = subtotal - totalDiscount;
         let cgstAmount = 0;
@@ -948,8 +944,8 @@ const CartPageInternal = () => {
                                                 )}
 
                                                 {!isStreetVendor && tipAmount > 0 && !activeOrderId && <div className="flex justify-between text-green-400"><span>Rider Tip:</span> <span className="font-medium">+ ₹{tipAmount.toFixed(2)}</span></div>}
-                                                {!isStreetVendor && cgst > 0 && <div className="flex justify-between"><span>CGST ({cartData?.gstRate || 5}%):</span> <span className="font-medium">₹{cgst.toFixed(2)}</span></div>}
-                                                {!isStreetVendor && sgst > 0 && <div className="flex justify-between"><span>SGST ({cartData?.gstRate || 5}%):</span> <span className="font-medium">₹{sgst.toFixed(2)}</span></div>}
+                                                {cgst > 0 && <div className="flex justify-between"><span>CGST ({cartData?.gstRate || 5}%):</span> <span className="font-medium">₹{cgst.toFixed(2)}</span></div>}
+                                                {sgst > 0 && <div className="flex justify-between"><span>SGST ({cartData?.gstRate || 5}%):</span> <span className="font-medium">₹{sgst.toFixed(2)}</span></div>}
                                             </div>
                                         </motion.div>
                                     )}
