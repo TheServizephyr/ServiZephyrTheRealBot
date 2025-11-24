@@ -157,33 +157,51 @@ export async function GET(req) {
 
         const menuItems = allMenuSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
         const itemSales = {};
-        const totalProfit = revenue - totalCost;
-        const profitMargin = revenue > 0 ? (totalProfit / revenue) * 100 : 0;
-        return {
-            ...item, unitsSold, revenue, totalCost, totalProfit, profitMargin,
-            popularity: unitsSold, profitability: profitMargin
+        currentOrdersSnap.forEach(doc => {
+            (doc.data().items || []).forEach(item => {
+                const baseName = item.name.split(' (')[0];
+                if (!itemSales[baseName]) itemSales[baseName] = 0;
+                itemSales[baseName] += item.qty;
+            });
+        });
+
+        console.log('[ANALYTICS DEBUG] Item Sales from Orders:', itemSales);
+        console.log('[ANALYTICS DEBUG] Menu Item Names:', menuItems.map(i => i.name));
+
+        const menuPerformance = menuItems.map(item => {
+            const unitsSold = itemSales[item.name] || 0;
+            const price = item.portions?.[0]?.price || 0;
+            const foodCost = price * 0.4;
+            const revenue = unitsSold * price;
+            const totalCost = unitsSold * foodCost;
+            const totalProfit = revenue - totalCost;
+            const profitMargin = revenue > 0 ? (totalProfit / revenue) * 100 : 0;
+            return {
+                ...item, unitsSold, revenue, totalCost, totalProfit, profitMargin,
+                popularity: unitsSold, profitability: profitMargin
+            };
+        });
+
+        const allCustomers = allCustomersSnap.docs.map(doc => doc.data());
+        const newThisMonth = allCustomers.filter(c => c.joinedAt && c.joinedAt.toDate() > new Date(now.getFullYear(), now.getMonth(), 1));
+        const repeatCustomers = allCustomers.filter(c => (c.totalOrders || 0) > 1);
+
+        const customerStats = {
+            totalCustomers: allCustomers.length,
+            newThisMonth: newThisMonth.length,
+            repeatRate: allCustomers.length > 0 ? Math.round((repeatCustomers.length / allCustomers.length) * 100) : 0,
         };
-    });
 
-    const allCustomers = allCustomersSnap.docs.map(doc => doc.data());
-    const newThisMonth = allCustomers.filter(c => c.joinedAt && c.joinedAt.toDate() > new Date(now.getFullYear(), now.getMonth(), 1));
-    const repeatCustomers = allCustomers.filter(c => (c.totalOrders || 0) > 1);
+        return NextResponse.json({
+            salesData,
+            menuPerformance,
+            customerStats,
+        }, { status: 200 });
 
-    const customerStats = {
-        totalCustomers: allCustomers.length,
-        newThisMonth: newThisMonth.length,
-        repeatRate: allCustomers.length > 0 ? Math.round((repeatCustomers.length / allCustomers.length) * 100) : 0,
-    };
-
-    return NextResponse.json({
-        salesData,
-        menuPerformance,
-        customerStats,
-    }, { status: 200 });
-
-} catch (error) {
-    console.error("ANALYTICS API ERROR:", error);
-    return NextResponse.json({ message: `Backend Error: ${error.message}` }, { status: error.status || 500 });
+    } catch (error) {
+        console.error("ANALYTICS API ERROR:", error);
+        return NextResponse.json({ message: `Backend Error: ${error.message}` }, { status: error.status || 500 });
+    }
 }
-}
+
 
