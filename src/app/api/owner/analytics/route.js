@@ -149,25 +149,41 @@ export async function GET(req) {
                 ordersChange: calcChange(currentOrdersCount, prevOrdersSnap.size),
                 avgValueChange: calcChange(currentOrdersCount > 0 ? currentSales / currentOrdersCount : 0, prevOrdersSnap.size > 0 ? prevSales / prevOrdersSnap.size : 0),
                 totalRejections,
-                const allCustomers = allCustomersSnap.docs.map(doc => doc.data());
-                const newThisMonth = allCustomers.filter(c => c.joinedAt && c.joinedAt.toDate() > new Date(now.getFullYear(), now.getMonth(), 1));
-                const repeatCustomers = allCustomers.filter(c => (c.totalOrders || 0) > 1);
+            },
+            salesTrend,
+            paymentMethods: paymentMethods,
+            rejectionReasons: rejectionReasonsData,
+        };
 
-                const customerStats = {
-                    totalCustomers: allCustomers.length,
-                    newThisMonth: newThisMonth.length,
-                    repeatRate: allCustomers.length > 0 ? Math.round((repeatCustomers.length / allCustomers.length) * 100) : 0,
-                };
+        const menuItems = allMenuSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        const itemSales = {};
+        const totalProfit = revenue - totalCost;
+        const profitMargin = revenue > 0 ? (totalProfit / revenue) * 100 : 0;
+        return {
+            ...item, unitsSold, revenue, totalCost, totalProfit, profitMargin,
+            popularity: unitsSold, profitability: profitMargin
+        };
+    });
 
-                return NextResponse.json({
-                    salesData,
-                    menuPerformance,
-                    customerStats,
-                }, { status: 200 });
+    const allCustomers = allCustomersSnap.docs.map(doc => doc.data());
+    const newThisMonth = allCustomers.filter(c => c.joinedAt && c.joinedAt.toDate() > new Date(now.getFullYear(), now.getMonth(), 1));
+    const repeatCustomers = allCustomers.filter(c => (c.totalOrders || 0) > 1);
 
-            } catch(error) {
-                console.error("ANALYTICS API ERROR:", error);
-                return NextResponse.json({ message: `Backend Error: ${error.message}` }, { status: error.status || 500 });
-            }
-        }
+    const customerStats = {
+        totalCustomers: allCustomers.length,
+        newThisMonth: newThisMonth.length,
+        repeatRate: allCustomers.length > 0 ? Math.round((repeatCustomers.length / allCustomers.length) * 100) : 0,
+    };
+
+    return NextResponse.json({
+        salesData,
+        menuPerformance,
+        customerStats,
+    }, { status: 200 });
+
+} catch (error) {
+    console.error("ANALYTICS API ERROR:", error);
+    return NextResponse.json({ message: `Backend Error: ${error.message}` }, { status: error.status || 500 });
+}
+}
 
