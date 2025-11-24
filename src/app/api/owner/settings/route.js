@@ -92,8 +92,11 @@ export async function GET(req) {
             // This is the public response, only contains necessary info.
             return NextResponse.json({
                 deliveryCodEnabled: businessData.deliveryCodEnabled === undefined ? true : businessData.deliveryCodEnabled,
+                deliveryOnlinePaymentEnabled: businessData.deliveryOnlinePaymentEnabled === undefined ? true : businessData.deliveryOnlinePaymentEnabled,
                 pickupPodEnabled: businessData.pickupPodEnabled === undefined ? true : businessData.pickupPodEnabled,
+                pickupOnlinePaymentEnabled: businessData.pickupOnlinePaymentEnabled === undefined ? true : businessData.pickupOnlinePaymentEnabled,
                 dineInPayAtCounterEnabled: businessData.dineInPayAtCounterEnabled === undefined ? true : businessData.dineInPayAtCounterEnabled,
+                dineInOnlinePaymentEnabled: businessData.dineInOnlinePaymentEnabled === undefined ? true : businessData.dineInOnlinePaymentEnabled,
                 botPhoneNumberId: businessData.botPhoneNumberId || null,
                 botDisplayNumber: businessData.botDisplayNumber || null,
                 // Add-on Charges Configuration

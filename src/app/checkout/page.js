@@ -616,7 +616,11 @@ const CheckoutPageInternal = () => {
             <div className="min-h-screen bg-background text-foreground flex flex-col green-theme">
                 <header className="sticky top-0 z-20 bg-background/80 backdrop-blur-lg border-b border-border">
                     <div className="container mx-auto px-4 py-3 flex items-center gap-4">
-                        <Button variant="ghost" size="icon" onClick={() => router.back()} className="h-10 w-10"><ArrowLeft /></Button>
+                        <Button variant="ghost" size="icon" onClick={() => {
+                            // Preserve all params when going back
+                            const params = new URLSearchParams(searchParams.toString());
+                            router.push(`/cart?${params.toString()}`);
+                        }} className="h-10 w-10"><ArrowLeft /></Button>
                         <div>
                             <p className="text-xs text-muted-foreground">{cameToPay ? 'Final Step' : detailsConfirmed ? (activeOrderId ? 'Add to Order' : 'Step 2 of 2') : 'Step 1 of 2'}</p>
                             <h1 className="text-xl font-bold">{cameToPay ? 'Pay Your Bill' : detailsConfirmed ? 'Choose Payment Method' : 'Confirm Your Details'}</h1>
