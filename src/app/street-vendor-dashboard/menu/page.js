@@ -190,177 +190,252 @@ const AddItemModal = ({ isOpen, setIsOpen, onSave, editingItem, allCategories, s
     const removePortion = (index) => {
         if (item.portions.length > 1) {
             setItem(prev => ({ ...prev, portions: prev.portions.filter((_, i) => i !== index) }));
-            setItem(prev => ({ ...prev, portions: [{ name: 'Full', price: value }] }));
-        };
+        }
+    };
+    const handleImageUpload = async (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
 
-        const handleSubmit = async (e) => {
-            e.preventDefault();
-            if (!item || isSaving) return;
-            const finalCategoryId = showNewCategory ? newCategory.trim().toLowerCase().replace(/\s+/g, '-') : item.categoryId;
-            const finalNewCategoryName = showNewCategory ? newCategory.trim() : '';
+        // Show loading indicator
+        handleChange('imageUrl', 'uploading...');
 
-            if (showNewCategory && !finalNewCategoryName) {
-                showInfoDialog({ isOpen: true, title: 'Input Error', message: "Please enter a name for the new category." });
+        try {
+            // Compression options
+            const options = {
+                maxSizeMB: 0.2,
+                maxWidthOrHeight: 800,
+                useWebWorker: true,
+                fileType: 'image/jpeg',
+            };
+
+            // Compress the image
+            const compressedFile = await imageCompression(file, options);
+
+            // Convert to base64
+            const reader = new FileReader();
+            reader.readAsDataURL(compressedFile);
+
+            reader.onloadend = async () => {
+                try {
+                    const base64Image = reader.result.split(',')[1]; // Remove prefix
+
+                    // Upload to Imgbb (FREE service)
+                    const formData = new FormData();
+                    formData.append('image', base64Image);
+
+                    const response = await fetch('https://api.imgbb.com/1/upload?key=06393ae33de09d4ead8ec2d2307b978f', {
+                        method: 'POST',
+                        body: formData,
+                    });
+
+                    if (!response.ok) throw new Error('Upload failed');
+
+                    const data = await response.json();
+
+                    // Save the CDN URL (not base64!)
+                    handleChange('imageUrl', data.data.url);
+                } catch (uploadError) {
+                    console.error('Upload failed:', uploadError);
+                    handleChange('imageUrl', '');
+                    showInfoDialog({
+                        isOpen: true,
+                        title: 'Upload Failed',
+                        message: 'Could not upload image. Please try again.'
+                    });
+                }
+            };
+
+            reader.onerror = () => {
+                handleChange('imageUrl', '');
+                showInfoDialog({
+                    isOpen: true,
+                    title: 'Error',
+                    message: 'Could not read the image file.'
+                });
+            };
+        } catch (error) {
+            console.error('Compression failed:', error);
+            handleChange('imageUrl', '');
+            showInfoDialog({
+                isOpen: true,
+                title: 'Upload Failed',
+                message: 'Could not process the image. Please try a different photo.'
+            });
+        }
+    };
+
+    const handleBasePriceChange = (value) => {
+        setItem(prev => ({ ...prev, portions: [{ name: 'Full', price: value }] }));
+    };
+
+    const handleSubmit = async (e) => {
+        e.preventDefault();
+        if (!item || isSaving) return;
+        const finalCategoryId = showNewCategory ? newCategory.trim().toLowerCase().replace(/\s+/g, '-') : item.categoryId;
+        const finalNewCategoryName = showNewCategory ? newCategory.trim() : '';
+
+        if (showNewCategory && !finalNewCategoryName) {
+            showInfoDialog({ isOpen: true, title: 'Input Error', message: "Please enter a name for the new category." });
+            return;
+        }
+
+        setIsSaving(true);
+        try {
+            const tagsArray = item.tags ? item.tags.split(',').map(tag => tag.trim()).filter(Boolean) : [];
+
+            let finalPortions;
+            if (pricingType === 'single') {
+                const basePrice = item.portions?.[0]?.price;
+                if (!basePrice || isNaN(parseFloat(basePrice))) {
+                    showInfoDialog({ isOpen: true, title: 'Input Error', message: "Please enter a valid base price." });
+                    setIsSaving(false);
+                    return;
+                }
+                finalPortions = [{ name: 'Full', price: parseFloat(basePrice) }];
+            } else {
+                finalPortions = item.portions
+                    .filter(p => p.name.trim() && p.price && !isNaN(parseFloat(p.price)))
+                    .map(p => ({ name: p.name.trim(), price: parseFloat(p.price) }));
+            }
+
+            if (finalPortions.length === 0) {
+                showInfoDialog({ isOpen: true, title: 'Input Error', message: "Please add at least one valid portion with a name and price." });
+                setIsSaving(false);
                 return;
             }
 
-            setIsSaving(true);
-            try {
-                const tagsArray = item.tags ? item.tags.split(',').map(tag => tag.trim()).filter(Boolean) : [];
-
-                let finalPortions;
-                if (pricingType === 'single') {
-                    const basePrice = item.portions?.[0]?.price;
-                    if (!basePrice || isNaN(parseFloat(basePrice))) {
-                        showInfoDialog({ isOpen: true, title: 'Input Error', message: "Please enter a valid base price." });
-                        setIsSaving(false);
-                        return;
-                    }
-                    finalPortions = [{ name: 'Full', price: parseFloat(basePrice) }];
-                } else {
-                    finalPortions = item.portions
-                        .filter(p => p.name.trim() && p.price && !isNaN(parseFloat(p.price)))
-                        .map(p => ({ name: p.name.trim(), price: parseFloat(p.price) }));
-                }
-
-                if (finalPortions.length === 0) {
-                    showInfoDialog({ isOpen: true, title: 'Input Error', message: "Please add at least one valid portion with a name and price." });
-                    setIsSaving(false);
-                    return;
-                }
-
-                const newItemData = {
-                    id: editingItem ? item.id : undefined,
-                    name: item.name,
-                    description: item.description,
-                    portions: finalPortions,
-                    isVeg: item.isVeg,
-                    isAvailable: item.isAvailable,
-                    imageUrl: item.imageUrl || `https://picsum.photos/seed/${item.name.replace(/\s/g, '')}/100/100`,
-                    tags: tagsArray,
-                };
+            const newItemData = {
+                id: editingItem ? item.id : undefined,
+                name: item.name,
+                description: item.description,
+                portions: finalPortions,
+                isVeg: item.isVeg,
+                isAvailable: item.isAvailable,
+                imageUrl: item.imageUrl || `https://picsum.photos/seed/${item.name.replace(/\s/g, '')}/100/100`,
+                tags: tagsArray,
+            };
 
 
-                if (!newItemData.name) {
-                    showInfoDialog({ isOpen: true, title: 'Input Error', message: "Please provide an item name." });
-                    setIsSaving(false);
-                    return;
-                }
-
-                await onSave(newItemData, finalCategoryId, finalNewCategoryName, !!editingItem);
-                setIsOpen(false);
-            } catch (error) {
-                // Error alert is handled in the parent `handleSaveItem`
-            } finally {
+            if (!newItemData.name) {
+                showInfoDialog({ isOpen: true, title: 'Input Error', message: "Please provide an item name." });
                 setIsSaving(false);
+                return;
             }
-        };
 
-        if (!item) return null;
+            await onSave(newItemData, finalCategoryId, finalNewCategoryName, !!editingItem);
+            setIsOpen(false);
+        } catch (error) {
+            // Error alert is handled in the parent `handleSaveItem`
+        } finally {
+            setIsSaving(false);
+        }
+    };
 
-        return (
-            <Dialog open={isOpen} onOpenChange={setIsOpen}>
-                <DialogContent className="sm:max-w-4xl bg-card border-border text-foreground">
-                    <form onSubmit={handleSubmit}>
-                        <DialogHeader>
-                            <DialogTitle>{editingItem ? 'Edit Item' : 'Add New Item'}</DialogTitle>
-                            <DialogDescription>
-                                {editingItem ? 'Update the details for this item.' : "Fill in the details for the new item. Click save when you're done."}
-                            </DialogDescription>
-                        </DialogHeader>
-                        <div className="grid md:grid-cols-2 gap-x-8 gap-y-4 py-4 max-h-[70vh] overflow-y-auto pr-4">
-                            {/* Left Column: Basic Details */}
-                            <div className="space-y-4">
-                                <div><Label>Name</Label><input value={item.name} onChange={e => handleChange('name', e.target.value)} required placeholder="e.g., Veg Pulao" className="w-full p-2 bg-input border border-border rounded-md" /></div>
-                                <div><Label>Description</Label><input value={item.description} onChange={e => handleChange('description', e.target.value)} placeholder="e.g., 10 Pcs." className="w-full p-2 bg-input border border-border rounded-md" /></div>
-                                <div>
-                                    <Label>Category</Label>
-                                    <select value={item.categoryId} onChange={handleCategoryChange} className="w-full p-2 bg-input border border-border rounded-md">
-                                        {sortedCategories.map(({ id, title }) => <option key={id} value={id}>{title}</option>)}
-                                        <option value="add_new">+ Add New Category...</option>
-                                    </select>
-                                </div>
-                                {showNewCategory && (<div><Label>New Category Name</Label><input value={newCategory} onChange={e => setNewCategory(e.target.value)} className="w-full p-2 bg-input border border-border rounded-md" /></div>)}
-                                <div><Label>Tags (comma-separated)</Label><input value={item.tags} onChange={e => handleChange('tags', e.target.value)} placeholder="e.g., Spicy, Chef's Special" className="w-full p-2 bg-input border border-border rounded-md" /></div>
-                                <div>
-                                    <Label>Image</Label>
-                                    <div className="mt-2 flex items-center gap-4">
-                                        <div className="relative w-20 h-20 rounded-md border-2 border-dashed border-border flex items-center justify-center bg-muted overflow-hidden">
-                                            {item.imageUrl ? <Image src={item.imageUrl} alt={item.name} layout="fill" objectFit="cover" /> : <ImageIcon size={24} className="text-muted-foreground" />}
-                                        </div>
-                                        <input type="file" ref={fileInputRef} onChange={handleImageUpload} accept="image/*" className="hidden" />
-                                        <Button type="button" variant="outline" onClick={() => fileInputRef.current?.click()}>
-                                            <Upload size={16} className="mr-2" />Upload
-                                        </Button>
+    if (!item) return null;
+
+    return (
+        <Dialog open={isOpen} onOpenChange={setIsOpen}>
+            <DialogContent className="sm:max-w-4xl bg-card border-border text-foreground">
+                <form onSubmit={handleSubmit}>
+                    <DialogHeader>
+                        <DialogTitle>{editingItem ? 'Edit Item' : 'Add New Item'}</DialogTitle>
+                        <DialogDescription>
+                            {editingItem ? 'Update the details for this item.' : "Fill in the details for the new item. Click save when you're done."}
+                        </DialogDescription>
+                    </DialogHeader>
+                    <div className="grid md:grid-cols-2 gap-x-8 gap-y-4 py-4 max-h-[70vh] overflow-y-auto pr-4">
+                        {/* Left Column: Basic Details */}
+                        <div className="space-y-4">
+                            <div><Label>Name</Label><input value={item.name} onChange={e => handleChange('name', e.target.value)} required placeholder="e.g., Veg Pulao" className="w-full p-2 bg-input border border-border rounded-md" /></div>
+                            <div><Label>Description</Label><input value={item.description} onChange={e => handleChange('description', e.target.value)} placeholder="e.g., 10 Pcs." className="w-full p-2 bg-input border border-border rounded-md" /></div>
+                            <div>
+                                <Label>Category</Label>
+                                <select value={item.categoryId} onChange={handleCategoryChange} className="w-full p-2 bg-input border border-border rounded-md">
+                                    {sortedCategories.map(({ id, title }) => <option key={id} value={id}>{title}</option>)}
+                                    <option value="add_new">+ Add New Category...</option>
+                                </select>
+                            </div>
+                            {showNewCategory && (<div><Label>New Category Name</Label><input value={newCategory} onChange={e => setNewCategory(e.target.value)} className="w-full p-2 bg-input border border-border rounded-md" /></div>)}
+                            <div><Label>Tags (comma-separated)</Label><input value={item.tags} onChange={e => handleChange('tags', e.target.value)} placeholder="e.g., Spicy, Chef's Special" className="w-full p-2 bg-input border border-border rounded-md" /></div>
+                            <div>
+                                <Label>Image</Label>
+                                <div className="mt-2 flex items-center gap-4">
+                                    <div className="relative w-20 h-20 rounded-md border-2 border-dashed border-border flex items-center justify-center bg-muted overflow-hidden">
+                                        {item.imageUrl ? <Image src={item.imageUrl} alt={item.name} layout="fill" objectFit="cover" /> : <ImageIcon size={24} className="text-muted-foreground" />}
                                     </div>
-                                </div>
-                                <div className="flex items-center justify-end gap-4 pt-4">
-                                    <div className="flex items-center space-x-2"><Switch id="is-veg" checked={item.isVeg} onCheckedChange={checked => handleChange('isVeg', checked)} /><Label htmlFor="is-veg">Vegetarian</Label></div>
-                                    <div className="flex items-center space-x-2"><Switch id="is-available" checked={item.isAvailable} onCheckedChange={checked => handleChange('isAvailable', checked)} /><Label htmlFor="is-available">Available</Label></div>
+                                    <input type="file" ref={fileInputRef} onChange={handleImageUpload} accept="image/*" className="hidden" />
+                                    <Button type="button" variant="outline" onClick={() => fileInputRef.current?.click()}>
+                                        <Upload size={16} className="mr-2" />Upload
+                                    </Button>
                                 </div>
                             </div>
+                            <div className="flex items-center justify-end gap-4 pt-4">
+                                <div className="flex items-center space-x-2"><Switch id="is-veg" checked={item.isVeg} onCheckedChange={checked => handleChange('isVeg', checked)} /><Label htmlFor="is-veg">Vegetarian</Label></div>
+                                <div className="flex items-center space-x-2"><Switch id="is-available" checked={item.isAvailable} onCheckedChange={checked => handleChange('isAvailable', checked)} /><Label htmlFor="is-available">Available</Label></div>
+                            </div>
+                        </div>
 
-                            {/* Right Column: Portions */}
-                            <div className="space-y-4">
-                                <div>
-                                    <Label>Pricing</Label>
-                                    <div className="flex items-center gap-2 mt-2 bg-muted p-1 rounded-lg">
-                                        <Button type="button" onClick={() => setPricingType('single')} variant={pricingType === 'single' ? 'default' : 'ghost'} className={cn("flex-1", pricingType === 'single' && 'bg-background text-foreground shadow-sm')}>Single Price</Button>
-                                        <Button type="button" onClick={() => setPricingType('portions')} variant={pricingType === 'portions' ? 'default' : 'ghost'} className={cn("flex-1", pricingType === 'portions' && 'bg-background text-foreground shadow-sm')}>Variable Portions</Button>
-                                    </div>
-                                    <div className="mt-3 space-y-3">
-                                        {pricingType === 'single' ? (
-                                            <div className="flex items-center gap-2">
-                                                <Label className="w-24">Base Price</Label>
-                                                <IndianRupee className="text-muted-foreground" size={16} />
-                                                <input type="number" value={item.portions?.[0]?.price || ''} onChange={(e) => handleBasePriceChange(e.target.value)} placeholder="e.g., 150" className="flex-1 p-2 border rounded-md bg-input border-border" required />
-                                            </div>
-                                        ) : (
-                                            <>
-                                                {item.portions.map((portion, index) => (
-                                                    <div key={index} className="flex items-center gap-2">
-                                                        <input value={portion.name} onChange={(e) => handlePortionChange(index, 'name', e.target.value)} placeholder="e.g., Half" className="flex-1 p-2 border rounded-md bg-input border-border" required />
-                                                        <IndianRupee className="text-muted-foreground" size={16} />
-                                                        <input type="number" value={portion.price} onChange={(e) => handlePortionChange(index, 'price', e.target.value)} placeholder="Price" className="w-24 p-2 border rounded-md bg-input border-border" required />
-                                                        <Button type="button" variant="ghost" size="icon" className="text-destructive" onClick={() => removePortion(index)} disabled={item.portions.length <= 1}>
-                                                            <Trash2 size={16} />
-                                                        </Button>
-                                                    </div>
-                                                ))}
-                                                <Button type="button" variant="outline" size="sm" onClick={addPortion}>
-                                                    <PlusCircle size={16} className="mr-2" /> Add Portion
-                                                </Button>
-                                            </>
-                                        )}
-                                    </div>
+                        {/* Right Column: Portions */}
+                        <div className="space-y-4">
+                            <div>
+                                <Label>Pricing</Label>
+                                <div className="flex items-center gap-2 mt-2 bg-muted p-1 rounded-lg">
+                                    <Button type="button" onClick={() => setPricingType('single')} variant={pricingType === 'single' ? 'default' : 'ghost'} className={cn("flex-1", pricingType === 'single' && 'bg-background text-foreground shadow-sm')}>Single Price</Button>
+                                    <Button type="button" onClick={() => setPricingType('portions')} variant={pricingType === 'portions' ? 'default' : 'ghost'} className={cn("flex-1", pricingType === 'portions' && 'bg-background text-foreground shadow-sm')}>Variable Portions</Button>
+                                </div>
+                                <div className="mt-3 space-y-3">
+                                    {pricingType === 'single' ? (
+                                        <div className="flex items-center gap-2">
+                                            <Label className="w-24">Base Price</Label>
+                                            <IndianRupee className="text-muted-foreground" size={16} />
+                                            <input type="number" value={item.portions?.[0]?.price || ''} onChange={(e) => handleBasePriceChange(e.target.value)} placeholder="e.g., 150" className="flex-1 p-2 border rounded-md bg-input border-border" required />
+                                        </div>
+                                    ) : (
+                                        <>
+                                            {item.portions.map((portion, index) => (
+                                                <div key={index} className="flex items-center gap-2">
+                                                    <input value={portion.name} onChange={(e) => handlePortionChange(index, 'name', e.target.value)} placeholder="e.g., Half" className="flex-1 p-2 border rounded-md bg-input border-border" required />
+                                                    <IndianRupee className="text-muted-foreground" size={16} />
+                                                    <input type="number" value={portion.price} onChange={(e) => handlePortionChange(index, 'price', e.target.value)} placeholder="Price" className="w-24 p-2 border rounded-md bg-input border-border" required />
+                                                    <Button type="button" variant="ghost" size="icon" className="text-destructive" onClick={() => removePortion(index)} disabled={item.portions.length <= 1}>
+                                                        <Trash2 size={16} />
+                                                    </Button>
+                                                </div>
+                                            ))}
+                                            <Button type="button" variant="outline" size="sm" onClick={addPortion}>
+                                                <PlusCircle size={16} className="mr-2" /> Add Portion
+                                            </Button>
+                                        </>
+                                    )}
                                 </div>
                             </div>
                         </div>
-                        <DialogFooter>
-                            <DialogClose asChild><Button type="button" variant="secondary" disabled={isSaving}>Cancel</Button></DialogClose>
-                            <Button type="submit" disabled={isSaving} className="bg-primary hover:bg-primary/90 text-primary-foreground">
-                                {isSaving ? <Loader2 className="animate-spin mr-2" /> : null} {editingItem ? 'Save Changes' : 'Save Item'}
-                            </Button>
-                        </DialogFooter>
-                    </form>
-                </DialogContent>
-            </Dialog>
-        );
-    };
+                    </div>
+                    <DialogFooter>
+                        <DialogClose asChild><Button type="button" variant="secondary" disabled={isSaving}>Cancel</Button></DialogClose>
+                        <Button type="submit" disabled={isSaving} className="bg-primary hover:bg-primary/90 text-primary-foreground">
+                            {isSaving ? <Loader2 className="animate-spin mr-2" /> : null} {editingItem ? 'Save Changes' : 'Save Item'}
+                        </Button>
+                    </DialogFooter>
+                </form>
+            </DialogContent>
+        </Dialog>
+    );
+};
 
-    const BulkAddModal = ({ isOpen, setIsOpen, onSave, businessType, showInfoDialog }) => {
-        const [jsonText, setJsonText] = useState('');
-        const [isSaving, setIsSaving] = useState(false);
-        const [copySuccess, setCopySuccess] = useState('');
+const BulkAddModal = ({ isOpen, setIsOpen, onSave, businessType, showInfoDialog }) => {
+    const [jsonText, setJsonText] = useState('');
+    const [isSaving, setIsSaving] = useState(false);
+    const [copySuccess, setCopySuccess] = useState('');
 
-        const contextType = 'restaurant menu';
-        const itemName = 'Dish name';
-        const placeholderText = '[PASTE YOUR MENU TEXT HERE]';
-        const instructionsText = 'your menu text';
-        const categoryExample = "'main-course'";
-        const defaultCategory = "main-course";
+    const contextType = 'restaurant menu';
+    const itemName = 'Dish name';
+    const placeholderText = '[PASTE YOUR MENU TEXT HERE]';
+    const instructionsText = 'your menu text';
+    const categoryExample = "'main-course'";
+    const defaultCategory = "main-course";
 
-        const aiPrompt = `You are an expert data extractor. Convert the following ${contextType} text into a structured JSON array. Each object in the array must strictly follow this format:
+    const aiPrompt = `You are an expert data extractor. Convert the following ${contextType} text into a structured JSON array. Each object in the array must strictly follow this format:
 {
   "name": "string (${itemName})",
   "description": "string (Optional item description)",
@@ -383,406 +458,406 @@ Here is the text:
 ${placeholderText}
 ---`;
 
-        const handleCopy = () => {
-            navigator.clipboard.writeText(aiPrompt).then(() => {
-                setCopySuccess('Prompt Copied!');
-                setTimeout(() => setCopySuccess(''), 2000);
-            }, () => {
-                setCopySuccess('Failed to copy!');
-                setTimeout(() => setCopySuccess(''), 2000);
-            });
-        };
+    const handleCopy = () => {
+        navigator.clipboard.writeText(aiPrompt).then(() => {
+            setCopySuccess('Prompt Copied!');
+            setTimeout(() => setCopySuccess(''), 2000);
+        }, () => {
+            setCopySuccess('Failed to copy!');
+            setTimeout(() => setCopySuccess(''), 2000);
+        });
+    };
 
-        const handleSubmit = async () => {
-            let items;
-            try {
-                items = JSON.parse(jsonText);
-                if (!Array.isArray(items)) throw new Error("JSON data must be an array.");
-            } catch (error) {
-                showInfoDialog({ isOpen: true, title: 'Input Error', message: `Invalid JSON format: ${error.message}` });
-                return;
-            }
+    const handleSubmit = async () => {
+        let items;
+        try {
+            items = JSON.parse(jsonText);
+            if (!Array.isArray(items)) throw new Error("JSON data must be an array.");
+        } catch (error) {
+            showInfoDialog({ isOpen: true, title: 'Input Error', message: `Invalid JSON format: ${error.message}` });
+            return;
+        }
 
-            setIsSaving(true);
-            try {
-                await onSave(items);
-                setJsonText('');
-                setIsOpen(false);
-            } catch (error) {
-                // alert is handled by the parent
-            } finally {
-                setIsSaving(false);
-            }
-        };
+        setIsSaving(true);
+        try {
+            await onSave(items);
+            setJsonText('');
+            setIsOpen(false);
+        } catch (error) {
+            // alert is handled by the parent
+        } finally {
+            setIsSaving(false);
+        }
+    };
 
-        return (
-            <Dialog open={isOpen} onOpenChange={setIsOpen}>
-                <DialogContent className="sm:max-w-4xl bg-card border-border text-foreground">
-                    <DialogHeader>
-                        <DialogTitle className="flex items-center gap-2 text-2xl"><FileJson /> Bulk Add Items via JSON</DialogTitle>
-                        <DialogDescription>Quickly add multiple items by pasting a structured JSON array.</DialogDescription>
-                    </DialogHeader>
-                    <div className="grid md:grid-cols-2 gap-x-8 max-h-[70vh] overflow-y-auto pr-4">
-                        <div className="space-y-4 py-4">
-                            <h3 className="font-semibold text-lg">How to use:</h3>
-                            <ol className="list-decimal list-inside space-y-2 text-sm text-muted-foreground">
-                                <li>Copy the AI prompt provided.</li>
-                                <li>Go to an AI tool like ChatGPT or Gemini.</li>
-                                <li>Paste the prompt, and then paste ${instructionsText} where it says \`${placeholderText}\`.</li>
-                                <li>The AI will generate a JSON array. Copy the entire JSON code.</li>
-                                <li>Paste the copied JSON code into the text area on this page.</li>
-                                <li>Click "Upload & Save Items".</li>
-                            </ol>
-                            <div className="p-4 bg-muted rounded-lg">
-                                <div className="flex justify-between items-center mb-2">
-                                    <Label className="font-semibold">AI Prompt for JSON Generation</Label>
-                                    <Button size="sm" variant="ghost" onClick={handleCopy}>
-                                        {copySuccess || 'Copy'}
-                                    </Button>
-                                </div>
-                                <p className="text-xs bg-background p-3 rounded-md font-mono whitespace-pre-wrap overflow-auto">{aiPrompt}</p>
+    return (
+        <Dialog open={isOpen} onOpenChange={setIsOpen}>
+            <DialogContent className="sm:max-w-4xl bg-card border-border text-foreground">
+                <DialogHeader>
+                    <DialogTitle className="flex items-center gap-2 text-2xl"><FileJson /> Bulk Add Items via JSON</DialogTitle>
+                    <DialogDescription>Quickly add multiple items by pasting a structured JSON array.</DialogDescription>
+                </DialogHeader>
+                <div className="grid md:grid-cols-2 gap-x-8 max-h-[70vh] overflow-y-auto pr-4">
+                    <div className="space-y-4 py-4">
+                        <h3 className="font-semibold text-lg">How to use:</h3>
+                        <ol className="list-decimal list-inside space-y-2 text-sm text-muted-foreground">
+                            <li>Copy the AI prompt provided.</li>
+                            <li>Go to an AI tool like ChatGPT or Gemini.</li>
+                            <li>Paste the prompt, and then paste ${instructionsText} where it says \`${placeholderText}\`.</li>
+                            <li>The AI will generate a JSON array. Copy the entire JSON code.</li>
+                            <li>Paste the copied JSON code into the text area on this page.</li>
+                            <li>Click "Upload & Save Items".</li>
+                        </ol>
+                        <div className="p-4 bg-muted rounded-lg">
+                            <div className="flex justify-between items-center mb-2">
+                                <Label className="font-semibold">AI Prompt for JSON Generation</Label>
+                                <Button size="sm" variant="ghost" onClick={handleCopy}>
+                                    {copySuccess || 'Copy'}
+                                </Button>
                             </div>
-                        </div>
-                        <div className="py-4">
-                            <Label htmlFor="json-input" className="font-semibold text-lg">Paste JSON Here</Label>
-                            <textarea
-                                id="json-input"
-                                value={jsonText}
-                                onChange={(e) => setJsonText(e.target.value)}
-                                placeholder='[ ... ]'
-                                className="w-full h-96 mt-2 p-3 font-mono text-sm border rounded-md bg-input border-border focus:ring-primary focus:border-primary"
-                            />
+                            <p className="text-xs bg-background p-3 rounded-md font-mono whitespace-pre-wrap overflow-auto">{aiPrompt}</p>
                         </div>
                     </div>
-                    <DialogFooter>
-                        <DialogClose asChild><Button type="button" variant="secondary" disabled={isSaving}>Cancel</Button></DialogClose>
-                        <Button onClick={handleSubmit} disabled={isSaving || !jsonText} className="bg-primary hover:bg-primary/90 text-primary-foreground">
-                            {isSaving ? 'Uploading...' : 'Upload & Save Items'}
-                        </Button>
-                    </DialogFooter>
-                </DialogContent>
-            </Dialog>
-        );
+                    <div className="py-4">
+                        <Label htmlFor="json-input" className="font-semibold text-lg">Paste JSON Here</Label>
+                        <textarea
+                            id="json-input"
+                            value={jsonText}
+                            onChange={(e) => setJsonText(e.target.value)}
+                            placeholder='[ ... ]'
+                            className="w-full h-96 mt-2 p-3 font-mono text-sm border rounded-md bg-input border-border focus:ring-primary focus:border-primary"
+                        />
+                    </div>
+                </div>
+                <DialogFooter>
+                    <DialogClose asChild><Button type="button" variant="secondary" disabled={isSaving}>Cancel</Button></DialogClose>
+                    <Button onClick={handleSubmit} disabled={isSaving || !jsonText} className="bg-primary hover:bg-primary/90 text-primary-foreground">
+                        {isSaving ? 'Uploading...' : 'Upload & Save Items'}
+                    </Button>
+                </DialogFooter>
+            </DialogContent>
+        </Dialog>
+    );
+};
+
+
+export default function StreetVendorMenuPage() {
+    const { user, isUserLoading } = useUser();
+    const [menuItems, setMenuItems] = useState([]);
+    const [loading, setLoading] = useState(true);
+    const [isAiModalOpen, setIsAiModalOpen] = useState(false);
+    const [isBulkModalOpen, setIsBulkModalOpen] = useState(false);
+    const [isAddItemModalOpen, setIsAddItemModalOpen] = useState(false);
+    const [editingItem, setEditingItem] = useState(null);
+    const [infoDialog, setInfoDialog] = useState({ isOpen: false, title: '', message: '' });
+    const [isScanning, setIsScanning] = useState(false);
+    const [customCategories, setCustomCategories] = useState([]);
+    const [itemToDelete, setItemToDelete] = useState(null);
+    const [selectedItems, setSelectedItems] = useState([]);
+
+    const vendorQuery = useMemoFirebase(() => {
+        if (!user) return null;
+        return query(collection(db, 'street_vendors'), where('ownerId', '==', user.uid));
+    }, [user]);
+
+    const { data: vendorData, isLoading: isVendorLoading, error: vendorError } = useCollection(vendorQuery);
+
+    const vendorId = useMemo(() => vendorData?.[0]?.id, [vendorData]);
+
+    useEffect(() => {
+        if (vendorError) {
+            setInfoDialog({ isOpen: true, title: 'Error', message: 'Could not load your vendor profile. ' + vendorError.message });
+        }
+    }, [vendorError]);
+
+    const fetchMenu = useCallback(() => {
+        if (!user || !vendorId) {
+            setLoading(false);
+            return () => { };
+        }
+
+        const menuCollectionRef = collection(db, 'street_vendors', vendorId, 'menu');
+        const q = query(menuCollectionRef);
+
+        const unsubscribe = onSnapshot(q, (querySnapshot) => {
+            const items = [];
+            querySnapshot.forEach((doc) => {
+                items.push({ id: doc.id, ...doc.data() });
+            });
+            setMenuItems(items);
+            setLoading(false);
+        }, (err) => {
+            const contextualError = new FirestorePermissionError({ path: menuCollectionRef.path, operation: 'list' });
+            errorEmitter.emit('permission-error', contextualError);
+            console.error("Firestore Error:", err);
+            setInfoDialog({ isOpen: true, title: 'Error', message: 'Could not load menu items. ' + err.message });
+            setLoading(false);
+        });
+
+        return unsubscribe;
+    }, [user, vendorId]);
+
+
+    useEffect(() => {
+        if (isUserLoading || isVendorLoading) return;
+        const unsubscribe = fetchMenu();
+        return () => unsubscribe && unsubscribe();
+    }, [user, isUserLoading, vendorId, isVendorLoading, fetchMenu]);
+
+    const handleToggleAvailability = async (itemId, newAvailability) => {
+        if (!vendorId) return;
+        const itemRef = doc(db, 'street_vendors', vendorId, 'menu', itemId);
+        try {
+            await updateDoc(itemRef, { isAvailable: newAvailability });
+        } catch (error) {
+            errorEmitter.emit('permission-error', new FirestorePermissionError({ path: itemRef.path, operation: 'update', requestResourceData: { isAvailable: newAvailability } }));
+            setInfoDialog({ isOpen: true, title: 'Error', message: 'Could not update item status: ' + error.message });
+        };
+    };
+
+    const handleDeleteItem = (itemId, itemName) => {
+        setItemToDelete({ id: itemId, name: itemName });
+    };
+
+    const confirmDeleteItem = async () => {
+        if (!itemToDelete || !vendorId) return;
+        const itemRef = doc(db, 'street_vendors', vendorId, 'menu', itemToDelete.id);
+        try {
+            await deleteDoc(itemRef);
+            setInfoDialog({ isOpen: true, title: 'Success', message: `Item "${itemToDelete.name}" has been deleted.` });
+        } catch (error) {
+            errorEmitter.emit('permission-error', new FirestorePermissionError({ path: itemRef.path, operation: 'delete' }));
+            setInfoDialog({ isOpen: true, title: 'Error', message: 'Could not delete item: ' + error.message });
+        } finally {
+            setItemToDelete(null);
+        }
+    };
+
+    const handleSaveItem = useCallback(async (itemData, categoryId, newCategory, isEditing) => {
+        const handleApiCall = async (endpoint, method, body) => {
+            const idToken = await user.getIdToken();
+            const response = await fetch(endpoint, {
+                method, headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${idToken}` },
+                body: JSON.stringify(body)
+            });
+            if (!response.ok) {
+                const errData = await response.json();
+                throw new Error(errData.message || 'API call failed');
+            }
+            return await response.json();
+        };
+
+        try {
+            const data = await handleApiCall('/api/owner/menu', 'POST', { item: itemData, categoryId, newCategory, isEditing });
+            setInfoDialog({ isOpen: true, title: 'Success', message: data.message });
+            fetchMenu();
+        } catch (error) {
+            setInfoDialog({ isOpen: true, title: 'Error', message: `Could not save item: ${error.message}` });
+            throw error;
+        }
+    }, [user, fetchMenu]);
+
+
+    const handleAiScan = async (file) => {
+        setIsScanning(true);
+        setIsAiModalOpen(false); // Close the modal and show page-level indicator
+        try {
+            const reader = new FileReader();
+            reader.readAsDataURL(file);
+            await new Promise((resolve, reject) => {
+                reader.onload = async () => {
+                    try {
+                        const imageDataUri = reader.result;
+                        const response = await fetch('/api/ai/scan-menu', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${await user.getIdToken()}` },
+                            body: JSON.stringify({ imageDataUri }),
+                        });
+                        const result = await response.json();
+                        if (!response.ok) throw new Error(result.message);
+                        setInfoDialog({ isOpen: true, title: 'Success!', message: result.message });
+                        fetchMenu();
+                        resolve();
+                    } catch (error) {
+                        reject(error);
+                    }
+                };
+                reader.onerror = (error) => reject(error);
+            });
+        } catch (error) {
+            setInfoDialog({ isOpen: true, title: 'AI Scan Failed', message: error.message });
+        } finally {
+            setIsScanning(false);
+        }
+    };
+
+    const handleBulkSave = async (items) => {
+        try {
+            const user = await auth.currentUser;
+            if (!user) throw new Error("User not authenticated");
+            const idToken = await user.getIdToken();
+            const response = await fetch('/api/owner/menu-bulk', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${idToken}` },
+                body: JSON.stringify({ items }),
+            });
+            if (!response.ok) throw new Error((await response.json()).message);
+            const data = await response.json();
+            setInfoDialog({ isOpen: true, title: 'Success!', message: data.message });
+            fetchMenu();
+        } catch (error) {
+            setInfoDialog({ isOpen: true, title: 'Bulk Add Failed', message: error.message });
+            throw error;
+        }
+    };
+
+    const handleEditItem = (item) => {
+        setEditingItem(item);
+        setIsAddItemModalOpen(true);
+    };
+
+    const handleBulkAction = async (action) => {
+        if (selectedItems.length === 0) return;
+        const confirmMessage = action === 'delete'
+            ? `Are you sure you want to delete ${selectedItems.length} items? This action cannot be undone.`
+            : `Are you sure you want to mark ${selectedItems.length} items as out of stock?`;
+
+        if (window.confirm(confirmMessage)) {
+            try {
+                const user = auth.currentUser;
+                if (!user) throw new Error("Authentication failed");
+                const idToken = await user.getIdToken();
+                await fetch('/api/owner/menu', {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${idToken}` },
+                    body: JSON.stringify({ itemIds: selectedItems, action })
+                });
+                setInfoDialog({ isOpen: true, title: 'Success', message: `Successfully completed bulk action.` });
+                setSelectedItems([]);
+                fetchMenu();
+            } catch (error) {
+                setInfoDialog({ isOpen: true, title: 'Error', message: `Could not perform bulk action: ${error.message}` });
+            }
+        }
+    };
+
+    const allCategories = {
+        'snacks': { title: 'Snacks' },
+        'chaat': { title: 'Chaat' },
+        'rolls': { title: 'Rolls' },
+        'beverages': { title: 'Beverages' },
+        'main-course': { title: 'Main Course' },
+        'sweets': { title: 'Sweets' },
+        ...customCategories.reduce((acc, cat) => {
+            acc[cat.id] = { title: cat.title };
+            return acc;
+        }, {}),
     };
 
 
-    export default function StreetVendorMenuPage() {
-        const { user, isUserLoading } = useUser();
-        const [menuItems, setMenuItems] = useState([]);
-        const [loading, setLoading] = useState(true);
-        const [isAiModalOpen, setIsAiModalOpen] = useState(false);
-        const [isBulkModalOpen, setIsBulkModalOpen] = useState(false);
-        const [isAddItemModalOpen, setIsAddItemModalOpen] = useState(false);
-        const [editingItem, setEditingItem] = useState(null);
-        const [infoDialog, setInfoDialog] = useState({ isOpen: false, title: '', message: '' });
-        const [isScanning, setIsScanning] = useState(false);
-        const [customCategories, setCustomCategories] = useState([]);
-        const [itemToDelete, setItemToDelete] = useState(null);
-        const [selectedItems, setSelectedItems] = useState([]);
+    const groupedMenu = menuItems.reduce((acc, item) => {
+        const categoryKey = item.categoryId || 'general';
+        const categoryTitle = allCategories[categoryKey]?.title || categoryKey;
+        (acc[categoryTitle] = acc[categoryTitle] || []).push(item);
+        return acc;
+    }, {});
 
-        const vendorQuery = useMemoFirebase(() => {
-            if (!user) return null;
-            return query(collection(db, 'street_vendors'), where('ownerId', '==', user.uid));
-        }, [user]);
+    return (
+        <div className="min-h-screen bg-background text-foreground font-body p-4">
+            <InfoDialog
+                isOpen={infoDialog.isOpen}
+                onClose={() => setInfoDialog({ isOpen: false, title: '', message: '' })}
+                title={infoDialog.title}
+                message={infoDialog.message}
+            />
+            <ConfirmationModal
+                isOpen={!!itemToDelete}
+                onClose={() => setItemToDelete(null)}
+                onConfirm={confirmDeleteItem}
+                itemName={itemToDelete?.name}
+            />
+            <AiScanModal isOpen={isAiModalOpen} onClose={() => setIsAiModalOpen(false)} onScan={handleAiScan} />
+            <BulkAddModal isOpen={isBulkModalOpen} setIsOpen={setIsBulkModalOpen} onSave={handleBulkSave} businessType="street-vendor" showInfoDialog={setInfoDialog} />
+            <AddItemModal isOpen={isAddItemModalOpen} setIsOpen={setIsAddItemModalOpen} onSave={handleSaveItem} editingItem={editingItem} allCategories={allCategories} showInfoDialog={setInfoDialog} />
 
-        const { data: vendorData, isLoading: isVendorLoading, error: vendorError } = useCollection(vendorQuery);
+            <header className="flex justify-between items-center mb-6">
+                <h1 className="text-xl font-bold font-headline">My Menu</h1>
+                <div className="flex gap-2">
+                    <Button onClick={() => setIsBulkModalOpen(true)} variant="ghost" size="icon" className="text-primary hover:text-primary hover:bg-primary/10">
+                        <FileJson size={20} />
+                    </Button>
+                    <Button onClick={() => setIsAiModalOpen(true)} variant="ghost" size="icon" className="text-primary hover:text-primary hover:bg-primary/10">
+                        <Camera size={20} />
+                    </Button>
+                    <Button onClick={() => { setEditingItem(null); setIsAddItemModalOpen(true); }} className="bg-primary hover:bg-primary/90 text-primary-foreground h-10 w-10 p-0">
+                        <PlusCircle size={20} />
+                    </Button>
+                </div>
+            </header>
 
-        const vendorId = useMemo(() => vendorData?.[0]?.id, [vendorData]);
+            <AnimatePresence>
+                {isScanning && (
+                    <motion.div
+                        initial={{ height: 0, opacity: 0 }}
+                        animate={{ height: 'auto', opacity: 1 }}
+                        exit={{ height: 0, opacity: 0 }}
+                        className="bg-primary/10 text-primary font-semibold p-3 rounded-lg flex items-center justify-center gap-3 mb-4 text-center"
+                    >
+                        <Loader2 className="animate-spin" />
+                        AI is scanning your menu... Your new items will appear here shortly.
+                    </motion.div>
+                )}
+            </AnimatePresence>
 
-        useEffect(() => {
-            if (vendorError) {
-                setInfoDialog({ isOpen: true, title: 'Error', message: 'Could not load your vendor profile. ' + vendorError.message });
-            }
-        }, [vendorError]);
-
-        const fetchMenu = useCallback(() => {
-            if (!user || !vendorId) {
-                setLoading(false);
-                return () => { };
-            }
-
-            const menuCollectionRef = collection(db, 'street_vendors', vendorId, 'menu');
-            const q = query(menuCollectionRef);
-
-            const unsubscribe = onSnapshot(q, (querySnapshot) => {
-                const items = [];
-                querySnapshot.forEach((doc) => {
-                    items.push({ id: doc.id, ...doc.data() });
-                });
-                setMenuItems(items);
-                setLoading(false);
-            }, (err) => {
-                const contextualError = new FirestorePermissionError({ path: menuCollectionRef.path, operation: 'list' });
-                errorEmitter.emit('permission-error', contextualError);
-                console.error("Firestore Error:", err);
-                setInfoDialog({ isOpen: true, title: 'Error', message: 'Could not load menu items. ' + err.message });
-                setLoading(false);
-            });
-
-            return unsubscribe;
-        }, [user, vendorId]);
-
-
-        useEffect(() => {
-            if (isUserLoading || isVendorLoading) return;
-            const unsubscribe = fetchMenu();
-            return () => unsubscribe && unsubscribe();
-        }, [user, isUserLoading, vendorId, isVendorLoading, fetchMenu]);
-
-        const handleToggleAvailability = async (itemId, newAvailability) => {
-            if (!vendorId) return;
-            const itemRef = doc(db, 'street_vendors', vendorId, 'menu', itemId);
-            try {
-                await updateDoc(itemRef, { isAvailable: newAvailability });
-            } catch (error) {
-                errorEmitter.emit('permission-error', new FirestorePermissionError({ path: itemRef.path, operation: 'update', requestResourceData: { isAvailable: newAvailability } }));
-                setInfoDialog({ isOpen: true, title: 'Error', message: 'Could not update item status: ' + error.message });
-            };
-        };
-
-        const handleDeleteItem = (itemId, itemName) => {
-            setItemToDelete({ id: itemId, name: itemName });
-        };
-
-        const confirmDeleteItem = async () => {
-            if (!itemToDelete || !vendorId) return;
-            const itemRef = doc(db, 'street_vendors', vendorId, 'menu', itemToDelete.id);
-            try {
-                await deleteDoc(itemRef);
-                setInfoDialog({ isOpen: true, title: 'Success', message: `Item "${itemToDelete.name}" has been deleted.` });
-            } catch (error) {
-                errorEmitter.emit('permission-error', new FirestorePermissionError({ path: itemRef.path, operation: 'delete' }));
-                setInfoDialog({ isOpen: true, title: 'Error', message: 'Could not delete item: ' + error.message });
-            } finally {
-                setItemToDelete(null);
-            }
-        };
-
-        const handleSaveItem = useCallback(async (itemData, categoryId, newCategory, isEditing) => {
-            const handleApiCall = async (endpoint, method, body) => {
-                const idToken = await user.getIdToken();
-                const response = await fetch(endpoint, {
-                    method, headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${idToken}` },
-                    body: JSON.stringify(body)
-                });
-                if (!response.ok) {
-                    const errData = await response.json();
-                    throw new Error(errData.message || 'API call failed');
-                }
-                return await response.json();
-            };
-
-            try {
-                const data = await handleApiCall('/api/owner/menu', 'POST', { item: itemData, categoryId, newCategory, isEditing });
-                setInfoDialog({ isOpen: true, title: 'Success', message: data.message });
-                fetchMenu();
-            } catch (error) {
-                setInfoDialog({ isOpen: true, title: 'Error', message: `Could not save item: ${error.message}` });
-                throw error;
-            }
-        }, [user, fetchMenu]);
-
-
-        const handleAiScan = async (file) => {
-            setIsScanning(true);
-            setIsAiModalOpen(false); // Close the modal and show page-level indicator
-            try {
-                const reader = new FileReader();
-                reader.readAsDataURL(file);
-                await new Promise((resolve, reject) => {
-                    reader.onload = async () => {
-                        try {
-                            const imageDataUri = reader.result;
-                            const response = await fetch('/api/ai/scan-menu', {
-                                method: 'POST',
-                                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${await user.getIdToken()}` },
-                                body: JSON.stringify({ imageDataUri }),
-                            });
-                            const result = await response.json();
-                            if (!response.ok) throw new Error(result.message);
-                            setInfoDialog({ isOpen: true, title: 'Success!', message: result.message });
-                            fetchMenu();
-                            resolve();
-                        } catch (error) {
-                            reject(error);
-                        }
-                    };
-                    reader.onerror = (error) => reject(error);
-                });
-            } catch (error) {
-                setInfoDialog({ isOpen: true, title: 'AI Scan Failed', message: error.message });
-            } finally {
-                setIsScanning(false);
-            }
-        };
-
-        const handleBulkSave = async (items) => {
-            try {
-                const user = await auth.currentUser;
-                if (!user) throw new Error("User not authenticated");
-                const idToken = await user.getIdToken();
-                const response = await fetch('/api/owner/menu-bulk', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${idToken}` },
-                    body: JSON.stringify({ items }),
-                });
-                if (!response.ok) throw new Error((await response.json()).message);
-                const data = await response.json();
-                setInfoDialog({ isOpen: true, title: 'Success!', message: data.message });
-                fetchMenu();
-            } catch (error) {
-                setInfoDialog({ isOpen: true, title: 'Bulk Add Failed', message: error.message });
-                throw error;
-            }
-        };
-
-        const handleEditItem = (item) => {
-            setEditingItem(item);
-            setIsAddItemModalOpen(true);
-        };
-
-        const handleBulkAction = async (action) => {
-            if (selectedItems.length === 0) return;
-            const confirmMessage = action === 'delete'
-                ? `Are you sure you want to delete ${selectedItems.length} items? This action cannot be undone.`
-                : `Are you sure you want to mark ${selectedItems.length} items as out of stock?`;
-
-            if (window.confirm(confirmMessage)) {
-                try {
-                    const user = auth.currentUser;
-                    if (!user) throw new Error("Authentication failed");
-                    const idToken = await user.getIdToken();
-                    await fetch('/api/owner/menu', {
-                        method: 'PATCH',
-                        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${idToken}` },
-                        body: JSON.stringify({ itemIds: selectedItems, action })
-                    });
-                    setInfoDialog({ isOpen: true, title: 'Success', message: `Successfully completed bulk action.` });
-                    setSelectedItems([]);
-                    fetchMenu();
-                } catch (error) {
-                    setInfoDialog({ isOpen: true, title: 'Error', message: `Could not perform bulk action: ${error.message}` });
-                }
-            }
-        };
-
-        const allCategories = {
-            'snacks': { title: 'Snacks' },
-            'chaat': { title: 'Chaat' },
-            'rolls': { title: 'Rolls' },
-            'beverages': { title: 'Beverages' },
-            'main-course': { title: 'Main Course' },
-            'sweets': { title: 'Sweets' },
-            ...customCategories.reduce((acc, cat) => {
-                acc[cat.id] = { title: cat.title };
-                return acc;
-            }, {}),
-        };
-
-
-        const groupedMenu = menuItems.reduce((acc, item) => {
-            const categoryKey = item.categoryId || 'general';
-            const categoryTitle = allCategories[categoryKey]?.title || categoryKey;
-            (acc[categoryTitle] = acc[categoryTitle] || []).push(item);
-            return acc;
-        }, {});
-
-        return (
-            <div className="min-h-screen bg-background text-foreground font-body p-4">
-                <InfoDialog
-                    isOpen={infoDialog.isOpen}
-                    onClose={() => setInfoDialog({ isOpen: false, title: '', message: '' })}
-                    title={infoDialog.title}
-                    message={infoDialog.message}
-                />
-                <ConfirmationModal
-                    isOpen={!!itemToDelete}
-                    onClose={() => setItemToDelete(null)}
-                    onConfirm={confirmDeleteItem}
-                    itemName={itemToDelete?.name}
-                />
-                <AiScanModal isOpen={isAiModalOpen} onClose={() => setIsAiModalOpen(false)} onScan={handleAiScan} />
-                <BulkAddModal isOpen={isBulkModalOpen} setIsOpen={setIsBulkModalOpen} onSave={handleBulkSave} businessType="street-vendor" showInfoDialog={setInfoDialog} />
-                <AddItemModal isOpen={isAddItemModalOpen} setIsOpen={setIsAddItemModalOpen} onSave={handleSaveItem} editingItem={editingItem} allCategories={allCategories} showInfoDialog={setInfoDialog} />
-
-                <header className="flex justify-between items-center mb-6">
-                    <h1 className="text-xl font-bold font-headline">My Menu</h1>
+            {selectedItems.length > 0 && (
+                <div className="sticky top-0 z-10 bg-background/80 backdrop-blur-sm p-3 border rounded-lg flex items-center justify-between gap-4 mb-4">
+                    <p className="font-semibold">{selectedItems.length} items selected</p>
                     <div className="flex gap-2">
-                        <Button onClick={() => setIsBulkModalOpen(true)} variant="ghost" size="icon" className="text-primary hover:text-primary hover:bg-primary/10">
-                            <FileJson size={20} />
+                        <Button size="sm" variant="outline" onClick={() => handleBulkAction('outOfStock')}>
+                            <XCircle size={16} className="mr-2" /> Mark Out of Stock
                         </Button>
-                        <Button onClick={() => setIsAiModalOpen(true)} variant="ghost" size="icon" className="text-primary hover:text-primary hover:bg-primary/10">
-                            <Camera size={20} />
-                        </Button>
-                        <Button onClick={() => { setEditingItem(null); setIsAddItemModalOpen(true); }} className="bg-primary hover:bg-primary/90 text-primary-foreground h-10 w-10 p-0">
-                            <PlusCircle size={20} />
+                        <Button size="sm" variant="destructive" onClick={() => handleBulkAction('delete')}>
+                            <Trash2 size={16} className="mr-2" /> Delete
                         </Button>
                     </div>
-                </header>
+                </div>
+            )}
 
-                <AnimatePresence>
-                    {isScanning && (
-                        <motion.div
-                            initial={{ height: 0, opacity: 0 }}
-                            animate={{ height: 'auto', opacity: 1 }}
-                            exit={{ height: 0, opacity: 0 }}
-                            className="bg-primary/10 text-primary font-semibold p-3 rounded-lg flex items-center justify-center gap-3 mb-4 text-center"
-                        >
-                            <Loader2 className="animate-spin" />
-                            AI is scanning your menu... Your new items will appear here shortly.
-                        </motion.div>
-                    )}
-                </AnimatePresence>
-
-                {selectedItems.length > 0 && (
-                    <div className="sticky top-0 z-10 bg-background/80 backdrop-blur-sm p-3 border rounded-lg flex items-center justify-between gap-4 mb-4">
-                        <p className="font-semibold">{selectedItems.length} items selected</p>
-                        <div className="flex gap-2">
-                            <Button size="sm" variant="outline" onClick={() => handleBulkAction('outOfStock')}>
-                                <XCircle size={16} className="mr-2" /> Mark Out of Stock
-                            </Button>
-                            <Button size="sm" variant="destructive" onClick={() => handleBulkAction('delete')}>
-                                <Trash2 size={16} className="mr-2" /> Delete
-                            </Button>
-                        </div>
+            <main>
+                {(loading || isUserLoading || isVendorLoading) ? (
+                    <div className="text-center py-20 text-muted-foreground">
+                        <Loader2 className="mx-auto animate-spin" size={48} />
+                        <p className="mt-4">Loading your menu...</p>
+                    </div>
+                ) : (
+                    <div className="space-y-6">
+                        {Object.entries(groupedMenu).map(([category, items]) => (
+                            <div key={category}>
+                                <h2 className="text-xl font-bold text-sky-500 mb-2">{category}</h2>
+                                <div className="space-y-3">
+                                    {items.map(item => (
+                                        <MenuItem
+                                            key={item.id}
+                                            item={item}
+                                            onToggle={handleToggleAvailability}
+                                            onDelete={handleDeleteItem}
+                                            onEdit={handleEditItem}
+                                            onSelectItem={setSelectedItems}
+                                            isSelected={selectedItems.includes(item.id)}
+                                        />
+                                    ))}
+                                </div>
+                            </div>
+                        ))}
+                        {Object.keys(groupedMenu).length === 0 && !isScanning && (
+                            <div className="text-center py-20 text-muted-foreground">
+                                <p>Your menu is empty.</p>
+                                <p>Click <PlusCircle className="inline" size={16} /> to add an item, or use <Camera className="inline" size={16} /> to scan your menu with AI.</p>
+                            </div>
+                        )}
                     </div>
                 )}
-
-                <main>
-                    {(loading || isUserLoading || isVendorLoading) ? (
-                        <div className="text-center py-20 text-muted-foreground">
-                            <Loader2 className="mx-auto animate-spin" size={48} />
-                            <p className="mt-4">Loading your menu...</p>
-                        </div>
-                    ) : (
-                        <div className="space-y-6">
-                            {Object.entries(groupedMenu).map(([category, items]) => (
-                                <div key={category}>
-                                    <h2 className="text-xl font-bold text-sky-500 mb-2">{category}</h2>
-                                    <div className="space-y-3">
-                                        {items.map(item => (
-                                            <MenuItem
-                                                key={item.id}
-                                                item={item}
-                                                onToggle={handleToggleAvailability}
-                                                onDelete={handleDeleteItem}
-                                                onEdit={handleEditItem}
-                                                onSelectItem={setSelectedItems}
-                                                isSelected={selectedItems.includes(item.id)}
-                                            />
-                                        ))}
-                                    </div>
-                                </div>
-                            ))}
-                            {Object.keys(groupedMenu).length === 0 && !isScanning && (
-                                <div className="text-center py-20 text-muted-foreground">
-                                    <p>Your menu is empty.</p>
-                                    <p>Click <PlusCircle className="inline" size={16} /> to add an item, or use <Camera className="inline" size={16} /> to scan your menu with AI.</p>
-                                </div>
-                            )}
-                        </div>
-                    )}
-                </main>
-            </div>
-        );
-    }
+            </main>
+        </div>
+    );
+}
