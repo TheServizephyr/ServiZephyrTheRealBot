@@ -166,7 +166,7 @@ export async function GET(req) {
             (doc.data().items || []).forEach(item => {
                 const baseName = item.name.split(' (')[0];
                 if (!itemSales[baseName]) itemSales[baseName] = 0;
-                itemSales[baseName] += item.qty;
+                itemSales[baseName] += item.quantity || 0;  // Fixed: was item.qty, now item.quantity
             });
         });
 
