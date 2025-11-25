@@ -197,10 +197,10 @@ const AddItemModal = ({ isOpen, setIsOpen, onSave, editingItem, allCategories, s
         if (!file) return;
 
         try {
-            // Compression options
+            // Compression options - optimized for Vercel limits
             const options = {
-                maxSizeMB: 0.5,              // Max 500KB
-                maxWidthOrHeight: 1024,       // Max dimension 1024px
+                maxSizeMB: 0.2,              // Max 200KB (to avoid 413 errors)
+                maxWidthOrHeight: 800,        // Max dimension 800px
                 useWebWorker: true,           // Faster compression
                 fileType: 'image/jpeg',       // Convert to JPEG (smaller)
             };
