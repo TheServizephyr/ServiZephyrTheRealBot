@@ -6,8 +6,9 @@ import { ArrowLeft, PlusCircle, Trash2, IndianRupee, Loader2, Camera, FileJson, 
 import { Button } from '@/components/ui/button';
 import Link from 'next/link';
 import { useUser, useMemoFirebase, useCollection } from '@/firebase';
-import { db, auth } from '@/lib/firebase';
+import { db, auth, storage } from '@/lib/firebase';
 import { collection, query, where, onSnapshot, doc, updateDoc, deleteDoc, getDocs } from 'firebase/firestore';
+import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { FirestorePermissionError } from '@/firebase/errors';
 import { errorEmitter } from '@/firebase/error-emitter';
 import InfoDialog from '@/components/InfoDialog';
@@ -196,38 +197,51 @@ const AddItemModal = ({ isOpen, setIsOpen, onSave, editingItem, allCategories, s
         const file = e.target.files[0];
         if (!file) return;
 
+        // Show loading indicator
+        handleChange('imageUrl', 'uploading...');
+
         try {
-            // Compression options - optimized for Vercel limits
+            // 1. Compress the image (Optional but recommended for performance)
             const options = {
-                maxSizeMB: 0.2,              // Max 200KB (to avoid 413 errors)
-                maxWidthOrHeight: 800,        // Max dimension 800px
-                useWebWorker: true,           // Faster compression
-                fileType: 'image/jpeg',       // Convert to JPEG (smaller)
+                maxSizeMB: 0.5,              // Max 500KB
+                maxWidthOrHeight: 1024,       // Max dimension 1024px
+                useWebWorker: true,
+                fileType: 'image/jpeg',
             };
 
-            // Compress the image
-            const compressedFile = await imageCompression(file, options);
+            let fileToUpload = file;
+            try {
+                fileToUpload = await imageCompression(file, options);
+            } catch (compressionError) {
+                console.warn('Compression failed, using original file:', compressionError);
+            }
 
-            // Upload to Cloudinary (FREE - 25GB)
-            const formData = new FormData();
-            formData.append('file', compressedFile);
-            formData.append('upload_preset', 'ml_default');
+            // 2. Create Storage Reference
+            // Path: menu-items/{userId}/{timestamp}-{filename}
+            const userId = auth.currentUser?.uid;
+            if (!userId) throw new Error("User not authenticated");
 
-            const response = await fetch('https://api.cloudinary.com/v1_1/dkkrubai3/image/upload', {
-                method: 'POST',
-                body: formData,
-            });
+            const timestamp = Date.now();
+            const filename = fileToUpload.name.replace(/[^a-zA-Z0-9.]/g, '_'); // Sanitize filename
+            const storagePath = `menu-items/${userId}/${timestamp}-${filename}`;
+            const storageRef = ref(storage, storagePath);
 
-            if (!response.ok) throw new Error('Upload failed');
+            // 3. Upload File
+            const snapshot = await uploadBytes(storageRef, fileToUpload);
 
-            const data = await response.json();
-            handleChange('imageUrl', data.secure_url);
+            // 4. Get Download URL
+            const downloadURL = await getDownloadURL(snapshot.ref);
+
+            // 5. Save URL
+            handleChange('imageUrl', downloadURL);
+
         } catch (error) {
-            console.error('Image compression failed:', error);
+            console.error('Upload failed:', error);
+            handleChange('imageUrl', ''); // Reset on error
             showInfoDialog({
                 isOpen: true,
-                title: 'Image Upload Failed',
-                message: 'Could not process the image. Please try a different photo.'
+                title: 'Upload Failed',
+                message: `Could not upload image: ${error.message}. Please try again.`
             });
         }
     };
