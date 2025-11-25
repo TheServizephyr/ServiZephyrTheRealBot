@@ -93,7 +93,7 @@ const MenuItem = ({ item, onEdit, onDelete, onToggle, onSelectItem, isSelected }
                 aria-label={`Select ${item.name}`}
             />
             <div className="relative w-16 h-16 rounded-md overflow-hidden bg-muted flex-shrink-0">
-                {item.imageUrl ? (
+                {item.imageUrl && item.imageUrl !== 'uploading...' ? (
                     <Image src={item.imageUrl} alt={item.name} layout="fill" objectFit="cover" />
                 ) : (
                     <ImageIcon size={32} className="text-muted-foreground absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2" />
@@ -401,7 +401,7 @@ const AddItemModal = ({ isOpen, setIsOpen, onSave, editingItem, allCategories, s
                     </div>
                     <DialogFooter>
                         <DialogClose asChild><Button type="button" variant="secondary" disabled={isSaving}>Cancel</Button></DialogClose>
-                        <Button type="submit" disabled={isSaving} className="bg-primary hover:bg-primary/90 text-primary-foreground">
+                        <Button type="submit" disabled={isSaving || item?.imageUrl === 'uploading...'} className="bg-primary hover:bg-primary/90 text-primary-foreground">
                             {isSaving ? <Loader2 className="animate-spin mr-2" /> : null} {editingItem ? 'Save Changes' : 'Save Item'}
                         </Button>
                     </DialogFooter>
