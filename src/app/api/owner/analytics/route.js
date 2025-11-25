@@ -158,20 +158,13 @@ export async function GET(req) {
         const menuItems = allMenuSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
         const itemSales = {};
         currentOrdersSnap.forEach(doc => {
-            const orderItems = doc.data().items || [];
-            if (orderItems.length > 0 && !itemSales.__logged) {
-                console.log('[ANALYTICS DEBUG] Sample Order Item:', orderItems[0]);
-                itemSales.__logged = true;
-            }
             (doc.data().items || []).forEach(item => {
                 const baseName = item.name.split(' (')[0];
                 if (!itemSales[baseName]) itemSales[baseName] = 0;
-                itemSales[baseName] += item.quantity || 0;  // Fixed: was item.qty, now item.quantity
+                itemSales[baseName] += item.quantity || 0;
             });
         });
 
-        console.log('[ANALYTICS DEBUG] Item Sales from Orders:', itemSales);
-        console.log('[ANALYTICS DEBUG] Menu Item Names:', menuItems.map(i => i.name));
 
         const menuPerformance = menuItems.map(item => {
             const unitsSold = itemSales[item.name] || 0;
