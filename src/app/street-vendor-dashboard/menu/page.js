@@ -196,7 +196,43 @@ const AddItemModal = ({ isOpen, setIsOpen, onSave, editingItem, allCategories, s
         const file = e.target.files[0];
         if (!file) return;
 
-        // Show loading indicator
+        try {
+            // Compression options - optimized for Vercel limits
+            const options = {
+                maxSizeMB: 0.2,              // Max 200KB (to avoid 413 errors)
+                maxWidthOrHeight: 800,        // Max dimension 800px
+                useWebWorker: true,           // Faster compression
+                fileType: 'image/jpeg',       // Convert to JPEG (smaller)
+            };
+
+            // Compress the image
+            const compressedFile = await imageCompression(file, options);
+
+            // Upload to Cloudinary (FREE - 25GB)
+            const formData = new FormData();
+            formData.append('file', compressedFile);
+            formData.append('upload_preset', 'ml_default');
+
+            const response = await fetch('https://api.cloudinary.com/v1_1/dkkrubai3/image/upload', {
+                method: 'POST',
+                body: formData,
+            });
+
+            if (!response.ok) throw new Error('Upload failed');
+
+            const data = await response.json();
+            handleChange('imageUrl', data.secure_url);
+        } catch (error) {
+            console.error('Image compression failed:', error);
+            showInfoDialog({
+                isOpen: true,
+                title: 'Image Upload Failed',
+                message: 'Could not process the image. Please try a different photo.'
+            });
+        }
+    };
+
+    const handleBasePriceChange = (value) => {
         setItem(prev => ({ ...prev, portions: [{ name: 'Full', price: value }] }));
     };
 
