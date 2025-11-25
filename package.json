@@ -9,6 +9,7 @@
     "lint": "echo \"linting...\" && next lint"
   },
   "dependencies": {
+    "@genkit-ai/google-genai": "^1.0.0",
     "@googlemaps/react-wrapper": "^1.1.35",
     "@hello-pangea/dnd": "^16.6.0",
     "@heroicons/react": "^2.2.0",
@@ -24,6 +25,7 @@
     "@radix-ui/react-tabs": "^1.0.4",
     "@vis.gl/react-google-maps": "^0.10.0",
     "axios": "^1.7.2",
+    "browser-image-compression": "^2.0.2",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "cmdk": "0.2.1",
@@ -32,6 +34,7 @@
     "firebase": "^10.12.3",
     "flowbite": "^3.1.2",
     "framer-motion": "^11.3.19",
+    "genkit": "^1.0.0",
     "html-to-image": "^1.11.11",
     "html5-qrcode": "^2.3.8",
     "lucide-react": "^0.395.0",
@@ -51,9 +54,7 @@
     "recharts": "^2.15.4",
     "tailwind-merge": "^3.3.1",
     "tailwindcss-animate": "^1.0.7",
-    "zod": "^3.23.8",
-    "genkit": "^1.0.0",
-    "@genkit-ai/google-genai": "^1.0.0"
+    "zod": "^3.23.8"
   },
   "devDependencies": {
     "@radix-ui/react-accordion": "^1.2.0",

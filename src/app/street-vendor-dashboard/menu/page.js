@@ -17,6 +17,7 @@ import { Switch } from '@/components/ui/switch';
 import Image from 'next/image';
 import { cn } from '@/lib/utils';
 import { Checkbox } from '@/components/ui/checkbox';
+import imageCompression from 'browser-image-compression';
 
 
 const ConfirmationModal = ({ isOpen, onClose, onConfirm, itemName }) => (
@@ -77,44 +78,44 @@ const AiScanModal = ({ isOpen, onClose, onScan }) => {
 
 
 const MenuItem = ({ item, onEdit, onDelete, onToggle, onSelectItem, isSelected }) => (
-  <motion.div
-    layout
-    initial={{ opacity: 0 }}
-    animate={{ opacity: 1 }}
-    whileHover={{ y: -4, boxShadow: "0 10px 20px hsla(var(--primary), 0.2)" }}
-    className={cn("bg-card rounded-lg p-4 grid grid-cols-4 md:grid-cols-5 gap-4 items-center border border-border shadow-md hover:shadow-primary/20 hover:-translate-y-1 transition-all duration-300", isSelected && "bg-primary/10 border-primary ring-2 ring-primary")}
-  >
-    <div className="col-span-1 flex items-center gap-4">
-        <Checkbox
-            checked={isSelected}
-            onCheckedChange={() => onSelectItem(item.id)}
-            aria-label={`Select ${item.name}`}
-        />
-        <div className="relative w-16 h-16 rounded-md overflow-hidden bg-muted flex-shrink-0">
-            {item.imageUrl ? (
-                <Image src={item.imageUrl} alt={item.name} layout="fill" objectFit="cover" />
-            ) : (
-                <ImageIcon size={32} className="text-muted-foreground absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2" />
-            )}
+    <motion.div
+        layout
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        whileHover={{ y: -4, boxShadow: "0 10px 20px hsla(var(--primary), 0.2)" }}
+        className={cn("bg-card rounded-lg p-4 grid grid-cols-4 md:grid-cols-5 gap-4 items-center border border-border shadow-md hover:shadow-primary/20 hover:-translate-y-1 transition-all duration-300", isSelected && "bg-primary/10 border-primary ring-2 ring-primary")}
+    >
+        <div className="col-span-1 flex items-center gap-4">
+            <Checkbox
+                checked={isSelected}
+                onCheckedChange={() => onSelectItem(item.id)}
+                aria-label={`Select ${item.name}`}
+            />
+            <div className="relative w-16 h-16 rounded-md overflow-hidden bg-muted flex-shrink-0">
+                {item.imageUrl ? (
+                    <Image src={item.imageUrl} alt={item.name} layout="fill" objectFit="cover" />
+                ) : (
+                    <ImageIcon size={32} className="text-muted-foreground absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2" />
+                )}
+            </div>
         </div>
-    </div>
-    <div className="col-span-3 md:col-span-2">
-        <p className={`font-bold text-lg ${!item.isAvailable ? 'text-muted-foreground line-through' : 'text-foreground'}`}>{item.name}</p>
-        <p className="text-green-500 font-semibold">₹{item.portions?.[0]?.price || 'N/A'}</p>
-    </div>
-    <div className="col-span-2 md:col-span-1 flex items-center justify-start md:justify-center gap-2">
-        <Switch id={`switch-${item.id}`} checked={item.isAvailable} onCheckedChange={(checked) => onToggle(item.id, checked)} />
-        <Label htmlFor={`switch-${item.id}`} className="text-sm font-medium text-muted-foreground">{item.isAvailable ? 'Available' : 'Out of Stock'}</Label>
-    </div>
-    <div className="col-span-2 md:col-span-1 flex items-center justify-end gap-2">
-      <Button onClick={() => onEdit(item)} size="icon" variant="ghost" className="text-muted-foreground hover:bg-muted hover:text-foreground">
-        <Edit />
-      </Button>
-      <Button onClick={() => onDelete(item.id, item.name)} size="icon" variant="ghost" className="text-destructive hover:bg-destructive/10">
-        <Trash2 />
-      </Button>
-    </div>
-  </motion.div>
+        <div className="col-span-3 md:col-span-2">
+            <p className={`font-bold text-lg ${!item.isAvailable ? 'text-muted-foreground line-through' : 'text-foreground'}`}>{item.name}</p>
+            <p className="text-green-500 font-semibold">₹{item.portions?.[0]?.price || 'N/A'}</p>
+        </div>
+        <div className="col-span-2 md:col-span-1 flex items-center justify-start md:justify-center gap-2">
+            <Switch id={`switch-${item.id}`} checked={item.isAvailable} onCheckedChange={(checked) => onToggle(item.id, checked)} />
+            <Label htmlFor={`switch-${item.id}`} className="text-sm font-medium text-muted-foreground">{item.isAvailable ? 'Available' : 'Out of Stock'}</Label>
+        </div>
+        <div className="col-span-2 md:col-span-1 flex items-center justify-end gap-2">
+            <Button onClick={() => onEdit(item)} size="icon" variant="ghost" className="text-muted-foreground hover:bg-muted hover:text-foreground">
+                <Edit />
+            </Button>
+            <Button onClick={() => onDelete(item.id, item.name)} size="icon" variant="ghost" className="text-destructive hover:bg-destructive/10">
+                <Trash2 />
+            </Button>
+        </div>
+    </motion.div>
 );
 
 const AddItemModal = ({ isOpen, setIsOpen, onSave, editingItem, allCategories, showInfoDialog }) => {
@@ -137,13 +138,13 @@ const AddItemModal = ({ isOpen, setIsOpen, onSave, editingItem, allCategories, s
             if (editingItem) {
                 const hasMultiplePortions = editingItem.portions && editingItem.portions.length > 1;
                 const hasDifferentPortionName = editingItem.portions && editingItem.portions.length === 1 && editingItem.portions[0].name.toLowerCase() !== 'full';
-                
+
                 if (hasMultiplePortions || hasDifferentPortionName) {
                     setPricingType('portions');
                 } else {
                     setPricingType('single');
                 }
-                
+
                 setItem({
                     ...editingItem,
                     tags: Array.isArray(editingItem.tags) ? editingItem.tags.join(', ') : '',
@@ -191,15 +192,36 @@ const AddItemModal = ({ isOpen, setIsOpen, onSave, editingItem, allCategories, s
             setItem(prev => ({ ...prev, portions: prev.portions.filter((_, i) => i !== index) }));
         }
     };
-    const handleImageUpload = (e) => {
+    const handleImageUpload = async (e) => {
         const file = e.target.files[0];
-        if (file) {
+        if (!file) return;
+
+        try {
+            // Compression options
+            const options = {
+                maxSizeMB: 0.5,              // Max 500KB
+                maxWidthOrHeight: 1024,       // Max dimension 1024px
+                useWebWorker: true,           // Faster compression
+                fileType: 'image/jpeg',       // Convert to JPEG (smaller)
+            };
+
+            // Compress the image
+            const compressedFile = await imageCompression(file, options);
+
+            // Convert to base64
             const reader = new FileReader();
             reader.onloadend = () => handleChange('imageUrl', reader.result);
-            reader.readAsDataURL(file);
+            reader.readAsDataURL(compressedFile);
+        } catch (error) {
+            console.error('Image compression failed:', error);
+            showInfoDialog({
+                isOpen: true,
+                title: 'Image Upload Failed',
+                message: 'Could not process the image. Please try a different photo.'
+            });
         }
     };
-    
+
     const handleBasePriceChange = (value) => {
         setItem(prev => ({ ...prev, portions: [{ name: 'Full', price: value }] }));
     };
@@ -211,31 +233,31 @@ const AddItemModal = ({ isOpen, setIsOpen, onSave, editingItem, allCategories, s
         const finalNewCategoryName = showNewCategory ? newCategory.trim() : '';
 
         if (showNewCategory && !finalNewCategoryName) {
-            showInfoDialog({ isOpen: true, title: 'Input Error', message: "Please enter a name for the new category."});
+            showInfoDialog({ isOpen: true, title: 'Input Error', message: "Please enter a name for the new category." });
             return;
         }
 
         setIsSaving(true);
         try {
             const tagsArray = item.tags ? item.tags.split(',').map(tag => tag.trim()).filter(Boolean) : [];
-            
+
             let finalPortions;
             if (pricingType === 'single') {
                 const basePrice = item.portions?.[0]?.price;
                 if (!basePrice || isNaN(parseFloat(basePrice))) {
-                    showInfoDialog({ isOpen: true, title: 'Input Error', message: "Please enter a valid base price."});
+                    showInfoDialog({ isOpen: true, title: 'Input Error', message: "Please enter a valid base price." });
                     setIsSaving(false);
                     return;
                 }
                 finalPortions = [{ name: 'Full', price: parseFloat(basePrice) }];
             } else {
-                 finalPortions = item.portions
-                  .filter(p => p.name.trim() && p.price && !isNaN(parseFloat(p.price)))
-                  .map(p => ({ name: p.name.trim(), price: parseFloat(p.price) }));
+                finalPortions = item.portions
+                    .filter(p => p.name.trim() && p.price && !isNaN(parseFloat(p.price)))
+                    .map(p => ({ name: p.name.trim(), price: parseFloat(p.price) }));
             }
 
             if (finalPortions.length === 0) {
-                showInfoDialog({ isOpen: true, title: 'Input Error', message: "Please add at least one valid portion with a name and price."});
+                showInfoDialog({ isOpen: true, title: 'Input Error', message: "Please add at least one valid portion with a name and price." });
                 setIsSaving(false);
                 return;
             }
@@ -250,23 +272,23 @@ const AddItemModal = ({ isOpen, setIsOpen, onSave, editingItem, allCategories, s
                 imageUrl: item.imageUrl || `https://picsum.photos/seed/${item.name.replace(/\s/g, '')}/100/100`,
                 tags: tagsArray,
             };
-            
+
 
             if (!newItemData.name) {
-                showInfoDialog({ isOpen: true, title: 'Input Error', message: "Please provide an item name."});
+                showInfoDialog({ isOpen: true, title: 'Input Error', message: "Please provide an item name." });
                 setIsSaving(false);
                 return;
             }
-            
+
             await onSave(newItemData, finalCategoryId, finalNewCategoryName, !!editingItem);
             setIsOpen(false);
         } catch (error) {
-             // Error alert is handled in the parent `handleSaveItem`
+            // Error alert is handled in the parent `handleSaveItem`
         } finally {
             setIsSaving(false);
         }
     };
-    
+
     if (!item) return null;
 
     return (
@@ -287,7 +309,7 @@ const AddItemModal = ({ isOpen, setIsOpen, onSave, editingItem, allCategories, s
                             <div>
                                 <Label>Category</Label>
                                 <select value={item.categoryId} onChange={handleCategoryChange} className="w-full p-2 bg-input border border-border rounded-md">
-                                    {sortedCategories.map(({id, title}) => <option key={id} value={id}>{title}</option>)}
+                                    {sortedCategories.map(({ id, title }) => <option key={id} value={id}>{title}</option>)}
                                     <option value="add_new">+ Add New Category...</option>
                                 </select>
                             </div>
@@ -301,11 +323,11 @@ const AddItemModal = ({ isOpen, setIsOpen, onSave, editingItem, allCategories, s
                                     </div>
                                     <input type="file" ref={fileInputRef} onChange={handleImageUpload} accept="image/*" className="hidden" />
                                     <Button type="button" variant="outline" onClick={() => fileInputRef.current?.click()}>
-                                        <Upload size={16} className="mr-2"/>Upload
+                                        <Upload size={16} className="mr-2" />Upload
                                     </Button>
                                 </div>
                             </div>
-                             <div className="flex items-center justify-end gap-4 pt-4">
+                            <div className="flex items-center justify-end gap-4 pt-4">
                                 <div className="flex items-center space-x-2"><Switch id="is-veg" checked={item.isVeg} onCheckedChange={checked => handleChange('isVeg', checked)} /><Label htmlFor="is-veg">Vegetarian</Label></div>
                                 <div className="flex items-center space-x-2"><Switch id="is-available" checked={item.isAvailable} onCheckedChange={checked => handleChange('isAvailable', checked)} /><Label htmlFor="is-available">Available</Label></div>
                             </div>
@@ -313,7 +335,7 @@ const AddItemModal = ({ isOpen, setIsOpen, onSave, editingItem, allCategories, s
 
                         {/* Right Column: Portions */}
                         <div className="space-y-4">
-                           <div>
+                            <div>
                                 <Label>Pricing</Label>
                                 <div className="flex items-center gap-2 mt-2 bg-muted p-1 rounded-lg">
                                     <Button type="button" onClick={() => setPricingType('single')} variant={pricingType === 'single' ? 'default' : 'ghost'} className={cn("flex-1", pricingType === 'single' && 'bg-background text-foreground shadow-sm')}>Single Price</Button>
@@ -323,23 +345,23 @@ const AddItemModal = ({ isOpen, setIsOpen, onSave, editingItem, allCategories, s
                                     {pricingType === 'single' ? (
                                         <div className="flex items-center gap-2">
                                             <Label className="w-24">Base Price</Label>
-                                            <IndianRupee className="text-muted-foreground" size={16}/>
-                                            <input type="number" value={item.portions?.[0]?.price || ''} onChange={(e) => handleBasePriceChange(e.target.value)} placeholder="e.g., 150" className="flex-1 p-2 border rounded-md bg-input border-border" required/>
+                                            <IndianRupee className="text-muted-foreground" size={16} />
+                                            <input type="number" value={item.portions?.[0]?.price || ''} onChange={(e) => handleBasePriceChange(e.target.value)} placeholder="e.g., 150" className="flex-1 p-2 border rounded-md bg-input border-border" required />
                                         </div>
                                     ) : (
                                         <>
                                             {item.portions.map((portion, index) => (
                                                 <div key={index} className="flex items-center gap-2">
-                                                    <input value={portion.name} onChange={(e) => handlePortionChange(index, 'name', e.target.value)} placeholder="e.g., Half" className="flex-1 p-2 border rounded-md bg-input border-border" required/>
-                                                    <IndianRupee className="text-muted-foreground" size={16}/>
-                                                    <input type="number" value={portion.price} onChange={(e) => handlePortionChange(index, 'price', e.target.value)} placeholder="Price" className="w-24 p-2 border rounded-md bg-input border-border" required/>
+                                                    <input value={portion.name} onChange={(e) => handlePortionChange(index, 'name', e.target.value)} placeholder="e.g., Half" className="flex-1 p-2 border rounded-md bg-input border-border" required />
+                                                    <IndianRupee className="text-muted-foreground" size={16} />
+                                                    <input type="number" value={portion.price} onChange={(e) => handlePortionChange(index, 'price', e.target.value)} placeholder="Price" className="w-24 p-2 border rounded-md bg-input border-border" required />
                                                     <Button type="button" variant="ghost" size="icon" className="text-destructive" onClick={() => removePortion(index)} disabled={item.portions.length <= 1}>
-                                                        <Trash2 size={16}/>
+                                                        <Trash2 size={16} />
                                                     </Button>
                                                 </div>
                                             ))}
                                             <Button type="button" variant="outline" size="sm" onClick={addPortion}>
-                                                <PlusCircle size={16} className="mr-2"/> Add Portion
+                                                <PlusCircle size={16} className="mr-2" /> Add Portion
                                             </Button>
                                         </>
                                     )}
@@ -350,7 +372,7 @@ const AddItemModal = ({ isOpen, setIsOpen, onSave, editingItem, allCategories, s
                     <DialogFooter>
                         <DialogClose asChild><Button type="button" variant="secondary" disabled={isSaving}>Cancel</Button></DialogClose>
                         <Button type="submit" disabled={isSaving} className="bg-primary hover:bg-primary/90 text-primary-foreground">
-                            {isSaving ? <Loader2 className="animate-spin mr-2"/> : null} {editingItem ? 'Save Changes' : 'Save Item'}
+                            {isSaving ? <Loader2 className="animate-spin mr-2" /> : null} {editingItem ? 'Save Changes' : 'Save Item'}
                         </Button>
                     </DialogFooter>
                 </form>
@@ -403,14 +425,14 @@ ${placeholderText}
             setTimeout(() => setCopySuccess(''), 2000);
         });
     };
-    
+
     const handleSubmit = async () => {
         let items;
         try {
             items = JSON.parse(jsonText);
             if (!Array.isArray(items)) throw new Error("JSON data must be an array.");
         } catch (error) {
-            showInfoDialog({isOpen: true, title: 'Input Error', message: `Invalid JSON format: ${error.message}`});
+            showInfoDialog({ isOpen: true, title: 'Input Error', message: `Invalid JSON format: ${error.message}` });
             return;
         }
 
@@ -497,7 +519,7 @@ export default function StreetVendorMenuPage() {
     }, [user]);
 
     const { data: vendorData, isLoading: isVendorLoading, error: vendorError } = useCollection(vendorQuery);
-    
+
     const vendorId = useMemo(() => vendorData?.[0]?.id, [vendorData]);
 
     useEffect(() => {
@@ -505,11 +527,11 @@ export default function StreetVendorMenuPage() {
             setInfoDialog({ isOpen: true, title: 'Error', message: 'Could not load your vendor profile. ' + vendorError.message });
         }
     }, [vendorError]);
-    
+
     const fetchMenu = useCallback(() => {
         if (!user || !vendorId) {
             setLoading(false);
-            return () => {};
+            return () => { };
         }
 
         const menuCollectionRef = collection(db, 'street_vendors', vendorId, 'menu');
@@ -545,7 +567,7 @@ export default function StreetVendorMenuPage() {
         const itemRef = doc(db, 'street_vendors', vendorId, 'menu', itemId);
         try {
             await updateDoc(itemRef, { isAvailable: newAvailability });
-        } catch(error) {
+        } catch (error) {
             errorEmitter.emit('permission-error', new FirestorePermissionError({ path: itemRef.path, operation: 'update', requestResourceData: { isAvailable: newAvailability } }));
             setInfoDialog({ isOpen: true, title: 'Error', message: 'Could not update item status: ' + error.message });
         };
@@ -561,14 +583,14 @@ export default function StreetVendorMenuPage() {
         try {
             await deleteDoc(itemRef);
             setInfoDialog({ isOpen: true, title: 'Success', message: `Item "${itemToDelete.name}" has been deleted.` });
-        } catch(error) {
+        } catch (error) {
             errorEmitter.emit('permission-error', new FirestorePermissionError({ path: itemRef.path, operation: 'delete' }));
             setInfoDialog({ isOpen: true, title: 'Error', message: 'Could not delete item: ' + error.message });
         } finally {
             setItemToDelete(null);
         }
     };
-    
+
     const handleSaveItem = useCallback(async (itemData, categoryId, newCategory, isEditing) => {
         const handleApiCall = async (endpoint, method, body) => {
             const idToken = await user.getIdToken();
@@ -626,11 +648,11 @@ export default function StreetVendorMenuPage() {
             setIsScanning(false);
         }
     };
-    
+
     const handleBulkSave = async (items) => {
-         try {
+        try {
             const user = await auth.currentUser;
-            if(!user) throw new Error("User not authenticated");
+            if (!user) throw new Error("User not authenticated");
             const idToken = await user.getIdToken();
             const response = await fetch('/api/owner/menu-bulk', {
                 method: 'POST',
@@ -646,7 +668,7 @@ export default function StreetVendorMenuPage() {
             throw error;
         }
     };
-    
+
     const handleEditItem = (item) => {
         setEditingItem(item);
         setIsAddItemModalOpen(true);
@@ -672,11 +694,11 @@ export default function StreetVendorMenuPage() {
                 setSelectedItems([]);
                 fetchMenu();
             } catch (error) {
-                 setInfoDialog({ isOpen: true, title: 'Error', message: `Could not perform bulk action: ${error.message}` });
+                setInfoDialog({ isOpen: true, title: 'Error', message: `Could not perform bulk action: ${error.message}` });
             }
         }
     };
-    
+
     const allCategories = {
         'snacks': { title: 'Snacks' },
         'chaat': { title: 'Chaat' },
@@ -698,102 +720,102 @@ export default function StreetVendorMenuPage() {
         return acc;
     }, {});
 
-  return (
-    <div className="min-h-screen bg-background text-foreground font-body p-4">
-        <InfoDialog 
-            isOpen={infoDialog.isOpen} 
-            onClose={() => setInfoDialog({isOpen: false, title: '', message: ''})} 
-            title={infoDialog.title} 
-            message={infoDialog.message}
-        />
-        <ConfirmationModal
-            isOpen={!!itemToDelete}
-            onClose={() => setItemToDelete(null)}
-            onConfirm={confirmDeleteItem}
-            itemName={itemToDelete?.name}
-        />
-        <AiScanModal isOpen={isAiModalOpen} onClose={() => setIsAiModalOpen(false)} onScan={handleAiScan} />
-        <BulkAddModal isOpen={isBulkModalOpen} setIsOpen={setIsBulkModalOpen} onSave={handleBulkSave} businessType="street-vendor" showInfoDialog={setInfoDialog} />
-        <AddItemModal isOpen={isAddItemModalOpen} setIsOpen={setIsAddItemModalOpen} onSave={handleSaveItem} editingItem={editingItem} allCategories={allCategories} showInfoDialog={setInfoDialog} />
+    return (
+        <div className="min-h-screen bg-background text-foreground font-body p-4">
+            <InfoDialog
+                isOpen={infoDialog.isOpen}
+                onClose={() => setInfoDialog({ isOpen: false, title: '', message: '' })}
+                title={infoDialog.title}
+                message={infoDialog.message}
+            />
+            <ConfirmationModal
+                isOpen={!!itemToDelete}
+                onClose={() => setItemToDelete(null)}
+                onConfirm={confirmDeleteItem}
+                itemName={itemToDelete?.name}
+            />
+            <AiScanModal isOpen={isAiModalOpen} onClose={() => setIsAiModalOpen(false)} onScan={handleAiScan} />
+            <BulkAddModal isOpen={isBulkModalOpen} setIsOpen={setIsBulkModalOpen} onSave={handleBulkSave} businessType="street-vendor" showInfoDialog={setInfoDialog} />
+            <AddItemModal isOpen={isAddItemModalOpen} setIsOpen={setIsAddItemModalOpen} onSave={handleSaveItem} editingItem={editingItem} allCategories={allCategories} showInfoDialog={setInfoDialog} />
 
-        <header className="flex justify-between items-center mb-6">
-            <h1 className="text-xl font-bold font-headline">My Menu</h1>
-            <div className="flex gap-2">
-                 <Button onClick={() => setIsBulkModalOpen(true)} variant="ghost" size="icon" className="text-primary hover:text-primary hover:bg-primary/10">
-                     <FileJson size={20}/>
-                </Button>
-                <Button onClick={() => setIsAiModalOpen(true)} variant="ghost" size="icon" className="text-primary hover:text-primary hover:bg-primary/10">
-                     <Camera size={20}/>
-                </Button>
-                <Button onClick={() => { setEditingItem(null); setIsAddItemModalOpen(true); }} className="bg-primary hover:bg-primary/90 text-primary-foreground h-10 w-10 p-0">
-                    <PlusCircle size={20} />
-                </Button>
-            </div>
-        </header>
-
-        <AnimatePresence>
-            {isScanning && (
-                 <motion.div
-                    initial={{ height: 0, opacity: 0 }}
-                    animate={{ height: 'auto', opacity: 1 }}
-                    exit={{ height: 0, opacity: 0 }}
-                    className="bg-primary/10 text-primary font-semibold p-3 rounded-lg flex items-center justify-center gap-3 mb-4 text-center"
-                >
-                    <Loader2 className="animate-spin" />
-                    AI is scanning your menu... Your new items will appear here shortly.
-                </motion.div>
-            )}
-        </AnimatePresence>
-        
-        {selectedItems.length > 0 && (
-            <div className="sticky top-0 z-10 bg-background/80 backdrop-blur-sm p-3 border rounded-lg flex items-center justify-between gap-4 mb-4">
-                <p className="font-semibold">{selectedItems.length} items selected</p>
+            <header className="flex justify-between items-center mb-6">
+                <h1 className="text-xl font-bold font-headline">My Menu</h1>
                 <div className="flex gap-2">
-                    <Button size="sm" variant="outline" onClick={() => handleBulkAction('outOfStock')}>
-                        <XCircle size={16} className="mr-2"/> Mark Out of Stock
+                    <Button onClick={() => setIsBulkModalOpen(true)} variant="ghost" size="icon" className="text-primary hover:text-primary hover:bg-primary/10">
+                        <FileJson size={20} />
                     </Button>
-                    <Button size="sm" variant="destructive" onClick={() => handleBulkAction('delete')}>
-                        <Trash2 size={16} className="mr-2"/> Delete
+                    <Button onClick={() => setIsAiModalOpen(true)} variant="ghost" size="icon" className="text-primary hover:text-primary hover:bg-primary/10">
+                        <Camera size={20} />
+                    </Button>
+                    <Button onClick={() => { setEditingItem(null); setIsAddItemModalOpen(true); }} className="bg-primary hover:bg-primary/90 text-primary-foreground h-10 w-10 p-0">
+                        <PlusCircle size={20} />
                     </Button>
                 </div>
-            </div>
-        )}
+            </header>
 
-        <main>
-            {(loading || isUserLoading || isVendorLoading) ? (
-                 <div className="text-center py-20 text-muted-foreground">
-                    <Loader2 className="mx-auto animate-spin" size={48} />
-                    <p className="mt-4">Loading your menu...</p>
-                 </div>
-            ) : (
-                <div className="space-y-6">
-                    {Object.entries(groupedMenu).map(([category, items]) => (
-                        <div key={category}>
-                            <h2 className="text-xl font-bold text-sky-500 mb-2">{category}</h2>
-                            <div className="space-y-3">
-                                {items.map(item => (
-                                    <MenuItem 
-                                        key={item.id} 
-                                        item={item} 
-                                        onToggle={handleToggleAvailability} 
-                                        onDelete={handleDeleteItem} 
-                                        onEdit={handleEditItem}
-                                        onSelectItem={setSelectedItems}
-                                        isSelected={selectedItems.includes(item.id)}
-                                    />
-                                ))}
-                            </div>
-                        </div>
-                    ))}
-                     {Object.keys(groupedMenu).length === 0 && !isScanning && (
-                        <div className="text-center py-20 text-muted-foreground">
-                            <p>Your menu is empty.</p>
-                            <p>Click <PlusCircle className="inline" size={16}/> to add an item, or use <Camera className="inline" size={16}/> to scan your menu with AI.</p>
-                        </div>
-                    )}
+            <AnimatePresence>
+                {isScanning && (
+                    <motion.div
+                        initial={{ height: 0, opacity: 0 }}
+                        animate={{ height: 'auto', opacity: 1 }}
+                        exit={{ height: 0, opacity: 0 }}
+                        className="bg-primary/10 text-primary font-semibold p-3 rounded-lg flex items-center justify-center gap-3 mb-4 text-center"
+                    >
+                        <Loader2 className="animate-spin" />
+                        AI is scanning your menu... Your new items will appear here shortly.
+                    </motion.div>
+                )}
+            </AnimatePresence>
+
+            {selectedItems.length > 0 && (
+                <div className="sticky top-0 z-10 bg-background/80 backdrop-blur-sm p-3 border rounded-lg flex items-center justify-between gap-4 mb-4">
+                    <p className="font-semibold">{selectedItems.length} items selected</p>
+                    <div className="flex gap-2">
+                        <Button size="sm" variant="outline" onClick={() => handleBulkAction('outOfStock')}>
+                            <XCircle size={16} className="mr-2" /> Mark Out of Stock
+                        </Button>
+                        <Button size="sm" variant="destructive" onClick={() => handleBulkAction('delete')}>
+                            <Trash2 size={16} className="mr-2" /> Delete
+                        </Button>
+                    </div>
                 </div>
             )}
-        </main>
-    </div>
-  );
+
+            <main>
+                {(loading || isUserLoading || isVendorLoading) ? (
+                    <div className="text-center py-20 text-muted-foreground">
+                        <Loader2 className="mx-auto animate-spin" size={48} />
+                        <p className="mt-4">Loading your menu...</p>
+                    </div>
+                ) : (
+                    <div className="space-y-6">
+                        {Object.entries(groupedMenu).map(([category, items]) => (
+                            <div key={category}>
+                                <h2 className="text-xl font-bold text-sky-500 mb-2">{category}</h2>
+                                <div className="space-y-3">
+                                    {items.map(item => (
+                                        <MenuItem
+                                            key={item.id}
+                                            item={item}
+                                            onToggle={handleToggleAvailability}
+                                            onDelete={handleDeleteItem}
+                                            onEdit={handleEditItem}
+                                            onSelectItem={setSelectedItems}
+                                            isSelected={selectedItems.includes(item.id)}
+                                        />
+                                    ))}
+                                </div>
+                            </div>
+                        ))}
+                        {Object.keys(groupedMenu).length === 0 && !isScanning && (
+                            <div className="text-center py-20 text-muted-foreground">
+                                <p>Your menu is empty.</p>
+                                <p>Click <PlusCircle className="inline" size={16} /> to add an item, or use <Camera className="inline" size={16} /> to scan your menu with AI.</p>
+                            </div>
+                        )}
+                    </div>
+                )}
+            </main>
+        </div>
+    );
 }
