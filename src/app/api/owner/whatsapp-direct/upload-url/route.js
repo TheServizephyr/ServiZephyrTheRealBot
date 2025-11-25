@@ -7,7 +7,7 @@ import { nanoid } from 'nanoid';
 async function verifyOwnerAndGetBusinessRef(req) {
     const firestore = await getFirestore();
     const uid = await verifyAndGetUid(req); // Use central helper
-    
+
     const url = new URL(req.url, `http://${req.headers.host}`);
     const impersonatedOwnerId = url.searchParams.get('impersonate_owner_id');
     const userDoc = await firestore.collection('users').doc(uid).get();
@@ -23,12 +23,12 @@ async function verifyOwnerAndGetBusinessRef(req) {
     if (!restaurantsQuery.empty) {
         return restaurantsQuery.docs[0].id;
     }
-    
+
     const shopsQuery = await firestore.collection('shops').where('ownerId', '==', targetOwnerId).limit(1).get();
     if (!shopsQuery.empty) {
         return shopsQuery.docs[0].id;
     }
-    
+
     throw { message: 'No business associated with this owner.', status: 404 };
 }
 
@@ -41,12 +41,12 @@ export async function POST(req) {
         if (!fileName || !fileType || !conversationId) {
             return NextResponse.json({ message: 'Missing required parameters.' }, { status: 400 });
         }
-        
-        const bucket = getStorage().bucket(`gs://${process.env.FIREBASE_PROJECT_ID}.appspot.com`);
+
+        const bucket = getStorage().bucket(`gs://${process.env.FIREBASE_PROJECT_ID}.firebasestorage.app`);
         const extension = fileName.split('.').pop();
         const uniqueFileName = `${nanoid()}.${extension}`;
         const filePath = `whatsapp_media/${businessId}/${conversationId}/${uniqueFileName}`;
-        
+
         const file = bucket.file(filePath);
 
         const [url] = await file.getSignedUrl({
@@ -58,8 +58,8 @@ export async function POST(req) {
 
         const publicUrl = `https://storage.googleapis.com/${bucket.name}/${filePath}`;
 
-        return NextResponse.json({ 
-            success: true, 
+        return NextResponse.json({
+            success: true,
             presignedUrl: url,
             publicUrl: publicUrl
         }, { status: 200 });
