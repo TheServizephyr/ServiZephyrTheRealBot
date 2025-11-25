@@ -158,6 +158,11 @@ export async function GET(req) {
         const menuItems = allMenuSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
         const itemSales = {};
         currentOrdersSnap.forEach(doc => {
+            const orderItems = doc.data().items || [];
+            if (orderItems.length > 0 && !itemSales.__logged) {
+                console.log('[ANALYTICS DEBUG] Sample Order Item:', orderItems[0]);
+                itemSales.__logged = true;
+            }
             (doc.data().items || []).forEach(item => {
                 const baseName = item.name.split(' (')[0];
                 if (!itemSales[baseName]) itemSales[baseName] = 0;
