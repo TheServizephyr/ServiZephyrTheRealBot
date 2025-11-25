@@ -343,7 +343,13 @@ const AddItemModal = ({ isOpen, setIsOpen, onSave, editingItem, allCategories, s
                                 <Label>Image</Label>
                                 <div className="mt-2 flex items-center gap-4">
                                     <div className="relative w-20 h-20 rounded-md border-2 border-dashed border-border flex items-center justify-center bg-muted overflow-hidden">
-                                        {item.imageUrl ? <Image src={item.imageUrl} alt={item.name} layout="fill" objectFit="cover" /> : <ImageIcon size={24} className="text-muted-foreground" />}
+                                        {item.imageUrl === 'uploading...' ? (
+                                            <Loader2 className="animate-spin text-primary" />
+                                        ) : item.imageUrl ? (
+                                            <Image src={item.imageUrl} alt={item.name} layout="fill" objectFit="cover" />
+                                        ) : (
+                                            <ImageIcon size={24} className="text-muted-foreground" />
+                                        )}
                                     </div>
                                     <input type="file" ref={fileInputRef} onChange={handleImageUpload} accept="image/*" className="hidden" />
                                     <Button type="button" variant="outline" onClick={() => fileInputRef.current?.click()}>
