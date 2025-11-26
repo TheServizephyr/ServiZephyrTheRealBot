@@ -94,10 +94,11 @@ export default function StreetVendorAnalyticsPage() {
     const topPerformers = menuPerformance
         .filter(item => item.unitsSold > 0)
         .sort((a, b) => b.revenue - a.revenue)
-        .slice(0, 5);
+        .slice(0, 10);
 
     const lowPerformers = menuPerformance
-        .filter(item => item.unitsSold === 0);
+        .filter(item => item.unitsSold === 0)
+        .slice(0, 10);
 
     const bestSeller = topPerformers[0];
     const mostProfitable = menuPerformance
