@@ -4,7 +4,7 @@
 import React, { useState, useEffect, useMemo, Suspense, useCallback } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Utensils, Plus, Minus, X, Home, User, ShoppingCart, CookingPot, Ticket, Gift, ArrowLeft, Sparkles, Check, PlusCircle, Trash2, ChevronDown, Tag as TagIcon, RadioGroup, IndianRupee, HardHat, Bike, Store, Heart, Wallet, Clock, ChevronUp, Edit2, Lock, Loader2, Navigation, BookOpen, ArrowRight, AlertTriangle } from 'lucide-react';
+import { Utensils, Plus, Minus, X, Home, User, ShoppingCart, CookingPot, Ticket, Gift, ArrowLeft, Sparkles, Check, PlusCircle, Trash2, ChevronDown, Tag as TagIcon, RadioGroup, IndianRupee, HardHat, Bike, Store, Heart, Wallet, Clock, ChevronUp, Edit2, Lock, Loader2, Navigation, BookOpen, ArrowRight, AlertTriangle, ShoppingBag } from 'lucide-react';
 import Script from 'next/script';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose } from "@/components/ui/dialog";
@@ -194,6 +194,8 @@ const CartPageInternal = () => {
     const [liveOrder, setLiveOrder] = useState(null);
 
     const [outOfStockItems, setOutOfStockItems] = useState([]);
+    const [diningPreference, setDiningPreference] = useState(null);
+    const [packagingConfig, setPackagingConfig] = useState({ enabled: false, amount: 0 });
 
     useEffect(() => {
         const liveOrderKey = `liveOrder_${restaurantId}`;
@@ -308,7 +310,14 @@ const CartPageInternal = () => {
                                 convenienceFeeRate: freshSettings.convenienceFeeRate,
                                 convenienceFeePaidBy: freshSettings.convenienceFeePaidBy,
                                 convenienceFeeLabel: freshSettings.convenienceFeeLabel,
+                                packagingChargeEnabled: freshSettings.packagingChargeEnabled,
+                                packagingChargeAmount: freshSettings.packagingChargeAmount,
                             };
+
+                            setPackagingConfig({
+                                enabled: freshSettings.packagingChargeEnabled || false,
+                                amount: freshSettings.packagingChargeAmount || 0
+                            });
 
                             setCartData(updatedData);
                             setCart(availableItems); // Only set available items in cart
@@ -357,6 +366,7 @@ const CartPageInternal = () => {
         if (updates.appliedCoupons !== undefined) setAppliedCoupons(updates.appliedCoupons);
         if (updates.tipAmount !== undefined) setTipAmount(updates.tipAmount);
         if (updates.pickupTime !== undefined) setPickupTime(updates.pickupTime);
+        if (updates.diningPreference !== undefined) setDiningPreference(updates.diningPreference);
 
         localStorage.setItem(`cart_${restaurantId}`, JSON.stringify(updatedData));
     };
@@ -417,6 +427,8 @@ const CartPageInternal = () => {
                 businessType: cartData?.businessType || 'restaurant',
                 pax_count: cartData?.pax_count || 1,
                 tab_name: cartData?.tab_name || 'Guest',
+                diningPreference: diningPreference,
+                packagingCharge: (diningPreference === 'takeaway' && packagingConfig.enabled) ? packagingConfig.amount : 0,
             };
 
             console.log("[Cart Page] Sending post-paid order to /api/order/create:", orderData);
@@ -584,9 +596,10 @@ const CartPageInternal = () => {
         }
 
         const finalTip = deliveryType === 'delivery' ? tipAmount : 0;
-        const total = taxableAmount + finalDeliveryCharge + cgstAmount + sgstAmount + finalTip;
-        return { cgst: cgstAmount, sgst: sgstAmount, grandTotal: total };
-    }, [subtotal, totalDiscount, finalDeliveryCharge, tipAmount, deliveryType, cartData]);
+        const packagingCharge = (diningPreference === 'takeaway' && packagingConfig.enabled) ? packagingConfig.amount : 0;
+        const total = taxableAmount + finalDeliveryCharge + cgstAmount + sgstAmount + finalTip + packagingCharge;
+        return { cgst: cgstAmount, sgst: sgstAmount, grandTotal: total, packagingCharge };
+    }, [subtotal, totalDiscount, finalDeliveryCharge, tipAmount, deliveryType, cartData, diningPreference, packagingConfig]);
 
 
     const handleToggleCoupon = (couponToToggle) => {
@@ -801,72 +814,94 @@ const CartPageInternal = () => {
                                             <Edit2 size={14} className="mr-1" /> {pickupTime ? 'Edit' : 'Set Time'}
                                         </Button>
                                     </div>
+                                    </div>
                                 )}
 
-                                <div className="relative mt-4 pt-4 border-t border-dashed border-border">
-                                    <CookingPot className="absolute left-0 top-7 h-5 w-5 text-muted-foreground" />
-                                    <textarea
-                                        value={notes}
-                                        onChange={handleNotesChange}
-                                        placeholder="Add cooking instructions... (e.g. No onion, less spicy etc.)"
-                                        rows={2}
-                                        className="w-full pl-7 pr-4 py-2 rounded-md bg-input border border-foreground text-sm focus:ring-1 focus:ring-primary"
-                                    />
-                                    <div className="mt-2 flex justify-end">
-                                        <Button
-                                            variant="outline"
-                                            size="sm"
-                                            onClick={handleCutleryClick}
-                                            className={cn("flex items-center", notes.includes("Don't send cutlery.") && "bg-primary/20 text-primary border-primary")}
+                            {cartData?.businessType === 'street-vendor' && (
+                                <div className="mt-4 pt-4 border-t border-dashed border-border">
+                                    <h3 className="font-bold text-base mb-3 flex items-center gap-2">
+                                        <Utensils className="h-4 w-4" /> Dining Preference
+                                    </h3>
+                                    <div className="grid grid-cols-2 gap-3">
+                                        <div
+                                            onClick={() => updateCartInStorage({ diningPreference: 'dine-in' })}
+                                            className={cn(
+                                                "border-2 rounded-lg p-3 flex flex-col items-center justify-center cursor-pointer transition-all",
+                                                diningPreference === 'dine-in' ? "border-primary bg-primary/10" : "border-border hover:bg-muted"
+                                            )}
                                         >
-                                            <Utensils className="mr-2 h-4 w-4" />
-                                            Don't send cutlery
-                                        </Button>
+                                            <Utensils className={cn("mb-2 h-6 w-6", diningPreference === 'dine-in' ? "text-primary" : "text-muted-foreground")} />
+                                            <span className={cn("font-semibold", diningPreference === 'dine-in' ? "text-primary" : "text-foreground")}>Dine-In</span>
+                                            <span className="text-xs text-muted-foreground">Eat Here</span>
+                                        </div>
+                                        <div
+                                            onClick={() => updateCartInStorage({ diningPreference: 'takeaway' })}
+                                            className={cn(
+                                                "border-2 rounded-lg p-3 flex flex-col items-center justify-center cursor-pointer transition-all",
+                                                diningPreference === 'takeaway' ? "border-primary bg-primary/10" : "border-border hover:bg-muted"
+                                            )}
+                                        >
+                                            <ShoppingBag className={cn("mb-2 h-6 w-6", diningPreference === 'takeaway' ? "text-primary" : "text-muted-foreground")} />
+                                            <span className={cn("font-semibold", diningPreference === 'takeaway' ? "text-primary" : "text-foreground")}>Takeaway</span>
+                                            <span className="text-xs text-muted-foreground">Pack & Go</span>
+                                        </div>
                                     </div>
+                                    {diningPreference === 'takeaway' && packagingConfig.enabled && packagingConfig.amount > 0 && (
+                                        <p className="text-xs text-muted-foreground mt-2 text-center bg-muted/50 p-2 rounded">
+                                            *Packaging charges of ₹{packagingConfig.amount} will be applied.
+                                        </p>
+                                    )}
+                                </div>
+                            )}
+
+                            <div className="relative mt-4 pt-4 border-t border-dashed border-border">
+                                <CookingPot className="absolute left-0 top-7 h-5 w-5 text-muted-foreground" />
+                                <textarea
+                                    value={notes}
+                                    onChange={handleNotesChange}
+                                    placeholder="Add cooking instructions... (e.g. No onion, less spicy etc.)"
+                                    rows={2}
+                                    className="w-full pl-7 pr-4 py-2 rounded-md bg-input border border-foreground text-sm focus:ring-1 focus:ring-primary"
+                                />
+                                <div className="mt-2 flex justify-end">
+                                    <Button
+                                        variant="outline"
+                                        size="sm"
+                                        onClick={handleCutleryClick}
+                                        className={cn("flex items-center", notes.includes("Don't send cutlery.") && "bg-primary/20 text-primary border-primary")}
+                                    >
+                                        <Utensils className="mr-2 h-4 w-4" />
+                                        Don't send cutlery
+                                    </Button>
                                 </div>
                             </div>
+                        </div>
 
-                            <div className="p-4 mt-4 bg-card rounded-lg border border-border">
-                                <h3 className="font-bold text-lg mb-2">Coupons & Offers</h3>
-                                <Popover open={isCouponPopoverOpen} onOpenChange={setCouponPopoverOpen}>
-                                    <PopoverTrigger asChild>
-                                        <Button variant="outline" className="w-full justify-start text-left font-normal">
-                                            {appliedCoupons.length > 0 ? (
-                                                <span className="flex items-center text-primary font-semibold"><Check className="mr-2 h-4 w-4" /> {appliedCoupons.length} Coupon(s) Applied</span>
-                                            ) : (
-                                                <span className="flex items-center"><Ticket className="mr-2 h-4 w-4" /> View Available Coupons</span>
-                                            )}
-                                        </Button>
-                                    </PopoverTrigger>
-                                    <PopoverContent className="w-80 p-0" align="start">
-                                        <div className="p-4 border-b border-border">
-                                            <h4 className="font-medium leading-none">Available Coupons</h4>
-                                            <p className="text-sm text-muted-foreground">Select one normal and any special coupons.</p>
-                                        </div>
-                                        <div className="max-h-60 overflow-y-auto space-y-2 p-4">
-                                            {specialCoupons.length > 0 && (
-                                                <div className="space-y-2">
-                                                    <p className="text-sm font-semibold flex items-center gap-2 text-primary"><Sparkles size={16} /> Special for you</p>
-                                                    {specialCoupons.map(coupon => {
-                                                        const isApplied = appliedCoupons.some(c => c.id === coupon.id);
-                                                        return (
-                                                            <div key={coupon.id} onClick={() => handleToggleCoupon(coupon)} className={cn("p-2 rounded-md border-2 cursor-pointer", isApplied ? "border-primary bg-primary/10" : "border-dashed border-primary/50 bg-background")}>
-                                                                <div className="flex justify-between items-center">
-                                                                    <p className="font-bold text-foreground">{coupon.code}</p>
-                                                                    {isApplied ? <button onClick={(e) => { e.stopPropagation(); handleToggleCoupon(coupon); }} className="p-1 rounded-full hover:bg-destructive/20"><X size={14} className="text-destructive" /></button> : <Check size={16} className="text-muted-foreground" />}
-                                                                </div>
-                                                                <p className="text-xs text-muted-foreground">{coupon.description}</p>
-                                                            </div>
-                                                        )
-                                                    })}
-                                                    <hr className="my-4 border-border" />
-                                                </div>
-                                            )}
-
-                                            {normalCoupons.length > 0 ? normalCoupons.map(coupon => {
+                    <div className="p-4 mt-4 bg-card rounded-lg border border-border">
+                        <h3 className="font-bold text-lg mb-2">Coupons & Offers</h3>
+                        <Popover open={isCouponPopoverOpen} onOpenChange={setCouponPopoverOpen}>
+                            <PopoverTrigger asChild>
+                                <Button variant="outline" className="w-full justify-start text-left font-normal">
+                                    {appliedCoupons.length > 0 ? (
+                                        <span className="flex items-center text-primary font-semibold"><Check className="mr-2 h-4 w-4" /> {appliedCoupons.length} Coupon(s) Applied</span>
+                                    ) : (
+                                        <span className="flex items-center"><Ticket className="mr-2 h-4 w-4" /> View Available Coupons</span>
+                                    )}
+                                </Button>
+                            </PopoverTrigger>
+                            <PopoverContent className="w-80 p-0" align="start">
+                                <div className="p-4 border-b border-border">
+                                    <h4 className="font-medium leading-none">Available Coupons</h4>
+                                    <p className="text-sm text-muted-foreground">Select one normal and any special coupons.</p>
+                                </div>
+                                <div className="max-h-60 overflow-y-auto space-y-2 p-4">
+                                    {specialCoupons.length > 0 && (
+                                        <div className="space-y-2">
+                                            <p className="text-sm font-semibold flex items-center gap-2 text-primary"><Sparkles size={16} /> Special for you</p>
+                                            {specialCoupons.map(coupon => {
                                                 const isApplied = appliedCoupons.some(c => c.id === coupon.id);
                                                 return (
-                                                    <div key={coupon.id} onClick={() => handleToggleCoupon(coupon)} className={cn("p-2 rounded-md border-2 cursor-pointer", isApplied ? "border-primary bg-primary/10" : "border-border bg-background")}>
+                                                    <div key={coupon.id} onClick={() => handleToggleCoupon(coupon)} className={cn("p-2 rounded-md border-2 cursor-pointer", isApplied ? "border-primary bg-primary/10" : "border-dashed border-primary/50 bg-background")}>
                                                         <div className="flex justify-between items-center">
                                                             <p className="font-bold text-foreground">{coupon.code}</p>
                                                             {isApplied ? <button onClick={(e) => { e.stopPropagation(); handleToggleCoupon(coupon); }} className="p-1 rounded-full hover:bg-destructive/20"><X size={14} className="text-destructive" /></button> : <Check size={16} className="text-muted-foreground" />}
@@ -874,121 +909,153 @@ const CartPageInternal = () => {
                                                         <p className="text-xs text-muted-foreground">{coupon.description}</p>
                                                     </div>
                                                 )
-                                            }) : (specialCoupons.length === 0 && <p className="text-xs text-muted-foreground text-center py-4">No coupons available right now.</p>)}
+                                            })}
+                                            <hr className="my-4 border-border" />
                                         </div>
-                                    </PopoverContent>
-                                </Popover>
-                            </div>
-
-                            <AnimatePresence>
-                                {deliveryType === 'delivery' && !activeOrderId && (
-                                    <motion.div
-                                        className="p-4 mt-4 bg-card rounded-lg border border-border"
-                                        initial={{ opacity: 0, y: -10 }}
-                                        animate={{ opacity: 1, y: 0 }}
-                                        exit={{ opacity: 0, y: -10 }}
-                                    >
-                                        <div className="flex items-center gap-2">
-                                            <Heart size={16} className="text-primary" />
-                                            <h4 className="font-bold text-lg">Tip for your delivery hero</h4>
-                                        </div>
-                                        <p className="text-sm text-muted-foreground mt-1">A small tip makes a big difference. 100% of the tip goes directly to the rider.</p>
-                                        <div className="flex gap-2 mt-3">
-                                            {[10, 20, 50].map(tip => (
-                                                <Button key={tip} variant={tipAmount === tip ? "default" : "outline"} onClick={() => handleTipChange(tip)} className="flex-1">₹{tip}</Button>
-                                            ))}
-                                            <Input
-                                                type="number"
-                                                placeholder="Custom"
-                                                onChange={(e) => handleTipChange(e.target.value ? Number(e.target.value) : 0)}
-                                                className={cn("flex-1", tipAmount !== 0 && ![10, 20, 50].includes(tipAmount) && "border-primary ring-2 ring-primary")}
-                                            />
-                                        </div>
-                                    </motion.div>
-                                )}
-                            </AnimatePresence>
-
-
-                            <div className="mt-6 p-4 border-t-2 border-primary bg-card rounded-lg shadow-lg">
-                                <div className="flex justify-between items-center">
-                                    <h3 className="text-xl font-bold">{activeOrderId ? 'Amount to Add' : 'Bill Summary'}</h3>
-                                    <Button variant="ghost" size="sm" onClick={() => setIsBillExpanded(!isBillExpanded)} className="text-primary">
-                                        {isBillExpanded ? 'Hide Details' : 'View Detailed Bill'}
-                                        <ChevronDown className={cn("ml-1 h-4 w-4 transition-transform", isBillExpanded && "rotate-180")} />
-                                    </Button>
-                                </div>
-
-                                <AnimatePresence>
-                                    {isBillExpanded && (
-                                        <motion.div
-                                            initial={{ height: 0, opacity: 0 }}
-                                            animate={{ height: 'auto', opacity: 1 }}
-                                            exit={{ height: 0, opacity: 0 }}
-                                            className="overflow-hidden"
-                                        >
-                                            <div className="space-y-1 text-sm mt-4 pt-4 border-t border-dashed">
-                                                <div className="flex justify-between">
-                                                    <span>Subtotal:</span>
-                                                    <span className="font-medium">₹{subtotal.toFixed(2)}</span>
-                                                </div>
-                                                {couponDiscount > 0 && <div className="flex justify-between text-green-400"><span>Coupon Discount:</span> <span className="font-medium">- ₹{couponDiscount.toFixed(2)}</span></div>}
-                                                {specialCouponDiscount > 0 && <div className="flex justify-between text-primary"><span>Special Discount:</span> <span className="font-medium">- ₹{specialCouponDiscount.toFixed(2)}</span></div>}
-
-                                                {!isStreetVendor && deliveryType === 'delivery' && !activeOrderId && (
-                                                    <div className="flex justify-between">
-                                                        <span>Delivery Fee:</span>
-                                                        <span className={cn(isDeliveryFree && "font-bold text-green-400")}>
-                                                            {isDeliveryFree ? 'FREE' : `₹${finalDeliveryCharge.toFixed(2)}`}
-                                                        </span>
-                                                    </div>
-                                                )}
-
-                                                {!isStreetVendor && tipAmount > 0 && !activeOrderId && <div className="flex justify-between text-green-400"><span>Rider Tip:</span> <span className="font-medium">+ ₹{tipAmount.toFixed(2)}</span></div>}
-                                                {cgst > 0 && <div className="flex justify-between"><span>CGST ({cartData?.gstRate || 5}%):</span> <span className="font-medium">₹{cgst.toFixed(2)}</span></div>}
-                                                {sgst > 0 && <div className="flex justify-between"><span>SGST ({cartData?.gstRate || 5}%):</span> <span className="font-medium">₹{sgst.toFixed(2)}</span></div>}
-                                            </div>
-                                        </motion.div>
                                     )}
-                                </AnimatePresence>
 
-                                <div className="border-t border-dashed my-3"></div>
-
-                                <div className="flex justify-between items-center text-lg font-bold">
-                                    <span>{activeOrderId ? 'To Pay:' : (deliveryType === 'dine-in' ? 'Total to be Added:' : 'Grand Total:')}</span>
-                                    <div className="flex items-center gap-3">
-                                        {totalDiscount > 0 && !activeOrderId && (
-                                            <span className="text-muted-foreground line-through text-base font-medium">₹{(subtotal + finalDeliveryCharge + (isStreetVendor ? 0 : (cgst * 2)) + (deliveryType === 'delivery' ? tipAmount : 0)).toFixed(2)}</span>
-                                        )}
-                                        <span>₹{grandTotal > 0 ? grandTotal.toFixed(2) : '0.00'}</span>
-                                    </div>
+                                    {normalCoupons.length > 0 ? normalCoupons.map(coupon => {
+                                        const isApplied = appliedCoupons.some(c => c.id === coupon.id);
+                                        return (
+                                            <div key={coupon.id} onClick={() => handleToggleCoupon(coupon)} className={cn("p-2 rounded-md border-2 cursor-pointer", isApplied ? "border-primary bg-primary/10" : "border-border bg-background")}>
+                                                <div className="flex justify-between items-center">
+                                                    <p className="font-bold text-foreground">{coupon.code}</p>
+                                                    {isApplied ? <button onClick={(e) => { e.stopPropagation(); handleToggleCoupon(coupon); }} className="p-1 rounded-full hover:bg-destructive/20"><X size={14} className="text-destructive" /></button> : <Check size={16} className="text-muted-foreground" />}
+                                                </div>
+                                                <p className="text-xs text-muted-foreground">{coupon.description}</p>
+                                            </div>
+                                        )
+                                    }) : (specialCoupons.length === 0 && <p className="text-xs text-muted-foreground text-center py-4">No coupons available right now.</p>)}
                                 </div>
-
-                                {totalDiscount > 0 && (
-                                    <div className="text-right text-sm font-semibold text-green-400 mt-1">
-                                        You saved ₹{totalDiscount.toFixed(2)}!
-                                    </div>
-                                )}
-                            </div>
-                        </>
-                    )}
-                </main>
-
-                <div className="fixed bottom-0 left-0 w-full z-30 bg-background/80 backdrop-blur-sm border-t border-border">
-                    <div className="container mx-auto p-4">
-                        {cart.length > 0 ? (
-                            <Button onClick={handleConfirmOrder} className="flex-grow bg-primary hover:bg-primary/90 text-primary-foreground h-12 text-lg font-bold w-full" disabled={cart.length === 0 || isCheckoutFlow || outOfStockItems.length > 0}>
-                                {isCheckoutFlow ? <Loader2 className="animate-spin mr-2" /> : null}
-                                {(liveOrder && liveOrder.restaurantId === restaurantId) ? <> <PlusCircle size={20} className="mr-2" /> Add to Existing Order </> :
-                                    (deliveryType === 'dine-in' ? (cartData?.dineInModel === 'post-paid' ? 'Place Order' : 'Add to Tab') : 'Proceed to Checkout')}
-                            </Button>
-                        ) : deliveryType === 'dine-in' ? (
-                            <Button onClick={() => router.push(`/checkout?restaurantId=${restaurantId}&phone=${phone || ''}&token=${token || ''}&table=${tableId}&tabId=${tabId}`)} className="flex-grow bg-green-600 hover:bg-green-700 text-white h-12 text-lg font-bold w-full">
-                                <Wallet className="mr-2" /> View Bill & Pay
-                            </Button>
-                        ) : null}
+                            </PopoverContent>
+                        </Popover>
                     </div>
+
+                    <AnimatePresence>
+                        {deliveryType === 'delivery' && !activeOrderId && (
+                            <motion.div
+                                className="p-4 mt-4 bg-card rounded-lg border border-border"
+                                initial={{ opacity: 0, y: -10 }}
+                                animate={{ opacity: 1, y: 0 }}
+                                exit={{ opacity: 0, y: -10 }}
+                            >
+                                <div className="flex items-center gap-2">
+                                    <Heart size={16} className="text-primary" />
+                                    <h4 className="font-bold text-lg">Tip for your delivery hero</h4>
+                                </div>
+                                <p className="text-sm text-muted-foreground mt-1">A small tip makes a big difference. 100% of the tip goes directly to the rider.</p>
+                                <div className="flex gap-2 mt-3">
+                                    {[10, 20, 50].map(tip => (
+                                        <Button key={tip} variant={tipAmount === tip ? "default" : "outline"} onClick={() => handleTipChange(tip)} className="flex-1">₹{tip}</Button>
+                                    ))}
+                                    <Input
+                                        type="number"
+                                        placeholder="Custom"
+                                        onChange={(e) => handleTipChange(e.target.value ? Number(e.target.value) : 0)}
+                                        className={cn("flex-1", tipAmount !== 0 && ![10, 20, 50].includes(tipAmount) && "border-primary ring-2 ring-primary")}
+                                    />
+                                </div>
+                            </motion.div>
+                        )}
+                    </AnimatePresence>
+
+
+                    <div className="mt-6 p-4 border-t-2 border-primary bg-card rounded-lg shadow-lg">
+                        <div className="flex justify-between items-center">
+                            <h3 className="text-xl font-bold">{activeOrderId ? 'Amount to Add' : 'Bill Summary'}</h3>
+                            <Button variant="ghost" size="sm" onClick={() => setIsBillExpanded(!isBillExpanded)} className="text-primary">
+                                {isBillExpanded ? 'Hide Details' : 'View Detailed Bill'}
+                                <ChevronDown className={cn("ml-1 h-4 w-4 transition-transform", isBillExpanded && "rotate-180")} />
+                            </Button>
+                        </div>
+
+                        <AnimatePresence>
+                            {isBillExpanded && (
+                                <motion.div
+                                    initial={{ height: 0, opacity: 0 }}
+                                    animate={{ height: 'auto', opacity: 1 }}
+                                    exit={{ height: 0, opacity: 0 }}
+                                    className="overflow-hidden"
+                                >
+                                    <div className="space-y-1 text-sm mt-4 pt-4 border-t border-dashed">
+                                        <div className="flex justify-between">
+                                            <span>Subtotal:</span>
+                                            <span className="font-medium">₹{subtotal.toFixed(2)}</span>
+                                        </div>
+                                        {couponDiscount > 0 && <div className="flex justify-between text-green-400"><span>Coupon Discount:</span> <span className="font-medium">- ₹{couponDiscount.toFixed(2)}</span></div>}
+                                        {specialCouponDiscount > 0 && <div className="flex justify-between text-primary"><span>Special Discount:</span> <span className="font-medium">- ₹{specialCouponDiscount.toFixed(2)}</span></div>}
+
+                                        {!isStreetVendor && deliveryType === 'delivery' && !activeOrderId && (
+                                            <div className="flex justify-between">
+                                                <span>Delivery Fee:</span>
+                                                <span className={cn(isDeliveryFree && "font-bold text-green-400")}>
+                                                    {isDeliveryFree ? 'FREE' : `₹${finalDeliveryCharge.toFixed(2)}`}
+                                                </span>
+                                            </div>
+                                        )}
+
+                                        {!isStreetVendor && tipAmount > 0 && !activeOrderId && <div className="flex justify-between text-green-400"><span>Rider Tip:</span> <span className="font-medium">+ ₹{tipAmount.toFixed(2)}</span></div>}
+                                        {cgst > 0 && <div className="flex justify-between"><span>CGST ({cartData?.gstRate || 5}%):</span> <span className="font-medium">₹{cgst.toFixed(2)}</span></div>}
+                                        {cgst > 0 && <div className="flex justify-between"><span>CGST ({cartData?.gstRate || 5}%):</span> <span className="font-medium">₹{cgst.toFixed(2)}</span></div>}
+                                        {sgst > 0 && <div className="flex justify-between"><span>SGST ({cartData?.gstRate || 5}%):</span> <span className="font-medium">₹{sgst.toFixed(2)}</span></div>}
+                                        {diningPreference === 'takeaway' && packagingConfig.enabled && packagingConfig.amount > 0 && (
+                                            <div className="flex justify-between text-primary">
+                                                <span>Packaging Charges:</span>
+                                                <span className="font-medium">₹{packagingConfig.amount.toFixed(2)}</span>
+                                            </div>
+                                        )}
+                                    </div>
+                                </motion.div>
+                            )}
+                        </AnimatePresence>
+
+                        <div className="border-t border-dashed my-3"></div>
+
+                        <div className="flex justify-between items-center text-lg font-bold">
+                            <span>{activeOrderId ? 'To Pay:' : (deliveryType === 'dine-in' ? 'Total to be Added:' : 'Grand Total:')}</span>
+                            <div className="flex items-center gap-3">
+                                {totalDiscount > 0 && !activeOrderId && (
+                                    <span className="text-muted-foreground line-through text-base font-medium">₹{(subtotal + finalDeliveryCharge + (isStreetVendor ? 0 : (cgst * 2)) + (deliveryType === 'delivery' ? tipAmount : 0)).toFixed(2)}</span>
+                                )}
+                                <span>₹{grandTotal > 0 ? grandTotal.toFixed(2) : '0.00'}</span>
+                            </div>
+                        </div>
+
+                        {totalDiscount > 0 && (
+                            <div className="text-right text-sm font-semibold text-green-400 mt-1">
+                                You saved ₹{totalDiscount.toFixed(2)}!
+                            </div>
+                        )}
+                    </div>
+                </>
+                    )}
+            </main>
+
+            <div className="fixed bottom-0 left-0 w-full z-30 bg-background/80 backdrop-blur-sm border-t border-border">
+                <div className="container mx-auto p-4">
+                    {cart.length > 0 ? (
+                        <Button
+                            onClick={handleConfirmOrder}
+                            className="flex-grow bg-primary hover:bg-primary/90 text-primary-foreground h-12 text-lg font-bold w-full"
+                            disabled={
+                                cart.length === 0 ||
+                                isCheckoutFlow ||
+                                outOfStockItems.length > 0 ||
+                                (cartData?.businessType === 'street-vendor' && !diningPreference)
+                            }
+                        >
+                            {isCheckoutFlow ? <Loader2 className="animate-spin mr-2" /> : null}
+                            {(liveOrder && liveOrder.restaurantId === restaurantId) ? <> <PlusCircle size={20} className="mr-2" /> Add to Existing Order </> :
+                                (deliveryType === 'dine-in' ? (cartData?.dineInModel === 'post-paid' ? 'Place Order' : 'Add to Tab') : 'Proceed to Checkout')}
+                        </Button>
+                    ) : deliveryType === 'dine-in' ? (
+                        <Button onClick={() => router.push(`/checkout?restaurantId=${restaurantId}&phone=${phone || ''}&token=${token || ''}&table=${tableId}&tabId=${tabId}`)} className="flex-grow bg-green-600 hover:bg-green-700 text-white h-12 text-lg font-bold w-full">
+                            <Wallet className="mr-2" /> View Bill & Pay
+                        </Button>
+                    ) : null}
                 </div>
             </div>
+        </div >
         </>
     );
 }

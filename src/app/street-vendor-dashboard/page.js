@@ -648,10 +648,8 @@ const StreetVendorDashboardContent = () => {
                 <h1 className="text-2xl font-bold font-headline">Live Pre-Orders</h1>
                 <div className="flex gap-2">
                     <Link href="/street-vendor-dashboard/history">
-                        <Button variant="outline" className="flex-shrink-0">
-                            <History className="mr-2 hidden sm:inline" />
-                            <History className="sm:hidden" size={20} />
-                            <span className="hidden sm:inline">History</span>
+                        <Button variant="outline" className="hidden md:flex">
+                            <History className="mr-2" /> History
                         </Button>
                     </Link>
                     <Button onClick={() => setScannerOpen(true)} className="bg-primary hover:bg-primary/90 text-primary-foreground hidden md:flex">

@@ -270,6 +270,8 @@ const CheckoutPageInternal = () => {
                         convenienceFeeRate: paymentData.convenienceFeeRate || 2.5,
                         convenienceFeePaidBy: paymentData.convenienceFeePaidBy || 'customer',
                         convenienceFeeLabel: paymentData.convenienceFeeLabel || 'Payment Processing Fee',
+                        packagingChargeEnabled: paymentData.packagingChargeEnabled || false,
+                        packagingChargeAmount: paymentData.packagingChargeAmount || 0,
                     });
                     console.log('[Checkout] Vendor charges set:', {
                         gstEnabled: paymentData.gstEnabled,
@@ -291,6 +293,7 @@ const CheckoutPageInternal = () => {
     }, [restaurantId, phoneFromUrl, token, tableId, tabId, user, isUserLoading, router, isPaymentConfirmed, activeOrderId]);
 
     const deliveryType = useMemo(() => cartData?.deliveryType || 'delivery', [cartData]);
+    const diningPreference = useMemo(() => cartData?.diningPreference || null, [cartData]);
 
     const handleAddNewAddress = () => {
         const params = new URLSearchParams(searchParams.toString());
@@ -298,9 +301,9 @@ const CheckoutPageInternal = () => {
         router.push(`/add-address?${params.toString()}`);
     };
 
-    const { subtotal, totalDiscount, finalDeliveryCharge, cgst, sgst, convenienceFee, grandTotal } = useMemo(() => {
+    const { subtotal, totalDiscount, finalDeliveryCharge, cgst, sgst, convenienceFee, grandTotal, packagingCharge } = useMemo(() => {
         const currentSubtotal = cart.reduce((sum, item) => sum + item.totalPrice * item.quantity, 0);
-        if (!cartData) return { subtotal: currentSubtotal, totalDiscount: 0, finalDeliveryCharge: 0, cgst: 0, sgst: 0, convenienceFee: 0, grandTotal: currentSubtotal };
+        if (!cartData) return { subtotal: currentSubtotal, totalDiscount: 0, finalDeliveryCharge: 0, cgst: 0, sgst: 0, convenienceFee: 0, grandTotal: currentSubtotal, packagingCharge: 0 };
 
         const isStreetVendor = deliveryType === 'street-vendor-pre-order';
         const isFreeDeliveryApplied = appliedCoupons.some(c => c.type === 'free_delivery' && currentSubtotal >= c.minOrder);
@@ -334,7 +337,9 @@ const CheckoutPageInternal = () => {
         }
         // If vendor hasn't enabled GST, tax remains 0
 
-        const subtotalWithTaxAndCharges = taxableAmount + deliveryCharge + cgstAmount + sgstAmount + tip;
+        const packagingCharge = (diningPreference === 'takeaway' && vendorCharges?.packagingChargeEnabled) ? (vendorCharges.packagingChargeAmount || 0) : 0;
+
+        const subtotalWithTaxAndCharges = taxableAmount + deliveryCharge + cgstAmount + sgstAmount + tip + packagingCharge;
 
         // Calculate convenience fee based on vendor configuration
         let calculatedConvenienceFee = 0;
@@ -356,9 +361,10 @@ const CheckoutPageInternal = () => {
             cgst: cgstAmount,
             sgst: sgstAmount,
             convenienceFee: calculatedConvenienceFee,
-            grandTotal: finalGrandTotal
+            grandTotal: finalGrandTotal,
+            packagingCharge
         };
-    }, [cart, cartData, appliedCoupons, deliveryType, selectedPaymentMethod, vendorCharges, activeOrderId]);
+    }, [cart, cartData, appliedCoupons, deliveryType, selectedPaymentMethod, vendorCharges, activeOrderId, diningPreference]);
 
     const handleAddMoreToTab = () => {
         const params = new URLSearchParams({
@@ -384,7 +390,10 @@ const CheckoutPageInternal = () => {
             deliveryType: cartData.deliveryType, pickupTime: cartData.pickupTime || '', tipAmount: cartData.tipAmount || 0,
             businessType: cartData.businessType || 'restaurant', tableId: cartData.tableId || null, dineInTabId: cartData.dineInTabId || null,
             pax_count: cartData.pax_count || null, tab_name: cartData.tab_name || null, address: selectedAddress,
+            pax_count: cartData.pax_count || null, tab_name: cartData.tab_name || null, address: selectedAddress,
             existingOrderId: activeOrderId || undefined,
+            diningPreference: diningPreference,
+            packagingCharge: packagingCharge,
         };
 
         setIsProcessingPayment(true);

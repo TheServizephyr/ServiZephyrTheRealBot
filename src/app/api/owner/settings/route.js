@@ -107,6 +107,8 @@ export async function GET(req) {
                 convenienceFeeRate: businessData.convenienceFeeRate || 2.5,
                 convenienceFeePaidBy: businessData.convenienceFeePaidBy || 'customer',
                 convenienceFeeLabel: businessData.convenienceFeeLabel || 'Payment Processing Fee',
+                packagingChargeEnabled: businessData.packagingChargeEnabled || false,
+                packagingChargeAmount: businessData.packagingChargeAmount || 0,
             }, { status: 200 });
         }
 
@@ -155,6 +157,8 @@ export async function GET(req) {
             convenienceFeeRate: businessData?.convenienceFeeRate || 2.5,
             convenienceFeePaidBy: businessData?.convenienceFeePaidBy || 'customer',
             convenienceFeeLabel: businessData?.convenienceFeeLabel || 'Payment Processing Fee',
+            packagingChargeEnabled: businessData?.packagingChargeEnabled || false,
+            packagingChargeAmount: businessData?.packagingChargeAmount || 0,
             businessId: businessId
         };
 
@@ -231,6 +235,8 @@ export async function PATCH(req) {
         if (updates.convenienceFeeRate !== undefined) businessUpdateData.convenienceFeeRate = updates.convenienceFeeRate;
         if (updates.convenienceFeePaidBy !== undefined) businessUpdateData.convenienceFeePaidBy = updates.convenienceFeePaidBy;
         if (updates.convenienceFeeLabel !== undefined) businessUpdateData.convenienceFeeLabel = updates.convenienceFeeLabel;
+        if (updates.packagingChargeEnabled !== undefined) businessUpdateData.packagingChargeEnabled = updates.packagingChargeEnabled;
+        if (updates.packagingChargeAmount !== undefined) businessUpdateData.packagingChargeAmount = updates.packagingChargeAmount;
 
 
         if (updates.isOpen !== undefined && updates.isOpen !== businessData?.isOpen) {
@@ -289,6 +295,8 @@ export async function PATCH(req) {
             convenienceFeeRate: finalBusinessData?.convenienceFeeRate || 2.5,
             convenienceFeePaidBy: finalBusinessData?.convenienceFeePaidBy || 'customer',
             convenienceFeeLabel: finalBusinessData?.convenienceFeeLabel || 'Payment Processing Fee',
+            packagingChargeEnabled: finalBusinessData?.packagingChargeEnabled || false,
+            packagingChargeAmount: finalBusinessData?.packagingChargeAmount || 0,
             businessId: finalBusinessId,
         };
 
