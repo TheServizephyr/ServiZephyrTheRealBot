@@ -2,7 +2,7 @@
 'use client'
 
 import { motion, useInView, animate } from 'framer-motion'
-import { CheckCircle, Bot, Zap, Rocket, Users, ArrowRight, Star, ShoppingCart, BarChart2, MessageSquare, Briefcase, Store, Soup, Pizza, Feather, Check, Salad, Link as LinkIcon, Edit, Share2, Camera, Split, LayoutDashboard, Truck, Hash, Bell, Clock, QrCode, PackageCheck } from 'lucide-react'
+import { CheckCircle, Bot, Zap, Rocket, Users, ArrowRight, Star, ShoppingCart, BarChart2, MessageSquare, Briefcase, Store, Soup, Pizza, Feather, Check, Salad, Link as LinkIcon, Edit, Share2, Camera, Split, LayoutDashboard, Truck, Hash, Bell, Clock, QrCode, PackageCheck, ShoppingBag } from 'lucide-react'
 import Image from 'next/image'
 import Link from 'next/link'
 import React, { useEffect, useRef, useState } from 'react'
@@ -583,8 +583,8 @@ export default function Home() {
           variants={sectionVariants}
         >
           <div className="container mx-auto px-4">
-            <h2 className="mb-4 text-center text-3xl font-bold tracking-tighter sm:text-4xl md:text-5xl text-foreground">
-              Built for Street Vendors 🛺
+            <h2 className="mb-4 text-center text-3xl font-bold tracking-tighter sm:text-4xl md:text-5xl text-foreground flex items-center justify-center gap-3">
+              Built for Street Vendors <ShoppingBag className="h-10 w-10 md:h-12 md:w-12 text-primary" />
             </h2>
             <p className="mx-auto mb-12 max-w-3xl text-center text-lg text-muted-foreground md:text-xl">
               From chai stalls to food trucks, we've built features specifically for street food heroes.
