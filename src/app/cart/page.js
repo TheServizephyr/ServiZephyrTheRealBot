@@ -240,13 +240,14 @@ const CartPageInternal = () => {
                 } catch (err) {
                     console.error("[Cart Page] Token verification failed:", err.message);
                     setTokenError(err.message);
+                    setLoadingPage(false);
                 }
             } else if (!isUserLoading) {
                 console.log("[Cart Page] No session info found and user is not loading. Setting error.");
                 setTokenError("No session token found. Please start your order from WhatsApp or log in.");
+                setLoadingPage(false);
             }
 
-            setLoadingPage(false);
         };
 
         if (!restaurantId) {
@@ -257,6 +258,8 @@ const CartPageInternal = () => {
 
         if (!isUserLoading) {
             verifyToken();
+        } else {
+            // If user is loading, we are still loading the page
         }
     }, [phone, token, tableId, user, isUserLoading, restaurantId, router, activeOrderId]);
 
@@ -326,8 +329,7 @@ const CartPageInternal = () => {
                             setTipAmount(parsedData.tipAmount || 0);
                             setPickupTime(parsedData.pickupTime || '');
 
-                            // Update localStorage with fresh settings
-                            localStorage.setItem(`cart_${restaurantId}`, JSON.stringify(updatedData));
+                            setPickupTime(parsedData.pickupTime || '');
                         })
                         .catch(err => {
                             console.error("[Cart Page] Failed to fetch fresh settings:", err);
@@ -338,12 +340,16 @@ const CartPageInternal = () => {
                             setAppliedCoupons(parsedData.appliedCoupons || []);
                             setTipAmount(parsedData.tipAmount || 0);
                             setPickupTime(parsedData.pickupTime || '');
+                        })
+                        .finally(() => {
+                            setLoadingPage(false);
                         });
                 }
             } else {
                 console.log("[Cart Page] No cart data found in localStorage.");
                 setCart([]);
                 setCartData(null);
+                setLoadingPage(false);
             }
         }
     }, [isTokenValid, restaurantId]);
@@ -658,6 +664,10 @@ const CartPageInternal = () => {
         return `${path}?token=${liveOrder.trackingToken}`;
     };
     const trackingUrl = getTrackingUrl();
+
+    if (loadingPage) {
+        return <div className="min-h-screen bg-background flex items-center justify-center"><GoldenCoinSpinner /></div>;
+    }
 
     if (!cartData || cart.length === 0) {
         return (
