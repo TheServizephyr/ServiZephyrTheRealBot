@@ -266,19 +266,8 @@ const OrderCard = ({ order, onMarkReady, onCancelClick, onMarkCollected }) => {
                 </div>
                 <div className="flex justify-between items-center mt-2 border-b border-dashed border-border pb-3 mb-3">
                     <p className="text-3xl font-bold text-green-500">{formatCurrency(order.totalAmount)}</p>
-                    {/* --- START: UPDATED PAYMENT UI --- */}
+                    {/* Payment Status Only */}
                     <div className="flex flex-wrap items-center justify-end gap-2">
-                        {order.diningPreference === 'takeaway' && (
-                            <div className="flex items-center gap-1 text-xs font-semibold px-2 py-1 rounded-full bg-orange-500/10 text-orange-500 border border-orange-500/20">
-                                <PackageCheck size={14} /> Takeaway
-                            </div>
-                        )}
-                        {order.diningPreference === 'dine-in' && (
-                            <div className="flex items-center gap-1 text-xs font-semibold px-2 py-1 rounded-full bg-cyan-500/10 text-cyan-500 border border-cyan-500/20">
-                                <ConciergeBell size={14} /> Dine-In
-                            </div>
-                        )}
-
                         {isFullyPaidOnline ? (
                             <div className="flex items-center gap-1 text-xs font-semibold px-2 py-1 rounded-full bg-green-500/10 text-green-500 border border-green-500/20">
                                 <Wallet size={14} /> PAID ONLINE
@@ -294,7 +283,6 @@ const OrderCard = ({ order, onMarkReady, onCancelClick, onMarkCollected }) => {
                             </div>
                         )}
                     </div>
-                    {/* --- END: UPDATED PAYMENT UI --- */}
                 </div>
 
                 <div className="mt-2 text-muted-foreground space-y-1">
@@ -309,8 +297,8 @@ const OrderCard = ({ order, onMarkReady, onCancelClick, onMarkCollected }) => {
                         </div>
                     )}
                 </div>
-                <div className="mt-3 pt-3 border-t border-dashed border-border">
-                    <p className="font-semibold text-foreground mb-2">Items:</p>
+                <div className="mt-2 pt-2 border-t border-dashed border-border">
+                    <p className="font-semibold text-foreground text-sm mb-1.5">Items:</p>
                     {(() => {
                         // Group items by addedAt timestamp
                         const itemGroups = [];
@@ -358,32 +346,25 @@ const OrderCard = ({ order, onMarkReady, onCancelClick, onMarkCollected }) => {
                                 <div
                                     key={groupIndex}
                                     className={cn(
-                                        "mb-3 p-2 rounded-lg border",
-                                        isOriginal ? "bg-card border-border" : "bg-amber-50/50 dark:bg-amber-900/10 border-amber-200 dark:border-amber-800"
+                                        "mb-2 p-1.5 rounded border",
+                                        isOriginal ? "bg-card border-border/50" : "bg-amber-50/30 dark:bg-amber-900/5 border-amber-300/50 dark:border-amber-700/30"
                                     )}
                                 >
-                                    <div className="flex items-center justify-between mb-1">
-                                        <div className="flex items-center gap-2">
-                                            {isOriginal ? (
-                                                <Package size={14} className="text-primary" />
-                                            ) : (
-                                                <PlusCircle size={14} className="text-amber-600" />
-                                            )}
-                                            <span className="text-xs font-semibold text-muted-foreground uppercase">
-                                                {isOriginal ? 'Original Order' : 'Added Items'}
-                                            </span>
-                                        </div>
-                                        <div className="flex items-center gap-2">
-                                            <Clock size={12} className="text-muted-foreground" />
-                                            <span className="text-xs text-muted-foreground">{timeStr}</span>
+                                    <div className="flex items-center justify-between mb-0.5">
+                                        <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wide">
+                                            {isOriginal ? 'Original' : 'Added'}
+                                        </span>
+                                        <div className="flex items-center gap-1.5">
+                                            <Clock size={10} className="text-muted-foreground" />
+                                            <span className="text-[10px] text-muted-foreground font-medium">{timeStr}</span>
                                             {isNew && !isOriginal && (
-                                                <span className="px-2 py-0.5 text-xs font-bold bg-green-500 text-white rounded-full animate-pulse">
+                                                <span className="px-1.5 py-0.5 text-[9px] font-bold bg-green-500 text-white rounded-full animate-pulse">
                                                     NEW
                                                 </span>
                                             )}
                                         </div>
                                     </div>
-                                    <ul className="list-disc list-inside text-muted-foreground text-sm space-y-1 ml-2">
+                                    <ul className="list-disc list-inside text-muted-foreground text-xs space-y-0.5 ml-1">
                                         {group.items.map((item, itemIndex) => {
                                             const portionName = item.portion?.name;
                                             const addOns = (item.selectedAddOns || [])
@@ -391,10 +372,10 @@ const OrderCard = ({ order, onMarkReady, onCancelClick, onMarkCollected }) => {
                                                 .join(', ');
 
                                             return (
-                                                <li key={itemIndex}>
+                                                <li key={itemIndex} className="leading-tight">
                                                     {item.quantity || item.qty}x {item.name}
                                                     {portionName && portionName.toLowerCase() !== 'full' && ` - ${portionName}`}
-                                                    {addOns && <span className="text-xs text-primary block pl-4">({addOns})</span>}
+                                                    {addOns && <span className="text-[10px] text-primary block pl-3">({addOns})</span>}
                                                 </li>
                                             );
                                         })}
