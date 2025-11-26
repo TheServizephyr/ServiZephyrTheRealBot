@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useMemo, useCallback, useRef, Suspense } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ClipboardList, QrCode, CookingPot, PackageCheck, Check, X, Loader2, User, Phone, History, Wallet, IndianRupee, Calendar as CalendarIcon, Search, Filter, AlertTriangle } from 'lucide-react';
+import { ClipboardList, QrCode, CookingPot, PackageCheck, Check, X, Loader2, User, Phone, History, Wallet, IndianRupee, Calendar as CalendarIcon, Search, Filter, AlertTriangle, ConciergeBell } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import Link from 'next/link';
 import { useUser, useMemoFirebase, useCollection } from '@/firebase';
@@ -249,20 +249,33 @@ const OrderCard = ({ order, onMarkReady, onCancelClick, onMarkCollected }) => {
                 <div className="flex justify-between items-center mt-2 border-b border-dashed border-border pb-3 mb-3">
                     <p className="text-3xl font-bold text-green-500">{formatCurrency(order.totalAmount)}</p>
                     {/* --- START: UPDATED PAYMENT UI --- */}
-                    {isFullyPaidOnline ? (
-                        <div className="flex items-center gap-1 text-xs font-semibold px-2 py-1 rounded-full bg-green-500/10 text-green-500 border border-green-500/20">
-                            <Wallet size={14} /> PAID ONLINE
-                        </div>
-                    ) : isPartiallyPaid ? (
-                        <div className="text-right">
-                            <span className="block text-xs font-semibold text-green-500">Paid: {formatCurrency(amountPaidOnline)}</span>
-                            <span className="block text-xs font-semibold text-yellow-400">Due: {formatCurrency(amountDueAtCounter)}</span>
-                        </div>
-                    ) : (
-                        <div className="flex items-center gap-1 text-xs font-semibold px-2 py-1 rounded-full bg-yellow-500/10 text-yellow-400 border border-yellow-500/20">
-                            <IndianRupee size={14} /> PAY AT COUNTER
-                        </div>
-                    )}
+                    <div className="flex flex-wrap items-center justify-end gap-2">
+                        {order.diningPreference === 'takeaway' && (
+                            <div className="flex items-center gap-1 text-xs font-semibold px-2 py-1 rounded-full bg-orange-500/10 text-orange-500 border border-orange-500/20">
+                                <PackageCheck size={14} /> Takeaway
+                            </div>
+                        )}
+                        {order.diningPreference === 'dine-in' && (
+                            <div className="flex items-center gap-1 text-xs font-semibold px-2 py-1 rounded-full bg-cyan-500/10 text-cyan-500 border border-cyan-500/20">
+                                <ConciergeBell size={14} /> Dine-In
+                            </div>
+                        )}
+
+                        {isFullyPaidOnline ? (
+                            <div className="flex items-center gap-1 text-xs font-semibold px-2 py-1 rounded-full bg-green-500/10 text-green-500 border border-green-500/20">
+                                <Wallet size={14} /> PAID ONLINE
+                            </div>
+                        ) : isPartiallyPaid ? (
+                            <div className="text-right">
+                                <span className="block text-xs font-semibold text-green-500">Paid: {formatCurrency(amountPaidOnline)}</span>
+                                <span className="block text-xs font-semibold text-yellow-400">Due: {formatCurrency(amountDueAtCounter)}</span>
+                            </div>
+                        ) : (
+                            <div className="flex items-center gap-1 text-xs font-semibold px-2 py-1 rounded-full bg-yellow-500/10 text-yellow-400 border border-yellow-500/20">
+                                <IndianRupee size={14} /> PAY AT COUNTER
+                            </div>
+                        )}
+                    </div>
                     {/* --- END: UPDATED PAYMENT UI --- */}
                 </div>
 
