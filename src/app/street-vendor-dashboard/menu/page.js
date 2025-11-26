@@ -852,15 +852,30 @@ export default function StreetVendorMenuPage() {
             </AnimatePresence>
 
             {selectedItems.length > 0 && (
-                <div className="sticky top-0 z-10 bg-background/80 backdrop-blur-sm p-3 border rounded-lg flex items-center justify-between gap-4 mb-4">
-                    <p className="font-semibold">{selectedItems.length} items selected</p>
-                    <div className="flex gap-2">
-                        <Button size="sm" variant="outline" onClick={() => handleBulkAction('outOfStock')}>
-                            <XCircle size={16} className="mr-2" /> Mark Out of Stock
-                        </Button>
-                        <Button size="sm" variant="destructive" onClick={() => handleBulkAction('delete')}>
-                            <Trash2 size={16} className="mr-2" /> Delete
-                        </Button>
+                <div className="sticky top-0 z-10 bg-background/80 backdrop-blur-sm p-3 border rounded-lg mb-4">
+                    {/* Mobile Layout - Stacked */}
+                    <div className="flex md:hidden flex-col gap-2">
+                        <p className="font-semibold text-sm">{selectedItems.length} items selected</p>
+                        <div className="flex gap-2">
+                            <Button size="sm" variant="outline" onClick={() => handleBulkAction('outOfStock')} className="flex-1">
+                                <XCircle size={14} className="mr-1" /> Out of Stock
+                            </Button>
+                            <Button size="sm" variant="destructive" onClick={() => handleBulkAction('delete')} className="flex-1">
+                                <Trash2 size={14} className="mr-1" /> Delete
+                            </Button>
+                        </div>
+                    </div>
+                    {/* Desktop Layout - Horizontal */}
+                    <div className="hidden md:flex items-center justify-between gap-4">
+                        <p className="font-semibold">{selectedItems.length} items selected</p>
+                        <div className="flex gap-2">
+                            <Button size="sm" variant="outline" onClick={() => handleBulkAction('outOfStock')}>
+                                <XCircle size={16} className="mr-2" /> Mark Out of Stock
+                            </Button>
+                            <Button size="sm" variant="destructive" onClick={() => handleBulkAction('delete')}>
+                                <Trash2 size={16} className="mr-2" /> Delete
+                            </Button>
+                        </div>
                     </div>
                 </div>
             )}
