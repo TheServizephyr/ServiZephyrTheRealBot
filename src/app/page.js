@@ -224,7 +224,7 @@ const AnimatedSubheadline = () => {
 
   return (
     <h3 className="text-xl md:text-2xl text-muted-foreground">
-      Take direct orders from customers via <span style={{ color: '#25D366' }}>{part1}</span><span style={{ color: 'hsl(var(--primary))' }}>{part2}</span> - <span className="text-primary font-semibold">From Restaurants to Street Vendors</span>.
+      Take direct orders from customers via <span className="inline-block" style={{ minWidth: '150px' }}><span style={{ color: '#25D366' }}>{part1}</span><span style={{ color: 'hsl(var(--primary))' }}>{part2}</span></span> - <span className="text-primary font-semibold">From Restaurants to Street Vendors</span>.
     </h3>
   );
 };
