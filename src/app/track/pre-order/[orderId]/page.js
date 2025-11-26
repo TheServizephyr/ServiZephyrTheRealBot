@@ -382,20 +382,26 @@ function PreOrderTrackingContent() {
                                     <span>{formatCurrency(order.subtotal || 0)}</span>
                                 </div>
 
-                                <div className="flex justify-between text-muted-foreground">
-                                    <span>Packaging Charge</span>
-                                    <span>{formatCurrency(order.packagingCharge || 0)}</span>
-                                </div>
+                                {(order.packagingCharge > 0) && (
+                                    <div className="flex justify-between text-muted-foreground">
+                                        <span>Packaging Charge</span>
+                                        <span>{formatCurrency(order.packagingCharge)}</span>
+                                    </div>
+                                )}
 
-                                <div className="flex justify-between text-muted-foreground">
-                                    <span>Delivery Charge</span>
-                                    <span>{formatCurrency(order.deliveryCharge || 0)}</span>
-                                </div>
+                                {(order.deliveryCharge > 0) && (
+                                    <div className="flex justify-between text-muted-foreground">
+                                        <span>Delivery Charge</span>
+                                        <span>{formatCurrency(order.deliveryCharge)}</span>
+                                    </div>
+                                )}
 
-                                <div className="flex justify-between text-muted-foreground">
-                                    <span>Taxes (GST)</span>
-                                    <span>{formatCurrency((order.cgst || 0) + (order.sgst || 0))}</span>
-                                </div>
+                                {((order.cgst > 0) || (order.sgst > 0)) && (
+                                    <div className="flex justify-between text-muted-foreground">
+                                        <span>Taxes (GST)</span>
+                                        <span>{formatCurrency((order.cgst || 0) + (order.sgst || 0))}</span>
+                                    </div>
+                                )}
 
                                 {(order.convenienceFee > 0) && (
                                     <div className="flex justify-between text-muted-foreground">
