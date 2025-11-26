@@ -360,9 +360,54 @@ function PreOrderTrackingContent() {
                                     <span>{formatCurrency(item.totalPrice)}</span>
                                 </div>
                             ))}
+
+                            <div className="border-t border-dashed my-2"></div>
+
+                            <div className="space-y-1 text-sm">
+                                <div className="flex justify-between text-muted-foreground">
+                                    <span>Item Total</span>
+                                    <span>{formatCurrency(order.subtotal)}</span>
+                                </div>
+
+                                {(order.packagingCharge > 0) && (
+                                    <div className="flex justify-between text-muted-foreground">
+                                        <span>Packaging Charge</span>
+                                        <span>{formatCurrency(order.packagingCharge)}</span>
+                                    </div>
+                                )}
+
+                                {(order.deliveryCharge > 0) && (
+                                    <div className="flex justify-between text-muted-foreground">
+                                        <span>Delivery Charge</span>
+                                        <span>{formatCurrency(order.deliveryCharge)}</span>
+                                    </div>
+                                )}
+
+                                {(order.cgst > 0 || order.sgst > 0) && (
+                                    <div className="flex justify-between text-muted-foreground">
+                                        <span>Taxes (GST)</span>
+                                        <span>{formatCurrency((order.cgst || 0) + (order.sgst || 0))}</span>
+                                    </div>
+                                )}
+
+                                {(order.tipAmount > 0) && (
+                                    <div className="flex justify-between text-muted-foreground">
+                                        <span>Tip</span>
+                                        <span>{formatCurrency(order.tipAmount)}</span>
+                                    </div>
+                                )}
+
+                                {(order.discount > 0) && (
+                                    <div className="flex justify-between text-green-600">
+                                        <span>Discount</span>
+                                        <span>- {formatCurrency(order.discount)}</span>
+                                    </div>
+                                )}
+                            </div>
+
                             <div className="flex justify-between font-bold text-lg pt-2 border-t border-dashed text-green-600">
                                 <span>Grand Total</span>
-                                <span>{formatCurrency(order.totalAmount)}</span>
+                                <span>{formatCurrency(order.grandTotal || order.totalAmount)}</span>
                             </div>
                         </div>
                     </motion.div>
