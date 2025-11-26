@@ -574,6 +574,88 @@ export default function Home() {
         </motion.section>
 
 
+        {/* Street Vendor Special Section */}
+        <motion.section
+          className="bg-gradient-to-br from-orange-50 to-amber-50 dark:from-orange-950/20 dark:to-amber-950/20 py-20 sm:py-28"
+          initial="hidden"
+          whileInView="visible"
+          viewport={{ once: true, amount: 0.3 }}
+          variants={sectionVariants}
+        >
+          <div className="container mx-auto px-4">
+            <h2 className="mb-4 text-center text-3xl font-bold tracking-tighter sm:text-4xl md:text-5xl text-foreground">
+              Built for Street Vendors 🛺
+            </h2>
+            <p className="mx-auto mb-12 max-w-3xl text-center text-lg text-muted-foreground md:text-xl">
+              From chai stalls to food trucks, we've built features specifically for street food heroes.
+            </p>
+
+            <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+              <FeatureCard
+                icon={<Hash />}
+                title="Token-Based System"
+                description="No table numbers needed. Generate unique tokens (like 73-UY) for each order."
+                benefits={[
+                  "Easy for customers to remember",
+                  "Clear order identification",
+                  "Professional appearance"
+                ]}
+              />
+              <FeatureCard
+                icon={<Clock />}
+                title="Pre-Order Management"
+                description="Customers order in advance, you prepare when ready, they collect when it's done."
+                benefits={[
+                  "Reduce wait times",
+                  "Better kitchen planning",
+                  "Happy customers"
+                ]}
+              />
+              <FeatureCard
+                icon={<PackageCheck />}
+                title="Smart Packaging Charges"
+                description="Automatically add packaging charges for takeaway orders."
+                benefits={[
+                  "Recover packaging costs",
+                  "Transparent billing",
+                  "Configurable amounts"
+                ]}
+              />
+              <FeatureCard
+                icon={<QrCode />}
+                title="QR Menu Ordering"
+                description="No physical menu needed. Customers scan QR, browse, and order instantly."
+                benefits={[
+                  "Save printing costs",
+                  "Always up-to-date menu",
+                  "Contactless ordering"
+                ]}
+              />
+              <FeatureCard
+                icon={<Bell />}
+                title="Order Ready Notifications"
+                description="Auto-notify customers when their order is ready for pickup."
+                benefits={[
+                  "Reduce crowding",
+                  "Better customer experience",
+                  "Efficient operations"
+                ]}
+              />
+              <FeatureCard
+                icon={<Zap />}
+                title="Zero Overhead"
+                description="No waiters, no tables, no dine-in complexity. Pure takeaway focus."
+                benefits={[
+                  "Lower operational costs",
+                  "Simplified workflow",
+                  "Focus on food quality"
+                ]}
+              />
+            </div>
+          </div>
+        </motion.section>
+
+
         {/* Target Audience Section */}
         <motion.section
           className="bg-card py-20 sm:py-28"
