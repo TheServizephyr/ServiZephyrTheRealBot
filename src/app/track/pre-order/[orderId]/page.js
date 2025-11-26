@@ -377,11 +377,6 @@ function PreOrderTrackingContent() {
                             <div className="border-t border-dashed my-2"></div>
 
                             <div className="space-y-1 text-sm">
-                                <div className="flex justify-between text-muted-foreground">
-                                    <span>Item Total</span>
-                                    <span>{formatCurrency(order.subtotal || 0)}</span>
-                                </div>
-
                                 {(order.packagingCharge > 0) && (
                                     <div className="flex justify-between text-muted-foreground">
                                         <span>Packaging Charge</span>
