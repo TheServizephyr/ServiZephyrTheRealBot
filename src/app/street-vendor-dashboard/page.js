@@ -240,7 +240,25 @@ const OrderCard = ({ order, onMarkReady, onCancelClick, onMarkCollected }) => {
         >
             <div>
                 <div className="flex justify-between items-start">
-                    <p className="text-4xl font-bold text-foreground">{token}</p>
+                    <div>
+                        <p className="text-4xl font-bold text-foreground">{token}</p>
+                        {/* PROMINENT DINING PREFERENCE LABEL */}
+                        {order.diningPreference === 'takeaway' && (
+                            <div className="mt-2 flex items-center gap-2 text-sm font-bold px-3 py-1.5 rounded-lg bg-orange-500/20 text-orange-600 border-2 border-orange-500 w-fit">
+                                <PackageCheck size={18} /> PACK THIS ORDER
+                            </div>
+                        )}
+                        {order.diningPreference === 'dine-in' && (
+                            <div className="mt-2 flex items-center gap-2 text-sm font-bold px-3 py-1.5 rounded-lg bg-cyan-500/20 text-cyan-600 border-2 border-cyan-500 w-fit">
+                                <ConciergeBell size={18} /> SERVE ON PLATE
+                            </div>
+                        )}
+                        {!order.diningPreference && (
+                            <div className="mt-2 flex items-center gap-2 text-sm font-bold px-3 py-1.5 rounded-lg bg-gray-500/20 text-gray-600 border-2 border-gray-500 w-fit">
+                                <ClipboardList size={18} /> STANDARD ORDER
+                            </div>
+                        )}
+                    </div>
                     <div className="text-right">
                         <div className={cn('px-2 py-1 text-xs font-semibold rounded-full border bg-opacity-20 capitalize', statusClass)}>{order.status}</div>
                         <p className="text-xs text-muted-foreground mt-1">{formatDateTime(order.orderDate)}</p>

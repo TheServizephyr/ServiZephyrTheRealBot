@@ -354,17 +354,19 @@ function PreOrderTrackingContent() {
                     >
                         <div className="space-y-2">
                             <p className="text-sm"><strong>Bill to:</strong> {order.customerName}</p>
-                            <p className="text-sm">
-                                <strong>Dining Preference: </strong>
-                                <span className={cn(
-                                    "font-semibold px-2 py-0.5 rounded-full text-xs",
-                                    order.diningPreference === 'takeaway' ? "bg-orange-100 text-orange-700 border border-orange-200" :
-                                        order.diningPreference === 'dine-in' ? "bg-cyan-100 text-cyan-700 border border-cyan-200" :
-                                            "bg-gray-100 text-gray-700 border border-gray-200"
-                                )}>
-                                    {order.diningPreference ? (order.diningPreference.charAt(0).toUpperCase() + order.diningPreference.slice(1)) : 'Standard'}
-                                </span>
-                            </p>
+                            {order.diningPreference && (
+                                <p className="text-sm">
+                                    <strong>Dining Preference: </strong>
+                                    <span className={cn(
+                                        "font-semibold px-2 py-0.5 rounded-full text-xs",
+                                        order.diningPreference === 'takeaway' ? "bg-orange-100 text-orange-700 border border-orange-200" :
+                                            order.diningPreference === 'dine-in' ? "bg-cyan-100 text-cyan-700 border border-cyan-200" :
+                                                "bg-gray-100 text-gray-700 border border-gray-200"
+                                    )}>
+                                        {order.diningPreference === 'takeaway' ? 'Takeaway' : order.diningPreference === 'dine-in' ? 'Dine-In' : order.diningPreference}
+                                    </span>
+                                </p>
+                            )}
                             {order.items.map((item, index) => (
                                 <div key={index} className="flex justify-between text-muted-foreground text-sm">
                                     <span>{item.quantity} x {item.name}</span>
@@ -377,27 +379,28 @@ function PreOrderTrackingContent() {
                             <div className="space-y-1 text-sm">
                                 <div className="flex justify-between text-muted-foreground">
                                     <span>Item Total</span>
-                                    <span>{formatCurrency(order.subtotal)}</span>
+                                    <span>{formatCurrency(order.subtotal || 0)}</span>
                                 </div>
 
-                                {(order.packagingCharge > 0 || order.diningPreference === 'takeaway') && (
-                                    <div className="flex justify-between text-muted-foreground">
-                                        <span>Packaging Charge</span>
-                                        <span>{formatCurrency(order.packagingCharge || 0)}</span>
-                                    </div>
-                                )}
+                                <div className="flex justify-between text-muted-foreground">
+                                    <span>Packaging Charge</span>
+                                    <span>{formatCurrency(order.packagingCharge || 0)}</span>
+                                </div>
 
-                                {(order.deliveryCharge > 0) && (
-                                    <div className="flex justify-between text-muted-foreground">
-                                        <span>Delivery Charge</span>
-                                        <span>{formatCurrency(order.deliveryCharge)}</span>
-                                    </div>
-                                )}
+                                <div className="flex justify-between text-muted-foreground">
+                                    <span>Delivery Charge</span>
+                                    <span>{formatCurrency(order.deliveryCharge || 0)}</span>
+                                </div>
 
-                                {(order.cgst > 0 || order.sgst > 0) && (
+                                <div className="flex justify-between text-muted-foreground">
+                                    <span>Taxes (GST)</span>
+                                    <span>{formatCurrency((order.cgst || 0) + (order.sgst || 0))}</span>
+                                </div>
+
+                                {(order.convenienceFee > 0) && (
                                     <div className="flex justify-between text-muted-foreground">
-                                        <span>Taxes (GST)</span>
-                                        <span>{formatCurrency((order.cgst || 0) + (order.sgst || 0))}</span>
+                                        <span>Platform Fee</span>
+                                        <span>{formatCurrency(order.convenienceFee)}</span>
                                     </div>
                                 )}
 
