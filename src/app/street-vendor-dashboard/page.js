@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useMemo, useCallback, useRef, Suspense } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ClipboardList, QrCode, CookingPot, PackageCheck, Check, X, Loader2, User, Phone, History, Wallet, IndianRupee, Calendar as CalendarIcon, Search, Filter, AlertTriangle, ConciergeBell } from 'lucide-react';
+import { ClipboardList, QrCode, CookingPot, PackageCheck, Check, X, Loader2, User, Phone, History, Wallet, IndianRupee, Calendar as CalendarIcon, Search, Filter, AlertTriangle, ConciergeBell, Clock, Package, PlusCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import Link from 'next/link';
 import { useUser, useMemoFirebase, useCollection } from '@/firebase';
@@ -310,23 +310,99 @@ const OrderCard = ({ order, onMarkReady, onCancelClick, onMarkCollected }) => {
                     )}
                 </div>
                 <div className="mt-3 pt-3 border-t border-dashed border-border">
-                    <p className="font-semibold text-foreground">Items:</p>
-                    <ul className="list-disc list-inside text-muted-foreground text-sm space-y-1">
-                        {order.items.map((item, index) => {
-                            const portionName = item.portion?.name;
-                            const addOns = (item.selectedAddOns || [])
-                                .map(addon => `${addon.quantity}x ${addon.name}`)
-                                .join(', ');
+                    <p className="font-semibold text-foreground mb-2">Items:</p>
+                    {(() => {
+                        // Group items by addedAt timestamp
+                        const itemGroups = [];
+                        const groupedByTime = {};
+
+                        order.items.forEach((item) => {
+                            // Get timestamp - handle both Firestore Timestamp and Date objects
+                            let timestamp;
+                            if (item.addedAt?.toDate) {
+                                timestamp = item.addedAt.toDate();
+                            } else if (item.addedAt) {
+                                timestamp = new Date(item.addedAt);
+                            } else {
+                                // Fallback to order date for items without timestamp
+                                timestamp = order.orderDate?.toDate ? order.orderDate.toDate() : new Date(order.orderDate);
+                            }
+
+                            const timeKey = timestamp.getTime();
+                            if (!groupedByTime[timeKey]) {
+                                groupedByTime[timeKey] = {
+                                    timestamp,
+                                    items: [],
+                                    isAddon: item.isAddon || false
+                                };
+                            }
+                            groupedByTime[timeKey].items.push(item);
+                        });
+
+                        // Convert to array and sort by timestamp
+                        const sortedGroups = Object.values(groupedByTime).sort((a, b) => a.timestamp - b.timestamp);
+
+                        // Check if item was added in last 5 minutes
+                        const isRecent = (timestamp) => {
+                            const now = new Date();
+                            const diff = now - timestamp;
+                            return diff < 5 * 60 * 1000; // 5 minutes
+                        };
+
+                        return sortedGroups.map((group, groupIndex) => {
+                            const isOriginal = groupIndex === 0;
+                            const isNew = isRecent(group.timestamp);
+                            const timeStr = group.timestamp.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true });
 
                             return (
-                                <li key={index}>
-                                    {item.quantity || item.qty}x {item.name}
-                                    {portionName && portionName.toLowerCase() !== 'full' && ` - ${portionName}`}
-                                    {addOns && <span className="text-xs text-primary block pl-4">({addOns})</span>}
-                                </li>
+                                <div
+                                    key={groupIndex}
+                                    className={cn(
+                                        "mb-3 p-2 rounded-lg border",
+                                        isOriginal ? "bg-card border-border" : "bg-amber-50/50 dark:bg-amber-900/10 border-amber-200 dark:border-amber-800"
+                                    )}
+                                >
+                                    <div className="flex items-center justify-between mb-1">
+                                        <div className="flex items-center gap-2">
+                                            {isOriginal ? (
+                                                <Package size={14} className="text-primary" />
+                                            ) : (
+                                                <PlusCircle size={14} className="text-amber-600" />
+                                            )}
+                                            <span className="text-xs font-semibold text-muted-foreground uppercase">
+                                                {isOriginal ? 'Original Order' : 'Added Items'}
+                                            </span>
+                                        </div>
+                                        <div className="flex items-center gap-2">
+                                            <Clock size={12} className="text-muted-foreground" />
+                                            <span className="text-xs text-muted-foreground">{timeStr}</span>
+                                            {isNew && !isOriginal && (
+                                                <span className="px-2 py-0.5 text-xs font-bold bg-green-500 text-white rounded-full animate-pulse">
+                                                    NEW
+                                                </span>
+                                            )}
+                                        </div>
+                                    </div>
+                                    <ul className="list-disc list-inside text-muted-foreground text-sm space-y-1 ml-2">
+                                        {group.items.map((item, itemIndex) => {
+                                            const portionName = item.portion?.name;
+                                            const addOns = (item.selectedAddOns || [])
+                                                .map(addon => `${addon.quantity}x ${addon.name}`)
+                                                .join(', ');
+
+                                            return (
+                                                <li key={itemIndex}>
+                                                    {item.quantity || item.qty}x {item.name}
+                                                    {portionName && portionName.toLowerCase() !== 'full' && ` - ${portionName}`}
+                                                    {addOns && <span className="text-xs text-primary block pl-4">({addOns})</span>}
+                                                </li>
+                                            );
+                                        })}
+                                    </ul>
+                                </div>
                             );
-                        })}
-                    </ul>
+                        });
+                    })()}
                 </div>
                 {order.status === 'rejected' && order.rejectionReason && (
                     <div className="mt-3 pt-3 border-t border-dashed border-red-500/30">

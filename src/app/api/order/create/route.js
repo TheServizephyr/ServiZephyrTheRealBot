@@ -122,7 +122,22 @@ export async function POST(req) {
                         throw new Error(`Cannot add items. Your order is ${orderData.status === 'Ready' ? 'being prepared' : orderData.status}. Please complete your current order first.`);
                     }
 
-                    const newItems = [...orderData.items, ...items];
+                    // Add timestamp to new items being added
+                    const currentTimestamp = new Date();
+                    const itemsWithTimestamp = items.map(item => ({
+                        ...item,
+                        addedAt: currentTimestamp,
+                        isAddon: true // Mark as add-on item
+                    }));
+
+                    // Ensure original items have addedAt timestamp (for backward compatibility)
+                    const existingItemsWithTimestamp = orderData.items.map(item => ({
+                        ...item,
+                        addedAt: item.addedAt || orderData.orderDate?.toDate?.() || new Date(orderData.orderDate) || currentTimestamp,
+                        isAddon: item.isAddon || false
+                    }));
+
+                    const newItems = [...existingItemsWithTimestamp, ...itemsWithTimestamp];
                     const newSubtotal = orderData.subtotal + subtotal;
                     const newCgst = orderData.cgst + cgst;
                     const newSgst = orderData.sgst + sgst;
@@ -136,7 +151,7 @@ export async function POST(req) {
                         totalAmount: newGrandTotal,
                         statusHistory: FieldValue.arrayUnion({
                             status: 'updated',
-                            timestamp: new Date(),
+                            timestamp: currentTimestamp,
                             notes: `Added ${items.length} new item(s).`
                         })
                     };
