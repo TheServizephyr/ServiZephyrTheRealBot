@@ -3,7 +3,7 @@
 import React, { useState, useEffect, Suspense } from 'react';
 import { motion } from 'framer-motion';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { User, LogOut, ChevronRight, ShoppingBag, MapPin, Settings, Edit, Save, XCircle, Trash2, KeyRound, Eye, EyeOff, FileText, Bot, Truck, Image as ImageIcon, Upload, X, IndianRupee, Wallet, ChevronsUpDown, Check, Store, ConciergeBell, Loader2, ArrowLeft, QrCode, Banknote, Mail, Phone } from 'lucide-react';
+import { User, LogOut, ChevronRight, ShoppingBag, MapPin, Settings, Edit, Save, XCircle, Trash2, KeyRound, Eye, EyeOff, FileText, Bot, Truck, Image as ImageIcon, Upload, X, IndianRupee, Wallet, ChevronsUpDown, Check, Store, ConciergeBell, Loader2, ArrowLeft, QrCode, Banknote, Mail, Phone, Package } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
@@ -359,7 +359,11 @@ function VendorProfilePageContent() {
                 convenienceFeeEnabled: editedUser.convenienceFeeEnabled || false,
                 convenienceFeeRate: editedUser.convenienceFeeRate || 2.5,
                 convenienceFeePaidBy: editedUser.convenienceFeePaidBy || 'customer',
+                convenienceFeeRate: editedUser.convenienceFeeRate || 2.5,
+                convenienceFeePaidBy: editedUser.convenienceFeePaidBy || 'customer',
                 convenienceFeeLabel: editedUser.convenienceFeeLabel || 'Payment Processing Fee',
+                packagingChargeEnabled: editedUser.packagingChargeEnabled || false,
+                packagingChargeAmount: editedUser.packagingChargeAmount || 0,
             };
         }
 
@@ -634,13 +638,40 @@ function VendorProfilePageContent() {
                         )}
                     </div>
 
-                    {/* Custom Charges - Placeholder for future */}
-                    <div className="pt-4 border-t">
-                        <div className="p-4 bg-muted/30 rounded-lg border-2 border-dashed">
-                            <p className="text-sm text-muted-foreground text-center">
-                                📦 <strong>Custom Charges</strong> (Packaging, Delivery, etc.) - Coming Soon!
-                            </p>
+                    {/* Packaging Charges */}
+                    <div className="space-y-4 pt-4 border-t">
+                        <div className="flex items-center justify-between p-4 bg-muted/50 rounded-lg">
+                            <Label htmlFor="packagingChargeEnabled" className="flex flex-col">
+                                <span className="font-bold text-lg flex items-center gap-2"><Package size={18} />Packaging Charges</span>
+                                <span className="text-sm text-muted-foreground">Charge for packing takeaway orders</span>
+                            </Label>
+                            <Switch
+                                id="packagingChargeEnabled"
+                                checked={editedUser.packagingChargeEnabled || false}
+                                onCheckedChange={(val) => setEditedUser({ ...editedUser, packagingChargeEnabled: val })}
+                                disabled={!isEditingCharges}
+                            />
                         </div>
+
+                        {editedUser.packagingChargeEnabled && (
+                            <div className="ml-6 p-4 border-l-4 border-primary/50 space-y-4 bg-muted/30 rounded">
+                                <div>
+                                    <Label htmlFor="packagingChargeAmount">Amount (₹)</Label>
+                                    <input
+                                        id="packagingChargeAmount"
+                                        type="number"
+                                        value={editedUser.packagingChargeAmount || 0}
+                                        onChange={e => setEditedUser({ ...editedUser, packagingChargeAmount: parseFloat(e.target.value) || 0 })}
+                                        disabled={!isEditingCharges}
+                                        className="mt-1 w-full p-2 border rounded-md bg-input border-border disabled:opacity-70"
+                                        placeholder="0"
+                                    />
+                                    <p className="text-xs text-muted-foreground mt-1">
+                                        This amount will be added to Takeaway orders.
+                                    </p>
+                                </div>
+                            </div>
+                        )}
                     </div>
                 </div>
             </SectionCard>
