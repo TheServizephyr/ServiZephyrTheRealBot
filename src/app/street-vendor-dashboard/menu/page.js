@@ -84,37 +84,78 @@ const MenuItem = ({ item, onEdit, onDelete, onToggle, onSelectItem, isSelected }
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         whileHover={{ y: -4, boxShadow: "0 10px 20px hsla(var(--primary), 0.2)" }}
-        className={cn("bg-card rounded-lg p-4 grid grid-cols-4 md:grid-cols-5 gap-4 items-center border border-border shadow-md hover:shadow-primary/20 hover:-translate-y-1 transition-all duration-300", isSelected && "bg-primary/10 border-primary ring-2 ring-primary")}
+        className={cn("bg-card rounded-lg p-3 md:p-4 border border-border shadow-md hover:shadow-primary/20 hover:-translate-y-1 transition-all duration-300", isSelected && "bg-primary/10 border-primary ring-2 ring-primary")}
     >
-        <div className="col-span-1 flex items-center gap-4">
-            <Checkbox
-                checked={isSelected}
-                onCheckedChange={() => onSelectItem(item.id)}
-                aria-label={`Select ${item.name}`}
-            />
-            <div className="relative w-16 h-16 rounded-md overflow-hidden bg-muted flex-shrink-0">
-                {item.imageUrl && item.imageUrl !== 'uploading...' ? (
-                    <Image src={item.imageUrl} alt={item.name} layout="fill" objectFit="cover" />
-                ) : (
-                    <ImageIcon size={32} className="text-muted-foreground absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2" />
-                )}
+        {/* Mobile Layout - Stacked */}
+        <div className="flex md:hidden flex-col gap-3">
+            {/* Top Row: Checkbox, Image, Name, Price */}
+            <div className="flex items-center gap-3">
+                <Checkbox
+                    checked={isSelected}
+                    onCheckedChange={() => onSelectItem(item.id)}
+                    aria-label={`Select ${item.name}`}
+                />
+                <div className="relative w-14 h-14 rounded-md overflow-hidden bg-muted flex-shrink-0">
+                    {item.imageUrl && item.imageUrl !== 'uploading...' ? (
+                        <Image src={item.imageUrl} alt={item.name} layout="fill" objectFit="cover" />
+                    ) : (
+                        <ImageIcon size={28} className="text-muted-foreground absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2" />
+                    )}
+                </div>
+                <div className="flex-1 min-w-0">
+                    <p className={`font-bold text-base truncate ${!item.isAvailable ? 'text-muted-foreground line-through' : 'text-foreground'}`}>{item.name}</p>
+                    <p className="text-green-500 font-semibold text-sm">₹{item.portions?.[0]?.price || 'N/A'}</p>
+                </div>
+            </div>
+            {/* Bottom Row: Switch and Action Buttons */}
+            <div className="flex items-center justify-between gap-2 pl-1">
+                <div className="flex items-center gap-2">
+                    <Switch id={`switch-${item.id}`} checked={item.isAvailable} onCheckedChange={(checked) => onToggle(item.id, checked)} />
+                    <Label htmlFor={`switch-${item.id}`} className="text-xs font-medium text-muted-foreground">{item.isAvailable ? 'Available' : 'Out of Stock'}</Label>
+                </div>
+                <div className="flex items-center gap-1">
+                    <Button onClick={() => onEdit(item)} size="icon" variant="ghost" className="h-8 w-8 text-muted-foreground hover:bg-muted hover:text-foreground">
+                        <Edit size={16} />
+                    </Button>
+                    <Button onClick={() => onDelete(item.id, item.name)} size="icon" variant="ghost" className="h-8 w-8 text-destructive hover:bg-destructive/10">
+                        <Trash2 size={16} />
+                    </Button>
+                </div>
             </div>
         </div>
-        <div className="col-span-3 md:col-span-2">
-            <p className={`font-bold text-lg ${!item.isAvailable ? 'text-muted-foreground line-through' : 'text-foreground'}`}>{item.name}</p>
-            <p className="text-green-500 font-semibold">₹{item.portions?.[0]?.price || 'N/A'}</p>
-        </div>
-        <div className="col-span-2 md:col-span-1 flex items-center justify-start md:justify-center gap-2">
-            <Switch id={`switch-${item.id}`} checked={item.isAvailable} onCheckedChange={(checked) => onToggle(item.id, checked)} />
-            <Label htmlFor={`switch-${item.id}`} className="text-sm font-medium text-muted-foreground">{item.isAvailable ? 'Available' : 'Out of Stock'}</Label>
-        </div>
-        <div className="col-span-2 md:col-span-1 flex items-center justify-end gap-2">
-            <Button onClick={() => onEdit(item)} size="icon" variant="ghost" className="text-muted-foreground hover:bg-muted hover:text-foreground">
-                <Edit />
-            </Button>
-            <Button onClick={() => onDelete(item.id, item.name)} size="icon" variant="ghost" className="text-destructive hover:bg-destructive/10">
-                <Trash2 />
-            </Button>
+
+        {/* Desktop Layout - Grid */}
+        <div className="hidden md:grid md:grid-cols-5 gap-4 items-center">
+            <div className="col-span-1 flex items-center gap-4">
+                <Checkbox
+                    checked={isSelected}
+                    onCheckedChange={() => onSelectItem(item.id)}
+                    aria-label={`Select ${item.name}`}
+                />
+                <div className="relative w-16 h-16 rounded-md overflow-hidden bg-muted flex-shrink-0">
+                    {item.imageUrl && item.imageUrl !== 'uploading...' ? (
+                        <Image src={item.imageUrl} alt={item.name} layout="fill" objectFit="cover" />
+                    ) : (
+                        <ImageIcon size={32} className="text-muted-foreground absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2" />
+                    )}
+                </div>
+            </div>
+            <div className="col-span-2">
+                <p className={`font-bold text-lg ${!item.isAvailable ? 'text-muted-foreground line-through' : 'text-foreground'}`}>{item.name}</p>
+                <p className="text-green-500 font-semibold">₹{item.portions?.[0]?.price || 'N/A'}</p>
+            </div>
+            <div className="col-span-1 flex items-center justify-center gap-2">
+                <Switch id={`switch-${item.id}-desktop`} checked={item.isAvailable} onCheckedChange={(checked) => onToggle(item.id, checked)} />
+                <Label htmlFor={`switch-${item.id}-desktop`} className="text-sm font-medium text-muted-foreground">{item.isAvailable ? 'Available' : 'Out of Stock'}</Label>
+            </div>
+            <div className="col-span-1 flex items-center justify-end gap-2">
+                <Button onClick={() => onEdit(item)} size="icon" variant="ghost" className="text-muted-foreground hover:bg-muted hover:text-foreground">
+                    <Edit />
+                </Button>
+                <Button onClick={() => onDelete(item.id, item.name)} size="icon" variant="ghost" className="text-destructive hover:bg-destructive/10">
+                    <Trash2 />
+                </Button>
+            </div>
         </div>
     </motion.div>
 );
