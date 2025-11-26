@@ -47,6 +47,8 @@ export async function POST(req) {
             pax_count,
             tab_name,
             dineInTabId,
+            diningPreference = null,
+            packagingCharge = 0,
             existingOrderId // <-- NEW: For adding items to an existing order
         } = body;
 
@@ -288,6 +290,8 @@ export async function POST(req) {
                 pax_count: pax_count, tab_name: tab_name,
                 status: 'pending',
                 dineInTabId: dineInTabId || null,
+                diningPreference: diningPreference || null,
+                packagingCharge: packagingCharge || 0,
                 orderDate: FieldValue.serverTimestamp(),
                 trackingToken: trackingToken,
             });
@@ -462,6 +466,8 @@ export async function POST(req) {
                 cgst: cgst || 0,
                 sgst: sgst || 0,
                 deliveryCharge: deliveryCharge || 0,
+                diningPreference: diningPreference || null,
+                packagingCharge: packagingCharge || 0,
                 totalAmount: grandTotal,
                 status: 'awaiting_payment', // Hidden from dashboard until payment completes
                 orderDate: FieldValue.serverTimestamp(),
@@ -518,7 +524,9 @@ export async function POST(req) {
                     pickupTime: pickupTime || '',
                     cgst: cgst || 0,
                     sgst: sgst || 0,
-                    deliveryCharge: deliveryCharge || 0
+                    deliveryCharge: deliveryCharge || 0,
+                    diningPreference: diningPreference || null,
+                    packagingCharge: packagingCharge || 0
                 }),
                 notes: notes || null,
                 trackingToken: trackingToken // Pass token to be saved
@@ -646,6 +654,8 @@ export async function POST(req) {
             cgst: cgst || 0,
             sgst: sgst || 0,
             deliveryCharge: deliveryCharge || 0,
+            diningPreference: diningPreference || null,
+            packagingCharge: packagingCharge || 0,
             totalAmount: grandTotal,
             status: 'pending', // Always start as pending
             orderDate: FieldValue.serverTimestamp(),
