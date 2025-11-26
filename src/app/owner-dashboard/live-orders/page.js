@@ -1137,7 +1137,6 @@ export default function LiveOrdersPage() {
                                         </td>
                                     </motion.tr>
                                 ))}
-                            }
                             </AnimatePresence>
                             {!loading && filteredAndSortedOrders.length === 0 && (
                                 <tr>
