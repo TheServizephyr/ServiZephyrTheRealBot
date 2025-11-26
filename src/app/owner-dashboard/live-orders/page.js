@@ -830,7 +830,7 @@ export default function LiveOrdersPage() {
                                             <td className="p-4"><div className="h-8 bg-muted rounded w-full"></div></td>
                                         </tr>
                                     ))
-                                ) : filteredAndSortedOrders.map(order => (
+                                ) : (filteredAndSortedOrders.map(order => (
                                     <motion.tr
                                         key={order.id}
                                         layout
@@ -1136,7 +1136,7 @@ export default function LiveOrdersPage() {
                                             />
                                         </td>
                                     </motion.tr>
-                                ))}
+                                )))}
                             </AnimatePresence>
                             {!loading && filteredAndSortedOrders.length === 0 && (
                                 <tr>
