@@ -2,7 +2,7 @@
 'use client'
 
 import { motion, useInView, animate } from 'framer-motion'
-import { CheckCircle, Bot, Zap, Rocket, Users, ArrowRight, Star, ShoppingCart, BarChart2, MessageSquare, Briefcase, Store, Soup, Pizza, Feather, Check, Salad, Link as LinkIcon, Edit, Share2, Camera, Split, LayoutDashboard } from 'lucide-react'
+import { CheckCircle, Bot, Zap, Rocket, Users, ArrowRight, Star, ShoppingCart, BarChart2, MessageSquare, Briefcase, Store, Soup, Pizza, Feather, Check, Salad, Link as LinkIcon, Edit, Share2, Camera, Split, LayoutDashboard, Truck, Hash, Bell, Clock, QrCode, PackageCheck } from 'lucide-react'
 import Image from 'next/image'
 import Link from 'next/link'
 import React, { useEffect, useRef, useState } from 'react'
@@ -83,186 +83,186 @@ const AnimatedNumber = ({ value, suffix = '', prefix = '' }) => {
 };
 
 const AnimatedWhatShop = () => {
-    const [part1, setPart1] = useState('');
-    const [part2, setPart2] = useState('');
-    const isMounted = useRef(true);
+  const [part1, setPart1] = useState('');
+  const [part2, setPart2] = useState('');
+  const isMounted = useRef(true);
 
-    useEffect(() => {
-      isMounted.current = true;
-      const sequence = async () => {
-        while (isMounted.current) {
-          // 1. Type WhatsApp
-          setPart1('');
-          setPart2('');
-          const whatsAppText = "WhatsApp";
-          for (let i = 1; i <= whatsAppText.length; i++) {
-              if(!isMounted.current) return;
-              setPart1(whatsAppText.substring(0, i));
-              await new Promise(res => setTimeout(res, 80));
-          }
-          await new Promise(res => setTimeout(res, 1200));
-          if(!isMounted.current) return;
-  
-          // 2. Delete App
-          for (let i = "App".length; i >= 1; i--) {
-            if(!isMounted.current) return;
-            setPart1("Whats" + "App".substring(0, i-1));
-            await new Promise(res => setTimeout(res, 120));
-          }
-          setPart1("Whats");
-          await new Promise(res => setTimeout(res, 400));
-          if(!isMounted.current) return;
-          
-          // 3. Type Shop
-          const shopText = 'Shop';
-          let tempShopText = '';
-          for (const char of shopText) {
-              if(!isMounted.current) return;
-              tempShopText += char;
-              setPart2(tempShopText);
-              await new Promise(res => setTimeout(res, 150));
-          }
-          await new Promise(res => setTimeout(res, 2500));
-          if(!isMounted.current) return;
-
-          // 4. Delete WhatShop
-          const fullText = "WhatShop";
-           for (let i = fullText.length; i >= 0; i--) {
-            if(!isMounted.current) return;
-            setPart1(fullText.substring(0, i));
-            setPart2('');
-            await new Promise(res => setTimeout(res, 60));
-          }
-          await new Promise(res => setTimeout(res, 500));
-          if(!isMounted.current) return;
+  useEffect(() => {
+    isMounted.current = true;
+    const sequence = async () => {
+      while (isMounted.current) {
+        // 1. Type WhatsApp
+        setPart1('');
+        setPart2('');
+        const whatsAppText = "WhatsApp";
+        for (let i = 1; i <= whatsAppText.length; i++) {
+          if (!isMounted.current) return;
+          setPart1(whatsAppText.substring(0, i));
+          await new Promise(res => setTimeout(res, 80));
         }
-      };
-  
-      sequence();
-  
-      return () => {
-        isMounted.current = false;
+        await new Promise(res => setTimeout(res, 1200));
+        if (!isMounted.current) return;
+
+        // 2. Delete App
+        for (let i = "App".length; i >= 1; i--) {
+          if (!isMounted.current) return;
+          setPart1("Whats" + "App".substring(0, i - 1));
+          await new Promise(res => setTimeout(res, 120));
+        }
+        setPart1("Whats");
+        await new Promise(res => setTimeout(res, 400));
+        if (!isMounted.current) return;
+
+        // 3. Type Shop
+        const shopText = 'Shop';
+        let tempShopText = '';
+        for (const char of shopText) {
+          if (!isMounted.current) return;
+          tempShopText += char;
+          setPart2(tempShopText);
+          await new Promise(res => setTimeout(res, 150));
+        }
+        await new Promise(res => setTimeout(res, 2500));
+        if (!isMounted.current) return;
+
+        // 4. Delete WhatShop
+        const fullText = "WhatShop";
+        for (let i = fullText.length; i >= 0; i--) {
+          if (!isMounted.current) return;
+          setPart1(fullText.substring(0, i));
+          setPart2('');
+          await new Promise(res => setTimeout(res, 60));
+        }
+        await new Promise(res => setTimeout(res, 500));
+        if (!isMounted.current) return;
       }
-      
-    }, []);
-  
-    return (
-        <h2 
-          className="font-headline text-4xl sm:text-5xl md:text-6xl tracking-tighter leading-tight font-bold transition-colors duration-500"
-          style={{ minHeight: '70px' }}
-        >
-          <span style={{ color: '#25D366' }}>{part1}</span>
-          <span style={{ color: 'hsl(var(--primary))' }}>{part2}</span>
-          <span className="animate-ping" style={{color: 'hsl(var(--muted-foreground))'}}>|</span>
-        </h2>
-    );
+    };
+
+    sequence();
+
+    return () => {
+      isMounted.current = false;
+    }
+
+  }, []);
+
+  return (
+    <h2
+      className="font-headline text-4xl sm:text-5xl md:text-6xl tracking-tighter leading-tight font-bold transition-colors duration-500"
+      style={{ minHeight: '70px' }}
+    >
+      <span style={{ color: '#25D366' }}>{part1}</span>
+      <span style={{ color: 'hsl(var(--primary))' }}>{part2}</span>
+      <span className="animate-ping" style={{ color: 'hsl(var(--muted-foreground))' }}>|</span>
+    </h2>
+  );
 };
 
 const AnimatedSubheadline = () => {
-    const [part1, setPart1] = useState('');
-    const [part2, setPart2] = useState('');
-    const isMounted = useRef(true);
-  
-    useEffect(() => {
-      isMounted.current = true;
-      const sequence = async () => {
-        while (isMounted.current) {
-          // 1. Type WhatsApp
-          setPart1('');
-          setPart2('');
-          const whatsAppText = "WhatsApp";
-          for (let i = 1; i <= whatsAppText.length; i++) {
-              if(!isMounted.current) return;
-              setPart1(whatsAppText.substring(0, i));
-              await new Promise(res => setTimeout(res, 80));
-          }
-          await new Promise(res => setTimeout(res, 1200));
-          if(!isMounted.current) return;
-  
-          // 2. Delete App
-          for (let i = "App".length; i >= 1; i--) {
-            if(!isMounted.current) return;
-            setPart1("Whats" + "App".substring(0, i-1));
-            await new Promise(res => setTimeout(res, 120));
-          }
-          setPart1("Whats");
-          await new Promise(res => setTimeout(res, 400));
-          if(!isMounted.current) return;
-          
-          // 3. Type Shop
-          const shopText = 'Shop';
-          let tempShopText = '';
-          for (const char of shopText) {
-              if(!isMounted.current) return;
-              tempShopText += char;
-              setPart2(tempShopText);
-              await new Promise(res => setTimeout(res, 150));
-          }
-          await new Promise(res => setTimeout(res, 2500));
-          if(!isMounted.current) return;
+  const [part1, setPart1] = useState('');
+  const [part2, setPart2] = useState('');
+  const isMounted = useRef(true);
 
-          // 4. Delete WhatShop
-          const fullText = "WhatShop";
-           for (let i = fullText.length; i >= 0; i--) {
-            if(!isMounted.current) return;
-            setPart1(fullText.substring(0, i));
-            setPart2('');
-            await new Promise(res => setTimeout(res, 60));
-          }
-          await new Promise(res => setTimeout(res, 500));
-          if(!isMounted.current) return;
+  useEffect(() => {
+    isMounted.current = true;
+    const sequence = async () => {
+      while (isMounted.current) {
+        // 1. Type WhatsApp
+        setPart1('');
+        setPart2('');
+        const whatsAppText = "WhatsApp";
+        for (let i = 1; i <= whatsAppText.length; i++) {
+          if (!isMounted.current) return;
+          setPart1(whatsAppText.substring(0, i));
+          await new Promise(res => setTimeout(res, 80));
         }
-      };
-  
-      sequence();
-  
-      return () => {
-        isMounted.current = false;
-      }
-      
-    }, []);
+        await new Promise(res => setTimeout(res, 1200));
+        if (!isMounted.current) return;
 
-    return (
-         <h3 className="text-xl md:text-2xl text-muted-foreground">
-            Ab lijiye direct orders customer ke <span style={{ color: '#25D366' }}>{part1}</span><span style={{ color: 'hsl(var(--primary))' }}>{part2}</span> se.
-        </h3>
-    );
+        // 2. Delete App
+        for (let i = "App".length; i >= 1; i--) {
+          if (!isMounted.current) return;
+          setPart1("Whats" + "App".substring(0, i - 1));
+          await new Promise(res => setTimeout(res, 120));
+        }
+        setPart1("Whats");
+        await new Promise(res => setTimeout(res, 400));
+        if (!isMounted.current) return;
+
+        // 3. Type Shop
+        const shopText = 'Shop';
+        let tempShopText = '';
+        for (const char of shopText) {
+          if (!isMounted.current) return;
+          tempShopText += char;
+          setPart2(tempShopText);
+          await new Promise(res => setTimeout(res, 150));
+        }
+        await new Promise(res => setTimeout(res, 2500));
+        if (!isMounted.current) return;
+
+        // 4. Delete WhatShop
+        const fullText = "WhatShop";
+        for (let i = fullText.length; i >= 0; i--) {
+          if (!isMounted.current) return;
+          setPart1(fullText.substring(0, i));
+          setPart2('');
+          await new Promise(res => setTimeout(res, 60));
+        }
+        await new Promise(res => setTimeout(res, 500));
+        if (!isMounted.current) return;
+      }
+    };
+
+    sequence();
+
+    return () => {
+      isMounted.current = false;
+    }
+
+  }, []);
+
+  return (
+    <h3 className="text-xl md:text-2xl text-muted-foreground">
+      Ab lijiye direct orders customer ke <span style={{ color: '#25D366' }}>{part1}</span><span style={{ color: 'hsl(var(--primary))' }}>{part2}</span> se - <span className="text-primary font-semibold">Restaurants se lekar Street Vendors tak</span>.
+    </h3>
+  );
 };
 
 const FeatureCard = ({ icon, title, description, benefits }) => {
-    return (
-        <div 
-            className="bg-card border border-border rounded-xl p-6 hover:shadow-lg hover:-translate-y-1 transition-all duration-300"
-        >
-            <div className="flex items-center gap-4 mb-4">
-                <div className="p-3 bg-primary/10 rounded-full text-primary">{icon}</div>
-                <h4 className="text-xl font-bold text-foreground">{title}</h4>
-            </div>
-            <p className="text-muted-foreground text-sm mb-4">{description}</p>
-            <ul className="space-y-2">
-                {benefits.map((benefit, i) => (
-                    <li key={i} className="flex items-start gap-2 text-sm">
-                        <Check size={16} className="text-green-500 mt-1 flex-shrink-0" />
-                        <span className="text-muted-foreground">{benefit}</span>
-                    </li>
-                ))}
-            </ul>
-        </div>
-    )
+  return (
+    <div
+      className="bg-card border border-border rounded-xl p-6 hover:shadow-lg hover:-translate-y-1 transition-all duration-300"
+    >
+      <div className="flex items-center gap-4 mb-4">
+        <div className="p-3 bg-primary/10 rounded-full text-primary">{icon}</div>
+        <h4 className="text-xl font-bold text-foreground">{title}</h4>
+      </div>
+      <p className="text-muted-foreground text-sm mb-4">{description}</p>
+      <ul className="space-y-2">
+        {benefits.map((benefit, i) => (
+          <li key={i} className="flex items-start gap-2 text-sm">
+            <Check size={16} className="text-green-500 mt-1 flex-shrink-0" />
+            <span className="text-muted-foreground">{benefit}</span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  )
 }
 
 const UniqueFeatureCard = ({ icon, title, description, custom }) => (
-    <motion.div
-      variants={cardVariants}
-      custom={custom}
-      className="bg-card border border-border rounded-xl p-8 text-center flex flex-col items-center hover:shadow-lg hover:border-primary transition-all duration-300"
-    >
-      <div className="flex h-20 w-20 items-center justify-center rounded-full bg-primary/10 border-2 border-primary text-primary mb-6">
-        {icon}
-      </div>
-      <h4 className="text-2xl font-bold text-foreground mb-3">{title}</h4>
-      <p className="text-muted-foreground flex-grow">{description}</p>
-    </motion.div>
+  <motion.div
+    variants={cardVariants}
+    custom={custom}
+    className="bg-card border border-border rounded-xl p-8 text-center flex flex-col items-center hover:shadow-lg hover:border-primary transition-all duration-300"
+  >
+    <div className="flex h-20 w-20 items-center justify-center rounded-full bg-primary/10 border-2 border-primary text-primary mb-6">
+      {icon}
+    </div>
+    <h4 className="text-2xl font-bold text-foreground mb-3">{title}</h4>
+    <p className="text-muted-foreground flex-grow">{description}</p>
+  </motion.div>
 );
 
 
@@ -284,19 +284,19 @@ export default function Home() {
 
         {/* Hero Section */}
         <section className="relative w-full flex flex-col justify-center items-center py-20 md:py-32">
-          <video 
-            src="/Animated_Hero_Video_for_Website.mp4" 
-            autoPlay 
-            loop 
-            muted 
+          <video
+            src="/Animated_Hero_Video_for_Website.mp4"
+            autoPlay
+            loop
+            muted
             playsInline
             className="absolute top-0 left-0 min-w-full min-h-full object-cover sm:object-cover z-0 opacity-20"
           />
           <div className="absolute inset-0 bg-gradient-to-r from-background/30 via-background/70 to-background/30 z-10"></div>
-          
+
           <div className="relative container px-4 md:px-6 text-center z-20">
             <div className="max-w-4xl mx-auto flex flex-col items-center">
-               <h1 className="font-headline text-4xl sm:text-5xl md:text-7xl tracking-tighter leading-tight text-foreground">
+              <h1 className="font-headline text-4xl sm:text-5xl md:text-7xl tracking-tighter leading-tight text-foreground">
                 Your Business. Your Customers. Your Control.
               </h1>
 
@@ -305,30 +305,30 @@ export default function Home() {
               </div>
 
               {animationFinished && (
-                  <motion.div
-                    className="flex flex-col items-center w-full"
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ duration: 0.8, ease: "easeOut" }}
+                <motion.div
+                  className="flex flex-col items-center w-full"
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.8, ease: "easeOut" }}
+                >
+                  <AnimatedSubheadline />
+                  <h2 className="text-2xl sm:text-3xl md:text-4xl font-bold tracking-tight text-foreground mt-6">
+                    Cut Commission. Boost Profits by <span className="text-green-500">25%+.</span>
+                  </h2>
+                  <MotionLink
+                    href="/join-waitlist"
+                    className="mt-8 bg-primary text-primary-foreground font-bold py-4 px-10 rounded-lg text-xl hover:bg-primary/90 transition-transform transform hover:scale-105 inline-flex items-center gap-3 shadow-lg shadow-primary/30"
+                    whileHover={{ scale: 1.05 }}
+                    whileTap={{ scale: 0.95 }}
                   >
-                    <AnimatedSubheadline />
-                     <h2 className="text-2xl sm:text-3xl md:text-4xl font-bold tracking-tight text-foreground mt-6">
-                        Cut Commission. Boost Profits by <span className="text-green-500">25%+.</span>
-                    </h2>
-                     <MotionLink 
-                        href="/join-waitlist"
-                        className="mt-8 bg-primary text-primary-foreground font-bold py-4 px-10 rounded-lg text-xl hover:bg-primary/90 transition-transform transform hover:scale-105 inline-flex items-center gap-3 shadow-lg shadow-primary/30"
-                        whileHover={{ scale: 1.05 }}
-                        whileTap={{ scale: 0.95 }}
-                    >
-                      <Feather size={24} /> Join the Waitlist Now
-                    </MotionLink>
-                  </motion.div>
-                )}
+                    <Feather size={24} /> Join the Waitlist Now
+                  </MotionLink>
+                </motion.div>
+              )}
             </div>
           </div>
         </section>
-        
+
         {/* How It Works Section */}
         <motion.section
           id="how-it-works"
@@ -348,10 +348,10 @@ export default function Home() {
             {/* Dashed line for desktop */}
             <div className="absolute top-12 left-0 right-0 h-px -translate-y-1/2 hidden md:block">
               <svg width="100%" height="100%">
-                <line x1="0" y1="50%" x2="100%" y2="50%" strokeWidth="2" stroke="hsl(var(--border))" strokeDasharray="8 8"/>
+                <line x1="0" y1="50%" x2="100%" y2="50%" strokeWidth="2" stroke="hsl(var(--border))" strokeDasharray="8 8" />
               </svg>
             </div>
-            
+
             {[
               {
                 icon: <LinkIcon className="h-8 w-8" />,
@@ -389,68 +389,68 @@ export default function Home() {
           viewport={{ once: true, amount: 0.3 }}
           variants={sectionVariants}
         >
-            <div className="container mx-auto px-4">
-                <h2 className="mb-4 text-center text-3xl font-bold tracking-tighter sm:text-4xl md:text-5xl text-foreground">The Command Center You've Always Wanted</h2>
-                <p className="mx-auto mb-16 max-w-3xl text-center text-lg text-muted-foreground md:text-xl">
-                    Stop guessing, start growing. Our dashboard gives you a bird's-eye view of your entire operation, with actionable insights to boost your bottom line.
-                </p>
+          <div className="container mx-auto px-4">
+            <h2 className="mb-4 text-center text-3xl font-bold tracking-tighter sm:text-4xl md:text-5xl text-foreground">The Command Center You've Always Wanted</h2>
+            <p className="mx-auto mb-16 max-w-3xl text-center text-lg text-muted-foreground md:text-xl">
+              Stop guessing, start growing. Our dashboard gives you a bird's-eye view of your entire operation, with actionable insights to boost your bottom line.
+            </p>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                    {/* Feature 1: Live Order Dashboard */}
-                    <motion.div 
-                        className="flex flex-col"
-                        initial={{opacity: 0, y: 50}} 
-                        whileInView={{opacity: 1, y: 0, transition:{duration: 0.7}}} 
-                        viewport={{ once: true, amount: 0.5 }}
-                    >
-                        <div className="p-6 bg-background rounded-t-lg">
-                          <h3 className="text-2xl font-bold text-primary">Live Order Dashboard</h3>
-                          <p className="mt-2 text-muted-foreground">Never miss an order. Get a real-time stream of incoming WhatsApp orders on a clean, intuitive interface. Manage status, accept, and dispatch with a single click.</p>
-                        </div>
-                        <div className="flex-grow p-2 bg-muted rounded-b-lg border border-border">
-                            <div className="rounded-lg border bg-background p-1.5 shadow-lg">
-                                {/* USER: Replace this with your screenshot */}
-                                <Image 
-                                    src="/live-orders.png" // BHAI: Yahan apne live orders page ka screenshot daalna. Example: "/live-orders.png"
-                                    alt="Live Order Dashboard Mockup"
-                                    width={1000} // Screenshot ki width
-                                    height={600} // Screenshot ki height
-                                    className="rounded-md"
-                                />
-                            </div>
-                        </div>
-                    </motion.div>
-
-                    {/* Feature 2: Analytics */}
-                    <motion.div 
-                        className="flex flex-col"
-                        initial={{opacity: 0, y: 50}} 
-                        whileInView={{opacity: 1, y: 0, transition:{duration: 0.7, delay: 0.2}}} 
-                        viewport={{ once: true, amount: 0.5 }}
-                    >
-                        <div className="p-6 bg-background rounded-t-lg">
-                          <h3 className="text-2xl font-bold text-primary">Growth Engine: Analytics</h3>
-                          <p className="mt-2 text-muted-foreground">Track your revenue, top-selling items, and busiest hours to make smarter business decisions. All the data you need, beautifully visualized.</p>
-                        </div>
-                        <div className="flex-grow p-2 bg-muted rounded-b-lg border border-border">
-                            <div className="rounded-lg border bg-background p-1.5 shadow-lg">
-                                {/* USER: Replace this with your screenshot */}
-                                <Image 
-                                    src="/analytics.png" // BHAI: Yahan apne analytics page ka screenshot daalna. Example: "/analytics.png"
-                                    alt="Analytics Chart Mockup"
-                                    width={1000} // Screenshot ki width
-                                    height={600} // Screenshot ki height
-                                    className="rounded-md"
-                                />
-                            </div>
-                        </div>
-                    </motion.div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+              {/* Feature 1: Live Order Dashboard */}
+              <motion.div
+                className="flex flex-col"
+                initial={{ opacity: 0, y: 50 }}
+                whileInView={{ opacity: 1, y: 0, transition: { duration: 0.7 } }}
+                viewport={{ once: true, amount: 0.5 }}
+              >
+                <div className="p-6 bg-background rounded-t-lg">
+                  <h3 className="text-2xl font-bold text-primary">Live Order Dashboard</h3>
+                  <p className="mt-2 text-muted-foreground">Never miss an order. Get a real-time stream of incoming WhatsApp orders on a clean, intuitive interface. Manage status, accept, and dispatch with a single click.</p>
                 </div>
+                <div className="flex-grow p-2 bg-muted rounded-b-lg border border-border">
+                  <div className="rounded-lg border bg-background p-1.5 shadow-lg">
+                    {/* USER: Replace this with your screenshot */}
+                    <Image
+                      src="/live-orders.png" // BHAI: Yahan apne live orders page ka screenshot daalna. Example: "/live-orders.png"
+                      alt="Live Order Dashboard Mockup"
+                      width={1000} // Screenshot ki width
+                      height={600} // Screenshot ki height
+                      className="rounded-md"
+                    />
+                  </div>
+                </div>
+              </motion.div>
+
+              {/* Feature 2: Analytics */}
+              <motion.div
+                className="flex flex-col"
+                initial={{ opacity: 0, y: 50 }}
+                whileInView={{ opacity: 1, y: 0, transition: { duration: 0.7, delay: 0.2 } }}
+                viewport={{ once: true, amount: 0.5 }}
+              >
+                <div className="p-6 bg-background rounded-t-lg">
+                  <h3 className="text-2xl font-bold text-primary">Growth Engine: Analytics</h3>
+                  <p className="mt-2 text-muted-foreground">Track your revenue, top-selling items, and busiest hours to make smarter business decisions. All the data you need, beautifully visualized.</p>
+                </div>
+                <div className="flex-grow p-2 bg-muted rounded-b-lg border border-border">
+                  <div className="rounded-lg border bg-background p-1.5 shadow-lg">
+                    {/* USER: Replace this with your screenshot */}
+                    <Image
+                      src="/analytics.png" // BHAI: Yahan apne analytics page ka screenshot daalna. Example: "/analytics.png"
+                      alt="Analytics Chart Mockup"
+                      width={1000} // Screenshot ki width
+                      height={600} // Screenshot ki height
+                      className="rounded-md"
+                    />
+                  </div>
+                </div>
+              </motion.div>
             </div>
+          </div>
         </motion.section>
 
         {/* Feature Breakdown Section - REBUILT AND FIXED */}
-        <motion.section 
+        <motion.section
           id="features"
           initial="hidden"
           whileInView="visible"
@@ -468,23 +468,23 @@ export default function Home() {
               <TabsTrigger value="dashboard" className="h-10"><BarChart2 className="mr-2 h-4 w-4" /> Owner Command Center</TabsTrigger>
               <TabsTrigger value="growth" className="h-10"><Rocket className="mr-2 h-4 w-4" /> Growth Toolkit</TabsTrigger>
             </TabsList>
-            
+
             <TabsContent value="ordering" className="mt-8">
               <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
                 <FeatureCard
-                  icon={<MessageSquare/>}
+                  icon={<MessageSquare />}
                   title="Live Interactive Menu"
                   description="Let customers order from a beautiful, interactive menu directly on WhatsApp. No apps, no logins, no friction."
                   benefits={["No app download needed", "Familiar and fast interface", "Reduces ordering friction"]}
                 />
                 <FeatureCard
-                  icon={<Zap/>}
+                  icon={<Zap />}
                   title="Integrated Payments"
                   description="Securely accept payments via UPI, Credit/Debit Cards, and Netbanking right in the chat."
                   benefits={["Supports all major payment methods", "Instant payment confirmations", "Reduces COD dependency"]}
                 />
                 <FeatureCard
-                  icon={<Bot/>}
+                  icon={<Bot />}
                   title="Automated Communication"
                   description="Keep customers informed with automated confirmations, status updates, and feedback requests."
                   benefits={["Saves staff time", "Improves customer experience", "Builds trust and transparency"]}
@@ -494,19 +494,19 @@ export default function Home() {
             <TabsContent value="dashboard" className="mt-8">
               <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
                 <FeatureCard
-                  icon={<BarChart2/>}
+                  icon={<BarChart2 />}
                   title="Real-time Analytics"
                   description="Track revenue, top-selling items, and busiest hours to make smarter business decisions."
                   benefits={["Identify popular dishes", "Optimize your pricing strategy", "Understand sales trends instantly"]}
                 />
                 <FeatureCard
-                  icon={<Salad/>}
+                  icon={<Salad />}
                   title="Dynamic Menu Control"
                   description="Update your menu, change prices, or mark items 'out of stock' from anywhere, at any time."
                   benefits={["Instantly reflect changes to customers", "Avoid disappointed customers", "Run flash sales or daily specials easily"]}
                 />
                 <FeatureCard
-                  icon={<Users/>}
+                  icon={<Users />}
                   title="Customer Hub (CRM)"
                   description="Finally, own your customer data. See who your most loyal customers are and understand their habits."
                   benefits={["Identify your VIPs", "View order history and preferences", "Build long-term relationships"]}
@@ -516,19 +516,19 @@ export default function Home() {
             <TabsContent value="growth" className="mt-8">
               <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
                 <FeatureCard
-                  icon={<Rocket/>}
+                  icon={<Rocket />}
                   title="WhatsApp Marketing"
                   description="Send promotions, new menu alerts, and festival offers directly to your customers' phones."
                   benefits={["Highest open rates in the industry", "Run targeted campaigns for specific customer segments", "Drive repeat business effectively"]}
                 />
                 <FeatureCard
-                  icon={<Star/>}
+                  icon={<Star />}
                   title="Feedback & Reviews"
                   description="Automatically request feedback after every order to improve your service and build social proof."
                   benefits={["Address issues proactively", "Understand customer satisfaction", "Encourage positive online reviews"]}
                 />
                 <FeatureCard
-                  icon={<CheckCircle/>}
+                  icon={<CheckCircle />}
                   title="QR Code Ordering"
                   description="Generate unique QR codes for tables, flyers, or packaging that open your WhatsApp menu instantly."
                   benefits={["Enable contactless dine-in ordering", "Bridge offline marketing with online sales", "Track campaign effectiveness"]}
@@ -575,7 +575,7 @@ export default function Home() {
 
 
         {/* Target Audience Section */}
-        <motion.section 
+        <motion.section
           className="bg-card py-20 sm:py-28"
           initial="hidden"
           whileInView="visible"
@@ -583,13 +583,14 @@ export default function Home() {
           variants={sectionVariants}
         >
           <div className="container mx-auto px-4">
-            <h2 className="mb-12 text-center text-3xl font-bold tracking-tighter sm:text-4xl md:text-5xl text-foreground">Built for Every Kind of Food Business</h2>
-            <div className="grid grid-cols-2 gap-8 md:grid-cols-4">
+            <h2 className="mb-12 text-center text-3xl font-bold tracking-tighter sm:text-4xl md:text-5xl text-foreground">Built for Every Kind of Food Business - Big or Small</h2>
+            <div className="grid grid-cols-2 gap-8 md:grid-cols-5">
               {[
                 { icon: <Store className="h-10 w-10 text-primary" />, name: 'QSRs' },
                 { icon: <Briefcase className="h-10 w-10 text-primary" />, name: 'Cloud Kitchens' },
                 { icon: <Soup className="h-10 w-10 text-primary" />, name: 'Restaurants' },
                 { icon: <Pizza className="h-10 w-10 text-primary" />, name: 'Cafes & Bakeries' },
+                { icon: <Truck className="h-10 w-10 text-primary" />, name: 'Street Vendors' },
               ].map((item, i) => (
                 <motion.div key={item.name} custom={i} variants={cardVariants} className="flex flex-col items-center text-center">
                   <div className="flex h-24 w-24 items-center justify-center rounded-full bg-background shadow-inner">
@@ -603,7 +604,7 @@ export default function Home() {
         </motion.section>
 
         {/* Comparison Table Section */}
-        <motion.section 
+        <motion.section
           className="bg-background py-20 sm:py-28"
           initial="hidden"
           whileInView="visible"
@@ -629,6 +630,7 @@ export default function Home() {
                     { feature: "Menu Control & Pricing", servizephyr: "Full Control", aggregators: "Limited / Conditional" },
                     { feature: "Payment Gateway Charges", servizephyr: "As per actuals", aggregators: "Included in commission" },
                     { feature: "Brand Building", servizephyr: "Your Own Brand", aggregators: "On Their Platform" },
+                    { feature: "Street Vendor Support", servizephyr: "Full Support", aggregators: "Not Available" },
                   ].map(item => (
                     <TableRow key={item.feature}>
                       <TableCell className="font-medium text-foreground">{item.feature}</TableCell>
@@ -643,7 +645,7 @@ export default function Home() {
         </motion.section>
 
         {/* Pricing Section */}
-        <motion.section 
+        <motion.section
           id="pricing"
           initial="hidden"
           whileInView="visible"
@@ -662,7 +664,7 @@ export default function Home() {
                 <li className="flex items-center"><CheckCircle className="mr-2 h-5 w-5 text-primary" /> Owner Dashboard</li>
                 <li className="flex items-center"><CheckCircle className="mr-2 h-5 w-5 text-primary" /> Menu Management</li>
                 <li className="flex items-center"><CheckCircle className="mr-2 h-5 w-5 text-primary" /> Growth Toolkit</li>
-                 <li className="flex items-center"><CheckCircle className="mr-2 h-5 w-5 text-primary" /> Customer Hub (CRM)</li>
+                <li className="flex items-center"><CheckCircle className="mr-2 h-5 w-5 text-primary" /> Customer Hub (CRM)</li>
               </ul>
               <MotionLink
                 href="/join-waitlist"
@@ -677,7 +679,7 @@ export default function Home() {
         </motion.section>
 
         {/* FAQ Section */}
-        <motion.section 
+        <motion.section
           id="faq"
           initial="hidden"
           whileInView="visible"
