@@ -745,6 +745,18 @@ export default function StreetVendorMenuPage() {
         setIsAddItemModalOpen(true);
     };
 
+    const handleToggleSelection = (itemId) => {
+        setSelectedItems(prev => {
+            if (prev.includes(itemId)) {
+                // Remove from selection
+                return prev.filter(id => id !== itemId);
+            } else {
+                // Add to selection
+                return [...prev, itemId];
+            }
+        });
+    };
+
     const handleBulkAction = async (action) => {
         if (selectedItems.length === 0) return;
         const confirmMessage = action === 'delete'
@@ -871,7 +883,7 @@ export default function StreetVendorMenuPage() {
                                             onToggle={handleToggleAvailability}
                                             onDelete={handleDeleteItem}
                                             onEdit={handleEditItem}
-                                            onSelectItem={setSelectedItems}
+                                            onSelectItem={handleToggleSelection}
                                             isSelected={selectedItems.includes(item.id)}
                                         />
                                     ))}
