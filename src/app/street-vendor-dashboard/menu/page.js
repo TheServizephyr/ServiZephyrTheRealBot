@@ -21,18 +21,18 @@ import { Checkbox } from '@/components/ui/checkbox';
 import imageCompression from 'browser-image-compression';
 
 
-const ConfirmationModal = ({ isOpen, onClose, onConfirm, itemName }) => (
+const ConfirmationModal = ({ isOpen, onClose, onConfirm, title, message, confirmText = "Confirm", confirmVariant = "destructive" }) => (
     <Dialog open={isOpen} onOpenChange={onClose}>
         <DialogContent className="bg-card border-border text-foreground">
             <DialogHeader>
-                <DialogTitle>Confirm Deletion</DialogTitle>
+                <DialogTitle>{title}</DialogTitle>
                 <DialogDescription>
-                    Are you sure you want to permanently delete the item: <span className="font-bold text-primary">{itemName}</span>? This action cannot be undone.
+                    {message}
                 </DialogDescription>
             </DialogHeader>
             <DialogFooter>
                 <Button variant="secondary" onClick={onClose}>Cancel</Button>
-                <Button variant="destructive" onClick={onConfirm}>Confirm Delete</Button>
+                <Button variant={confirmVariant} onClick={onConfirm}>{confirmText}</Button>
             </DialogFooter>
         </DialogContent>
     </Dialog>
@@ -584,6 +584,7 @@ export default function StreetVendorMenuPage() {
     const [customCategories, setCustomCategories] = useState([]);
     const [itemToDelete, setItemToDelete] = useState(null);
     const [selectedItems, setSelectedItems] = useState([]);
+    const [bulkConfirmation, setBulkConfirmation] = useState(null); // { action: 'delete' | 'outOfStock', count: number }
 
     const vendorQuery = useMemoFirebase(() => {
         if (!user) return null;
@@ -758,28 +759,30 @@ export default function StreetVendorMenuPage() {
         });
     };
 
-    const handleBulkAction = async (action) => {
+    const handleBulkAction = (action) => {
         if (selectedItems.length === 0) return;
-        const confirmMessage = action === 'delete'
-            ? `Are you sure you want to delete ${selectedItems.length} items? This action cannot be undone.`
-            : `Are you sure you want to mark ${selectedItems.length} items as out of stock?`;
+        setBulkConfirmation({ action, count: selectedItems.length });
+    };
 
-        if (window.confirm(confirmMessage)) {
-            try {
-                const user = auth.currentUser;
-                if (!user) throw new Error("Authentication failed");
-                const idToken = await user.getIdToken();
-                await fetch('/api/owner/menu', {
-                    method: 'PATCH',
-                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${idToken}` },
-                    body: JSON.stringify({ itemIds: selectedItems, action })
-                });
-                setInfoDialog({ isOpen: true, title: 'Success', message: `Successfully completed bulk action.` });
-                setSelectedItems([]);
-                fetchMenu();
-            } catch (error) {
-                setInfoDialog({ isOpen: true, title: 'Error', message: `Could not perform bulk action: ${error.message}` });
-            }
+    const confirmBulkAction = async () => {
+        if (!bulkConfirmation) return;
+
+        try {
+            const user = auth.currentUser;
+            if (!user) throw new Error("Authentication failed");
+            const idToken = await user.getIdToken();
+            await fetch('/api/owner/menu', {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${idToken}` },
+                body: JSON.stringify({ itemIds: selectedItems, action: bulkConfirmation.action })
+            });
+            setInfoDialog({ isOpen: true, title: 'Success', message: `Successfully completed bulk action.` });
+            setSelectedItems([]);
+            fetchMenu();
+        } catch (error) {
+            setInfoDialog({ isOpen: true, title: 'Error', message: `Could not perform bulk action: ${error.message}` });
+        } finally {
+            setBulkConfirmation(null);
         }
     };
 
@@ -812,11 +815,33 @@ export default function StreetVendorMenuPage() {
                 title={infoDialog.title}
                 message={infoDialog.message}
             />
+            {/* Single Item Delete Confirmation */}
             <ConfirmationModal
                 isOpen={!!itemToDelete}
                 onClose={() => setItemToDelete(null)}
                 onConfirm={confirmDeleteItem}
-                itemName={itemToDelete?.name}
+                title="Confirm Deletion"
+                message={
+                    <>
+                        Are you sure you want to permanently delete the item: <span className="font-bold text-primary">{itemToDelete?.name}</span>? This action cannot be undone.
+                    </>
+                }
+                confirmText="Confirm Delete"
+                confirmVariant="destructive"
+            />
+            {/* Bulk Action Confirmation */}
+            <ConfirmationModal
+                isOpen={!!bulkConfirmation}
+                onClose={() => setBulkConfirmation(null)}
+                onConfirm={confirmBulkAction}
+                title={bulkConfirmation?.action === 'delete' ? 'Confirm Bulk Delete' : 'Confirm Bulk Out of Stock'}
+                message={
+                    bulkConfirmation?.action === 'delete'
+                        ? `Are you sure you want to delete ${bulkConfirmation?.count} items? This action cannot be undone.`
+                        : `Are you sure you want to mark ${bulkConfirmation?.count} items as out of stock?`
+                }
+                confirmText={bulkConfirmation?.action === 'delete' ? 'Delete Items' : 'Mark Out of Stock'}
+                confirmVariant={bulkConfirmation?.action === 'delete' ? 'destructive' : 'default'}
             />
             <AiScanModal isOpen={isAiModalOpen} onClose={() => setIsAiModalOpen(false)} onScan={handleAiScan} />
             <BulkAddModal isOpen={isBulkModalOpen} setIsOpen={setIsBulkModalOpen} onSave={handleBulkSave} businessType="street-vendor" showInfoDialog={setInfoDialog} />
