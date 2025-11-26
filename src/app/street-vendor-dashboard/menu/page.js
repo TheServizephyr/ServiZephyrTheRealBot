@@ -107,13 +107,14 @@ const MenuItem = ({ item, onEdit, onDelete, onToggle, onSelectItem, isSelected }
                     <p className="text-green-500 font-semibold text-sm">₹{item.portions?.[0]?.price || 'N/A'}</p>
                 </div>
             </div>
-            {/* Bottom Row: Switch and Action Buttons - Full Width */}
-            <div className="flex items-center gap-3 pl-1">
+            {/* Middle Row: Switch */}
+            <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                     <Switch id={`switch-${item.id}`} checked={item.isAvailable} onCheckedChange={(checked) => onToggle(item.id, checked)} />
                     <Label htmlFor={`switch-${item.id}`} className="text-xs font-medium text-muted-foreground">{item.isAvailable ? 'Available' : 'Out of Stock'}</Label>
                 </div>
-                <div className="flex items-center gap-1 ml-auto">
+                {/* Action Buttons on same row as switch */}
+                <div className="flex items-center gap-1">
                     <Button onClick={() => onEdit(item)} size="icon" variant="ghost" className="h-8 w-8 text-muted-foreground hover:bg-muted hover:text-foreground">
                         <Edit size={16} />
                     </Button>
