@@ -688,7 +688,7 @@ const CheckoutPageInternal = () => {
                                                 </div>
                                             </>
                                         )}
-                                        )}
+
                                         {packagingCharge > 0 && (
                                             <div className="flex justify-between text-sm text-primary">
                                                 <span>Packaging Charges</span>
