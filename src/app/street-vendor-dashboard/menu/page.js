@@ -87,7 +87,7 @@ const MenuItem = ({ item, onEdit, onDelete, onToggle, onSelectItem, isSelected }
         className={cn("bg-card rounded-lg p-3 md:p-4 border border-border shadow-md hover:shadow-primary/20 hover:-translate-y-1 transition-all duration-300", isSelected && "bg-primary/10 border-primary ring-2 ring-primary")}
     >
         {/* Mobile Layout - Stacked */}
-        <div className="flex md:hidden flex-col gap-3">
+        <div className="flex md:hidden flex-col gap-2">
             {/* Top Row: Checkbox, Image, Name, Price */}
             <div className="flex items-center gap-3">
                 <Checkbox
@@ -107,13 +107,13 @@ const MenuItem = ({ item, onEdit, onDelete, onToggle, onSelectItem, isSelected }
                     <p className="text-green-500 font-semibold text-sm">₹{item.portions?.[0]?.price || 'N/A'}</p>
                 </div>
             </div>
-            {/* Bottom Row: Switch and Action Buttons */}
-            <div className="flex items-center justify-between gap-2">
-                <div className="flex items-center gap-2 flex-1 min-w-0">
+            {/* Bottom Row: Switch and Action Buttons - Full Width */}
+            <div className="flex items-center gap-3 pl-1">
+                <div className="flex items-center gap-2">
                     <Switch id={`switch-${item.id}`} checked={item.isAvailable} onCheckedChange={(checked) => onToggle(item.id, checked)} />
-                    <Label htmlFor={`switch-${item.id}`} className="text-xs font-medium text-muted-foreground whitespace-nowrap">{item.isAvailable ? 'Available' : 'Out of Stock'}</Label>
+                    <Label htmlFor={`switch-${item.id}`} className="text-xs font-medium text-muted-foreground">{item.isAvailable ? 'Available' : 'Out of Stock'}</Label>
                 </div>
-                <div className="flex items-center gap-1 flex-shrink-0">
+                <div className="flex items-center gap-1 ml-auto">
                     <Button onClick={() => onEdit(item)} size="icon" variant="ghost" className="h-8 w-8 text-muted-foreground hover:bg-muted hover:text-foreground">
                         <Edit size={16} />
                     </Button>
