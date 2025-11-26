@@ -688,10 +688,17 @@ const CheckoutPageInternal = () => {
                                                 </div>
                                             </>
                                         )}
+                                        )}
+                                        {packagingCharge > 0 && (
+                                            <div className="flex justify-between text-sm text-primary">
+                                                <span>Packaging Charges</span>
+                                                <span>₹{packagingCharge.toFixed(2)}</span>
+                                            </div>
+                                        )}
                                         <div className="border-t border-dashed pt-2 mt-2" />
                                         <div className="flex justify-between text-sm">
                                             <span>Order Total</span>
-                                            <span className="font-semibold">₹{(subtotal + cgst + sgst).toFixed(2)}</span>
+                                            <span className="font-semibold">₹{(subtotal + cgst + sgst + packagingCharge).toFixed(2)}</span>
                                         </div>
                                         {convenienceFee > 0 && (
                                             <>
