@@ -3,6 +3,27 @@ import { getFirestore, FieldValue } from '@/lib/firebase-admin';
 
 export const dynamic = 'force-dynamic';
 
+// GET all reports for the admin
+export async function GET(req) {
+    try {
+        const firestore = await getFirestore();
+        const mailboxRef = firestore.collection('adminMailbox');
+        const snapshot = await mailboxRef.orderBy('timestamp', 'desc').get();
+
+        const reports = snapshot.docs.map(doc => {
+            const data = doc.data();
+            return {
+                id: doc.id,
+                ...data,
+                timestamp: data.timestamp?.toDate?.()?.toISOString() || null
+            };
+        });
+
+        return NextResponse.json({ reports }, { status: 200 });
+
+    } catch (error) {
+        console.error("GET /api/admin/mailbox ERROR:", error);
+        return NextResponse.json({ message: error.message || 'Internal Server Error' }, { status: error.status || 500 });
     }
 }
 
