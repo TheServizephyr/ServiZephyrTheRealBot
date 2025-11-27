@@ -3,7 +3,6 @@
 import { usePathname } from 'next/navigation';
 import Header from '@/components/Header';
 import Footer from '@/components/Footer';
-import ReportIssueButton from '@/components/ReportIssueButton';
 import { useTheme } from 'next-themes';
 import { useEffect } from 'react';
 
@@ -44,12 +43,7 @@ const LayoutWrapper = ({ children }) => {
 
 
   if (hideLayout) {
-    return (
-      <>
-        <main className="flex-grow">{children}</main>
-        <ReportIssueButton />
-      </>
-    );
+    return <main className="flex-grow">{children}</main>;
   }
 
   return (
@@ -57,7 +51,6 @@ const LayoutWrapper = ({ children }) => {
       <Header />
       <main className="flex-grow">{children}</main>
       <Footer />
-      <ReportIssueButton />
     </div>
   );
 };

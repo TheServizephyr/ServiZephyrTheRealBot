@@ -3,42 +3,103 @@
 import { useState } from 'react';
 import { Dialog, DialogPortal, DialogOverlay, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { CheckCircle, AlertTriangle, Send } from 'lucide-react';
+import { CheckCircle, AlertTriangle, Send, Loader2 } from 'lucide-react';
 import { usePathname } from 'next/navigation';
-import { auth } from '@/lib/firebase';
+import { useUser } from '@/firebase/provider';
 
 const InfoDialog = ({ isOpen, onClose, title, message }) => {
   const [isSending, setIsSending] = useState(false);
   const [reportSent, setReportSent] = useState(false);
   const isError = (title || '').toLowerCase().includes('error') || (title || '').toLowerCase().includes('failed') || (title || '').toLowerCase().includes('invalid');
   const pathname = usePathname();
+  const { user } = useUser();
+
+  const captureErrorContext = () => {
+    // Capture exact timestamp with timezone
+    const now = new Date();
+    const timestamp = now.toISOString();
+    const localTime = now.toLocaleString('en-IN', {
+      timeZone: 'Asia/Kolkata',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      fractionalSecondDigits: 3
+    });
+
+    // Get browser and device info
+    const userAgent = navigator.userAgent;
+    const browserInfo = {
+      userAgent,
+      language: navigator.language,
+      platform: navigator.platform,
+      vendor: navigator.vendor,
+      cookieEnabled: navigator.cookieEnabled,
+    };
+
+    // Get screen info
+    const screenInfo = {
+      width: window.screen.width,
+      height: window.screen.height,
+      availWidth: window.screen.availWidth,
+      availHeight: window.screen.availHeight,
+      colorDepth: window.screen.colorDepth,
+      pixelDepth: window.screen.pixelDepth,
+    };
+
+    // Get window info
+    const windowInfo = {
+      innerWidth: window.innerWidth,
+      innerHeight: window.innerHeight,
+      outerWidth: window.outerWidth,
+      outerHeight: window.outerHeight,
+      scrollX: window.scrollX,
+      scrollY: window.scrollY,
+    };
+
+    return {
+      timestamp,
+      localTime,
+      page: {
+        url: window.location.href,
+        pathname,
+        referrer: document.referrer,
+        title: document.title,
+      },
+      user: user ? {
+        uid: user.uid,
+        email: user.email,
+        displayName: user.displayName,
+        phoneNumber: user.phoneNumber,
+      } : { type: 'Guest' },
+      browser: browserInfo,
+      screen: screenInfo,
+      window: windowInfo,
+    };
+  };
 
   const handleSendReport = async () => {
     setIsSending(true);
     try {
-      const user = auth.currentUser;
-      if (!user) {
-        throw new Error("User not authenticated to send report.");
-      }
-      const idToken = await user.getIdToken();
+      const context = captureErrorContext();
 
       const reportPayload = {
         errorTitle: title,
         errorMessage: message,
+        description: 'Reported via InfoDialog',
         pathname: pathname,
-        user: {
-          uid: user.uid,
-          email: user.email,
-          displayName: user.displayName,
-        },
-        timestamp: new Date().toISOString(),
+        user: context.user,
+        context,
+        timestamp: context.timestamp,
+        localTime: context.localTime,
       };
 
       const response = await fetch('/api/admin/mailbox', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${idToken}`,
         },
         body: JSON.stringify(reportPayload),
       });
@@ -46,7 +107,7 @@ const InfoDialog = ({ isOpen, onClose, title, message }) => {
       if (!response.ok) {
         throw new Error("Failed to send report.");
       }
-      
+
       setReportSent(true);
       setTimeout(() => {
         onClose();
@@ -55,23 +116,22 @@ const InfoDialog = ({ isOpen, onClose, title, message }) => {
 
     } catch (error) {
       console.error("Failed to send report:", error);
-      // We don't show another dialog for a failed report to avoid loops
     } finally {
       setIsSending(false);
     }
   };
-  
+
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogPortal>
         <DialogOverlay className="z-[9998]" />
         <DialogContent className="bg-card border-border text-foreground z-[9999]">
           <DialogHeader className="flex flex-col items-center text-center">
-              {isError ? (
-                  <AlertTriangle className="h-12 w-12 text-destructive mb-4" />
-              ) : (
-                  <CheckCircle className="h-12 w-12 text-green-500 mb-4" />
-              )}
+            {isError ? (
+              <AlertTriangle className="h-12 w-12 text-destructive mb-4" />
+            ) : (
+              <CheckCircle className="h-12 w-12 text-green-500 mb-4" />
+            )}
             <DialogTitle className="text-xl">{title}</DialogTitle>
             {message && <DialogDescription className="pt-2">{message}</DialogDescription>}
           </DialogHeader>
@@ -79,17 +139,19 @@ const InfoDialog = ({ isOpen, onClose, title, message }) => {
             <Button onClick={onClose} className="w-full sm:w-auto bg-primary hover:bg-primary/90 text-primary-foreground">OK</Button>
             {isError && (
               <Button onClick={handleSendReport} variant="secondary" className="w-full sm:w-auto" disabled={isSending || reportSent}>
-                  {isSending ? (
-                      'Sending...'
-                  ) : reportSent ? (
-                      <>
-                      <CheckCircle className="mr-2 h-4 w-4 text-green-500"/> Report Sent!
-                      </>
-                  ) : (
-                      <>
-                      <Send className="mr-2 h-4 w-4"/> Send Report to Admin
-                      </>
-                  )}
+                {isSending ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Sending...
+                  </>
+                ) : reportSent ? (
+                  <>
+                    <CheckCircle className="mr-2 h-4 w-4 text-green-500" /> Report Sent!
+                  </>
+                ) : (
+                  <>
+                    <Send className="mr-2 h-4 w-4" /> Send Report to Admin
+                  </>
+                )}
               </Button>
             )}
           </DialogFooter>
