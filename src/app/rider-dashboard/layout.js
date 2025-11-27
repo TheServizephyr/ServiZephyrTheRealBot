@@ -50,17 +50,21 @@ function RiderLayoutContent({ children }) {
     useEffect(() => {
         const impersonateUserId = searchParams.get('impersonate_user_id');
         if (user && impersonateUserId) {
-            // Log the impersonation start
-            fetch('/api/admin/log-impersonation', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    targetUserId: impersonateUserId,
-                    targetUserEmail: user.email,
-                    targetUserRole: 'Rider',
-                    action: 'start_impersonation_rider'
-                })
-            }).catch(err => console.error('Failed to log impersonation:', err));
+            user.getIdToken().then(idToken => {
+                fetch('/api/admin/log-impersonation', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${idToken}`
+                    },
+                    body: JSON.stringify({
+                        targetUserId: impersonateUserId,
+                        targetUserEmail: user.email,
+                        targetUserRole: 'Rider',
+                        action: 'start_impersonation_rider'
+                    })
+                }).catch(err => console.error('Failed to log impersonation:', err));
+            });
         }
     }, [user, searchParams]);
 
