@@ -488,7 +488,7 @@ const StreetVendorDashboardContent = () => {
     const [infoDialog, setInfoDialog] = useState({ isOpen: false, title: '', message: '' });
     const [isScannerOpen, setScannerOpen] = useState(false);
     const [scannedOrder, setScannedOrder] = useState(null);
-    const searchParams = useSearchParams();
+    const impersonatedOwnerId = searchParams.get('impersonate_owner_id');
     const [date, setDate] = useState(null);
     const [error, setError] = useState(null);
     const [isCalendarOpen, setIsCalendarOpen] = useState(false);
@@ -503,7 +503,12 @@ const StreetVendorDashboardContent = () => {
     const handleApiCall = useCallback(async (endpoint, method = 'PATCH', body = {}) => {
         if (!user) throw new Error('Authentication Error');
         const idToken = await user.getIdToken();
-        const response = await fetch(endpoint, {
+        let url = endpoint;
+        if (impersonatedOwnerId) {
+            const separator = url.includes('?') ? '&' : '?';
+            url += `${separator}impersonate_owner_id=${impersonatedOwnerId}`;
+        }
+        const response = await fetch(url, {
             method,
             headers: {
                 'Authorization': `Bearer ${idToken}`,
@@ -516,7 +521,7 @@ const StreetVendorDashboardContent = () => {
             throw new Error(errData.message || 'An API error occurred.');
         }
         return await response.json();
-    }, [user]);
+    }, [user, impersonatedOwnerId]);
 
     const handleScanSuccess = useCallback(async (scannedUrl) => {
         setScannerOpen(false);
@@ -526,6 +531,14 @@ const StreetVendorDashboardContent = () => {
 
             if (!orderId) {
                 throw new Error('This QR code does not contain a valid order ID.');
+            }
+
+            // If impersonating, use API to fetch order details
+            if (impersonatedOwnerId) {
+                const orderData = await handleApiCall(`/api/owner/orders?id=${orderId}`, 'GET');
+                if (!orderData || !orderData.order) throw new Error('Order not found or access denied.');
+                setScannedOrder({ id: orderId, ...orderData.order });
+                return;
             }
 
             const orderRef = doc(db, 'orders', orderId);
@@ -545,7 +558,7 @@ const StreetVendorDashboardContent = () => {
         } catch (error) {
             setInfoDialog({ isOpen: true, title: 'Invalid QR', message: error.message });
         }
-    }, [vendorId]);
+    }, [vendorId, impersonatedOwnerId, handleApiCall]);
 
 
     useEffect(() => {
@@ -563,14 +576,22 @@ const StreetVendorDashboardContent = () => {
             await handleUpdateStatus(tempOrder.id, 'delivered');
             setInfoDialog({ isOpen: true, title: 'Success', message: `Order for ${tempOrder.customerName} marked as collected!` });
             setScannedOrder(null);
+            // Refresh orders if impersonating (since no listener)
+            if (impersonatedOwnerId) fetchOrdersViaApi();
         } catch (error) {
             setInfoDialog({ isOpen: true, title: "Error", message: `Could not mark order as collected: ${error.message}` });
         }
     };
 
+    // Fetch Vendor ID (or use impersonated ID)
     useEffect(() => {
         if (isUserLoading || !user) {
             if (!isUserLoading) setLoading(false);
+            return;
+        }
+
+        if (impersonatedOwnerId) {
+            setVendorId(impersonatedOwnerId); // Use the impersonated ID directly
             return;
         }
 
@@ -590,10 +611,33 @@ const StreetVendorDashboardContent = () => {
         });
 
         return () => unsubscribe();
-    }, [user, isUserLoading]);
+    }, [user, isUserLoading, impersonatedOwnerId]);
 
+    const fetchOrdersViaApi = useCallback(async () => {
+        if (!impersonatedOwnerId) return;
+        setLoading(true);
+        try {
+            const data = await handleApiCall('/api/owner/orders', 'GET');
+            setOrders(data.orders || []);
+        } catch (error) {
+            console.error("Error fetching orders via API:", error);
+            // Don't show dialog on every poll, maybe just log
+        } finally {
+            setLoading(false);
+        }
+    }, [impersonatedOwnerId, handleApiCall]);
+
+    // Fetch Orders
     useEffect(() => {
         if (!vendorId) return;
+
+        if (impersonatedOwnerId) {
+            // Use API polling or single fetch for impersonation
+            fetchOrdersViaApi();
+            // Optional: Poll every 30 seconds
+            const interval = setInterval(fetchOrdersViaApi, 30000);
+            return () => clearInterval(interval);
+        }
 
         setLoading(true);
 
@@ -632,7 +676,7 @@ const StreetVendorDashboardContent = () => {
         });
 
         return () => unsubscribe();
-    }, [vendorId]);
+    }, [vendorId, impersonatedOwnerId, fetchOrdersViaApi]);
 
     const handleUpdateStatus = async (orderId, newStatus, reason = null) => {
         try {

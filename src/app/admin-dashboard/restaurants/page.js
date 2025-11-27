@@ -187,7 +187,16 @@ const RestaurantRow = ({ restaurant, onUpdateStatus }) => {
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
                 <DropdownMenuItem asChild>
-                  <Link href={`/owner-dashboard?impersonate_owner_id=${restaurant.ownerId}`} target="_blank">
+                  <Link
+                    href={
+                      restaurant.businessType === 'street-vendor'
+                        ? `/street-vendor-dashboard?impersonate_owner_id=${restaurant.ownerId}`
+                        : restaurant.businessType === 'shop'
+                          ? `/shop-dashboard?impersonate_owner_id=${restaurant.ownerId}`
+                          : `/owner-dashboard?impersonate_owner_id=${restaurant.ownerId}`
+                    }
+                    target="_blank"
+                  >
                     <Eye className="mr-2 h-4 w-4" /> View as Owner
                   </Link>
                 </DropdownMenuItem>

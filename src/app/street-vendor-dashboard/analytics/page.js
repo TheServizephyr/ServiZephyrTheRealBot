@@ -15,6 +15,9 @@ export default function StreetVendorAnalyticsPage() {
     const [dateFilter, setDateFilter] = useState('This Month');
     const router = useRouter();
 
+    const searchParams = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null;
+    const impersonatedOwnerId = searchParams ? searchParams.get('impersonate_owner_id') : null;
+
     useEffect(() => {
         const unsubscribe = auth.onAuthStateChanged(user => {
             if (user) {
@@ -24,7 +27,7 @@ export default function StreetVendorAnalyticsPage() {
             }
         });
         return () => unsubscribe();
-    }, [dateFilter, router]);
+    }, [dateFilter, router, impersonatedOwnerId]);
 
     const fetchAnalytics = async () => {
         setLoading(true);
@@ -35,7 +38,12 @@ export default function StreetVendorAnalyticsPage() {
             }
 
             const idToken = await user.getIdToken();
-            const res = await fetch(`/api/owner/analytics?filter=${encodeURIComponent(dateFilter)}`, {
+            let url = `/api/owner/analytics?filter=${encodeURIComponent(dateFilter)}`;
+            if (impersonatedOwnerId) {
+                url += `&impersonate_owner_id=${impersonatedOwnerId}`;
+            }
+
+            const res = await fetch(url, {
                 headers: { 'Authorization': `Bearer ${idToken}` }
             });
 

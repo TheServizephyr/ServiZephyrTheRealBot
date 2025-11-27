@@ -601,8 +601,45 @@ export default function StreetVendorMenuPage() {
         }
     }, [vendorError]);
 
-    const fetchMenu = useCallback(() => {
-        if (!user || !vendorId) {
+    const searchParams = new URLSearchParams(typeof window !== 'undefined' ? window.location.search : '');
+    const impersonatedOwnerId = searchParams.get('impersonate_owner_id');
+
+    const fetchMenu = useCallback(async () => {
+        if (!user) {
+            setLoading(false);
+            return () => { };
+        }
+
+        // If impersonating, use API instead of Firestore listener
+        if (impersonatedOwnerId) {
+            try {
+                const idToken = await user.getIdToken();
+                const res = await fetch(`/api/owner/menu?impersonate_owner_id=${impersonatedOwnerId}`, {
+                    headers: { 'Authorization': `Bearer ${idToken}` }
+                });
+                if (!res.ok) throw new Error('Failed to fetch menu via API');
+                const data = await res.json();
+
+                // Transform API response to match Firestore structure if needed
+                const items = [];
+                Object.values(data.menu).forEach(categoryItems => {
+                    items.push(...categoryItems);
+                });
+
+                setMenuItems(items);
+                if (data.customCategories) {
+                    setCustomCategories(data.customCategories);
+                }
+                setLoading(false);
+            } catch (err) {
+                console.error("API Fetch Error:", err);
+                setInfoDialog({ isOpen: true, title: 'Error', message: 'Could not load menu items via API. ' + err.message });
+                setLoading(false);
+            }
+            return () => { }; // No unsubscribe for API
+        }
+
+        if (!vendorId) {
             setLoading(false);
             return () => { };
         }
@@ -626,16 +663,40 @@ export default function StreetVendorMenuPage() {
         });
 
         return unsubscribe;
-    }, [user, vendorId]);
+    }, [user, vendorId, impersonatedOwnerId]);
 
 
     useEffect(() => {
-        if (isUserLoading || isVendorLoading) return;
-        const unsubscribe = fetchMenu();
-        return () => unsubscribe && unsubscribe();
-    }, [user, isUserLoading, vendorId, isVendorLoading, fetchMenu]);
+        if (isUserLoading) return;
+        // If impersonating, we don't need vendorId to be loaded from Firestore
+        if (!impersonatedOwnerId && isVendorLoading) return;
+
+        const fetchData = async () => {
+            const unsubscribe = await fetchMenu();
+            return unsubscribe;
+        };
+
+        const cleanupPromise = fetchData();
+        return () => { cleanupPromise.then(unsub => unsub && unsub()) };
+    }, [user, isUserLoading, vendorId, isVendorLoading, fetchMenu, impersonatedOwnerId]);
 
     const handleToggleAvailability = async (itemId, newAvailability) => {
+        if (impersonatedOwnerId) {
+            try {
+                const idToken = await user.getIdToken();
+                await fetch(`/api/owner/menu?impersonate_owner_id=${impersonatedOwnerId}`, {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${idToken}` },
+                    body: JSON.stringify({ updates: { id: itemId, isAvailable: newAvailability } })
+                });
+                // Optimistic update or refetch
+                setMenuItems(prev => prev.map(item => item.id === itemId ? { ...item, isAvailable: newAvailability } : item));
+            } catch (error) {
+                setInfoDialog({ isOpen: true, title: 'Error', message: 'Could not update item status via API: ' + error.message });
+            }
+            return;
+        }
+
         if (!vendorId) return;
         const itemRef = doc(db, 'street_vendors', vendorId, 'menu', itemId);
         try {
@@ -651,7 +712,27 @@ export default function StreetVendorMenuPage() {
     };
 
     const confirmDeleteItem = async () => {
-        if (!itemToDelete || !vendorId) return;
+        if (!itemToDelete) return;
+
+        if (impersonatedOwnerId) {
+            try {
+                const idToken = await user.getIdToken();
+                await fetch(`/api/owner/menu?impersonate_owner_id=${impersonatedOwnerId}`, {
+                    method: 'DELETE',
+                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${idToken}` },
+                    body: JSON.stringify({ itemId: itemToDelete.id })
+                });
+                setInfoDialog({ isOpen: true, title: 'Success', message: `Item "${itemToDelete.name}" has been deleted.` });
+                setMenuItems(prev => prev.filter(item => item.id !== itemToDelete.id));
+            } catch (error) {
+                setInfoDialog({ isOpen: true, title: 'Error', message: 'Could not delete item via API: ' + error.message });
+            } finally {
+                setItemToDelete(null);
+            }
+            return;
+        }
+
+        if (!vendorId) return;
         const itemRef = doc(db, 'street_vendors', vendorId, 'menu', itemToDelete.id);
         try {
             await deleteDoc(itemRef);
@@ -667,7 +748,11 @@ export default function StreetVendorMenuPage() {
     const handleSaveItem = useCallback(async (itemData, categoryId, newCategory, isEditing) => {
         const handleApiCall = async (endpoint, method, body) => {
             const idToken = await user.getIdToken();
-            const response = await fetch(endpoint, {
+            let url = endpoint;
+            if (impersonatedOwnerId) {
+                url += `?impersonate_owner_id=${impersonatedOwnerId}`;
+            }
+            const response = await fetch(url, {
                 method, headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${idToken}` },
                 body: JSON.stringify(body)
             });
@@ -681,12 +766,19 @@ export default function StreetVendorMenuPage() {
         try {
             const data = await handleApiCall('/api/owner/menu', 'POST', { item: itemData, categoryId, newCategory, isEditing });
             setInfoDialog({ isOpen: true, title: 'Success', message: data.message });
-            fetchMenu();
+
+            // If impersonating, manually refresh because we don't have a listener
+            if (impersonatedOwnerId) {
+                const fetchUnsub = await fetchMenu();
+                if (fetchUnsub) fetchUnsub();
+            }
+            // If not impersonating, the listener will auto-update, but fetchMenu is safe to call
+
         } catch (error) {
             setInfoDialog({ isOpen: true, title: 'Error', message: `Could not save item: ${error.message}` });
             throw error;
         }
-    }, [user, fetchMenu]);
+    }, [user, fetchMenu, impersonatedOwnerId]);
 
 
     const handleAiScan = async (file) => {
@@ -699,7 +791,10 @@ export default function StreetVendorMenuPage() {
                 reader.onload = async () => {
                     try {
                         const imageDataUri = reader.result;
-                        const response = await fetch('/api/ai/scan-menu', {
+                        let url = '/api/ai/scan-menu';
+                        if (impersonatedOwnerId) url += `?impersonate_owner_id=${impersonatedOwnerId}`;
+
+                        const response = await fetch(url, {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${await user.getIdToken()}` },
                             body: JSON.stringify({ imageDataUri }),
@@ -707,7 +802,12 @@ export default function StreetVendorMenuPage() {
                         const result = await response.json();
                         if (!response.ok) throw new Error(result.message);
                         setInfoDialog({ isOpen: true, title: 'Success!', message: result.message });
-                        fetchMenu();
+
+                        if (impersonatedOwnerId) {
+                            const fetchUnsub = await fetchMenu();
+                            if (fetchUnsub) fetchUnsub();
+                        }
+
                         resolve();
                     } catch (error) {
                         reject(error);
@@ -727,7 +827,10 @@ export default function StreetVendorMenuPage() {
             const user = await auth.currentUser;
             if (!user) throw new Error("User not authenticated");
             const idToken = await user.getIdToken();
-            const response = await fetch('/api/owner/menu-bulk', {
+            let url = '/api/owner/menu-bulk';
+            if (impersonatedOwnerId) url += `?impersonate_owner_id=${impersonatedOwnerId}`;
+
+            const response = await fetch(url, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${idToken}` },
                 body: JSON.stringify({ items }),
@@ -735,7 +838,11 @@ export default function StreetVendorMenuPage() {
             if (!response.ok) throw new Error((await response.json()).message);
             const data = await response.json();
             setInfoDialog({ isOpen: true, title: 'Success!', message: data.message });
-            fetchMenu();
+
+            if (impersonatedOwnerId) {
+                const fetchUnsub = await fetchMenu();
+                if (fetchUnsub) fetchUnsub();
+            }
         } catch (error) {
             setInfoDialog({ isOpen: true, title: 'Bulk Add Failed', message: error.message });
             throw error;
@@ -771,14 +878,23 @@ export default function StreetVendorMenuPage() {
             const user = auth.currentUser;
             if (!user) throw new Error("Authentication failed");
             const idToken = await user.getIdToken();
-            await fetch('/api/owner/menu', {
+            let url = '/api/owner/menu';
+            if (impersonatedOwnerId) url += `?impersonate_owner_id=${impersonatedOwnerId}`;
+
+            await fetch(url, {
                 method: 'PATCH',
                 headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${idToken}` },
                 body: JSON.stringify({ itemIds: selectedItems, action: bulkConfirmation.action })
             });
             setInfoDialog({ isOpen: true, title: 'Success', message: `Successfully completed bulk action.` });
             setSelectedItems([]);
-            fetchMenu();
+
+            if (impersonatedOwnerId) {
+                const fetchUnsub = await fetchMenu();
+                if (fetchUnsub) fetchUnsub();
+            } else {
+                // Firestore listener handles it
+            }
         } catch (error) {
             setInfoDialog({ isOpen: true, title: 'Error', message: `Could not perform bulk action: ${error.message}` });
         } finally {
