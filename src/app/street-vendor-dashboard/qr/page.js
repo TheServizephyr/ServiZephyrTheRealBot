@@ -8,7 +8,6 @@ import Link from 'next/link';
 import QRCode from 'qrcode.react';
 import { useReactToPrint } from 'react-to-print';
 import { useUser } from '@/firebase';
-import { useUser } from '@/firebase';
 import { useSearchParams } from 'next/navigation';
 import { toPng } from 'html-to-image';
 import GoldenCoinSpinner from '@/components/GoldenCoinSpinner';
