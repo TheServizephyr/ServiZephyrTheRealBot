@@ -3,6 +3,7 @@
 import { NextResponse } from 'next/server';
 import { getAuth, getFirestore, FieldValue, verifyAndGetUid } from '@/lib/firebase-admin';
 import { sendOrderStatusUpdateToCustomer } from '@/lib/notifications';
+import { verifyOwnerWithAudit } from '@/lib/verify-owner-with-audit';
 
 
 async function verifyOwnerAndGetBusiness(req, auth, firestore) {
@@ -45,11 +46,15 @@ export async function GET(req) {
         const auth = await getAuth();
         const firestore = await getFirestore();
 
-        const { uid, businessId, businessSnap } = await verifyOwnerAndGetBusiness(req, auth, firestore);
-
         const { searchParams } = new URL(req.url);
         const orderId = searchParams.get('id');
         const customerId = searchParams.get('customerId');
+
+        const { uid, businessId, businessSnap, collectionName } = await verifyOwnerWithAudit(
+            req,
+            orderId ? 'view_order_details' : 'view_orders',
+            orderId ? { orderId, customerId } : { customerId }
+        );
 
         if (orderId) {
             const orderRef = firestore.collection('orders').doc(orderId);
@@ -142,7 +147,14 @@ export async function PATCH(req) {
     try {
         const auth = await getAuth();
         const firestore = await getFirestore();
-        const { businessId, businessSnap } = await verifyOwnerAndGetBusiness(req, auth, firestore);
+
+        const { orderId, status: newStatus, rejectionReason } = await req.json();
+
+        const { businessId, businessSnap } = await verifyOwnerWithAudit(
+            req,
+            'update_order_status',
+            { orderId, newStatus, rejectionReason }
+        );
 
         const body = await req.json();
         console.log(`[API][PATCH /orders] Body:`, body);
