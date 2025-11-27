@@ -1,4 +1,3 @@
-
 'use client';
 
 import Link from 'next/link';
@@ -12,6 +11,7 @@ import { ThemeProvider } from '@/components/ThemeProvider';
 import Image from 'next/image';
 import { useUser } from '@/firebase';
 import GoldenCoinSpinner from '@/components/GoldenCoinSpinner';
+import ImpersonationBanner from '@/components/ImpersonationBanner';
 
 const navItems = [
   { href: '/customer-dashboard', icon: Home, label: 'My Hub' },
@@ -56,7 +56,9 @@ const CustomerDashboardContent = ({ children }) => {
   }
   
   return (
-    <div className="min-h-screen bg-background text-foreground flex flex-col">
+    <>
+      <ImpersonationBanner vendorName={user?.displayName || user?.email || 'Customer'} />
+      <div className="min-h-screen bg-background text-foreground flex flex-col">
         <header className="sticky top-0 z-20 bg-background/80 backdrop-blur-lg border-b border-border">
           <div className="container mx-auto px-4 py-3 flex items-center justify-between">
             <Link href="/" className="flex items-center justify-center">
@@ -85,7 +87,8 @@ const CustomerDashboardContent = ({ children }) => {
                 ))}
             </div>
         </footer>
-    </div>
+      </div>
+    </>
   );
 }
 
