@@ -31,9 +31,20 @@ export async function GET(req) {
 export async function POST(req) {
     try {
         const firestore = await getFirestore();
-        const { errorTitle, errorMessage, pathname, user } = await req.json();
+        const body = await req.json();
 
-        if (!errorTitle || !errorMessage || !pathname || !user) {
+        const {
+            errorTitle,
+            errorMessage,
+            description,
+            pathname,
+            user,
+            context,
+            timestamp,
+            localTime
+        } = body;
+
+        if (!errorTitle || !errorMessage) {
             return NextResponse.json({ message: 'Missing required report data.' }, { status: 400 });
         }
 
@@ -43,23 +54,34 @@ export async function POST(req) {
             id: newReportRef.id,
             title: errorTitle,
             message: errorMessage,
-            path: pathname,
+            description: description || '',
+            path: pathname || 'Unknown',
             user: {
-                uid: user.uid || 'N/A',
-                email: user.email || 'N/A',
-                name: user.displayName || 'N/A',
+                uid: user?.uid || 'Guest',
+                email: user?.email || 'N/A',
+                name: user?.displayName || user?.name || 'Guest User',
+                phone: user?.phoneNumber || 'N/A',
+                type: user?.type || 'Unknown',
             },
+            context: context || {},
             timestamp: FieldValue.serverTimestamp(),
+            exactTimestamp: timestamp, // ISO string for Vercel logs
+            localTime: localTime, // Human-readable local time
             status: 'new', // new, in_progress, resolved
         };
 
         await newReportRef.set(newReportData);
 
-        return NextResponse.json({ message: 'Error report sent successfully!', id: newReportRef.id }, { status: 201 });
+        return NextResponse.json({
+            message: 'Error report sent successfully!',
+            id: newReportRef.id
+        }, { status: 201 });
 
     } catch (error) {
         console.error("POST /api/admin/mailbox ERROR:", error);
-        return NextResponse.json({ message: `Backend Error: ${error.message}` }, { status: 500 });
+        return NextResponse.json({
+            message: `Backend Error: ${error.message}`
+        }, { status: 500 });
     }
 }
 
