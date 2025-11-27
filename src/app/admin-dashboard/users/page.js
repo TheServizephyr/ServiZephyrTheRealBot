@@ -79,6 +79,20 @@ const UserRow = ({ user, onUpdateStatus }) => {
                 <Eye className="mr-2 h-4 w-4" /> View as Owner
               </DropdownMenuItem>
             )}
+            {user.role === 'Customer' && (
+              <DropdownMenuItem onClick={() => {
+                window.location.href = `/customer-dashboard?impersonate_user_id=${user.id}&session_expiry=${Date.now() + (2 * 60 * 60 * 1000)}`;
+              }}>
+                <Eye className="mr-2 h-4 w-4" /> View as Customer
+              </DropdownMenuItem>
+            )}
+            {user.role === 'Rider' && (
+              <DropdownMenuItem onClick={() => {
+                window.location.href = `/rider-dashboard?impersonate_user_id=${user.id}&session_expiry=${Date.now() + (2 * 60 * 60 * 1000)}`;
+              }}>
+                <Eye className="mr-2 h-4 w-4" /> View as Rider
+              </DropdownMenuItem>
+            )}
             {user.status === 'Active' ? (
               <DropdownMenuItem className="text-red-500" onClick={() => onUpdateStatus(user.id, 'Blocked')}><UserX className="mr-2 h-4 w-4" /> Block User</DropdownMenuItem>
             ) : (
