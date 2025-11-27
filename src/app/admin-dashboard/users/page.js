@@ -69,6 +69,16 @@ const UserRow = ({ user, onUpdateStatus }) => {
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
             <DropdownMenuItem><Eye className="mr-2 h-4 w-4" /> View Activity</DropdownMenuItem>
+            {(user.role === 'Owner' || user.role === 'Street Vendor' || user.role === 'Shop Owner') && (
+              <DropdownMenuItem onClick={() => {
+                const dashboardPath = user.role === 'Street Vendor'
+                  ? '/street-vendor-dashboard'
+                  : '/owner-dashboard';
+                window.location.href = `${dashboardPath}?impersonate_owner_id=${user.id}&session_expiry=${Date.now() + (2 * 60 * 60 * 1000)}`;
+              }}>
+                <Eye className="mr-2 h-4 w-4" /> View as Owner
+              </DropdownMenuItem>
+            )}
             {user.status === 'Active' ? (
               <DropdownMenuItem className="text-red-500" onClick={() => onUpdateStatus(user.id, 'Blocked')}><UserX className="mr-2 h-4 w-4" /> Block User</DropdownMenuItem>
             ) : (
