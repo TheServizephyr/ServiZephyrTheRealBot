@@ -119,7 +119,9 @@ export default function CustomerDashboardLayout({ children }) {
       enableSystem
       disableTransitionOnChange
     >
-      <CustomerDashboardContent>{children}</CustomerDashboardContent>
+      <Suspense fallback={<div className="flex h-screen items-center justify-center bg-background"><GoldenCoinSpinner /></div>}>
+        <CustomerDashboardContent>{children}</CustomerDashboardContent>
+      </Suspense>
     </ThemeProvider>
   )
 }

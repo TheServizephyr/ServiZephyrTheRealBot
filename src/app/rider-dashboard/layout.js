@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { db } from '@/lib/firebase';
@@ -12,7 +12,7 @@ import { useUser } from '@/firebase';
 import GoldenCoinSpinner from '@/components/GoldenCoinSpinner';
 import ImpersonationBanner from '@/components/ImpersonationBanner';
 
-export default function RiderLayout({ children }) {
+function RiderLayoutContent({ children }) {
     const { user, isUserLoading } = useUser();
     const router = useRouter();
     const searchParams = useSearchParams();
@@ -121,5 +121,13 @@ export default function RiderLayout({ children }) {
                 </footer>
             </div>
         </>
+    );
+}
+
+export default function RiderLayout({ children }) {
+    return (
+        <Suspense fallback={<div className="flex h-screen items-center justify-center bg-background"><GoldenCoinSpinner /></div>}>
+            <RiderLayoutContent>{children}</RiderLayoutContent>
+        </Suspense>
     );
 }
