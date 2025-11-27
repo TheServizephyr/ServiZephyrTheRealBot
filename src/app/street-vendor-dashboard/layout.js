@@ -94,6 +94,20 @@ function OwnerDashboardContent({ children }) {
       return;
     }
 
+    // Log impersonation when detected
+    if (user && impersonatedOwnerId) {
+      fetch('/api/admin/log-impersonation', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          targetUserId: impersonatedOwnerId,
+          targetUserEmail: user.email,
+          targetUserRole: 'Street Vendor',
+          action: 'start_impersonation_street_vendor'
+        })
+      }).catch(err => console.error('Failed to log impersonation:', err));
+    }
+
     const fetchRestaurantData = async () => {
       try {
         const idToken = await user.getIdToken();
