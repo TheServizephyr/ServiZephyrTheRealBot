@@ -14,51 +14,141 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import InfoDialog from '@/components/InfoDialog';
 
 const ReportRow = ({ report, onUpdateStatus }) => {
+    const [expanded, setExpanded] = useState(false);
+
     const statusConfig = {
         'new': 'text-blue-400 bg-blue-500/10',
         'in_progress': 'text-yellow-400 bg-yellow-500/10',
         'resolved': 'text-green-400 bg-green-500/10',
     };
 
+    const userTypeColors = {
+        'Owner': 'bg-primary/10 text-primary',
+        'Customer': 'bg-blue-500/10 text-blue-400',
+        'Street Vendor': 'bg-orange-500/10 text-orange-400',
+        'Shop Owner': 'bg-purple-500/10 text-purple-400',
+        'Rider': 'bg-cyan-500/10 text-cyan-400',
+        'Guest': 'bg-gray-500/10 text-gray-400',
+    };
+
     return (
-        <TableRow>
-            <TableCell>
-                <div className="font-medium text-foreground">{report.title}</div>
-                <div className="text-sm text-muted-foreground truncate max-w-xs">{report.message}</div>
-            </TableCell>
-            <TableCell>
-                <div className="font-medium">{report.user.name}</div>
-                <div className="text-sm text-muted-foreground">{report.user.email}</div>
-            </TableCell>
-            <TableCell>
-                <a href={report.path} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 text-blue-400 hover:underline">
-                    <LinkIcon size={14} /> {report.path}
-                </a>
-            </TableCell>
-            <TableCell className="text-muted-foreground">
-                {report.timestamp ? formatDistanceToNow(new Date(report.timestamp), { addSuffix: true }) : 'N/A'}
-            </TableCell>
-            <TableCell>
-                <span className={cn('px-2 py-1 text-xs font-semibold rounded-full capitalize', statusConfig[report.status])}>
-                    {report.status}
-                </span>
-            </TableCell>
-            <TableCell className="text-right">
-                <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                        <Button variant="ghost" className="h-8 w-8 p-0">
-                            <span className="sr-only">Open menu</span>
-                            <MoreVertical className="h-4 w-4" />
-                        </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end">
-                        <DropdownMenuItem onClick={() => onUpdateStatus(report.id, 'in_progress')}>Mark as In Progress</DropdownMenuItem>
-                        <DropdownMenuItem onClick={() => onUpdateStatus(report.id, 'resolved')}>Mark as Resolved</DropdownMenuItem>
-                        <DropdownMenuItem className="text-red-500"><Trash2 className="mr-2 h-4 w-4" /> Delete</DropdownMenuItem>
-                    </DropdownMenuContent>
-                </DropdownMenu>
-            </TableCell>
-        </TableRow>
+        <>
+            <TableRow className="cursor-pointer hover:bg-muted/50" onClick={() => setExpanded(!expanded)}>
+                <TableCell>
+                    <div className="font-medium text-foreground">{report.title}</div>
+                    <div className="text-sm text-muted-foreground truncate max-w-xs">{report.description || report.message}</div>
+                    {report.user?.type && (
+                        <span className={cn('mt-1 inline-block px-2 py-0.5 text-xs font-semibold rounded-full', userTypeColors[report.user.type] || 'bg-gray-500/10 text-gray-400')}>
+                            {report.user.type}
+                        </span>
+                    )}
+                </TableCell>
+                <TableCell>
+                    <div className="font-medium">{report.user?.name || 'N/A'}</div>
+                    <div className="text-sm text-muted-foreground">{report.user?.email || 'N/A'}</div>
+                    {report.user?.phone && report.user.phone !== 'N/A' && (
+                        <div className="text-xs text-muted-foreground">{report.user.phone}</div>
+                    )}
+                </TableCell>
+                <TableCell>
+                    <a href={report.path} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 text-blue-400 hover:underline text-sm">
+                        <LinkIcon size={14} /> {report.path}
+                    </a>
+                </TableCell>
+                <TableCell className="text-muted-foreground">
+                    <div className="text-sm">
+                        {report.timestamp ? formatDistanceToNow(new Date(report.timestamp), { addSuffix: true }) : 'N/A'}
+                    </div>
+                    {report.exactTimestamp && (
+                        <div className="text-xs text-muted-foreground font-mono mt-1">
+                            {new Date(report.exactTimestamp).toLocaleString('en-IN', {
+                                timeZone: 'Asia/Kolkata',
+                                hour12: false
+                            })}
+                        </div>
+                    )}
+                </TableCell>
+                <TableCell>
+                    <span className={cn('px-2 py-1 text-xs font-semibold rounded-full capitalize', statusConfig[report.status])}>
+                        {report.status.replace('_', ' ')}
+                    </span>
+                </TableCell>
+                <TableCell className="text-right">
+                    <DropdownMenu>
+                        <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
+                            <Button variant="ghost" className="h-8 w-8 p-0">
+                                <span className="sr-only">Open menu</span>
+                                <MoreVertical className="h-4 w-4" />
+                            </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                            <DropdownMenuItem onClick={(e) => { e.stopPropagation(); onUpdateStatus(report.id, 'in_progress'); }}>
+                                Mark as In Progress
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onClick={(e) => { e.stopPropagation(); onUpdateStatus(report.id, 'resolved'); }}>
+                                Mark as Resolved
+                            </DropdownMenuItem>
+                            <DropdownMenuItem className="text-red-500" onClick={(e) => e.stopPropagation()}>
+                                <Trash2 className="mr-2 h-4 w-4" /> Delete
+                            </DropdownMenuItem>
+                        </DropdownMenuContent>
+                    </DropdownMenu>
+                </TableCell>
+            </TableRow>
+
+            {expanded && (
+                <TableRow>
+                    <TableCell colSpan={6} className="bg-muted/30 p-6">
+                        <div className="space-y-4">
+                            <div>
+                                <h4 className="font-semibold mb-2">📝 Full Description</h4>
+                                <p className="text-sm text-muted-foreground">{report.description || report.message || 'No description provided'}</p>
+                            </div>
+
+                            {report.exactTimestamp && (
+                                <div>
+                                    <h4 className="font-semibold mb-2">🕐 Exact Timestamp (for Vercel Logs)</h4>
+                                    <code className="text-sm bg-black/5 dark:bg-white/5 px-2 py-1 rounded">
+                                        {report.exactTimestamp}
+                                    </code>
+                                    {report.localTime && (
+                                        <p className="text-xs text-muted-foreground mt-1">Local: {report.localTime}</p>
+                                    )}
+                                </div>
+                            )}
+
+                            {report.context?.browser && (
+                                <div>
+                                    <h4 className="font-semibold mb-2">🌐 Browser & Device</h4>
+                                    <div className="text-sm space-y-1">
+                                        <p><strong>User Agent:</strong> <code className="text-xs">{report.context.browser.userAgent}</code></p>
+                                        <p><strong>Platform:</strong> {report.context.browser.platform}</p>
+                                        <p><strong>Language:</strong> {report.context.browser.language}</p>
+                                    </div>
+                                </div>
+                            )}
+
+                            {report.context?.screen && (
+                                <div>
+                                    <h4 className="font-semibold mb-2">📱 Screen Info</h4>
+                                    <p className="text-sm">
+                                        {report.context.screen.width} × {report.context.screen.height}
+                                        ({report.context.screen.colorDepth}-bit color)
+                                    </p>
+                                </div>
+                            )}
+
+                            {report.context?.page?.referrer && (
+                                <div>
+                                    <h4 className="font-semibold mb-2">🔗 Previous Page</h4>
+                                    <p className="text-sm text-blue-400">{report.context.page.referrer || 'Direct visit'}</p>
+                                </div>
+                            )}
+                        </div>
+                    </TableCell>
+                </TableRow>
+            )}
+        </>
     );
 };
 
@@ -121,7 +211,7 @@ export default function MailboxPage() {
             <header className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
                 <div>
                     <h1 className="text-3xl font-bold tracking-tight">Admin Mailbox</h1>
-                    <p className="text-muted-foreground mt-1">Review error reports submitted by restaurant owners.</p>
+                    <p className="text-muted-foreground mt-1">Review error reports submitted by all users.</p>
                 </div>
                 <Button onClick={() => fetchReports(true)} variant="outline" disabled={loading}>
                     <RefreshCw size={16} className={cn("mr-2", loading && "animate-spin")} /> Refresh
