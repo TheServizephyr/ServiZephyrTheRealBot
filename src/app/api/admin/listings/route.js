@@ -29,13 +29,30 @@ async function fetchCollection(firestore, collectionName) {
             businessType = collectionName.slice(0, -1);
         }
 
+        // Try multiple timestamp fields
+        let onboardedDate;
+        const timestampFields = ['createdAt', 'created_at', 'registeredAt', 'timestamp', 'createdDate'];
+
+        for (const field of timestampFields) {
+            if (data[field]) {
+                onboardedDate = data[field]?.toDate?.()?.toISOString() || data[field];
+                break;
+            }
+        }
+
+        // If no timestamp found, log warning and use placeholder
+        if (!onboardedDate) {
+            console.warn(`[API] No timestamp found for ${collectionName}/${doc.id}. Available fields:`, Object.keys(data));
+            onboardedDate = 'Unknown';
+        }
+
         const business = {
             id: doc.id,
             name: data.name || 'Unnamed Business',
             ownerId: data.ownerId,
             ownerName: 'N/A',
             ownerEmail: 'N/A',
-            onboarded: data.createdAt?.toDate?.()?.toISOString() || new Date().toISOString(),
+            onboarded: onboardedDate,
             status: capitalizedStatus,
             restrictedFeatures: data.restrictedFeatures || [],
             businessType: data.businessType || businessType,
