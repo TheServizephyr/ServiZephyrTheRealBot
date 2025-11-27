@@ -29,6 +29,7 @@ import { useState, useEffect } from 'react';
 import { auth, db } from '@/lib/firebase';
 import { doc, getDoc } from 'firebase/firestore';
 import Image from 'next/image';
+import Link from "next/link";
 import { useSearchParams, usePathname } from 'next/navigation';
 
 const getMenuItems = (businessType, impersonatedOwnerId) => {
