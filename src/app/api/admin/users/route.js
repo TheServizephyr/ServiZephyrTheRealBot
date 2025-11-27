@@ -4,9 +4,9 @@ import { getFirestore, getAuth } from '@/lib/firebase-admin';
 
 export async function GET(req) {
     try {
-        const firestore = getFirestore();
+        const firestore = await getFirestore();
         const usersSnap = await firestore.collection('users').get();
-        
+
         const users = usersSnap.docs.map(doc => {
             const data = doc.data();
             return {
@@ -45,16 +45,16 @@ export async function PATCH(req) {
             return NextResponse.json({ message: 'Invalid status provided' }, { status: 400 });
         }
 
-        const firestore = getFirestore();
+        const firestore = await getFirestore();
         const userRef = firestore.collection('users').doc(userId);
-        
+
         await userRef.update({ status });
-        
+
         const auth = getAuth();
         await auth.updateUser(userId, {
             disabled: status === 'Blocked'
         });
-        
+
         return NextResponse.json({ message: 'User status updated successfully' }, { status: 200 });
 
     } catch (error) {
