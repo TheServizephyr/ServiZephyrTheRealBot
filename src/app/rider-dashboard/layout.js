@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { db } from '@/lib/firebase';
 import { doc, getDoc } from 'firebase/firestore';
@@ -15,6 +15,7 @@ import ImpersonationBanner from '@/components/ImpersonationBanner';
 export default function RiderLayout({ children }) {
     const { user, isUserLoading } = useUser();
     const router = useRouter();
+    const searchParams = useSearchParams();
     const [riderName, setRiderName] = useState('Rider');
     const [riderImage, setRiderImage] = useState('');
 
@@ -44,6 +45,24 @@ export default function RiderLayout({ children }) {
         }
 
     }, [user, isUserLoading, router]);
+
+    // Log impersonation when detected
+    useEffect(() => {
+        const impersonateUserId = searchParams.get('impersonate_user_id');
+        if (user && impersonateUserId) {
+            // Log the impersonation start
+            fetch('/api/admin/log-impersonation', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    targetUserId: impersonateUserId,
+                    targetUserEmail: user.email,
+                    targetUserRole: 'Rider',
+                    action: 'start_impersonation_rider'
+                })
+            }).catch(err => console.error('Failed to log impersonation:', err));
+        }
+    }, [user, searchParams]);
 
     const handleLogout = async () => {
         const { auth } = await import('@/lib/firebase');
