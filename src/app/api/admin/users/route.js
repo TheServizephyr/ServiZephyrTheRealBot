@@ -9,12 +9,33 @@ export async function GET(req) {
 
         const users = usersSnap.docs.map(doc => {
             const data = doc.data();
+
+            // Determine user role based on businessType and role fields
+            let userRole = 'Customer'; // Default
+
+            if (data.role === 'admin' || data.isAdmin) {
+                userRole = 'Admin';
+            } else if (data.businessType === 'restaurant') {
+                userRole = 'Owner';
+            } else if (data.businessType === 'shop') {
+                userRole = 'Shop Owner';
+            } else if (data.businessType === 'street-vendor' || data.businessType === 'street_vendor') {
+                userRole = 'Street Vendor';
+            } else if (data.role === 'rider' || data.role === 'delivery') {
+                userRole = 'Rider';
+            } else if (data.role === 'owner') {
+                userRole = 'Owner';
+            } else if (data.role) {
+                // Capitalize first letter of role
+                userRole = data.role.charAt(0).toUpperCase() + data.role.slice(1);
+            }
+
             return {
                 id: doc.id,
                 name: data.name || 'Unnamed User',
                 email: data.email || 'No Email',
-                phone: data.phone || 'No Phone',
-                role: data.role?.charAt(0).toUpperCase() + data.role?.slice(1) || 'Customer',
+                phone: data.phone || data.phoneNumber || 'No Phone',
+                role: userRole,
                 // SAFETY NET: Use current time if createdAt is missing
                 joinDate: data.createdAt?.toDate?.()?.toISOString() || new Date().toISOString(),
                 // SAFETY NET: Default to 'Active' if status is missing
