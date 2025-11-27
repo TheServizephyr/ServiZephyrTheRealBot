@@ -5,13 +5,13 @@ import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Textarea } from '@/components/ui/textarea';
 import { AlertCircle, Send, Loader2 } from 'lucide-react';
-import { useAuth } from '@/contexts/AuthContext';
+import { useUser } from '@/firebase/provider';
 import { usePathname } from 'next/navigation';
 
 export default function ReportIssueDialog({ isOpen, onClose }) {
     const [description, setDescription] = useState('');
     const [sending, setSending] = useState(false);
-    const { user } = useAuth();
+    const { user } = useUser();
     const pathname = usePathname();
 
     const captureErrorContext = () => {
