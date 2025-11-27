@@ -488,6 +488,7 @@ const StreetVendorDashboardContent = () => {
     const [infoDialog, setInfoDialog] = useState({ isOpen: false, title: '', message: '' });
     const [isScannerOpen, setScannerOpen] = useState(false);
     const [scannedOrder, setScannedOrder] = useState(null);
+    const searchParams = useSearchParams();
     const impersonatedOwnerId = searchParams.get('impersonate_owner_id');
     const [date, setDate] = useState(null);
     const [error, setError] = useState(null);

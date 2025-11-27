@@ -7,16 +7,14 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { auth } from '@/lib/firebase';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 
 export default function StreetVendorAnalyticsPage() {
     const [loading, setLoading] = useState(true);
     const [analyticsData, setAnalyticsData] = useState(null);
     const [dateFilter, setDateFilter] = useState('This Month');
-    const router = useRouter();
-
-    const searchParams = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null;
-    const impersonatedOwnerId = searchParams ? searchParams.get('impersonate_owner_id') : null;
+    const searchParams = useSearchParams();
+    const impersonatedOwnerId = searchParams.get('impersonate_owner_id');
 
     useEffect(() => {
         const unsubscribe = auth.onAuthStateChanged(user => {
