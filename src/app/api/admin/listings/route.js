@@ -43,11 +43,27 @@ async function fetchCollection(firestore, collectionName) {
 
         if (business.ownerId) {
             try {
-                const userRecord = await auth.getUser(business.ownerId);
-                business.ownerName = userRecord.displayName || 'No Name';
-                business.ownerEmail = userRecord.email;
+                // Fetch from Firestore users collection for complete details
+                const userDoc = await firestore.collection('users').doc(business.ownerId).get();
+
+                if (userDoc.exists) {
+                    const userData = userDoc.data();
+                    business.ownerName = userData.name || userData.displayName || 'No Name';
+                    business.ownerEmail = userData.email || 'No Email';
+                    business.ownerPhone = userData.phoneNumber || userData.phone || 'No Phone';
+                } else {
+                    // Fallback to Firebase Auth if not in Firestore
+                    try {
+                        const userRecord = await auth.getUser(business.ownerId);
+                        business.ownerName = userRecord.displayName || 'No Name';
+                        business.ownerEmail = userRecord.email || 'No Email';
+                        business.ownerPhone = userRecord.phoneNumber || 'No Phone';
+                    } catch (authError) {
+                        console.warn(`[API] Could not find user in Auth for ownerId: ${business.ownerId}`);
+                    }
+                }
             } catch (e) {
-                console.warn(`[API] Could not find user for ownerId: ${business.ownerId} in ${business.name}.`);
+                console.warn(`[API] Could not find user for ownerId: ${business.ownerId} in ${business.name}.`, e.message);
             }
         }
         return business;
