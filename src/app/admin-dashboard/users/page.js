@@ -181,7 +181,7 @@ export default function AdminUsersPage() {
             <TabsTrigger value="riders">Riders</TabsTrigger>
             <TabsTrigger value="admins">Admins</TabsTrigger>
           </TabsList>
-          <div className="relative w-full max-w-sm">
+          <div className="relative w-full md:max-w-xs">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" size={20} />
             <Input
               placeholder="Search by name or email..."
