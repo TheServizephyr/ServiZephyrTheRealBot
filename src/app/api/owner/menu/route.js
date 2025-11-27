@@ -2,16 +2,19 @@
 
 import { NextResponse } from 'next/server';
 import { getAuth, getFirestore, FieldValue, verifyAndGetUid } from '@/lib/firebase-admin';
+import { logImpersonation, getClientIP, getUserAgent, isSessionExpired } from '@/lib/audit-logger';
 
 // Helper to verify owner and get their first business ID
 async function verifyOwnerAndGetBusiness(req, auth, firestore) {
     console.log("[API LOG] verifyOwnerAndGetBusiness: Starting verification...");
     const uid = await verifyAndGetUid(req); // Use central helper
     console.log(`[API LOG] verifyOwnerAndGetBusiness: UID verified: ${uid}`);
-    
+
     // --- ADMIN IMPERSONATION & PERMISSION LOGIC ---
     const url = new URL(req.url, `http://${req.headers.host}`);
     const impersonatedOwnerId = url.searchParams.get('impersonate_owner_id');
+    const sessionExpiry = url.searchParams.get('session_expiry');
+
     const userDoc = await firestore.collection('users').doc(uid).get();
 
     if (!userDoc.exists) {
@@ -24,9 +27,18 @@ async function verifyOwnerAndGetBusiness(req, auth, firestore) {
     console.log(`[API LOG] verifyOwnerAndGetBusiness: User role is '${userRole}'.`);
 
     let targetOwnerId = uid;
+    let isImpersonating = false;
+
     if (userRole === 'admin' && impersonatedOwnerId) {
+        // Validate session expiry
+        if (sessionExpiry && isSessionExpired(parseInt(sessionExpiry))) {
+            console.error(`[API ERROR] Impersonation session expired for admin ${uid}`);
+            throw { message: 'Impersonation session has expired. Please re-authenticate.', status: 401 };
+        }
+
         console.log(`[API LOG] Impersonation: Admin ${uid} is managing data for owner ${impersonatedOwnerId}.`);
         targetOwnerId = impersonatedOwnerId;
+        isImpersonating = true;
     } else if (!['owner', 'restaurant-owner', 'shop-owner', 'street-vendor'].includes(userRole)) {
         console.error(`[API ERROR] verifyOwnerAndGetBusiness: User ${uid} with role '${userRole}' does not have sufficient privileges.`);
         throw { message: 'Access Denied: You do not have sufficient privileges.', status: 403 };
@@ -39,10 +51,19 @@ async function verifyOwnerAndGetBusiness(req, auth, firestore) {
         if (!querySnapshot.empty) {
             const doc = querySnapshot.docs[0];
             console.log(`[API LOG] verifyOwnerAndGetBusiness: Found business in '${collectionName}' with ID: ${doc.id}`);
-            return { uid: targetOwnerId, businessId: doc.id, businessSnap: doc, collectionName, isAdmin: userRole === 'admin' };
+            return {
+                uid: targetOwnerId,
+                businessId: doc.id,
+                businessSnap: doc,
+                collectionName,
+                isAdmin: userRole === 'admin',
+                isImpersonating,
+                adminId: isImpersonating ? uid : null,
+                adminEmail: isImpersonating ? userData.email : null
+            };
         }
     }
-    
+
     console.error(`[API ERROR] verifyOwnerAndGetBusiness: No business associated with ownerId '${targetOwnerId}' found in any collection.`);
     throw { message: 'No business associated with this owner.', status: 404 };
 }
@@ -52,8 +73,21 @@ export async function GET(req) {
     try {
         const auth = await getAuth();
         const firestore = await getFirestore();
-        const { businessId, businessSnap, collectionName } = await verifyOwnerAndGetBusiness(req, auth, firestore);
+        const { businessId, businessSnap, collectionName, isImpersonating, adminId, adminEmail, uid } = await verifyOwnerAndGetBusiness(req, auth, firestore);
         console.log(`[API LOG] GET /api/owner/menu: Verified access for business ${businessId}.`);
+
+        // Audit log for impersonation
+        if (isImpersonating) {
+            await logImpersonation({
+                adminId,
+                adminEmail,
+                targetOwnerId: uid,
+                action: 'view_menu',
+                metadata: { businessId, collectionName },
+                ipAddress: getClientIP(req),
+                userAgent: getUserAgent(req)
+            });
+        }
 
         const menuRef = firestore.collection(collectionName).doc(businessId).collection('menu');
         const menuSnap = await menuRef.orderBy('order', 'asc').get();
@@ -65,28 +99,28 @@ export async function GET(req) {
 
         const businessType = businessData.businessType || (collectionName === 'restaurants' ? 'restaurant' : (collectionName === 'shops' ? 'shop' : 'street-vendor'));
         console.log(`[API LOG] GET /api/owner/menu: Determined businessType as '${businessType}'.`);
-        
+
         const restaurantCategoryConfig = {
-          "starters": { title: "Starters" }, "main-course": { title: "Main Course" }, "beverages": { title: "Beverages" },
-          "desserts": { title: "Desserts" }, "soup": { title: "Soup" }, "tandoori-item": { title: "Tandoori Items" },
-          "momos": { title: "Momos" }, "burgers": { title: "Burgers" }, "rolls": { title: "Rolls" },
-          "tandoori-khajana": { title: "Tandoori Khajana" }, "rice": { title: "Rice" }, "noodles": { title: "Noodles" },
-          "pasta": { title: "Pasta" }, "raita": { title: "Raita" },
-          'snacks': { title: 'Snacks' }, 'chaat': { title: 'Chaat' }, 'sweets': { title: 'Sweets' },
+            "starters": { title: "Starters" }, "main-course": { title: "Main Course" }, "beverages": { title: "Beverages" },
+            "desserts": { title: "Desserts" }, "soup": { title: "Soup" }, "tandoori-item": { title: "Tandoori Items" },
+            "momos": { title: "Momos" }, "burgers": { title: "Burgers" }, "rolls": { title: "Rolls" },
+            "tandoori-khajana": { title: "Tandoori Khajana" }, "rice": { title: "Rice" }, "noodles": { title: "Noodles" },
+            "pasta": { title: "Pasta" }, "raita": { title: "Raita" },
+            'snacks': { title: 'Snacks' }, 'chaat': { title: 'Chaat' }, 'sweets': { title: 'Sweets' },
         };
         const shopCategoryConfig = {
-          "electronics": { title: "Electronics" }, "groceries": { title: "Groceries" }, "clothing": { title: "Clothing" },
-          "books": { title: "Books" }, "home-appliances": { title: "Home Appliances" }, "toys-games": { title: "Toys & Games" },
-          "beauty-personal-care": { title: "Beauty & Personal Care" }, "sports-outdoors": { title: "Sports & Outdoors" },
+            "electronics": { title: "Electronics" }, "groceries": { title: "Groceries" }, "clothing": { title: "Clothing" },
+            "books": { title: "Books" }, "home-appliances": { title: "Home Appliances" }, "toys-games": { title: "Toys & Games" },
+            "beauty-personal-care": { title: "Beauty & Personal Care" }, "sports-outdoors": { title: "Sports & Outdoors" },
         };
-        
+
         const allCategories = { ...(businessType === 'restaurant' || businessType === 'street-vendor' ? restaurantCategoryConfig : shopCategoryConfig) };
         customCategories.forEach(cat => {
             if (!allCategories[cat.id]) {
-              allCategories[cat.id] = { title: cat.title };
+                allCategories[cat.id] = { title: cat.title };
             }
         });
-        
+
         const allCategoryKeys = Object.keys(allCategories);
 
         allCategoryKeys.forEach(key => {
@@ -101,7 +135,7 @@ export async function GET(req) {
             }
             menuData[categoryKey].push({ id: doc.id, ...item });
         });
-        
+
         console.log("[API LOG] GET /api/owner/menu: Successfully processed menu data. Responding to client.");
         return NextResponse.json({ menu: menuData, customCategories: customCategories, businessType: businessType }, { status: 200 });
 
@@ -119,7 +153,7 @@ export async function POST(req) {
         const firestore = await getFirestore();
         console.log("[API LOG] Firebase Admin SDK initialized for POST.");
 
-        const { businessId, businessSnap, collectionName } = await verifyOwnerAndGetBusiness(req, auth, firestore);
+        const { businessId, businessSnap, collectionName, isImpersonating, adminId, adminEmail, uid } = await verifyOwnerAndGetBusiness(req, auth, firestore);
         console.log(`[API LOG] POST /api/owner/menu: Owner verified for business ID: ${businessId} in collection ${collectionName}.`);
 
         const { item, categoryId, newCategory, isEditing } = await req.json();
@@ -132,18 +166,18 @@ export async function POST(req) {
 
         const batch = firestore.batch();
         const menuRef = firestore.collection(collectionName).doc(businessId).collection('menu');
-        
+
         let finalCategoryId = categoryId;
 
         if (newCategory && newCategory.trim() !== '') {
             console.log(`[API LOG] POST /api/owner/menu: New category detected: "${newCategory}"`);
             const formattedId = newCategory.trim().toLowerCase().replace(/\s+/g, '-');
             finalCategoryId = formattedId;
-            
+
             const businessRef = businessSnap.ref;
             const businessData = businessSnap.data();
             const currentCategories = businessData.customCategories || [];
-            
+
             if (!currentCategories.some(cat => cat.id === formattedId)) {
                 console.log(`[API LOG] POST /api/owner/menu: Category "${formattedId}" does not exist. Adding to batch.`);
                 const newCategoryObject = { id: formattedId, title: newCategory.trim() };
@@ -153,7 +187,7 @@ export async function POST(req) {
                 console.log(`[API LOG] POST /api/owner/menu: Category "${formattedId}" already exists.`);
             }
         }
-        
+
         const finalItem = {
             ...item,
             categoryId: finalCategoryId,
@@ -162,7 +196,7 @@ export async function POST(req) {
         };
 
         let newItemId = item.id;
-        
+
         if (isEditing) {
             console.log(`[API LOG] POST /api/owner/menu: Editing item ID: ${item.id}. Adding update to batch.`);
             if (!item.id) {
@@ -177,7 +211,7 @@ export async function POST(req) {
             const categoryQuerySnap = await menuRef.where('categoryId', '==', finalCategoryId).orderBy('order', 'desc').limit(1).get();
             const maxOrder = categoryQuerySnap.empty ? 0 : (categoryQuerySnap.docs[0].data().order || 0);
             console.log(`[API LOG] POST /api/owner/menu: Max order in category is ${maxOrder}. New order will be ${maxOrder + 1}.`);
-            
+
             const newItemRef = menuRef.doc();
             newItemId = newItemRef.id;
 
@@ -193,6 +227,19 @@ export async function POST(req) {
         console.log("[API LOG] POST /api/owner/menu: Committing batch...");
         await batch.commit();
         console.log("[API LOG] POST /api/owner/menu: Batch commit successful!");
+
+        // Audit log for impersonation
+        if (isImpersonating) {
+            await logImpersonation({
+                adminId,
+                adminEmail,
+                targetOwnerId: uid,
+                action: isEditing ? 'update_menu_item' : 'create_menu_item',
+                metadata: { businessId, itemId: newItemId, itemName: item.name, categoryId: finalCategoryId },
+                ipAddress: getClientIP(req),
+                userAgent: getUserAgent(req)
+            });
+        }
 
         const message = isEditing ? 'Item updated successfully!' : 'Item added successfully!';
         const status = isEditing ? 200 : 201;
@@ -211,7 +258,7 @@ export async function DELETE(req) {
     try {
         const auth = await getAuth();
         const firestore = await getFirestore();
-        const { businessId, collectionName } = await verifyOwnerAndGetBusiness(req, auth, firestore);
+        const { businessId, collectionName, isImpersonating, adminId, adminEmail, uid } = await verifyOwnerAndGetBusiness(req, auth, firestore);
         const { itemId } = await req.json();
 
         if (!itemId) {
@@ -223,6 +270,19 @@ export async function DELETE(req) {
         const itemRef = firestore.collection(collectionName).doc(businessId).collection('menu').doc(itemId);
         await itemRef.delete();
         console.log(`[API LOG] DELETE /api/owner/menu: Item deleted successfully.`);
+
+        // Audit log for impersonation
+        if (isImpersonating) {
+            await logImpersonation({
+                adminId,
+                adminEmail,
+                targetOwnerId: uid,
+                action: 'delete_menu_item',
+                metadata: { businessId, itemId },
+                ipAddress: getClientIP(req),
+                userAgent: getUserAgent(req)
+            });
+        }
 
         return NextResponse.json({ message: 'Item deleted successfully.' }, { status: 200 });
     } catch (error) {
@@ -240,7 +300,7 @@ export async function PATCH(req) {
         const { businessId, collectionName } = await verifyOwnerAndGetBusiness(req, auth, firestore);
         const { itemIds, action, updates } = await req.json();
         console.log("[API LOG] PATCH /api/owner/menu: Body:", { itemIds, action, updates });
-        
+
         const menuRef = firestore.collection(collectionName).doc(businessId).collection('menu');
 
         if (updates && updates.id) {
