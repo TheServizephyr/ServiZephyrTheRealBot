@@ -101,8 +101,32 @@ export async function GET(req) {
 
         const allListings = [...restaurants, ...shops, ...streetVendors];
 
-        // Sort by onboarding date as a default
-        allListings.sort((a, b) => new Date(b.onboarded) - new Date(a.onboarded));
+        // Sort by onboarding date - latest first, invalid dates at the end
+        allListings.sort((a, b) => {
+            const dateA = new Date(a.onboarded);
+            const dateB = new Date(b.onboarded);
+
+            const isValidA = !isNaN(dateA.getTime()) && a.onboarded !== 'Unknown';
+            const isValidB = !isNaN(dateB.getTime()) && b.onboarded !== 'Unknown';
+
+            // Both valid - sort by date (newest first)
+            if (isValidA && isValidB) {
+                return dateB - dateA;
+            }
+
+            // Only A valid - A comes first
+            if (isValidA && !isValidB) {
+                return -1;
+            }
+
+            // Only B valid - B comes first
+            if (!isValidA && isValidB) {
+                return 1;
+            }
+
+            // Both invalid - maintain original order
+            return 0;
+        });
 
         return NextResponse.json({ restaurants: allListings }, { status: 200 });
 
