@@ -36,7 +36,7 @@ const ReportRow = ({ report, onUpdateStatus }) => {
                 </a>
             </TableCell>
             <TableCell className="text-muted-foreground">
-                {report.timestamp ? formatDistanceToNow(new Date(report.timestamp.seconds * 1000), { addSuffix: true }) : 'N/A'}
+                {report.timestamp ? formatDistanceToNow(new Date(report.timestamp), { addSuffix: true }) : 'N/A'}
             </TableCell>
             <TableCell>
                 <span className={cn('px-2 py-1 text-xs font-semibold rounded-full capitalize', statusConfig[report.status])}>
