@@ -297,34 +297,35 @@ export default function Home() {
           <div className="relative container px-4 md:px-6 text-center z-20">
             <div className="max-w-4xl mx-auto flex flex-col items-center">
               <h1 className="font-headline text-4xl sm:text-5xl md:text-7xl tracking-tighter leading-tight text-foreground">
-                Your Business. Your Customers. Your Control.
+                Business, Customer, and Control.
               </h1>
 
-              <div className="my-6 h-16 md:h-20 flex items-center justify-center">
-                <AnimatedWhatShop />
-              </div>
+              <h2 className="font-headline text-5xl sm:text-6xl md:text-8xl tracking-tighter leading-tight font-bold text-primary mt-6">
+                All Yours.
+              </h2>
 
-              {animationFinished && (
-                <motion.div
-                  className="flex flex-col items-center w-full"
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ duration: 0.8, ease: "easeOut" }}
+              <h3 className="text-xl md:text-2xl text-muted-foreground mt-8 max-w-2xl">
+                WhatsApp ordering platform for restaurants and street vendors. Zero commission. Full control.
+              </h3>
+
+              <motion.div
+                className="flex flex-col items-center w-full mt-6"
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.8, ease: "easeOut" }}
+              >
+                <h4 className="text-2xl sm:text-3xl md:text-4xl font-bold tracking-tight text-foreground">
+                  Cut Commission. Boost Profits by <span className="text-green-500">25%+.</span>
+                </h4>
+                <MotionLink
+                  href="/join-waitlist"
+                  className="mt-8 bg-primary text-primary-foreground font-bold py-4 px-10 rounded-lg text-xl hover:bg-primary/90 transition-transform transform hover:scale-105 inline-flex items-center gap-3 shadow-lg shadow-primary/30"
+                  whileHover={{ scale: 1.05 }}
+                  whileTap={{ scale: 0.95 }}
                 >
-                  <AnimatedSubheadline />
-                  <h2 className="text-2xl sm:text-3xl md:text-4xl font-bold tracking-tight text-foreground mt-6">
-                    Cut Commission. Boost Profits by <span className="text-green-500">25%+.</span>
-                  </h2>
-                  <MotionLink
-                    href="/join-waitlist"
-                    className="mt-8 bg-primary text-primary-foreground font-bold py-4 px-10 rounded-lg text-xl hover:bg-primary/90 transition-transform transform hover:scale-105 inline-flex items-center gap-3 shadow-lg shadow-primary/30"
-                    whileHover={{ scale: 1.05 }}
-                    whileTap={{ scale: 0.95 }}
-                  >
-                    <Feather size={24} /> Join the Waitlist Now
-                  </MotionLink>
-                </motion.div>
-              )}
+                  <Feather size={24} /> Join the Waitlist Now
+                </MotionLink>
+              </motion.div>
             </div>
           </div>
         </section>
