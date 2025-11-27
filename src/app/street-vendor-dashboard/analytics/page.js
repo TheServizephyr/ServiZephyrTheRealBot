@@ -14,6 +14,7 @@ export default function StreetVendorAnalyticsPage() {
     const [analyticsData, setAnalyticsData] = useState(null);
     const [dateFilter, setDateFilter] = useState('This Month');
     const searchParams = useSearchParams();
+    const router = useRouter();
     const impersonatedOwnerId = searchParams.get('impersonate_owner_id');
 
     useEffect(() => {

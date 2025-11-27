@@ -85,8 +85,22 @@ export async function GET(req) {
             return NextResponse.json({ order: orderData, restaurant: businessData, customer: customerData }, { status: 200 });
         }
 
+        const startDate = searchParams.get('startDate');
+        const endDate = searchParams.get('endDate');
+
         const ordersRef = firestore.collection('orders');
-        const ordersSnap = await ordersRef.where('restaurantId', '==', businessId).orderBy('orderDate', 'desc').limit(50).get();
+        let query = ordersRef.where('restaurantId', '==', businessId);
+
+        if (startDate && endDate) {
+            // Ensure dates are valid Date objects
+            const start = new Date(startDate);
+            const end = new Date(endDate);
+            query = query.where('orderDate', '>=', start).where('orderDate', '<=', end).orderBy('orderDate', 'desc');
+        } else {
+            query = query.orderBy('orderDate', 'desc').limit(50);
+        }
+
+        const ordersSnap = await query.get();
 
         const orders = ordersSnap.docs.map(doc => {
             const data = doc.data();

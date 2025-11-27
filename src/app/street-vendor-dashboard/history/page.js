@@ -7,10 +7,10 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { format, startOfDay, endOfDay, isToday } from 'date-fns';
 import { Calendar as CalendarIcon, ArrowLeft, Loader2, Search, Wallet, IndianRupee, User, Phone } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { db, auth } from '@/lib/firebase';
-import { collection, query, where, getDocs, orderBy, Timestamp } from 'firebase/firestore';
+import { auth } from '@/lib/firebase';
 import { useUser } from '@/firebase';
 import Link from 'next/link';
+import { useSearchParams } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
@@ -18,36 +18,17 @@ const formatCurrency = (value) => `₹${Number(value || 0).toLocaleString('en-IN
 
 export default function OrderHistoryPage() {
     const { user, loading: isUserLoading } = useUser();
-    const [vendorId, setVendorId] = useState(null);
     const [date, setDate] = useState({ from: new Date(), to: new Date() });
     const [orders, setOrders] = useState([]);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState(null);
     const [searchQuery, setSearchQuery] = useState('');
-
-    // Fetch Vendor ID
-    useEffect(() => {
-        if (isUserLoading || !user) return;
-
-        const fetchVendorId = async () => {
-            try {
-                const q = query(collection(db, 'street_vendors'), where('ownerId', '==', user.uid));
-                const snapshot = await getDocs(q);
-                if (!snapshot.empty) {
-                    setVendorId(snapshot.docs[0].id);
-                }
-            } catch (err) {
-                console.error("Error fetching vendor ID:", err);
-                setError("Could not load vendor profile.");
-            }
-        };
-
-        fetchVendorId();
-    }, [user, isUserLoading]);
+    const searchParams = useSearchParams();
+    const impersonatedOwnerId = searchParams.get('impersonate_owner_id');
 
     // Auto-load today's data on page load
     useEffect(() => {
-        if (!vendorId) return;
+        if (isUserLoading || !user) return;
 
         const loadTodayData = () => {
             // Check if today's data is in localStorage
@@ -67,29 +48,31 @@ export default function OrderHistoryPage() {
         };
 
         loadTodayData();
-    }, [vendorId]);
+    }, [user, isUserLoading, impersonatedOwnerId]);
 
     const fetchTodayHistory = async () => {
-        if (!vendorId) return;
-
         setLoading(true);
         setError(null);
 
         try {
             const today = new Date();
-            const start = startOfDay(today);
-            const end = endOfDay(today);
+            const start = startOfDay(today).toISOString();
+            const end = endOfDay(today).toISOString();
+            const idToken = await user.getIdToken();
 
-            const q = query(
-                collection(db, 'orders'),
-                where('restaurantId', '==', vendorId),
-                where('orderDate', '>=', Timestamp.fromDate(start)),
-                where('orderDate', '<=', Timestamp.fromDate(end)),
-                orderBy('orderDate', 'desc')
-            );
+            let url = `/api/owner/orders?startDate=${start}&endDate=${end}`;
+            if (impersonatedOwnerId) {
+                url += `&impersonate_owner_id=${impersonatedOwnerId}`;
+            }
 
-            const snapshot = await getDocs(q);
-            const fetchedOrders = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            const res = await fetch(url, {
+                headers: { 'Authorization': `Bearer ${idToken}` }
+            });
+
+            if (!res.ok) throw new Error('Failed to fetch history');
+
+            const data = await res.json();
+            const fetchedOrders = data.orders || [];
 
             setOrders(fetchedOrders);
 
@@ -106,26 +89,30 @@ export default function OrderHistoryPage() {
     };
 
     const fetchHistory = async () => {
-        if (!vendorId || !date?.from) return;
+        if (!date?.from) return;
 
         setLoading(true);
         setError(null);
         setOrders([]);
 
         try {
-            const start = startOfDay(date.from);
-            const end = date.to ? endOfDay(date.to) : endOfDay(date.from);
+            const start = startOfDay(date.from).toISOString();
+            const end = date.to ? endOfDay(date.to).toISOString() : endOfDay(date.from).toISOString();
+            const idToken = await user.getIdToken();
 
-            const q = query(
-                collection(db, 'orders'),
-                where('restaurantId', '==', vendorId),
-                where('orderDate', '>=', Timestamp.fromDate(start)),
-                where('orderDate', '<=', Timestamp.fromDate(end)),
-                orderBy('orderDate', 'desc')
-            );
+            let url = `/api/owner/orders?startDate=${start}&endDate=${end}`;
+            if (impersonatedOwnerId) {
+                url += `&impersonate_owner_id=${impersonatedOwnerId}`;
+            }
 
-            const snapshot = await getDocs(q);
-            const fetchedOrders = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            const res = await fetch(url, {
+                headers: { 'Authorization': `Bearer ${idToken}` }
+            });
+
+            if (!res.ok) throw new Error('Failed to fetch history');
+
+            const data = await res.json();
+            const fetchedOrders = data.orders || [];
 
             setOrders(fetchedOrders);
 
@@ -279,7 +266,7 @@ export default function OrderHistoryPage() {
     return (
         <div className="min-h-screen bg-background text-foreground font-body p-4 pb-24">
             <header className="flex items-center gap-4 mb-6">
-                <Link href="/street-vendor-dashboard">
+                <Link href={impersonatedOwnerId ? `/street-vendor-dashboard?impersonate_owner_id=${impersonatedOwnerId}` : "/street-vendor-dashboard"}>
                     <Button variant="ghost" size="icon">
                         <ArrowLeft />
                     </Button>
@@ -311,7 +298,7 @@ export default function OrderHistoryPage() {
                             />
                             <Button
                                 onClick={fetchHistory}
-                                disabled={loading || !vendorId || !date?.from}
+                                disabled={loading || !date?.from}
                                 className="w-full"
                             >
                                 {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Search className="mr-2 h-4 w-4" />}
