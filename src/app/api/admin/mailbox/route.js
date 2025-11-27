@@ -1,30 +1,15 @@
-
 import { NextResponse } from 'next/server';
-import { getFirestore, FieldValue, verifyAndGetUid, getAuth } from '@/lib/firebase-admin';
+import { getFirestore, FieldValue } from '@/lib/firebase-admin';
 
-// Helper to verify if the user is an admin
-async function verifyAdmin(req, auth) {
-    const uid = await verifyAndGetUid(req); // Use the central helper first
-    const userRecord = await auth.getUser(uid);
-    
-    if (userRecord.customClaims && userRecord.customClaims.isAdmin === true) {
-        return uid;
-    }
-    
-    // If the claim is not present, deny access.
-    throw { message: 'Access Denied: You do not have admin privileges.', status: 403 };
-}
+export const dynamic = 'force-dynamic';
 
 // GET all reports for the admin
 export async function GET(req) {
     try {
-        const auth = await getAuth();
-        await verifyAdmin(req, auth);
-        
         const firestore = await getFirestore();
         const mailboxRef = firestore.collection('adminMailbox');
         const snapshot = await mailboxRef.orderBy('timestamp', 'desc').get();
-        
+
         const reports = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 
         return NextResponse.json({ reports }, { status: 200 });
@@ -46,7 +31,7 @@ export async function POST(req) {
         }
 
         const newReportRef = firestore.collection('adminMailbox').doc();
-        
+
         const newReportData = {
             id: newReportRef.id,
             title: errorTitle,
@@ -73,19 +58,16 @@ export async function POST(req) {
 
 // PATCH to update a report's status
 export async function PATCH(req) {
-     try {
-        const auth = await getAuth();
-        await verifyAdmin(req, auth);
-        
+    try {
         const { reportId, status } = await req.json();
 
         if (!reportId || !status) {
             return NextResponse.json({ message: 'Report ID and status are required.' }, { status: 400 });
         }
-        
+
         const firestore = await getFirestore();
         const reportRef = firestore.collection('adminMailbox').doc(reportId);
-        
+
         await reportRef.update({ status: status });
 
         return NextResponse.json({ message: 'Report status updated successfully.' }, { status: 200 });
