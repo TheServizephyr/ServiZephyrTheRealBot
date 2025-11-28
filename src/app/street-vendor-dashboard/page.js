@@ -6,7 +6,7 @@ import { ClipboardList, QrCode, CookingPot, PackageCheck, Check, X, Loader2, Use
 import { Button } from '@/components/ui/button';
 import Link from 'next/link';
 import { useUser, useMemoFirebase, useCollection } from '@/firebase';
-import { db, auth } from '@/lib/firebase';
+import { db, auth, storage } from '@/lib/firebase';
 import { collection, query, where, onSnapshot, doc, Timestamp, getDocs, updateDoc, deleteDoc, getDoc, limit, orderBy } from 'firebase/firestore';
 import { startOfDay, endOfDay, format } from 'date-fns';
 import { FirestorePermissionError } from '@/firebase/errors';
@@ -217,7 +217,6 @@ const OrderCard = ({ order, onMarkReady, onCancelClick, onMarkCollected }) => {
         borderClass = 'border-red-500';
     }
 
-    // --- START: PAYMENT BREAKDOWN LOGIC ---
     const paymentDetailsArray = Array.isArray(order.paymentDetails) ? order.paymentDetails : [order.paymentDetails].filter(Boolean);
     const amountPaidOnline = paymentDetailsArray
         .filter(p => p.method === 'razorpay' && p.status === 'paid')
@@ -226,8 +225,7 @@ const OrderCard = ({ order, onMarkReady, onCancelClick, onMarkCollected }) => {
     const amountDueAtCounter = (order.totalAmount || 0) - amountPaidOnline;
 
     const isFullyPaidOnline = amountPaidOnline >= (order.totalAmount || 0);
-    const isPartiallyPaid = amountPaidOnline > 0 && amountDueAtCounter > 0.01; // Use a small threshold for float issues
-    // --- END: PAYMENT BREAKDOWN LOGIC ---
+    const isPartiallyPaid = amountPaidOnline > 0 && amountDueAtCounter > 0.01;
 
     return (
         <motion.div
@@ -242,7 +240,6 @@ const OrderCard = ({ order, onMarkReady, onCancelClick, onMarkCollected }) => {
                 <div className="flex justify-between items-start">
                     <div>
                         <p className="text-4xl font-bold text-foreground">{token}</p>
-                        {/* PROMINENT DINING PREFERENCE LABEL */}
                         {order.diningPreference === 'takeaway' && (
                             <div className="mt-2 flex items-center gap-2 text-sm font-bold px-3 py-1.5 rounded-lg bg-orange-500/20 text-orange-600 border-2 border-orange-500 w-fit">
                                 <PackageCheck size={18} /> PACK THIS ORDER
@@ -266,7 +263,6 @@ const OrderCard = ({ order, onMarkReady, onCancelClick, onMarkCollected }) => {
                 </div>
                 <div className="flex justify-between items-center mt-2 border-b border-dashed border-border pb-3 mb-3">
                     <p className="text-3xl font-bold text-green-500">{formatCurrency(order.totalAmount)}</p>
-                    {/* Payment Status Only */}
                     <div className="flex flex-wrap items-center justify-end gap-2">
                         {isFullyPaidOnline ? (
                             <div className="flex items-center gap-1 text-xs font-semibold px-2 py-1 rounded-full bg-green-500/10 text-green-500 border border-green-500/20">
@@ -287,103 +283,34 @@ const OrderCard = ({ order, onMarkReady, onCancelClick, onMarkCollected }) => {
 
                 <div className="mt-2 text-muted-foreground space-y-1">
                     <div className="flex items-center gap-2">
-                        <User size={16} />
-                        <span className="font-semibold text-foreground text-lg">{order.customerName}</span>
+                        <User size={14} />
+                        <span className="font-semibold text-foreground text-base">{order.customerName || 'Guest'}</span>
                     </div>
                     {order.customerPhone && (
-                        <div className="flex items-center gap-2 text-sm">
-                            <Phone size={14} />
+                        <div className="flex items-center gap-2 text-xs">
+                            <Phone size={12} />
                             <span>{order.customerPhone}</span>
                         </div>
                     )}
                 </div>
-                <div className="mt-2 pt-2 border-t border-dashed border-border">
+                <div className="mt-3 pt-3 border-t border-dashed border-border">
                     <p className="font-semibold text-foreground text-sm mb-1.5">Items:</p>
-                    {(() => {
-                        // Group items by addedAt timestamp
-                        const itemGroups = [];
-                        const groupedByTime = {};
-
-                        order.items.forEach((item) => {
-                            // Get timestamp - handle both Firestore Timestamp and Date objects
-                            let timestamp;
-                            if (item.addedAt?.toDate) {
-                                timestamp = item.addedAt.toDate();
-                            } else if (item.addedAt) {
-                                timestamp = new Date(item.addedAt);
-                            } else {
-                                // Fallback to order date for items without timestamp
-                                timestamp = order.orderDate?.toDate ? order.orderDate.toDate() : new Date(order.orderDate);
-                            }
-
-                            const timeKey = timestamp.getTime();
-                            if (!groupedByTime[timeKey]) {
-                                groupedByTime[timeKey] = {
-                                    timestamp,
-                                    items: [],
-                                    isAddon: item.isAddon || false
-                                };
-                            }
-                            groupedByTime[timeKey].items.push(item);
-                        });
-
-                        // Convert to array and sort by timestamp
-                        const sortedGroups = Object.values(groupedByTime).sort((a, b) => a.timestamp - b.timestamp);
-
-                        // Check if item was added in last 5 minutes
-                        const isRecent = (timestamp) => {
-                            const now = new Date();
-                            const diff = now - timestamp;
-                            return diff < 5 * 60 * 1000; // 5 minutes
-                        };
-
-                        return sortedGroups.map((group, groupIndex) => {
-                            const isOriginal = groupIndex === 0;
-                            const isNew = isRecent(group.timestamp);
-                            const timeStr = group.timestamp.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true });
+                    <ul className="list-disc list-inside text-muted-foreground text-base space-y-1">
+                        {order.items.map((item, idx) => {
+                            const portionName = item.portion?.name;
+                            const addOns = (item.selectedAddOns || [])
+                                .map(addon => `${addon.quantity}x ${addon.name}`)
+                                .join(', ');
 
                             return (
-                                <div
-                                    key={groupIndex}
-                                    className={cn(
-                                        "mb-2 p-1.5 rounded border",
-                                        isOriginal ? "bg-card border-border/50" : "bg-amber-50/30 dark:bg-amber-900/5 border-amber-300/50 dark:border-amber-700/30"
-                                    )}
-                                >
-                                    <div className="flex items-center justify-between mb-0.5">
-                                        <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wide">
-                                            {isOriginal ? 'Original' : 'Added'}
-                                        </span>
-                                        <div className="flex items-center gap-1.5">
-                                            <Clock size={10} className="text-muted-foreground" />
-                                            <span className="text-[10px] text-muted-foreground font-medium">{timeStr}</span>
-                                            {isNew && !isOriginal && (
-                                                <span className="px-1.5 py-0.5 text-[9px] font-bold bg-green-500 text-white rounded-full animate-pulse">
-                                                    NEW
-                                                </span>
-                                            )}
-                                        </div>
-                                    </div>
-                                    <ul className="list-disc list-inside text-muted-foreground text-xs space-y-0.5 ml-1">
-                                        {group.items.map((item, itemIndex) => {
-                                            const portionName = item.portion?.name;
-                                            const addOns = (item.selectedAddOns || [])
-                                                .map(addon => `${addon.quantity}x ${addon.name}`)
-                                                .join(', ');
-
-                                            return (
-                                                <li key={itemIndex} className="leading-tight">
-                                                    {item.quantity || item.qty}x {item.name}
-                                                    {portionName && portionName.toLowerCase() !== 'full' && ` - ${portionName}`}
-                                                    {addOns && <span className="text-[10px] text-primary block pl-3">({addOns})</span>}
-                                                </li>
-                                            );
-                                        })}
-                                    </ul>
-                                </div>
+                                <li key={idx}>
+                                    {item.quantity || item.qty}x {item.name}
+                                    {portionName && portionName.toLowerCase() !== 'full' && ` - ${portionName}`}
+                                    {addOns && <span className="text-xs text-primary block pl-4">({addOns})</span>}
+                                </li>
                             );
-                        });
-                    })()}
+                        })}
+                    </ul>
                 </div>
                 {order.status === 'rejected' && order.rejectionReason && (
                     <div className="mt-3 pt-3 border-t border-dashed border-red-500/30">
