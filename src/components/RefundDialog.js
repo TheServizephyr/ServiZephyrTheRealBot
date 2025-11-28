@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { useUser } from '@/firebase';
 import { Button } from '@/components/ui/button';
 import {
     Dialog,
@@ -34,6 +35,7 @@ const REFUND_REASONS = [
 ];
 
 export default function RefundDialog({ order, open, onOpenChange, onRefundSuccess }) {
+    const { user } = useUser();
     const [refundType, setRefundType] = useState('full');
     const [selectedItems, setSelectedItems] = useState([]);
     const [reason, setReason] = useState('');
@@ -96,10 +98,20 @@ export default function RefundDialog({ order, open, onOpenChange, onRefundSucces
         setError(null);
 
         try {
+            // Get Firebase ID token
+            if (!user) {
+                setError('User not authenticated');
+                setLoading(false);
+                return;
+            }
+
+            const idToken = await user.getIdToken();
+
             const response = await fetch('/api/owner/refund', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${idToken}`
                 },
                 body: JSON.stringify({
                     orderId: order.id,
