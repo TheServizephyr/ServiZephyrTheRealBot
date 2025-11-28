@@ -170,7 +170,7 @@ export async function POST(req) {
 
         const refundData = await razorpay.payments.refund(paymentId, {
             amount: Math.round(refundAmount * 100), // Convert to paise
-            speed: 'normal', // or 'optimum' for instant refund
+            speed: 'optimum', // Instant refund - works even for unsettled payments
             notes: {
                 orderId,
                 reason,
