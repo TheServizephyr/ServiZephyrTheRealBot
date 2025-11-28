@@ -148,18 +148,16 @@ export async function PATCH(req) {
         const auth = await getAuth();
         const firestore = await getFirestore();
 
-        const { orderId, status: newStatus, rejectionReason } = await req.json();
-
-        const { businessId, businessSnap } = await verifyOwnerWithAudit(
-            req,
-            'update_order_status',
-            { orderId, newStatus, rejectionReason }
-        );
-
         const body = await req.json();
         console.log(`[API][PATCH /orders] Body:`, body);
 
         const { orderId, orderIds, newStatus, deliveryBoyId, rejectionReason } = body;
+
+        const { businessId, businessSnap } = await verifyOwnerWithAudit(
+            req,
+            'update_order_status',
+            { orderId, orderIds, newStatus, rejectionReason }
+        );
 
         const idsToUpdate = orderIds && orderIds.length > 0 ? orderIds : (orderId ? [orderId] : []);
 
