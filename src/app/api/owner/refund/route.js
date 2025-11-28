@@ -105,16 +105,18 @@ export async function POST(req) {
         }
 
         const paymentId = razorpayPayment.razorpay_payment_id;
+        const onlinePaymentAmount = razorpayPayment.amount || 0; // Amount actually paid online
 
         // Calculate refund amount
         let refundAmount = 0;
 
         if (refundType === 'full') {
-            refundAmount = orderData.totalAmount || orderData.grandTotal || 0;
+            // Refund only the online payment amount, not total order amount
+            refundAmount = onlinePaymentAmount;
         } else if (refundType === 'partial') {
             // Calculate amount for selected items
             const orderItems = orderData.items || [];
-            refundAmount = items.reduce((sum, itemId) => {
+            let itemsTotal = items.reduce((sum, itemId) => {
                 const item = orderItems.find(i => i.id === itemId || i.name === itemId);
                 if (item) {
                     const itemPrice = item.price || 0;
@@ -128,7 +130,10 @@ export async function POST(req) {
             const subtotal = orderData.subtotal || orderData.totalAmount || 0;
             const taxAmount = (orderData.totalAmount || 0) - subtotal;
             const taxRatio = subtotal > 0 ? taxAmount / subtotal : 0;
-            refundAmount += (refundAmount * taxRatio);
+            itemsTotal += (itemsTotal * taxRatio);
+
+            // Cap partial refund to online payment amount
+            refundAmount = Math.min(itemsTotal, onlinePaymentAmount);
         }
 
         // Validate refund amount
