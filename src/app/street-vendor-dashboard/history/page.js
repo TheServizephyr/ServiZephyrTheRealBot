@@ -165,7 +165,7 @@ export default function OrderHistoryPage() {
 
         // Check if payment was online
         const paymentDetails = order.paymentDetails || [];
-        const hasOnlinePayment = paymentDetails.some(p => p.method === 'razorpay' && p.razorpay_payment_id);
+        const hasOnlinePayment = Array.isArray(paymentDetails) && paymentDetails.some(p => p.method === 'razorpay' && p.razorpay_payment_id);
         if (!hasOnlinePayment) return false;
 
         // Check 7-day limit
