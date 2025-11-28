@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { format, startOfDay, endOfDay, isToday } from 'date-fns';
-import { Calendar as CalendarIcon, ArrowLeft, Loader2, Search, Wallet, IndianRupee, User, Phone } from 'lucide-react';
+import { Calendar as CalendarIcon, ArrowLeft, Loader2, Search, Wallet, IndianRupee, User, Phone, RotateCcw } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { auth } from '@/lib/firebase';
 import { useUser } from '@/firebase';
@@ -13,16 +13,21 @@ import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import RefundDialog from '@/components/RefundDialog';
+import { useToast } from '@/components/ui/use-toast';
 
 const formatCurrency = (value) => `₹${Number(value || 0).toLocaleString('en-IN', { maximumFractionDigits: 2 })}`;
 
 export default function OrderHistoryPage() {
     const { user, loading: isUserLoading } = useUser();
+    const { toast } = useToast();
     const [date, setDate] = useState({ from: new Date(), to: new Date() });
     const [orders, setOrders] = useState([]);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState(null);
     const [searchQuery, setSearchQuery] = useState('');
+    const [refundDialogOpen, setRefundDialogOpen] = useState(false);
+    const [selectedOrderForRefund, setSelectedOrderForRefund] = useState(null);
     const searchParams = useSearchParams();
     const impersonatedOwnerId = searchParams.get('impersonate_owner_id');
 
@@ -131,6 +136,46 @@ export default function OrderHistoryPage() {
     };
 
     // Filter Logic
+    const handleRefundSuccess = (data) => {
+        toast({
+            title: "Refund Processed Successfully",
+            description: `₹${data.amount.toFixed(2)} will be credited to customer's account in ${data.expectedCreditDays}`,
+        });
+
+        // Refresh orders to show updated refund status
+        if (isToday(date.from)) {
+            fetchTodayHistory();
+        } else {
+            fetchHistory();
+        }
+    };
+
+    const handleRefundClick = (order) => {
+        setSelectedOrderForRefund(order);
+        setRefundDialogOpen(true);
+    };
+
+    const canRefund = (order) => {
+        // Check if order can be refunded
+        const validStatuses = ['completed', 'delivered', 'cancelled'];
+        if (!validStatuses.includes(order.status)) return false;
+
+        // Check if already fully refunded
+        if (order.refundStatus === 'completed') return false;
+
+        // Check if payment was online
+        const paymentDetails = order.paymentDetails || [];
+        const hasOnlinePayment = paymentDetails.some(p => p.method === 'razorpay' && p.razorpay_payment_id);
+        if (!hasOnlinePayment) return false;
+
+        // Check 7-day limit
+        const orderDate = order.orderDate?.toDate ? order.orderDate.toDate() : new Date(order.orderDate);
+        const daysSinceOrder = (Date.now() - orderDate.getTime()) / (1000 * 60 * 60 * 24);
+        if (daysSinceOrder > 7) return false;
+
+        return true;
+    };
+
     const filteredOrders = useMemo(() => {
         let items = [...orders];
 
@@ -255,6 +300,37 @@ export default function OrderHistoryPage() {
                                         <p>{order.rejectionReason}</p>
                                     </div>
                                 )}
+
+                                {/* Refund Status Badge */}
+                                {order.refundStatus && order.refundStatus !== 'none' && (
+                                    <div className="mt-3 pt-3 border-t border-dashed border-border">
+                                        <div className="flex items-center justify-between">
+                                            <div>
+                                                <p className="text-sm font-semibold text-blue-500">
+                                                    {order.refundStatus === 'completed' ? '✓ Fully Refunded' : '⚠ Partially Refunded'}
+                                                </p>
+                                                <p className="text-xs text-muted-foreground">
+                                                    Amount: ₹{(order.refundAmount || 0).toFixed(2)}
+                                                </p>
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
+
+                                {/* Refund Button */}
+                                {canRefund(order) && (
+                                    <div className="mt-3 pt-3 border-t border-dashed border-border">
+                                        <Button
+                                            variant="outline"
+                                            size="sm"
+                                            className="w-full"
+                                            onClick={() => handleRefundClick(order)}
+                                        >
+                                            <RotateCcw className="mr-2 h-4 w-4" />
+                                            Process Refund
+                                        </Button>
+                                    </div>
+                                )}
                             </div>
                         </motion.div>
                     );
@@ -341,6 +417,16 @@ export default function OrderHistoryPage() {
                         <OrderList items={cancelledOrders} emptyMessage="No cancelled orders found." />
                     </TabsContent>
                 </Tabs>
+            )}
+
+            {/* Refund Dialog */}
+            {selectedOrderForRefund && (
+                <RefundDialog
+                    order={selectedOrderForRefund}
+                    open={refundDialogOpen}
+                    onOpenChange={setRefundDialogOpen}
+                    onRefundSuccess={handleRefundSuccess}
+                />
             )}
         </div>
     );
