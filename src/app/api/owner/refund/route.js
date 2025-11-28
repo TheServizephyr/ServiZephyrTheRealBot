@@ -1,0 +1,244 @@
+import { NextResponse } from 'next/server';
+import Razorpay from 'razorpay';
+import { getFirestore, FieldValue } from '@/lib/firebase-admin';
+import { verifyOwnerWithAudit } from '@/lib/verify-owner-with-audit';
+
+export const dynamic = 'force-dynamic';
+
+/**
+ * POST /api/owner/refund
+ * Process refund for an order (full or partial)
+ */
+export async function POST(req) {
+    console.log('[API /owner/refund] POST request received');
+
+    try {
+        const firestore = await getFirestore();
+        const body = await req.json();
+
+        const {
+            orderId,
+            refundType, // 'full' or 'partial'
+            items = [], // for partial refund
+            reason,
+            notes
+        } = body;
+
+        console.log(`[API /owner/refund] Processing ${refundType} refund for order: ${orderId}`);
+
+        // Validate input
+        if (!orderId || !refundType || !reason) {
+            return NextResponse.json({
+                message: 'Missing required fields: orderId, refundType, reason'
+            }, { status: 400 });
+        }
+
+        if (refundType === 'partial' && (!items || items.length === 0)) {
+            return NextResponse.json({
+                message: 'Items array required for partial refund'
+            }, { status: 400 });
+        }
+
+        // Verify owner and log action
+        const { businessId } = await verifyOwnerWithAudit(
+            req,
+            `${refundType}_refund`,
+            { orderId, refundType, itemCount: items.length, reason }
+        );
+
+        // Get order details
+        const orderRef = firestore.collection('orders').doc(orderId);
+        const orderDoc = await orderRef.get();
+
+        if (!orderDoc.exists) {
+            return NextResponse.json({ message: 'Order not found' }, { status: 404 });
+        }
+
+        const orderData = orderDoc.data();
+
+        // Verify order belongs to this business
+        if (orderData.restaurantId !== businessId) {
+            return NextResponse.json({
+                message: 'Access denied: Order does not belong to this business'
+            }, { status: 403 });
+        }
+
+        // Check if order is already refunded
+        if (orderData.refundStatus === 'completed') {
+            return NextResponse.json({
+                message: 'Order has already been fully refunded'
+            }, { status: 400 });
+        }
+
+        // Check if order is in valid status for refund
+        const validStatuses = ['completed', 'delivered', 'cancelled'];
+        if (!validStatuses.includes(orderData.status)) {
+            return NextResponse.json({
+                message: `Cannot refund order with status: ${orderData.status}. Order must be completed, delivered, or cancelled.`
+            }, { status: 400 });
+        }
+
+        // Check refund time limit (7 days)
+        const orderDate = orderData.orderDate?.toDate ? orderData.orderDate.toDate() : new Date(orderData.orderDate);
+        const daysSinceOrder = (Date.now() - orderDate.getTime()) / (1000 * 60 * 60 * 24);
+
+        if (daysSinceOrder > 7) {
+            return NextResponse.json({
+                message: 'Refund period expired. Refunds are only allowed within 7 days of order.'
+            }, { status: 400 });
+        }
+
+        // Get payment details
+        const paymentDetails = orderData.paymentDetails;
+        if (!paymentDetails || paymentDetails.length === 0) {
+            return NextResponse.json({
+                message: 'No payment information found for this order'
+            }, { status: 400 });
+        }
+
+        // Find Razorpay payment
+        const razorpayPayment = paymentDetails.find(p => p.method === 'razorpay' && p.razorpay_payment_id);
+        if (!razorpayPayment) {
+            return NextResponse.json({
+                message: 'No Razorpay payment found. Only online payments can be refunded.'
+            }, { status: 400 });
+        }
+
+        const paymentId = razorpayPayment.razorpay_payment_id;
+
+        // Calculate refund amount
+        let refundAmount = 0;
+
+        if (refundType === 'full') {
+            refundAmount = orderData.totalAmount || orderData.grandTotal || 0;
+        } else if (refundType === 'partial') {
+            // Calculate amount for selected items
+            const orderItems = orderData.items || [];
+            refundAmount = items.reduce((sum, itemId) => {
+                const item = orderItems.find(i => i.id === itemId || i.name === itemId);
+                if (item) {
+                    const itemPrice = item.price || 0;
+                    const itemQty = item.quantity || item.qty || 1;
+                    return sum + (itemPrice * itemQty);
+                }
+                return sum;
+            }, 0);
+
+            // Add proportional tax
+            const subtotal = orderData.subtotal || orderData.totalAmount || 0;
+            const taxAmount = (orderData.totalAmount || 0) - subtotal;
+            const taxRatio = subtotal > 0 ? taxAmount / subtotal : 0;
+            refundAmount += (refundAmount * taxRatio);
+        }
+
+        // Validate refund amount
+        if (refundAmount <= 0) {
+            return NextResponse.json({
+                message: 'Invalid refund amount calculated'
+            }, { status: 400 });
+        }
+
+        const alreadyRefunded = orderData.refundAmount || 0;
+        const maxRefundable = (orderData.totalAmount || 0) - alreadyRefunded;
+
+        if (refundAmount > maxRefundable) {
+            return NextResponse.json({
+                message: `Refund amount (₹${refundAmount}) exceeds remaining refundable amount (₹${maxRefundable})`
+            }, { status: 400 });
+        }
+
+        // Initialize Razorpay
+        if (!process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID || !process.env.RAZORPAY_KEY_SECRET) {
+            console.error('CRITICAL: Razorpay credentials not configured');
+            return NextResponse.json({
+                message: 'Payment gateway not configured'
+            }, { status: 500 });
+        }
+
+        const razorpay = new Razorpay({
+            key_id: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID,
+            key_secret: process.env.RAZORPAY_KEY_SECRET,
+        });
+
+        // Process refund via Razorpay
+        console.log(`[API /owner/refund] Processing Razorpay refund: Payment ID: ${paymentId}, Amount: ₹${refundAmount}`);
+
+        const refundData = await razorpay.payments.refund(paymentId, {
+            amount: Math.round(refundAmount * 100), // Convert to paise
+            speed: 'normal', // or 'optimum' for instant refund
+            notes: {
+                orderId,
+                reason,
+                refundType,
+                notes: notes || ''
+            }
+        });
+
+        console.log(`[API /owner/refund] Razorpay refund successful: ${refundData.id}`);
+
+        // Update order in Firestore
+        const totalRefunded = alreadyRefunded + refundAmount;
+        const isFullyRefunded = totalRefunded >= (orderData.totalAmount || 0);
+
+        const updateData = {
+            refundStatus: isFullyRefunded ? 'completed' : 'partial',
+            refundAmount: totalRefunded,
+            refundReason: reason,
+            refundDate: FieldValue.serverTimestamp(),
+            refundId: refundData.id,
+            partiallyRefunded: !isFullyRefunded,
+            refundedItems: refundType === 'partial' ? FieldValue.arrayUnion(...items) : [],
+            updatedAt: FieldValue.serverTimestamp()
+        };
+
+        await orderRef.update(updateData);
+
+        // Create refund record
+        const refundRecord = {
+            refundId: refundData.id,
+            orderId,
+            paymentId,
+            amount: refundAmount,
+            currency: 'INR',
+            status: refundData.status, // 'processed' or 'pending'
+            refundType,
+            reason,
+            notes: notes || '',
+            vendorId: businessId,
+            customerId: orderData.customerId || orderData.userId,
+            items: refundType === 'partial' ? items : [],
+            createdAt: FieldValue.serverTimestamp(),
+            processedAt: refundData.created_at ? new Date(refundData.created_at * 1000) : FieldValue.serverTimestamp()
+        };
+
+        await firestore.collection('refunds').doc(refundData.id).set(refundRecord);
+
+        console.log(`[API /owner/refund] Refund completed successfully: ${refundData.id}`);
+
+        // TODO: Send notification to customer
+        // await sendRefundNotification(orderData.customerId, refundAmount, refundData.id);
+
+        return NextResponse.json({
+            success: true,
+            message: `Refund of ₹${refundAmount.toFixed(2)} processed successfully`,
+            refundId: refundData.id,
+            amount: refundAmount,
+            status: refundData.status,
+            expectedCreditDays: '5-7 working days'
+        }, { status: 200 });
+
+    } catch (error) {
+        console.error('[API /owner/refund] Error:', error);
+
+        // Handle Razorpay specific errors
+        if (error.error && error.error.description) {
+            return NextResponse.json({
+                message: `Refund failed: ${error.error.description}`
+            }, { status: 400 });
+        }
+
+        return NextResponse.json({
+            message: `Backend Error: ${error.message}`
+        }, { status: error.status || 500 });
+    }
+}
