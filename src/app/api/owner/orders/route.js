@@ -4,6 +4,7 @@ import { NextResponse } from 'next/server';
 import { getAuth, getFirestore, FieldValue, verifyAndGetUid } from '@/lib/firebase-admin';
 import { sendOrderStatusUpdateToCustomer } from '@/lib/notifications';
 import { verifyOwnerWithAudit } from '@/lib/verify-owner-with-audit';
+import Razorpay from 'razorpay';
 
 
 async function verifyOwnerAndGetBusiness(req, auth, firestore) {
@@ -215,6 +216,74 @@ export async function PATCH(req) {
             }
 
             batch.update(orderRef, updateData);
+
+            // Auto-refund for cancelled/rejected orders with online payment
+            if ((newStatus === 'rejected' || newStatus === 'cancelled') && orderData.paymentDetails) {
+                const razorpayPayment = orderData.paymentDetails.find(p => p.method === 'razorpay' && p.razorpay_payment_id);
+
+                if (razorpayPayment && !orderData.refundStatus) {
+                    console.log(`[API][PATCH /orders] Auto-refunding order ${id} due to ${newStatus} status`);
+
+                    try {
+                        // Initialize Razorpay
+                        const razorpay = new Razorpay({
+                            key_id: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID,
+                            key_secret: process.env.RAZORPAY_KEY_SECRET,
+                        });
+
+                        // Process full refund
+                        const refundAmount = orderData.totalAmount || orderData.grandTotal || 0;
+                        const paymentId = razorpayPayment.razorpay_payment_id;
+
+                        const refundData = await razorpay.payments.refund(paymentId, {
+                            amount: Math.round(refundAmount * 100), // Convert to paise
+                            speed: 'normal',
+                            notes: {
+                                orderId: id,
+                                reason: `Order ${newStatus} by vendor`,
+                                refundType: 'full',
+                                autoRefund: true
+                            }
+                        });
+
+                        console.log(`[API][PATCH /orders] Auto-refund successful: ${refundData.id}`);
+
+                        // Update order with refund info
+                        batch.update(orderRef, {
+                            refundStatus: 'completed',
+                            refundAmount: refundAmount,
+                            refundReason: `Order ${newStatus} by vendor`,
+                            refundDate: FieldValue.serverTimestamp(),
+                            refundId: refundData.id,
+                            autoRefunded: true
+                        });
+
+                        // Create refund record
+                        const refundRecord = {
+                            refundId: refundData.id,
+                            orderId: id,
+                            paymentId,
+                            amount: refundAmount,
+                            currency: 'INR',
+                            status: refundData.status,
+                            refundType: 'full',
+                            reason: `Order ${newStatus} by vendor`,
+                            notes: 'Auto-refund on cancellation',
+                            vendorId: businessId,
+                            customerId: orderData.customerId || orderData.userId,
+                            autoRefund: true,
+                            createdAt: FieldValue.serverTimestamp(),
+                            processedAt: refundData.created_at ? new Date(refundData.created_at * 1000) : FieldValue.serverTimestamp()
+                        };
+
+                        await firestore.collection('refunds').doc(refundData.id).set(refundRecord);
+                    } catch (refundError) {
+                        console.error(`[API][PATCH /orders] Auto-refund failed for order ${id}:`, refundError);
+                        // Don't fail the entire order update if refund fails
+                        // Vendor can manually refund later
+                    }
+                }
+            }
 
             const businessData = businessSnap.data();
 
