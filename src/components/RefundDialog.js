@@ -46,10 +46,18 @@ export default function RefundDialog({ order, open, onOpenChange, onRefundSucces
     const orderItems = order?.items || [];
     const totalAmount = order?.totalAmount || order?.grandTotal || 0;
 
+    // Get online payment amount
+    const paymentDetails = order?.paymentDetails || [];
+    const razorpayPayment = Array.isArray(paymentDetails)
+        ? paymentDetails.find(p => p.method === 'razorpay' && p.razorpay_payment_id)
+        : null;
+    const onlinePaymentAmount = razorpayPayment?.amount || 0;
+
     // Calculate refund amount
     const calculateRefundAmount = () => {
         if (refundType === 'full') {
-            return totalAmount;
+            // Return only online payment amount, not total
+            return onlinePaymentAmount;
         }
 
         // Partial refund calculation
@@ -69,7 +77,8 @@ export default function RefundDialog({ order, open, onOpenChange, onRefundSucces
         const taxRatio = subtotal > 0 ? taxAmount / subtotal : 0;
         const totalWithTax = itemsTotal + (itemsTotal * taxRatio);
 
-        return totalWithTax;
+        // Cap at online payment amount
+        return Math.min(totalWithTax, onlinePaymentAmount);
     };
 
     const refundAmount = calculateRefundAmount();
