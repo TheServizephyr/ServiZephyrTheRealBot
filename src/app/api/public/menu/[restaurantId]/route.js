@@ -80,7 +80,11 @@ export async function GET(req, { params }) {
             return NextResponse.json({ message: 'Restaurant not found.' }, { status: 404 });
         }
 
-        const menuSnap = await businessRef.collection('menu').get();
+        // Fetch only available menu items (faster!)
+        const menuSnap = await businessRef
+            .collection('menu')
+            .where('isAvailable', '==', true)
+            .get();
         let menuData = {};
         const customCategories = businessData.customCategories || [];
 
@@ -127,31 +131,12 @@ export async function GET(req, { params }) {
             menuData[key].sort((a, b) => (a.order || 999) - (b.order || 999));
         });
 
+        // Loyalty points removed - fetch at checkout instead (performance optimization)
         let loyaltyPoints = 0;
         let userId = null;
-        if (phone) {
-            const usersRef = firestore.collection('users');
-            const userQuery = await usersRef.where('phone', '==', phone).limit(1).get();
-            if (!userQuery.empty) {
-                userId = userQuery.docs[0].id;
-                const customerRef = businessRef.collection('customers').doc(userId);
-                const customerSnap = await customerRef.get();
-                if (customerSnap.exists) {
-                    loyaltyPoints = customerSnap.data().loyaltyPoints || 0;
-                }
-            }
-        }
 
-        const couponsSnap = await businessRef.collection('coupons').where('status', '==', 'Active').get();
-        const now = new Date();
-        const coupons = couponsSnap.docs
-            .map(doc => ({ id: doc.id, ...doc.data() }))
-            .filter(coupon => {
-                const startDate = coupon.startDate?.toDate ? coupon.startDate.toDate() : new Date(coupon.startDate);
-                const expiryDate = coupon.expiryDate?.toDate ? coupon.expiryDate.toDate() : new Date(coupon.expiryDate);
-                return startDate <= now && expiryDate >= now;
-            })
-            .filter(c => !c.customerId || c.customerId === userId);
+        // Coupons removed - lazy load when user clicks "Apply Coupon" (performance optimization)
+        const coupons = [];
 
         const responseData = {
             restaurantName: businessData.name,
