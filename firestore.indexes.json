@@ -55,36 +55,6 @@
           "order": "ASCENDING"
         }
       ]
-    },
-    {
-      "collectionGroup": "users",
-      "queryScope": "COLLECTION",
-      "fields": [
-        {
-          "fieldPath": "phone",
-          "order": "ASCENDING"
-        }
-      ]
-    },
-    {
-      "collectionGroup": "coupons",
-      "queryScope": "COLLECTION",
-      "fields": [
-        {
-          "fieldPath": "status",
-          "order": "ASCENDING"
-        }
-      ]
-    },
-    {
-      "collectionGroup": "menu",
-      "queryScope": "COLLECTION",
-      "fields": [
-        {
-          "fieldPath": "isAvailable",
-          "order": "ASCENDING"
-        }
-      ]
     }
   ],
   "fieldOverrides": []

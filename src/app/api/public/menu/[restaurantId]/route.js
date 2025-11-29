@@ -3,17 +3,13 @@ import { NextResponse } from 'next/server';
 import { getFirestore } from '@/lib/firebase-admin';
 import { kv } from '@vercel/kv';
 
-// In-memory cache (instant access!)
-const memoryCache = new Map();
-const MEMORY_CACHE_TTL = 60 * 1000; // 1 minute
-
 export async function GET(req, { params }) {
     const { restaurantId } = params;
     const { searchParams } = new URL(req.url);
     const phone = searchParams.get('phone');
     const firestore = await getFirestore();
 
-    // Cache key
+    // Redis cache key
     const cacheKey = `menu:${restaurantId}:${phone || 'public'}`;
 
     if (!restaurantId) {
@@ -21,45 +17,22 @@ export async function GET(req, { params }) {
     }
 
     try {
-        // LAYER 1: Check in-memory cache (FASTEST!)
-        const memCached = memoryCache.get(cacheKey);
-        if (memCached && (Date.now() - memCached.timestamp) < MEMORY_CACHE_TTL) {
-            console.log(`[Menu API] Memory cache HIT for ${restaurantId}`);
-            return NextResponse.json(memCached.data, {
+        // Step 1: Check Redis cache first
+        const cachedData = await kv.get(cacheKey);
+        if (cachedData) {
+            console.log(`[Menu API] Cache HIT for ${restaurantId}`);
+            return NextResponse.json(cachedData, {
                 status: 200,
                 headers: {
-                    'X-Cache': 'MEMORY-HIT',
+                    'X-Cache': 'HIT',
                     'Cache-Control': 's-maxage=300, stale-while-revalidate=600'
                 }
             });
         }
 
-        // LAYER 2: Check Redis cache
-        try {
-            const cachedData = await kv.get(cacheKey);
-            if (cachedData) {
-                console.log(`[Menu API] Redis cache HIT for ${restaurantId}`);
+        console.log(`[Menu API] Cache MISS for ${restaurantId} - fetching from Firestore`);
 
-                // Store in memory for next request
-                memoryCache.set(cacheKey, {
-                    data: cachedData,
-                    timestamp: Date.now()
-                });
-
-                return NextResponse.json(cachedData, {
-                    status: 200,
-                    headers: {
-                        'X-Cache': 'REDIS-HIT',
-                        'Cache-Control': 's-maxage=300, stale-while-revalidate=600'
-                    }
-                });
-            }
-            console.log(`[Menu API] Cache MISS for ${restaurantId} - fetching from Firestore`);
-        } catch (cacheError) {
-            console.error('[Menu API] Redis cache check failed:', cacheError.message);
-        }
-
-        // LAYER 3: Fetch from Firestore (SLOWEST)
+        // Step 2: Cache miss - fetch from Firestore
         let businessData = null;
         let businessRef = null;
         let collectionName = '';
@@ -80,11 +53,7 @@ export async function GET(req, { params }) {
             return NextResponse.json({ message: 'Restaurant not found.' }, { status: 404 });
         }
 
-        // Fetch only available menu items (faster!)
-        const menuSnap = await businessRef
-            .collection('menu')
-            .where('isAvailable', '==', true)
-            .get();
+        const menuSnap = await businessRef.collection('menu').get();
         let menuData = {};
         const customCategories = businessData.customCategories || [];
 
@@ -127,16 +96,36 @@ export async function GET(req, { params }) {
             }
         });
 
+        // Sort items in memory by order field
         Object.keys(menuData).forEach(key => {
             menuData[key].sort((a, b) => (a.order || 999) - (b.order || 999));
         });
 
-        // Loyalty points removed - fetch at checkout instead (performance optimization)
         let loyaltyPoints = 0;
         let userId = null;
+        if (phone) {
+            const usersRef = firestore.collection('users');
+            const userQuery = await usersRef.where('phone', '==', phone).limit(1).get();
+            if (!userQuery.empty) {
+                userId = userQuery.docs[0].id;
+                const customerRef = businessRef.collection('customers').doc(userId);
+                const customerSnap = await customerRef.get();
+                if (customerSnap.exists) {
+                    loyaltyPoints = customerSnap.data().loyaltyPoints || 0;
+                }
+            }
+        }
 
-        // Coupons removed - lazy load when user clicks "Apply Coupon" (performance optimization)
-        const coupons = [];
+        const couponsSnap = await businessRef.collection('coupons').where('status', '==', 'Active').get();
+        const now = new Date();
+        const coupons = couponsSnap.docs
+            .map(doc => ({ id: doc.id, ...doc.data() }))
+            .filter(coupon => {
+                const startDate = coupon.startDate?.toDate ? coupon.startDate.toDate() : new Date(coupon.startDate);
+                const expiryDate = coupon.expiryDate?.toDate ? coupon.expiryDate.toDate() : new Date(coupon.expiryDate);
+                return startDate <= now && expiryDate >= now;
+            })
+            .filter(c => !c.customerId || c.customerId === userId); // Public or for this user
 
         const responseData = {
             restaurantName: businessData.name,
@@ -156,19 +145,13 @@ export async function GET(req, { params }) {
             dineInModel: businessData.dineInModel,
         };
 
-        // Store in BOTH caches
+        // Step 3: Store in Redis cache (5 minute TTL)
         try {
-            // Memory cache (instant!)
-            memoryCache.set(cacheKey, {
-                data: responseData,
-                timestamp: Date.now()
-            });
-
-            // Redis cache (persistent!)
-            await kv.set(cacheKey, responseData, { ex: 300 });
-            console.log(`[Menu API] Cached in Memory + Redis for ${restaurantId}`);
+            await kv.set(cacheKey, responseData, { ex: 300 }); // 300 seconds = 5 minutes
+            console.log(`[Menu API] Cached data for ${restaurantId} (TTL: 5 min)`);
         } catch (cacheError) {
             console.error('[Menu API] Cache storage failed:', cacheError);
+            // Continue even if caching fails
         }
 
         return NextResponse.json(responseData, {
