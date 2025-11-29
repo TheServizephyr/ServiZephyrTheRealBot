@@ -430,8 +430,30 @@ const CheckoutPageInternal = () => {
                     const phonePeData = await phonePeRes.json();
 
                     if (phonePeData.success && phonePeData.url) {
-                        console.log("[Checkout Page] Redirecting to PhonePe:", phonePeData.url);
-                        window.location.href = phonePeData.url;
+                        console.log("[Checkout Page] Opening PhonePe PayPage in IFrame:", phonePeData.url);
+
+                        // Use PhonePe Checkout SDK to open payment in IFrame
+                        if (window.PhonePeCheckout && window.PhonePeCheckout.transact) {
+                            window.PhonePeCheckout.transact({
+                                tokenUrl: phonePeData.url,
+                                type: "IFRAME",
+                                callback: (response) => {
+                                    console.log("[Checkout Page] PhonePe callback:", response);
+                                    if (response === 'USER_CANCEL') {
+                                        setInfoDialog({ isOpen: true, title: 'Payment Cancelled', message: 'You cancelled the payment. Please try again.' });
+                                        setIsProcessingPayment(false);
+                                    } else if (response === 'CONCLUDED') {
+                                        // Payment completed, redirect to order status page
+                                        localStorage.removeItem(`cart_${restaurantId}`);
+                                        router.push(`/order-status/${data.firestore_order_id}`);
+                                    }
+                                }
+                            });
+                        } else {
+                            // Fallback to redirect mode if SDK not loaded
+                            console.warn("[Checkout Page] PhonePe SDK not loaded, using redirect mode");
+                            window.location.href = phonePeData.url;
+                        }
                         return;
                     } else {
                         throw new Error(phonePeData.error || "PhonePe initiation failed");
@@ -663,6 +685,7 @@ const CheckoutPageInternal = () => {
                 message={infoDialog.message}
             />
             <Script src="https://checkout.razorpay.com/v1/checkout.js" />
+            <Script src="https://mercury.phonepe.com/web/bundle/checkout.js" />
             <Dialog open={isDineInModalOpen} onOpenChange={setDineInModalOpen}>
                 <DialogContent>
                     <DialogHeader><DialogTitle>What would you like to do?</DialogTitle></DialogHeader>
