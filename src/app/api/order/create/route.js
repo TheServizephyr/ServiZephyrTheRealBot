@@ -501,51 +501,80 @@ export async function POST(req) {
             }, { status: 200 });
         }
 
-        // --- NEW: Handle Online Payment for Standard Orders ---
+        // --- Handle Online Payment (Razorpay OR PhonePe) ---
         if (paymentMethod === 'online' || paymentMethod === 'razorpay') {
             console.log("[API /order/create] Handling Online Payment for standard order.");
-
-            if (!process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID || !process.env.RAZORPAY_KEY_SECRET) {
-                console.error("[API /order/create] Razorpay credentials not configured.");
-                return NextResponse.json({ message: 'Payment gateway is not configured.' }, { status: 500 });
-            }
 
             const firestoreOrderId = firestore.collection('orders').doc().id;
             const trackingToken = await generateSecureToken(firestore, normalizedPhone || firestoreOrderId);
 
-            // Create payload for Razorpay notes (to be used by webhook to create order)
-            // Note: We are NOT creating the Firestore order yet. The webhook will create it upon payment success.
-            // This prevents "ghost orders" where user clicks pay but cancels.
+            // Generate order token for street vendors (same as COD flow)
+            let dineInToken = null;
+            if (isStreetVendorOrder) {
+                try {
+                    const lastToken = businessData.lastOrderToken || 0;
+                    const newTokenNumber = lastToken + 1;
+                    const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+                    const randomChar1 = alphabet[Math.floor(Math.random() * alphabet.length)];
+                    const randomChar2 = alphabet[Math.floor(Math.random() * alphabet.length)];
+                    dineInToken = `${String(newTokenNumber)}-${randomChar1}${randomChar2}`;
+                    console.log(`[API /order/create] Generated Order Token: ${dineInToken}`);
+                } catch (e) {
+                    console.error(`[API /order/create] Error generating order token:`, e);
+                }
+            }
 
-            const servizephyrOrderPayload = {
-                order_id: firestoreOrderId,
-                user_id: userId || `guest_${normalizedPhone || Date.now()}`,
-                restaurant_id: restaurantId,
-                business_type: businessType,
-                customer_details: JSON.stringify({
-                    name: name,
-                    address: address || null,
-                    phone: normalizedPhone,
-                    location: customerLocation || null
-                }),
-                items: JSON.stringify(items),
-                bill_details: JSON.stringify({
-                    subtotal,
-                    coupon: coupon || null,
-                    loyaltyDiscount: loyaltyDiscount || 0,
-                    grandTotal,
-                    deliveryType,
-                    tipAmount: tipAmount || 0,
-                    pickupTime: pickupTime || '',
-                    cgst: cgst || 0,
-                    sgst: sgst || 0,
-                    deliveryCharge: deliveryCharge || 0,
-                    diningPreference: diningPreference || null,
-                    packagingCharge: packagingCharge || 0
-                }),
+            // Create Firestore order FIRST (same as Razorpay flow)
+            const batch = firestore.batch();
+            const newOrderRef = firestore.collection('orders').doc(firestoreOrderId);
+
+            const finalOrderData = {
+                customerName: name,
+                customerId: userId,
+                customerAddress: address?.full || null,
+                customerPhone: normalizedPhone,
+                customerLocation: customerLocation,
+                restaurantId: restaurantId,
+                restaurantName: businessData.name,
+                businessType,
+                deliveryType,
+                pickupTime: pickupTime || '',
+                tipAmount: tipAmount || 0,
+                items: items,
+                dineInToken: dineInToken,
+                subtotal: subtotal || 0,
+                coupon: coupon || null,
+                loyaltyDiscount: loyaltyDiscount || 0,
+                discount: 0,
+                cgst: cgst || 0,
+                sgst: sgst || 0,
+                deliveryCharge: deliveryCharge || 0,
+                diningPreference: diningPreference || null,
+                packagingCharge: packagingCharge || 0,
+                totalAmount: grandTotal,
+                status: 'awaiting_payment',
+                orderDate: FieldValue.serverTimestamp(),
                 notes: notes || null,
-                trackingToken: trackingToken // Pass token to be saved
+                paymentDetails: [],
+                trackingToken: trackingToken,
             };
+
+            batch.set(newOrderRef, finalOrderData);
+
+            // Update business lastOrderToken if street vendor
+            if (isStreetVendorOrder && dineInToken) {
+                const lastToken = businessData.lastOrderToken || 0;
+                batch.update(businessRef, { lastOrderToken: lastToken + 1 });
+            }
+
+            await batch.commit();
+            console.log(`[API /order/create] Order ${firestoreOrderId} created in Firestore`);
+
+            // Now create Razorpay order
+            if (!process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID || !process.env.RAZORPAY_KEY_SECRET) {
+                console.error("[API /order/create] Razorpay credentials not configured.");
+                return NextResponse.json({ message: 'Payment gateway is not configured.' }, { status: 500 });
+            }
 
             const razorpay = new Razorpay({ key_id: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID, key_secret: process.env.RAZORPAY_KEY_SECRET });
             const razorpayOrderOptions = {
@@ -553,7 +582,8 @@ export async function POST(req) {
                 currency: 'INR',
                 receipt: firestoreOrderId,
                 notes: {
-                    servizephyr_payload: JSON.stringify(servizephyrOrderPayload)
+                    firestore_order_id: firestoreOrderId,
+                    restaurant_id: restaurantId
                 }
             };
 
