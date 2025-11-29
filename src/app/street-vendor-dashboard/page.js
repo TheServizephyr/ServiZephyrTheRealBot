@@ -218,14 +218,23 @@ const OrderCard = ({ order, onMarkReady, onCancelClick, onMarkCollected }) => {
     }
 
     const paymentDetailsArray = Array.isArray(order.paymentDetails) ? order.paymentDetails : [order.paymentDetails].filter(Boolean);
-    const amountPaidOnline = paymentDetailsArray
-        .filter(p => p.method === 'razorpay' && p.status === 'paid')
+
+    // Calculate paid amount from paymentDetails array (legacy/Razorpay flow)
+    const amountPaidOnlineDetails = paymentDetailsArray
+        .filter(p => (p.method === 'razorpay' || p.method === 'phonepe' || p.method === 'online') && p.status === 'paid')
         .reduce((sum, p) => sum + (p.amount || 0), 0);
 
+    // Check root-level payment status (PhonePe webhook updates these)
+    const isPaidViaRoot = order.paymentStatus === 'paid' && (order.paymentMethod === 'razorpay' || order.paymentMethod === 'phonepe' || order.paymentMethod === 'online');
+
+    // Determine final paid status
+    const isFullyPaidOnline = isPaidViaRoot || amountPaidOnlineDetails >= (order.totalAmount || 0);
+
+    // Calculate due amount (if not fully paid via root)
+    const amountPaidOnline = isPaidViaRoot ? (order.totalAmount || 0) : amountPaidOnlineDetails;
     const amountDueAtCounter = (order.totalAmount || 0) - amountPaidOnline;
 
-    const isFullyPaidOnline = amountPaidOnline >= (order.totalAmount || 0);
-    const isPartiallyPaid = amountPaidOnline > 0 && amountDueAtCounter > 0.01;
+    const isPartiallyPaid = !isFullyPaidOnline && amountPaidOnline > 0 && amountDueAtCounter > 0.01;
 
     return (
         <motion.div
