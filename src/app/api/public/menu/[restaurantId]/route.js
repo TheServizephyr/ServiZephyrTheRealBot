@@ -18,19 +18,23 @@ export async function GET(req, { params }) {
 
     try {
         // Step 1: Check Redis cache first
-        const cachedData = await kv.get(cacheKey);
-        if (cachedData) {
-            console.log(`[Menu API] Cache HIT for ${restaurantId}`);
-            return NextResponse.json(cachedData, {
-                status: 200,
-                headers: {
-                    'X-Cache': 'HIT',
-                    'Cache-Control': 's-maxage=300, stale-while-revalidate=600'
-                }
-            });
+        try {
+            const cachedData = await kv.get(cacheKey);
+            if (cachedData) {
+                console.log(`[Menu API] Cache HIT for ${restaurantId}`);
+                return NextResponse.json(cachedData, {
+                    status: 200,
+                    headers: {
+                        'X-Cache': 'HIT',
+                        'Cache-Control': 's-maxage=300, stale-while-revalidate=600'
+                    }
+                });
+            }
+            console.log(`[Menu API] Cache MISS for ${restaurantId} - fetching from Firestore`);
+        } catch (cacheError) {
+            console.error('[Menu API] Redis cache check failed:', cacheError.message);
+            // Continue to Firestore fetch
         }
-
-        console.log(`[Menu API] Cache MISS for ${restaurantId} - fetching from Firestore`);
 
         // Step 2: Cache miss - fetch from Firestore
         let businessData = null;
