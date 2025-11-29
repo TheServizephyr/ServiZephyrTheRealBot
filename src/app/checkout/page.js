@@ -131,6 +131,7 @@ const CheckoutPageInternal = () => {
     const [selectedPaymentMethod, setSelectedPaymentMethod] = useState(null);
     const [selectedOnlinePaymentType, setSelectedOnlinePaymentType] = useState(null);
     const [paymentGateway, setPaymentGateway] = useState('phonepe');
+    const [vendorCharges, setVendorCharges] = useState(null);
 
     const [loading, setLoading] = useState(true);
     const [isProcessingPayment, setIsProcessingPayment] = useState(false);
