@@ -1,12 +1,9 @@
 import { NextResponse } from 'next/server';
-import crypto from 'crypto';
 import axios from 'axios';
 
-// PhonePe Credentials (from Environment Variables)
-const MERCHANT_ID = process.env.PHONEPE_MERCHANT_ID || "PGTESTPAYUAT";
-const SALT_KEY = process.env.PHONEPE_SALT_KEY || "099eb0cd-02cf-4e2a-8aca-3e6c6aff0399";
-const SALT_INDEX = process.env.PHONEPE_SALT_INDEX || 1;
-const PHONEPE_HOST_URL = process.env.PHONEPE_HOST_URL || "https://api-preprod.phonepe.com/apis/pg-sandbox"; // Default to Sandbox if not set
+// PhonePe API Configuration
+const PHONEPE_BASE_URL = process.env.PHONEPE_BASE_URL || "https://api-preprod.phonepe.com/apis/pg-sandbox";
+const MERCHANT_ID = process.env.PHONEPE_MERCHANT_ID || "M23Z4Z8YT4OW5";
 
 export async function POST(req) {
     try {
@@ -16,20 +13,27 @@ export async function POST(req) {
             return NextResponse.json({ error: "Amount and Order ID are required" }, { status: 400 });
         }
 
-        // PhonePe expects amount in paise (100 paise = 1 Rupee)
+        // Step 1: Get OAuth Token
+        console.log("[PhonePe Initiate] Getting OAuth token...");
+        const tokenRes = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL || 'https://www.servizephyr.com'}/api/payment/phonepe/token`);
+        const tokenData = await tokenRes.json();
+
+        if (!tokenData.success || !tokenData.access_token) {
+            throw new Error("Failed to get PhonePe OAuth token");
+        }
+
+        const accessToken = tokenData.access_token;
+        console.log("[PhonePe Initiate] OAuth token obtained");
+
+        // Step 2: Create Payment Request
         const amountInPaise = Math.round(amount * 100);
+        const callbackUrl = `${process.env.NEXT_PUBLIC_BASE_URL || 'https://www.servizephyr.com'}/api/payment/phonepe/callback`;
+        const redirectUrl = `${process.env.NEXT_PUBLIC_BASE_URL || 'https://www.servizephyr.com'}/order-status/${orderId}`;
 
-        // Callback URL (where PhonePe will send status updates)
-        // Note: In localhost, this won't work perfectly without ngrok, but for redirect it's fine
-        const callbackUrl = `https://www.servizephyr.com/api/payment/phonepe/callback`;
-
-        // Redirect URL (where user goes after payment)
-        const redirectUrl = `https://www.servizephyr.com/order-status/${orderId}`;
-
-        const payload = {
+        const paymentPayload = {
             merchantId: MERCHANT_ID,
             merchantTransactionId: orderId,
-            merchantUserId: customerPhone || "MUID123",
+            merchantUserId: customerPhone || "GUEST_USER",
             amount: amountInPaise,
             redirectUrl: redirectUrl,
             redirectMode: "REDIRECT",
@@ -40,50 +44,38 @@ export async function POST(req) {
             }
         };
 
-        // 1. Convert payload to JSON string
-        const payloadString = JSON.stringify(payload);
+        console.log("[PhonePe Initiate] Payment payload:", JSON.stringify(paymentPayload, null, 2));
 
-        // 2. Encode payload to Base64
-        const base64Payload = Buffer.from(payloadString).toString('base64');
-
-        // 3. Generate Checksum (X-VERIFY header)
-        // Format: SHA256(base64Payload + "/pg/v1/pay" + saltKey) + ### + saltIndex
-        const stringToHash = base64Payload + "/pg/v1/pay" + SALT_KEY;
-        const sha256 = crypto.createHash('sha256').update(stringToHash).digest('hex');
-        const checksum = sha256 + "###" + SALT_INDEX;
-
-        // 4. Call PhonePe API
-        const options = {
-            method: 'POST',
-            url: `${PHONEPE_HOST_URL}/pg/v1/pay`,
-            headers: {
-                accept: 'application/json',
-                'Content-Type': 'application/json',
-                'X-VERIFY': checksum
-            },
-            data: {
-                request: base64Payload
+        // Step 3: Call PhonePe Payment API
+        const paymentResponse = await axios.post(
+            `${PHONEPE_BASE_URL}/v2/pay`,
+            paymentPayload,
+            {
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${accessToken}`
+                }
             }
-        };
+        );
 
-        const response = await axios.request(options);
+        console.log("[PhonePe Initiate] Payment response:", JSON.stringify(paymentResponse.data, null, 2));
 
-        // 5. Return the redirect URL to frontend
-        if (response.data.success) {
+        // Step 4: Return redirect URL
+        if (paymentResponse.data.success && paymentResponse.data.data?.instrumentResponse?.redirectInfo?.url) {
             return NextResponse.json({
                 success: true,
-                url: response.data.data.instrumentResponse.redirectInfo.url,
-                transactionId: response.data.data.merchantTransactionId
+                url: paymentResponse.data.data.instrumentResponse.redirectInfo.url,
+                transactionId: paymentResponse.data.data.merchantTransactionId
             });
         } else {
-            return NextResponse.json({ success: false, error: response.data.message }, { status: 400 });
+            throw new Error(paymentResponse.data.message || "Payment initiation failed");
         }
 
     } catch (error) {
-        console.error("PhonePe Initiation Error:", error.response?.data || error.message);
+        console.error("[PhonePe Initiate] Error:", error.response?.data || error.message);
         return NextResponse.json({
             success: false,
-            error: error.response?.data?.message || error.message
+            error: error.response?.data || error.message
         }, { status: 500 });
     }
 }
