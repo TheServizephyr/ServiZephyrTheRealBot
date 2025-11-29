@@ -3,6 +3,7 @@
 import { NextResponse } from 'next/server';
 import { getAuth, getFirestore, FieldValue, verifyAndGetUid } from '@/lib/firebase-admin';
 import { logImpersonation, getClientIP, getUserAgent, isSessionExpired } from '@/lib/audit-logger';
+import { kv } from '@vercel/kv';
 
 // Helper to verify owner and get their first business ID
 async function verifyOwnerAndGetBusiness(req, auth, firestore) {
@@ -228,6 +229,16 @@ export async function POST(req) {
         await batch.commit();
         console.log("[API LOG] POST /api/owner/menu: Batch commit successful!");
 
+        // Invalidate cache for this restaurant
+        try {
+            const cachePattern = `menu:${businessId}:*`;
+            // Delete all cache keys for this restaurant (public and user-specific)
+            await kv.del(`menu:${businessId}:public`);
+            console.log(`[Menu API] Cache invalidated for ${businessId}`);
+        } catch (cacheError) {
+            console.error('[Menu API] Cache invalidation failed:', cacheError);
+        }
+
         // Audit log for impersonation
         if (isImpersonating) {
             await logImpersonation({
@@ -270,6 +281,14 @@ export async function DELETE(req) {
         const itemRef = firestore.collection(collectionName).doc(businessId).collection('menu').doc(itemId);
         await itemRef.delete();
         console.log(`[API LOG] DELETE /api/owner/menu: Item deleted successfully.`);
+
+        // Invalidate cache for this restaurant
+        try {
+            await kv.del(`menu:${businessId}:public`);
+            console.log(`[Menu API] Cache invalidated for ${businessId}`);
+        } catch (cacheError) {
+            console.error('[Menu API] Cache invalidation failed:', cacheError);
+        }
 
         // Audit log for impersonation
         if (isImpersonating) {
@@ -329,6 +348,14 @@ export async function PATCH(req) {
 
         await batch.commit();
         console.log(`[API LOG] PATCH /api/owner/menu: Bulk action completed.`);
+
+        // Invalidate cache for this restaurant
+        try {
+            await kv.del(`menu:${businessId}:public`);
+            console.log(`[Menu API] Cache invalidated for ${businessId}`);
+        } catch (cacheError) {
+            console.error('[Menu API] Cache invalidation failed:', cacheError);
+        }
 
         return NextResponse.json({ message: `Bulk action '${action}' completed successfully on ${itemIds.length} items.` }, { status: 200 });
 

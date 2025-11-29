@@ -1,6 +1,7 @@
 
 import { NextResponse } from 'next/server';
 import { getFirestore } from '@/lib/firebase-admin';
+import { kv } from '@vercel/kv';
 
 export async function GET(req, { params }) {
     const { restaurantId } = params;
@@ -8,11 +9,30 @@ export async function GET(req, { params }) {
     const phone = searchParams.get('phone');
     const firestore = await getFirestore();
 
+    // Redis cache key
+    const cacheKey = `menu:${restaurantId}:${phone || 'public'}`;
+
     if (!restaurantId) {
         return NextResponse.json({ message: 'Restaurant ID is required.' }, { status: 400 });
     }
 
     try {
+        // Step 1: Check Redis cache first
+        const cachedData = await kv.get(cacheKey);
+        if (cachedData) {
+            console.log(`[Menu API] Cache HIT for ${restaurantId}`);
+            return NextResponse.json(cachedData, {
+                status: 200,
+                headers: {
+                    'X-Cache': 'HIT',
+                    'Cache-Control': 's-maxage=300, stale-while-revalidate=600'
+                }
+            });
+        }
+
+        console.log(`[Menu API] Cache MISS for ${restaurantId} - fetching from Firestore`);
+
+        // Step 2: Cache miss - fetch from Firestore
         let businessData = null;
         let businessRef = null;
         let collectionName = '';
@@ -107,7 +127,7 @@ export async function GET(req, { params }) {
             })
             .filter(c => !c.customerId || c.customerId === userId); // Public or for this user
 
-        return NextResponse.json({
+        const responseData = {
             restaurantName: businessData.name,
             approvalStatus: businessData.approvalStatus || 'approved',
             logoUrl: businessData.logoUrl,
@@ -123,7 +143,24 @@ export async function GET(req, { params }) {
             businessAddress: businessData.address,
             businessType: businessType,
             dineInModel: businessData.dineInModel,
-        }, { status: 200 });
+        };
+
+        // Step 3: Store in Redis cache (5 minute TTL)
+        try {
+            await kv.set(cacheKey, responseData, { ex: 300 }); // 300 seconds = 5 minutes
+            console.log(`[Menu API] Cached data for ${restaurantId} (TTL: 5 min)`);
+        } catch (cacheError) {
+            console.error('[Menu API] Cache storage failed:', cacheError);
+            // Continue even if caching fails
+        }
+
+        return NextResponse.json(responseData, {
+            status: 200,
+            headers: {
+                'X-Cache': 'MISS',
+                'Cache-Control': 's-maxage=300, stale-while-revalidate=600'
+            }
+        });
 
     } catch (error) {
         console.error(`[API ERROR] /api/public/menu/${restaurantId}:`, error);
