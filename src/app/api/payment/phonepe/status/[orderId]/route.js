@@ -47,6 +47,26 @@ export async function GET(req, { params }) {
 
         console.log("[PhonePe Status] Order status:", JSON.stringify(statusResponse.data, null, 2));
 
+        const paymentState = statusResponse.data.state;
+
+        // Update Firestore if payment is successful
+        if (paymentState === 'COMPLETED' || paymentState === 'PAYMENT_SUCCESS') {
+            const { adminDb } = await import('@/lib/firebase-admin');
+            const orderRef = adminDb.collection('orders').doc(orderId);
+            const orderDoc = await orderRef.get();
+
+            if (orderDoc.exists && orderDoc.data().paymentStatus !== 'paid') {
+                await orderRef.update({
+                    paymentStatus: 'paid',
+                    paymentMethod: 'phonepe',
+                    phonePeOrderId: orderId, // Or the ID from response if different
+                    status: 'pending', // Make it visible on dashboard
+                    updatedAt: new Date()
+                });
+                console.log(`[PhonePe Status] Order ${orderId} updated to PAID via Status API`);
+            }
+        }
+
         return NextResponse.json({
             success: true,
             data: statusResponse.data

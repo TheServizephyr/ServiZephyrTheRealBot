@@ -47,7 +47,7 @@ const StatusTimeline = ({ currentStatus, deliveryType }) => {
                         <div className="flex flex-col items-center text-center w-20">
                             <motion.div
                                 className={`w-12 h-12 rounded-full flex items-center justify-center border-2 transition-all duration-500 ${isError ? 'bg-destructive border-destructive text-destructive-foreground' :
-                                        isCompleted ? 'bg-primary border-primary text-primary-foreground' : 'bg-card border-border text-muted-foreground'
+                                    isCompleted ? 'bg-primary border-primary text-primary-foreground' : 'bg-card border-border text-muted-foreground'
                                     }`}
                                 animate={{ scale: isCurrent ? 1.1 : 1 }}
                                 transition={{ type: 'spring' }}
@@ -55,7 +55,7 @@ const StatusTimeline = ({ currentStatus, deliveryType }) => {
                                 {icon}
                             </motion.div>
                             <p className={`mt-2 text-xs font-semibold ${isError ? 'text-destructive' :
-                                    isCompleted ? 'text-foreground' : 'text-muted-foreground'
+                                isCompleted ? 'text-foreground' : 'text-muted-foreground'
                                 }`}>
                                 {isError ? statusConfig[currentStatus].title : title}
                             </p>
@@ -120,10 +120,28 @@ function OrderTrackingContent() {
     }, [orderId, sessionToken]);
 
     useEffect(() => {
-        fetchData();
-        const interval = setInterval(() => fetchData(true), 30000); // Poll every 30 seconds
+        const verifyPayment = async () => {
+            const paymentStatus = searchParams.get('payment_status');
+            if (paymentStatus === 'success' && orderId) {
+                try {
+                    console.log("Verifying payment status with PhonePe...");
+                    // Call the status API which now updates Firestore if paid
+                    await fetch(`/api/payment/phonepe/status/${orderId}`);
+                    // Fetch latest order data immediately after verification
+                    await fetchData();
+                } catch (e) {
+                    console.error("Error verifying payment:", e);
+                }
+            } else {
+                fetchData();
+            }
+        };
+
+        verifyPayment();
+
+        const interval = setInterval(() => fetchData(true), 10000); // Poll every 10 seconds for faster updates
         return () => clearInterval(interval);
-    }, [fetchData]);
+    }, [orderId, searchParams, fetchData]);
 
     const handleRecenter = () => {
         if (!mapRef.current) return;
