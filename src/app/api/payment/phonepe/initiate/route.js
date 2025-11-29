@@ -36,8 +36,8 @@ export async function POST(req) {
 
         // Step 2: Create Payment Request (as per PhonePe v2 documentation)
         const amountInPaise = Math.round(amount * 100);
-        // Use checkout page as redirect URL (PhonePe will add payment_confirmed param)
-        const redirectUrl = `${process.env.NEXT_PUBLIC_BASE_URL || 'https://www.servizephyr.com'}/checkout?restaurantId=${orderId.split('_')[0] || 'unknown'}&payment_confirmed=true&phonepe_order=${orderId}`;
+        // Redirect URL for fallback mode (if IFrame fails) - use tracking page
+        const redirectUrl = `${process.env.NEXT_PUBLIC_BASE_URL || 'https://www.servizephyr.com'}/track/${orderId}?payment_status=success`;
 
         const paymentPayload = {
             merchantOrderId: orderId,
