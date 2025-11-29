@@ -59,7 +59,7 @@ export async function POST(req) {
 
         // Step 3: Call PhonePe Payment API
         const paymentResponse = await axios.post(
-            `${PHONEPE_BASE_URL}/v2/checkout/pay`,
+            `${PHONEPE_BASE_URL}/pg/v1/pay`,
             paymentPayload,
             {
                 headers: {
