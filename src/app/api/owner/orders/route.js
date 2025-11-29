@@ -95,7 +95,10 @@ export async function GET(req) {
         const endDate = searchParams.get('endDate');
 
         const ordersRef = firestore.collection('orders');
-        let query = ordersRef.where('restaurantId', '==', businessId);
+        // Exclude orders with status 'awaiting_payment' (payment not completed yet)
+        let query = ordersRef
+            .where('restaurantId', '==', businessId)
+            .where('status', '!=', 'awaiting_payment');
 
         if (startDate && endDate) {
             // Ensure dates are valid Date objects
