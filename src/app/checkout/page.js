@@ -127,6 +127,7 @@ const CheckoutPageInternal = () => {
     const [isOnlinePaymentFlow, setIsOnlinePaymentFlow] = useState(false);
     const [isSplitBillActive, setIsSplitBillActive] = useState(false);
     const [detailsConfirmed, setDetailsConfirmed] = useState(false);
+    const [activeOrderId, setActiveOrderId] = useState(null);
 
     const [loading, setLoading] = useState(true);
     const [isProcessingPayment, setIsProcessingPayment] = useState(false);
