@@ -2,11 +2,11 @@ import { NextResponse } from 'next/server';
 import crypto from 'crypto';
 import axios from 'axios';
 
-// PhonePe Testing Credentials (UAT)
-const MERCHANT_ID = "PGTESTPAYUAT";
-const SALT_KEY = "099eb0cd-02cf-4e2a-8aca-3e6c6aff0399";
-const SALT_INDEX = 1;
-const PHONEPE_HOST_URL = "https://api-preprod.phonepe.com/apis/pg-sandbox"; // UAT URL
+// PhonePe Credentials (from Environment Variables)
+const MERCHANT_ID = process.env.PHONEPE_MERCHANT_ID || "PGTESTPAYUAT";
+const SALT_KEY = process.env.PHONEPE_SALT_KEY || "099eb0cd-02cf-4e2a-8aca-3e6c6aff0399";
+const SALT_INDEX = process.env.PHONEPE_SALT_INDEX || 1;
+const PHONEPE_HOST_URL = process.env.PHONEPE_HOST_URL || "https://api-preprod.phonepe.com/apis/pg-sandbox"; // Default to Sandbox if not set
 
 export async function POST(req) {
     try {
