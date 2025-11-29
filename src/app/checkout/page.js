@@ -446,8 +446,8 @@ const CheckoutPageInternal = () => {
                                         // Payment completed, redirect to order placed page (same as Razorpay)
                                         console.log("[Checkout Page] PhonePe payment concluded, redirecting to order placed page");
                                         localStorage.removeItem(`cart_${restaurantId}`);
-                                        // Use same redirect as Razorpay success
-                                        router.push(`/order/placed?orderId=${data.firestore_order_id}&token=${data.token}`);
+                                        // Use same redirect as Razorpay success - include restaurantId for proper routing
+                                        router.push(`/order/placed?orderId=${data.firestore_order_id}&token=${data.token}&restaurantId=${restaurantId}`);
                                     }
                                 }
                             });

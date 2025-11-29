@@ -93,10 +93,10 @@ async function handleOrderCompleted(payload) {
             phonePeTransactionId: paymentDetails?.[0]?.transactionId || null,
             phonePePaymentMode: paymentDetails?.[0]?.paymentMode || null,
             paidAmount: amount / 100, // Convert paise to rupees
-            status: 'confirmed',
+            status: 'pending', // Set to pending so it appears on vendor dashboard
             updatedAt: new Date()
         });
-        console.log(`[PhonePe Webhook] Order ${merchantOrderId} updated to PAID`);
+        console.log(`[PhonePe Webhook] Order ${merchantOrderId} updated to PAID with status PENDING`);
     } else {
         console.warn(`[PhonePe Webhook] Order ${merchantOrderId} not found in Firestore`);
     }
