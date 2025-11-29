@@ -443,9 +443,11 @@ const CheckoutPageInternal = () => {
                                         setInfoDialog({ isOpen: true, title: 'Payment Cancelled', message: 'You cancelled the payment. Please try again.' });
                                         setIsProcessingPayment(false);
                                     } else if (response === 'CONCLUDED') {
-                                        // Payment completed, redirect to order status page
+                                        // Payment completed, redirect to order placed page (same as Razorpay)
+                                        console.log("[Checkout Page] PhonePe payment concluded, redirecting to order placed page");
                                         localStorage.removeItem(`cart_${restaurantId}`);
-                                        router.push(`/order-status/${data.firestore_order_id}`);
+                                        // Use same redirect as Razorpay success
+                                        router.push(`/order/placed?orderId=${data.firestore_order_id}&token=${data.token}`);
                                     }
                                 }
                             });
