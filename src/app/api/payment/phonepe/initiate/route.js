@@ -3,7 +3,6 @@ import axios from 'axios';
 
 // PhonePe API Configuration
 const PHONEPE_BASE_URL = process.env.PHONEPE_BASE_URL || "https://api-preprod.phonepe.com/apis/pg-sandbox";
-const MERCHANT_ID = process.env.PHONEPE_MERCHANT_ID || "M23Z4Z8YT4OW5";
 const CLIENT_ID = process.env.PHONEPE_CLIENT_ID || "M23Z4Z8YT4OW5_2511281822";
 const CLIENT_SECRET = process.env.PHONEPE_CLIENT_SECRET || "MzY4MjkwYzctZGM3Mi00NDBjLWJjYjQtNzYyMjY5YWRkNDc0";
 const CLIENT_VERSION = process.env.PHONEPE_CLIENT_VERSION || "1";
@@ -17,7 +16,7 @@ export async function POST(req) {
             return NextResponse.json({ error: "Amount and Order ID are required" }, { status: 400 });
         }
 
-        // Step 1: Generate OAuth Token (inline to avoid fetch issues)
+        // Step 1: Generate OAuth Token
         console.log("[PhonePe Initiate] Generating OAuth token...");
         const tokenRequestBody = new URLSearchParams({
             client_id: CLIENT_ID,
@@ -34,37 +33,34 @@ export async function POST(req) {
 
         const accessToken = tokenResponse.data.access_token;
         console.log("[PhonePe Initiate] OAuth token generated successfully");
-        console.log("[PhonePe Initiate] OAuth token obtained");
 
-        // Step 2: Create Payment Request
+        // Step 2: Create Payment Request (as per PhonePe v2 documentation)
         const amountInPaise = Math.round(amount * 100);
-        const callbackUrl = `${process.env.NEXT_PUBLIC_BASE_URL || 'https://www.servizephyr.com'}/api/payment/phonepe/callback`;
         const redirectUrl = `${process.env.NEXT_PUBLIC_BASE_URL || 'https://www.servizephyr.com'}/order-status/${orderId}`;
 
         const paymentPayload = {
-            merchantId: MERCHANT_ID,
-            merchantTransactionId: orderId,
-            merchantUserId: customerPhone || "GUEST_USER",
+            merchantOrderId: orderId,
             amount: amountInPaise,
-            redirectUrl: redirectUrl,
-            redirectMode: "REDIRECT",
-            callbackUrl: callbackUrl,
-            mobileNumber: customerPhone || "9999999999",
-            paymentInstrument: {
-                type: "PAY_PAGE"
+            expireAfter: 1200, // 20 minutes
+            paymentFlow: {
+                type: "PG_CHECKOUT",
+                message: "Payment for your order",
+                merchantUrls: {
+                    redirectUrl: redirectUrl
+                }
             }
         };
 
         console.log("[PhonePe Initiate] Payment payload:", JSON.stringify(paymentPayload, null, 2));
 
-        // Step 3: Call PhonePe Payment API
+        // Step 3: Call PhonePe Payment API (v2 checkout endpoint)
         const paymentResponse = await axios.post(
-            `${PHONEPE_BASE_URL}/pg/v1/pay`,
+            `${PHONEPE_BASE_URL}/checkout/v2/pay`,
             paymentPayload,
             {
                 headers: {
                     'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${accessToken}`
+                    'Authorization': `O-Bearer ${accessToken}`
                 }
             }
         );
@@ -72,14 +68,15 @@ export async function POST(req) {
         console.log("[PhonePe Initiate] Payment response:", JSON.stringify(paymentResponse.data, null, 2));
 
         // Step 4: Return redirect URL
-        if (paymentResponse.data.success && paymentResponse.data.data?.instrumentResponse?.redirectInfo?.url) {
+        if (paymentResponse.data.redirectUrl) {
             return NextResponse.json({
                 success: true,
-                url: paymentResponse.data.data.instrumentResponse.redirectInfo.url,
-                transactionId: paymentResponse.data.data.merchantTransactionId
+                url: paymentResponse.data.redirectUrl,
+                orderId: paymentResponse.data.orderId,
+                state: paymentResponse.data.state
             });
         } else {
-            throw new Error(paymentResponse.data.message || "Payment initiation failed");
+            throw new Error("No redirect URL in response");
         }
 
     } catch (error) {
