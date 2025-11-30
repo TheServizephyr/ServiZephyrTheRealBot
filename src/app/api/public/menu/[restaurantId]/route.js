@@ -33,12 +33,13 @@ export async function GET(req, { params }) {
 
         console.log(`[Menu API] Cache MISS for ${restaurantId} - fetching from Firestore`);
 
-        // Step 2: Cache miss - fetch from Firestore
+        // Step 2: Cache miss - fetch from Firestore (OPTIMIZED)
         let businessData = null;
         let businessRef = null;
         let collectionName = '';
 
-        const collectionsToTry = ['restaurants', 'shops', 'street_vendors'];
+        // OPTIMIZATION: Try most common collection first (restaurants)
+        const collectionsToTry = ['street_vendors', 'restaurants', 'shops'];
         for (const name of collectionsToTry) {
             const docRef = firestore.collection(name).doc(restaurantId);
             const docSnap = await docRef.get();
@@ -54,7 +55,12 @@ export async function GET(req, { params }) {
             return NextResponse.json({ message: 'Restaurant not found.' }, { status: 404 });
         }
 
-        const menuSnap = await businessRef.collection('menu').get();
+        // OPTIMIZATION: Fetch menu in parallel with other data
+        const [menuSnap, couponsSnap] = await Promise.all([
+            businessRef.collection('menu').get(),
+            businessRef.collection('coupons').where('status', '==', 'Active').get()
+        ]);
+
         let menuData = {};
         const customCategories = businessData.customCategories || [];
 
@@ -102,31 +108,16 @@ export async function GET(req, { params }) {
             menuData[key].sort((a, b) => (a.order || 999) - (b.order || 999));
         });
 
-        let loyaltyPoints = 0;
-        let userId = null;
-        if (phone) {
-            const usersRef = firestore.collection('users');
-            const userQuery = await usersRef.where('phone', '==', phone).limit(1).get();
-            if (!userQuery.empty) {
-                userId = userQuery.docs[0].id;
-                const customerRef = businessRef.collection('customers').doc(userId);
-                const customerSnap = await customerRef.get();
-                if (customerSnap.exists) {
-                    loyaltyPoints = customerSnap.data().loyaltyPoints || 0;
-                }
-            }
-        }
-
-        const couponsSnap = await businessRef.collection('coupons').where('status', '==', 'Active').get();
+        // OPTIMIZATION: Skip user-specific data for cache (fetch separately if needed)
+        // This allows ALL users to share same cache
         const now = new Date();
         const coupons = couponsSnap.docs
             .map(doc => ({ id: doc.id, ...doc.data() }))
             .filter(coupon => {
                 const startDate = coupon.startDate?.toDate ? coupon.startDate.toDate() : new Date(coupon.startDate);
                 const expiryDate = coupon.expiryDate?.toDate ? coupon.expiryDate.toDate() : new Date(coupon.expiryDate);
-                return startDate <= now && expiryDate >= now;
-            })
-            .filter(c => !c.customerId || c.customerId === userId); // Public or for this user
+                return startDate <= now && expiryDate >= now && !coupon.customerId; // Only public coupons in cache
+            });
 
         const responseData = {
             restaurantName: businessData.name,
@@ -137,7 +128,7 @@ export async function GET(req, { params }) {
             deliveryFreeThreshold: businessData.deliveryFreeThreshold,
             menu: menuData,
             coupons: coupons,
-            loyaltyPoints: loyaltyPoints,
+            loyaltyPoints: 0, // User-specific data removed for better caching
             deliveryEnabled: businessData.deliveryEnabled,
             pickupEnabled: businessData.pickupEnabled,
             dineInEnabled: businessData.dineInEnabled,
