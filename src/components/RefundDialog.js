@@ -240,6 +240,16 @@ export default function RefundDialog({ order, open, onOpenChange, onRefundSucces
                                     const itemQty = item.quantity || item.qty || 1;
                                     const itemTotal = itemPrice * itemQty;
 
+                                    // Debug logging
+                                    if (itemPrice === 0) {
+                                        console.log('[RefundDialog] Item with ₹0 price:', {
+                                            name: item.name,
+                                            totalPrice: item.totalPrice,
+                                            price: item.price,
+                                            fullItem: item
+                                        });
+                                    }
+
                                     return (
                                         <div key={index} className="flex items-center space-x-2">
                                             <Checkbox
