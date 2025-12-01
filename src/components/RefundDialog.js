@@ -75,7 +75,8 @@ export default function RefundDialog({ order, open, onOpenChange, onRefundSucces
         selectedItems.forEach(itemId => {
             const item = orderItems.find(i => i.id === itemId || i.name === itemId);
             if (item) {
-                const price = item.price || 0;
+                // Use totalPrice (includes portion + addons) or fallback to price
+                const price = item.totalPrice || item.price || 0;
                 const qty = item.quantity || item.qty || 1;
                 itemsTotal += price * qty;
             }
@@ -232,7 +233,8 @@ export default function RefundDialog({ order, open, onOpenChange, onRefundSucces
                             <div className="border rounded-lg p-4 space-y-2 max-h-48 overflow-y-auto">
                                 {orderItems.map((item, index) => {
                                     const itemId = item.id || item.name;
-                                    const itemPrice = item.price || 0;
+                                    // Use totalPrice (includes portion + addons) or fallback to price
+                                    const itemPrice = item.totalPrice || item.price || 0;
                                     const itemQty = item.quantity || item.qty || 1;
                                     const itemTotal = itemPrice * itemQty;
 

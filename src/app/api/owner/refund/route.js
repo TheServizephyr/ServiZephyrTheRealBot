@@ -119,7 +119,8 @@ export async function POST(req) {
             let itemsTotal = items.reduce((sum, itemId) => {
                 const item = orderItems.find(i => i.id === itemId || i.name === itemId);
                 if (item) {
-                    const itemPrice = item.price || 0;
+                    // Use totalPrice (includes portion + addons) or fallback to price
+                    const itemPrice = item.totalPrice || item.price || 0;
                     const itemQty = item.quantity || item.qty || 1;
                     return sum + (itemPrice * itemQty);
                 }
@@ -170,7 +171,7 @@ export async function POST(req) {
 
         const refundData = await razorpay.payments.refund(paymentId, {
             amount: Math.round(refundAmount * 100), // Convert to paise
-            speed: 'optimum', // Instant refund - works even for unsettled payments
+            speed: 'normal', // Normal refund - no balance required, processes in 5-7 days
             notes: {
                 orderId,
                 reason,
