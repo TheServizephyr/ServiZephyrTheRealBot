@@ -46,10 +46,28 @@ export default function RefundDialog({ order, open, onOpenChange, onRefundSucces
     const orderItems = order?.items || [];
     const totalAmount = order?.totalAmount || order?.grandTotal || 0;
 
+    // Calculate online payment amount (amount actually paid online)
+    const getOnlinePaymentAmount = () => {
+        const paymentDetailsArray = Array.isArray(order?.paymentDetails)
+            ? order.paymentDetails
+            : [order?.paymentDetails].filter(Boolean);
+
+        // Find Razorpay/online payment
+        const onlinePayment = paymentDetailsArray.find(
+            p => (p.method === 'razorpay' || p.method === 'phonepe' || p.method === 'online')
+                && p.razorpay_payment_id
+        );
+
+        return onlinePayment?.amount || 0;
+    };
+
+    const onlinePaymentAmount = getOnlinePaymentAmount();
+
     // Calculate refund amount
     const calculateRefundAmount = () => {
         if (refundType === 'full') {
-            return totalAmount;
+            // Refund only the online payment amount, not total order amount
+            return onlinePaymentAmount;
         }
 
         // Partial refund calculation
@@ -69,7 +87,8 @@ export default function RefundDialog({ order, open, onOpenChange, onRefundSucces
         const taxRatio = subtotal > 0 ? taxAmount / subtotal : 0;
         const totalWithTax = itemsTotal + (itemsTotal * taxRatio);
 
-        return totalWithTax;
+        // Cap partial refund to online payment amount
+        return Math.min(totalWithTax, onlinePaymentAmount);
     };
 
     const refundAmount = calculateRefundAmount();
@@ -164,6 +183,24 @@ export default function RefundDialog({ order, open, onOpenChange, onRefundSucces
                         </Alert>
                     )}
 
+                    {/* Payment Breakdown Info (for mixed payments) */}
+                    {onlinePaymentAmount < totalAmount && onlinePaymentAmount > 0 && (
+                        <Alert>
+                            <AlertCircle className="h-4 w-4" />
+                            <AlertDescription>
+                                <div className="space-y-1">
+                                    <p className="font-semibold">Mixed Payment Order</p>
+                                    <p className="text-sm">Order Total: ₹{totalAmount.toFixed(2)}</p>
+                                    <p className="text-sm text-green-600">• Online Payment: ₹{onlinePaymentAmount.toFixed(2)}</p>
+                                    <p className="text-sm text-yellow-600">• Cash at Counter: ₹{(totalAmount - onlinePaymentAmount).toFixed(2)}</p>
+                                    <p className="text-xs mt-2 text-muted-foreground">
+                                        Only the online payment amount can be refunded.
+                                    </p>
+                                </div>
+                            </AlertDescription>
+                        </Alert>
+                    )}
+
                     {/* Refund Type */}
                     <div className="space-y-3">
                         <Label>Refund Type</Label>
@@ -171,7 +208,12 @@ export default function RefundDialog({ order, open, onOpenChange, onRefundSucces
                             <div className="flex items-center space-x-2">
                                 <RadioGroupItem value="full" id="full" />
                                 <Label htmlFor="full" className="font-normal cursor-pointer">
-                                    Full Refund - ₹{totalAmount.toFixed(2)}
+                                    Full Refund - ₹{onlinePaymentAmount.toFixed(2)}
+                                    {onlinePaymentAmount < totalAmount && (
+                                        <span className="text-xs text-muted-foreground ml-2">
+                                            (Online payment only)
+                                        </span>
+                                    )}
                                 </Label>
                             </div>
                             <div className="flex items-center space-x-2">
