@@ -271,6 +271,15 @@ export default function RefundDialog({ order, open, onOpenChange, onRefundSucces
                                     const itemQty = item.quantity || item.qty || 1;
                                     const itemTotal = itemPrice * itemQty;
 
+                                    // Debug logging
+                                    console.log('[RefundDialog] Item calculation:', {
+                                        name: item.name,
+                                        itemPrice,
+                                        itemQty,
+                                        itemTotal,
+                                        rawItem: item
+                                    });
+
                                     return (
                                         <div key={index} className="flex items-center space-x-2">
                                             <Checkbox
