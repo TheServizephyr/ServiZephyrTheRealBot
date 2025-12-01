@@ -291,6 +291,32 @@ export async function POST(req) {
             }
         }
 
+        // Process items to ensure totalPrice is saved (for refund calculations)
+        const processedItems = items.map(item => {
+            // Ensure totalPrice exists (calculate if missing)
+            let totalPrice = item.totalPrice || item.price || 0;
+
+            // If still 0, calculate from portion + addons
+            if (totalPrice === 0 && item.portion) {
+                totalPrice = item.portion.price || 0;
+
+                // Add addon prices
+                if (item.selectedAddOns && Array.isArray(item.selectedAddOns)) {
+                    item.selectedAddOns.forEach(addon => {
+                        const addonPrice = addon.price || 0;
+                        const addonQty = addon.quantity || 1;
+                        totalPrice += addonPrice * addonQty;
+                    });
+                }
+            }
+
+            // Return item with guaranteed totalPrice field
+            return {
+                ...item,
+                totalPrice: totalPrice
+            };
+        });
+
         // --- Post-paid Dine-In ---
         if (deliveryType === 'dine-in' && businessData.dineInModel === 'post-paid') {
             console.log("[API /order/create] Handling post-paid dine-in order.");
@@ -299,7 +325,7 @@ export async function POST(req) {
 
             await newOrderRef.set({
                 restaurantId, businessType, tableId,
-                items: items, notes: notes || null,
+                items: processedItems, notes: notes || null,
                 subtotal, cgst, sgst, totalAmount: grandTotal,
                 deliveryType,
                 pax_count: pax_count, tab_name: tab_name,
@@ -473,7 +499,7 @@ export async function POST(req) {
                 customerLocation: customerLocation,
                 restaurantId: restaurantId, restaurantName: businessData.name,
                 businessType, deliveryType, pickupTime: pickupTime || '', tipAmount: tipAmount || 0,
-                items: items,
+                items: processedItems,
                 subtotal: subtotal || 0,
                 coupon: coupon || null,
                 loyaltyDiscount: loyaltyDiscount || 0,
@@ -540,7 +566,7 @@ export async function POST(req) {
                 deliveryType,
                 pickupTime: pickupTime || '',
                 tipAmount: tipAmount || 0,
-                items: items,
+                items: processedItems,
                 dineInToken: dineInToken,
                 subtotal: subtotal || 0,
                 coupon: coupon || null,
@@ -690,7 +716,7 @@ export async function POST(req) {
             customerLocation: customerLocation,
             restaurantId: restaurantId, restaurantName: businessData.name,
             businessType, deliveryType, pickupTime: pickupTime || '', tipAmount: tipAmount || 0,
-            items: items,
+            items: processedItems,
             dineInToken: dineInToken,
             subtotal: subtotal || 0,
             coupon: coupon || null,
