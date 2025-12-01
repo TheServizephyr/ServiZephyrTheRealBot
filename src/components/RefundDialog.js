@@ -77,8 +77,23 @@ export default function RefundDialog({ order, open, onOpenChange, onRefundSucces
         selectedItems.forEach(itemId => {
             const item = orderItems.find(i => i.id === itemId || i.name === itemId);
             if (item) {
-                // Use totalPrice (includes portion + addons) or fallback to price
-                const price = item.totalPrice || item.price || 0;
+                // Calculate price with fallback logic
+                let price = item.totalPrice || item.price || 0;
+
+                // If still 0, calculate from portion + addons
+                if (price === 0 && item.portion) {
+                    price = item.portion.price || 0;
+
+                    // Add addon prices
+                    if (item.selectedAddOns && Array.isArray(item.selectedAddOns)) {
+                        item.selectedAddOns.forEach(addon => {
+                            const addonPrice = addon.price || 0;
+                            const addonQty = addon.quantity || 1;
+                            price += addonPrice * addonQty;
+                        });
+                    }
+                }
+
                 const qty = item.quantity || item.qty || 1;
                 itemsTotal += price * qty;
             }
@@ -235,20 +250,26 @@ export default function RefundDialog({ order, open, onOpenChange, onRefundSucces
                             <div className="border rounded-lg p-4 space-y-2 max-h-48 overflow-y-auto">
                                 {orderItems.map((item, index) => {
                                     const itemId = item.id || item.name;
-                                    // Use totalPrice (includes portion + addons) or fallback to price
-                                    const itemPrice = item.totalPrice || item.price || 0;
+
+                                    // Calculate price with fallback logic
+                                    let itemPrice = item.totalPrice || item.price || 0;
+
+                                    // If still 0, calculate from portion + addons
+                                    if (itemPrice === 0 && item.portion) {
+                                        itemPrice = item.portion.price || 0;
+
+                                        // Add addon prices
+                                        if (item.selectedAddOns && Array.isArray(item.selectedAddOns)) {
+                                            item.selectedAddOns.forEach(addon => {
+                                                const addonPrice = addon.price || 0;
+                                                const addonQty = addon.quantity || 1;
+                                                itemPrice += addonPrice * addonQty;
+                                            });
+                                        }
+                                    }
+
                                     const itemQty = item.quantity || item.qty || 1;
                                     const itemTotal = itemPrice * itemQty;
-
-                                    // Debug logging
-                                    if (itemPrice === 0) {
-                                        console.log('[RefundDialog] Item with ₹0 price:', {
-                                            name: item.name,
-                                            totalPrice: item.totalPrice,
-                                            price: item.price,
-                                            fullItem: item
-                                        });
-                                    }
 
                                     return (
                                         <div key={index} className="flex items-center space-x-2">
