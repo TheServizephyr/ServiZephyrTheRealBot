@@ -46,19 +46,21 @@ export default function RefundDialog({ order, open, onOpenChange, onRefundSucces
     const orderItems = order?.items || [];
     const totalAmount = order?.totalAmount || order?.grandTotal || 0;
 
-    // Calculate online payment amount (amount actually paid online)
+    // Calculate online payment amount (sum of ALL online payments for split payment support)
     const getOnlinePaymentAmount = () => {
         const paymentDetailsArray = Array.isArray(order?.paymentDetails)
             ? order.paymentDetails
             : [order?.paymentDetails].filter(Boolean);
 
-        // Find Razorpay/online payment
-        const onlinePayment = paymentDetailsArray.find(
-            p => (p.method === 'razorpay' || p.method === 'phonepe' || p.method === 'online')
+        // Sum ALL Razorpay/online payments (handles split payments where multiple users paid)
+        const totalOnlineAmount = paymentDetailsArray
+            .filter(p =>
+                (p.method === 'razorpay' || p.method === 'phonepe' || p.method === 'online')
                 && p.razorpay_payment_id
-        );
+            )
+            .reduce((sum, payment) => sum + (payment.amount || 0), 0);
 
-        return onlinePayment?.amount || 0;
+        return totalOnlineAmount;
     };
 
     const onlinePaymentAmount = getOnlinePaymentAmount();

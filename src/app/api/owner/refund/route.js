@@ -96,16 +96,20 @@ export async function POST(req) {
             }, { status: 400 });
         }
 
-        // Find Razorpay payment
-        const razorpayPayment = paymentDetails.find(p => p.method === 'razorpay' && p.razorpay_payment_id);
-        if (!razorpayPayment) {
+        // Get ALL Razorpay payments (for split payment support where multiple users paid)
+        const razorpayPayments = paymentDetails.filter(p => p.method === 'razorpay' && p.razorpay_payment_id);
+        if (razorpayPayments.length === 0) {
             return NextResponse.json({
                 message: 'No Razorpay payment found. Only online payments can be refunded.'
             }, { status: 400 });
         }
 
-        const paymentId = razorpayPayment.razorpay_payment_id;
-        const onlinePaymentAmount = razorpayPayment.amount || 0; // Amount actually paid online
+        // Sum all online payment amounts (for split payments)
+        const onlinePaymentAmount = razorpayPayments.reduce((sum, p) => sum + (p.amount || 0), 0);
+
+        // For refund processing, we'll use the first payment ID
+        // (In future, we might need to refund each payment separately for split orders)
+        const paymentId = razorpayPayments[0].razorpay_payment_id;
 
         // Calculate refund amount
         let refundAmount = 0;
@@ -166,24 +170,65 @@ export async function POST(req) {
             key_secret: process.env.RAZORPAY_KEY_SECRET,
         });
 
-        // Process refund via Razorpay
-        console.log(`[API /owner/refund] Processing Razorpay refund: Payment ID: ${paymentId}, Amount: ₹${refundAmount}`);
+        // Process refund via Razorpay - handle multiple payments for split orders
+        console.log(`[API /owner/refund] Processing Razorpay refund for ${razorpayPayments.length} payment(s), Total: ₹${refundAmount}`);
 
-        const refundData = await razorpay.payments.refund(paymentId, {
-            amount: Math.round(refundAmount * 100), // Convert to paise
-            speed: 'normal', // Normal refund - no balance required, processes in 5-7 days
-            notes: {
-                orderId,
-                reason,
-                refundType,
-                notes: notes || ''
+        let remainingRefund = refundAmount;
+        const refundResults = [];
+
+        // Refund each payment separately (for split payment support)
+        for (const payment of razorpayPayments) {
+            if (remainingRefund <= 0) break;
+
+            // Calculate how much to refund from this specific payment
+            const refundForThisPayment = Math.min(payment.amount, remainingRefund);
+
+            try {
+                console.log(`[API /owner/refund] Refunding ₹${refundForThisPayment} from payment ${payment.razorpay_payment_id}`);
+
+                const refundData = await razorpay.payments.refund(payment.razorpay_payment_id, {
+                    amount: Math.round(refundForThisPayment * 100), // Convert to paise
+                    speed: 'normal', // Normal refund - no balance required, processes in 5-7 days
+                    notes: {
+                        orderId,
+                        reason,
+                        refundType,
+                        notes: notes || '',
+                        splitPayment: razorpayPayments.length > 1,
+                        paymentIndex: razorpayPayments.indexOf(payment) + 1,
+                        totalPayments: razorpayPayments.length
+                    }
+                });
+
+                refundResults.push({
+                    paymentId: payment.razorpay_payment_id,
+                    refundId: refundData.id,
+                    amount: refundForThisPayment,
+                    status: refundData.status
+                });
+
+                remainingRefund -= refundForThisPayment;
+                console.log(`[API /owner/refund] Refund successful: ${refundData.id}, Remaining: ₹${remainingRefund}`);
+
+            } catch (error) {
+                console.error(`[API /owner/refund] Failed to refund payment ${payment.razorpay_payment_id}:`, error);
+                // Continue with next payment even if one fails
             }
-        });
+        }
 
-        console.log(`[API /owner/refund] Razorpay refund successful: ${refundData.id}`);
+        // Check if all refunds were successful
+        if (refundResults.length === 0) {
+            return NextResponse.json({
+                message: 'All refund attempts failed. Please try again or contact support.'
+            }, { status: 500 });
+        }
+
+        const totalRefundedFromRazorpay = refundResults.reduce((sum, r) => sum + r.amount, 0);
+
+        console.log(`[API /owner/refund] Razorpay refund successful: ${refundResults.length} payment(s) refunded, Total: ₹${totalRefundedFromRazorpay}`);
 
         // Update order in Firestore
-        const totalRefunded = alreadyRefunded + refundAmount;
+        const totalRefunded = alreadyRefunded + totalRefundedFromRazorpay;
         const isFullyRefunded = totalRefunded >= (orderData.totalAmount || 0);
 
         const updateData = {
