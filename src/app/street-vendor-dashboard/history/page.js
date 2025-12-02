@@ -168,6 +168,33 @@ export default function OrderHistoryPage() {
         const hasOnlinePayment = Array.isArray(paymentDetails) && paymentDetails.some(p => p.method === 'razorpay' && p.razorpay_payment_id);
         if (!hasOnlinePayment) return false;
 
+        // Calculate online payment amount
+        const onlinePaymentAmount = paymentDetails
+            .filter(p => p.method === 'razorpay' && p.razorpay_payment_id)
+            .reduce((sum, p) => sum + (p.amount || 0), 0);
+
+        // Calculate actual refunded amount from refunded items
+        const refundedItems = order.refundedItems || [];
+        let actualRefundedAmount = 0;
+
+        if (refundedItems.length > 0) {
+            const orderItems = order.items || [];
+            refundedItems.forEach(itemId => {
+                const item = orderItems.find(i => (i.id || i.name) === itemId);
+                if (item) {
+                    let itemPrice = item.totalPrice || item.price || 0;
+                    const itemQty = item.quantity || item.qty || 1;
+                    actualRefundedAmount += itemPrice * itemQty;
+                }
+            });
+        } else {
+            actualRefundedAmount = order.refundAmount || 0;
+        }
+
+        // Check if there's any remaining amount to refund
+        const remainingRefundable = onlinePaymentAmount - actualRefundedAmount;
+        if (remainingRefundable <= 0) return false;
+
         // Check 7-day limit
         const orderDate = order.orderDate?.toDate ? order.orderDate.toDate() : new Date(order.orderDate);
         const daysSinceOrder = (Date.now() - orderDate.getTime()) / (1000 * 60 * 60 * 24);
