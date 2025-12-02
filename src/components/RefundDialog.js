@@ -221,6 +221,37 @@ export default function RefundDialog({ order, open, onOpenChange, onRefundSucces
                         </Alert>
                     )}
 
+                    {/* Refund Status Summary */}
+                    {(alreadyRefundedAmount > 0 || refundedItems.length > 0) && (
+                        <Alert>
+                            <AlertCircle className="h-4 w-4" />
+                            <AlertDescription>
+                                <div className="space-y-1">
+                                    <p className="font-semibold">Refund Status</p>
+                                    {alreadyRefundedAmount > 0 && (
+                                        <p className="text-sm text-green-600">
+                                            • ₹{alreadyRefundedAmount.toFixed(2)} already refunded
+                                        </p>
+                                    )}
+                                    {refundedItems.length > 0 && (
+                                        <p className="text-sm text-green-600">
+                                            • {refundedItems.length} item(s) already refunded
+                                        </p>
+                                    )}
+                                    {alreadyRefundedAmount >= onlinePaymentAmount ? (
+                                        <p className="text-sm text-yellow-600 mt-2">
+                                            ⚠️ Full refund already processed. No further refunds available.
+                                        </p>
+                                    ) : (
+                                        <p className="text-sm text-blue-600 mt-2">
+                                            ℹ️ Remaining refundable amount: ₹{(onlinePaymentAmount - alreadyRefundedAmount).toFixed(2)}
+                                        </p>
+                                    )}
+                                </div>
+                            </AlertDescription>
+                        </Alert>
+                    )}
+
                     {/* Payment Breakdown Info (for mixed payments) */}
                     {onlinePaymentAmount < totalAmount && onlinePaymentAmount > 0 && (
                         <Alert>
@@ -244,8 +275,15 @@ export default function RefundDialog({ order, open, onOpenChange, onRefundSucces
                         <Label>Refund Type</Label>
                         <RadioGroup value={refundType} onValueChange={setRefundType}>
                             <div className="flex items-center space-x-2">
-                                <RadioGroupItem value="full" id="full" />
-                                <Label htmlFor="full" className="font-normal cursor-pointer">
+                                <RadioGroupItem
+                                    value="full"
+                                    id="full"
+                                    disabled={alreadyRefundedAmount >= onlinePaymentAmount}
+                                />
+                                <Label
+                                    htmlFor="full"
+                                    className={`font-normal ${alreadyRefundedAmount >= onlinePaymentAmount ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'}`}
+                                >
                                     Full Refund - ₹{(onlinePaymentAmount - alreadyRefundedAmount).toFixed(2)}
                                     {alreadyRefundedAmount > 0 && (
                                         <span className="text-xs text-muted-foreground ml-2">
