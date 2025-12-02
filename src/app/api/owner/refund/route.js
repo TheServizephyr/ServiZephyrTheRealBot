@@ -148,12 +148,29 @@ export async function POST(req) {
             }, { status: 400 });
         }
 
-        const alreadyRefunded = orderData.refundAmount || 0;
-        const maxRefundable = (orderData.totalAmount || 0) - alreadyRefunded;
+        // Calculate actual already refunded amount from refundedItems (more reliable than refundAmount field)
+        const refundedItems = orderData.refundedItems || [];
+        let actualRefundedAmount = 0;
+
+        if (refundedItems.length > 0) {
+            const orderItems = orderData.items || [];
+            refundedItems.forEach(itemId => {
+                const item = orderItems.find(i => (i.id || i.name) === itemId);
+                if (item) {
+                    let itemPrice = item.totalPrice || item.price || 0;
+                    const itemQty = item.quantity || item.qty || 1;
+                    actualRefundedAmount += itemPrice * itemQty;
+                }
+            });
+        } else {
+            actualRefundedAmount = orderData.refundAmount || 0;
+        }
+
+        const maxRefundable = onlinePaymentAmount - actualRefundedAmount;
 
         if (refundAmount > maxRefundable) {
             return NextResponse.json({
-                message: `Refund amount (₹${refundAmount}) exceeds remaining refundable amount (₹${maxRefundable})`
+                message: `Refund amount (₹${refundAmount.toFixed(2)}) exceeds remaining refundable amount (₹${maxRefundable.toFixed(2)})`
             }, { status: 400 });
         }
 
