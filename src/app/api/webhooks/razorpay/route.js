@@ -411,38 +411,63 @@ export async function POST(req) {
                 }
             }
 
-            batch.set(orderRef, {
-                customerName: customerDetails.name,
-                customerId: userId,
-                customerAddress: customerDetails.address?.full || null,
-                customerPhone: customerDetails.phone,
-                restaurantId: restaurantId,
-                businessType: businessType,
-                deliveryType: billDetails.deliveryType,
-                items: items || [],
-                totalAmount: billDetails.grandTotal,
-                subtotal: billDetails.subtotal,
-                loyaltyDiscount: billDetails.loyaltyDiscount || 0,
-                coupon: billDetails.coupon || null,
-                cgst: billDetails.cgst || 0,
-                sgst: billDetails.sgst || 0,
-                deliveryCharge: billDetails.deliveryCharge || 0,
-                tipAmount: billDetails.tipAmount || 0,
-                status: 'pending',
-                orderDate: FieldValue.serverTimestamp(),
-                notes: customNotes || null,
-                trackingToken: trackingToken || null,
-                dineInToken: dineInToken || null,
-                paymentDetails: [{
-                    method: 'razorpay',
-                    amount: paymentAmount / 100,
-                    razorpay_payment_id: paymentId,
-                    razorpay_order_id: razorpayOrderId,
-                    timestamp: new Date(),
-                    status: 'paid'
-                }]
-            });
-            console.log(`[Webhook RZP] Successfully prepared creation for order ${orderRef.id} from RZP Order ${razorpayOrderId}.`);
+            // Check if order already exists (created by /api/order/create with awaiting_payment status)
+            const existingOrderSnap = await orderRef.get();
+
+            if (existingOrderSnap.exists) {
+                // Order already exists, just update it with payment details and status
+                console.log(`[Webhook RZP] Order ${orderRef.id} already exists. Updating with payment details.`);
+
+                batch.update(orderRef, {
+                    status: 'pending', // Update from awaiting_payment to pending
+                    paymentDetails: [{
+                        method: 'razorpay',
+                        amount: paymentAmount / 100,
+                        razorpay_payment_id: paymentId,
+                        razorpay_order_id: razorpayOrderId,
+                        timestamp: new Date(),
+                        status: 'paid'
+                    }],
+                    dineInToken: dineInToken || existingOrderSnap.data().dineInToken || null,
+                    trackingToken: trackingToken || existingOrderSnap.data().trackingToken || null
+                });
+            } else {
+                // Order doesn't exist, create it (old flow for backward compatibility)
+                console.log(`[Webhook RZP] Order ${orderRef.id} doesn't exist. Creating new order.`);
+
+                batch.set(orderRef, {
+                    customerName: customerDetails.name,
+                    customerId: userId,
+                    customerAddress: customerDetails.address?.full || null,
+                    customerPhone: customerDetails.phone,
+                    restaurantId: restaurantId,
+                    businessType: businessType,
+                    deliveryType: billDetails.deliveryType,
+                    items: items || [],
+                    totalAmount: billDetails.grandTotal,
+                    subtotal: billDetails.subtotal,
+                    loyaltyDiscount: billDetails.loyaltyDiscount || 0,
+                    coupon: billDetails.coupon || null,
+                    cgst: billDetails.cgst || 0,
+                    sgst: billDetails.sgst || 0,
+                    deliveryCharge: billDetails.deliveryCharge || 0,
+                    tipAmount: billDetails.tipAmount || 0,
+                    status: 'pending',
+                    orderDate: FieldValue.serverTimestamp(),
+                    notes: customNotes || null,
+                    trackingToken: trackingToken || null,
+                    dineInToken: dineInToken || null,
+                    paymentDetails: [{
+                        method: 'razorpay',
+                        amount: paymentAmount / 100,
+                        razorpay_payment_id: paymentId,
+                        razorpay_order_id: razorpayOrderId,
+                        timestamp: new Date(),
+                        status: 'paid'
+                    }]
+                });
+            }
+            console.log(`[Webhook RZP] Successfully prepared ${existingOrderSnap.exists ? 'update' : 'creation'} for order ${orderRef.id} from RZP Order ${razorpayOrderId}.`);
 
             await batch.commit();
             console.log(`[Webhook RZP] Batch committed successfully.`);
