@@ -45,6 +45,12 @@ export default function RefundDialog({ order, open, onOpenChange, onRefundSucces
 
     const orderItems = order?.items || [];
     const totalAmount = order?.totalAmount || order?.grandTotal || 0;
+    const refundedItems = order?.refundedItems || []; // Array of already refunded item IDs
+
+    // Check if an item is already refunded
+    const isItemRefunded = (itemId) => {
+        return refundedItems.includes(itemId);
+    };
 
     // Calculate online payment amount (sum of ALL online payments for split payment support)
     const getOnlinePaymentAmount = () => {
@@ -113,6 +119,12 @@ export default function RefundDialog({ order, open, onOpenChange, onRefundSucces
     const refundAmount = calculateRefundAmount();
 
     const handleItemToggle = (itemId) => {
+        // Check if item is already refunded
+        if (isItemRefunded(itemId)) {
+            alert('⚠️ This item has already been refunded and cannot be refunded again.');
+            return;
+        }
+
         setSelectedItems(prev =>
             prev.includes(itemId)
                 ? prev.filter(id => id !== itemId)
@@ -272,6 +284,7 @@ export default function RefundDialog({ order, open, onOpenChange, onRefundSucces
 
                                     const itemQty = item.quantity || item.qty || 1;
                                     const itemTotal = itemPrice * itemQty;
+                                    const alreadyRefunded = isItemRefunded(itemId);
 
                                     // Debug logging
                                     console.log('[RefundDialog] Item calculation:', {
@@ -279,22 +292,31 @@ export default function RefundDialog({ order, open, onOpenChange, onRefundSucces
                                         itemPrice,
                                         itemQty,
                                         itemTotal,
+                                        alreadyRefunded,
                                         rawItem: item
                                     });
 
                                     return (
-                                        <div key={index} className="flex items-center space-x-2">
+                                        <div key={index} className={`flex items-center space-x-2 ${alreadyRefunded ? 'opacity-50' : ''}`}>
                                             <Checkbox
                                                 id={`item-${index}`}
                                                 checked={selectedItems.includes(itemId)}
                                                 onCheckedChange={() => handleItemToggle(itemId)}
+                                                disabled={alreadyRefunded}
                                             />
                                             <Label
                                                 htmlFor={`item-${index}`}
-                                                className="flex-1 font-normal cursor-pointer"
+                                                className={`flex-1 font-normal ${alreadyRefunded ? 'cursor-not-allowed' : 'cursor-pointer'}`}
                                             >
-                                                <div className="flex justify-between">
-                                                    <span>{item.name} x {itemQty}</span>
+                                                <div className="flex justify-between items-center">
+                                                    <div className="flex items-center gap-2">
+                                                        <span>{item.name} x {itemQty}</span>
+                                                        {alreadyRefunded && (
+                                                            <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded">
+                                                                ✓ Refunded
+                                                            </span>
+                                                        )}
+                                                    </div>
                                                     <span className="text-muted-foreground">
                                                         ₹{itemTotal.toFixed(2)}
                                                     </span>
