@@ -265,7 +265,7 @@ export async function POST(req) {
         console.log(`[API /owner/refund] Razorpay refund successful: ${refundResults.length} payment(s) refunded, Total: ₹${totalRefundedFromRazorpay}`);
 
         // Update order in Firestore
-        const totalRefunded = alreadyRefunded + totalRefundedFromRazorpay;
+        const totalRefunded = actuallyAlreadyRefunded + totalRefundedFromRazorpay;
         const isFullyRefunded = totalRefunded >= (orderData.totalAmount || 0);
 
         const updateData = {
