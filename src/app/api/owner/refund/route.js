@@ -204,7 +204,8 @@ export async function POST(req) {
                     paymentId: payment.razorpay_payment_id,
                     refundId: refundData.id,
                     amount: refundForThisPayment,
-                    status: refundData.status
+                    status: refundData.status,
+                    created_at: refundData.created_at
                 });
 
                 remainingRefund -= refundForThisPayment;
@@ -236,7 +237,7 @@ export async function POST(req) {
             refundAmount: totalRefunded,
             refundReason: reason,
             refundDate: FieldValue.serverTimestamp(),
-            refundId: refundData.id,
+            refundIds: refundResults.map(r => r.refundId),
             partiallyRefunded: !isFullyRefunded,
             refundedItems: refundType === 'partial' ? FieldValue.arrayUnion(...items) : [],
             updatedAt: FieldValue.serverTimestamp()
@@ -244,37 +245,39 @@ export async function POST(req) {
 
         await orderRef.update(updateData);
 
-        // Create refund record
-        const refundRecord = {
-            refundId: refundData.id,
-            orderId,
-            paymentId,
-            amount: refundAmount,
-            currency: 'INR',
-            status: refundData.status, // 'processed' or 'pending'
-            refundType,
-            reason,
-            notes: notes || '',
-            vendorId: businessId,
-            customerId: orderData.customerId || orderData.userId,
-            items: refundType === 'partial' ? items : [],
-            createdAt: FieldValue.serverTimestamp(),
-            processedAt: refundData.created_at ? new Date(refundData.created_at * 1000) : FieldValue.serverTimestamp()
-        };
+        // Create refund records for each payment
+        for (const result of refundResults) {
+            const refundRecord = {
+                refundId: result.refundId,
+                orderId,
+                paymentId: result.paymentId,
+                amount: result.amount,
+                currency: 'INR',
+                status: result.status,
+                refundType,
+                reason,
+                notes: notes || '',
+                vendorId: businessId,
+                customerId: orderData.customerId || orderData.userId,
+                items: refundType === 'partial' ? items : [],
+                createdAt: FieldValue.serverTimestamp(),
+                processedAt: result.created_at ? new Date(result.created_at * 1000) : FieldValue.serverTimestamp()
+            };
 
-        await firestore.collection('refunds').doc(refundData.id).set(refundRecord);
+            await firestore.collection('refunds').doc(result.refundId).set(refundRecord);
+        }
 
-        console.log(`[API /owner/refund] Refund completed successfully: ${refundData.id}`);
+        console.log(`[API /owner/refund] Refund completed successfully: ${refundResults.length} refund(s) created`);
 
         // TODO: Send notification to customer
-        // await sendRefundNotification(orderData.customerId, refundAmount, refundData.id);
+        // await sendRefundNotification(orderData.customerId, totalRefundedFromRazorpay, refundResults[0].refundId);
 
         return NextResponse.json({
             success: true,
-            message: `Refund of ₹${refundAmount.toFixed(2)} processed successfully`,
-            refundId: refundData.id,
-            amount: refundAmount,
-            status: refundData.status,
+            message: `Refund of ₹${totalRefundedFromRazorpay.toFixed(2)} processed successfully`,
+            refundIds: refundResults.map(r => r.refundId),
+            amount: totalRefundedFromRazorpay,
+            status: refundResults[0].status,
             expectedCreditDays: '5-7 working days'
         }, { status: 200 });
 
