@@ -107,6 +107,51 @@ export async function POST(req) {
                 }
             }
 
+            // Handle PhonePe Payment for Add-ons
+            if (paymentMethod === 'phonepe' || (paymentMethod === 'online' && process.env.PHONEPE_ENABLED === 'true')) {
+                try {
+                    console.log(`[API /order/create] ADD-ON FLOW: Creating PhonePe order for add-on`);
+
+                    // Fetch existing order details
+                    const orderDoc = await firestore.collection('orders').doc(existingOrderId).get();
+                    if (!orderDoc.exists) {
+                        throw new Error('Original order not found');
+                    }
+
+                    const trackingToken = orderDoc.data().trackingToken;
+
+                    // Create PhonePe order - similar structure to add-on Razorpay
+                    const phonePeOrderId = `addon_${existingOrderId}_${Date.now()}`;
+
+                    // Store add-on order metadata in Firestore for PhonePe callback to process
+                    await firestore.collection('phonepe_pending_addons').doc(phonePeOrderId).set({
+                        orderId: existingOrderId,
+                        items: items,
+                        subtotal: subtotal,
+                        cgst: cgst,
+                        sgst: sgst,
+                        grandTotal: grandTotal,
+                        createdAt: FieldValue.serverTimestamp(),
+                        status: 'pending_payment'
+                    });
+
+                    console.log(`[API /order/create] ADD-ON FLOW: PhonePe add-on metadata stored: ${phonePeOrderId}`);
+
+                    return NextResponse.json({
+                        message: 'PhonePe order created for add-ons. Awaiting payment.',
+                        phonepe_order_id: phonePeOrderId,
+                        firestore_order_id: existingOrderId,
+                        token: trackingToken,
+                        amount: grandTotal
+                    }, { status: 200 });
+
+                } catch (error) {
+                    console.error(`[API /order/create] ADD-ON FLOW: PhonePe creation failed:`, error);
+                    return NextResponse.json({ message: error.message }, { status: 500 });
+                }
+            }
+
+
             const orderRef = firestore.collection('orders').doc(existingOrderId);
 
             try {

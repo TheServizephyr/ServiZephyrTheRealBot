@@ -82,6 +82,93 @@ async function handleOrderCompleted(payload) {
 
     console.log(`[PhonePe Webhook] Order COMPLETED: ${merchantOrderId}`);
 
+    // Check if this is an add-on payment
+    if (merchantOrderId.startsWith('addon_')) {
+        console.log(`[PhonePe Webhook] Detected ADD-ON payment: ${merchantOrderId}`);
+
+        // Fetch add-on metadata from Firestore
+        const addonRef = adminDb.collection('phonepe_pending_addons').doc(merchantOrderId);
+        const addonDoc = await addonRef.get();
+
+        if (!addonDoc.exists) {
+            console.error(`[PhonePe Webhook] Add-on metadata not found for: ${merchantOrderId}`);
+            return;
+        }
+
+        const addonData = addonDoc.data();
+        const originalOrderId = addonData.orderId;
+
+        console.log(`[PhonePe Webhook] Processing add-on for order: ${originalOrderId}`);
+
+        // Update original order with add-on items
+        const orderRef = adminDb.collection('orders').doc(originalOrderId);
+
+        await adminDb.runTransaction(async (transaction) => {
+            const orderDoc = await transaction.get(orderRef);
+
+            if (!orderDoc.exists) {
+                throw new Error(`Original order ${originalOrderId} not found`);
+            }
+
+            const orderData = orderDoc.data();
+
+            // Add timestamp to new items
+            const currentTimestamp = new Date();
+            const itemsWithTimestamp = addonData.items.map(item => ({
+                ...item,
+                addedAt: currentTimestamp,
+                isAddon: true
+            }));
+
+            // Ensure existing items have timestamps
+            const existingItemsWithTimestamp = orderData.items.map(item => ({
+                ...item,
+                addedAt: item.addedAt || orderData.orderDate?.toDate?.() || new Date(orderData.orderDate) || currentTimestamp,
+                isAddon: item.isAddon || false
+            }));
+
+            const newItems = [...existingItemsWithTimestamp, ...itemsWithTimestamp];
+            const newSubtotal = orderData.subtotal + addonData.subtotal;
+            const newCgst = orderData.cgst + addonData.cgst;
+            const newSgst = orderData.sgst + addonData.sgst;
+            const newGrandTotal = orderData.totalAmount + addonData.grandTotal;
+
+            // Update order
+            transaction.update(orderRef, {
+                items: newItems,
+                subtotal: newSubtotal,
+                cgst: newCgst,
+                sgst: newSgst,
+                totalAmount: newGrandTotal,
+                paymentDetails: adminDb.FieldValue.arrayUnion({
+                    method: 'phonepe',
+                    amount: amount / 100,
+                    phonePeOrderId: orderId,
+                    phonePeTransactionId: paymentDetails?.[0]?.transactionId || null,
+                    status: 'paid',
+                    timestamp: new Date(),
+                    isAddon: true
+                }),
+                statusHistory: adminDb.FieldValue.arrayUnion({
+                    status: 'updated',
+                    timestamp: currentTimestamp,
+                    notes: `Added ${addonData.items.length} item(s) via PhonePe add-on payment`
+                }),
+                updatedAt: new Date()
+            });
+
+            // Mark add-on as completed
+            transaction.update(addonRef, {
+                status: 'completed',
+                completedAt: adminDb.FieldValue.serverTimestamp()
+            });
+        });
+
+        console.log(`[PhonePe Webhook] Add-on items added successfully to order ${originalOrderId}`);
+        return;
+    }
+
+    // Regular order payment (non-add-on)
     const orderRef = adminDb.collection('orders').doc(merchantOrderId);
     const orderDoc = await orderRef.get();
 
