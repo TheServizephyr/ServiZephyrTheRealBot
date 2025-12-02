@@ -46,6 +46,7 @@ export default function RefundDialog({ order, open, onOpenChange, onRefundSucces
     const orderItems = order?.items || [];
     const totalAmount = order?.totalAmount || order?.grandTotal || 0;
     const refundedItems = order?.refundedItems || []; // Array of already refunded item IDs
+    const alreadyRefundedAmount = order?.refundAmount || 0; // Total already refunded
 
     // Check if an item is already refunded
     const isItemRefunded = (itemId) => {
@@ -121,7 +122,7 @@ export default function RefundDialog({ order, open, onOpenChange, onRefundSucces
     const handleItemToggle = (itemId) => {
         // Check if item is already refunded
         if (isItemRefunded(itemId)) {
-            alert('⚠️ This item has already been refunded and cannot be refunded again.');
+            setError('⚠️ This item has already been refunded and cannot be refunded again.');
             return;
         }
 
@@ -141,6 +142,12 @@ export default function RefundDialog({ order, open, onOpenChange, onRefundSucces
 
         if (refundType === 'partial' && selectedItems.length === 0) {
             setError('Please select at least one item for partial refund');
+            return;
+        }
+
+        // Check if trying to refund already refunded order
+        if (refundType === 'full' && alreadyRefundedAmount >= onlinePaymentAmount) {
+            setError('⚠️ This order has already been fully refunded. No refund amount remaining.');
             return;
         }
 
@@ -239,7 +246,12 @@ export default function RefundDialog({ order, open, onOpenChange, onRefundSucces
                             <div className="flex items-center space-x-2">
                                 <RadioGroupItem value="full" id="full" />
                                 <Label htmlFor="full" className="font-normal cursor-pointer">
-                                    Full Refund - ₹{onlinePaymentAmount.toFixed(2)}
+                                    Full Refund - ₹{(onlinePaymentAmount - alreadyRefundedAmount).toFixed(2)}
+                                    {alreadyRefundedAmount > 0 && (
+                                        <span className="text-xs text-muted-foreground ml-2">
+                                            (₹{alreadyRefundedAmount.toFixed(2)} already refunded)
+                                        </span>
+                                    )}
                                     {onlinePaymentAmount < totalAmount && (
                                         <span className="text-xs text-muted-foreground ml-2">
                                             (Online payment only)
