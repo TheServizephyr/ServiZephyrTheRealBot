@@ -77,11 +77,10 @@ export default function RefundDialog({ order, open, onOpenChange, onRefundSucces
         selectedItems.forEach(itemId => {
             const item = orderItems.find(i => i.id === itemId || i.name === itemId);
             if (item) {
-                // Calculate price with fallback logic
-                let price = item.totalPrice || item.price || 0;
+                // Calculate price - use portion.price if totalPrice not available
+                let price = item.totalPrice || item.price;
 
-                // If still 0, calculate from portion + addons
-                if (price === 0 && item.portion) {
+                if (!price && item.portion) {
                     price = item.portion.price || 0;
 
                     // Add addon prices
@@ -93,6 +92,8 @@ export default function RefundDialog({ order, open, onOpenChange, onRefundSucces
                         });
                     }
                 }
+
+                price = price || 0;
 
                 const qty = item.quantity || item.qty || 1;
                 itemsTotal += price * qty;
@@ -251,11 +252,10 @@ export default function RefundDialog({ order, open, onOpenChange, onRefundSucces
                                 {orderItems.map((item, index) => {
                                     const itemId = item.id || item.name;
 
-                                    // Calculate price with fallback logic
-                                    let itemPrice = item.totalPrice || item.price || 0;
+                                    // Calculate price - use portion.price if totalPrice not available
+                                    let itemPrice = item.totalPrice || item.price;
 
-                                    // If still 0, calculate from portion + addons
-                                    if (itemPrice === 0 && item.portion) {
+                                    if (!itemPrice && item.portion) {
                                         itemPrice = item.portion.price || 0;
 
                                         // Add addon prices
@@ -267,6 +267,8 @@ export default function RefundDialog({ order, open, onOpenChange, onRefundSucces
                                             });
                                         }
                                     }
+
+                                    itemPrice = itemPrice || 0;
 
                                     const itemQty = item.quantity || item.qty || 1;
                                     const itemTotal = itemPrice * itemQty;
