@@ -46,7 +46,32 @@ export default function RefundDialog({ order, open, onOpenChange, onRefundSucces
     const orderItems = order?.items || [];
     const totalAmount = order?.totalAmount || order?.grandTotal || 0;
     const refundedItems = order?.refundedItems || []; // Array of already refunded item IDs
-    const alreadyRefundedAmount = order?.refundAmount || 0; // Total already refunded
+
+    // Calculate actual refunded amount from refunded items (more reliable than refundAmount field)
+    const calculateActualRefundedAmount = () => {
+        if (refundedItems.length === 0) return order?.refundAmount || 0;
+
+        let total = 0;
+        refundedItems.forEach(itemId => {
+            const item = orderItems.find(i => (i.id || i.name) === itemId);
+            if (item) {
+                let itemPrice = item.totalPrice || item.price;
+                if (!itemPrice && item.portion) {
+                    itemPrice = item.portion.price || 0;
+                    if (item.selectedAddOns && Array.isArray(item.selectedAddOns)) {
+                        item.selectedAddOns.forEach(addon => {
+                            itemPrice += (addon.price || 0) * (addon.quantity || 1);
+                        });
+                    }
+                }
+                const itemQty = item.quantity || item.qty || 1;
+                total += (itemPrice || 0) * itemQty;
+            }
+        });
+        return total;
+    };
+
+    const alreadyRefundedAmount = calculateActualRefundedAmount();
 
     // Check if an item is already refunded
     const isItemRefunded = (itemId) => {
