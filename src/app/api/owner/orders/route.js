@@ -118,11 +118,10 @@ export async function GET(req) {
                 timestamp: h.timestamp && typeof h.timestamp.toDate === 'function' ? h.timestamp.toDate().toISOString() : h.timestamp,
             }));
 
-            // Correctly map quantity to items
+            // Return complete item data (needed for refund calculations)
             const itemsWithQty = (data.items || []).map(item => ({
-                name: item.name,
-                price: item.price,
-                qty: item.quantity,
+                ...item, // Keep all original fields
+                qty: item.quantity || item.qty, // Normalize quantity field
             }));
 
 
