@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { adminDb } from '@/lib/firebase-admin';
+import { adminDb, FieldValue } from '@/lib/firebase-admin';
 import crypto from 'crypto';
 
 // PhonePe Webhook Credentials (set these in Vercel environment variables)
@@ -140,7 +140,7 @@ async function handleOrderCompleted(payload) {
                 cgst: newCgst,
                 sgst: newSgst,
                 totalAmount: newGrandTotal,
-                paymentDetails: adminDb.FieldValue.arrayUnion({
+                paymentDetails: FieldValue.arrayUnion({
                     method: 'phonepe',
                     amount: amount / 100,
                     phonePeOrderId: orderId,
@@ -149,7 +149,7 @@ async function handleOrderCompleted(payload) {
                     timestamp: new Date(),
                     isAddon: true
                 }),
-                statusHistory: adminDb.FieldValue.arrayUnion({
+                statusHistory: FieldValue.arrayUnion({
                     status: 'updated',
                     timestamp: currentTimestamp,
                     notes: `Added ${addonData.items.length} item(s) via PhonePe add-on payment`
@@ -160,7 +160,7 @@ async function handleOrderCompleted(payload) {
             // Mark add-on as completed
             transaction.update(addonRef, {
                 status: 'completed',
-                completedAt: adminDb.FieldValue.serverTimestamp()
+                completedAt: FieldValue.serverTimestamp()
             });
         });
 
@@ -184,7 +184,7 @@ async function handleOrderCompleted(payload) {
             phonePePaymentMode: paymentDetails?.[0]?.paymentMode || null,
             paidAmount: amount / 100, // Convert paise to rupees
             status: 'pending', // Set to pending so it appears on vendor dashboard
-            paymentDetails: adminDb.FieldValue.arrayUnion({
+            paymentDetails: FieldValue.arrayUnion({
                 method: 'phonepe',
                 amount: amount / 100,
                 phonePeOrderId: orderId,
