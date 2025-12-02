@@ -114,9 +114,28 @@ export async function POST(req) {
         // Calculate refund amount
         let refundAmount = 0;
 
+        // First, calculate already refunded amount from refundedItems
+        const refundedItemIds = orderData.refundedItems || [];
+        let alreadyRefundedFromItems = 0;
+
+        if (refundedItemIds.length > 0) {
+            const orderItems = orderData.items || [];
+            refundedItemIds.forEach(itemId => {
+                const item = orderItems.find(i => (i.id || i.name) === itemId);
+                if (item) {
+                    let itemPrice = item.totalPrice || item.price || 0;
+                    const itemQty = item.quantity || item.qty || 1;
+                    alreadyRefundedFromItems += itemPrice * itemQty;
+                }
+            });
+        }
+
+        // Use the calculated amount or fallback to stored refundAmount
+        const actuallyAlreadyRefunded = refundedItemIds.length > 0 ? alreadyRefundedFromItems : (orderData.refundAmount || 0);
+
         if (refundType === 'full') {
-            // Refund only the online payment amount, not total order amount
-            refundAmount = onlinePaymentAmount;
+            // Refund remaining online payment amount (total - already refunded)
+            refundAmount = Math.max(0, onlinePaymentAmount - actuallyAlreadyRefunded);
         } else if (refundType === 'partial') {
             // Calculate amount for selected items
             const orderItems = orderData.items || [];
