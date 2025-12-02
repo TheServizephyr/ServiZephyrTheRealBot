@@ -100,8 +100,8 @@ export default function RefundDialog({ order, open, onOpenChange, onRefundSucces
     // Calculate refund amount
     const calculateRefundAmount = () => {
         if (refundType === 'full') {
-            // Refund only the online payment amount, not total order amount
-            return onlinePaymentAmount;
+            // Refund remaining online payment amount (total - already refunded)
+            return Math.max(0, onlinePaymentAmount - alreadyRefundedAmount);
         }
 
         // Partial refund calculation
