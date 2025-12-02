@@ -173,6 +173,9 @@ async function handleOrderCompleted(payload) {
     const orderDoc = await orderRef.get();
 
     if (orderDoc.exists) {
+        const currentStatus = orderDoc.data().status;
+        console.log(`[PhonePe Webhook] Processing regular order ${merchantOrderId}, current status: ${currentStatus}`);
+
         await orderRef.update({
             paymentStatus: 'paid',
             paymentMethod: 'phonepe',
@@ -181,9 +184,17 @@ async function handleOrderCompleted(payload) {
             phonePePaymentMode: paymentDetails?.[0]?.paymentMode || null,
             paidAmount: amount / 100, // Convert paise to rupees
             status: 'pending', // Set to pending so it appears on vendor dashboard
+            paymentDetails: adminDb.FieldValue.arrayUnion({
+                method: 'phonepe',
+                amount: amount / 100,
+                phonePeOrderId: orderId,
+                phonePeTransactionId: paymentDetails?.[0]?.transactionId || null,
+                status: 'paid',
+                timestamp: new Date()
+            }),
             updatedAt: new Date()
         });
-        console.log(`[PhonePe Webhook] Order ${merchantOrderId} updated to PAID with status PENDING`);
+        console.log(`[PhonePe Webhook] Order ${merchantOrderId} updated from ${currentStatus} to PENDING with PAID status`);
     } else {
         console.warn(`[PhonePe Webhook] Order ${merchantOrderId} not found in Firestore`);
     }
