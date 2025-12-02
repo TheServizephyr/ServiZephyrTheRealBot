@@ -327,14 +327,43 @@ export async function POST(req) {
                 headers: { 'Authorization': `Basic ${credentials}` }
             });
 
-            // If servizephyr_payload is missing, it's an add-on payment
+            // If servizephyr_payload is missing, it could be:
+            // 1. An actual add-on payment to an existing order
+            // 2. A new order created via /api/order/create (which doesn't set servizephyr_payload)
             if (!rzpOrder.notes?.servizephyr_payload) {
                 const orderRef = firestore.collection('orders').doc(rzpOrder.receipt);
-                console.log(`[Webhook RZP] No servizephyr_payload. Assuming add-on payment for existing order ${rzpOrder.receipt}.`);
-                await orderRef.update({
-                    paymentDetails: FieldValue.arrayUnion({ method: 'razorpay', amount: paymentAmount / 100, timestamp: new Date(), razorpay_payment_id: paymentId, status: 'paid' })
-                });
-                return NextResponse.json({ status: 'ok', message: 'Add-on payment processed.' });
+                console.log(`[Webhook RZP] No servizephyr_payload. Processing payment for order ${rzpOrder.receipt}.`);
+
+                const orderSnap = await orderRef.get();
+                if (orderSnap.exists) {
+                    const orderData = orderSnap.data();
+
+                    // Determine if this is a new order or add-on based on current status
+                    const isNewOrder = orderData.status === 'awaiting_payment';
+
+                    const updateData = {
+                        paymentDetails: FieldValue.arrayUnion({
+                            method: 'razorpay',
+                            amount: paymentAmount / 100,
+                            timestamp: new Date(),
+                            razorpay_payment_id: paymentId,
+                            razorpay_order_id: razorpayOrderId,
+                            status: 'paid'
+                        })
+                    };
+
+                    // If this is a new order (awaiting_payment), update status to pending
+                    if (isNewOrder) {
+                        updateData.status = 'pending';
+                        console.log(`[Webhook RZP] Updating order ${rzpOrder.receipt} from awaiting_payment to pending`);
+                    } else {
+                        console.log(`[Webhook RZP] Add-on payment for existing order ${rzpOrder.receipt}`);
+                    }
+
+                    await orderRef.update(updateData);
+                }
+
+                return NextResponse.json({ status: 'ok', message: 'Payment processed.' });
             }
 
             const payload = JSON.parse(rzpOrder.notes.servizephyr_payload);
