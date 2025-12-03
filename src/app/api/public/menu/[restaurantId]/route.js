@@ -111,13 +111,27 @@ export async function GET(req, { params }) {
         // OPTIMIZATION: Skip user-specific data for cache (fetch separately if needed)
         // This allows ALL users to share same cache
         const now = new Date();
+        console.log('[Menu API] Fetched', couponsSnap.size, 'coupons with status=active');
+        console.log('[Menu API] Current time:', now);
+
         const coupons = couponsSnap.docs
-            .map(doc => ({ id: doc.id, ...doc.data() }))
+            .map(doc => {
+                const couponData = { id: doc.id, ...doc.data() };
+                console.log('[Menu API] Coupon:', couponData.code, 'startDate:', couponData.startDate, 'expiryDate:', couponData.expiryDate);
+                return couponData;
+            })
             .filter(coupon => {
                 const startDate = coupon.startDate?.toDate ? coupon.startDate.toDate() : new Date(coupon.startDate);
                 const expiryDate = coupon.expiryDate?.toDate ? coupon.expiryDate.toDate() : new Date(coupon.expiryDate);
-                return startDate <= now && expiryDate >= now && !coupon.customerId; // Only public coupons in cache
+                const isPublic = !coupon.customerId;
+                const isValid = startDate <= now && expiryDate >= now;
+
+                console.log('[Menu API] Coupon', coupon.code, '- valid:', isValid, 'public:', isPublic, 'start:', startDate, 'expiry:', expiryDate);
+
+                return isValid && isPublic; // Only public coupons in cache
             });
+
+        console.log('[Menu API] Final coupons count:', coupons.length);
 
         const responseData = {
             restaurantName: businessData.name,
