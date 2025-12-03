@@ -326,8 +326,16 @@ export default function CouponsPage() {
 
                 const processed = {
                     ...c,
-                    startDate: c.startDate ? (c.startDate.seconds ? new Date(c.startDate.seconds * 1000) : new Date(c.startDate)) : new Date(),
-                    expiryDate: c.expiryDate ? (c.expiryDate.seconds ? new Date(c.expiryDate.seconds * 1000) : new Date(c.expiryDate)) : new Date()
+                    startDate: c.startDate ? (
+                        c.startDate._seconds ? new Date(c.startDate._seconds * 1000) :
+                            c.startDate.seconds ? new Date(c.startDate.seconds * 1000) :
+                                new Date(c.startDate)
+                    ) : new Date(),
+                    expiryDate: c.expiryDate ? (
+                        c.expiryDate._seconds ? new Date(c.expiryDate._seconds * 1000) :
+                            c.expiryDate.seconds ? new Date(c.expiryDate.seconds * 1000) :
+                                new Date(c.expiryDate)
+                    ) : new Date()
                 };
 
                 console.log(`[COUPON FETCH] Coupon ${index} startDate processed:`, processed.startDate);
