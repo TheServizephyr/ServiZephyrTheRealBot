@@ -119,7 +119,26 @@ export async function GET(req) {
             hourlyOrders[hour]++;
 
             // Track cash vs online revenue
-            if (data.paymentDetails?.method === 'razorpay' || data.paymentDetails?.method === 'phonepe') {
+            // Handle both array and object formats for paymentDetails
+            let isOnlinePayment = false;
+
+            if (Array.isArray(data.paymentDetails)) {
+                // New format: array of payment objects
+                isOnlinePayment = data.paymentDetails.some(p =>
+                    (p.method === 'razorpay' || p.method === 'phonepe') &&
+                    (p.status === 'completed' || p.status === 'success')
+                );
+            } else if (data.paymentDetails?.method) {
+                // Old format: single payment object
+                isOnlinePayment = (data.paymentDetails.method === 'razorpay' || data.paymentDetails.method === 'phonepe');
+            }
+
+            // Also check paymentMethod field (fallback)
+            if (!isOnlinePayment && data.paymentMethod) {
+                isOnlinePayment = (data.paymentMethod === 'razorpay' || data.paymentMethod === 'phonepe');
+            }
+
+            if (isOnlinePayment) {
                 paymentMethodCounts.Online++;
                 onlineRevenue += data.totalAmount || 0;
             } else {
