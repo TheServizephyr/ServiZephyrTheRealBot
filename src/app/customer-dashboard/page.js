@@ -147,7 +147,11 @@ function CustomerHubContent() {
             const idToken = await user.getIdToken();
             const res = await fetch('/api/auth/generate-session-token', {
                 method: 'POST',
-                headers: { 'Authorization': `Bearer ${idToken}` }
+                headers: {
+                    'Authorization': `Bearer ${idToken}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({}) // Fix: Send empty body to prevent JSON parse error on server
             });
             const data = await res.json();
             if (!res.ok) throw new Error(data.message || 'Failed to create a secure session.');
