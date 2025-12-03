@@ -205,7 +205,7 @@ function OwnerDashboardContent({ children }) {
       );
     }
 
-    const alwaysEnabled = ['menu', 'settings', 'connections', 'payout-settings', 'dine-in', 'bookings', 'whatsapp-direct', 'location', 'profile', 'qr'];
+    const alwaysEnabled = ['menu', 'settings', 'connections', 'payout-settings', 'dine-in', 'bookings', 'whatsapp-direct', 'location', 'profile', 'qr', 'coupons'];
     const isDisabled = !alwaysEnabled.includes(featureId);
 
     if ((restaurantStatus.status === 'pending' || restaurantStatus.status === 'rejected') && isDisabled) {
