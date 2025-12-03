@@ -10,8 +10,8 @@ const Footer = () => {
         <div className="grid grid-cols-2 gap-8 md:grid-cols-4">
           <div>
             <div className="flex items-center gap-2">
-                <Image src="/logo.png" alt="ServiZephyr Logo" width={40} height={40} className="h-10 w-auto" />
-                <h3 className="text-lg font-bold text-foreground">ServiZephyr</h3>
+              <Image src="/logo.png" alt="ServiZephyr Logo" width={40} height={40} className="h-10 w-auto" />
+              <h3 className="text-lg font-bold text-foreground">ServiZephyr</h3>
             </div>
             <p className="mt-2 text-sm text-muted-foreground">Your own WhatsApp ordering bot & growth toolkit.</p>
           </div>
@@ -28,14 +28,14 @@ const Footer = () => {
             <ul className="mt-4 space-y-2">
               <li><Link href="/privacy" className="text-sm text-muted-foreground hover:text-primary">Privacy Policy</Link></li>
               <li><Link href="/terms-and-conditions" className="text-sm text-muted-foreground hover:text-primary">Terms & Conditions</Link></li>
-              <li><Link href="/shipping-policy" className="text-sm text-muted-foreground hover:text-primary">Shipping Policy</Link></li>
+              {/* <li><Link href="/shipping-policy" className="text-sm text-muted-foreground hover:text-primary">Shipping Policy</Link></li> */}
               <li><Link href="/cancellation-and-refunds" className="text-sm text-muted-foreground hover:text-primary">Cancellation & Refunds</Link></li>
             </ul>
           </div>
           <div>
             <h3 className="text-lg font-bold text-foreground">Connect</h3>
             <ul className="mt-4 space-y-2">
-               <li><Link href="/contact" className="text-sm text-muted-foreground hover:text-primary">Contact Us</Link></li>
+              <li><Link href="/contact" className="text-sm text-muted-foreground hover:text-primary">Contact Us</Link></li>
             </ul>
             <div className="mt-4 flex space-x-4">
               <a href="https://x.com/servizephyr" target="_blank" rel="noopener noreferrer" className="text-muted-foreground hover:text-primary" aria-label="Twitter"><Twitter /></a>
