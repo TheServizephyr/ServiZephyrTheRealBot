@@ -13,6 +13,14 @@ import { cn } from '@/lib/utils';
 import { auth } from '@/lib/firebase';
 import { useRouter, useSearchParams } from 'next/navigation';
 
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from "@/components/ui/select";
+
 export default function StreetVendorAnalyticsPage() {
     const [loading, setLoading] = useState(true);
     const [analyticsData, setAnalyticsData] = useState(null);
@@ -110,18 +118,21 @@ export default function StreetVendorAnalyticsPage() {
                         </h1>
                         <p className="text-muted-foreground mt-1 text-sm md:text-base">Aapka business ka poora hisaab</p>
                     </div>
-                    <div className="flex items-center gap-2 px-4 py-2.5 border-2 border-border rounded-xl bg-card/50 backdrop-blur-sm shadow-sm hover:shadow-md transition-shadow">
-                        <Calendar className="h-5 w-5 text-primary" />
-                        <select
-                            value={dateFilter}
-                            onChange={(e) => setDateFilter(e.target.value)}
-                            className="bg-transparent border-none outline-none font-medium cursor-pointer text-sm md:text-base"
-                        >
-                            <option value="Today">Today</option>
-                            <option value="This Week">This Week</option>
-                            <option value="This Month">This Month</option>
-                            <option value="This Year">This Year</option>
-                        </select>
+                    <div className="flex items-center gap-2">
+                        <Select value={dateFilter} onValueChange={setDateFilter}>
+                            <SelectTrigger className="w-[160px] border-2 border-border rounded-xl bg-card/50 backdrop-blur-sm shadow-sm hover:shadow-md transition-shadow h-11">
+                                <div className="flex items-center gap-2">
+                                    <Calendar className="h-4 w-4 text-primary" />
+                                    <SelectValue placeholder="Select period" />
+                                </div>
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="Today">Today</SelectItem>
+                                <SelectItem value="This Week">This Week</SelectItem>
+                                <SelectItem value="This Month">This Month</SelectItem>
+                                <SelectItem value="This Year">This Year</SelectItem>
+                            </SelectContent>
+                        </Select>
                     </div>
                 </motion.div>
 
