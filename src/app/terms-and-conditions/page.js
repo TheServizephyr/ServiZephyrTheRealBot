@@ -8,11 +8,13 @@ export default function TermsAndConditionsPage() {
         <div className="prose prose-lg dark:prose-invert mx-auto text-muted-foreground">
           <p>Last updated: October 11, 2025</p>
 
+          <p className="font-semibold text-lg">This website is managed by ASHWANI BAGHEL S/O MANOJ KUMAR</p>
+
           <p>Welcome to ServiZephyr! These terms and conditions ("Terms") govern your use of our services.</p>
 
           <h2>1. Our Service</h2>
           <p>ServiZephyr is a technology platform that connects you (the customer) with our independent third-party restaurant partners ("Restaurants").</p>
-          
+
           <h2>2. Your Role (Customer)</h2>
           <p>You agree to provide accurate and complete information (name, address, phone number). You are responsible for the payment of your order.</p>
 
