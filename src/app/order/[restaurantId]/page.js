@@ -695,8 +695,29 @@ const OrderPageInternal = () => {
             pollStatus();
         } else if (activeOrderId && activeOrderToken) {
             setLiveOrder({ orderId: activeOrderId, trackingToken: activeOrderToken, restaurantId: restaurantId });
+        } else if (phone && token && restaurantId) {
+            // FIX: Check for active order on server if not in local storage
+            const checkActiveOrder = async () => {
+                try {
+                    const res = await fetch('/api/order/active', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ phone, token, restaurantId })
+                    });
+                    if (res.ok) {
+                        const data = await res.json();
+                        if (data.activeOrder) {
+                            setLiveOrder(data.activeOrder);
+                            localStorage.setItem(liveOrderKey, JSON.stringify(data.activeOrder));
+                        }
+                    }
+                } catch (e) {
+                    console.error("Failed to check active order", e);
+                }
+            };
+            checkActiveOrder();
         }
-    }, [activeOrderId, activeOrderToken, restaurantId]);
+    }, [activeOrderId, activeOrderToken, restaurantId, phone, token]);
 
 
     const [customerLocation, setCustomerLocation] = useState(null);
