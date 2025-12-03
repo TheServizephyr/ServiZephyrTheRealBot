@@ -1211,7 +1211,7 @@ const OrderPageInternal = () => {
             path = `/track/${liveOrder.orderId}`;
         }
 
-        return `${path}?token=${liveOrder.trackingToken}`;
+        return `${path}?token=${liveOrder.trackingToken}${phone ? `&phone=${phone}` : ''}`;
     };
 
     const trackingUrl = getTrackingUrl();

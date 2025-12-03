@@ -157,7 +157,16 @@ function OrderTrackingContent() {
 
     const handleBackToMenu = () => {
         if (orderData?.restaurant?.id) {
-            router.push(`/order/${orderData.restaurant.id}`);
+            const phone = searchParams.get('phone');
+            const token = searchParams.get('token');
+            let url = `/order/${orderData.restaurant.id}`;
+            const params = new URLSearchParams();
+            if (phone) params.append('phone', phone);
+            if (token) params.append('token', token);
+
+            if (params.toString()) url += `?${params.toString()}`;
+
+            router.push(url);
         } else {
             router.push('/');
         }
