@@ -16,7 +16,7 @@ const GOOGLE_MAPS_API_KEY = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
 const LocationMarker = ({ location, onMarkerClick }) => {
     const Icon = location.businessType === 'shop' ? Store : Soup;
     return (
-        <AdvancedMarker 
+        <AdvancedMarker
             position={{ lat: location.lat, lng: location.lng }}
             onClick={() => onMarkerClick(location)}
         >
@@ -32,13 +32,13 @@ const InfoWindowContent = ({ location, onNavigate, isNavigating }) => (
     <div className="p-2">
         <h4 className="font-bold text-lg text-foreground">{location.name}</h4>
         <p className="text-sm text-muted-foreground">{location.address}</p>
-        <Button 
-            onClick={() => onNavigate(location.id)} 
+        <Button
+            onClick={() => onNavigate(location.id)}
             disabled={isNavigating}
             className="mt-2"
             size="sm"
         >
-             {isNavigating ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+            {isNavigating ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
             View Menu &rarr;
         </Button>
     </div>
@@ -50,8 +50,8 @@ const DiscoverMap = ({ locations, initialCenter, onNavigate, isNavigating }) => 
     const map = useMap();
 
     useEffect(() => {
-        if(map && initialCenter) {
-            map.moveCamera({center: initialCenter, zoom: 14});
+        if (map && initialCenter) {
+            map.moveCamera({ center: initialCenter, zoom: 14 });
         }
     }, [initialCenter, map]);
 
@@ -61,7 +61,7 @@ const DiscoverMap = ({ locations, initialCenter, onNavigate, isNavigating }) => 
                 <LocationMarker key={loc.id} location={loc} onMarkerClick={setSelectedLocation} />
             ))}
             {selectedLocation && (
-                <InfoWindow 
+                <InfoWindow
                     position={{ lat: selectedLocation.lat, lng: selectedLocation.lng }}
                     onCloseClick={() => setSelectedLocation(null)}
                 >
@@ -118,7 +118,7 @@ export default function DiscoverPage() {
                 setLoading(false);
             }
         };
-        
+
         getUserLocation();
         fetchLocations();
 
@@ -127,7 +127,7 @@ export default function DiscoverPage() {
     // --- START: Added navigation handler ---
     const handleNavigation = async (restaurantId) => {
         if (!user) {
-            setInfoDialog({isOpen: true, title: 'Authentication Error', message: 'Please log in again to continue.'});
+            setInfoDialog({ isOpen: true, title: 'Authentication Error', message: 'Please log in again to continue.' });
             return;
         }
         setIsNavigating(true);
@@ -135,16 +135,20 @@ export default function DiscoverPage() {
             const idToken = await user.getIdToken();
             const res = await fetch('/api/auth/generate-session-token', {
                 method: 'POST',
-                headers: { 'Authorization': `Bearer ${idToken}` }
+                headers: {
+                    'Authorization': `Bearer ${idToken}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({})
             });
             const data = await res.json();
             if (!res.ok) throw new Error(data.message || 'Failed to create a secure session.');
-            
+
             const { phone, token } = data;
             router.push(`/order/${restaurantId}?phone=${phone}&token=${token}`);
 
         } catch (error) {
-            setInfoDialog({isOpen: true, title: 'Navigation Error', message: error.message});
+            setInfoDialog({ isOpen: true, title: 'Navigation Error', message: error.message });
             setIsNavigating(false);
         }
     };
@@ -152,14 +156,14 @@ export default function DiscoverPage() {
 
     return (
         <div className="relative h-[calc(100vh-148px)] md:h-[calc(100vh-81px)] w-full flex flex-col">
-             <InfoDialog isOpen={infoDialog.isOpen} onClose={() => setInfoDialog({isOpen: false, title: '', message: ''})} title={infoDialog.title} message={infoDialog.message}/>
+            <InfoDialog isOpen={infoDialog.isOpen} onClose={() => setInfoDialog({ isOpen: false, title: '', message: '' })} title={infoDialog.title} message={infoDialog.message} />
             <header className="absolute top-0 left-0 right-0 z-10 p-4">
                 <div className="container mx-auto bg-background/80 backdrop-blur-md p-4 rounded-xl shadow-lg border border-border">
                     <h1 className="text-2xl font-bold tracking-tight">Discover Nearby</h1>
                     <p className="text-muted-foreground text-sm mt-1">Explore restaurants and shops near you.</p>
                 </div>
             </header>
-            
+
             <div className="flex-grow">
                 {loading ? (
                     <div className="w-full h-full bg-muted flex flex-col items-center justify-center">
@@ -168,13 +172,13 @@ export default function DiscoverPage() {
                     </div>
                 ) : error ? (
                     <div className="w-full h-full bg-muted flex flex-col items-center justify-center text-center p-4">
-                        <AlertTriangle className="text-destructive h-12 w-12"/>
-                         <p className="mt-4 text-destructive font-semibold">{error}</p>
-                         <p className="text-sm text-muted-foreground mt-2">Please allow location access in your browser settings to use this feature.</p>
+                        <AlertTriangle className="text-destructive h-12 w-12" />
+                        <p className="mt-4 text-destructive font-semibold">{error}</p>
+                        <p className="text-sm text-muted-foreground mt-2">Please allow location access in your browser settings to use this feature.</p>
                     </div>
                 ) : (
                     <APIProvider apiKey={GOOGLE_MAPS_API_KEY}>
-                        <Map 
+                        <Map
                             mapId="discover_map"
                             style={{ width: '100%', height: '100%' }}
                             defaultCenter={center}
@@ -182,7 +186,7 @@ export default function DiscoverPage() {
                             gestureHandling={'greedy'}
                             disableDefaultUI={true}
                         >
-                           <DiscoverMap locations={locations} initialCenter={center} onNavigate={handleNavigation} isNavigating={isNavigating} />
+                            <DiscoverMap locations={locations} initialCenter={center} onNavigate={handleNavigation} isNavigating={isNavigating} />
                         </Map>
                     </APIProvider>
                 )}
