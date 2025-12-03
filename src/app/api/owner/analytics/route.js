@@ -114,8 +114,10 @@ export async function GET(req) {
             const dayKey = format(data.orderDate.toDate(), 'dd/MM');
             salesByDay[dayKey] = (salesByDay[dayKey] || 0) + data.totalAmount;
 
-            // Track hourly distribution
-            const hour = data.orderDate.toDate().getHours();
+            // Track hourly distribution (convert UTC to IST)
+            const utcDate = data.orderDate.toDate();
+            const istDate = new Date(utcDate.getTime() + (5.5 * 60 * 60 * 1000)); // Add 5.5 hours for IST
+            const hour = istDate.getHours();
             hourlyOrders[hour]++;
 
             // Track cash vs online revenue
@@ -126,7 +128,7 @@ export async function GET(req) {
                 // New format: array of payment objects
                 isOnlinePayment = data.paymentDetails.some(p =>
                     (p.method === 'razorpay' || p.method === 'phonepe') &&
-                    (p.status === 'completed' || p.status === 'success')
+                    (p.status === 'completed' || p.status === 'success' || p.status === 'paid')
                 );
             } else if (data.paymentDetails?.method) {
                 // Old format: single payment object
