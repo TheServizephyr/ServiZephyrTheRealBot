@@ -289,9 +289,25 @@ export default function CouponsPage() {
         const res = await fetch(url.toString(), {
             method,
             headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${idToken}` },
-            body: JSON.stringify(body),
+            body: body ? JSON.stringify(body) : undefined,
         });
-        const data = await res.json();
+
+        // Check if response has content
+        const text = await res.text();
+        console.log('[API CALL] Response status:', res.status, 'text length:', text.length);
+
+        if (!text) {
+            throw new Error('Empty response from server');
+        }
+
+        let data;
+        try {
+            data = JSON.parse(text);
+        } catch (parseError) {
+            console.error('[API CALL] JSON parse error. Response text:', text);
+            throw new Error('Invalid response from server: ' + parseError.message);
+        }
+
         if (!res.ok) throw new Error(data.message || 'API call failed');
         return data;
     }
