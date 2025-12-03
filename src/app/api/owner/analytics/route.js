@@ -100,8 +100,11 @@ export async function GET(req) {
             ordersRef.where('orderDate', '>=', startDate).where('orderDate', '<=', endDate).where('status', '==', 'rejected').get(),
         ]);
 
-        let currentSales = 0, currentOrdersCount = 0, salesByDay = {};
+        let currentSales = 0, currentOrdersCount = 0, salesByDay = {}, cashRevenue = 0, onlineRevenue = 0;
         const paymentMethodCounts = { Online: 0, COD: 0 };
+        const hourlyOrders = Array(24).fill(0); // Track orders by hour
+        const prepTimes = []; // Track preparation times
+        const customerOrderDates = {}; // Track customer order history
 
         currentOrdersSnap.forEach(doc => {
             const data = doc.data();
@@ -111,10 +114,33 @@ export async function GET(req) {
             const dayKey = format(data.orderDate.toDate(), 'dd/MM');
             salesByDay[dayKey] = (salesByDay[dayKey] || 0) + data.totalAmount;
 
-            if (data.paymentDetails?.method === 'razorpay') {
+            // Track hourly distribution
+            const hour = data.orderDate.toDate().getHours();
+            hourlyOrders[hour]++;
+
+            // Track cash vs online revenue
+            if (data.paymentDetails?.method === 'razorpay' || data.paymentDetails?.method === 'phonepe') {
                 paymentMethodCounts.Online++;
+                onlineRevenue += data.totalAmount || 0;
             } else {
                 paymentMethodCounts.COD++;
+                cashRevenue += data.totalAmount || 0;
+            }
+
+            // Track prep time if available
+            if (data.readyAt && data.orderDate) {
+                const prepTime = (data.readyAt.toDate() - data.orderDate.toDate()) / (1000 * 60); // minutes
+                if (prepTime > 0 && prepTime < 120) { // Filter out anomalies
+                    prepTimes.push(prepTime);
+                }
+            }
+
+            // Track customer order history for loyalty
+            if (data.phone) {
+                if (!customerOrderDates[data.phone]) {
+                    customerOrderDates[data.phone] = [];
+                }
+                customerOrderDates[data.phone].push(data.orderDate.toDate());
             }
         });
 
@@ -130,29 +156,72 @@ export async function GET(req) {
             return ((current - previous) / previous) * 100;
         };
 
+        // Calculate missed revenue from rejections
+        let missedRevenue = 0;
+        const missedItems = {};
         const totalRejections = rejectedOrdersSnap.size;
         const rejectionReasons = {};
+
         rejectedOrdersSnap.forEach(doc => {
-            const reason = doc.data().rejectionReason || 'Other';
+            const data = doc.data();
+            const reason = data.rejectionReason || 'Other';
             rejectionReasons[reason] = (rejectionReasons[reason] || 0) + 1;
+
+            // Track missed revenue
+            if (data.totalAmount) {
+                missedRevenue += data.totalAmount;
+            }
+
+            // Track which items were out of stock
+            if (reason === 'out_of_stock' && data.items) {
+                data.items.forEach(item => {
+                    const itemName = item.name.split(' (')[0];
+                    if (!missedItems[itemName]) {
+                        missedItems[itemName] = { count: 0, revenue: 0 };
+                    }
+                    missedItems[itemName].count++;
+                    missedItems[itemName].revenue += (item.price * item.quantity) || 0;
+                });
+            }
         });
 
         const rejectionReasonsData = Object.entries(rejectionReasons).map(([name, value]) => ({ name, value }));
+        const missedItemsData = Object.entries(missedItems)
+            .map(([name, data]) => ({ name, ...data }))
+            .sort((a, b) => b.revenue - a.revenue)
+            .slice(0, 5); // Top 5 missed items
 
+
+        // Calculate average prep time
+        const avgPrepTime = prepTimes.length > 0
+            ? prepTimes.reduce((a, b) => a + b, 0) / prepTimes.length
+            : 0;
+
+        // Calculate peak hours
+        const peakHours = hourlyOrders
+            .map((count, hour) => ({ hour, count }))
+            .filter(h => h.count > 0)
+            .sort((a, b) => b.count - a.count);
 
         const salesData = {
             kpis: {
                 totalRevenue: currentSales,
                 totalOrders: currentOrdersCount,
                 avgOrderValue: currentOrdersCount > 0 ? currentSales / currentOrdersCount : 0,
+                cashRevenue,
+                onlineRevenue,
                 revenueChange: calcChange(currentSales, prevSales),
                 ordersChange: calcChange(currentOrdersCount, prevOrdersSnap.size),
                 avgValueChange: calcChange(currentOrdersCount > 0 ? currentSales / currentOrdersCount : 0, prevOrdersSnap.size > 0 ? prevSales / prevOrdersSnap.size : 0),
                 totalRejections,
+                missedRevenue,
+                avgPrepTime: Math.round(avgPrepTime),
             },
             salesTrend,
             paymentMethods: paymentMethods,
             rejectionReasons: rejectionReasonsData,
+            peakHours,
+            missedOpportunities: missedItemsData,
         };
 
         const menuItems = allMenuSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
@@ -180,20 +249,83 @@ export async function GET(req) {
             };
         });
 
-        const allCustomers = allCustomersSnap.docs.map(doc => doc.data());
+        // Enhanced customer analytics
+        const allCustomers = allCustomersSnap.docs.map(doc => ({ phone: doc.id, ...doc.data() }));
         const newThisMonth = allCustomers.filter(c => c.joinedAt && c.joinedAt.toDate() > new Date(now.getFullYear(), now.getMonth(), 1));
         const repeatCustomers = allCustomers.filter(c => (c.totalOrders || 0) > 1);
+
+        // Calculate new vs returning for current period
+        const uniqueCustomersThisPeriod = new Set(Object.keys(customerOrderDates));
+        const returningThisPeriod = Array.from(uniqueCustomersThisPeriod).filter(phone => {
+            const customer = allCustomers.find(c => c.phone === phone);
+            return customer && customer.joinedAt && customer.joinedAt.toDate() < startDate;
+        });
+
+        // Top loyal customers
+        const topLoyalCustomers = allCustomers
+            .filter(c => (c.totalOrders || 0) > 0)
+            .sort((a, b) => (b.totalOrders || 0) - (a.totalOrders || 0))
+            .slice(0, 5)
+            .map(c => ({
+                name: c.name || 'Customer',
+                phone: c.phone,
+                orders: c.totalOrders || 0,
+                totalSpent: c.totalSpent || 0
+            }));
 
         const customerStats = {
             totalCustomers: allCustomers.length,
             newThisMonth: newThisMonth.length,
             repeatRate: allCustomers.length > 0 ? Math.round((repeatCustomers.length / allCustomers.length) * 100) : 0,
+            newThisPeriod: uniqueCustomersThisPeriod.size - returningThisPeriod.length,
+            returningThisPeriod: returningThisPeriod.length,
+            topLoyalCustomers,
         };
+
+        // Generate AI insights
+        const aiInsights = [];
+
+        // Insight 1: Missed revenue alert
+        if (missedRevenue > 0 && missedItemsData.length > 0) {
+            const topMissed = missedItemsData[0];
+            aiInsights.push({
+                type: 'warning',
+                message: `Boss, aaj aapne ₹${Math.round(missedRevenue)} ka nuksan kiya kyunki '${topMissed.name}' ${topMissed.count} baar out of stock tha. Kal zyada stock le aana!`
+            });
+        }
+
+        // Insight 2: Peak hour preparation
+        if (peakHours.length > 0) {
+            const peak = peakHours[0];
+            const peakTime = peak.hour >= 12 ? `${peak.hour > 12 ? peak.hour - 12 : peak.hour} PM` : `${peak.hour} AM`;
+            aiInsights.push({
+                type: 'tip',
+                message: `Aapka sabse busy time ${peakTime} hai (${peak.count} orders). Uss time se pehle ready raho!`
+            });
+        }
+
+        // Insight 3: AOV improvement
+        const aov = currentOrdersCount > 0 ? currentSales / currentOrdersCount : 0;
+        if (aov > 0 && aov < 100) {
+            aiInsights.push({
+                type: 'suggestion',
+                message: `Average order value ₹${Math.round(aov)} hai. Combo offers dalo toh zyada paisa banega!`
+            });
+        }
+
+        // Insight 4: Customer loyalty
+        if (customerStats.repeatRate > 50) {
+            aiInsights.push({
+                type: 'success',
+                message: `Badhiya! ${customerStats.repeatRate}% customers wapas aa rahe hain. Matlab khana accha hai! 🔥`
+            });
+        }
 
         return NextResponse.json({
             salesData,
             menuPerformance,
             customerStats,
+            aiInsights,
         }, { status: 200 });
 
     } catch (error) {
