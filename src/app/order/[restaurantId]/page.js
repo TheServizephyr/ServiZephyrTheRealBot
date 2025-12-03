@@ -676,7 +676,7 @@ const OrderPageInternal = () => {
                     if (res.ok) {
                         const statusData = await res.json();
                         const status = statusData.order?.status;
-                        if (status === 'delivered' || status === 'picked_up' || status === 'rejected') {
+                        if (['delivered', 'picked_up', 'rejected', 'cancelled', 'completed'].includes(status)) {
                             localStorage.removeItem(liveOrderKey);
                             setLiveOrder(null);
                         } else {
@@ -1323,15 +1323,29 @@ const OrderPageInternal = () => {
                     <div className="container mx-auto px-4">
                         <div className="flex items-center gap-3 overflow-x-auto no-scrollbar pb-1">
                             {liveOrder && trackingUrl && (
-                                <Link href={trackingUrl} className="flex-shrink-0">
-                                    <motion.div
-                                        className={cn("p-2 rounded-lg text-black flex items-center animate-pulse", liveOrder.status === 'Ready' || liveOrder.status === 'ready_for_pickup' ? 'bg-green-400 hover:bg-green-500' : 'bg-yellow-400 hover:bg-yellow-500')}
-                                        whileHover={{ scale: 1.05 }}
+                                <div className="flex items-center gap-1">
+                                    <Link href={trackingUrl} className="flex-shrink-0">
+                                        <motion.div
+                                            className={cn("p-2 rounded-lg text-black flex items-center animate-pulse", liveOrder.status === 'Ready' || liveOrder.status === 'ready_for_pickup' ? 'bg-green-400 hover:bg-green-500' : 'bg-yellow-400 hover:bg-yellow-500')}
+                                            whileHover={{ scale: 1.05 }}
+                                        >
+                                            <Navigation size={16} className="mr-2" />
+                                            <span className="text-sm font-bold hidden sm:inline">Track</span>
+                                        </motion.div>
+                                    </Link>
+                                    <button
+                                        onClick={(e) => {
+                                            e.preventDefault();
+                                            e.stopPropagation();
+                                            localStorage.removeItem(`liveOrder_${restaurantId}`);
+                                            setLiveOrder(null);
+                                        }}
+                                        className="p-2 rounded-full bg-muted hover:bg-destructive hover:text-white transition-colors"
+                                        title="Clear active order"
                                     >
-                                        <Navigation size={16} className="mr-2" />
-                                        <span className="text-sm font-bold hidden sm:inline">Track</span>
-                                    </motion.div>
-                                </Link>
+                                        <X size={14} />
+                                    </button>
+                                </div>
                             )}
 
                             <Popover>
