@@ -302,8 +302,8 @@ export default function CouponsPage() {
             const data = await handleApiCall('GET');
             const processedCoupons = (data.coupons || []).map(c => ({
                 ...c,
-                startDate: c.startDate.seconds ? new Date(c.startDate.seconds * 1000) : new Date(c.startDate),
-                expiryDate: c.expiryDate.seconds ? new Date(c.expiryDate.seconds * 1000) : new Date(c.expiryDate)
+                startDate: c.startDate ? (c.startDate.seconds ? new Date(c.startDate.seconds * 1000) : new Date(c.startDate)) : new Date(),
+                expiryDate: c.expiryDate ? (c.expiryDate.seconds ? new Date(c.expiryDate.seconds * 1000) : new Date(c.expiryDate)) : new Date()
             }));
             setCoupons(processedCoupons);
         } catch (error) {
