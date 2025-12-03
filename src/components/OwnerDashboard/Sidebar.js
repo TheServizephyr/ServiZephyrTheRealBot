@@ -41,6 +41,7 @@ const getMenuItems = (businessType, impersonatedOwnerId) => {
       { name: "My Menu", icon: Salad, href: appendParam("/street-vendor-dashboard/menu"), featureId: "menu" },
       { name: "Analytics", icon: BarChart2, href: appendParam("/street-vendor-dashboard/analytics"), featureId: "analytics" },
       { name: "My QR Code", icon: QrCode, href: appendParam("/street-vendor-dashboard/qr"), featureId: "qr" },
+      { name: "Coupons", icon: Ticket, href: appendParam("/street-vendor-dashboard/coupons"), featureId: "coupons" },
     ];
   }
   // Default for restaurant/shop
