@@ -18,23 +18,16 @@ export async function GET(req, { params }) {
     }
 
     try {
-        // Step 1: Check Redis cache first
-        // TEMPORARILY DISABLED FOR DEBUGGING
-        /*
-        const cachedData = await kv.get(cacheKey);
-        if (cachedData) {
-            console.log(`[Menu API] Cache HIT for ${restaurantId}`);
-            return NextResponse.json(cachedData, {
-                status: 200,
-                headers: {
-                    'X-Cache': 'HIT',
-                    'Cache-Control': 's-maxage=3600, stale-while-revalidate=1800'
-                }
-            });
+        // Step 1: FORCE DELETE CACHE for debugging
+        console.log(`[Menu API] DELETING cache for ${restaurantId}`);
+        try {
+            await kv.del(cacheKey);
+            console.log(`[Menu API] Cache deleted successfully`);
+        } catch (delErr) {
+            console.error(`[Menu API] Cache deletion failed:`, delErr);
         }
-        */
 
-        console.log(`[Menu API] Cache DISABLED - fetching from Firestore`);
+        console.log(`[Menu API] Fetching FRESH data from Firestore for ${restaurantId}`);
 
         // Step 2: Cache miss - fetch from Firestore (OPTIMIZED)
         let businessData = null;
@@ -55,14 +48,20 @@ export async function GET(req, { params }) {
         }
 
         if (!businessData) {
+            console.log(`[Menu API] ❌ Business not found for ${restaurantId}`);
             return NextResponse.json({ message: 'Restaurant not found.' }, { status: 404 });
         }
+
+        console.log(`[Menu API] ✅ Found business: ${businessData.name} in ${collectionName}`);
+        console.log(`[Menu API] 🔍 Querying coupons with status='active' from ${collectionName}/${restaurantId}/coupons`);
 
         // OPTIMIZATION: Fetch menu in parallel with other data
         const [menuSnap, couponsSnap] = await Promise.all([
             businessRef.collection('menu').get(),
             businessRef.collection('coupons').where('status', '==', 'active').get()
         ]);
+
+        console.log(`[Menu API] 📊 Coupons query returned ${couponsSnap.size} documents`);
 
         let menuData = {};
         const customCategories = businessData.customCategories || [];
