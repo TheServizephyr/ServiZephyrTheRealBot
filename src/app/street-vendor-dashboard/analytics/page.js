@@ -16,7 +16,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 export default function StreetVendorAnalyticsPage() {
     const [loading, setLoading] = useState(true);
     const [analyticsData, setAnalyticsData] = useState(null);
-    const [dateFilter, setDateFilter] = useState('This Month');
+    const [dateFilter, setDateFilter] = useState('Today'); // Default to Today
     const searchParams = useSearchParams();
     const router = useRouter();
     const impersonatedOwnerId = searchParams.get('impersonate_owner_id');
@@ -55,6 +55,14 @@ export default function StreetVendorAnalyticsPage() {
         } finally {
             setLoading(false);
         }
+    };
+
+    const handleToggleItem = async (itemId, currentStatus) => {
+        // Optimistic update would be better, but for now just log
+        console.log('Toggling item:', itemId, currentStatus);
+        // TODO: Implement API call to toggle item availability
+        // For now, we'll just show a toast or alert
+        alert("Item availability toggle logic to be connected to backend!");
     };
 
     if (loading) {
@@ -234,7 +242,13 @@ export default function StreetVendorAnalyticsPage() {
                                                     <p className="font-semibold text-sm truncate">{item.name}</p>
                                                     <p className="text-xs text-muted-foreground">₹{item.portions[0]?.price || 0}</p>
                                                 </div>
-                                                <Button variant="outline" size="sm" className="text-xs">Remove</Button>
+                                                {/* Replaced Dangerous Remove Button with Toggle Switch (Mock UI for now) */}
+                                                <div className="flex items-center gap-2">
+                                                    <span className="text-[10px] text-muted-foreground">Hide</span>
+                                                    <div className="relative inline-block w-8 h-4 rounded-full cursor-pointer bg-green-500 transition-colors duration-200 ease-in-out">
+                                                        <span className="absolute left-4 top-0.5 bg-white w-3 h-3 rounded-full transition-transform duration-200 ease-in-out transform"></span>
+                                                    </div>
+                                                </div>
                                             </div>
                                         ))}
                                     </div>
@@ -274,8 +288,9 @@ export default function StreetVendorAnalyticsPage() {
                                     </div>
                                 ) : (
                                     <div className="text-center py-8">
-                                        <Heart className="h-12 w-12 text-green-500 mx-auto mb-2" />
-                                        <p className="text-sm font-semibold text-green-600">Perfect! No missed sales</p>
+                                        <p className="text-4xl font-bold text-green-600 mb-2">0</p>
+                                        <p className="text-sm font-semibold text-green-700">Orders Rejected</p>
+                                        <p className="text-xs text-muted-foreground mt-2">Badhiya! Aapne koi customer khali haath nahi jane diya.</p>
                                     </div>
                                 )}
                             </CardContent>
@@ -331,9 +346,12 @@ export default function StreetVendorAnalyticsPage() {
                                 <div className="flex flex-col justify-center items-center p-6 bg-gradient-to-br from-purple-50 to-pink-50 dark:from-purple-950/20 dark:to-pink-950/20 rounded-lg border border-border">
                                     <Zap className="h-12 w-12 text-purple-600 mb-3" />
                                     <p className="text-sm text-muted-foreground mb-2">Average Prep Time</p>
-                                    <p className="text-4xl font-bold text-purple-600">{salesData.kpis.avgPrepTime || 0} min</p>
+                                    <p className="text-4xl font-bold text-purple-600">
+                                        {salesData.kpis.avgPrepTime > 0 ? `${salesData.kpis.avgPrepTime} min` : "--"}
+                                    </p>
                                     <p className="text-xs text-center text-muted-foreground mt-2">
-                                        {salesData.kpis.avgPrepTime > 15 ? "⚠️ Thoda slow hai, speed badhao" : "✅ Badhiya speed hai!"}
+                                        {salesData.kpis.avgPrepTime > 15 ? "⚠️ Thoda slow hai, speed badhao" :
+                                            salesData.kpis.avgPrepTime > 0 ? "✅ Badhiya speed hai!" : "Calculating..."}
                                     </p>
                                 </div>
                             </div>
@@ -445,7 +463,30 @@ export default function StreetVendorAnalyticsPage() {
                                             {insight.type === 'tip' && <Sparkles className="h-5 w-5 text-blue-600 flex-shrink-0 mt-0.5" />}
                                             {insight.type === 'suggestion' && <Zap className="h-5 w-5 text-yellow-600 flex-shrink-0 mt-0.5" />}
                                             {insight.type === 'success' && <Heart className="h-5 w-5 text-green-600 flex-shrink-0 mt-0.5" />}
-                                            <p className="text-sm font-medium flex-1">{insight.message}</p>
+                                            <div className="flex-1">
+                                                <p className="text-sm font-medium">{insight.message}</p>
+                                                {/* Actionable Buttons */}
+                                                {insight.type === 'suggestion' && (
+                                                    <Button
+                                                        size="sm"
+                                                        variant="secondary"
+                                                        className="mt-2 h-7 text-xs bg-white/80 hover:bg-white"
+                                                        onClick={() => router.push('/owner-dashboard/menu')}
+                                                    >
+                                                        Create Combo
+                                                    </Button>
+                                                )}
+                                                {insight.type === 'warning' && (
+                                                    <Button
+                                                        size="sm"
+                                                        variant="secondary"
+                                                        className="mt-2 h-7 text-xs bg-white/80 hover:bg-white"
+                                                        onClick={() => router.push('/owner-dashboard/inventory')}
+                                                    >
+                                                        Update Stock
+                                                    </Button>
+                                                )}
+                                            </div>
                                         </motion.div>
                                     ))}
                                 </div>
