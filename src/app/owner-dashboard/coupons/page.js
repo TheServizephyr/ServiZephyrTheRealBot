@@ -300,11 +300,26 @@ export default function CouponsPage() {
         setLoading(true);
         try {
             const data = await handleApiCall('GET');
-            const processedCoupons = (data.coupons || []).map(c => ({
-                ...c,
-                startDate: c.startDate ? (c.startDate.seconds ? new Date(c.startDate.seconds * 1000) : new Date(c.startDate)) : new Date(),
-                expiryDate: c.expiryDate ? (c.expiryDate.seconds ? new Date(c.expiryDate.seconds * 1000) : new Date(c.expiryDate)) : new Date()
-            }));
+            console.log('[COUPON FETCH] Raw API response:', data);
+            console.log('[COUPON FETCH] Number of coupons:', data.coupons?.length || 0);
+
+            const processedCoupons = (data.coupons || []).map((c, index) => {
+                console.log(`[COUPON FETCH] Processing coupon ${index}:`, c);
+                console.log(`[COUPON FETCH] Coupon ${index} startDate raw:`, c.startDate);
+                console.log(`[COUPON FETCH] Coupon ${index} expiryDate raw:`, c.expiryDate);
+
+                const processed = {
+                    ...c,
+                    startDate: c.startDate ? (c.startDate.seconds ? new Date(c.startDate.seconds * 1000) : new Date(c.startDate)) : new Date(),
+                    expiryDate: c.expiryDate ? (c.expiryDate.seconds ? new Date(c.expiryDate.seconds * 1000) : new Date(c.expiryDate)) : new Date()
+                };
+
+                console.log(`[COUPON FETCH] Coupon ${index} startDate processed:`, processed.startDate);
+                console.log(`[COUPON FETCH] Coupon ${index} expiryDate processed:`, processed.expiryDate);
+                return processed;
+            });
+
+            console.log('[COUPON FETCH] Final processed coupons:', processedCoupons);
             setCoupons(processedCoupons);
         } catch (error) {
             console.error(error);
@@ -324,13 +339,23 @@ export default function CouponsPage() {
 
     const handleSaveCoupon = async (couponData) => {
         try {
+            console.log('[COUPON SAVE] Original coupon data:', couponData);
+            console.log('[COUPON SAVE] Start Date:', couponData.startDate);
+            console.log('[COUPON SAVE] Expiry Date:', couponData.expiryDate);
+
             const isEditing = !!couponData.id;
             const payload = {
                 ...couponData,
                 startDate: couponData.startDate.toISOString(),
                 expiryDate: couponData.expiryDate.toISOString(),
             };
+
+            console.log('[COUPON SAVE] Payload being sent to API:', payload);
+            console.log('[COUPON SAVE] Start Date ISO:', payload.startDate);
+            console.log('[COUPON SAVE] Expiry Date ISO:', payload.expiryDate);
+
             const data = await handleApiCall(isEditing ? 'PATCH' : 'POST', { coupon: payload });
+            console.log('[COUPON SAVE] API Response:', data);
             setInfoDialog({ isOpen: true, title: "Success", message: data.message });
             await fetchCoupons();
         } catch (error) {
