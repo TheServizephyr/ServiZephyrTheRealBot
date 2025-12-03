@@ -19,6 +19,8 @@ export async function GET(req, { params }) {
 
     try {
         // Step 1: Check Redis cache first
+        // TEMPORARILY DISABLED FOR DEBUGGING
+        /*
         const cachedData = await kv.get(cacheKey);
         if (cachedData) {
             console.log(`[Menu API] Cache HIT for ${restaurantId}`);
@@ -30,8 +32,9 @@ export async function GET(req, { params }) {
                 }
             });
         }
+        */
 
-        console.log(`[Menu API] Cache MISS for ${restaurantId} - fetching from Firestore`);
+        console.log(`[Menu API] Cache DISABLED - fetching from Firestore`);
 
         // Step 2: Cache miss - fetch from Firestore (OPTIMIZED)
         let businessData = null;
@@ -152,16 +155,18 @@ export async function GET(req, { params }) {
         };
 
         // FIX: Async cache write (don't block response)
-        // This reduces cache MISS latency from 180ms to 130ms
+        // TEMPORARILY DISABLED FOR DEBUGGING
+        /*
         kv.set(cacheKey, responseData, { ex: 3600 }) // 1 hour TTL
             .then(() => console.log(`[Menu API] Cached data for ${restaurantId} (TTL: 1 hour)`))
             .catch(cacheError => console.error('[Menu API] Cache storage failed:', cacheError));
+        */
 
         // Return immediately without waiting for cache write
         return NextResponse.json(responseData, {
             status: 200,
             headers: {
-                'X-Cache': 'MISS',
+                'X-Cache': 'DISABLED',
                 'Cache-Control': 's-maxage=3600, stale-while-revalidate=1800'
             }
         });
