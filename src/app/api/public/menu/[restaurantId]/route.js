@@ -58,7 +58,7 @@ export async function GET(req, { params }) {
         // OPTIMIZATION: Fetch menu in parallel with other data
         const [menuSnap, couponsSnap] = await Promise.all([
             businessRef.collection('menu').get(),
-            businessRef.collection('coupons').where('status', '==', 'Active').get()
+            businessRef.collection('coupons').where('status', '==', 'active').get()
         ]);
 
         let menuData = {};
