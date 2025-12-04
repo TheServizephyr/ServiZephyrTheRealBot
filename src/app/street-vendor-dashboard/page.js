@@ -304,7 +304,7 @@ const OrderCard = ({ order, onMarkReady, onCancelClick, onMarkCollected, onRever
                 </div>
                 <div className="mt-3 pt-3 border-t border-dashed border-border">
                     <p className="font-semibold text-foreground text-sm mb-1.5">Items:</p>
-                    <ul className="list-disc list-inside text-muted-foreground text-base space-y-1">
+                    <ul className="list-disc list-inside text-muted-foreground text-base space-y-2">
                         {order.items.map((item, idx) => {
                             const portionName = item.portion?.name;
                             const addOns = (item.selectedAddOns || [])
@@ -312,10 +312,17 @@ const OrderCard = ({ order, onMarkReady, onCancelClick, onMarkCollected, onRever
                                 .join(', ');
 
                             return (
-                                <li key={idx}>
-                                    {item.quantity || item.qty}x {item.name}
-                                    {portionName && portionName.toLowerCase() !== 'full' && ` - ${portionName}`}
-                                    {addOns && <span className="text-xs text-primary block pl-4">({addOns})</span>}
+                                <li key={idx} className="flex items-start gap-2">
+                                    <span className="flex-1">
+                                        {item.quantity || item.qty}x {item.name}
+                                        {portionName && portionName.toLowerCase() !== 'full' && ` - ${portionName}`}
+                                        {addOns && <span className="text-xs text-primary block pl-4">({addOns})</span>}
+                                    </span>
+                                    {item.isAddon && (
+                                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-green-500/20 text-green-400 border border-green-500/30 text-xs font-semibold whitespace-nowrap">
+                                            🆕 Added {item.addedAt ? format(new Date(item.addedAt?.seconds ? item.addedAt.seconds * 1000 : item.addedAt), 'hh:mm a') : ''}
+                                        </span>
+                                    )}
                                 </li>
                             );
                         })}
