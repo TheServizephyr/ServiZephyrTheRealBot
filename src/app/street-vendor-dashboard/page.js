@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useMemo, useCallback, useRef, Suspense } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ClipboardList, QrCode, CookingPot, PackageCheck, Check, X, Loader2, User, Phone, History, Wallet, IndianRupee, Calendar as CalendarIcon, Search, Filter, AlertTriangle, ConciergeBell, Clock, Package, PlusCircle } from 'lucide-react';
+import { ClipboardList, QrCode, CookingPot, PackageCheck, Check, X, Loader2, User, Phone, History, Wallet, IndianRupee, Calendar as CalendarIcon, Search, Filter, AlertTriangle, ConciergeBell, Clock, Package, PlusCircle, Undo2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import Link from 'next/link';
 import { useUser, useMemoFirebase, useCollection } from '@/firebase';
@@ -199,7 +199,7 @@ const OutOfStockModal = ({ isOpen, onClose, orderItems, onConfirm }) => {
     )
 }
 
-const OrderCard = ({ order, onMarkReady, onCancelClick, onMarkCollected }) => {
+const OrderCard = ({ order, onMarkReady, onCancelClick, onMarkCollected, onRevertToPending }) => {
     const token = order.dineInToken;
     const isPending = order.status === 'pending';
     const isReady = order.status === 'Ready';
@@ -340,9 +340,14 @@ const OrderCard = ({ order, onMarkReady, onCancelClick, onMarkCollected }) => {
                     </div>
                 )}
                 {isReady && (
-                    <Button onClick={() => onMarkCollected(order.id)} className="w-full bg-green-600 hover:bg-green-700 text-white font-bold text-lg h-12">
-                        <PackageCheck className="mr-2" /> Mark as Collected
-                    </Button>
+                    <div className="grid grid-cols-2 gap-2">
+                        <Button onClick={() => onRevertToPending(order.id)} variant="outline" className="h-12 text-base">
+                            <Undo2 className="mr-2" /> Undo
+                        </Button>
+                        <Button onClick={() => onMarkCollected(order.id)} className="bg-green-600 hover:bg-green-700 text-white font-bold text-lg h-12">
+                            <PackageCheck className="mr-2" /> Mark as Collected
+                        </Button>
+                    </div>
                 )}
             </div>
         </motion.div>
@@ -647,6 +652,7 @@ const StreetVendorDashboardContent = () => {
 
     const handleMarkReady = (orderId) => handleUpdateStatus(orderId, 'Ready');
     const handleMarkCollected = (orderId) => handleUpdateStatus(orderId, 'delivered');
+    const handleRevertToPending = (orderId) => handleUpdateStatus(orderId, 'pending');
     const handleOpenRejectModal = (order) => setRejectModalState({ isOpen: true, order });
 
     const handleRejectOrder = (orderId, reason) => {
@@ -808,7 +814,7 @@ const StreetVendorDashboardContent = () => {
                             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
                                 <AnimatePresence>
                                     {readyOrders.map(order => (
-                                        <OrderCard key={order.id} order={order} onMarkCollected={handleMarkCollected} />
+                                        <OrderCard key={order.id} order={order} onMarkCollected={handleMarkCollected} onRevertToPending={handleRevertToPending} />
                                     ))}
                                 </AnimatePresence>
                                 {readyOrders.length === 0 && <p className="text-muted-foreground text-center py-10 col-span-full">No orders are ready for pickup.</p>}
