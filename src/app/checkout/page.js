@@ -506,7 +506,7 @@ const CheckoutPageInternal = () => {
                 console.log("[Checkout Page] No Razorpay ID. Clearing cart and handling redirection.");
 
                 if (activeOrderId) {
-                    const redirectUrl = `/track/pre-order/${activeOrderId}?token=${token}${phoneFromUrl ? `&phone=${phoneFromUrl}` : ''}`;
+                    const redirectUrl = `/track/pre-order/${activeOrderId}?token=${data.token || token}${phoneFromUrl ? `&phone=${phoneFromUrl}` : ''}`;
                     router.push(redirectUrl);
                     return;
                 }
