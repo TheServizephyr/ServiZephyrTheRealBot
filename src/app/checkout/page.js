@@ -127,7 +127,7 @@ const CheckoutPageInternal = () => {
     const [isOnlinePaymentFlow, setIsOnlinePaymentFlow] = useState(false);
     const [isSplitBillActive, setIsSplitBillActive] = useState(false);
     const [detailsConfirmed, setDetailsConfirmed] = useState(false);
-    const [activeOrderId, setActiveOrderId] = useState(null);
+    const [activeOrderId, setActiveOrderId] = useState(searchParams.get('activeOrderId'));
     const [selectedPaymentMethod, setSelectedPaymentMethod] = useState(null);
     const [selectedOnlinePaymentType, setSelectedOnlinePaymentType] = useState(null);
     const [paymentGateway, setPaymentGateway] = useState('phonepe');

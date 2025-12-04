@@ -435,6 +435,7 @@ const CartPageInternal = () => {
                 tab_name: cartData?.tab_name || 'Guest',
                 diningPreference: diningPreference,
                 packagingCharge: (diningPreference === 'takeaway' && packagingConfig.enabled) ? packagingConfig.amount : 0,
+                existingOrderId: activeOrderId || null, // Add to existing order if activeOrderId present
             };
 
             console.log("[Cart Page] Sending post-paid order to /api/order/create:", orderData);
