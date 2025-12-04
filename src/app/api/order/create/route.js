@@ -234,9 +234,15 @@ export async function POST(req) {
 
                 console.log(`[API /order/create] ADD-ON FLOW: Transaction committed successfully for order ${existingOrderId}.`);
 
+                // Fetch the order to get the tracking token
+                const orderDoc = await firestore.collection('orders').doc(existingOrderId).get();
+                const orderData = orderDoc.data();
+
                 return NextResponse.json({
                     message: 'Items added to your existing order successfully!',
                     order_id: existingOrderId,
+                    firestore_order_id: existingOrderId,
+                    token: orderData.trackingToken, // Return tracking token for redirect
                 }, { status: 200 });
 
             } catch (error) {
