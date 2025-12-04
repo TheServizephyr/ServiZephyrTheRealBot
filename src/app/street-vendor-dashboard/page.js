@@ -340,12 +340,12 @@ const OrderCard = ({ order, onMarkReady, onCancelClick, onMarkCollected, onRever
                     </div>
                 )}
                 {isReady && (
-                    <div className="grid grid-cols-2 gap-3">
-                        <Button onClick={() => onRevertToPending(order.id)} variant="outline" className="h-12 text-base font-semibold">
+                    <div className="flex gap-3">
+                        <Button onClick={() => onRevertToPending(order.id)} variant="outline" className="h-12 text-base font-semibold flex-1">
                             <Undo2 size={18} className="mr-2" /> Undo
                         </Button>
-                        <Button onClick={() => onMarkCollected(order.id)} className="bg-green-600 hover:bg-green-700 text-white font-bold text-base h-12">
-                            <PackageCheck size={18} className="mr-2" /> Mark as Collected
+                        <Button onClick={() => onMarkCollected(order.id)} className="bg-green-600 hover:bg-green-700 text-white font-bold text-base h-12 flex-[2]">
+                            <PackageCheck size={18} className="mr-2" /> Collected
                         </Button>
                     </div>
                 )}
