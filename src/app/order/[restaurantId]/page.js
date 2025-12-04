@@ -1349,18 +1349,6 @@ const OrderPageInternal = () => {
                                             <span className="text-sm font-bold hidden sm:inline">Track</span>
                                         </motion.div>
                                     </Link>
-                                    <button
-                                        onClick={(e) => {
-                                            e.preventDefault();
-                                            e.stopPropagation();
-                                            localStorage.removeItem(`liveOrder_${restaurantId}`);
-                                            setLiveOrder(null);
-                                        }}
-                                        className="p-2 rounded-full bg-muted hover:bg-destructive hover:text-white transition-colors"
-                                        title="Clear active order"
-                                    >
-                                        <X size={14} />
-                                    </button>
                                 </div>
                             )}
 

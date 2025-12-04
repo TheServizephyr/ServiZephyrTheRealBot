@@ -356,6 +356,11 @@ const OrderCard = ({ order, onMarkReady, onCancelClick, onMarkCollected, onRever
                         </Button>
                     </div>
                 )}
+                {order.status === 'rejected' && (
+                    <Button onClick={() => onRevertToPending(order.id)} variant="outline" className="w-full h-12 text-base font-semibold">
+                        <Undo2 size={18} className="mr-2" /> Undo Cancellation
+                    </Button>
+                )}
             </div>
         </motion.div>
     );
@@ -730,7 +735,7 @@ const StreetVendorDashboardContent = () => {
                 <h1 className="text-2xl font-bold font-headline">Live Pre-Orders</h1>
                 <div className="flex gap-2">
                     <Link href="/street-vendor-dashboard/history">
-                        <Button variant="outline" className="hidden md:flex">
+                        <Button variant="outline" className="flex">
                             <History className="mr-2" /> History
                         </Button>
                     </Link>
