@@ -694,7 +694,23 @@ const OrderPageInternal = () => {
             };
             pollStatus();
         } else if (activeOrderId && activeOrderToken) {
-            setLiveOrder({ orderId: activeOrderId, trackingToken: activeOrderToken, restaurantId: restaurantId });
+            // Check if the order from URL is still active before showing track button
+            const checkOrderStatus = async () => {
+                try {
+                    const res = await fetch(`/api/order/status/${activeOrderId}`);
+                    if (res.ok) {
+                        const statusData = await res.json();
+                        const status = statusData.order?.status;
+                        // Only set liveOrder if status is active
+                        if (!['delivered', 'picked_up', 'rejected', 'cancelled', 'completed'].includes(status)) {
+                            setLiveOrder({ orderId: activeOrderId, trackingToken: activeOrderToken, restaurantId: restaurantId });
+                        }
+                    }
+                } catch (e) {
+                    console.error("Failed to check order status from URL", e);
+                }
+            };
+            checkOrderStatus();
         } else if (phone && token && restaurantId) {
             // FIX: Check for active order on server if not in local storage
             const checkActiveOrder = async () => {
