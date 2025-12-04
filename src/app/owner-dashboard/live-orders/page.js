@@ -281,6 +281,9 @@ const ActionButton = ({ status, onNext, onRevert, order, onRejectClick, isUpdati
     }
 
     if (isDineIn) {
+        const currentIndex = ['pending', 'confirmed', 'preparing', 'ready'].indexOf(status);
+        const prevStatus = currentIndex > 0 ? ['pending', 'confirmed', 'preparing', 'ready'][currentIndex - 1] : null;
+
         return (
             <div className="flex items-center gap-2">
                 <Link href="/owner-dashboard/dine-in">
@@ -288,6 +291,17 @@ const ActionButton = ({ status, onNext, onRevert, order, onRejectClick, isUpdati
                         <ConciergeBell size={16} className="mr-2" /> View on Dine-In Board
                     </Button>
                 </Link>
+                {prevStatus && (
+                    <Button
+                        onClick={() => onRevert(prevStatus)}
+                        variant="ghost"
+                        size="icon"
+                        className="h-9 w-9 text-muted-foreground hover:bg-muted hover:text-foreground"
+                        title={`Revert to ${prevStatus}`}
+                    >
+                        <Undo2 size={16} />
+                    </Button>
+                )}
             </div>
         )
     }
