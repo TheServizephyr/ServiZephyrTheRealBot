@@ -156,7 +156,7 @@ function PreOrderTrackingContent() {
             event.preventDefault();
             if (order.restaurantId) {
                 // Construct URL with query params to maintain session
-                const phone = searchParams.get('phone');
+                const phone = searchParams.get('phone') || order.customerPhone;
                 const params = new URLSearchParams();
                 params.set('restaurantId', order.restaurantId);
                 if (tokenFromUrl) params.set('token', tokenFromUrl);
@@ -179,7 +179,7 @@ function PreOrderTrackingContent() {
 
     const handleBackToMenu = () => {
         if (order?.restaurantId) {
-            const phone = searchParams.get('phone');
+            const phone = searchParams.get('phone') || order.customerPhone;
             const params = new URLSearchParams();
             params.set('restaurantId', order.restaurantId);
             if (tokenFromUrl) params.set('token', tokenFromUrl);

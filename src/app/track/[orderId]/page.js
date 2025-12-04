@@ -157,7 +157,7 @@ function OrderTrackingContent() {
 
     const handleBackToMenu = () => {
         if (orderData?.restaurant?.id) {
-            const phone = searchParams.get('phone');
+            const phone = searchParams.get('phone') || orderData.order?.customerPhone;
             const token = searchParams.get('token');
             let url = `/order/${orderData.restaurant.id}`;
             const params = new URLSearchParams();
