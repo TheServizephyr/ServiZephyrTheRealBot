@@ -447,7 +447,7 @@ const CheckoutPageInternal = () => {
                                         console.log("[Checkout Page] PhonePe payment concluded, redirecting to order placed page");
                                         localStorage.removeItem(`cart_${restaurantId}`);
                                         // Use same redirect as Razorpay success - include restaurantId for proper routing
-                                        router.push(`/order/placed?orderId=${data.firestore_order_id}&token=${data.token}&restaurantId=${restaurantId}`);
+                                        router.push(`/order/placed?orderId=${data.firestore_order_id}&token=${data.token}&restaurantId=${restaurantId}${phoneFromUrl ? `&phone=${phoneFromUrl}` : ''}`);
                                     }
                                 }
                             });
@@ -478,9 +478,10 @@ const CheckoutPageInternal = () => {
                         console.log("[Checkout Page] Razorpay payment successful:", response);
                         localStorage.removeItem(`cart_${restaurantId}`);
                         const isPreOrder = deliveryType === 'street-vendor-pre-order';
+                        const phoneParam = phoneFromUrl ? `&phone=${phoneFromUrl}` : '';
                         const trackingUrl = isPreOrder
-                            ? `/order/placed?orderId=${data.firestore_order_id}&token=${data.token}&restaurantId=${restaurantId}`
-                            : `/order/placed?orderId=${data.firestore_order_id}&token=${data.token}`;
+                            ? `/order/placed?orderId=${data.firestore_order_id}&token=${data.token}&restaurantId=${restaurantId}${phoneParam}`
+                            : `/order/placed?orderId=${data.firestore_order_id}&token=${data.token}${phoneParam}`;
                         router.push(trackingUrl);
                     },
                     prefill: { name: orderName, email: user?.email || "customer@servizephyr.com", contact: orderPhone },
@@ -505,7 +506,8 @@ const CheckoutPageInternal = () => {
                 console.log("[Checkout Page] No Razorpay ID. Clearing cart and handling redirection.");
 
                 if (activeOrderId) {
-                    router.push(`/track/pre-order/${activeOrderId}?token=${token}`);
+                    const redirectUrl = `/track/pre-order/${activeOrderId}?token=${token}${phoneFromUrl ? `&phone=${phoneFromUrl}` : ''}`;
+                    router.push(redirectUrl);
                     return;
                 }
 
