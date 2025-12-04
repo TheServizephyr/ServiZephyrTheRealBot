@@ -438,8 +438,15 @@ const OrderDetailModal = ({ isOpen, onClose, data }) => {
                         <h4 className="font-semibold flex items-center gap-2 mb-2"><ShoppingBag size={16} /> Items Ordered</h4>
                         <div className="p-4 bg-muted rounded-lg space-y-2">
                             {order.items.map((item, index) => (
-                                <div key={index} className="flex justify-between border-b border-border/50 pb-1">
-                                    <span>{item.quantity} x {item.name}</span>
+                                <div key={index} className="flex justify-between items-center border-b border-border/50 pb-1">
+                                    <div className="flex items-center gap-2">
+                                        <span>{item.quantity} x {item.name}</span>
+                                        {item.isAddon && (
+                                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-green-500/20 text-green-400 border border-green-500/30 text-xs font-semibold">
+                                                🆕 Added {item.addedAt ? format(new Date(item.addedAt?.seconds ? item.addedAt.seconds * 1000 : item.addedAt), 'hh:mm a') : ''}
+                                            </span>
+                                        )}
+                                    </div>
                                     <span>₹{item.price * item.quantity}</span>
                                 </div>
                             ))}
@@ -876,7 +883,14 @@ export default function LiveOrdersPage() {
 
                                         <td className="p-4 align-top hidden md:table-cell">
                                             {(order.items || []).slice(0, 2).map((item, index) => (
-                                                <div key={index} className="text-xs text-muted-foreground">{item.quantity}x {item.name}</div>
+                                                <div key={index} className="text-xs text-muted-foreground flex items-center gap-2">
+                                                    <span>{item.quantity}x {item.name}</span>
+                                                    {item.isAddon && (
+                                                        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-green-500/20 text-green-400 border border-green-500/30 text-[10px] font-semibold">
+                                                            🆕 Added {item.addedAt ? format(new Date(item.addedAt?.seconds ? item.addedAt.seconds * 1000 : item.addedAt), 'hh:mm a') : ''}
+                                                        </span>
+                                                    )}
+                                                </div>
                                             ))}
                                             {(order.items || []).length > 2 && <div className="text-xs text-primary font-semibold mt-1">...and {(order.items || []).length - 2} more</div>}
                                         </td>
