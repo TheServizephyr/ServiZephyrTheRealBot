@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { format, startOfDay, endOfDay, isToday } from 'date-fns';
-import { Calendar as CalendarIcon, ArrowLeft, Loader2, Search, Wallet, IndianRupee, User, Phone, RotateCcw } from 'lucide-react';
+import { Calendar as CalendarIcon, ArrowLeft, Loader2, Search, Wallet, IndianRupee, User, Phone, RotateCcw, Check } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { auth } from '@/lib/firebase';
 import { useUser } from '@/firebase';
@@ -355,18 +355,73 @@ export default function OrderHistoryPage() {
                                     </div>
                                 )}
 
-                                {/* Refund Button */}
-                                {canRefund(order) && (
-                                    <div className="mt-3 pt-3 border-t border-dashed border-border">
-                                        <Button
-                                            variant="outline"
-                                            size="sm"
-                                            className="w-full"
-                                            onClick={() => handleRefundClick(order)}
-                                        >
-                                            <RotateCcw className="mr-2 h-4 w-4" />
-                                            Process Refund
-                                        </Button>
+                                {/* Refund Tracking UI */}
+                                {(order.status === 'rejected' || order.status === 'cancelled') && (
+                                    <div className="mt-3 pt-3 border-t border-dashed border-red-500/30">
+                                        <p className="text-xs font-semibold text-red-400 mb-2">💰 Refund Status</p>
+
+                                        {/* Online Payment Refund */}
+                                        {amountPaidOnline > 0 && (
+                                            <div className="flex justify-between items-center mb-2">
+                                                <span className="text-xs text-muted-foreground">Online Payment:</span>
+                                                <div className="flex items-center gap-2">
+                                                    <span className="text-sm font-bold text-foreground">₹{amountPaidOnline}</span>
+                                                    {canRefund(order) ? (
+                                                        <Button
+                                                            variant="outline"
+                                                            size="sm"
+                                                            onClick={() => handleRefundClick(order)}
+                                                        >
+                                                            <RotateCcw className="mr-1 h-3 w-3" />
+                                                            Process
+                                                        </Button>
+                                                    ) : (
+                                                        <span className="text-xs px-2 py-0.5 rounded-full bg-blue-500/20 text-blue-400 border border-blue-500/30">
+                                                            {order.refundStatus === 'completed' ? '✓ Refunded' : 'Auto-Refund'}
+                                                        </span>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        )}
+
+                                        {/* Cash Payment Refund */}
+                                        {amountDueAtCounter > 0 && (
+                                            <div className="flex justify-between items-center">
+                                                <span className="text-xs text-muted-foreground">Cash Payment:</span>
+                                                <div className="flex items-center gap-2">
+                                                    <span className="text-sm font-bold text-foreground">₹{amountDueAtCounter}</span>
+                                                    {order.cashRefunded ? (
+                                                        <span className="text-xs px-2 py-0.5 rounded-full bg-green-500/20 text-green-400 border border-green-500/30">
+                                                            ✓ Refunded
+                                                        </span>
+                                                    ) : (
+                                                        <Button
+                                                            variant="outline"
+                                                            size="sm"
+                                                            onClick={async () => {
+                                                                try {
+                                                                    const user = auth.currentUser;
+                                                                    if (!user) throw new Error("Authentication failed");
+                                                                    const idToken = await user.getIdToken();
+                                                                    await fetch('/api/owner/orders', {
+                                                                        method: 'PATCH',
+                                                                        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${idToken}` },
+                                                                        body: JSON.stringify({ orderIds: [order.id], action: 'markCashRefunded' })
+                                                                    });
+                                                                    toast({ title: "Success", description: "Cash refund marked successfully" });
+                                                                    fetchHistory(); // Refresh data
+                                                                } catch (error) {
+                                                                    toast({ title: "Error", description: error.message, variant: "destructive" });
+                                                                }
+                                                            }}
+                                                        >
+                                                            <Check className="mr-1 h-3 w-3" />
+                                                            Mark Refunded
+                                                        </Button>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        )}
                                     </div>
                                 )}
                             </div>
