@@ -356,7 +356,7 @@ export default function OrderHistoryPage() {
                                 )}
 
                                 {/* Refund Tracking UI */}
-                                {(order.status === 'rejected' || order.status === 'cancelled') && (
+                                {(order.status === 'rejected' || order.status === 'cancelled' || order.status === 'delivered') && (
                                     <div className="mt-3 pt-3 border-t border-dashed border-red-500/30">
                                         <p className="text-xs font-semibold text-red-400 mb-2">💰 Refund Status</p>
 

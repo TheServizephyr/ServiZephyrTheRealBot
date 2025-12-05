@@ -246,7 +246,8 @@ export async function PATCH(req) {
 
             // Auto-refund for cancelled/rejected orders with online payment
             if ((newStatus === 'rejected' || newStatus === 'cancelled') && orderData.paymentDetails) {
-                const razorpayPayment = orderData.paymentDetails.find(p => p.method === 'razorpay' && p.razorpay_payment_id);
+                const paymentDetailsArray = Array.isArray(orderData.paymentDetails) ? orderData.paymentDetails : [orderData.paymentDetails].filter(Boolean);
+                const razorpayPayment = paymentDetailsArray.find(p => p.method === 'razorpay' && p.razorpay_payment_id);
 
                 if (razorpayPayment && !orderData.refundStatus) {
                     console.log(`[API][PATCH /orders] Auto-refunding order ${id} due to ${newStatus} status`);
