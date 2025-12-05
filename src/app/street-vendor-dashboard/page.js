@@ -199,7 +199,7 @@ const OutOfStockModal = ({ isOpen, onClose, orderItems, onConfirm }) => {
     )
 }
 
-const OrderCard = ({ order, onMarkReady, onCancelClick, onMarkCollected, onRevertToPending }) => {
+const OrderCard = ({ order, onMarkReady, onCancelClick, onMarkCollected, onRevertToPending, onMarkCashRefunded }) => {
     const token = order.dineInToken;
     const isPending = order.status === 'pending';
     const isReady = order.status === 'Ready';
@@ -357,9 +357,59 @@ const OrderCard = ({ order, onMarkReady, onCancelClick, onMarkCollected, onRever
                     </div>
                 )}
                 {order.status === 'rejected' && (
-                    <Button onClick={() => onRevertToPending(order.id)} variant="outline" className="w-full h-12 text-base font-semibold">
-                        <Undo2 size={18} className="mr-2" /> Undo Cancellation
-                    </Button>
+                    <div className="space-y-3">
+                        {/* Refund Status Card */}
+                        <div className="p-3 bg-red-500/10 border border-red-500/30 rounded-lg">
+                            <p className="text-xs font-semibold text-red-400 mb-2">💰 Refund Status</p>
+
+                            {/* Online Payment Refund */}
+                            {amountPaidOnline > 0 && (
+                                <div className="flex justify-between items-center mb-2">
+                                    <span className="text-xs text-muted-foreground">Online Payment:</span>
+                                    <div className="flex items-center gap-2">
+                                        <span className="text-sm font-bold text-foreground">₹{amountPaidOnline}</span>
+                                        <span className="text-xs px-2 py-0.5 rounded-full bg-blue-500/20 text-blue-400 border border-blue-500/30">
+                                            Auto-Refund
+                                        </span>
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Cash Payment Refund */}
+                            {amountDueAtCounter > 0 && (
+                                <div className="flex justify-between items-center">
+                                    <span className="text-xs text-muted-foreground">Cash Payment:</span>
+                                    <div className="flex items-center gap-2">
+                                        <span className="text-sm font-bold text-foreground">₹{amountDueAtCounter}</span>
+                                        {order.cashRefunded ? (
+                                            <span className="text-xs px-2 py-0.5 rounded-full bg-green-500/20 text-green-400 border border-green-500/30">
+                                                ✓ Refunded
+                                            </span>
+                                        ) : (
+                                            <span className="text-xs px-2 py-0.5 rounded-full bg-yellow-500/20 text-yellow-400 border border-yellow-500/30">
+                                                ⚠ Pending
+                                            </span>
+                                        )}
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+
+                        {/* Action Buttons */}
+                        <div className="grid grid-cols-2 gap-2">
+                            <Button onClick={() => onRevertToPending(order.id)} variant="outline" className="h-12 text-base font-semibold">
+                                <Undo2 size={18} className="mr-2" /> Undo
+                            </Button>
+                            {amountDueAtCounter > 0 && !order.cashRefunded && (
+                                <Button
+                                    onClick={() => onMarkCashRefunded && onMarkCashRefunded(order.id)}
+                                    className="bg-green-600 hover:bg-green-700 h-12 text-base font-semibold"
+                                >
+                                    <Check size={18} className="mr-2" /> Mark Refunded
+                                </Button>
+                            )}
+                        </div>
+                    </div>
                 )}
             </div>
         </motion.div>
@@ -671,6 +721,17 @@ const StreetVendorDashboardContent = () => {
         handleUpdateStatus(orderId, 'rejected', reason);
     };
 
+    const handleMarkCashRefunded = async (orderId) => {
+        try {
+            await handleApiCall('/api/owner/orders', 'PATCH', {
+                orderIds: [orderId],
+                action: 'markCashRefunded'
+            });
+        } catch (error) {
+            setInfoDialog({ isOpen: true, title: "Error", message: error.message });
+        }
+    };
+
     const filteredOrders = useMemo(() => {
         let items = [...orders];
 
@@ -816,7 +877,7 @@ const StreetVendorDashboardContent = () => {
                             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
                                 <AnimatePresence>
                                     {pendingOrders.map(order => (
-                                        <OrderCard key={order.id} order={order} onMarkReady={handleMarkReady} onCancelClick={handleOpenRejectModal} />
+                                        <OrderCard key={order.id} order={order} onMarkReady={handleMarkReady} onCancelClick={handleOpenRejectModal} onMarkCashRefunded={handleMarkCashRefunded} />
                                     ))}
                                 </AnimatePresence>
                                 {pendingOrders.length === 0 && <p className="text-muted-foreground text-center py-10 col-span-full">No new orders for the selected date.</p>}
@@ -826,7 +887,7 @@ const StreetVendorDashboardContent = () => {
                             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
                                 <AnimatePresence>
                                     {readyOrders.map(order => (
-                                        <OrderCard key={order.id} order={order} onMarkCollected={handleMarkCollected} onRevertToPending={handleRevertToPending} />
+                                        <OrderCard key={order.id} order={order} onMarkCollected={handleMarkCollected} onRevertToPending={handleRevertToPending} onMarkCashRefunded={handleMarkCashRefunded} />
                                     ))}
                                 </AnimatePresence>
                                 {readyOrders.length === 0 && <p className="text-muted-foreground text-center py-10 col-span-full">No orders are ready for pickup.</p>}

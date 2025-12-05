@@ -154,15 +154,40 @@ export async function PATCH(req) {
         const body = await req.json();
         console.log(`[API][PATCH /orders] Body:`, body);
 
-        const { orderId, orderIds, newStatus, deliveryBoyId, rejectionReason } = body;
+        const { orderId, orderIds, newStatus, deliveryBoyId, rejectionReason, action } = body;
 
         const { businessId, businessSnap } = await verifyOwnerWithAudit(
             req,
             'update_order_status',
-            { orderId, orderIds, newStatus, rejectionReason }
+            { orderId, orderIds, newStatus, rejectionReason, action }
         );
 
         const idsToUpdate = orderIds && orderIds.length > 0 ? orderIds : (orderId ? [orderId] : []);
+
+        // Handle markCashRefunded action
+        if (action === 'markCashRefunded') {
+            if (idsToUpdate.length === 0) {
+                return NextResponse.json({ message: 'Order ID(s) required.' }, { status: 400 });
+            }
+
+            const batch = firestore.batch();
+            for (const id of idsToUpdate) {
+                const orderRef = firestore.collection('orders').doc(id);
+                const orderDoc = await orderRef.get();
+                if (!orderDoc.exists || orderDoc.data().restaurantId !== businessId) {
+                    console.warn(`[API][PATCH /orders] Skipping order ${id}: Not found or access denied.`);
+                    continue;
+                }
+
+                batch.update(orderRef, {
+                    cashRefunded: true,
+                    cashRefundedAt: FieldValue.serverTimestamp()
+                });
+            }
+
+            await batch.commit();
+            return NextResponse.json({ message: 'Cash refund marked successfully.' });
+        }
 
         if (idsToUpdate.length === 0 || !newStatus) {
             return NextResponse.json({ message: 'Order ID(s) and new status are required.' }, { status: 400 });
