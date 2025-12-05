@@ -366,7 +366,21 @@ export default function OrderHistoryPage() {
                                                 <span className="text-xs text-muted-foreground">Online Payment:</span>
                                                 <div className="flex items-center gap-2">
                                                     <span className="text-sm font-bold text-foreground">₹{amountPaidOnline}</span>
-                                                    {canRefund(order) ? (
+                                                    {order.refundStatus === 'not_applicable' ? (
+                                                        <>
+                                                            <span className="text-xs px-2 py-0.5 rounded-full bg-red-500/20 text-red-400 border border-red-500/30">
+                                                                ❌ No Refund
+                                                            </span>
+                                                            <Button
+                                                                variant="outline"
+                                                                size="sm"
+                                                                onClick={() => handleRefundClick(order)}
+                                                            >
+                                                                <RotateCcw className="mr-1 h-3 w-3" />
+                                                                Process
+                                                            </Button>
+                                                        </>
+                                                    ) : canRefund(order) ? (
                                                         <Button
                                                             variant="outline"
                                                             size="sm"

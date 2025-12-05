@@ -314,6 +314,14 @@ export async function PATCH(req) {
                             // Don't fail the entire order update if refund fails
                             // Vendor can manually refund later
                         }
+                    } else {
+                        // Vendor chose NOT to refund
+                        console.log(`[API][PATCH /orders] No refund for order ${id} - vendor decision`);
+                        batch.update(orderRef, {
+                            refundStatus: 'not_applicable',
+                            noRefundReason: 'vendor_decision',
+                            noRefundDate: FieldValue.serverTimestamp()
+                        });
                     }
                 }
             }
