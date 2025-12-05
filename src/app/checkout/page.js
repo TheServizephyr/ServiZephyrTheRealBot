@@ -883,22 +883,12 @@ const CheckoutPageInternal = () => {
                                                             </div>
                                                         </div>
 
+
                                                         {/* Payment Gateway Selection (Only for Full Bill) */}
                                                         {selectedOnlinePaymentType === 'full' && (
                                                             <div className="ml-8 mt-2 space-y-2">
-                                                                <div
-                                                                    onClick={(e) => { e.stopPropagation(); setPaymentGateway('phonepe'); }}
-                                                                    className={cn(
-                                                                        "flex items-center gap-2 p-2 rounded border cursor-pointer text-sm",
-                                                                        paymentGateway === 'phonepe' ? "border-purple-500 bg-purple-50 dark:bg-purple-900/20" : "border-border"
-                                                                    )}
-                                                                >
-                                                                    <div className={cn("w-3 h-3 rounded-full border flex items-center justify-center", paymentGateway === 'phonepe' ? "border-purple-500" : "border-border")}>
-                                                                        {paymentGateway === 'phonepe' && <div className="w-1.5 h-1.5 rounded-full bg-purple-500" />}
-                                                                    </div>
-                                                                    <span className="font-bold text-purple-700 dark:text-purple-400">PhonePe</span>
-                                                                    <span className="text-xs bg-green-100 text-green-800 px-1.5 py-0.5 rounded-full ml-auto">Recommended</span>
-                                                                </div>
+                                                                {/* PhonePe temporarily disabled due to issues */}
+                                                                {/* <div onClick={(e) => { e.stopPropagation(); setPaymentGateway('phonepe'); }} ...>PhonePe</div> */}
 
                                                                 <div
                                                                     onClick={(e) => { e.stopPropagation(); setPaymentGateway('razorpay'); }}
@@ -911,6 +901,7 @@ const CheckoutPageInternal = () => {
                                                                         {paymentGateway === 'razorpay' && <div className="w-1.5 h-1.5 rounded-full bg-blue-500" />}
                                                                     </div>
                                                                     <span className="font-bold text-blue-700 dark:text-blue-400">Razorpay</span>
+                                                                    <span className="text-xs bg-green-100 text-green-800 px-1.5 py-0.5 rounded-full ml-auto">Recommended</span>
                                                                 </div>
                                                             </div>
                                                         )}
