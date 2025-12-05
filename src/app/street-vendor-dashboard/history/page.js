@@ -36,20 +36,9 @@ export default function OrderHistoryPage() {
         if (isUserLoading || !user) return;
 
         const loadTodayData = () => {
-            // Check if today's data is in localStorage
-            const cachedData = localStorage.getItem('history_today_cache');
-            const cacheDate = localStorage.getItem('history_cache_date');
-            const todayStr = format(new Date(), 'yyyy-MM-dd');
-
-            if (cachedData && cacheDate === todayStr) {
-                // Use cached data
-                console.log("Loading today's data from cache");
-                setOrders(JSON.parse(cachedData));
-            } else {
-                // Fetch fresh data for today
-                console.log("Fetching fresh data for today");
-                fetchTodayHistory();
-            }
+            // Always fetch fresh data for today to ensure vendor sees latest orders
+            console.log("Fetching fresh data for today");
+            fetchTodayHistory();
         };
 
         loadTodayData();
