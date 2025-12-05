@@ -883,28 +883,8 @@ const CheckoutPageInternal = () => {
                                                             </div>
                                                         </div>
 
+                                                        {/* Payment Gateway Selection removed - Razorpay is default */}
 
-                                                        {/* Payment Gateway Selection (Only for Full Bill) */}
-                                                        {selectedOnlinePaymentType === 'full' && (
-                                                            <div className="ml-8 mt-2 space-y-2">
-                                                                {/* PhonePe temporarily disabled due to issues */}
-                                                                {/* <div onClick={(e) => { e.stopPropagation(); setPaymentGateway('phonepe'); }} ...>PhonePe</div> */}
-
-                                                                <div
-                                                                    onClick={(e) => { e.stopPropagation(); setPaymentGateway('razorpay'); }}
-                                                                    className={cn(
-                                                                        "flex items-center gap-2 p-2 rounded border cursor-pointer text-sm",
-                                                                        paymentGateway === 'razorpay' ? "border-blue-500 bg-blue-50 dark:bg-blue-900/20" : "border-border"
-                                                                    )}
-                                                                >
-                                                                    <div className={cn("w-3 h-3 rounded-full border flex items-center justify-center", paymentGateway === 'razorpay' ? "border-blue-500" : "border-border")}>
-                                                                        {paymentGateway === 'razorpay' && <div className="w-1.5 h-1.5 rounded-full bg-blue-500" />}
-                                                                    </div>
-                                                                    <span className="font-bold text-blue-700 dark:text-blue-400">Razorpay</span>
-                                                                    <span className="text-xs bg-green-100 text-green-800 px-1.5 py-0.5 rounded-full ml-auto">Recommended</span>
-                                                                </div>
-                                                            </div>
-                                                        )}
 
                                                         <div
                                                             onClick={(e) => {
