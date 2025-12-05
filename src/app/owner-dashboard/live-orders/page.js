@@ -42,16 +42,36 @@ const pickupStatusFlow = ['pending', 'confirmed', 'preparing', 'ready_for_pickup
 const RejectOrderModal = ({ order, isOpen, onClose, onConfirm }) => {
     const [reason, setReason] = useState('');
     const [otherReason, setOtherReason] = useState('');
+    const [shouldRefund, setShouldRefund] = useState('true');
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [infoDialog, setInfoDialog] = useState({ isOpen: false, title: '', message: '' });
+
+    // Calculate online payment amount
+    const paymentDetailsArray = Array.isArray(order?.paymentDetails) ? order.paymentDetails : [order?.paymentDetails].filter(Boolean);
+    const amountPaidOnlineDetails = paymentDetailsArray
+        .filter(p => (p?.method === 'razorpay' || p?.method === 'phonepe' || p?.method === 'online') && p?.status === 'paid')
+        .reduce((sum, p) => sum + (p?.amount || 0), 0);
+    const isPaidViaRoot = order?.paymentStatus === 'paid' && (order?.paymentMethod === 'razorpay' || order?.paymentMethod === 'phonepe' || order?.paymentMethod === 'online');
+    const amountPaidOnline = isPaidViaRoot ? (order?.totalAmount || 0) : amountPaidOnlineDetails;
+    const hasOnlinePayment = amountPaidOnline > 0;
 
     useEffect(() => {
         if (isOpen) {
             setReason('');
             setOtherReason('');
+            setShouldRefund('true'); // Default to refund
             setIsSubmitting(false);
         }
     }, [isOpen]);
+
+    // Smart pre-selection based on reason
+    useEffect(() => {
+        if (reason === 'item_unavailable' || reason === 'restaurant_closed' || reason === 'undeliverable_address') {
+            setShouldRefund('true'); // Vendor's fault = refund
+        } else if (reason === 'customer_request' || reason === 'invalid_details') {
+            setShouldRefund('false'); // Customer's fault = no refund
+        }
+    }, [reason]);
 
     const handleConfirm = async () => {
         const finalReason = reason === 'other' ? otherReason : reason;
@@ -61,7 +81,7 @@ const RejectOrderModal = ({ order, isOpen, onClose, onConfirm }) => {
         }
         setIsSubmitting(true);
         try {
-            await onConfirm(order.id, finalReason);
+            await onConfirm(order.id, finalReason, shouldRefund === 'true');
             onClose();
         } catch (error) {
             // parent shows dialog
@@ -123,6 +143,51 @@ const RejectOrderModal = ({ order, isOpen, onClose, onConfirm }) => {
                                     className="mt-1"
                                     placeholder="e.g., Unable to process payment, weather conditions, etc."
                                 />
+                            </motion.div>
+                        )}
+
+                        {/* Refund Policy Selection */}
+                        {hasOnlinePayment && reason && (
+                            <motion.div
+                                initial={{ opacity: 0, height: 0 }}
+                                animate={{ opacity: 1, height: 'auto' }}
+                                className="p-4 border border-yellow-500/30 rounded-lg bg-yellow-500/10 space-y-3"
+                            >
+                                <p className="font-semibold text-sm text-yellow-400">⚠️ Refund Policy</p>
+                                <div className="space-y-2">
+                                    <label className="flex items-start space-x-3 cursor-pointer">
+                                        <input
+                                            type="radio"
+                                            name="refund-policy"
+                                            value="true"
+                                            checked={shouldRefund === 'true'}
+                                            onChange={(e) => setShouldRefund(e.target.value)}
+                                            className="mt-1"
+                                        />
+                                        <div className="flex-1">
+                                            <p className="font-semibold text-sm">Cancel WITH Refund</p>
+                                            <p className="text-xs text-muted-foreground">
+                                                Customer will receive full refund (₹{amountPaidOnline})
+                                            </p>
+                                        </div>
+                                    </label>
+                                    <label className="flex items-start space-x-3 cursor-pointer">
+                                        <input
+                                            type="radio"
+                                            name="refund-policy"
+                                            value="false"
+                                            checked={shouldRefund === 'false'}
+                                            onChange={(e) => setShouldRefund(e.target.value)}
+                                            className="mt-1"
+                                        />
+                                        <div className="flex-1">
+                                            <p className="font-semibold text-sm">Cancel WITHOUT Refund</p>
+                                            <p className="text-xs text-muted-foreground">
+                                                No refund - customer fault/duplicate order
+                                            </p>
+                                        </div>
+                                    </label>
+                                </div>
                             </motion.div>
                         )}
                     </div>
