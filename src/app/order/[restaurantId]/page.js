@@ -4,7 +4,7 @@
 import React, { useState, useEffect, Suspense, useMemo, useCallback, useRef } from 'react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Utensils, Plus, Minus, X, Home, User, Edit2, ShoppingCart, Star, CookingPot, BookOpen, Check, SlidersHorizontal, ArrowUpDown, PlusCircle, Ticket, Gift, Sparkles, Flame, Search, Trash2, ChevronDown, Tag as TagIcon, RadioGroup, IndianRupee, HardHat, MapPin, Bike, Store, ConciergeBell, QrCode, CalendarClock, Wallet, Users, Camera, BookMarked, Calendar as CalendarIcon, Bell, CheckCircle, AlertTriangle, ExternalLink, ShoppingBag, Sun, Moon, ChevronUp, Lock, Loader2, Navigation, ArrowRight } from 'lucide-react';
+import { Utensils, Plus, Minus, X, Home, User, Edit2, ShoppingCart, Star, CookingPot, BookOpen, Check, SlidersHorizontal, ArrowUpDown, PlusCircle, Ticket, Gift, Sparkles, Flame, Search, Trash2, ChevronDown, Tag as TagIcon, RadioGroup, IndianRupee, HardHat, MapPin, Bike, Store, ConciergeBell, QrCode, CalendarClock, Wallet, Users, Camera, BookMarked, Calendar as CalendarIcon, Bell, CheckCircle, AlertTriangle, AlertCircle, ExternalLink, ShoppingBag, Sun, Moon, ChevronUp, Lock, Loader2, Navigation, ArrowRight } from 'lucide-react';
 import Image from 'next/image';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
@@ -843,6 +843,7 @@ const OrderPageInternal = () => {
                     dineInPayAtCounterEnabled: settingsData.dineInPayAtCounterEnabled !== false,
                     onlinePaymentEnabled: onlinePaymentEnabled,
                     codEnabled: codEnabled,
+                    isOpen: menuData.isOpen !== false, // Restaurant open/closed status
                     // Add-on Charges
                     gstEnabled: settingsData.gstEnabled,
                     gstRate: settingsData.gstRate,
@@ -1266,6 +1267,17 @@ const OrderPageInternal = () => {
                 </header>
 
                 <div className="container mx-auto px-4 mt-6 space-y-4">
+
+                    {/* Restaurant Closed Warning */}
+                    {restaurantData.isOpen === false && (
+                        <Alert className="border-red-500 bg-red-500/10">
+                            <AlertCircle className="h-4 w-4 text-red-500" />
+                            <AlertTitle className="text-red-500 font-bold">Restaurant Currently Closed</AlertTitle>
+                            <AlertDescription className="text-red-400">
+                                Sorry, {restaurantData.name} is currently closed and not accepting orders. Please check back later or contact the restaurant for more information.
+                            </AlertDescription>
+                        </Alert>
+                    )}
 
                     {restaurantData.businessType !== 'street-vendor' && !tableIdFromUrl && (
                         <div className="bg-card p-4 rounded-lg border border-border">

@@ -151,6 +151,7 @@ export async function GET(req, { params }) {
             businessAddress: businessData.address,
             businessType: businessType,
             dineInModel: businessData.dineInModel,
+            isOpen: businessData.isOpen !== false, // Restaurant open/closed status
         };
 
         // FIX: Async cache write (don't block response)
