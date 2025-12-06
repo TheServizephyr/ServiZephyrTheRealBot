@@ -16,6 +16,7 @@ import GoldenCoinSpinner from '@/components/GoldenCoinSpinner';
 export default function StreetVendorQrPage() {
     const { user, isUserLoading } = useUser();
     const [vendorId, setVendorId] = useState(null);
+    const [restaurantName, setRestaurantName] = useState('');
     const [loading, setLoading] = useState(true);
     const printRef = useRef();
     const searchParams = useSearchParams();
@@ -66,6 +67,7 @@ export default function StreetVendorQrPage() {
                 const data = await res.json();
                 if (data.businessId) {
                     setVendorId(data.businessId);
+                    setRestaurantName(data.restaurantName || 'My Restaurant');
                 } else {
                     throw new Error("No business ID found.");
                 }
@@ -118,7 +120,13 @@ export default function StreetVendorQrPage() {
                                 className="w-full max-w-xs sm:max-w-sm"
                             >
                                 <div ref={printRef} className="animated-gradient p-6 sm:p-8 rounded-3xl shadow-2xl shadow-primary/20">
-                                    <div className="bg-white p-4 rounded-xl">
+                                    <div className="bg-white p-6 rounded-xl">
+                                        {/* Restaurant Name */}
+                                        <h2 className="text-2xl sm:text-3xl font-bold text-black mb-4 font-headline text-center">
+                                            {restaurantName}
+                                        </h2>
+
+                                        {/* QR Code */}
                                         <div className="w-full h-auto">
                                             <QRCode
                                                 value={qrValue}
@@ -136,8 +144,13 @@ export default function StreetVendorQrPage() {
                                                 style={{ width: '100%', height: 'auto' }}
                                             />
                                         </div>
-                                        <h2 className="text-xl sm:text-2xl font-bold text-black mt-6 font-headline">Scan to Pre-Order</h2>
-                                        <p className="text-slate-600 text-sm">Powered by ServiZephyr</p>
+
+                                        {/* Scan Text */}
+                                        <h3 className="text-xl sm:text-2xl font-bold text-black mt-6 font-headline">Scan to Pre-Order</h3>
+
+                                        {/* Branding */}
+                                        <p className="text-slate-600 text-sm mt-2">Powered by ServiZephyr</p>
+                                        <p className="text-slate-500 text-xs mt-1">Know more about at servizephyr.com</p>
                                     </div>
                                 </div>
                             </motion.div>
