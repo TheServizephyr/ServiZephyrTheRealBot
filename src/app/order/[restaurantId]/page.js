@@ -1347,85 +1347,99 @@ const OrderPageInternal = () => {
                     </div>
                 </div>
 
-                <div className="sticky top-0 z-10 bg-background/95 backdrop-blur-sm py-2 border-b border-border mt-4 shadow-sm">
-                    <div className="container mx-auto px-4">
-                        <div className="flex items-center gap-3 overflow-x-auto no-scrollbar pb-1">
-                            {liveOrder && trackingUrl && (
-                                <div className="flex items-center gap-1">
-                                    <Link href={trackingUrl} className="flex-shrink-0">
-                                        <motion.div
-                                            className={cn("p-2 rounded-lg text-black flex items-center animate-pulse", liveOrder.status === 'Ready' || liveOrder.status === 'ready_for_pickup' ? 'bg-green-400 hover:bg-green-500' : 'bg-yellow-400 hover:bg-yellow-500')}
-                                            whileHover={{ scale: 1.05 }}
-                                        >
-                                            <Navigation size={16} className="mr-2" />
-                                            <span className="text-sm font-bold hidden sm:inline">Track</span>
-                                        </motion.div>
-                                    </Link>
-                                </div>
-                            )}
+                {/* Only show menu if restaurant is open */}
+                {restaurantData.isOpen ? (
+                    <>
 
-                            <Popover>
-                                <PopoverTrigger asChild>
-                                    <button className="flex items-center gap-1 px-3 py-1.5 rounded-lg border border-border bg-card whitespace-nowrap text-sm font-medium shadow-sm flex-shrink-0 hover:bg-muted transition-colors">
-                                        <SlidersHorizontal size={14} /> Filters <ChevronDown size={14} />
-                                    </button>
-                                </PopoverTrigger>
-                                <PopoverContent className="w-64">
-                                    <div className="grid gap-4">
-                                        <div className="space-y-2">
-                                            <h4 className="font-medium leading-none">Sort by</h4>
-                                            <div className="flex flex-wrap gap-2">
-                                                <Button variant={sortBy === 'price-asc' ? 'default' : 'outline'} size="sm" onClick={() => handleSortChange('price-asc')} className={cn(sortBy === 'price-asc' && 'bg-primary hover:bg-primary/90 text-primary-foreground')}>Price: Low to High</Button>
-                                                <Button variant={sortBy === 'price-desc' ? 'default' : 'outline'} size="sm" onClick={() => handleSortChange('price-desc')} className={cn(sortBy === 'price-desc' && 'bg-primary hover:bg-primary/90 text-primary-foreground')}>Price: High to Low</Button>
-                                                <Button variant={sortBy === 'rating-desc' ? 'default' : 'outline'} size="sm" onClick={() => handleSortChange('rating-desc')} className={cn(sortBy === 'rating-desc' && 'bg-primary hover:bg-primary/90 text-primary-foreground')}>Top Rated</Button>
-                                            </div>
+                        <div className="sticky top-0 z-10 bg-background/95 backdrop-blur-sm py-2 border-b border-border mt-4 shadow-sm">
+                            <div className="container mx-auto px-4">
+                                <div className="flex items-center gap-3 overflow-x-auto no-scrollbar pb-1">
+                                    {liveOrder && trackingUrl && (
+                                        <div className="flex items-center gap-1">
+                                            <Link href={trackingUrl} className="flex-shrink-0">
+                                                <motion.div
+                                                    className={cn("p-2 rounded-lg text-black flex items-center animate-pulse", liveOrder.status === 'Ready' || liveOrder.status === 'ready_for_pickup' ? 'bg-green-400 hover:bg-green-500' : 'bg-yellow-400 hover:bg-yellow-500')}
+                                                    whileHover={{ scale: 1.05 }}
+                                                >
+                                                    <Navigation size={16} className="mr-2" />
+                                                    <span className="text-sm font-bold hidden sm:inline">Track</span>
+                                                </motion.div>
+                                            </Link>
                                         </div>
-                                    </div>
-                                </PopoverContent>
-                            </Popover>
+                                    )}
 
-                            <button
-                                onClick={() => handleFilterChange('veg')}
-                                className={cn("flex items-center gap-1 px-3 py-1.5 rounded-lg border text-sm font-medium whitespace-nowrap shadow-sm transition-colors flex-shrink-0", filters.veg ? "bg-green-50 border-green-500 text-green-700" : "bg-card border-border hover:bg-muted")}
-                            >
-                                <div className="w-4 h-4 border border-green-500 flex items-center justify-center rounded-[2px]"><div className="w-2 h-2 bg-green-500 rounded-full"></div></div>
-                                Veg
-                            </button>
+                                    <Popover>
+                                        <PopoverTrigger asChild>
+                                            <button className="flex items-center gap-1 px-3 py-1.5 rounded-lg border border-border bg-card whitespace-nowrap text-sm font-medium shadow-sm flex-shrink-0 hover:bg-muted transition-colors">
+                                                <SlidersHorizontal size={14} /> Filters <ChevronDown size={14} />
+                                            </button>
+                                        </PopoverTrigger>
+                                        <PopoverContent className="w-64">
+                                            <div className="grid gap-4">
+                                                <div className="space-y-2">
+                                                    <h4 className="font-medium leading-none">Sort by</h4>
+                                                    <div className="flex flex-wrap gap-2">
+                                                        <Button variant={sortBy === 'price-asc' ? 'default' : 'outline'} size="sm" onClick={() => handleSortChange('price-asc')} className={cn(sortBy === 'price-asc' && 'bg-primary hover:bg-primary/90 text-primary-foreground')}>Price: Low to High</Button>
+                                                        <Button variant={sortBy === 'price-desc' ? 'default' : 'outline'} size="sm" onClick={() => handleSortChange('price-desc')} className={cn(sortBy === 'price-desc' && 'bg-primary hover:bg-primary/90 text-primary-foreground')}>Price: High to Low</Button>
+                                                        <Button variant={sortBy === 'rating-desc' ? 'default' : 'outline'} size="sm" onClick={() => handleSortChange('rating-desc')} className={cn(sortBy === 'rating-desc' && 'bg-primary hover:bg-primary/90 text-primary-foreground')}>Top Rated</Button>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </PopoverContent>
+                                    </Popover>
 
-                            <button
-                                onClick={() => handleFilterChange('nonVeg')}
-                                className={cn("flex items-center gap-1 px-3 py-1.5 rounded-lg border text-sm font-medium whitespace-nowrap shadow-sm transition-colors flex-shrink-0", filters.nonVeg ? "bg-red-50 border-red-500 text-red-700" : "bg-card border-border hover:bg-muted")}
-                            >
-                                <div className="w-4 h-4 border border-red-500 flex items-center justify-center rounded-[2px]"><div className="w-2 h-2 bg-red-500 rounded-full"></div></div>
-                                Non-veg
-                            </button>
+                                    <button
+                                        onClick={() => handleFilterChange('veg')}
+                                        className={cn("flex items-center gap-1 px-3 py-1.5 rounded-lg border text-sm font-medium whitespace-nowrap shadow-sm transition-colors flex-shrink-0", filters.veg ? "bg-green-50 border-green-500 text-green-700" : "bg-card border-border hover:bg-muted")}
+                                    >
+                                        <div className="w-4 h-4 border border-green-500 flex items-center justify-center rounded-[2px]"><div className="w-2 h-2 bg-green-500 rounded-full"></div></div>
+                                        Veg
+                                    </button>
+
+                                    <button
+                                        onClick={() => handleFilterChange('nonVeg')}
+                                        className={cn("flex items-center gap-1 px-3 py-1.5 rounded-lg border text-sm font-medium whitespace-nowrap shadow-sm transition-colors flex-shrink-0", filters.nonVeg ? "bg-red-50 border-red-500 text-red-700" : "bg-card border-border hover:bg-muted")}
+                                    >
+                                        <div className="w-4 h-4 border border-red-500 flex items-center justify-center rounded-[2px]"><div className="w-2 h-2 bg-red-500 rounded-full"></div></div>
+                                        Non-veg
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="container mx-auto px-4 mt-6 pb-40">
+                            <main>
+                                <div className="space-y-8">
+                                    {menuCategories.map(({ key, title }) => (
+                                        <section id={key} key={key} className="scroll-mt-24">
+                                            <h3 className="text-2xl font-bold mb-4">{title}</h3>
+                                            <div className="flex flex-col">
+                                                {processedMenu[key].map(item => (
+                                                    <MenuItemCard
+                                                        key={item.id}
+                                                        item={item}
+                                                        quantity={cartItemQuantities[item.id] || 0}
+                                                        onAdd={handleIncrement}
+                                                        onIncrement={handleIncrement}
+                                                        onDecrement={handleDecrement}
+                                                    />
+                                                ))}
+                                            </div>
+                                        </section>
+                                    ))}
+                                </div>
+                            </main>
+                        </div>
+                    </>
+                ) : (
+                    <div className="container mx-auto px-4 mt-6 pb-40">
+                        <div className="text-center py-12">
+                            <p className="text-muted-foreground text-lg">
+                                Menu is not available when the restaurant is closed.
+                            </p>
                         </div>
                     </div>
-                </div>
-
-                <div className="container mx-auto px-4 mt-6 pb-40">
-                    <main>
-                        <div className="space-y-8">
-                            {menuCategories.map(({ key, title }) => (
-                                <section id={key} key={key} className="scroll-mt-24">
-                                    <h3 className="text-2xl font-bold mb-4">{title}</h3>
-                                    <div className="flex flex-col">
-                                        {processedMenu[key].map(item => (
-                                            <MenuItemCard
-                                                key={item.id}
-                                                item={item}
-                                                quantity={cartItemQuantities[item.id] || 0}
-                                                onAdd={handleIncrement}
-                                                onIncrement={handleIncrement}
-                                                onDecrement={handleDecrement}
-                                            />
-                                        ))}
-                                    </div>
-                                </section>
-                            ))}
-                        </div>
-                    </main>
-                </div>
+                )}
                 <AnimatePresence>
                     {totalCartItems > 0 && (
                         <motion.div
