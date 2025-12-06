@@ -4,7 +4,7 @@
 import React, { useState, useEffect, Suspense, useMemo, useCallback, useRef } from 'react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Utensils, Plus, Minus, X, Home, User, Edit2, ShoppingCart, Star, CookingPot, BookOpen, Check, SlidersHorizontal, ArrowUpDown, PlusCircle, Ticket, Gift, Sparkles, Flame, Search, Trash2, ChevronDown, Tag as TagIcon, RadioGroup, IndianRupee, HardHat, MapPin, Bike, Store, ConciergeBell, QrCode, CalendarClock, Wallet, Users, Camera, BookMarked, Calendar as CalendarIcon, Bell, CheckCircle, AlertTriangle, AlertCircle, ExternalLink, ShoppingBag, Sun, Moon, ChevronUp, Lock, Loader2, Navigation, ArrowRight } from 'lucide-react';
+import { Utensils, Plus, Minus, X, Home, User, Edit2, ShoppingCart, Star, CookingPot, BookOpen, Check, SlidersHorizontal, ArrowUpDown, PlusCircle, Ticket, Gift, Sparkles, Flame, Search, Trash2, ChevronDown, Tag as TagIcon, RadioGroup, IndianRupee, HardHat, MapPin, Bike, Store, ConciergeBell, QrCode, CalendarClock, Wallet, Users, Camera, BookMarked, Calendar as CalendarIcon, Bell, CheckCircle, AlertTriangle, AlertCircle, ExternalLink, ShoppingBag, Sun, Moon, ChevronUp, Lock, Loader2, Navigation, ArrowRight, Clock } from 'lucide-react';
 import Image from 'next/image';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
@@ -1433,11 +1433,37 @@ const OrderPageInternal = () => {
                     </>
                 ) : (
                     <div className="container mx-auto px-4 mt-6 pb-40">
-                        <div className="text-center py-12">
-                            <p className="text-muted-foreground text-lg">
-                                Menu is not available when the restaurant is closed.
-                            </p>
-                        </div>
+                        <motion.div
+                            initial={{ opacity: 0, y: 20 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            className="max-w-md mx-auto"
+                        >
+                            <div className="bg-card border-2 border-red-500/30 rounded-2xl p-8 shadow-2xl">
+                                <div className="flex flex-col items-center text-center space-y-4">
+                                    {/* Icon */}
+                                    <div className="w-20 h-20 rounded-full bg-red-500/10 flex items-center justify-center">
+                                        <AlertCircle className="w-12 h-12 text-red-500" />
+                                    </div>
+
+                                    {/* Title */}
+                                    <h2 className="text-2xl font-bold text-foreground">
+                                        We're Currently Closed
+                                    </h2>
+
+                                    {/* Message */}
+                                    <p className="text-muted-foreground text-base leading-relaxed">
+                                        {restaurantData.name} is not accepting orders at the moment.
+                                        Please check back later or contact us for more information.
+                                    </p>
+
+                                    {/* Decorative element */}
+                                    <div className="pt-4 flex items-center gap-2 text-sm text-muted-foreground">
+                                        <Clock className="w-4 h-4" />
+                                        <span>We'll be back soon!</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </motion.div>
                     </div>
                 )}
                 <AnimatePresence>
