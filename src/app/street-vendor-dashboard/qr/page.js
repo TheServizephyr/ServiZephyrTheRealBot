@@ -120,25 +120,25 @@ export default function StreetVendorQrPage() {
                                 className="w-full max-w-xs sm:max-w-sm"
                             >
                                 <div ref={printRef} className="animated-gradient p-6 sm:p-8 rounded-3xl shadow-2xl shadow-primary/20">
-                                    <div className="bg-white p-5 rounded-xl">
-                                        {/* Restaurant Name - Stylish & Prominent */}
-                                        <h2 className="text-3xl sm:text-4xl font-black text-black mb-2.5 font-headline text-center tracking-wide" style={{ textShadow: '2px 2px 4px rgba(0,0,0,0.1)', letterSpacing: '0.05em' }}>
+                                    <div className="bg-white p-4 rounded-xl">
+                                        {/* Restaurant Name - Stylish & Prominent with 3D Effect */}
+                                        <h2 className="text-4xl sm:text-5xl font-black text-black mb-1.5 font-headline text-center tracking-wide" style={{ textShadow: '3px 3px 0px rgba(0,0,0,0.2), 5px 5px 10px rgba(0,0,0,0.15), 1px 1px 2px rgba(0,0,0,0.3)', letterSpacing: '0.05em', fontWeight: '900' }}>
                                             {restaurantName}
                                         </h2>
 
-                                        {/* QR Code */}
+                                        {/* QR Code - Larger Size */}
                                         <div className="w-full h-auto">
                                             <QRCode
                                                 value={qrValue}
-                                                size={1024}
+                                                size={1536}
                                                 level={"H"}
                                                 includeMargin={true}
                                                 imageSettings={{
                                                     src: "/logo.png",
                                                     x: undefined,
                                                     y: undefined,
-                                                    height: 256,
-                                                    width: 256,
+                                                    height: 384,
+                                                    width: 384,
                                                     excavate: true,
                                                 }}
                                                 style={{ width: '100%', height: 'auto' }}
@@ -146,7 +146,7 @@ export default function StreetVendorQrPage() {
                                         </div>
 
                                         {/* Scan Text */}
-                                        <h3 className="text-xl sm:text-2xl font-bold text-black mt-3 font-headline">Scan to Pre-Order</h3>
+                                        <h3 className="text-xl sm:text-2xl font-bold text-black mt-2 font-headline">Scan to Pre-Order</h3>
 
                                         {/* Branding */}
                                         <p className="text-slate-600 text-sm mt-1">Powered by ServiZephyr</p>
