@@ -843,7 +843,7 @@ const OrderPageInternal = () => {
                     dineInPayAtCounterEnabled: settingsData.dineInPayAtCounterEnabled !== false,
                     onlinePaymentEnabled: onlinePaymentEnabled,
                     codEnabled: codEnabled,
-                    isOpen: menuData.isOpen !== false, // Restaurant open/closed status
+                    isOpen: menuData.isOpen === true, // Restaurant open/closed status
                     // Add-on Charges
                     gstEnabled: settingsData.gstEnabled,
                     gstRate: settingsData.gstRate,
