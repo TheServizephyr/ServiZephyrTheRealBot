@@ -786,8 +786,20 @@ export default function StreetVendorMenuPage() {
         setIsScanning(true);
         setIsAiModalOpen(false); // Close the modal and show page-level indicator
         try {
+            // Compress image before sending to AI
+            const compressionOptions = {
+                maxSizeMB: 0.8, // Max 800KB
+                maxWidthOrHeight: 1920, // Max dimension
+                useWebWorker: true,
+                fileType: 'image/jpeg' // Convert to JPEG for better compression
+            };
+
+            const compressedFile = await imageCompression(file, compressionOptions);
+            console.log(`Original file size: ${(file.size / 1024 / 1024).toFixed(2)}MB`);
+            console.log(`Compressed file size: ${(compressedFile.size / 1024 / 1024).toFixed(2)}MB`);
+
             const reader = new FileReader();
-            reader.readAsDataURL(file);
+            reader.readAsDataURL(compressedFile); // Use compressed file
             await new Promise((resolve, reject) => {
                 reader.onload = async () => {
                     try {
