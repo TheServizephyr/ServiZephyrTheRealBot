@@ -230,6 +230,7 @@ const MenuCategory = ({ categoryId, title, icon, items, onDeleteItem, onEditItem
 
 
 
+
 const AddItemModal = ({ isOpen, setIsOpen, onSave, editingItem, allCategories, showInfoDialog }) => {
     const [item, setItem] = useState(null);
     const [isSaving, setIsSaving] = useState(false);
@@ -238,13 +239,16 @@ const AddItemModal = ({ isOpen, setIsOpen, onSave, editingItem, allCategories, s
     const fileInputRef = useRef(null);
     const [pricingType, setPricingType] = useState('portions');
 
-    const sortedCategories = Object.entries(allCategories)
-        .map(([id, config]) => ({ id, title: config?.title }))
-        .sort((a, b) => {
-            if (!a.title) return 1;
-            if (!b.title) return -1;
-            return a.title.localeCompare(b.title);
-        });
+    const sortedCategories = useMemo(() => {
+        return Object.entries(allCategories)
+            .map(([id, config]) => ({ id, title: config?.title }))
+            .sort((a, b) => {
+                if (!a.title) return 1;
+                if (!b.title) return -1;
+                return a.title.localeCompare(b.title);
+            });
+    }, [allCategories]);
+
 
     useEffect(() => {
         if (isOpen) {
