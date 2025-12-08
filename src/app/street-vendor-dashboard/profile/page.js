@@ -15,6 +15,7 @@ import { Command, CommandInput, CommandEmpty, CommandGroup, CommandItem } from '
 import { cn } from '@/lib/utils';
 import InfoDialog from '@/components/InfoDialog';
 import Link from 'next/link';
+import imageCompression from 'browser-image-compression';
 
 export const dynamic = 'force-dynamic';
 
@@ -179,14 +180,36 @@ const DeleteAccountModal = ({ isOpen, setIsOpen }) => {
 const ImageUpload = ({ label, currentImage, onFileSelect, isEditing }) => {
     const fileInputRef = React.useRef(null);
 
-    const handleFileChange = (e) => {
+    const handleFileChange = async (e) => {
         const file = e.target.files[0];
         if (file) {
-            const reader = new FileReader();
-            reader.onloadend = () => {
-                onFileSelect(reader.result);
-            };
-            reader.readAsDataURL(file);
+            try {
+                // Compress image before uploading
+                const compressionOptions = {
+                    maxSizeMB: 1, // Max 1MB
+                    maxWidthOrHeight: 2048, // Max dimension
+                    useWebWorker: true,
+                    fileType: 'image/jpeg' // Convert to JPEG
+                };
+
+                const compressedFile = await imageCompression(file, compressionOptions);
+                console.log(`Original ${label} size: ${(file.size / 1024 / 1024).toFixed(2)}MB`);
+                console.log(`Compressed ${label} size: ${(compressedFile.size / 1024 / 1024).toFixed(2)}MB`);
+
+                const reader = new FileReader();
+                reader.onloadend = () => {
+                    onFileSelect(reader.result);
+                };
+                reader.readAsDataURL(compressedFile);
+            } catch (error) {
+                console.error('Image compression failed:', error);
+                // Fallback to original file if compression fails
+                const reader = new FileReader();
+                reader.onloadend = () => {
+                    onFileSelect(reader.result);
+                };
+                reader.readAsDataURL(file);
+            }
         }
     };
 
