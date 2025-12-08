@@ -121,9 +121,9 @@ export default function StreetVendorQrPage() {
                             >
                                 <div ref={printRef} className="animated-gradient p-6 sm:p-8 rounded-3xl shadow-2xl shadow-primary/20">
                                     <div className="bg-white p-4 rounded-xl">
-                                        {/* Restaurant Name - Stylish & Prominent with 3D Effect */}
-                                        <h2 className="text-4xl sm:text-5xl font-black text-black mb-1.5 font-headline text-center tracking-wide" style={{ textShadow: '3px 3px 0px rgba(0,0,0,0.2), 5px 5px 10px rgba(0,0,0,0.15), 1px 1px 2px rgba(0,0,0,0.3)', letterSpacing: '0.05em', fontWeight: '900' }}>
-                                            {restaurantName}
+                                        {/* ORDER HERE - Main Call to Action */}
+                                        <h2 className="text-5xl sm:text-6xl font-black text-black mb-1.5 font-headline text-center tracking-wide" style={{ textShadow: '3px 3px 0px rgba(0,0,0,0.2), 5px 5px 10px rgba(0,0,0,0.15), 1px 1px 2px rgba(0,0,0,0.3)', letterSpacing: '0.08em', fontWeight: '900' }}>
+                                            ORDER HERE
                                         </h2>
 
                                         {/* QR Code - Larger Size */}
@@ -145,8 +145,8 @@ export default function StreetVendorQrPage() {
                                             />
                                         </div>
 
-                                        {/* Scan Text */}
-                                        <h3 className="text-xl sm:text-2xl font-bold text-black mt-2 font-headline">Scan to Pre-Order</h3>
+                                        {/* Restaurant Name */}
+                                        <h3 className="text-2xl sm:text-3xl font-bold text-black mt-2 font-headline" style={{ textShadow: '1px 1px 2px rgba(0,0,0,0.1)' }}>{restaurantName}</h3>
 
                                         {/* Branding */}
                                         <p className="text-slate-600 text-sm mt-1">Powered by ServiZephyr</p>
