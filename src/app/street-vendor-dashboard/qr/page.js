@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { motion } from 'framer-motion';
-import { ArrowLeft, Download, Smartphone, Menu, ShoppingCart, CreditCard } from 'lucide-react';
+import { ArrowLeft, Download } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import Link from 'next/link';
 import QRCode from 'qrcode.react';
@@ -117,18 +117,17 @@ export default function StreetVendorQrPage() {
                                 initial={{ scale: 0.8, opacity: 0 }}
                                 animate={{ scale: 1, opacity: 1 }}
                                 transition={{ type: "spring", stiffness: 260, damping: 20 }}
-                                className="w-full max-w-2xl"
-                                style={{ aspectRatio: '210 / 297' }}
+                                className="w-full max-w-lg"
                             >
-                                <div ref={printRef} className="animated-gradient p-10 rounded-3xl shadow-2xl shadow-primary/20 h-full">
-                                    <div className="bg-white p-8 rounded-xl h-full flex flex-col">
+                                <div ref={printRef} className="animated-gradient p-8 rounded-3xl shadow-2xl shadow-primary/20">
+                                    <div className="bg-white p-6 rounded-xl">
                                         {/* ORDER HERE - Main Call to Action */}
-                                        <h2 className="text-6xl sm:text-7xl font-black text-black mb-6 font-headline text-center tracking-wide" style={{ textShadow: '3px 3px 0px rgba(0,0,0,0.2), 5px 5px 10px rgba(0,0,0,0.15), 1px 1px 2px rgba(0,0,0,0.3)', letterSpacing: '0.08em', fontWeight: '900' }}>
+                                        <h2 className="text-5xl sm:text-6xl font-black text-black mb-4 font-headline text-center tracking-wide" style={{ textShadow: '3px 3px 0px rgba(0,0,0,0.2), 5px 5px 10px rgba(0,0,0,0.15), 1px 1px 2px rgba(0,0,0,0.3)', letterSpacing: '0.08em', fontWeight: '900' }}>
                                             ORDER HERE
                                         </h2>
 
-                                        {/* QR Code - Larger Size */}
-                                        <div className="w-full h-auto flex-shrink-0 my-6">
+                                        {/* QR Code - Large Size */}
+                                        <div className="w-full h-auto my-4">
                                             <QRCode
                                                 value={qrValue}
                                                 size={1536}
@@ -147,30 +146,10 @@ export default function StreetVendorQrPage() {
                                         </div>
 
                                         {/* Restaurant Name */}
-                                        <h3 className="text-4xl sm:text-5xl font-bold text-black mb-8 font-headline" style={{ textShadow: '1px 1px 2px rgba(0,0,0,0.1)' }}>{restaurantName}</h3>
-
-                                        {/* Instructions Section */}
-                                        <div className="space-y-4 mb-8">
-                                            <div className="flex items-center justify-center gap-4 text-left">
-                                                <Smartphone className="w-8 h-8 text-primary flex-shrink-0" />
-                                                <span className="text-lg font-medium text-slate-700">Scan QR Code</span>
-                                            </div>
-                                            <div className="flex items-center justify-center gap-4 text-left">
-                                                <Menu className="w-8 h-8 text-primary flex-shrink-0" />
-                                                <span className="text-lg font-medium text-slate-700">View Full Menu</span>
-                                            </div>
-                                            <div className="flex items-center justify-center gap-4 text-left">
-                                                <ShoppingCart className="w-8 h-8 text-primary flex-shrink-0" />
-                                                <span className="text-lg font-medium text-slate-700">Place Your Order</span>
-                                            </div>
-                                            <div className="flex items-center justify-center gap-4 text-left">
-                                                <CreditCard className="w-8 h-8 text-primary flex-shrink-0" />
-                                                <span className="text-lg font-medium text-slate-700">Pay Securely Online</span>
-                                            </div>
-                                        </div>
+                                        <h3 className="text-3xl sm:text-4xl font-bold text-black mt-4 mb-6 font-headline" style={{ textShadow: '1px 1px 2px rgba(0,0,0,0.1)' }}>{restaurantName}</h3>
 
                                         {/* Branding */}
-                                        <div className="mt-auto pt-6">
+                                        <div className="mt-4">
                                             <p className="text-slate-600 text-base">Powered by ServiZephyr</p>
                                             <p className="text-slate-500 text-sm mt-1">Know more about at servizephyr.com</p>
                                         </div>
