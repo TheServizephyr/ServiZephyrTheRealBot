@@ -15,35 +15,36 @@ import { cn } from "@/lib/utils";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useSearchParams } from 'next/navigation';
 import InfoDialog from "@/components/InfoDialog";
+import imageCompression from 'browser-image-compression';
 
 export const dynamic = 'force-dynamic';
 
 const restaurantCategoryConfig = {
-  "starters": { title: "Starters", icon: Salad },
-  "main-course": { title: "Main Course", icon: Pizza },
-  "beverages": { title: "Beverages", icon: GlassWater },
-  "desserts": { title: "Desserts", icon: CakeSlice },
-  "soup": { title: "Soup", icon: Soup },
-  "tandoori-item": { title: "Tandoori Items", icon: Drumstick },
-  "momos": { title: "Momos", icon: Drumstick },
-  "burgers": { title: "Burgers", icon: Pizza },
-  "rolls": { title: "Rolls", icon: Utensils },
-  "tandoori-khajana": { title: "Tandoori Khajana", icon: Drumstick },
-  "rice": { title: "Rice", icon: Utensils },
-  "noodles": { title: "Noodles", icon: Utensils },
-  "pasta": { title: "Pasta", icon: Utensils },
-  "raita": { title: "Raita", icon: Utensils },
+    "starters": { title: "Starters", icon: Salad },
+    "main-course": { title: "Main Course", icon: Pizza },
+    "beverages": { title: "Beverages", icon: GlassWater },
+    "desserts": { title: "Desserts", icon: CakeSlice },
+    "soup": { title: "Soup", icon: Soup },
+    "tandoori-item": { title: "Tandoori Items", icon: Drumstick },
+    "momos": { title: "Momos", icon: Drumstick },
+    "burgers": { title: "Burgers", icon: Pizza },
+    "rolls": { title: "Rolls", icon: Utensils },
+    "tandoori-khajana": { title: "Tandoori Khajana", icon: Drumstick },
+    "rice": { title: "Rice", icon: Utensils },
+    "noodles": { title: "Noodles", icon: Utensils },
+    "pasta": { title: "Pasta", icon: Utensils },
+    "raita": { title: "Raita", icon: Utensils },
 };
 
 const shopCategoryConfig = {
-  "electronics": { title: "Electronics", icon: Laptop },
-  "groceries": { title: "Groceries", icon: ShoppingBag },
-  "clothing": { title: "Clothing", icon: Utensils }, // Placeholder, can be changed
-  "books": { title: "Books", icon: BookOpen },
-  "home-appliances": { title: "Home Appliances", icon: Utensils },
-  "toys-games": { title: "Toys & Games", icon: ToyBrick },
-  "beauty-personal-care": { title: "Beauty & Personal Care", icon: Utensils },
-  "sports-outdoors": { title: "Sports & Outdoors", icon: Utensils },
+    "electronics": { title: "Electronics", icon: Laptop },
+    "groceries": { title: "Groceries", icon: ShoppingBag },
+    "clothing": { title: "Clothing", icon: Utensils }, // Placeholder, can be changed
+    "books": { title: "Books", icon: BookOpen },
+    "home-appliances": { title: "Home Appliances", icon: Utensils },
+    "toys-games": { title: "Toys & Games", icon: ToyBrick },
+    "beauty-personal-care": { title: "Beauty & Personal Care", icon: Utensils },
+    "sports-outdoors": { title: "Sports & Outdoors", icon: Utensils },
 };
 
 
@@ -62,12 +63,12 @@ const MenuItem = ({ item, index, onDelete, onEdit, onToggleAvailability, onSelec
                     ref={provided.innerRef}
                     {...provided.draggableProps}
                     className={`flex flex-col md:grid md:grid-cols-12 md:items-center p-3 rounded-lg gap-3 bg-card m-2 border ${isSelected ? "border-primary bg-primary/10" : "border-border"} ${snapshot.isDragging ? 'bg-primary/10 shadow-lg ring-2 ring-primary' : ''}`}
-                    whileHover={{ 
+                    whileHover={{
                         backgroundColor: "hsl(var(--primary) / 0.1)"
                     }}
                     transition={{ type: "spring", stiffness: 300, damping: 20 }}
                 >
-                     <div className="flex items-center md:col-span-1 text-center md:text-left">
+                    <div className="flex items-center md:col-span-1 text-center md:text-left">
                         <div {...provided.dragHandleProps} className="p-2 cursor-grab text-muted-foreground hover:text-white">
                             <GripVertical size={20} />
                         </div>
@@ -83,7 +84,7 @@ const MenuItem = ({ item, index, onDelete, onEdit, onToggleAvailability, onSelec
                             {item.imageUrl ? (
                                 <Image src={item.imageUrl} alt={item.name} layout="fill" objectFit="cover" />
                             ) : (
-                                <div className="w-full h-full flex items-center justify-center text-muted-foreground"><ImageIcon/></div>
+                                <div className="w-full h-full flex items-center justify-center text-muted-foreground"><ImageIcon /></div>
                             )}
                         </div>
                         <div className="flex-grow text-left">
@@ -138,7 +139,7 @@ const MenuCategory = ({ categoryId, title, icon, items, onDeleteItem, onEditItem
     const handleDragEnd = (result) => {
         const { source, destination } = result;
         if (!destination || source.droppableId !== destination.droppableId) return;
-        
+
         const newItems = Array.from(items);
         const [movedItem] = newItems.splice(source.index, 1);
         newItems.splice(destination.index, 0, movedItem);
@@ -151,10 +152,10 @@ const MenuCategory = ({ categoryId, title, icon, items, onDeleteItem, onEditItem
             [categoryId]: newItems
         }));
     };
-    
+
     return (
-        <motion.div 
-            layout 
+        <motion.div
+            layout
             className="bg-card border border-border rounded-xl overflow-hidden"
             transition={{ type: "spring", stiffness: 300, damping: 20 }}
         >
@@ -167,7 +168,7 @@ const MenuCategory = ({ categoryId, title, icon, items, onDeleteItem, onEditItem
                     <span className="text-sm text-muted-foreground font-mono bg-muted px-2 py-0.5 rounded-md">({items.length})</span>
                 </div>
                 <motion.div animate={{ rotate: isExpanded ? 180 : 0 }}>
-                    <ChevronDown size={24} className="text-foreground"/>
+                    <ChevronDown size={24} className="text-foreground" />
                 </motion.div>
             </button>
             <AnimatePresence>
@@ -197,27 +198,27 @@ const MenuCategory = ({ categoryId, title, icon, items, onDeleteItem, onEditItem
                         </div>
                         <DragDropContext onDragEnd={handleDragEnd}>
                             <Droppable droppableId={categoryId}>
-                            {(provided, snapshot) => (
-                                <div
-                                ref={provided.innerRef}
-                                {...provided.droppableProps}
-                                className={`min-h-[60px] max-h-[calc(100vh-280px)] overflow-y-auto transition-colors ${snapshot.isDraggingOver ? 'bg-primary/5' : ''}`}
-                                >
-                                {items.map((item, index) => (
-                                    <MenuItem 
-                                        key={item.id} 
-                                        item={item} 
-                                        index={index}
-                                        onDelete={() => onDeleteItem(item.id)}
-                                        onEdit={onEditItem}
-                                        onToggleAvailability={onToggleAvailability}
-                                        onSelectItem={() => setSelectedItems(prev => prev.includes(item.id) ? prev.filter(id => id !== item.id) : [...prev, item.id])}
-                                        isSelected={selectedItems.includes(item.id)}
-                                    />
-                                ))}
-                                {provided.placeholder}
-                                </div>
-                            )}
+                                {(provided, snapshot) => (
+                                    <div
+                                        ref={provided.innerRef}
+                                        {...provided.droppableProps}
+                                        className={`min-h-[60px] max-h-[calc(100vh-280px)] overflow-y-auto transition-colors ${snapshot.isDraggingOver ? 'bg-primary/5' : ''}`}
+                                    >
+                                        {items.map((item, index) => (
+                                            <MenuItem
+                                                key={item.id}
+                                                item={item}
+                                                index={index}
+                                                onDelete={() => onDeleteItem(item.id)}
+                                                onEdit={onEditItem}
+                                                onToggleAvailability={onToggleAvailability}
+                                                onSelectItem={() => setSelectedItems(prev => prev.includes(item.id) ? prev.filter(id => id !== item.id) : [...prev, item.id])}
+                                                isSelected={selectedItems.includes(item.id)}
+                                            />
+                                        ))}
+                                        {provided.placeholder}
+                                    </div>
+                                )}
                             </Droppable>
                         </DragDropContext>
                     </motion.div>
@@ -253,13 +254,13 @@ const AddItemModal = ({ isOpen, setIsOpen, onSave, editingItem, allCategories, s
             if (editingItem) {
                 const hasMultiplePortions = editingItem.portions && editingItem.portions.length > 1;
                 const hasDifferentPortionName = editingItem.portions && editingItem.portions.length === 1 && editingItem.portions[0].name.toLowerCase() !== 'full';
-                
+
                 if (hasMultiplePortions || hasDifferentPortionName) {
                     setPricingType('portions');
                 } else {
                     setPricingType('single');
                 }
-                
+
                 setItem({
                     ...editingItem,
                     tags: Array.isArray(editingItem.tags) ? editingItem.tags.join(', ') : '',
@@ -299,13 +300,13 @@ const AddItemModal = ({ isOpen, setIsOpen, onSave, editingItem, allCategories, s
     const handleChange = (field, value) => {
         setItem(prev => ({ ...prev, [field]: value }));
     };
-    
+
     const handlePortionChange = (index, field, value) => {
         const newPortions = [...item.portions];
         newPortions[index][field] = value;
         setItem(prev => ({ ...prev, portions: newPortions }));
     };
-    
+
     const handleBasePriceChange = (value) => {
         setItem(prev => ({ ...prev, portions: [{ name: 'Full', price: value }] }));
     };
@@ -321,20 +322,42 @@ const AddItemModal = ({ isOpen, setIsOpen, onSave, editingItem, allCategories, s
             setItem(prev => ({ ...prev, portions: newPortions }));
         }
     };
-    
-    const handleImageUpload = (e) => {
+
+    const handleImageUpload = async (e) => {
         const file = e.target.files[0];
         if (file) {
-            const reader = new FileReader();
-            reader.onloadend = () => {
-                handleChange('imageUrl', reader.result);
-            };
-            reader.readAsDataURL(file);
+            try {
+                // Compress image before uploading
+                const compressionOptions = {
+                    maxSizeMB: 1, // Max 1MB
+                    maxWidthOrHeight: 2048, // Max dimension
+                    useWebWorker: true,
+                    fileType: 'image/jpeg' // Convert to JPEG
+                };
+
+                const compressedFile = await imageCompression(file, compressionOptions);
+                console.log(`Original menu item image size: ${(file.size / 1024 / 1024).toFixed(2)}MB`);
+                console.log(`Compressed menu item image size: ${(compressedFile.size / 1024 / 1024).toFixed(2)}MB`);
+
+                const reader = new FileReader();
+                reader.onloadend = () => {
+                    handleChange('imageUrl', reader.result);
+                };
+                reader.readAsDataURL(compressedFile);
+            } catch (error) {
+                console.error('Menu item image compression failed:', error);
+                // Fallback to original file if compression fails
+                const reader = new FileReader();
+                reader.onloadend = () => {
+                    handleChange('imageUrl', reader.result);
+                };
+                reader.readAsDataURL(file);
+            }
         }
     };
     // --- Add-on Group Handlers ---
     const addAddOnGroup = () => {
-        setItem(prev => ({ ...prev, addOnGroups: [...prev.addOnGroups, { title: '', type: 'radio', required: false, options: [{name: '', price: ''}] }] }));
+        setItem(prev => ({ ...prev, addOnGroups: [...prev.addOnGroups, { title: '', type: 'radio', required: false, options: [{ name: '', price: '' }] }] }));
     };
 
     const removeAddOnGroup = (groupIndex) => {
@@ -346,13 +369,13 @@ const AddItemModal = ({ isOpen, setIsOpen, onSave, editingItem, allCategories, s
         newGroups[groupIndex][field] = value;
         setItem(prev => ({ ...prev, addOnGroups: newGroups }));
     };
-    
+
     const addAddOnOption = (groupIndex) => {
         const newGroups = [...item.addOnGroups];
         newGroups[groupIndex].options.push({ name: '', price: '' });
         setItem(prev => ({ ...prev, addOnGroups: newGroups }));
     };
-    
+
     const removeAddOnOption = (groupIndex, optionIndex) => {
         const newGroups = [...item.addOnGroups];
         if (newGroups[groupIndex].options.length > 1) {
@@ -360,7 +383,7 @@ const AddItemModal = ({ isOpen, setIsOpen, onSave, editingItem, allCategories, s
             setItem(prev => ({ ...prev, addOnGroups: newGroups }));
         }
     };
-    
+
     const handleAddOnOptionChange = (groupIndex, optionIndex, field, value) => {
         const newGroups = [...item.addOnGroups];
         newGroups[groupIndex].options[optionIndex][field] = value;
@@ -371,34 +394,34 @@ const AddItemModal = ({ isOpen, setIsOpen, onSave, editingItem, allCategories, s
     const handleSubmit = async (e) => {
         e.preventDefault();
         if (!item || isSaving) return;
-        
+
         const finalCategoryId = showNewCategory ? newCategory.trim().toLowerCase().replace(/\s+/g, '-') : item.categoryId;
         const finalNewCategoryName = showNewCategory ? newCategory.trim() : '';
 
         if (showNewCategory && !finalNewCategoryName) {
-            showInfoDialog({ isOpen: true, title: 'Input Error', message: "Please enter a name for the new category."});
+            showInfoDialog({ isOpen: true, title: 'Input Error', message: "Please enter a name for the new category." });
             return;
         }
 
         setIsSaving(true);
         try {
             const tagsArray = item.tags ? item.tags.split(',').map(tag => tag.trim()).filter(Boolean) : [];
-            
+
             let finalPortions;
             if (pricingType === 'single') {
                 const basePrice = item.portions?.[0]?.price;
                 if (!basePrice || isNaN(parseFloat(basePrice))) {
-                    showInfoDialog({ isOpen: true, title: 'Input Error', message: "Please enter a valid base price."});
+                    showInfoDialog({ isOpen: true, title: 'Input Error', message: "Please enter a valid base price." });
                     setIsSaving(false);
                     return;
                 }
                 finalPortions = [{ name: 'Full', price: parseFloat(basePrice) }];
             } else {
-                 finalPortions = item.portions
-                  .filter(p => p.name.trim() && p.price && !isNaN(parseFloat(p.price)))
-                  .map(p => ({ name: p.name.trim(), price: parseFloat(p.price) }));
+                finalPortions = item.portions
+                    .filter(p => p.name.trim() && p.price && !isNaN(parseFloat(p.price)))
+                    .map(p => ({ name: p.name.trim(), price: parseFloat(p.price) }));
             }
-            
+
             const finalAddOnGroups = item.addOnGroups
                 .filter(g => g.title.trim() && g.options.some(opt => opt.name.trim() && opt.price))
                 .map(g => ({
@@ -409,7 +432,7 @@ const AddItemModal = ({ isOpen, setIsOpen, onSave, editingItem, allCategories, s
                 }));
 
             if (finalPortions.length === 0) {
-                showInfoDialog({ isOpen: true, title: 'Input Error', message: "Please add at least one valid portion with a name and price."});
+                showInfoDialog({ isOpen: true, title: 'Input Error', message: "Please add at least one valid portion with a name and price." });
                 setIsSaving(false);
                 return;
             }
@@ -425,14 +448,14 @@ const AddItemModal = ({ isOpen, setIsOpen, onSave, editingItem, allCategories, s
                 tags: tagsArray,
                 addOnGroups: finalAddOnGroups,
             };
-            
+
 
             if (!newItemData.name) {
-                showInfoDialog({ isOpen: true, title: 'Input Error', message: "Please provide an item name."});
+                showInfoDialog({ isOpen: true, title: 'Input Error', message: "Please provide an item name." });
                 setIsSaving(false);
                 return;
             }
-            
+
             await onSave(newItemData, finalCategoryId, finalNewCategoryName, !!editingItem);
             setIsOpen(false);
         } catch (error) {
@@ -468,7 +491,7 @@ const AddItemModal = ({ isOpen, setIsOpen, onSave, editingItem, allCategories, s
                             <div className="grid grid-cols-4 items-center gap-4">
                                 <Label htmlFor="category" className="text-right">Category</Label>
                                 <select id="category" value={item.categoryId} onChange={handleCategoryChange} className="col-span-3 p-2 border rounded-md bg-input border-border ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:opacity-70">
-                                    {sortedCategories.map(({id, title}) => (
+                                    {sortedCategories.map(({ id, title }) => (
                                         <option key={id} value={id}>{title}</option>
                                     ))}
                                     <option value="add_new" className="font-bold text-primary">+ Add New Category...</option>
@@ -484,7 +507,7 @@ const AddItemModal = ({ isOpen, setIsOpen, onSave, editingItem, allCategories, s
                                 <Label htmlFor="tags" className="text-right">Tags</Label>
                                 <input id="tags" value={item.tags} onChange={e => handleChange('tags', e.target.value)} placeholder="e.g., Spicy, Chef's Special" className="col-span-3 p-2 border rounded-md bg-input border-border ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2" />
                             </div>
-                             <div className="grid grid-cols-4 items-center gap-4">
+                            <div className="grid grid-cols-4 items-center gap-4">
                                 <Label className="text-right">Image</Label>
                                 <div className="col-span-3 flex items-center gap-4">
                                     <div className="relative w-20 h-20 rounded-md border-2 border-dashed border-border flex items-center justify-center bg-muted overflow-hidden">
@@ -496,25 +519,25 @@ const AddItemModal = ({ isOpen, setIsOpen, onSave, editingItem, allCategories, s
                                     </div>
                                     <input type="file" ref={fileInputRef} onChange={handleImageUpload} accept="image/*" className="hidden" />
                                     <Button type="button" variant="outline" onClick={() => fileInputRef.current?.click()}>
-                                        <Upload size={16} className="mr-2"/>Upload
+                                        <Upload size={16} className="mr-2" />Upload
                                     </Button>
                                 </div>
                             </div>
-                             <div className="flex items-center justify-end gap-4 pt-4">
+                            <div className="flex items-center justify-end gap-4 pt-4">
                                 <div className="flex items-center space-x-2">
-                                   <Switch id="is-veg" checked={item.isVeg} onCheckedChange={checked => handleChange('isVeg', checked)} />
-                                   <Label htmlFor="is-veg">Vegetarian</Label>
+                                    <Switch id="is-veg" checked={item.isVeg} onCheckedChange={checked => handleChange('isVeg', checked)} />
+                                    <Label htmlFor="is-veg">Vegetarian</Label>
                                 </div>
                                 <div className="flex items-center space-x-2">
-                                   <Switch id="is-available" checked={item.isAvailable} onCheckedChange={checked => handleChange('isAvailable', checked)} />
-                                   <Label htmlFor="is-available">Available</Label>
+                                    <Switch id="is-available" checked={item.isAvailable} onCheckedChange={checked => handleChange('isAvailable', checked)} />
+                                    <Label htmlFor="is-available">Available</Label>
                                 </div>
                             </div>
                         </div>
 
                         {/* Right Column: Portions & Add-ons */}
                         <div className="space-y-4">
-                           <div>
+                            <div>
                                 <Label>Pricing</Label>
                                 <div className="flex items-center gap-2 mt-2 bg-muted p-1 rounded-lg">
                                     <Button type="button" onClick={() => setPricingType('single')} variant={pricingType === 'single' ? 'default' : 'ghost'} className={cn("flex-1", pricingType === 'single' && 'bg-background text-foreground shadow-sm')}>Single Price</Button>
@@ -524,23 +547,23 @@ const AddItemModal = ({ isOpen, setIsOpen, onSave, editingItem, allCategories, s
                                     {pricingType === 'single' ? (
                                         <div className="flex items-center gap-2">
                                             <Label className="w-24">Base Price</Label>
-                                            <IndianRupee className="text-muted-foreground" size={16}/>
-                                            <input type="number" value={item.portions?.[0]?.price || ''} onChange={(e) => handleBasePriceChange(e.target.value)} placeholder="e.g., 150" className="flex-1 p-2 border rounded-md bg-input border-border" required/>
+                                            <IndianRupee className="text-muted-foreground" size={16} />
+                                            <input type="number" value={item.portions?.[0]?.price || ''} onChange={(e) => handleBasePriceChange(e.target.value)} placeholder="e.g., 150" className="flex-1 p-2 border rounded-md bg-input border-border" required />
                                         </div>
                                     ) : (
                                         <>
                                             {item.portions.map((portion, index) => (
                                                 <div key={index} className="flex items-center gap-2">
-                                                    <input value={portion.name} onChange={(e) => handlePortionChange(index, 'name', e.target.value)} placeholder="e.g., Half" className="flex-1 p-2 border rounded-md bg-input border-border" required/>
-                                                    <IndianRupee className="text-muted-foreground" size={16}/>
-                                                    <input type="number" value={portion.price} onChange={(e) => handlePortionChange(index, 'price', e.target.value)} placeholder="Price" className="w-24 p-2 border rounded-md bg-input border-border" required/>
+                                                    <input value={portion.name} onChange={(e) => handlePortionChange(index, 'name', e.target.value)} placeholder="e.g., Half" className="flex-1 p-2 border rounded-md bg-input border-border" required />
+                                                    <IndianRupee className="text-muted-foreground" size={16} />
+                                                    <input type="number" value={portion.price} onChange={(e) => handlePortionChange(index, 'price', e.target.value)} placeholder="Price" className="w-24 p-2 border rounded-md bg-input border-border" required />
                                                     <Button type="button" variant="ghost" size="icon" className="text-destructive" onClick={() => removePortion(index)} disabled={item.portions.length <= 1}>
-                                                        <Trash2 size={16}/>
+                                                        <Trash2 size={16} />
                                                     </Button>
                                                 </div>
                                             ))}
                                             <Button type="button" variant="outline" size="sm" onClick={addPortion}>
-                                                <PlusCircle size={16} className="mr-2"/> Add Portion
+                                                <PlusCircle size={16} className="mr-2" /> Add Portion
                                             </Button>
                                         </>
                                     )}
@@ -553,22 +576,22 @@ const AddItemModal = ({ isOpen, setIsOpen, onSave, editingItem, allCategories, s
                                         <div key={groupIndex} className="p-3 bg-muted/50 border border-border rounded-lg space-y-3">
                                             <div className="flex items-center gap-2">
                                                 <input value={group.title} onChange={(e) => handleAddOnGroupChange(groupIndex, 'title', e.target.value)} placeholder="Group Title (e.g., Breads)" className="flex-1 p-2 border rounded-md bg-input border-border text-foreground font-semibold" />
-                                                <Button type="button" variant="ghost" size="icon" className="text-destructive" onClick={() => removeAddOnGroup(groupIndex)}><Trash2 size={16}/></Button>
+                                                <Button type="button" variant="ghost" size="icon" className="text-destructive" onClick={() => removeAddOnGroup(groupIndex)}><Trash2 size={16} /></Button>
                                             </div>
                                             {group.options.map((opt, optIndex) => (
-                                                 <div key={optIndex} className="flex items-center gap-2">
-                                                    <input value={opt.name} onChange={(e) => handleAddOnOptionChange(groupIndex, optIndex, 'name', e.target.value)} placeholder="Option name" className="flex-1 p-2 border rounded-md bg-input border-border"/>
-                                                    <input type="number" value={opt.price} onChange={(e) => handleAddOnOptionChange(groupIndex, optIndex, 'price', e.target.value)} placeholder="Price" className="w-24 p-2 border rounded-md bg-input border-border"/>
-                                                    <Button type="button" variant="ghost" size="icon" className="text-destructive" onClick={() => removeAddOnOption(groupIndex, optIndex)} disabled={group.options.length <= 1}><Trash2 size={16}/></Button>
-                                                 </div>
+                                                <div key={optIndex} className="flex items-center gap-2">
+                                                    <input value={opt.name} onChange={(e) => handleAddOnOptionChange(groupIndex, optIndex, 'name', e.target.value)} placeholder="Option name" className="flex-1 p-2 border rounded-md bg-input border-border" />
+                                                    <input type="number" value={opt.price} onChange={(e) => handleAddOnOptionChange(groupIndex, optIndex, 'price', e.target.value)} placeholder="Price" className="w-24 p-2 border rounded-md bg-input border-border" />
+                                                    <Button type="button" variant="ghost" size="icon" className="text-destructive" onClick={() => removeAddOnOption(groupIndex, optIndex)} disabled={group.options.length <= 1}><Trash2 size={16} /></Button>
+                                                </div>
                                             ))}
                                             <Button type="button" variant="outline" size="sm" onClick={() => addAddOnOption(groupIndex)}>
-                                                <PlusCircle size={16} className="mr-2"/> Add Option
+                                                <PlusCircle size={16} className="mr-2" /> Add Option
                                             </Button>
                                         </div>
                                     ))}
                                     <Button type="button" variant="outline" onClick={addAddOnGroup}>
-                                       <PlusCircle size={16} className="mr-2"/> Add Add-on Group
+                                        <PlusCircle size={16} className="mr-2" /> Add Add-on Group
                                     </Button>
                                 </div>
                             </div>
@@ -576,7 +599,7 @@ const AddItemModal = ({ isOpen, setIsOpen, onSave, editingItem, allCategories, s
                     </div>
                     <DialogFooter>
                         <DialogClose asChild>
-                           <Button type="button" variant="secondary" disabled={isSaving}>Cancel</Button>
+                            <Button type="button" variant="secondary" disabled={isSaving}>Cancel</Button>
                         </DialogClose>
                         <Button type="submit" disabled={isSaving} className="bg-primary hover:bg-primary/90 text-primary-foreground">
                             {isSaving ? (
@@ -649,14 +672,14 @@ ${placeholderText}
             setTimeout(() => setCopySuccess(''), 2000);
         });
     };
-    
+
     const handleSubmit = async () => {
         let items;
         try {
             items = JSON.parse(jsonText);
             if (!Array.isArray(items)) throw new Error("JSON data must be an array.");
         } catch (error) {
-            showInfoDialog({isOpen: true, title: 'Input Error', message: `Invalid JSON format: ${error.message}`});
+            showInfoDialog({ isOpen: true, title: 'Input Error', message: `Invalid JSON format: ${error.message}` });
             return;
         }
 
@@ -694,7 +717,7 @@ ${placeholderText}
                             <div className="flex justify-between items-center mb-2">
                                 <Label className="font-semibold">AI Prompt for JSON Generation</Label>
                                 <Button size="sm" variant="ghost" onClick={handleCopy}>
-                                    <Copy size={14} className="mr-2"/> {copySuccess || 'Copy'}
+                                    <Copy size={14} className="mr-2" /> {copySuccess || 'Copy'}
                                 </Button>
                             </div>
                             <p className="text-xs bg-background p-3 rounded-md font-mono whitespace-pre-wrap">{aiPrompt}</p>
@@ -727,302 +750,302 @@ const MotionButton = motion(Button);
 
 // --- Main Page Component ---
 export default function MenuPage() {
-  const [menu, setMenu] = useState({});
-  const [customCategories, setCustomCategories] = useState([]);
-  const [businessType, setBusinessType] = useState('restaurant');
-  const [loading, setLoading] = useState(true);
-  const [isModalOpen, setIsModalOpen] = useState(false);
-  const [isBulkModalOpen, setIsBulkModalOpen] = useState(false);
-  const [editingItem, setEditingItem] = useState(null);
-  const [openCategory, setOpenCategory] = useState(null);
-  const [selectedItems, setSelectedItems] = useState([]);
-  const searchParams = useSearchParams();
-  const impersonatedOwnerId = searchParams.get('impersonate_owner_id');
-  const [infoDialog, setInfoDialog] = useState({ isOpen: false, title: '', message: '' });
-  
-  const handleApiCall = async (endpoint, method, body) => {
-    const user = auth.currentUser;
-    if (!user) throw new Error("User not authenticated.");
-    const idToken = await user.getIdToken();
-    
-    let url = new URL(endpoint, window.location.origin);
-    if (impersonatedOwnerId) {
-        url.searchParams.append('impersonate_owner_id', impersonatedOwnerId);
-    }
+    const [menu, setMenu] = useState({});
+    const [customCategories, setCustomCategories] = useState([]);
+    const [businessType, setBusinessType] = useState('restaurant');
+    const [loading, setLoading] = useState(true);
+    const [isModalOpen, setIsModalOpen] = useState(false);
+    const [isBulkModalOpen, setIsBulkModalOpen] = useState(false);
+    const [editingItem, setEditingItem] = useState(null);
+    const [openCategory, setOpenCategory] = useState(null);
+    const [selectedItems, setSelectedItems] = useState([]);
+    const searchParams = useSearchParams();
+    const impersonatedOwnerId = searchParams.get('impersonate_owner_id');
+    const [infoDialog, setInfoDialog] = useState({ isOpen: false, title: '', message: '' });
 
-    const res = await fetch(url.toString(), {
-      method,
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${idToken}` },
-      body: JSON.stringify(body),
-    });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.message || `API call failed: ${method} ${endpoint}`);
-    return data;
-  }
-
-  const fetchMenu = async () => {
-    setLoading(true);
-    try {
+    const handleApiCall = async (endpoint, method, body) => {
         const user = auth.currentUser;
-        if (!user) { setLoading(false); return; }
-        const data = await handleApiCall('/api/owner/menu', 'GET');
-        setMenu(data.menu || {});
-        setCustomCategories(data.customCategories || []);
-        setBusinessType(data.businessType || 'restaurant');
-        if (data.menu && Object.keys(data.menu).length > 0) {
-            setOpenCategory(Object.keys(data.menu)[0]);
+        if (!user) throw new Error("User not authenticated.");
+        const idToken = await user.getIdToken();
+
+        let url = new URL(endpoint, window.location.origin);
+        if (impersonatedOwnerId) {
+            url.searchParams.append('impersonate_owner_id', impersonatedOwnerId);
         }
-    } catch (error) {
-        console.error("Error fetching menu:", error);
-        setInfoDialog({isOpen: true, title: "Error", message: "Could not fetch menu. " + error.message});
-    } finally {
-        setLoading(false);
-    }
-  };
-  
-  useEffect(() => {
-    const unsubscribe = auth.onAuthStateChanged(user => {
-        if (user) fetchMenu();
-        else setLoading(false);
-    });
-    return () => unsubscribe();
-  }, [impersonatedOwnerId]);
-  
-  const allCategories = { ...(businessType === 'restaurant' ? restaurantCategoryConfig : shopCategoryConfig) };
-  customCategories.forEach(cat => {
-    if (!allCategories[cat.id]) {
-      allCategories[cat.id] = { title: cat.title, icon: Utensils };
-    }
-  });
 
-
-  const handleSaveItem = async (itemData, categoryId, newCategory, isEditing) => {
-    try {
-        const data = await handleApiCall('/api/owner/menu', 'POST', { item: itemData, categoryId, newCategory, isEditing });
-        setInfoDialog({isOpen: true, title: 'Success', message: data.message});
-        await fetchMenu();
-    } catch (error) {
-        console.error("Error saving item:", error);
-        setInfoDialog({isOpen: true, title: "Error", message: "Could not save item. " + error.message});
-        throw error; // Re-throw to keep modal open
-    }
-  };
-
-  const handleBulkSave = async (items) => {
-    try {
-        const data = await handleApiCall('/api/owner/menu-bulk', 'POST', { items });
-        setInfoDialog({isOpen: true, title: 'Success', message: data.message});
-        await fetchMenu();
-    } catch (error) {
-        console.error("Error saving bulk items:", error);
-        setInfoDialog({isOpen: true, title: "Error", message: `Could not save bulk items: ${error.message}`});
-        throw error;
-    }
-  };
-
-  const handleEditItem = (item) => {
-    const categoryId = Object.keys(menu).find(key => 
-        (menu[key] || []).some(i => i.id === item.id)
-    );
-    setEditingItem({ ...item, categoryId: categoryId || Object.keys(allCategories)[0] });
-    setIsModalOpen(true);
-  };
-  
-  const handleAddNewItem = () => {
-      setEditingItem(null);
-      setIsModalOpen(true);
-  };
-
-  const handleDeleteItem = async (itemId) => {
-    if (window.confirm(`Are you sure you want to delete this item?`)) {
-       try {
-            await handleApiCall('/api/owner/menu', 'DELETE', { itemId });
-            setInfoDialog({isOpen: true, title: 'Success', message: 'Item deleted successfully!'});
-            await fetchMenu();
-       } catch (error) {
-           console.error("Error deleting item:", error);
-           setInfoDialog({isOpen: true, title: 'Error', message: "Could not delete item. " + error.message});
-       }
-    }
-  };
-  
-  const handleToggleAvailability = async (itemId, newAvailability) => {
-     try {
-        await handleApiCall('/api/owner/menu', 'PATCH', { updates: { id: itemId, isAvailable: newAvailability }});
-        // Optimistic update
-        setMenu(prevMenu => {
-            const newMenuState = { ...prevMenu };
-            for (const category in newMenuState) {
-                newMenuState[category] = newMenuState[category].map(item => 
-                    item.id === itemId ? { ...item, isAvailable: newAvailability } : item
-                );
-            }
-            return newMenuState;
+        const res = await fetch(url.toString(), {
+            method,
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${idToken}` },
+            body: JSON.stringify(body),
         });
-     } catch (error) {
-        console.error("Error toggling availability:", error);
-        setInfoDialog({isOpen: true, title: 'Error', message: "Could not update item availability. " + error.message});
-        fetchMenu(); // Re-sync with server on error
-     }
-  };
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.message || `API call failed: ${method} ${endpoint}`);
+        return data;
+    }
 
-  const handleBulkDelete = async () => {
-    if (window.confirm(`Are you sure you want to delete ${selectedItems.length} items? This action cannot be undone.`)) {
+    const fetchMenu = async () => {
+        setLoading(true);
         try {
-            await handleApiCall('/api/owner/menu', 'PATCH', { itemIds: selectedItems, action: 'delete' });
-            setInfoDialog({isOpen: true, title: 'Success', message: `${selectedItems.length} items deleted successfully!`});
-            setSelectedItems([]);
+            const user = auth.currentUser;
+            if (!user) { setLoading(false); return; }
+            const data = await handleApiCall('/api/owner/menu', 'GET');
+            setMenu(data.menu || {});
+            setCustomCategories(data.customCategories || []);
+            setBusinessType(data.businessType || 'restaurant');
+            if (data.menu && Object.keys(data.menu).length > 0) {
+                setOpenCategory(Object.keys(data.menu)[0]);
+            }
+        } catch (error) {
+            console.error("Error fetching menu:", error);
+            setInfoDialog({ isOpen: true, title: "Error", message: "Could not fetch menu. " + error.message });
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    useEffect(() => {
+        const unsubscribe = auth.onAuthStateChanged(user => {
+            if (user) fetchMenu();
+            else setLoading(false);
+        });
+        return () => unsubscribe();
+    }, [impersonatedOwnerId]);
+
+    const allCategories = { ...(businessType === 'restaurant' ? restaurantCategoryConfig : shopCategoryConfig) };
+    customCategories.forEach(cat => {
+        if (!allCategories[cat.id]) {
+            allCategories[cat.id] = { title: cat.title, icon: Utensils };
+        }
+    });
+
+
+    const handleSaveItem = async (itemData, categoryId, newCategory, isEditing) => {
+        try {
+            const data = await handleApiCall('/api/owner/menu', 'POST', { item: itemData, categoryId, newCategory, isEditing });
+            setInfoDialog({ isOpen: true, title: 'Success', message: data.message });
             await fetchMenu();
         } catch (error) {
-            console.error("Error bulk deleting items:", error);
-            setInfoDialog({isOpen: true, title: 'Error', message: "Could not delete items. " + error.message});
+            console.error("Error saving item:", error);
+            setInfoDialog({ isOpen: true, title: "Error", message: "Could not save item. " + error.message });
+            throw error; // Re-throw to keep modal open
         }
-    }
-  };
+    };
 
-  const handleBulkOutOfStock = async () => {
-     if (window.confirm(`Are you sure you want to mark ${selectedItems.length} items as out of stock?`)) {
+    const handleBulkSave = async (items) => {
         try {
-            await handleApiCall('/api/owner/menu', 'PATCH', { itemIds: selectedItems, action: 'outOfStock' });
-            setInfoDialog({isOpen: true, title: 'Success', message: `${selectedItems.length} items marked as out of stock!`});
-            setSelectedItems([]);
+            const data = await handleApiCall('/api/owner/menu-bulk', 'POST', { items });
+            setInfoDialog({ isOpen: true, title: 'Success', message: data.message });
             await fetchMenu();
         } catch (error) {
-            console.error("Error marking items out of stock:", error);
-            setInfoDialog({isOpen: true, title: 'Error', message: "Could not update items. " + error.message});
+            console.error("Error saving bulk items:", error);
+            setInfoDialog({ isOpen: true, title: "Error", message: `Could not save bulk items: ${error.message}` });
+            throw error;
         }
+    };
+
+    const handleEditItem = (item) => {
+        const categoryId = Object.keys(menu).find(key =>
+            (menu[key] || []).some(i => i.id === item.id)
+        );
+        setEditingItem({ ...item, categoryId: categoryId || Object.keys(allCategories)[0] });
+        setIsModalOpen(true);
+    };
+
+    const handleAddNewItem = () => {
+        setEditingItem(null);
+        setIsModalOpen(true);
+    };
+
+    const handleDeleteItem = async (itemId) => {
+        if (window.confirm(`Are you sure you want to delete this item?`)) {
+            try {
+                await handleApiCall('/api/owner/menu', 'DELETE', { itemId });
+                setInfoDialog({ isOpen: true, title: 'Success', message: 'Item deleted successfully!' });
+                await fetchMenu();
+            } catch (error) {
+                console.error("Error deleting item:", error);
+                setInfoDialog({ isOpen: true, title: 'Error', message: "Could not delete item. " + error.message });
+            }
+        }
+    };
+
+    const handleToggleAvailability = async (itemId, newAvailability) => {
+        try {
+            await handleApiCall('/api/owner/menu', 'PATCH', { updates: { id: itemId, isAvailable: newAvailability } });
+            // Optimistic update
+            setMenu(prevMenu => {
+                const newMenuState = { ...prevMenu };
+                for (const category in newMenuState) {
+                    newMenuState[category] = newMenuState[category].map(item =>
+                        item.id === itemId ? { ...item, isAvailable: newAvailability } : item
+                    );
+                }
+                return newMenuState;
+            });
+        } catch (error) {
+            console.error("Error toggling availability:", error);
+            setInfoDialog({ isOpen: true, title: 'Error', message: "Could not update item availability. " + error.message });
+            fetchMenu(); // Re-sync with server on error
+        }
+    };
+
+    const handleBulkDelete = async () => {
+        if (window.confirm(`Are you sure you want to delete ${selectedItems.length} items? This action cannot be undone.`)) {
+            try {
+                await handleApiCall('/api/owner/menu', 'PATCH', { itemIds: selectedItems, action: 'delete' });
+                setInfoDialog({ isOpen: true, title: 'Success', message: `${selectedItems.length} items deleted successfully!` });
+                setSelectedItems([]);
+                await fetchMenu();
+            } catch (error) {
+                console.error("Error bulk deleting items:", error);
+                setInfoDialog({ isOpen: true, title: 'Error', message: "Could not delete items. " + error.message });
+            }
+        }
+    };
+
+    const handleBulkOutOfStock = async () => {
+        if (window.confirm(`Are you sure you want to mark ${selectedItems.length} items as out of stock?`)) {
+            try {
+                await handleApiCall('/api/owner/menu', 'PATCH', { itemIds: selectedItems, action: 'outOfStock' });
+                setInfoDialog({ isOpen: true, title: 'Success', message: `${selectedItems.length} items marked as out of stock!` });
+                setSelectedItems([]);
+                await fetchMenu();
+            } catch (error) {
+                console.error("Error marking items out of stock:", error);
+                setInfoDialog({ isOpen: true, title: 'Error', message: "Could not update items. " + error.message });
+            }
+        }
+    };
+
+    const pageTitle = businessType === 'shop' ? 'Item Catalog' : 'Menu Management';
+    const pageDescription = businessType === 'shop' ? 'Organize categories, manage products, and control availability.' : 'Organize categories, reorder items, and manage availability.';
+    const searchPlaceholder = businessType === 'shop' ? 'Search for a product...' : 'Search for a dish...';
+    const addNewText = businessType === 'shop' ? 'Add New Product' : 'Add New Dish';
+
+
+    if (loading) {
+        return (
+            <div className="p-6 text-center h-screen flex items-center justify-center">
+                <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-primary"></div>
+            </div>
+        );
     }
-  };
-  
-  const pageTitle = businessType === 'shop' ? 'Item Catalog' : 'Menu Management';
-  const pageDescription = businessType === 'shop' ? 'Organize categories, manage products, and control availability.' : 'Organize categories, reorder items, and manage availability.';
-  const searchPlaceholder = businessType === 'shop' ? 'Search for a product...' : 'Search for a dish...';
-  const addNewText = businessType === 'shop' ? 'Add New Product' : 'Add New Dish';
 
-
-  if (loading) {
     return (
-        <div className="p-6 text-center h-screen flex items-center justify-center">
-            <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-primary"></div>
+        <div className="p-4 md:p-6 space-y-6 bg-background text-foreground min-h-screen">
+            <InfoDialog
+                isOpen={infoDialog.isOpen}
+                onClose={() => setInfoDialog({ isOpen: false, title: '', message: '' })}
+                title={infoDialog.title}
+                message={infoDialog.message}
+            />
+            <AddItemModal
+                isOpen={isModalOpen}
+                setIsOpen={setIsModalOpen}
+                onSave={handleSaveItem}
+                editingItem={editingItem}
+                allCategories={allCategories}
+                showInfoDialog={setInfoDialog}
+            />
+
+            <BulkAddModal
+                isOpen={isBulkModalOpen}
+                setIsOpen={setIsBulkModalOpen}
+                onSave={handleBulkSave}
+                businessType={businessType}
+                showInfoDialog={setInfoDialog}
+            />
+
+            {/* Header */}
+            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+                <div>
+                    <h1 className="text-3xl md:text-4xl font-bold tracking-tight text-foreground">{pageTitle}</h1>
+                    <p className="text-muted-foreground mt-1">{pageDescription}</p>
+                </div>
+                <div className="flex gap-2">
+                    <MotionButton
+                        onClick={() => setIsBulkModalOpen(true)}
+                        variant="outline"
+                        whileHover={{ scale: 1.05 }}
+                        whileTap={{ scale: 0.95 }}
+                    >
+                        <FileJson size={20} className="mr-2" />
+                        Bulk Add via JSON
+                    </MotionButton>
+                    <MotionButton
+                        onClick={handleAddNewItem}
+                        className="bg-primary text-primary-foreground hover:bg-primary/90"
+                        whileHover={{ scale: 1.05 }}
+                        whileTap={{ scale: 0.95 }}
+                    >
+                        <PlusCircle size={20} className="mr-2" />
+                        {addNewText}
+                    </MotionButton>
+                </div>
+            </div>
+
+            {/* Search & Bulk Actions Bar */}
+            <div className="flex flex-col md:flex-row justify-between items-center gap-4 p-3 bg-card border border-border rounded-xl">
+                <div className="flex items-center gap-2 w-full max-w-sm">
+                    <Search size={20} className="text-muted-foreground" />
+                    <input placeholder={searchPlaceholder} className="w-full bg-transparent focus:outline-none placeholder-muted-foreground text-foreground" />
+                </div>
+            </div>
+
+            {/* Menu Categories */}
+            <div className="space-y-4 pb-24">
+                {Object.keys(allCategories).sort((a, b) => {
+                    const titleA = allCategories[a]?.title;
+                    const titleB = allCategories[b]?.title;
+                    if (!titleA) return 1;
+                    if (!titleB) return -1;
+                    return titleA.localeCompare(titleB);
+                }).map(categoryId => {
+                    const config = allCategories[categoryId];
+                    const items = menu[categoryId] || [];
+                    if (!config || items.length === 0 && !customCategories.some(c => c.id === categoryId)) return null;
+
+                    return (
+                        <MenuCategory
+                            key={categoryId}
+                            categoryId={categoryId}
+                            title={config.title}
+                            icon={config.icon || Utensils}
+                            items={items}
+                            onDeleteItem={handleDeleteItem}
+                            onEditItem={handleEditItem}
+                            onToggleAvailability={handleToggleAvailability}
+                            setMenu={setMenu}
+                            open={openCategory}
+                            setOpen={setOpenCategory}
+                            selectedItems={selectedItems}
+                            setSelectedItems={setSelectedItems}
+                        />
+                    );
+                })}
+            </div>
+
+            <AnimatePresence>
+                {selectedItems.length > 0 && (
+                    <motion.div
+                        className="fixed bottom-4 left-1/2 -translate-x-1/2 w-auto bg-card border border-border rounded-xl shadow-2xl p-3 flex items-center gap-4 z-50"
+                        initial={{ y: 100, opacity: 0 }}
+                        animate={{ y: 0, opacity: 1 }}
+                        exit={{ y: 100, opacity: 0 }}
+                    >
+                        <p className="text-sm font-semibold">{selectedItems.length} item(s) selected</p>
+                        <Button variant="outline" size="sm" onClick={handleBulkOutOfStock}>
+                            <XCircle size={16} className="mr-2" /> Mark Out of Stock
+                        </Button>
+                        <Button variant="destructive" size="sm" onClick={handleBulkDelete}>
+                            <Trash2 size={16} className="mr-2" /> Delete Selected
+                        </Button>
+                        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setSelectedItems([])}>
+                            <X size={16} />
+                        </Button>
+                    </motion.div>
+                )}
+            </AnimatePresence>
         </div>
     );
-  }
-
-  return (
-    <div className="p-4 md:p-6 space-y-6 bg-background text-foreground min-h-screen">
-      <InfoDialog
-        isOpen={infoDialog.isOpen}
-        onClose={() => setInfoDialog({ isOpen: false, title: '', message: '' })}
-        title={infoDialog.title}
-        message={infoDialog.message}
-      />
-      <AddItemModal 
-        isOpen={isModalOpen} 
-        setIsOpen={setIsModalOpen}
-        onSave={handleSaveItem}
-        editingItem={editingItem}
-        allCategories={allCategories}
-        showInfoDialog={setInfoDialog}
-      />
-
-      <BulkAddModal
-        isOpen={isBulkModalOpen}
-        setIsOpen={setIsBulkModalOpen}
-        onSave={handleBulkSave}
-        businessType={businessType}
-        showInfoDialog={setInfoDialog}
-      />
-
-      {/* Header */}
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-        <div>
-            <h1 className="text-3xl md:text-4xl font-bold tracking-tight text-foreground">{pageTitle}</h1>
-            <p className="text-muted-foreground mt-1">{pageDescription}</p>
-        </div>
-        <div className="flex gap-2">
-            <MotionButton
-                onClick={() => setIsBulkModalOpen(true)}
-                variant="outline"
-                whileHover={{ scale: 1.05 }}
-                whileTap={{ scale: 0.95 }}
-            >
-                <FileJson size={20} className="mr-2" />
-                Bulk Add via JSON
-            </MotionButton>
-            <MotionButton 
-                onClick={handleAddNewItem}
-                className="bg-primary text-primary-foreground hover:bg-primary/90"
-                whileHover={{ scale: 1.05 }}
-                whileTap={{ scale: 0.95 }}
-            >
-                <PlusCircle size={20} className="mr-2" />
-                {addNewText}
-            </MotionButton>
-        </div>
-      </div>
-
-      {/* Search & Bulk Actions Bar */}
-      <div className="flex flex-col md:flex-row justify-between items-center gap-4 p-3 bg-card border border-border rounded-xl">
-        <div className="flex items-center gap-2 w-full max-w-sm">
-            <Search size={20} className="text-muted-foreground"/>
-            <input placeholder={searchPlaceholder} className="w-full bg-transparent focus:outline-none placeholder-muted-foreground text-foreground"/>
-        </div>
-      </div>
-      
-      {/* Menu Categories */}
-      <div className="space-y-4 pb-24">
-        {Object.keys(allCategories).sort((a, b) => {
-            const titleA = allCategories[a]?.title;
-            const titleB = allCategories[b]?.title;
-            if (!titleA) return 1;
-            if (!titleB) return -1;
-            return titleA.localeCompare(titleB);
-          }).map(categoryId => {
-            const config = allCategories[categoryId];
-            const items = menu[categoryId] || [];
-            if (!config || items.length === 0 && !customCategories.some(c => c.id === categoryId)) return null;
-            
-            return (
-                <MenuCategory
-                    key={categoryId}
-                    categoryId={categoryId}
-                    title={config.title}
-                    icon={config.icon || Utensils}
-                    items={items}
-                    onDeleteItem={handleDeleteItem}
-                    onEditItem={handleEditItem}
-                    onToggleAvailability={handleToggleAvailability}
-                    setMenu={setMenu}
-                    open={openCategory}
-                    setOpen={setOpenCategory}
-                    selectedItems={selectedItems}
-                    setSelectedItems={setSelectedItems}
-                />
-            );
-        })}
-      </div>
-
-      <AnimatePresence>
-        {selectedItems.length > 0 && (
-            <motion.div 
-                className="fixed bottom-4 left-1/2 -translate-x-1/2 w-auto bg-card border border-border rounded-xl shadow-2xl p-3 flex items-center gap-4 z-50"
-                initial={{ y: 100, opacity: 0 }}
-                animate={{ y: 0, opacity: 1 }}
-                exit={{ y: 100, opacity: 0 }}
-            >
-                <p className="text-sm font-semibold">{selectedItems.length} item(s) selected</p>
-                <Button variant="outline" size="sm" onClick={handleBulkOutOfStock}>
-                    <XCircle size={16} className="mr-2" /> Mark Out of Stock
-                </Button>
-                <Button variant="destructive" size="sm" onClick={handleBulkDelete}>
-                    <Trash2 size={16} className="mr-2" /> Delete Selected
-                </Button>
-                <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setSelectedItems([])}>
-                    <X size={16} />
-                </Button>
-            </motion.div>
-        )}
-      </AnimatePresence>
-    </div>
-  );
 }
