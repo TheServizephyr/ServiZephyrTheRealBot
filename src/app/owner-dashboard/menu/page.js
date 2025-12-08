@@ -1,7 +1,7 @@
 
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { PlusCircle, GripVertical, Trash2, Edit, Image as ImageIcon, Search, X, Utensils, Pizza, Soup, Drumstick, Salad, CakeSlice, GlassWater, ChevronDown, IndianRupee, Upload, Copy, FileJson, XCircle, ShoppingBag, Laptop, BookOpen, ToyBrick } from "lucide-react";
 import Image from "next/image";
@@ -811,12 +811,15 @@ export default function MenuPage() {
         return () => unsubscribe();
     }, [impersonatedOwnerId]);
 
-    const allCategories = { ...(businessType === 'restaurant' ? restaurantCategoryConfig : shopCategoryConfig) };
-    customCategories.forEach(cat => {
-        if (!allCategories[cat.id]) {
-            allCategories[cat.id] = { title: cat.title, icon: Utensils };
-        }
-    });
+    const allCategories = useMemo(() => {
+        const categories = { ...(businessType === 'restaurant' ? restaurantCategoryConfig : shopCategoryConfig) };
+        customCategories.forEach(cat => {
+            if (!categories[cat.id]) {
+                categories[cat.id] = { title: cat.title, icon: Utensils };
+            }
+        });
+        return categories;
+    }, [customCategories, businessType]);
 
 
     const handleSaveItem = async (itemData, categoryId, newCategory, isEditing) => {
