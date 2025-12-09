@@ -787,18 +787,39 @@ export default function StreetVendorMenuPage() {
             const data = await handleApiCall('/api/owner/menu', 'POST', { item: itemData, categoryId, newCategory, isEditing });
             setInfoDialog({ isOpen: true, title: 'Success', message: data.message });
 
-            // If impersonating, manually refresh because we don't have a listener
+            // Refetch menu and categories to get updated data
             if (impersonatedOwnerId) {
                 const fetchUnsub = await fetchMenu();
                 if (fetchUnsub) fetchUnsub();
+            } else {
+                // For normal vendors, optimistically update UI
+                if (isEditing) {
+                    setMenuItems(prev => prev.map(item =>
+                        item.id === itemData.id
+                            ? { ...item, ...itemData, categoryId: finalCategoryId }
+                            : item
+                    ));
+                }
+                // For new category, refetch customCategories
+                if (newCategory && newCategory.trim() !== '') {
+                    try {
+                        const vendorDocRef = doc(db, 'street_vendors', vendorId);
+                        const vendorDocSnap = await getDoc(vendorDocRef);
+                        if (vendorDocSnap.exists()) {
+                            const data = vendorDocSnap.data();
+                            setCustomCategories(data.customCategories || []);
+                        }
+                    } catch (error) {
+                        console.error('Error refetching custom categories:', error);
+                    }
+                }
             }
-            // If not impersonating, the listener will auto-update, but fetchMenu is safe to call
 
         } catch (error) {
             setInfoDialog({ isOpen: true, title: 'Error', message: `Could not save item: ${error.message}` });
             throw error;
         }
-    }, [user, fetchMenu, impersonatedOwnerId]);
+    }, [user, fetchMenu, impersonatedOwnerId, vendorId]);
 
 
     const handleAiScan = async (file) => {
