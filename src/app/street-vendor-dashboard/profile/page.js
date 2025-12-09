@@ -80,17 +80,17 @@ const CountrySelect = ({ value, onSelect, disabled }) => {
 
 const SectionCard = ({ title, description, children, footer, action }) => (
     <motion.div
-        className="bg-card border border-border rounded-xl shadow-lg hover:shadow-primary/20 hover:-translate-y-1 transition-all duration-300"
+        className="bg-card border border-border rounded-xl shadow-lg hover:shadow-primary/20 hover:-translate-y-1 transition-all duration-300 max-w-full overflow-hidden"
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.5 }}
     >
-        <div className="p-6 border-b border-border flex justify-between items-start">
-            <div>
-                <h2 className="text-xl font-bold text-foreground">{title}</h2>
-                {description && <p className="text-sm text-muted-foreground mt-1">{description}</p>}
+        <div className="p-6 border-b border-border flex justify-between items-start gap-4 max-w-full">
+            <div className="min-w-0 flex-grow">
+                <h2 className="text-xl font-bold text-foreground break-words">{title}</h2>
+                {description && <p className="text-sm text-muted-foreground mt-1 break-words">{description}</p>}
             </div>
-            {action && <div>{action}</div>}
+            {action && <div className="flex-shrink-0">{action}</div>}
         </div>
         {children && <div className="p-6">{children}</div>}
         {footer && <div className="p-6 bg-muted/30 border-t border-border rounded-b-xl">{footer}</div>}
@@ -425,7 +425,7 @@ function VendorProfilePageContent() {
     const isBusinessOwner = user.role === 'owner' || user.role === 'restaurant-owner' || user.role === 'shop-owner' || user.role === 'street-vendor';
 
     return (
-        <div className="p-4 md:p-6 text-foreground min-h-screen bg-background space-y-8">
+        <div className="p-4 md:p-6 text-foreground min-h-screen bg-background space-y-8 overflow-x-hidden max-w-full">
             <InfoDialog isOpen={infoDialog.isOpen} onClose={() => setInfoDialog({ isOpen: false, title: '', message: '' })} title={infoDialog.title} message={infoDialog.message} />
             <DeleteAccountModal isOpen={isDeleteModalOpen} setIsOpen={setDeleteModalOpen} />
 
