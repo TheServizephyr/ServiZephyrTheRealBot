@@ -8,7 +8,7 @@ import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { useUser, useMemoFirebase, useCollection } from '@/firebase';
 import { db, auth, storage } from '@/lib/firebase';
-import { collection, query, where, onSnapshot, doc, updateDoc, deleteDoc, getDocs } from 'firebase/firestore';
+import { collection, query, where, onSnapshot, doc, updateDoc, deleteDoc, getDocs, getDoc } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { FirestorePermissionError } from '@/firebase/errors';
 import { errorEmitter } from '@/firebase/error-emitter';
@@ -605,6 +605,26 @@ export default function StreetVendorMenuPage() {
     const searchParams = useSearchParams();
     const impersonatedOwnerId = searchParams.get('impersonate_owner_id');
 
+    // Fetch customCategories from Firebase for normal vendors
+    useEffect(() => {
+        if (!vendorId || impersonatedOwnerId) return; // Skip if impersonating (API handles it)
+
+        const fetchCustomCategories = async () => {
+            try {
+                const vendorDocRef = doc(db, 'street_vendors', vendorId);
+                const vendorDocSnap = await getDoc(vendorDocRef);
+                if (vendorDocSnap.exists()) {
+                    const data = vendorDocSnap.data();
+                    setCustomCategories(data.customCategories || []);
+                }
+            } catch (error) {
+                console.error('Error fetching custom categories:', error);
+            }
+        };
+
+        fetchCustomCategories();
+    }, [vendorId, impersonatedOwnerId]);
+
     const fetchMenu = useCallback(async () => {
         if (!user) {
             setLoading(false);
@@ -915,18 +935,18 @@ export default function StreetVendorMenuPage() {
         }
     };
 
-    const allCategories = {
-        'snacks': { title: 'Snacks' },
-        'chaat': { title: 'Chaat' },
-        'rolls': { title: 'Rolls' },
-        'beverages': { title: 'Beverages' },
-        'main-course': { title: 'Main Course' },
-        'sweets': { title: 'Sweets' },
-        ...customCategories.reduce((acc, cat) => {
-            acc[cat.id] = { title: cat.title };
-            return acc;
-        }, {}),
-    };
+    // Dynamic categories - only from database, no hardcoded categories
+    const allCategories = useMemo(() => {
+        const categories = {};
+        customCategories.forEach(cat => {
+            categories[cat.id] = { title: cat.title };
+        });
+        // Add fallback 'general' category if no categories exist
+        if (Object.keys(categories).length === 0) {
+            categories['general'] = { title: 'General' };
+        }
+        return categories;
+    }, [customCategories]);
 
 
     const groupedMenu = menuItems.reduce((acc, item) => {
