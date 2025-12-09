@@ -124,7 +124,8 @@ export async function POST(req) {
         // If there are new categories, update business document
         if (newCategories.length > 0) {
             const updatedCategories = [...currentCustomCategories, ...newCategories];
-            batch.update(businessRef, { customCategories: updatedCategories });
+            // Use set with merge to ensure it works even if field doesn't exist
+            batch.set(businessRef, { customCategories: updatedCategories }, { merge: true });
             console.log(`[Bulk Upload] Adding ${newCategories.length} new categories:`,
                 newCategories.map(c => `${c.id} (${c.title})`).join(', '));
         } else {
