@@ -168,6 +168,39 @@ export async function POST(req) {
       if (item.categoryId) {
         uniqueCategories.add(item.categoryId);
       }
+    });
+
+    console.log(`[AI Scan] Unique categories in scan:`, Array.from(uniqueCategories).join(', '));
+
+    // Find new categories that need to be saved
+    const newCategories = [];
+    uniqueCategories.forEach(catId => {
+      // Check if already exists in custom categories
+      if (currentCustomCategories.some(cat => cat.id === catId)) {
+        console.log(`[AI Scan] Category '${catId}' already exists, skipping`);
+        return;
+      }
+
+      // Use AI-provided title if available, otherwise infer from ID
+      const categoryTitleMap = new Map();
+      scannedData.items.forEach(item => {
+        if (item.categoryId && item.categoryTitle) {
+          categoryTitleMap.set(item.categoryId, item.categoryTitle);
+        }
+      });
+
+      const title = categoryTitleMap.get(catId) || catId.split('-').map(word =>
+        word.charAt(0).toUpperCase() + word.slice(1)
+      ).join(' ');
+
+      newCategories.push({ id: catId, title });
+      console.log(`[AI Scan] New category detected: '${catId}' -> '${title}'`);
+    });
+
+    const batch = firestore.batch();
+
+    // If there are new categories, update vendor document
+    if (newCategories.length > 0) {
       const updatedCategories = [...currentCustomCategories, ...newCategories];
       batch.set(vendorDocRef, { customCategories: updatedCategories }, { merge: true });
       console.log(`[AI Scan] Adding ${newCategories.length} new categories:`,
