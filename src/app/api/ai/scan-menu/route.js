@@ -28,7 +28,13 @@ const MenuItemSchema = z.object({
     .string()
     .default('general')
     .describe(
-      "The category of the item (e.g., 'snacks', 'main-course'). Default to 'general' if unsure."
+      "Lowercase, dash-separated category ID (e.g., 'drinks', 'main-course'). Convert from menu name."
+    ),
+  categoryTitle: z
+    .string()
+    .optional()
+    .describe(
+      "EXACT category name as shown on menu (e.g., 'Drinks', 'Main Course'). Preserve original formatting."
     ),
   isVeg: z
     .boolean()
@@ -81,10 +87,11 @@ const menuScanPrompt = ai.definePrompt({
   3.  **Vegetarian Status:** Identify non-veg items (containing chicken, mutton, egg, fish, etc.) and set 'isVeg' to 'false'. For all other items, default 'isVeg' to 'true'.
   4.  **Categorization - PRESERVE EXACT NAMES:** 
       *   Look for category headings or sections on the menu (e.g., "Drinks", "Main Course", "Chaat", etc.)
-      *   Use the EXACT category name as shown on the menu, converted to lowercase with dashes instead of spaces
-      *   Examples: "Drinks" → "drinks", "Main Course" → "main-course", "Chaat Items" → "chaat-items"
-      *   DO NOT translate or infer categories - use what you see on the menu!
-      *   If no category is visible for an item, use 'general'
+      *   For EACH item, provide BOTH:
+          - 'categoryId': Convert menu name to lowercase-dash format ("Drinks" → "drinks", "Main Course" → "main-course")
+          - 'categoryTitle': EXACT name from menu with original formatting ("Drinks", "Main Course", "Chaat Items")
+      *   DO NOT translate or infer - if menu says "Drinks", use "Drinks" as title, not "Beverages"!
+      *   If no category visible, use categoryId: 'general' and categoryTitle: 'General'
   5.  **IGNORE IMAGES:** The 'imageUrl' field MUST NOT be part of your response. Leave it out completely.
   6.  **IGNORE ADD-ONS:** Do not extract any "add-on" or "extra" items that are not main dishes.
 
@@ -161,32 +168,6 @@ export async function POST(req) {
       if (item.categoryId) {
         uniqueCategories.add(item.categoryId);
       }
-    });
-
-    console.log(`[AI Scan] Unique categories in scan:`, Array.from(uniqueCategories).join(', '));
-
-    // Find new categories that need to be saved
-    const newCategories = [];
-    uniqueCategories.forEach(catId => {
-      // Check if already exists in custom categories
-      if (currentCustomCategories.some(cat => cat.id === catId)) {
-        console.log(`[AI Scan] Category '${catId}' already exists, skipping`);
-        return;
-      }
-
-      // New category found - create title from ID
-      const title = catId.split('-').map(word =>
-        word.charAt(0).toUpperCase() + word.slice(1)
-      ).join(' ');
-
-      newCategories.push({ id: catId, title });
-      console.log(`[AI Scan] New category detected: '${catId}' -> '${title}'`);
-    });
-
-    const batch = firestore.batch();
-
-    // If there are new categories, update vendor document
-    if (newCategories.length > 0) {
       const updatedCategories = [...currentCustomCategories, ...newCategories];
       batch.set(vendorDocRef, { customCategories: updatedCategories }, { merge: true });
       console.log(`[AI Scan] Adding ${newCategories.length} new categories:`,
