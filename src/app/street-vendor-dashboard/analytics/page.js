@@ -145,7 +145,6 @@ export default function StreetVendorAnalyticsPage() {
                     <Card className="border-2 border-primary/20 bg-gradient-to-br from-green-50 to-emerald-50 dark:from-green-950/30 dark:to-emerald-950/30 shadow-xl">
                         <CardHeader>
                             <CardTitle className="flex items-center gap-2 text-2xl">
-                                <DollarSign className="h-7 w-7 text-green-600" />
                                 💰 Galla Status
                             </CardTitle>
                             <CardDescription className="text-base">Aaj ka poora hisaab</CardDescription>
