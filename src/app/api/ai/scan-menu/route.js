@@ -78,8 +78,13 @@ const menuScanPrompt = ai.definePrompt({
   2.  **Handle Pricing:**
       *   If an item has multiple prices (e.g., Half/Full, 6 Pcs/12 Pcs), create a separate object for each in the 'portions' array.
       *   If an item has only one price, create a single portion object with the name "Full".
-  3.  **Vegetarian Status:** Identify non-veg items (containing chicken, mutton, egg, etc.) and set 'isVeg' to 'false'. For all other items, default 'isVeg' to 'true'.
-  4.  **Categorization:** Group items into logical categories (e.g., 'chaat', 'rolls', 'beverages'). If a category is not clear, use 'general'.
+  3.  **Vegetarian Status:** Identify non-veg items (containing chicken, mutton, egg, fish, etc.) and set 'isVeg' to 'false'. For all other items, default 'isVeg' to 'true'.
+  4.  **Categorization - PRESERVE EXACT NAMES:** 
+      *   Look for category headings or sections on the menu (e.g., "Drinks", "Main Course", "Chaat", etc.)
+      *   Use the EXACT category name as shown on the menu, converted to lowercase with dashes instead of spaces
+      *   Examples: "Drinks" → "drinks", "Main Course" → "main-course", "Chaat Items" → "chaat-items"
+      *   DO NOT translate or infer categories - use what you see on the menu!
+      *   If no category is visible for an item, use 'general'
   5.  **IGNORE IMAGES:** The 'imageUrl' field MUST NOT be part of your response. Leave it out completely.
   6.  **IGNORE ADD-ONS:** Do not extract any "add-on" or "extra" items that are not main dishes.
 
