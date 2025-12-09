@@ -203,13 +203,14 @@ const MenuItemCard = ({ item, quantity, onAdd, onIncrement, onDecrement }) => {
             layout
             className={cn(
                 "flex gap-4 py-6 border-b border-border bg-card rounded-xl p-4 shadow-md transition-all duration-300",
+                "max-w-full overflow-hidden",
                 isOutOfStock ? "opacity-40 grayscale" : "hover:-translate-y-1 hover:shadow-primary/20"
             )}
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.3 }}
         >
-            <div className="flex-grow flex flex-col">
+            <div className="flex-grow flex flex-col min-w-0">
                 <div className="flex items-center gap-2 mb-1">
                     <div className={`w-4 h-4 border ${item.isVeg ? 'border-green-500' : 'border-red-500'} flex items-center justify-center`}>
                         <div className={`w-2 h-2 ${item.isVeg ? 'bg-green-500' : 'bg-red-500'} rounded-full`}></div>
@@ -217,9 +218,9 @@ const MenuItemCard = ({ item, quantity, onAdd, onIncrement, onDecrement }) => {
                     <h4 className="font-semibold text-foreground">{item.name}</h4>
                 </div>
 
-                <div className="flex flex-wrap gap-2 mt-1 mb-2">
+                <div className="flex flex-wrap gap-2 mt-1 mb-2 max-w-full">
                     {item.tags && item.tags.map(tag => (
-                        <span key={tag} className="px-2 py-0.5 text-xs font-semibold rounded-full bg-primary/10 text-primary border border-primary/20 flex items-center gap-1">
+                        <span key={tag} className="px-2 py-0.5 text-xs font-semibold rounded-full bg-primary/10 text-primary border border-primary/20 flex items-center gap-1 shrink-0">
                             <TagIcon size={12} /> {tag}
                         </span>
                     ))}
@@ -227,7 +228,7 @@ const MenuItemCard = ({ item, quantity, onAdd, onIncrement, onDecrement }) => {
 
                 <p className="font-bold text-md text-foreground">₹{minPricePortion.price}</p>
 
-                <p className="text-sm text-muted-foreground mt-2 flex-grow">{item.description}</p>
+                <p className="text-sm text-muted-foreground mt-2 flex-grow line-clamp-2 break-words">{item.description}</p>
             </div>
 
             <div className="w-32 flex-shrink-0 relative">
@@ -1249,7 +1250,7 @@ const OrderPageInternal = () => {
                     </motion.div>
                 )}
             </AnimatePresence>
-            <div className="min-h-screen bg-background text-foreground green-theme">
+            <div className="min-h-screen bg-background text-foreground green-theme overflow-x-hidden max-w-full">
                 <DineInModal
                     isOpen={isDineInModalOpen}
                     onClose={handleCloseDineInModal}
