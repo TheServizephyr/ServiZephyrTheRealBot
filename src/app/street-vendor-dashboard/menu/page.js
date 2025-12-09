@@ -624,6 +624,26 @@ export default function StreetVendorMenuPage() {
         fetchCustomCategories();
     }, [vendorId, impersonatedOwnerId]);
 
+    // Transform customCategories array into object format for dropdown
+    const allCategories = useMemo(() => {
+        const categoriesObj = {};
+
+        // Add all custom categories from database
+        customCategories.forEach(cat => {
+            categoriesObj[cat.id] = {
+                id: cat.id,
+                title: cat.title || cat.id // Use title if available, fallback to ID
+            };
+        });
+
+        // Always include 'general' as fallback
+        if (!categoriesObj['general']) {
+            categoriesObj['general'] = { id: 'general', title: 'General' };
+        }
+
+        return categoriesObj;
+    }, [customCategories]);
+
     const fetchMenu = useCallback(async () => {
         if (!user) {
             setLoading(false);
