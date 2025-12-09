@@ -1,0 +1,60 @@
+{
+    "name": "ServiZephyr",
+    "short_name": "ServiZephyr",
+    "description": "Street food vendor management and ordering platform",
+    "start_url": "/",
+    "display": "standalone",
+    "background_color": "#ffffff",
+    "theme_color": "#FF6B35",
+    "orientation": "portrait-primary",
+    "icons": [
+        {
+            "src": "/logo.png",
+            "sizes": "any",
+            "type": "image/png",
+            "purpose": "any maskable"
+        },
+        {
+            "src": "/logo.png",
+            "sizes": "192x192",
+            "type": "image/png"
+        },
+        {
+            "src": "/logo.png",
+            "sizes": "512x512",
+            "type": "image/png"
+        }
+    ],
+    "categories": [
+        "food",
+        "business",
+        "productivity"
+    ],
+    "screenshots": [],
+    "shortcuts": [
+        {
+            "name": "Vendor Dashboard",
+            "short_name": "Dashboard",
+            "description": "Access your vendor dashboard",
+            "url": "/street-vendor-dashboard",
+            "icons": [
+                {
+                    "src": "/logo.png",
+                    "sizes": "192x192"
+                }
+            ]
+        },
+        {
+            "name": "Orders",
+            "short_name": "Orders",
+            "description": "View live orders",
+            "url": "/owner-dashboard/live-orders",
+            "icons": [
+                {
+                    "src": "/logo.png",
+                    "sizes": "192x192"
+                }
+            ]
+        }
+    ]
+}
