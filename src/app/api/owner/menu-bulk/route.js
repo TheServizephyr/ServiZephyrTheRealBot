@@ -78,9 +78,10 @@ export async function POST(req) {
             (collectionName === 'restaurants' ? 'restaurant' :
                 (collectionName === 'shops' ? 'shop' : 'street-vendor'));
 
-        const hardcodedCategories = businessType === 'restaurant' || businessType === 'street-vendor'
-            ? restaurantCategoryConfig
-            : shopCategoryConfig;
+        // Street vendors should have NO hardcoded categories - all categories are custom
+        const hardcodedCategories = businessType === 'street-vendor'
+            ? {} // Empty object - no hardcoded categories for street vendors
+            : (businessType === 'restaurant' ? restaurantCategoryConfig : shopCategoryConfig);
 
         const currentCustomCategories = businessData.customCategories || [];
         console.log(`[Bulk Upload] Current custom categories:`, currentCustomCategories.map(c => c.id).join(', '));
