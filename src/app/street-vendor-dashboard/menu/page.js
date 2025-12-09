@@ -135,11 +135,10 @@ const MenuItem = ({ item, onEdit, onDelete, onToggle, onSelectItem, isSelected }
                     aria-label={`Select ${item.name}`}
                 />
                 <div className="relative w-16 h-16 rounded-md overflow-hidden bg-muted flex-shrink-0">
-                    {item.imageUrl && item.imageUrl !== 'uploading...' ? (
+                    {item.imageUrl && item.imageUrl !== 'uploading...' && (
                         <Image src={item.imageUrl} alt={item.name} layout="fill" objectFit="cover" />
-                    ) : (
-                        <ImageIcon size={32} className="text-muted-foreground absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2" />
                     )}
+                    {/* No placeholder icon - completely blank if no image */}
                 </div>
             </div>
             <div className="col-span-2">
