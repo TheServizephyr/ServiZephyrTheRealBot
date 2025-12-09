@@ -975,19 +975,6 @@ export default function StreetVendorMenuPage() {
         }
     };
 
-    // Dynamic categories - only from database, no hardcoded categories
-    const allCategories = useMemo(() => {
-        const categories = {};
-        customCategories.forEach(cat => {
-            categories[cat.id] = { title: cat.title };
-        });
-        // Add fallback 'general' category if no categories exist
-        if (Object.keys(categories).length === 0) {
-            categories['general'] = { title: 'General' };
-        }
-        return categories;
-    }, [customCategories]);
-
 
     const groupedMenu = menuItems.reduce((acc, item) => {
         const categoryKey = item.categoryId || 'general';
