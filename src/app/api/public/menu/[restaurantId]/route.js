@@ -167,7 +167,7 @@ export async function GET(req, { params }) {
             status: 200,
             headers: {
                 'X-Cache': 'DISABLED',
-                'Cache-Control': 's-maxage=3600, stale-while-revalidate=1800'
+                'Cache-Control': 's-maxage=300, stale-while-revalidate=60' // 5 min cache, 1 min stale
             }
         });
 
