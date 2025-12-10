@@ -17,6 +17,8 @@ export async function GET(req, { params }) {
         return NextResponse.json({ message: 'Restaurant ID is required.' }, { status: 400 });
     }
 
+    console.log(`[Menu API] 🚀 START - Request received for restaurantId: ${restaurantId} at ${new Date().toISOString()}`);
+    
     try {
         // Step 1: Check Redis cache first (1-hour TTL)
         const cachedData = await kv.get(cacheKey);
