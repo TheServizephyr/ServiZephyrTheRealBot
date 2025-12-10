@@ -130,7 +130,7 @@ const CheckoutPageInternal = () => {
     const [activeOrderId, setActiveOrderId] = useState(searchParams.get('activeOrderId'));
     const [selectedPaymentMethod, setSelectedPaymentMethod] = useState(null);
     const [selectedOnlinePaymentType, setSelectedOnlinePaymentType] = useState(null);
-    const [paymentGateway, setPaymentGateway] = useState('phonepe');
+    const [paymentGateway, setPaymentGateway] = useState('razorpay');
     const [vendorCharges, setVendorCharges] = useState(null);
     const [infoDialog, setInfoDialog] = useState({ isOpen: false, title: '', message: '' });
     const [isDineInModalOpen, setDineInModalOpen] = useState(false);
