@@ -18,7 +18,7 @@ export async function GET(req, { params }) {
     }
 
     try {
-        // Step 1: Try Redis cache first (5-minute TTL)
+        // Step 1: Check Redis cache first (1-hour TTL)
         const cachedData = await kv.get(cacheKey);
         if (cachedData) {
             console.log(`[Menu API] ✅ Cache HIT for ${restaurantId}`);
@@ -26,7 +26,7 @@ export async function GET(req, { params }) {
                 status: 200,
                 headers: {
                     'X-Cache': 'HIT',
-                    'Cache-Control': 's-maxage=300, stale-while-revalidate=60'
+                    'Cache-Control': 'no-cache' // Let Redis handle caching
                 }
             });
         }
