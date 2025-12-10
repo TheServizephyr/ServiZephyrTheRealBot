@@ -1,5 +1,6 @@
 // ServiZephyr Service Worker - Basic PWA Support
-const CACHE_NAME = 'servizephyr-v1';
+const CACHE_VERSION = '2025-12-10-21-47'; // Update this on each deployment
+const CACHE_NAME = `servizephyr-v${CACHE_VERSION}`;
 const urlsToCache = [
     '/',
     '/offline.html'
@@ -44,6 +45,13 @@ self.addEventListener('fetch', (event) => {
 
     // Skip chrome extensions and other non-http requests
     if (!event.request.url.startsWith('http')) return;
+
+    // CRITICAL: Skip API calls - don't cache them!
+    if (event.request.url.includes('/api/')) {
+        // For API calls, just fetch from network without caching
+        event.respondWith(fetch(event.request));
+        return;
+    }
 
     event.respondWith(
         fetch(event.request)
