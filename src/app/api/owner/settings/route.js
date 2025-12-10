@@ -256,6 +256,14 @@ export async function PATCH(req) {
 
         if (Object.keys(businessUpdateData).length > 0) {
             await businessRef.update(businessUpdateData);
+
+            // Invalidate menu cache when settings change (logo, banner, payment modes, etc.)
+            try {
+                await kv.del(`menu:${businessId}`);
+                console.log(`[Settings API] ✅ Cache invalidated for ${businessId} after settings update`);
+            } catch (cacheError) {
+                console.error('[Settings API] ❌ Cache invalidation failed:', cacheError);
+            }
         }
 
 

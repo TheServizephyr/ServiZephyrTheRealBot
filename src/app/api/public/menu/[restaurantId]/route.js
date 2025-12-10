@@ -158,9 +158,9 @@ export async function GET(req, { params }) {
             isOpen: businessData.isOpen === true, // Restaurant open/closed status
         };
 
-        // Write to Redis cache with 5-minute TTL
-        kv.set(cacheKey, responseData, { ex: 300 }) // 5 minutes TTL
-            .then(() => console.log(`[Menu API] ✅ Cached data for ${restaurantId} (TTL: 5 min)`))
+        // Write to Redis cache with 1-hour TTL (invalidated on vendor changes)
+        kv.set(cacheKey, responseData, { ex: 3600 }) // 1 hour TTL
+            .then(() => console.log(`[Menu API] ✅ Cached data for ${restaurantId} (TTL: 1 hour)`))
             .catch(cacheError => console.error('[Menu API] ❌ Cache storage failed:', cacheError));
 
         // Return immediately without waiting for cache write
