@@ -18,16 +18,20 @@ export async function GET(req, { params }) {
     }
 
     try {
-        // Step 1: FORCE DELETE CACHE for debugging
-        console.log(`[Menu API] DELETING cache for ${restaurantId}`);
-        try {
-            await kv.del(cacheKey);
-            console.log(`[Menu API] Cache deleted successfully`);
-        } catch (delErr) {
-            console.error(`[Menu API] Cache deletion failed:`, delErr);
+        // Step 1: Try Redis cache first (5-minute TTL)
+        const cachedData = await kv.get(cacheKey);
+        if (cachedData) {
+            console.log(`[Menu API] ✅ Cache HIT for ${restaurantId}`);
+            return NextResponse.json(cachedData, {
+                status: 200,
+                headers: {
+                    'X-Cache': 'HIT',
+                    'Cache-Control': 's-maxage=300, stale-while-revalidate=60'
+                }
+            });
         }
 
-        console.log(`[Menu API] Fetching FRESH data from Firestore for ${restaurantId}`);
+        console.log(`[Menu API] ❌ Cache MISS - Fetching from Firestore for ${restaurantId}`);
 
         // Step 2: Cache miss - fetch from Firestore (OPTIMIZED)
         let businessData = null;
@@ -154,19 +158,16 @@ export async function GET(req, { params }) {
             isOpen: businessData.isOpen === true, // Restaurant open/closed status
         };
 
-        // FIX: Async cache write (don't block response)
-        // TEMPORARILY DISABLED FOR DEBUGGING
-        /*
-        kv.set(cacheKey, responseData, { ex: 3600 }) // 1 hour TTL
-            .then(() => console.log(`[Menu API] Cached data for ${restaurantId} (TTL: 1 hour)`))
-            .catch(cacheError => console.error('[Menu API] Cache storage failed:', cacheError));
-        */
+        // Write to Redis cache with 5-minute TTL
+        kv.set(cacheKey, responseData, { ex: 300 }) // 5 minutes TTL
+            .then(() => console.log(`[Menu API] ✅ Cached data for ${restaurantId} (TTL: 5 min)`))
+            .catch(cacheError => console.error('[Menu API] ❌ Cache storage failed:', cacheError));
 
         // Return immediately without waiting for cache write
         return NextResponse.json(responseData, {
             status: 200,
             headers: {
-                'X-Cache': 'DISABLED',
+                'X-Cache': 'MISS',
                 'Cache-Control': 's-maxage=300, stale-while-revalidate=60' // 5 min cache, 1 min stale
             }
         });

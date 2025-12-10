@@ -231,12 +231,11 @@ export async function POST(req) {
 
         // Invalidate cache for this restaurant
         try {
-            const cachePattern = `menu:${businessId}:*`;
-            // Delete all cache keys for this restaurant (public and user-specific)
-            await kv.del(`menu:${businessId}:public`);
-            console.log(`[Menu API] Cache invalidated for ${businessId}`);
+            // Delete cache key (matches public menu API format)
+            await kv.del(`menu:${businessId}`);
+            console.log(`[Menu API] ✅ Cache invalidated for ${businessId}`);
         } catch (cacheError) {
-            console.error('[Menu API] Cache invalidation failed:', cacheError);
+            console.error('[Menu API] ❌ Cache invalidation failed:', cacheError);
         }
 
         // Audit log for impersonation
@@ -284,10 +283,10 @@ export async function DELETE(req) {
 
         // Invalidate cache for this restaurant
         try {
-            await kv.del(`menu:${businessId}:public`);
-            console.log(`[Menu API] Cache invalidated for ${businessId}`);
+            await kv.del(`menu:${businessId}`);
+            console.log(`[Menu API] ✅ Cache invalidated for ${businessId}`);
         } catch (cacheError) {
-            console.error('[Menu API] Cache invalidation failed:', cacheError);
+            console.error('[Menu API] ❌ Cache invalidation failed:', cacheError);
         }
 
         // Audit log for impersonation
@@ -351,10 +350,10 @@ export async function PATCH(req) {
 
         // Invalidate cache for this restaurant
         try {
-            await kv.del(`menu:${businessId}:public`);
-            console.log(`[Menu API] Cache invalidated for ${businessId}`);
+            await kv.del(`menu:${businessId}`);
+            console.log(`[Menu API] ✅ Cache invalidated for ${businessId}`);
         } catch (cacheError) {
-            console.error('[Menu API] Cache invalidation failed:', cacheError);
+            console.error('[Menu API] ❌ Cache invalidation failed:', cacheError);
         }
 
         return NextResponse.json({ message: `Bulk action '${action}' completed successfully on ${itemIds.length} items.` }, { status: 200 });
