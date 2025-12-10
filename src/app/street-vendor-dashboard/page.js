@@ -760,6 +760,7 @@ const StreetVendorDashboardContent = () => {
         }
 
         setLoading(true);
+        let isInitialLoad = true; // Flag to skip sound on initial fetch
 
         const ordersQuery = query(
             collection(db, "orders"),
@@ -772,14 +773,17 @@ const StreetVendorDashboardContent = () => {
             let hasNewPendingOrder = false;
             const fetchedOrders = [];
 
-            querySnapshot.docChanges().forEach((change) => {
-                if (change.type === 'added' && change.doc.data().status === 'pending') {
-                    hasNewPendingOrder = true;
-                }
-            });
+            // Only check for new orders AFTER initial load
+            if (!isInitialLoad) {
+                querySnapshot.docChanges().forEach((change) => {
+                    if (change.type === 'added' && change.doc.data().status === 'pending') {
+                        hasNewPendingOrder = true;
+                    }
+                });
 
-            if (hasNewPendingOrder) {
-                playNotificationSound();
+                if (hasNewPendingOrder) {
+                    playNotificationSound();
+                }
             }
 
             querySnapshot.forEach((doc) => {
@@ -788,6 +792,7 @@ const StreetVendorDashboardContent = () => {
 
             setOrders(fetchedOrders);
             setLoading(false);
+            isInitialLoad = false; // Mark initial load complete
         }, (err) => {
             const contextualError = new FirestorePermissionError({ path: `orders`, operation: 'list' });
             errorEmitter.emit('permission-error', contextualError);
