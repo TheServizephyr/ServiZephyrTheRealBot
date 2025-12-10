@@ -816,7 +816,7 @@ export default function StreetVendorMenuPage() {
                 if (isEditing) {
                     setMenuItems(prev => prev.map(item =>
                         item.id === itemData.id
-                            ? { ...item, ...itemData, categoryId: finalCategoryId }
+                            ? { ...item, ...itemData, categoryId: categoryId }
                             : item
                     ));
                 }
