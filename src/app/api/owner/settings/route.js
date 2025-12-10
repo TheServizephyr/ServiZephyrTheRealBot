@@ -4,6 +4,7 @@ import { NextResponse } from 'next/server';
 import { getAuth, getFirestore, verifyAndGetUid } from '@/lib/firebase-admin';
 import { initializeApp, getApps } from 'firebase-admin/app';
 import { sendRestaurantStatusChangeNotification } from '@/lib/notifications';
+import { kv } from '@vercel/kv';
 
 export const dynamic = 'force-dynamic';
 
