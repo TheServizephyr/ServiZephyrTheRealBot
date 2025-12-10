@@ -230,36 +230,44 @@ export async function POST(req) {
         console.log("[API LOG] POST /api/owner/menu: Batch commit successful!");
 
         // Invalidate cache for this restaurant
+        console.log(`[Menu API] 🔍 Attempting cache invalidation for businessId: ${businessId}`);
         try {
-            // Delete cache key (matches public menu API format)
-            await kv.del(`menu:${businessId}`);
+            const cacheKey = `menu:${businessId}`;
+            console.log(`[Menu API] 🔑 Cache key to delete: ${cacheKey}`);
+
+            const deleteResult = await kv.del(cacheKey);
+            console.log(`[Menu API] ✅ Cache deleted! Result:`, deleteResult);
             console.log(`[Menu API] ✅ Cache invalidated for ${businessId}`);
         } catch (cacheError) {
             console.error('[Menu API] ❌ Cache invalidation failed:', cacheError);
+            console.error('[Menu API] ❌ Error details:', cacheError.message, cacheError.stack);
         }
-
-        // Audit log for impersonation
-        if (isImpersonating) {
-            await logImpersonation({
-                adminId,
-                adminEmail,
-                targetOwnerId: uid,
-                action: isEditing ? 'update_menu_item' : 'create_menu_item',
-                metadata: { businessId, itemId: newItemId, itemName: item.name, categoryId: finalCategoryId },
-                ipAddress: getClientIP(req),
-                userAgent: getUserAgent(req)
-            });
-        }
-
-        const message = isEditing ? 'Item updated successfully!' : 'Item added successfully!';
-        const status = isEditing ? 200 : 201;
-
-        return NextResponse.json({ message, id: newItemId }, { status });
-
-    } catch (error) {
-        console.error("[API LOG] CRITICAL ERROR in POST /api/owner/menu:", error);
-        return NextResponse.json({ message: `Backend Error: ${error.message}` }, { status: error.status || 500 });
+    } catch (cacheError) {
+        console.error('[Menu API] ❌ Cache invalidation failed:', cacheError);
     }
+
+    // Audit log for impersonation
+    if (isImpersonating) {
+        await logImpersonation({
+            adminId,
+            adminEmail,
+            targetOwnerId: uid,
+            action: isEditing ? 'update_menu_item' : 'create_menu_item',
+            metadata: { businessId, itemId: newItemId, itemName: item.name, categoryId: finalCategoryId },
+            ipAddress: getClientIP(req),
+            userAgent: getUserAgent(req)
+        });
+    }
+
+    const message = isEditing ? 'Item updated successfully!' : 'Item added successfully!';
+    const status = isEditing ? 200 : 201;
+
+    return NextResponse.json({ message, id: newItemId }, { status });
+
+} catch (error) {
+    console.error("[API LOG] CRITICAL ERROR in POST /api/owner/menu:", error);
+    return NextResponse.json({ message: `Backend Error: ${error.message}` }, { status: error.status || 500 });
+}
 }
 
 
