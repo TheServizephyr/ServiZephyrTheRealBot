@@ -819,7 +819,7 @@ const OrderPageInternal = () => {
 
             try {
                 const url = `/api/public/menu/${restaurantId}${phone ? `?phone=${phone}` : ''}`;
-                const menuRes = await fetch(url);
+                const menuRes = await fetch(url, { cache: 'no-store' }); // Force fresh data
                 const menuData = await menuRes.json();
 
                 if (!menuRes.ok) throw new Error(menuData.message || 'Failed to fetch menu');
