@@ -164,5 +164,20 @@ export async function GET(req, { params }) {
         kv.set(cacheKey, responseData, { ex: 3600 }) // 1 hour TTL
             .then(() => console.log(`[Menu API] ✅ Cached data for ${restaurantId} (TTL: 1 hour)`))
             .catch(cacheError => console.error('[Menu API] ❌ Cache storage failed:', cacheError));
+
+        // Return with no-cache headers to prevent browser caching
+        return NextResponse.json(responseData, {
+            status: 200,
+            headers: {
+                'X-Cache': 'MISS',
+                'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0',
+                'Pragma': 'no-cache',
+                'Expires': '0'
+            }
+        });
+
+    } catch (error) {
+        console.error(`[API ERROR] /api/public/menu/${restaurantId}:`, error);
+        return NextResponse.json({ message: 'Internal Server Error: ' + error.message }, { status: 500 });
     }
 }
