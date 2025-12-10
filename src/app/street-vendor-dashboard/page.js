@@ -564,9 +564,60 @@ const StreetVendorDashboardContent = () => {
     const [searchQuery, setSearchQuery] = useState('');
     const [rejectModalState, setRejectModalState] = useState({ isOpen: false, order: null });
     const audioRef = useRef(null);
+    const audioUnlockedRef = useRef(false);
+
+    // Unlock audio on first user interaction (mobile browsers block autoplay)
+    useEffect(() => {
+        const unlockAudio = () => {
+            if (!audioUnlockedRef.current && audioRef.current) {
+                // Create a short silent play to unlock audio context
+                audioRef.current.volume = 0;
+                audioRef.current.play()
+                    .then(() => {
+                        audioRef.current.pause();
+                        audioRef.current.currentTime = 0;
+                        audioRef.current.volume = 1;
+                        audioUnlockedRef.current = true;
+                        console.log('[Audio] Unlocked successfully');
+                    })
+                    .catch(() => console.log('[Audio] Unlock attempt - will try on interaction'));
+            }
+        };
+
+        // Try to unlock on any user interaction
+        const handleInteraction = () => {
+            unlockAudio();
+            // Remove listeners after unlock
+            if (audioUnlockedRef.current) {
+                document.removeEventListener('click', handleInteraction);
+                document.removeEventListener('touchstart', handleInteraction);
+            }
+        };
+
+        document.addEventListener('click', handleInteraction);
+        document.addEventListener('touchstart', handleInteraction);
+
+        return () => {
+            document.removeEventListener('click', handleInteraction);
+            document.removeEventListener('touchstart', handleInteraction);
+        };
+    }, []);
 
     const playNotificationSound = () => {
-        audioRef.current?.play().catch(err => console.error("Audio play failed:", err));
+        if (!audioRef.current) return;
+
+        // Reset to start and play
+        audioRef.current.currentTime = 0;
+        audioRef.current.volume = 1;
+        audioRef.current.play()
+            .then(() => console.log('[Audio] ✅ Notification sound played'))
+            .catch(err => {
+                console.error('[Audio] ❌ Play failed:', err.message);
+                // Try to unlock and retry once
+                if (!audioUnlockedRef.current) {
+                    console.log('[Audio] Attempting to unlock audio...');
+                }
+            });
     };
 
     const handleApiCall = useCallback(async (endpoint, method = 'PATCH', body = {}) => {
