@@ -36,12 +36,26 @@ const buttonVariants = cva(
   }
 )
 
-const Button = React.forwardRef(({ className, variant, size, asChild = false, ...props }, ref) => {
+// Subtle haptic feedback for button clicks (10ms - smooth)
+const triggerHaptic = () => {
+  if (typeof navigator !== 'undefined' && navigator.vibrate) {
+    navigator.vibrate(10);
+  }
+};
+
+const Button = React.forwardRef(({ className, variant, size, asChild = false, onClick, ...props }, ref) => {
   const Comp = asChild ? Slot : "button"
+
+  const handleClick = (e) => {
+    triggerHaptic();
+    if (onClick) onClick(e);
+  };
+
   return (
     (<Comp
       className={cn(buttonVariants({ variant, size, className }))}
       ref={ref}
+      onClick={handleClick}
       {...props} />)
   );
 })
