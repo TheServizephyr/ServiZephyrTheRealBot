@@ -23,6 +23,7 @@ import { usePathname, useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useTheme } from 'next-themes';
 import { ThemeProvider } from '@/components/ThemeProvider';
+import ThemeColorUpdater from '@/components/ThemeColorUpdater';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import {
@@ -47,8 +48,8 @@ const SidebarLink = ({ href, icon: Icon, children, isCollapsed }) => {
     <Link href={href} passHref>
       <div
         className={`flex items-center p-3 my-1 rounded-lg cursor-pointer transition-colors ${isActive
-            ? 'bg-primary text-primary-foreground'
-            : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+          ? 'bg-primary text-primary-foreground'
+          : 'text-muted-foreground hover:bg-muted hover:text-foreground'
           } ${isCollapsed ? 'justify-center' : ''}`}
       >
         <Icon size={22} />
@@ -261,6 +262,7 @@ export default function AdminRootLayout({ children }) {
       enableSystem
       disableTransitionOnChange
     >
+      <ThemeColorUpdater />
       <AdminLayoutContent>{children}</AdminLayoutContent>
     </ThemeProvider>
   )

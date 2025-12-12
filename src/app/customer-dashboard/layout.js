@@ -8,6 +8,7 @@ import { Suspense, useEffect } from 'react';
 import { useTheme } from 'next-themes';
 import { Button } from '@/components/ui/button';
 import { ThemeProvider } from '@/components/ThemeProvider';
+import ThemeColorUpdater from '@/components/ThemeColorUpdater';
 import Image from 'next/image';
 import { useUser } from '@/firebase';
 import GoldenCoinSpinner from '@/components/GoldenCoinSpinner';
@@ -123,6 +124,7 @@ export default function CustomerDashboardLayout({ children }) {
       enableSystem
       disableTransitionOnChange
     >
+      <ThemeColorUpdater />
       <Suspense fallback={<div className="flex h-screen items-center justify-center bg-background"><GoldenCoinSpinner /></div>}>
         <CustomerDashboardContent>{children}</CustomerDashboardContent>
       </Suspense>
