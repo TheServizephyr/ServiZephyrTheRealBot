@@ -1,12 +1,11 @@
 // ServiZephyr Service Worker - Basic PWA Support
-const CACHE_VERSION = '2025-12-10-21-47'; // Update this on each deployment
+const CACHE_VERSION = '2025-12-12-16-20'; // Update this on each deployment
 const CACHE_NAME = `servizephyr-v${CACHE_VERSION}`;
 const urlsToCache = [
-    '/',
     '/offline.html'
 ];
 
-// Install event - cache essential files
+// Install event - cache essential files only
 self.addEventListener('install', (event) => {
     event.waitUntil(
         caches.open(CACHE_NAME)
@@ -38,7 +37,7 @@ self.addEventListener('activate', (event) => {
     self.clients.claim();
 });
 
-// Fetch event - network first, fallback to cache
+// Fetch event - network first, minimal caching
 self.addEventListener('fetch', (event) => {
     // Skip non-GET requests
     if (event.request.method !== 'GET') return;
@@ -48,36 +47,27 @@ self.addEventListener('fetch', (event) => {
 
     // CRITICAL: Skip API calls - don't cache them!
     if (event.request.url.includes('/api/')) {
-        // For API calls, just fetch from network without caching
         event.respondWith(fetch(event.request));
         return;
     }
 
+    // CRITICAL: Skip Next.js static assets - they have version hashes
+    // Caching these causes stale chunk issues after deployments
+    if (event.request.url.includes('/_next/')) {
+        event.respondWith(fetch(event.request));
+        return;
+    }
+
+    // For navigation requests, just fetch from network
+    // Only use cache as fallback for offline
     event.respondWith(
         fetch(event.request)
-            .then((response) => {
-                // Clone the response before caching
-                const responseToCache = response.clone();
-
-                caches.open(CACHE_NAME)
-                    .then((cache) => {
-                        cache.put(event.request, responseToCache);
-                    });
-
-                return response;
-            })
             .catch(() => {
-                // Network failed, try cache
-                return caches.match(event.request)
-                    .then((response) => {
-                        if (response) {
-                            return response;
-                        }
-                        // Return offline page for navigation requests
-                        if (event.request.mode === 'navigate') {
-                            return caches.match('/offline.html');
-                        }
-                    });
+                // Network failed, try cache for navigation requests
+                if (event.request.mode === 'navigate') {
+                    return caches.match('/offline.html');
+                }
+                return caches.match(event.request);
             })
     );
 });
