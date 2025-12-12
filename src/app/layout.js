@@ -29,7 +29,6 @@ export const metadata = {
 
   // PWA Configuration
   manifest: "/manifest.json",
-  themeColor: "#FF6B35",
 
   // Icons and Favicons
   icons: {
@@ -90,6 +89,9 @@ export default function RootLayout({ children }) {
   return (
     <html lang="en" className={`${alegreya.variable} ${playfairDisplay.variable}`} suppressHydrationWarning>
       <head>
+        {/* Dynamic theme-color based on color scheme */}
+        <meta name="theme-color" media="(prefers-color-scheme: light)" content="#ffffff" />
+        <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#0a0a0a" />
       </head>
       <body>
         <Script
