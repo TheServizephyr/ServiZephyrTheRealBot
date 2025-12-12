@@ -8,7 +8,27 @@ import { useEffect } from 'react';
 
 const LayoutWrapper = ({ children }) => {
   const pathname = usePathname();
-  const { setTheme } = useTheme();
+  const { theme, resolvedTheme, setTheme } = useTheme();
+
+  // Update theme-color meta tag dynamically based on current theme
+  useEffect(() => {
+    const currentTheme = resolvedTheme || theme;
+    const themeColor = currentTheme === 'dark' ? '#0a0a0a' : '#ffffff';
+
+    // Find existing theme-color meta tags and update them
+    const metaTags = document.querySelectorAll('meta[name="theme-color"]');
+    metaTags.forEach(tag => {
+      tag.setAttribute('content', themeColor);
+    });
+
+    // If no meta tag exists, create one
+    if (metaTags.length === 0) {
+      const meta = document.createElement('meta');
+      meta.name = 'theme-color';
+      meta.content = themeColor;
+      document.head.appendChild(meta);
+    }
+  }, [theme, resolvedTheme]);
 
   // Define paths where Header and Footer should NOT be shown
   const noLayoutPaths = [
