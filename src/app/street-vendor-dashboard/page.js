@@ -606,6 +606,11 @@ const StreetVendorDashboardContent = () => {
     const playNotificationSound = () => {
         if (!audioRef.current) return;
 
+        // Vibrate for new order alert (strong pattern)
+        if (navigator.vibrate) {
+            navigator.vibrate([200, 100, 200]); // vibrate-pause-vibrate
+        }
+
         // Reset to start and play
         audioRef.current.currentTime = 0;
         audioRef.current.volume = 1;
@@ -618,6 +623,13 @@ const StreetVendorDashboardContent = () => {
                     console.log('[Audio] Attempting to unlock audio...');
                 }
             });
+    };
+
+    // Subtle haptic feedback for button clicks (10ms - smooth)
+    const vibrateOnClick = () => {
+        if (navigator.vibrate) {
+            navigator.vibrate(10);
+        }
     };
 
     const handleApiCall = useCallback(async (endpoint, method = 'PATCH', body = {}) => {
@@ -834,10 +846,10 @@ const StreetVendorDashboardContent = () => {
         }
     };
 
-    const handleMarkReady = (orderId) => handleUpdateStatus(orderId, 'Ready');
-    const handleMarkCollected = (orderId) => handleUpdateStatus(orderId, 'delivered');
-    const handleRevertToPending = (orderId) => handleUpdateStatus(orderId, 'pending');
-    const handleOpenRejectModal = (order) => setRejectModalState({ isOpen: true, order });
+    const handleMarkReady = (orderId) => { vibrateOnClick(); handleUpdateStatus(orderId, 'Ready'); };
+    const handleMarkCollected = (orderId) => { vibrateOnClick(); handleUpdateStatus(orderId, 'delivered'); };
+    const handleRevertToPending = (orderId) => { vibrateOnClick(); handleUpdateStatus(orderId, 'pending'); };
+    const handleOpenRejectModal = (order) => { vibrateOnClick(); setRejectModalState({ isOpen: true, order }); };
 
     const handleRejectOrder = (orderId, reason, shouldRefund) => {
         handleUpdateStatus(orderId, 'rejected', reason, shouldRefund);
