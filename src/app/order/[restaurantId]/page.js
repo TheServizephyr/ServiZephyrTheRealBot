@@ -22,6 +22,8 @@ import { Input } from '@/components/ui/input';
 import dynamic from 'next/dynamic';
 import { useTheme } from 'next-themes';
 import { ThemeProvider } from '@/components/ThemeProvider';
+import ThemeColorUpdater from '@/components/ThemeColorUpdater';
+import GlobalHapticHandler from '@/components/GlobalHapticHandler';
 import GoldenCoinSpinner from '@/components/GoldenCoinSpinner';
 
 
@@ -1510,6 +1512,8 @@ const OrderPage = () => (
             enableSystem
             disableTransitionOnChange
         >
+            <ThemeColorUpdater />
+            <GlobalHapticHandler />
             <OrderPageInternal />
         </ThemeProvider>
     </Suspense>

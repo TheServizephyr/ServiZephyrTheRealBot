@@ -8,6 +8,7 @@ import styles from "@/components/OwnerDashboard/OwnerDashboard.module.css";
 import { motion } from "framer-motion";
 import { ThemeProvider } from "@/components/ThemeProvider";
 import ThemeColorUpdater from "@/components/ThemeColorUpdater";
+import GlobalHapticHandler from "@/components/GlobalHapticHandler";
 import "../globals.css";
 import { AlertTriangle, HardHat, ShieldOff, Salad, Lock, Mail, Phone, MessageSquare, Loader2 } from 'lucide-react';
 import { Button } from "@/components/ui/button";
@@ -291,6 +292,7 @@ export default function OwnerDashboardRootLayout({ children }) {
       disableTransitionOnChange
     >
       <ThemeColorUpdater />
+      <GlobalHapticHandler />
       <Suspense fallback={<div className="flex h-screen items-center justify-center bg-background"><GoldenCoinSpinner /></div>}>
         <OwnerDashboardContent>{children}</OwnerDashboardContent>
       </Suspense>

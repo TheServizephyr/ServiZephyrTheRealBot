@@ -24,6 +24,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useTheme } from 'next-themes';
 import { ThemeProvider } from '@/components/ThemeProvider';
 import ThemeColorUpdater from '@/components/ThemeColorUpdater';
+import GlobalHapticHandler from '@/components/GlobalHapticHandler';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import {
@@ -263,6 +264,7 @@ export default function AdminRootLayout({ children }) {
       disableTransitionOnChange
     >
       <ThemeColorUpdater />
+      <GlobalHapticHandler />
       <AdminLayoutContent>{children}</AdminLayoutContent>
     </ThemeProvider>
   )
