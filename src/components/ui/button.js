@@ -38,8 +38,12 @@ const buttonVariants = cva(
 
 // Subtle haptic feedback for button clicks (10ms - smooth)
 const triggerHaptic = () => {
+  console.log('[Haptic] Button clicked, attempting vibration...');
   if (typeof navigator !== 'undefined' && navigator.vibrate) {
-    navigator.vibrate(10);
+    const success = navigator.vibrate(10);
+    console.log('[Haptic] Vibration triggered:', success);
+  } else {
+    console.log('[Haptic] navigator.vibrate not supported on this device/browser');
   }
 };
 
