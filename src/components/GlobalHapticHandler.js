@@ -5,41 +5,31 @@ import { useEffect } from 'react';
 /**
  * Global Haptic Feedback Handler
  * 
- * Adds subtle vibration feedback to ALL clickable elements across the entire app.
- * This works regardless of whether the element uses Button component or not.
- * 
- * Targets: buttons, links, elements with onClick, elements with role="button"
+ * Adds subtle vibration feedback to important interactive elements.
+ * Designed to be subtle and non-intrusive.
  */
 export default function GlobalHapticHandler() {
     useEffect(() => {
         // Check if vibration is supported
         if (typeof navigator === 'undefined' || !navigator.vibrate) {
-            console.log('[Haptic] Vibration API not supported on this device');
             return;
         }
-
-        console.log('[Haptic] Global haptic handler initialized');
 
         const handleClick = (e) => {
             const target = e.target;
 
-            // Check if clicked element or its parent is an interactive element
-            const interactiveElement = target.closest('button, a, [role="button"], [onclick], .clickable, input[type="button"], input[type="submit"]');
+            // Only vibrate on important interactive elements - NOT everything
+            // This prevents excessive vibration that feels annoying
+            const isButton = target.closest('button, input[type="button"], input[type="submit"]');
+            const isImportantLink = target.closest('a[role="button"], [role="button"]');
 
-            // Also check for common interactive class names
-            const hasInteractiveClass = target.closest('[class*="btn"], [class*="button"], [class*="click"]');
-
-            // Check if the element or parent has cursor pointer (indicates clickable)
-            const computedStyle = window.getComputedStyle(target);
-            const hasCursorPointer = computedStyle.cursor === 'pointer';
-
-            if (interactiveElement || hasInteractiveClass || hasCursorPointer) {
-                // Trigger subtle vibration (10ms)
-                navigator.vibrate(10);
+            // Only these important elements get haptic feedback
+            if (isButton || isImportantLink) {
+                // Very subtle vibration - 5ms is barely noticeable but still provides feedback
+                navigator.vibrate(5);
             }
         };
 
-        // Use capture phase to catch all clicks before they're handled
         document.addEventListener('click', handleClick, { capture: true, passive: true });
 
         return () => {
