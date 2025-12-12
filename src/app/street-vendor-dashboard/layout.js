@@ -286,7 +286,7 @@ export default function StreetVendorDashboardLayout({ children }) {
   return (
     <ThemeProvider
       attribute="class"
-      defaultTheme="dark"
+      defaultTheme="light"
       enableSystem
       disableTransitionOnChange
     >
