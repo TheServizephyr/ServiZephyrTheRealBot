@@ -55,8 +55,8 @@ const Button = React.forwardRef(({ className, variant, size, asChild = false, on
     (<Comp
       className={cn(buttonVariants({ variant, size, className }))}
       ref={ref}
-      onClick={handleClick}
-      {...props} />)
+      {...props}
+      onClick={handleClick} />)
   );
 })
 Button.displayName = "Button"
