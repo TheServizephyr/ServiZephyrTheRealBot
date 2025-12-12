@@ -4,16 +4,26 @@ import { usePathname } from 'next/navigation';
 import Header from '@/components/Header';
 import Footer from '@/components/Footer';
 import { useTheme } from 'next-themes';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 
 const LayoutWrapper = ({ children }) => {
   const pathname = usePathname();
   const { theme, resolvedTheme, setTheme } = useTheme();
+  const [mounted, setMounted] = useState(false);
+
+  // Wait for client-side mount before checking theme
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   // Update theme-color meta tag dynamically based on current theme
   useEffect(() => {
+    if (!mounted) return; // Wait for mount before updating
+
     const currentTheme = resolvedTheme || theme;
     const themeColor = currentTheme === 'dark' ? '#0a0a0a' : '#ffffff';
+
+    console.log('[Theme] Current:', currentTheme, '-> Color:', themeColor);
 
     // Find existing theme-color meta tags and update them
     const metaTags = document.querySelectorAll('meta[name="theme-color"]');
@@ -28,7 +38,7 @@ const LayoutWrapper = ({ children }) => {
       meta.content = themeColor;
       document.head.appendChild(meta);
     }
-  }, [theme, resolvedTheme]);
+  }, [mounted, theme, resolvedTheme]);
 
   // Define paths where Header and Footer should NOT be shown
   const noLayoutPaths = [
