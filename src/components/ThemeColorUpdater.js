@@ -13,17 +13,25 @@ export default function ThemeColorUpdater() {
     const { theme, resolvedTheme } = useTheme();
     const [mounted, setMounted] = useState(false);
 
-    // Wait for client-side mount before checking theme
+    // Wait for client-side mount + hydration before checking theme
     useEffect(() => {
-        setMounted(true);
+        // Small delay to ensure next-themes has fully hydrated
+        const timer = setTimeout(() => {
+            setMounted(true);
+        }, 100);
+        return () => clearTimeout(timer);
     }, []);
 
     // Update theme-color meta tag dynamically based on current theme
     useEffect(() => {
         if (!mounted) return;
 
-        const currentTheme = resolvedTheme || theme;
-        const themeColor = currentTheme === 'dark' ? '#0a0a0a' : '#ffffff';
+        // resolvedTheme is the actual computed theme (considers system preference)
+        // theme might be 'system', so always prefer resolvedTheme
+        const actualTheme = resolvedTheme || theme || 'light';
+        const themeColor = actualTheme === 'dark' ? '#0a0a0a' : '#ffffff';
+
+        console.log('[ThemeColor] Theme:', actualTheme, '-> Color:', themeColor);
 
         // Find existing theme-color meta tags and update them
         const metaTags = document.querySelectorAll('meta[name="theme-color"]');
