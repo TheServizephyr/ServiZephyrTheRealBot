@@ -1,6 +1,7 @@
 import { Alegreya, Playfair_Display } from 'next/font/google';
 import "./globals.css";
 import LayoutWrapper from '@/components/LayoutWrapper';
+import PWARecoveryHandler from '@/components/PWARecoveryHandler';
 import { FirebaseClientProvider } from '@/firebase/client-provider';
 import Script from 'next/script';
 
@@ -117,6 +118,7 @@ export default function RootLayout({ children }) {
           `}
         </Script>
         <FirebaseClientProvider>
+          <PWARecoveryHandler />
           <LayoutWrapper>
             {children}
           </LayoutWrapper>
