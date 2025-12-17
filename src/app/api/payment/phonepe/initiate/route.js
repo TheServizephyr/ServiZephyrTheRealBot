@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import axios from 'axios';
 
 // PhonePe API Configuration - Read from env (NO fallbacks to sandbox)
+// Updated: 17-Dec-2024 - Production URLs
 const PHONEPE_BASE_URL = process.env.PHONEPE_BASE_URL;
 const CLIENT_ID = process.env.PHONEPE_CLIENT_ID;
 const CLIENT_SECRET = process.env.PHONEPE_CLIENT_SECRET;
